@@ -15,18 +15,9 @@
     </template>
 
     <template v-else-if="!data || data.length === 0">
-      <div class="rounded-lg border border-gray-200 bg-white p-12 text-center dark:border-dark-700 dark:bg-dark-900">
+      <div class="rounded-lg border border-gray-200 bg-white p-8 text-center dark:border-dark-700 dark:bg-dark-900">
         <slot name="empty">
-          <div class="flex flex-col items-center">
-            <Icon
-              name="inbox"
-              size="xl"
-              class="mb-4 h-12 w-12 text-gray-400 dark:text-dark-500"
-            />
-            <p class="text-lg font-medium text-gray-900 dark:text-gray-100">
-              {{ t('empty.noData') }}
-            </p>
-          </div>
+          <EmptyState :title="t('empty.noData')" />
         </slot>
       </div>
     </template>
@@ -35,8 +26,11 @@
       <div
         v-for="(row, index) in sortedData"
         :key="resolveRowKey(row, index)"
-        class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-900"
-        :class="{ 'cursor-pointer': clickableRows }"
+        class="table-card-row rounded-lg border border-gray-200 bg-white p-4 transition-colors duration-150 dark:border-dark-700 dark:bg-dark-900"
+        :class="[
+          clickableRows && 'cursor-pointer',
+          isRowSelected(row, index) && 'table-row-selected'
+        ]"
         @click="clickableRows && emit('rowClick', row)"
       >
         <div class="space-y-3">
@@ -125,11 +119,9 @@
       </thead>
       <tbody class="table-body divide-y divide-gray-200 bg-white dark:divide-dark-700 dark:bg-dark-900">
         <!-- Loading skeleton -->
-        <tr v-if="loading" v-for="i in 5" :key="i">
-          <td v-for="column in columns" :key="column.key" :class="['whitespace-nowrap py-4', getAdaptivePaddingClass()]">
-            <div class="animate-pulse">
-              <div class="h-4 w-3/4 rounded bg-gray-200 dark:bg-dark-700"></div>
-            </div>
+        <tr v-if="loading" v-for="i in skeletonRowCount" :key="`sk-${i}`" class="table-skeleton-row">
+          <td v-for="column in columns" :key="column.key" :class="['whitespace-nowrap py-3', getAdaptivePaddingClass()]">
+            <div class="table-skeleton-cell h-4 w-3/4 rounded bg-gray-200 dark:bg-dark-700"></div>
           </td>
         </tr>
 
@@ -137,19 +129,10 @@
         <tr v-else-if="!data || data.length === 0">
           <td
             :colspan="columns.length"
-            :class="['py-12 text-center text-gray-500 dark:text-dark-400', getAdaptivePaddingClass()]"
+            :class="['py-10 text-center text-gray-500 dark:text-dark-400', getAdaptivePaddingClass()]"
           >
             <slot name="empty">
-              <div class="flex flex-col items-center">
-                <Icon
-                  name="inbox"
-                  size="xl"
-                  class="mb-4 h-12 w-12 text-gray-400 dark:text-dark-500"
-                />
-                <p class="text-lg font-medium text-gray-900 dark:text-gray-100">
-                  {{ t('empty.noData') }}
-                </p>
-              </div>
+              <EmptyState :title="t('empty.noData')" />
             </slot>
           </td>
         </tr>
@@ -166,9 +149,13 @@
             :key="resolveRowKey(item.row, item.index)"
             :data-row-id="resolveRowKey(item.row, item.index)"
             :data-index="item.index"
+            :aria-selected="isRowSelected(item.row, item.index) || undefined"
             :ref="item.measure ? measureElement : undefined"
-            class="hover:bg-gray-50 dark:hover:bg-dark-800"
-            :class="{ 'cursor-pointer': clickableRows }"
+            class="table-data-row transition-colors duration-150 hover:bg-gray-50 dark:hover:bg-dark-800/40"
+            :class="[
+              clickableRows && 'cursor-pointer',
+              isRowSelected(item.row, item.index) && 'table-row-selected'
+            ]"
             @click="clickableRows && emit('rowClick', item.row)"
           >
             <td
@@ -207,7 +194,7 @@ import { computed, ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useVirtualizer, observeElementRect as observeElementRectDefault } from '@tanstack/vue-virtual'
 import { useI18n } from 'vue-i18n'
 import type { Column } from './types'
-import Icon from '@/components/icons/Icon.vue'
+import EmptyState from './EmptyState.vue'
 
 const { t } = useI18n()
 
@@ -403,6 +390,13 @@ interface Props {
    * estimated-vs-actual row heights when rows have variable height.
    */
   virtualizeThreshold?: number
+  /**
+   * Optional selected row keys (matched via rowKey / id). Opt-in highlight only;
+   * does not change selection business logic.
+   */
+  selectedRowKeys?: Array<string | number>
+  /** Skeleton placeholder row count while loading */
+  skeletonRows?: number
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -411,7 +405,16 @@ const props = withDefaults(defineProps<Props>(), {
   stickyActionsColumn: true,
   expandableActions: true,
   defaultSortOrder: 'asc',
-  serverSideSort: false
+  serverSideSort: false,
+  skeletonRows: 5
+})
+
+const skeletonRowCount = computed(() => Math.max(1, props.skeletonRows || 5))
+
+const selectedKeySet = computed(() => {
+  const keys = props.selectedRowKeys
+  if (!keys || keys.length === 0) return null
+  return new Set(keys.map((k) => String(k)))
 })
 
 const sortKey = ref<string>('')
@@ -563,6 +566,11 @@ const resolveStableRowKey = (row: any): string | number | undefined => {
 }
 
 const resolveRowKey = (row: any, index: number) => resolveStableRowKey(row) ?? index
+
+const isRowSelected = (row: any, index: number) => {
+  if (!selectedKeySet.value) return false
+  return selectedKeySet.value.has(String(resolveRowKey(row, index)))
+}
 
 const dataColumns = computed(() => props.columns.filter((column) => column.key !== 'actions'))
 const columnsSignature = computed(() =>
@@ -846,16 +854,18 @@ defineExpose({
   isolation: isolate;
 }
 
-/* 表头容器，确保在滚动时覆盖表体内容 */
+/* 表头容器，确保在滚动时覆盖表体内容；底部分界阴影强化层级 */
 .table-wrapper .table-header {
   position: sticky;
   top: 0;
   z-index: 200;
   background-color: rgb(249 250 251);
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.06), 0 4px 10px -6px rgba(15, 23, 42, 0.12);
 }
 
 .dark .table-wrapper .table-header {
   background-color: rgb(31 41 55);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.35), 0 4px 10px -6px rgba(0, 0, 0, 0.45);
 }
 
 /* 表体保持在表头下方 */
@@ -923,6 +933,60 @@ tbody tr:hover .sticky-col {
 
 .dark tbody tr:hover .sticky-col {
   background-color: rgb(31 41 55);
+}
+
+/* Selected row highlight (opt-in via selectedRowKeys) */
+.table-row-selected {
+  background-color: rgb(240 253 250) !important; /* primary-50 */
+}
+
+.dark .table-row-selected {
+  background-color: rgba(19, 78, 74, 0.35) !important; /* primary-900/35 */
+}
+
+.table-row-selected .sticky-col,
+tbody tr.table-row-selected:hover .sticky-col {
+  background-color: rgb(240 253 250) !important;
+}
+
+.dark .table-row-selected .sticky-col,
+.dark tbody tr.table-row-selected:hover .sticky-col {
+  background-color: rgba(19, 78, 74, 0.35) !important;
+}
+
+.table-card-row.table-row-selected {
+  border-color: rgb(153 246 228); /* primary-200 */
+}
+
+.dark .table-card-row.table-row-selected {
+  border-color: rgba(45, 212, 191, 0.35);
+}
+
+/* Skeleton: short pulse, not continuous shimmer */
+.table-skeleton-cell {
+  animation: table-skeleton-pulse 1.35s ease-in-out infinite;
+}
+
+@keyframes table-skeleton-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .table-data-row,
+  .table-card-row {
+    transition: none;
+  }
+
+  .table-skeleton-cell {
+    animation: none;
+    opacity: 0.7;
+  }
 }
 
 /* 阴影只在可滚动时显示 */

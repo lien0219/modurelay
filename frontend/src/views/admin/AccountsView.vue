@@ -190,6 +190,7 @@
           :data="accounts"
           :loading="loading"
           row-key="id"
+          :selected-row-keys="selIds"
           :server-side-sort="true"
           @sort="handleSort"
           default-sort-key="name"
@@ -200,16 +201,19 @@
           :virtualize-threshold="50"
         >
           <template #header-select>
-            <input
-              type="checkbox"
-              class="h-4 w-4 cursor-pointer rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-              :checked="allVisibleSelected"
+            <Checkbox
+              :model-value="allVisibleSelected"
+              :aria-label="t('common.selectAll')"
               @click.stop
-              @change="toggleSelectAllVisible($event)"
+              @change="toggleVisible"
             />
           </template>
           <template #cell-select="{ row }">
-            <input type="checkbox" :checked="isSelected(row.id)" @change="toggleSel(row.id)" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+            <Checkbox
+              :model-value="isSelected(row.id)"
+              :aria-label="`#${row.id}`"
+              @change="(checked) => (checked ? select(row.id) : deselect(row.id))"
+            />
           </template>
           <template #cell-id="{ value }">
             <span class="font-mono text-xs text-gray-500 dark:text-gray-400">#{{ value }}</span>
@@ -440,6 +444,7 @@ import { useTableSelection } from '@/composables/useTableSelection'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
+import Checkbox from '@/components/common/Checkbox.vue'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
@@ -854,7 +859,6 @@ const {
   setSelectedIds,
   select,
   deselect,
-  toggle: toggleSel,
   clear: clearSelection,
   removeMany: removeSelectedAccounts,
   toggleVisible,
@@ -1354,10 +1358,6 @@ const openMenu = (a: Account, e: MouseEvent) => {
   }
 
   menu.show = true
-}
-const toggleSelectAllVisible = (event: Event) => {
-  const target = event.target as HTMLInputElement
-  toggleVisible(target.checked)
 }
 const handleBulkDelete = async () => { if(!confirm(t('common.confirm'))) return; try { await Promise.all(selIds.value.map(id => adminAPI.accounts.delete(id))); clearSelection(); reload() } catch (error) { console.error('Failed to bulk delete accounts:', error) } }
 const handleBulkResetStatus = async () => {

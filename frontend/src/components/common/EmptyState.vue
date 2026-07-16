@@ -1,18 +1,24 @@
 <template>
-  <div class="empty-state">
+  <motion.div
+    class="empty-state"
+    :initial="motionInitial"
+    :animate="motionAnimate"
+    :transition="motionTransition"
+  >
     <!-- Icon -->
     <div
-      class="mb-5 flex h-20 w-20 items-center justify-center rounded-2xl bg-gray-100 dark:bg-dark-800"
+      class="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-gray-100 dark:bg-dark-800"
     >
       <slot name="icon">
-        <component v-if="icon" :is="icon" class="empty-state-icon h-10 w-10" aria-hidden="true" />
+        <component v-if="icon" :is="icon" class="empty-state-icon mb-0 h-8 w-8" aria-hidden="true" />
         <svg
           v-else
-          class="empty-state-icon h-10 w-10"
+          class="empty-state-icon mb-0 h-8 w-8"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
           stroke-width="1.5"
+          aria-hidden="true"
         >
           <path
             stroke-linecap="round"
@@ -29,8 +35,8 @@
     </h3>
 
     <!-- Description -->
-    <p class="empty-state-description">
-      {{ description }}
+    <p v-if="description || message" class="empty-state-description">
+      {{ description || message }}
     </p>
 
     <!-- Action -->
@@ -48,16 +54,19 @@
         </component>
       </slot>
     </div>
-  </div>
+  </motion.div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Component } from 'vue'
+import { motion } from 'motion-v'
 import Icon from '@/components/icons/Icon.vue'
+import { usePrefersReducedMotion } from '@/composables/usePrefersReducedMotion'
 
 const { t } = useI18n()
+const prefersReducedMotion = usePrefersReducedMotion()
 
 interface Props {
   icon?: Component | string
@@ -75,6 +84,15 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 const displayTitle = computed(() => props.title || t('common.noData'))
+
+const motionInitial = computed(() =>
+  prefersReducedMotion.value ? { opacity: 1 } : { opacity: 0 }
+)
+const motionAnimate = computed(() => ({ opacity: 1 }))
+const motionTransition = computed(() => ({
+  duration: prefersReducedMotion.value ? 0.01 : 0.18,
+  ease: 'easeOut'
+}))
 
 defineEmits(['action'])
 </script>

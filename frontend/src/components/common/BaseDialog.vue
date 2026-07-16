@@ -17,7 +17,7 @@
       >
         <motion.div
           ref="dialogRef"
-          :class="['modal-content', widthClasses]"
+          :class="['modal-content', 'glass-panel', widthClasses]"
           :initial="panelInitial"
           :animate="panelAnimate"
           :exit="panelExit"

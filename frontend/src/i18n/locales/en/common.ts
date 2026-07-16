@@ -68,6 +68,13 @@ export default {
     unknownError: 'Unknown error occurred',
     saving: 'Saving...',
     selectedCount: '({count} selected)',
+    bulkActions: 'Bulk actions',
+    retry: 'Retry',
+    validating: 'Validating...',
+    fieldValid: 'Looks good',
+    showPassword: 'Show password',
+    hidePassword: 'Hide password',
+    destructiveAction: 'This action cannot be undone',
     refresh: 'Refresh',
     autoRefresh: {
       title: 'Auto Refresh',

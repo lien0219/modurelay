@@ -1,6 +1,21 @@
 <template>
-  <BaseDialog :show="show" :title="title" width="narrow" @close="handleCancel">
+  <BaseDialog
+    :show="show"
+    :title="title"
+    width="narrow"
+    :close-on-escape="!confirming"
+    :close-on-click-outside="false"
+    :show-close-button="!confirming"
+    @close="handleCancel"
+  >
     <div class="space-y-4">
+      <div
+        v-if="danger"
+        class="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300"
+      >
+        <Icon name="exclamationTriangle" size="sm" aria-hidden="true" />
+        <span>{{ t('common.destructiveAction') }}</span>
+      </div>
       <p class="text-sm text-gray-600 dark:text-gray-400">{{ message }}</p>
       <slot></slot>
     </div>
@@ -8,23 +23,26 @@
     <template #footer>
       <div class="flex justify-end space-x-3">
         <button
-          @click="handleCancel"
+          ref="cancelButtonRef"
           type="button"
-          class="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:border-dark-600 dark:bg-dark-700 dark:text-gray-200 dark:hover:bg-dark-600 dark:focus:ring-offset-dark-800"
+          class="btn btn-secondary"
+          :disabled="confirming"
+          @click="handleCancel"
         >
           {{ cancelText }}
         </button>
         <button
-          @click="handleConfirm"
           type="button"
+          class="btn"
           :class="[
-            'rounded-md px-4 py-2 text-sm font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-dark-800',
-            danger
-              ? 'bg-red-600 hover:bg-red-700 focus:ring-red-500'
-              : 'bg-primary-600 hover:bg-primary-700 focus:ring-primary-500'
+            danger ? 'btn-danger' : 'btn-primary',
+            (confirming || localLocked) && 'btn-loading'
           ]"
+          :disabled="confirming || localLocked"
+          :aria-busy="confirming || localLocked || undefined"
+          @click="handleConfirm"
         >
-          {{ confirmText }}
+          {{ confirming || localLocked ? t('common.processing') : confirmText }}
         </button>
       </div>
     </template>
@@ -32,11 +50,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick, ref, watch, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from './BaseDialog.vue'
-
-const { t } = useI18n()
+import Icon from '@/components/icons/Icon.vue'
 
 interface Props {
   show: boolean
@@ -45,6 +62,8 @@ interface Props {
   confirmText?: string
   cancelText?: string
   danger?: boolean
+  /** When true, blocks Escape/close and disables confirm to prevent double submit */
+  confirming?: boolean
 }
 
 interface Emits {
@@ -53,19 +72,76 @@ interface Emits {
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  danger: false
+  danger: false,
+  confirming: false
 })
+
+const { t } = useI18n()
 
 const confirmText = computed(() => props.confirmText || t('common.confirm'))
 const cancelText = computed(() => props.cancelText || t('common.cancel'))
 
 const emit = defineEmits<Emits>()
+const cancelButtonRef = ref<HTMLButtonElement | null>(null)
+const localLocked = ref(false)
+let unlockTimer: ReturnType<typeof setTimeout> | null = null
+
+const clearUnlockTimer = () => {
+  if (unlockTimer != null) {
+    clearTimeout(unlockTimer)
+    unlockTimer = null
+  }
+}
 
 const handleConfirm = () => {
+  if (props.confirming || localLocked.value) return
+  localLocked.value = true
+  // If parent drives `confirming`, unlock when that flag clears.
+  // Otherwise briefly block double-clicks, then allow retry (e.g. failed ops).
+  if (!props.confirming) {
+    clearUnlockTimer()
+    unlockTimer = setTimeout(() => {
+      localLocked.value = false
+      unlockTimer = null
+    }, 450)
+  }
   emit('confirm')
 }
 
 const handleCancel = () => {
+  if (props.confirming) return
+  clearUnlockTimer()
+  localLocked.value = false
   emit('cancel')
 }
+
+watch(
+  () => props.show,
+  async (open) => {
+    if (!open) {
+      clearUnlockTimer()
+      localLocked.value = false
+      return
+    }
+    // Safety: land on Cancel (esp. danger), after BaseDialog's default autofocus.
+    await nextTick()
+    requestAnimationFrame(() => {
+      cancelButtonRef.value?.focus()
+    })
+  }
+)
+
+watch(
+  () => props.confirming,
+  (value) => {
+    if (!value) {
+      clearUnlockTimer()
+      localLocked.value = false
+    }
+  }
+)
+
+onBeforeUnmount(() => {
+  clearUnlockTimer()
+})
 </script>

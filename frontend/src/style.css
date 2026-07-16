@@ -167,6 +167,11 @@
     box-shadow: 0 4px 14px rgba(16, 185, 129, 0.28);
   }
 
+  .btn-error-flash {
+    @apply bg-gradient-to-r from-red-500 to-red-600 text-white;
+    box-shadow: 0 4px 14px rgba(239, 68, 68, 0.28);
+  }
+
   @keyframes btn-spinner {
     to {
       transform: rotate(360deg);
@@ -276,12 +281,17 @@
     @apply text-gray-900 dark:text-gray-100;
     @apply placeholder:text-gray-400 dark:placeholder:text-dark-400;
     @apply transition-all duration-200;
-    @apply focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30;
+    @apply focus:outline-none;
+    @apply focus-visible:border-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500/30;
     @apply disabled:cursor-not-allowed disabled:bg-gray-100 dark:disabled:bg-dark-900;
   }
 
   .input-error {
-    @apply border-red-500 focus:border-red-500 focus:ring-red-500/30;
+    @apply border-red-500 focus-visible:border-red-500 focus-visible:ring-red-500/30;
+  }
+
+  .input-success {
+    @apply border-emerald-500 focus-visible:border-emerald-500 focus-visible:ring-emerald-500/30;
   }
 
   .input-label {
@@ -294,6 +304,11 @@
 
   .input-error-text {
     @apply mt-1 text-xs text-red-500;
+  }
+
+  /* Sticky / floating filter strip — glass allowed here only */
+  .filter-bar {
+    @apply glass-panel rounded-xl px-3 py-2.5;
   }
 
   /* Hide number input spinner buttons for cleaner UI */
@@ -584,6 +599,7 @@
     @apply flex items-center justify-center p-2 sm:p-4;
   }
 
+  .modal-content.glass-panel,
   .modal-content {
     @apply w-full max-h-[95vh] sm:max-h-[90vh] rounded-2xl flex flex-col;
     background-color: var(--glass-bg-strong);
