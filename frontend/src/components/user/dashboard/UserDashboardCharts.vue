@@ -73,6 +73,7 @@ import { Doughnut } from 'vue-chartjs'
 import TokenUsageTrend from '@/components/charts/TokenUsageTrend.vue'
 import type { TrendDataPoint, ModelStat } from '@/types'
 import { formatCostFixed as formatCost, formatNumberLocaleString as formatNumber, formatTokensK as formatTokens } from '@/utils/format'
+import { getChartJsAnimation } from '@/utils/chartAnimation'
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, ArcElement, Title, Tooltip, Legend, Filler } from 'chart.js'
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, ArcElement, Title, Tooltip, Legend, Filler)
 
@@ -91,6 +92,7 @@ const modelData = computed(() => !props.models?.length ? null : {
 const doughnutOptions = {
   responsive: true,
   maintainAspectRatio: false,
+  animation: getChartJsAnimation(),
   plugins: {
     legend: { display: false },
     tooltip: {

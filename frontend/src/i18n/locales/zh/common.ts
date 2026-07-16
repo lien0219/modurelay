@@ -68,6 +68,13 @@ export default {
     unknownError: '发生未知错误',
     saving: '保存中...',
     selectedCount: '（已选 {count} 个）',
+    bulkActions: '批量操作',
+    retry: '重试',
+    validating: '校验中...',
+    fieldValid: '已通过校验',
+    showPassword: '显示密码',
+    hidePassword: '隐藏密码',
+    destructiveAction: '此操作不可撤销',
     refresh: '刷新',
     autoRefresh: {
       title: '自动刷新',

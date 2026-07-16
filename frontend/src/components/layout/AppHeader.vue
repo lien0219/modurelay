@@ -1,5 +1,5 @@
 <template>
-  <header class="glass sticky top-0 z-30 border-b border-gray-200/50 dark:border-dark-700/50">
+  <header class="glass sticky top-0 z-30 border-b border-[color:var(--glass-border)]">
     <div class="flex h-16 items-center justify-between px-4 md:px-6">
       <!-- Left: Mobile Menu Toggle + Page Title -->
       <div class="flex items-center gap-4">
@@ -72,7 +72,7 @@
             {{ balanceFrozenLabel }}
           </span>
           <div
-            class="pointer-events-none absolute right-0 top-full mt-2 hidden w-56 rounded-lg border border-gray-200 bg-white p-3 text-xs shadow-lg group-hover:block dark:border-dark-700 dark:bg-dark-800"
+            class="glass-popover pointer-events-none absolute right-0 top-full z-40 mt-2 hidden w-56 p-3 text-xs group-hover:block"
           >
             <div class="flex items-center justify-between">
               <span class="text-gray-500 dark:text-dark-400">{{ balanceAvailableText }}</span>
@@ -119,8 +119,16 @@
           </button>
 
           <!-- Dropdown Menu -->
-          <transition name="dropdown">
-            <div v-if="dropdownOpen" class="dropdown right-0 mt-2 w-56">
+          <AnimatePresence>
+            <motion.div
+              v-if="dropdownOpen"
+              key="user-menu"
+              class="dropdown glass-popover right-0 mt-2 w-56"
+              :initial="menuInitial"
+              :animate="menuAnimate"
+              :exit="menuExit"
+              :transition="menuTransition"
+            >
               <!-- User Info -->
               <div class="border-b border-gray-100 px-4 py-3 dark:border-dark-700">
                 <div class="text-sm font-medium text-gray-900 dark:text-white">
@@ -231,8 +239,8 @@
                   {{ t('nav.logout') }}
                 </button>
               </div>
-            </div>
-          </transition>
+            </motion.div>
+          </AnimatePresence>
         </div>
       </div>
     </div>
@@ -243,6 +251,7 @@
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { AnimatePresence, motion } from 'motion-v'
 import { brand } from '@/config/brand'
 import { useAppStore, useAuthStore, useOnboardingStore } from '@/stores'
 import { useAdminSettingsStore } from '@/stores/adminSettings'
@@ -251,6 +260,7 @@ import SubscriptionProgressMini from '@/components/common/SubscriptionProgressMi
 import AnnouncementBell from '@/components/common/AnnouncementBell.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { sanitizeUrl } from '@/utils/url'
+import { usePrefersReducedMotion } from '@/composables/usePrefersReducedMotion'
 
 const router = useRouter()
 const route = useRoute()
@@ -263,6 +273,21 @@ const onboardingStore = useOnboardingStore()
 const user = computed(() => authStore.user)
 const dropdownOpen = ref(false)
 const dropdownRef = ref<HTMLElement | null>(null)
+const prefersReducedMotion = usePrefersReducedMotion()
+
+const menuInitial = computed(() =>
+  prefersReducedMotion.value ? { opacity: 0 } : { opacity: 0, y: -4, scale: 0.98 }
+)
+const menuAnimate = computed(() =>
+  prefersReducedMotion.value ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1 }
+)
+const menuExit = computed(() =>
+  prefersReducedMotion.value ? { opacity: 0 } : { opacity: 0, y: -4, scale: 0.98 }
+)
+const menuTransition = computed(() => ({
+  duration: prefersReducedMotion.value ? 0.01 : 0.18,
+  ease: 'easeOut'
+}))
 const contactInfo = computed(() => appStore.contactInfo)
 const docUrl = computed(() => sanitizeUrl(appStore.docUrl))
 const avatarUrl = computed(() => user.value?.avatar_url?.trim() || '')
@@ -361,24 +386,19 @@ function handleClickOutside(event: MouseEvent) {
   }
 }
 
+function handleEscape(event: KeyboardEvent) {
+  if (event.key === 'Escape' && dropdownOpen.value) {
+    closeDropdown()
+  }
+}
+
 onMounted(() => {
   document.addEventListener('click', handleClickOutside)
+  document.addEventListener('keydown', handleEscape)
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('click', handleClickOutside)
+  document.removeEventListener('keydown', handleEscape)
 })
 </script>
-
-<style scoped>
-.dropdown-enter-active,
-.dropdown-leave-active {
-  transition: all 0.2s ease;
-}
-
-.dropdown-enter-from,
-.dropdown-leave-to {
-  opacity: 0;
-  transform: scale(0.95) translateY(-4px);
-}
-</style>

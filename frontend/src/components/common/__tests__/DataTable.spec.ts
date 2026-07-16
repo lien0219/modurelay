@@ -9,6 +9,27 @@ vi.mock('vue-i18n', () => ({
   })
 }))
 
+vi.mock('motion-v', () => ({
+  AnimatePresence: {
+    name: 'AnimatePresence',
+    template: '<div><slot /></div>'
+  },
+  motion: {
+    div: {
+      name: 'motion-div',
+      template: '<div><slot /></div>'
+    },
+    p: {
+      name: 'motion-p',
+      template: '<p><slot /></p>'
+    }
+  }
+}))
+
+vi.mock('@/composables/usePrefersReducedMotion', () => ({
+  usePrefersReducedMotion: () => ({ value: true })
+}))
+
 const stubDesktopMatchMedia = () => {
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
@@ -258,5 +279,27 @@ describe('DataTable', () => {
     const sizeCache = (instance as any).itemSizeCache as Map<number, number>
     expect(measureSpy).not.toHaveBeenCalled()
     expect(sizeCache.size).toBe(100)
+  })
+
+  it('highlights selected rows when selectedRowKeys is provided', async () => {
+    const wrapper = mount(DataTable, {
+      props: {
+        columns: [{ key: 'name', label: 'Name' }],
+        data: [
+          { id: 1, name: 'Alpha' },
+          { id: 2, name: 'Beta' }
+        ],
+        rowKey: 'id',
+        selectedRowKeys: [2]
+      }
+    })
+
+    await wrapper.vm.$nextTick()
+
+    const rows = wrapper.findAll('tbody tr[data-index]')
+    expect(rows).toHaveLength(2)
+    expect(rows[0].classes()).not.toContain('table-row-selected')
+    expect(rows[1].classes()).toContain('table-row-selected')
+    expect(rows[1].attributes('aria-selected')).toBe('true')
   })
 })

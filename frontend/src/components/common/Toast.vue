@@ -1,27 +1,22 @@
 <template>
   <Teleport to="body">
     <div
-      class="pointer-events-none fixed right-4 top-4 z-[9999] space-y-3"
+      class="pointer-events-none fixed right-4 top-4 z-[9999] flex flex-col gap-3"
       aria-live="polite"
       aria-atomic="true"
     >
-      <TransitionGroup
-        enter-active-class="transition ease-out duration-300"
-        enter-from-class="opacity-0 translate-x-full"
-        enter-to-class="opacity-100 translate-x-0"
-        leave-active-class="transition ease-in duration-200"
-        leave-from-class="opacity-100 translate-x-0"
-        leave-to-class="opacity-0 translate-x-full"
-      >
-        <div
+      <AnimatePresence>
+        <motion.div
           v-for="toast in toasts"
           :key="toast.id"
-          :class="[
-            'pointer-events-auto min-w-[320px] max-w-md overflow-hidden rounded-lg shadow-lg',
-            'bg-white dark:bg-dark-800',
-            'border-l-4',
-            getBorderColor(toast.type)
-          ]"
+          class="pointer-events-auto min-w-[320px] max-w-md overflow-hidden rounded-xl border-l-4 glass-strong"
+          :class="getBorderColor(toast.type)"
+          :initial="toastInitial"
+          :animate="toastAnimate"
+          :exit="toastExit"
+          :transition="toastTransition"
+          @mouseenter="pauseToast(toast.id)"
+          @mouseleave="resumeToast(toast.id)"
         >
           <div class="p-4">
             <div class="flex items-start gap-3">
@@ -64,26 +59,55 @@
           </div>
 
           <!-- Progress bar -->
-          <div v-if="toast.duration" class="h-1 bg-gray-100 dark:bg-dark-700">
+          <div v-if="toast.duration" class="h-1 bg-gray-100/80 dark:bg-dark-700/80">
             <div
-              :class="['h-full toast-progress', getProgressBarColor(toast.type)]"
-              :style="{ animationDuration: `${toast.duration}ms` }"
+              :class="[
+                'h-full toast-progress',
+                getProgressBarColor(toast.type),
+                pausedIds.has(toast.id) && 'toast-progress-paused'
+              ]"
+              :style="progressStyle(toast)"
             ></div>
           </div>
-        </div>
-      </TransitionGroup>
+        </motion.div>
+      </AnimatePresence>
     </div>
   </Teleport>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, reactive } from 'vue'
+import { AnimatePresence, motion } from 'motion-v'
 import Icon from '@/components/icons/Icon.vue'
 import { useAppStore } from '@/stores/app'
+import { usePrefersReducedMotion } from '@/composables/usePrefersReducedMotion'
+import type { Toast } from '@/types'
 
 const appStore = useAppStore()
+const prefersReducedMotion = usePrefersReducedMotion()
+const pausedIds = reactive(new Set<string>())
 
 const toasts = computed(() => appStore.toasts)
+
+const toastInitial = computed(() =>
+  prefersReducedMotion.value
+    ? { opacity: 0 }
+    : { opacity: 0, x: 24 }
+)
+const toastAnimate = computed(() =>
+  prefersReducedMotion.value
+    ? { opacity: 1 }
+    : { opacity: 1, x: 0 }
+)
+const toastExit = computed(() =>
+  prefersReducedMotion.value
+    ? { opacity: 0 }
+    : { opacity: 0, x: 16 }
+)
+const toastTransition = computed(() => ({
+  duration: prefersReducedMotion.value ? 0.01 : 0.2,
+  ease: 'easeOut'
+}))
 
 const getToastIconName = (type: string): 'checkCircle' | 'xCircle' | 'exclamationTriangle' | 'infoCircle' => {
   switch (type) {
@@ -101,35 +125,54 @@ const getToastIconName = (type: string): 'checkCircle' | 'xCircle' | 'exclamatio
 
 const getIconColor = (type: string): string => {
   const colors: Record<string, string> = {
-    success: 'text-green-500',
+    success: 'text-emerald-500',
     error: 'text-red-500',
-    warning: 'text-yellow-500',
-    info: 'text-blue-500'
+    warning: 'text-amber-500',
+    info: 'text-primary-500'
   }
   return colors[type] || colors.info
 }
 
 const getBorderColor = (type: string): string => {
   const colors: Record<string, string> = {
-    success: 'border-green-500',
+    success: 'border-emerald-500',
     error: 'border-red-500',
-    warning: 'border-yellow-500',
-    info: 'border-blue-500'
+    warning: 'border-amber-500',
+    info: 'border-primary-500'
   }
   return colors[type] || colors.info
 }
 
 const getProgressBarColor = (type: string): string => {
   const colors: Record<string, string> = {
-    success: 'bg-green-500',
+    success: 'bg-emerald-500',
     error: 'bg-red-500',
-    warning: 'bg-yellow-500',
-    info: 'bg-blue-500'
+    warning: 'bg-amber-500',
+    info: 'bg-primary-500'
   }
   return colors[type] || colors.info
 }
 
+const progressStyle = (toast: Toast) => {
+  if (!toast.duration) return undefined
+  return {
+    animationDuration: `${toast.duration}ms`,
+    animationPlayState: pausedIds.has(toast.id) ? 'paused' : 'running'
+  }
+}
+
+const pauseToast = (id: string) => {
+  pausedIds.add(id)
+  appStore.pauseToast(id)
+}
+
+const resumeToast = (id: string) => {
+  pausedIds.delete(id)
+  appStore.resumeToast(id)
+}
+
 const removeToast = (id: string) => {
+  pausedIds.delete(id)
   appStore.hideToast(id)
 }
 </script>
@@ -142,11 +185,22 @@ const removeToast = (id: string) => {
   animation-fill-mode: forwards;
 }
 
+.toast-progress-paused {
+  animation-play-state: paused;
+}
+
 @keyframes toast-progress-shrink {
   from {
     width: 100%;
   }
   to {
+    width: 0%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast-progress {
+    animation: none;
     width: 0%;
   }
 }

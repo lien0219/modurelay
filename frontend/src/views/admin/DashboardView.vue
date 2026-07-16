@@ -1,17 +1,38 @@
 <template>
   <AppLayout>
-    <div class="space-y-6">
-      <!-- Loading State -->
-      <div v-if="loading" class="flex items-center justify-center py-12">
-        <LoadingSpinner />
-      </div>
+    <div class="relative min-h-[12rem] space-y-6">
+      <AnimatePresence mode="wait">
+        <motion.div
+          v-if="loading && !stats"
+          key="admin-dashboard-loading"
+          class="flex items-center justify-center py-12"
+          :initial="fadeInitial"
+          :animate="fadeAnimate"
+          :exit="fadeExit"
+          :transition="fadeTransition"
+        >
+          <LoadingSpinner />
+        </motion.div>
 
-      <template v-else-if="stats">
+        <motion.div
+          v-else-if="stats"
+          key="admin-dashboard-content"
+          class="space-y-6"
+          :initial="contentInitial"
+          :animate="fadeAnimate"
+          :exit="fadeExit"
+          :transition="fadeTransition"
+        >
+          <div
+            ref="contentRoot"
+            class="space-y-6"
+            :class="{ 'dashboard-reveal-pending': revealPending }"
+          >
         <!-- Row 1: Core Stats -->
-        <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <div data-reveal class="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <!-- Total API Keys -->
-          <div class="card p-4">
-            <div class="flex items-center gap-3">
+          <div class="card glass-card-accent p-4">
+            <div class="relative z-[1] flex items-center gap-3">
               <div class="rounded-lg bg-blue-100 p-2 dark:bg-blue-900/30">
                 <Icon name="key" size="md" class="text-blue-600 dark:text-blue-400" :stroke-width="2" />
               </div>
@@ -19,8 +40,8 @@
                 <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
                   {{ t('admin.dashboard.apiKeys') }}
                 </p>
-                <p class="text-xl font-bold text-gray-900 dark:text-white">
-                  {{ stats.total_api_keys }}
+                <p class="kpi-value text-xl font-bold text-gray-900 dark:text-white">
+                  <AnimatedNumber :value="stats.total_api_keys" format="integer" fallback="0" />
                 </p>
                 <p class="text-xs text-green-600 dark:text-green-400">
                   {{ stats.active_api_keys }} {{ t('common.active') }}
@@ -30,8 +51,8 @@
           </div>
 
           <!-- Service Accounts -->
-          <div class="card p-4">
-            <div class="flex items-center gap-3">
+          <div class="card glass-card-accent p-4">
+            <div class="relative z-[1] flex items-center gap-3">
               <div class="rounded-lg bg-purple-100 p-2 dark:bg-purple-900/30">
                 <Icon name="server" size="md" class="text-purple-600 dark:text-purple-400" :stroke-width="2" />
               </div>
@@ -39,8 +60,8 @@
                 <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
                   {{ t('admin.dashboard.accounts') }}
                 </p>
-                <p class="text-xl font-bold text-gray-900 dark:text-white">
-                  {{ stats.total_accounts }}
+                <p class="kpi-value text-xl font-bold text-gray-900 dark:text-white">
+                  <AnimatedNumber :value="stats.total_accounts" format="integer" fallback="0" />
                 </p>
                 <p class="text-xs">
                   <span class="text-green-600 dark:text-green-400"
@@ -55,8 +76,8 @@
           </div>
 
           <!-- Today Requests -->
-          <div class="card p-4">
-            <div class="flex items-center gap-3">
+          <div class="card glass-card-accent p-4">
+            <div class="relative z-[1] flex items-center gap-3">
               <div class="rounded-lg bg-green-100 p-2 dark:bg-green-900/30">
                 <Icon name="chart" size="md" class="text-green-600 dark:text-green-400" :stroke-width="2" />
               </div>
@@ -64,8 +85,8 @@
                 <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
                   {{ t('admin.dashboard.todayRequests') }}
                 </p>
-                <p class="text-xl font-bold text-gray-900 dark:text-white">
-                  {{ stats.today_requests }}
+                <p class="kpi-value text-xl font-bold text-gray-900 dark:text-white">
+                  <AnimatedNumber :value="stats.today_requests" format="integer" fallback="0" />
                 </p>
                 <p class="text-xs text-gray-500 dark:text-gray-400">
                   {{ t('common.total') }}: {{ formatNumber(stats.total_requests) }}
@@ -75,8 +96,8 @@
           </div>
 
           <!-- New Users Today -->
-          <div class="card p-4">
-            <div class="flex items-center gap-3">
+          <div class="card glass-card-accent p-4">
+            <div class="relative z-[1] flex items-center gap-3">
               <div class="rounded-lg bg-emerald-100 p-2 dark:bg-emerald-900/30">
                 <Icon name="userPlus" size="md" class="text-emerald-600 dark:text-emerald-400" :stroke-width="2" />
               </div>
@@ -84,8 +105,8 @@
                 <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
                   {{ t('admin.dashboard.users') }}
                 </p>
-                <p class="text-xl font-bold text-emerald-600 dark:text-emerald-400">
-                  +{{ stats.today_new_users }}
+                <p class="kpi-value text-xl font-bold text-emerald-600 dark:text-emerald-400">
+                  <AnimatedNumber :value="stats.today_new_users" format="integer" prefix="+" fallback="0" />
                 </p>
                 <p class="text-xs text-gray-500 dark:text-gray-400">
                   {{ t('common.total') }}: {{ formatNumber(stats.total_users) }}
@@ -96,7 +117,7 @@
         </div>
 
         <!-- Row 2: Token Stats -->
-        <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <div data-reveal class="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <!-- Today Tokens -->
           <div class="card p-4">
             <div class="flex items-center gap-3">
@@ -108,7 +129,7 @@
                   {{ t('admin.dashboard.todayTokens') }}
                 </p>
                 <p class="text-xl font-bold text-gray-900 dark:text-white">
-                  {{ formatTokens(stats.today_tokens) }}
+                  <AnimatedNumber :value="stats.today_tokens" :format="formatTokensValue" fallback="0" />
                 </p>
                 <p class="text-xs">
                   <span
@@ -144,7 +165,7 @@
                   {{ t('admin.dashboard.totalTokens') }}
                 </p>
                 <p class="text-xl font-bold text-gray-900 dark:text-white">
-                  {{ formatTokens(stats.total_tokens) }}
+                  <AnimatedNumber :value="stats.total_tokens" :format="formatTokensValue" fallback="0" />
                 </p>
                 <p class="text-xs">
                   <span
@@ -181,13 +202,13 @@
                 </p>
                 <div class="flex items-baseline gap-2">
                   <p class="text-xl font-bold text-gray-900 dark:text-white">
-                    {{ formatTokens(stats.rpm) }}
+                    <AnimatedNumber :value="stats.rpm" :format="formatTokensValue" fallback="0" />
                   </p>
                   <span class="text-xs text-gray-500 dark:text-gray-400">RPM</span>
                 </div>
                 <div class="flex items-baseline gap-2">
                   <p class="text-sm font-semibold text-violet-600 dark:text-violet-400">
-                    {{ formatTokens(stats.tpm) }}
+                    <AnimatedNumber :value="stats.tpm" :format="formatTokensValue" fallback="0" />
                   </p>
                   <span class="text-xs text-gray-500 dark:text-gray-400">TPM</span>
                 </div>
@@ -206,7 +227,7 @@
                   {{ t('admin.dashboard.avgResponse') }}
                 </p>
                 <p class="text-xl font-bold text-gray-900 dark:text-white">
-                  {{ formatDuration(stats.average_duration_ms) }}
+                  <AnimatedNumber :value="stats.average_duration_ms" :format="formatDurationValue" :fallback="emDash" />
                 </p>
                 <p class="text-xs text-gray-500 dark:text-gray-400">
                   {{ stats.active_users }} {{ t('admin.dashboard.activeUsers') }}
@@ -217,7 +238,7 @@
         </div>
 
         <!-- Quick Actions -->
-        <div class="card p-4">
+        <div data-reveal class="card p-4">
           <div class="mb-3 flex items-center justify-between">
             <h2 class="text-sm font-semibold text-gray-900 dark:text-white">
               {{ t('admin.dashboard.quickActions') }}
@@ -267,7 +288,7 @@
         <!-- Charts Section -->
         <div class="space-y-6">
           <!-- Date Range Filter -->
-          <div class="card p-4">
+          <div data-reveal class="card p-4">
             <div class="flex flex-wrap items-center gap-4">
               <div class="flex items-center gap-2">
                 <span class="text-sm font-medium text-gray-700 dark:text-gray-300"
@@ -298,7 +319,7 @@
           </div>
 
           <!-- Charts Grid -->
-          <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <div data-reveal class="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <ModelDistributionChart
               :model-stats="modelStats"
               :enable-ranking-view="true"
@@ -317,7 +338,7 @@
           </div>
 
           <!-- User Usage Trend (Full Width) -->
-          <div class="card p-4">
+          <div data-reveal class="card p-4">
             <h3 class="mb-4 text-sm font-semibold text-gray-900 dark:text-white">
               {{ t('admin.dashboard.recentUsage') }} (Top 12)
             </h3>
@@ -335,7 +356,9 @@
             </div>
           </div>
         </div>
-      </template>
+          </div>
+        </motion.div>
+      </AnimatePresence>
     </div>
   </AppLayout>
 </template>
@@ -344,6 +367,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
+import { AnimatePresence, motion } from 'motion-v'
 import { useAppStore } from '@/stores/app'
 
 const { t } = useI18n()
@@ -357,12 +381,16 @@ import type {
 } from '@/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
+import AnimatedNumber from '@/components/common/AnimatedNumber.vue'
 import Icon from '@/components/icons/Icon.vue'
 import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import Select from '@/components/common/Select.vue'
 import ModelDistributionChart from '@/components/charts/ModelDistributionChart.vue'
 import TokenUsageTrend from '@/components/charts/TokenUsageTrend.vue'
 import { useBatchImageAccess } from '@/composables/useBatchImageAccess'
+import { usePrefersReducedMotion } from '@/composables/usePrefersReducedMotion'
+import { useDashboardReveal } from '@/composables/useDashboardReveal'
+import { getChartJsAnimation } from '@/utils/chartAnimation'
 
 import {
   Chart as ChartJS,
@@ -390,6 +418,23 @@ ChartJS.register(
 const appStore = useAppStore()
 const router = useRouter()
 const { canUseBatchImage, refreshBatchImageAccess } = useBatchImageAccess()
+const contentRoot = ref<HTMLElement | null>(null)
+const prefersReducedMotion = usePrefersReducedMotion()
+const { isPending: revealPending } = useDashboardReveal(contentRoot, {
+  scopeKey: 'admin-dashboard'
+})
+
+const fadeInitial = computed(() =>
+  prefersReducedMotion.value ? { opacity: 1 } : { opacity: 0 }
+)
+/** Content enter is owned by GSAP reveal — avoid double opacity fade */
+const contentInitial = { opacity: 1 }
+const fadeAnimate = computed(() => ({ opacity: 1 }))
+const fadeExit = computed(() => ({ opacity: 0 }))
+const fadeTransition = computed(() => ({
+  duration: prefersReducedMotion.value ? 0.01 : 0.18
+}))
+
 const stats = ref<DashboardStats | null>(null)
 const loading = ref(false)
 const chartsLoading = ref(false)
@@ -451,6 +496,7 @@ const chartColors = computed(() => ({
 const lineOptions = computed(() => ({
   responsive: true,
   maintainAspectRatio: false,
+  animation: getChartJsAnimation(),
   interaction: {
     intersect: false,
     mode: 'index' as const
@@ -583,6 +629,16 @@ const formatTokens = (value: number | undefined): string => {
   return value.toLocaleString()
 }
 
+const formatTokensValue = (value: number): string => formatTokens(value)
+const emDash = '—'
+
+const formatDurationValue = (ms: number): string => {
+  if (ms >= 1000) {
+    return `${(ms / 1000).toFixed(2)}s`
+  }
+  return `${Math.round(ms)}ms`
+}
+
 const toFiniteNumber = (value: unknown): number => {
   const numberValue = Number(value)
   return Number.isFinite(numberValue) ? numberValue : 0
@@ -602,13 +658,6 @@ const formatCost = (value: number | null | undefined): string => {
     return safeValue.toFixed(3)
   }
   return safeValue.toFixed(4)
-}
-
-const formatDuration = (ms: number): string => {
-  if (ms >= 1000) {
-    return `${(ms / 1000).toFixed(2)}s`
-  }
-  return `${Math.round(ms)}ms`
 }
 
 const goToUserUsage = (item: UserSpendingRankingItem) => {

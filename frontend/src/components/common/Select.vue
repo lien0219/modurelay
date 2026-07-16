@@ -1,17 +1,26 @@
 <template>
   <div class="relative" ref="containerRef">
+    <label v-if="label" :for="triggerId" class="input-label mb-1.5 block" :class="labelStateClass">
+      {{ label }}
+      <span v-if="required" class="text-red-500" aria-hidden="true">*</span>
+    </label>
     <button
+      :id="triggerId"
       ref="triggerRef"
       type="button"
       @click="toggle"
       :disabled="disabled"
       :aria-expanded="isOpen"
-      :aria-haspopup="true"
-      aria-label="Select option"
+      aria-haspopup="listbox"
+      :aria-invalid="!!error || undefined"
+      :aria-required="required || undefined"
+      :aria-describedby="describedBy"
+      :aria-label="label || 'Select option'"
       :class="[
         'select-trigger',
         isOpen && 'select-trigger-open',
         error && 'select-trigger-error',
+        success && !error && 'select-trigger-success',
         disabled && 'select-trigger-disabled'
       ]"
       @keydown.down.prevent="onTriggerKeyDown"
@@ -49,7 +58,7 @@
         <div
           v-if="isOpen"
           ref="dropdownRef"
-          class="select-dropdown-portal"
+          class="select-dropdown-portal glass-popover"
           :class="[instanceId]"
           :style="dropdownStyle"
           role="listbox"
@@ -140,6 +149,11 @@ interface Props {
   placeholder?: string
   disabled?: boolean
   error?: boolean
+  /** Opt-in success highlight when validation already passed */
+  success?: boolean
+  label?: string
+  required?: boolean
+  describedBy?: string
   searchable?: boolean | 'auto'
   searchPlaceholder?: string
   emptyText?: string
@@ -148,6 +162,7 @@ interface Props {
   creatable?: boolean
   creatablePrefix?: string
   clearable?: boolean
+  id?: string
 }
 
 interface Emits {
@@ -158,6 +173,8 @@ interface Emits {
 const props = withDefaults(defineProps<Props>(), {
   disabled: false,
   error: false,
+  success: false,
+  required: false,
   searchable: 'auto',
   creatable: false,
   creatablePrefix: '',
@@ -167,6 +184,15 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 const emit = defineEmits<Emits>()
+
+let selectIdCounter = 0
+const triggerId = props.id || `select-trigger-${++selectIdCounter}`
+
+const labelStateClass = computed(() => {
+  if (props.error) return 'text-red-600 dark:text-red-400'
+  if (props.success) return 'text-emerald-700 dark:text-emerald-400'
+  return ''
+})
 
 const isOpen = ref(false)
 const searchQuery = ref('')
@@ -461,7 +487,8 @@ onUnmounted(() => {
   @apply border border-gray-200 dark:border-dark-600;
   @apply text-gray-900 dark:text-gray-100;
   @apply transition-all duration-200;
-  @apply focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30;
+  @apply focus:outline-none;
+  @apply focus-visible:border-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500/30;
   @apply hover:border-gray-300 dark:hover:border-dark-500;
   @apply cursor-pointer;
 }
@@ -471,7 +498,11 @@ onUnmounted(() => {
 }
 
 .select-trigger-error {
-  @apply border-red-500 focus:border-red-500 focus:ring-red-500/30;
+  @apply border-red-500 focus-visible:border-red-500 focus-visible:ring-red-500/30;
+}
+
+.select-trigger-success {
+  @apply border-emerald-500 focus-visible:border-emerald-500 focus-visible:ring-emerald-500/30;
 }
 
 .select-trigger-disabled {
@@ -495,12 +526,7 @@ onUnmounted(() => {
 
 <style>
 .select-dropdown-portal {
-  @apply w-max min-w-[200px];
-  @apply bg-white dark:bg-dark-800;
-  @apply rounded-xl;
-  @apply border border-gray-200 dark:border-dark-700;
-  @apply shadow-lg shadow-black/10 dark:shadow-black/30;
-  @apply overflow-hidden;
+  @apply w-max min-w-[200px] overflow-hidden;
   pointer-events: auto !important;
 }
 

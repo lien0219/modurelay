@@ -35,6 +35,7 @@ import {
 import { Line } from 'vue-chartjs'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import type { TrendDataPoint } from '@/types'
+import { getChartJsAnimation } from '@/utils/chartAnimation'
 
 ChartJS.register(
   CategoryScale,
@@ -126,6 +127,7 @@ const chartData = computed(() => {
 const lineOptions = computed(() => ({
   responsive: true,
   maintainAspectRatio: false,
+  animation: getChartJsAnimation(),
   interaction: {
     intersect: false,
     mode: 'index' as const

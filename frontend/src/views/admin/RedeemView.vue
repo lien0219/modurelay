@@ -2,7 +2,7 @@
   <AppLayout>
     <TablePageLayout>
       <template #filters>
-        <div class="flex flex-wrap items-center gap-3">
+        <div class="filter-bar flex flex-wrap items-center gap-3">
           <!-- Left: Search + Filters -->
           <div class="flex-1 sm:max-w-64">
             <input
@@ -205,14 +205,11 @@
       </template>
 
       <template #pagination>
-        <div
-          v-if="selectedCount > 0"
-          class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-primary-50 p-3 dark:bg-primary-900/20"
-        >
-          <span class="text-sm font-medium text-primary-900 dark:text-primary-100">
-            {{ t('admin.redeem.selectedCount', { count: selectedCount }) }}
-          </span>
-          <div class="flex flex-wrap items-center gap-2">
+        <BulkActionBar :show="selectedCount > 0" :selected-count="selectedCount">
+          <template #meta>
+            <span class="text-sm font-medium text-primary-900 dark:text-primary-100">
+              {{ t('admin.redeem.selectedCount', { count: selectedCount }) }}
+            </span>
             <button
               type="button"
               class="text-xs font-medium text-primary-700 hover:text-primary-800 dark:text-primary-300 dark:hover:text-primary-200"
@@ -220,15 +217,15 @@
             >
               {{ t('admin.redeem.clearSelection') }}
             </button>
-            <button
-              type="button"
-              class="btn btn-primary btn-sm"
-              @click="openBatchUpdateDialog"
-            >
-              {{ t('admin.redeem.batchUpdate') }}
-            </button>
-          </div>
-        </div>
+          </template>
+          <button
+            type="button"
+            class="btn btn-primary btn-sm"
+            @click="openBatchUpdateDialog"
+          >
+            {{ t('admin.redeem.batchUpdate') }}
+          </button>
+        </BulkActionBar>
 
         <Pagination
           v-if="pagination.total > 0"
@@ -628,6 +625,7 @@ import type { Column } from '@/components/common/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
+import BulkActionBar from '@/components/common/BulkActionBar.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
