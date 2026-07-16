@@ -1,4 +1,4 @@
-package service
+﻿package service
 
 import (
 	"context"
@@ -22,7 +22,7 @@ const (
 	quotaDimWeekly = "weekly"
 	quotaDimTotal  = "total"
 
-	defaultSiteName = "Sub2API"
+	defaultSiteName = "ModuRelay"
 )
 
 // quotaDimLabels maps dimension names to display labels.

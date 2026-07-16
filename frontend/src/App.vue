@@ -5,6 +5,7 @@ import Toast from '@/components/common/Toast.vue'
 import NavigationProgress from '@/components/common/NavigationProgress.vue'
 import AdminComplianceDialog from '@/components/admin/AdminComplianceDialog.vue'
 import { resolveRouteDocumentTitle } from '@/router/title'
+import { brand } from '@/config/brand'
 import AnnouncementPopup from '@/components/common/AnnouncementPopup.vue'
 import { useAppStore, useAuthStore, useSubscriptionStore, useAnnouncementStore, useAdminComplianceStore, useAdminSettingsStore } from '@/stores'
 import { getSetupStatus } from '@/api/setup'
@@ -44,7 +45,7 @@ function updateFavicon(logoUrl: string) {
 
 // Watch for site settings changes and update favicon/title
 watch(
-  () => appStore.siteLogo,
+  () => appStore.siteLogo || brand.favicon,
   (newLogo) => {
     if (newLogo) {
       updateFavicon(newLogo)
