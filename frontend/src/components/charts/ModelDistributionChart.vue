@@ -251,6 +251,7 @@ import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import UserBreakdownSubTable from './UserBreakdownSubTable.vue'
 import type { ModelStat, UserSpendingRankingItem, UserBreakdownItem } from '@/types'
 import { getUserBreakdown } from '@/api/admin/dashboard'
+import { getChartJsAnimation } from '@/utils/chartAnimation'
 
 ChartJS.register(ArcElement, Tooltip, Legend)
 
@@ -439,6 +440,7 @@ const rankingDisplayItems = computed<RankingDisplayItem[]>(() => {
 const doughnutOptions = computed(() => ({
   responsive: true,
   maintainAspectRatio: false,
+  animation: getChartJsAnimation(),
   plugins: {
     legend: {
       display: false
@@ -462,6 +464,7 @@ const doughnutOptions = computed(() => ({
 const rankingDoughnutOptions = computed(() => ({
   responsive: true,
   maintainAspectRatio: false,
+  animation: getChartJsAnimation(),
   plugins: {
     legend: {
       display: false

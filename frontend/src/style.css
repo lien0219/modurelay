@@ -926,6 +926,19 @@
     @apply dark:border-red-400 dark:bg-red-950/40 dark:text-red-200;
   }
 
+  /* ============ Dashboard reveal (GSAP first paint) ============ */
+  .dashboard-reveal-pending [data-reveal] {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .dashboard-reveal-pending [data-reveal] {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
   /* ============ 表格页面布局优化 ============ */
   /* 表格容器 - 默认仅支持水平滚动 */
   .table-wrapper {
