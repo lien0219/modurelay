@@ -10,6 +10,13 @@
 
 本项目是独立维护的衍生项目。本项目不代表上游官方，也未获得上游背书。
 
+更多对外说明见：
+
+- [README.md](README.md) / [README_CN.md](README_CN.md)
+- [NOTICE.md](NOTICE.md)
+- [BRANDING.md](BRANDING.md)
+- [docs/BRANCHING.md](docs/BRANCHING.md)
+
 ## 上游同步命令
 
 同步前请先创建备份分支或标签，并确认工作区没有未提交修改。
