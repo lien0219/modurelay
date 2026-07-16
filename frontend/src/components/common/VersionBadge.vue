@@ -651,8 +651,8 @@ import {
 import { useClipboard } from '@/composables/useClipboard'
 import Icon from '@/components/icons/Icon.vue'
 
-const GITHUB_REPO = 'Wei-Shaw/sub2api'
-// Docker Hub image published by CI (tags carry no "v" prefix, e.g. weishaw/sub2api:0.1.146)
+const GITHUB_REPO = 'lien0219/modurelay'
+// TODO: publish ModuRelay images; keep upstream image id until migration is ready.
 const DOCKER_IMAGE = 'weishaw/sub2api'
 
 const { t } = useI18n()

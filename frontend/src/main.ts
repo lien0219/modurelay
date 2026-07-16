@@ -3,6 +3,7 @@ import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
 import i18n, { initI18n } from './i18n'
+import { brand } from '@/config/brand'
 import { useAppStore } from '@/stores/app'
 import './style.css'
 
@@ -28,8 +29,8 @@ async function bootstrap() {
   appStore.initFromInjectedConfig()
 
   // Set document title immediately after config is loaded
-  if (appStore.siteName && appStore.siteName !== 'Sub2API') {
-    document.title = `${appStore.siteName} - AI API Gateway`
+  if (appStore.siteName && appStore.siteName !== brand.name) {
+    document.title = `${appStore.siteName} - ${brand.fullName}`
   }
 
   await initI18n()
