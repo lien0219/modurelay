@@ -167,7 +167,7 @@ export default {
         note: 'These environment variables will be active in the current terminal session. For permanent configuration, add them to ~/.bashrc, ~/.zshrc, or the appropriate configuration file.',
       },
       grok: {
-        description: 'Configure Grok Build or OpenCode to send Responses API traffic through your Sub2API Grok group.',
+        description: 'Configure Grok Build or OpenCode to send Responses API traffic through your ModuRelay Grok group.',
         configTomlHint: 'Back up an existing config.toml before merging this model entry. Run grok inspect after saving to verify the effective configuration.',
         note: 'Save the file as ~/.grok/config.toml, then run grok inspect and select grok from /model.',
         noteWindows: 'Save the file as %USERPROFILE%\\.grok\\config.toml, then run grok inspect and select grok from /model.',

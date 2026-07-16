@@ -191,8 +191,8 @@ export default {
 
   // Setup Wizard
   setup: {
-    title: 'Sub2API Setup',
-    description: 'Configure your Sub2API instance',
+    title: 'ModuRelay Setup',
+    description: 'Configure your ModuRelay instance',
     database: {
       title: 'Database Configuration',
       description: 'Connect to your PostgreSQL database',
