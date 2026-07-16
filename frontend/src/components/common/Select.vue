@@ -49,7 +49,7 @@
         <div
           v-if="isOpen"
           ref="dropdownRef"
-          class="select-dropdown-portal"
+          class="select-dropdown-portal glass-popover"
           :class="[instanceId]"
           :style="dropdownStyle"
           role="listbox"
@@ -495,12 +495,7 @@ onUnmounted(() => {
 
 <style>
 .select-dropdown-portal {
-  @apply w-max min-w-[200px];
-  @apply bg-white dark:bg-dark-800;
-  @apply rounded-xl;
-  @apply border border-gray-200 dark:border-dark-700;
-  @apply shadow-lg shadow-black/10 dark:shadow-black/30;
-  @apply overflow-hidden;
+  @apply w-max min-w-[200px] overflow-hidden;
   pointer-events: auto !important;
 }
 

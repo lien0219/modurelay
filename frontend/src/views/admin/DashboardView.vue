@@ -10,8 +10,8 @@
         <!-- Row 1: Core Stats -->
         <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <!-- Total API Keys -->
-          <div class="card p-4">
-            <div class="flex items-center gap-3">
+          <div class="card glass-card-accent p-4">
+            <div class="relative z-[1] flex items-center gap-3">
               <div class="rounded-lg bg-blue-100 p-2 dark:bg-blue-900/30">
                 <Icon name="key" size="md" class="text-blue-600 dark:text-blue-400" :stroke-width="2" />
               </div>
@@ -19,7 +19,7 @@
                 <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
                   {{ t('admin.dashboard.apiKeys') }}
                 </p>
-                <p class="text-xl font-bold text-gray-900 dark:text-white">
+                <p class="kpi-value text-xl font-bold text-gray-900 dark:text-white">
                   {{ stats.total_api_keys }}
                 </p>
                 <p class="text-xs text-green-600 dark:text-green-400">
@@ -30,8 +30,8 @@
           </div>
 
           <!-- Service Accounts -->
-          <div class="card p-4">
-            <div class="flex items-center gap-3">
+          <div class="card glass-card-accent p-4">
+            <div class="relative z-[1] flex items-center gap-3">
               <div class="rounded-lg bg-purple-100 p-2 dark:bg-purple-900/30">
                 <Icon name="server" size="md" class="text-purple-600 dark:text-purple-400" :stroke-width="2" />
               </div>
@@ -39,7 +39,7 @@
                 <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
                   {{ t('admin.dashboard.accounts') }}
                 </p>
-                <p class="text-xl font-bold text-gray-900 dark:text-white">
+                <p class="kpi-value text-xl font-bold text-gray-900 dark:text-white">
                   {{ stats.total_accounts }}
                 </p>
                 <p class="text-xs">
@@ -55,8 +55,8 @@
           </div>
 
           <!-- Today Requests -->
-          <div class="card p-4">
-            <div class="flex items-center gap-3">
+          <div class="card glass-card-accent p-4">
+            <div class="relative z-[1] flex items-center gap-3">
               <div class="rounded-lg bg-green-100 p-2 dark:bg-green-900/30">
                 <Icon name="chart" size="md" class="text-green-600 dark:text-green-400" :stroke-width="2" />
               </div>
@@ -64,7 +64,7 @@
                 <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
                   {{ t('admin.dashboard.todayRequests') }}
                 </p>
-                <p class="text-xl font-bold text-gray-900 dark:text-white">
+                <p class="kpi-value text-xl font-bold text-gray-900 dark:text-white">
                   {{ stats.today_requests }}
                 </p>
                 <p class="text-xs text-gray-500 dark:text-gray-400">
@@ -75,8 +75,8 @@
           </div>
 
           <!-- New Users Today -->
-          <div class="card p-4">
-            <div class="flex items-center gap-3">
+          <div class="card glass-card-accent p-4">
+            <div class="relative z-[1] flex items-center gap-3">
               <div class="rounded-lg bg-emerald-100 p-2 dark:bg-emerald-900/30">
                 <Icon name="userPlus" size="md" class="text-emerald-600 dark:text-emerald-400" :stroke-width="2" />
               </div>
@@ -84,7 +84,7 @@
                 <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
                   {{ t('admin.dashboard.users') }}
                 </p>
-                <p class="text-xl font-bold text-emerald-600 dark:text-emerald-400">
+                <p class="kpi-value text-xl font-bold text-emerald-600 dark:text-emerald-400">
                   +{{ stats.today_new_users }}
                 </p>
                 <p class="text-xs text-gray-500 dark:text-gray-400">

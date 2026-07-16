@@ -3,6 +3,32 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    --glass-bg: rgba(255, 255, 255, 0.72);
+    --glass-bg-strong: rgba(255, 255, 255, 0.88);
+    --glass-border: rgba(226, 232, 240, 0.72);
+    --glass-highlight: rgba(255, 255, 255, 0.55);
+    --glass-shadow: 0 8px 28px rgba(15, 23, 42, 0.08);
+    --glass-blur: 12px;
+    --glass-blur-strong: 16px;
+    --glass-saturate: 115%;
+    --glass-fallback: #ffffff;
+    --glass-fallback-strong: #ffffff;
+  }
+
+  .dark {
+    --glass-bg: rgba(30, 41, 59, 0.72);
+    --glass-bg-strong: rgba(30, 41, 59, 0.88);
+    --glass-border: rgba(148, 163, 184, 0.18);
+    --glass-highlight: rgba(255, 255, 255, 0.06);
+    --glass-shadow: 0 12px 36px rgba(0, 0, 0, 0.35);
+    --glass-blur: 12px;
+    --glass-blur-strong: 16px;
+    --glass-saturate: 120%;
+    --glass-fallback: #1e293b;
+    --glass-fallback-strong: #1e293b;
+  }
+
   * {
     @apply border-gray-200 dark:border-dark-700;
   }
@@ -66,12 +92,96 @@
 @layer components {
   /* ============ 按钮样式 ============ */
   .btn {
-    @apply inline-flex items-center justify-center gap-2;
+    @apply relative inline-flex items-center justify-center gap-2;
     @apply rounded-xl px-4 py-2.5 text-sm font-medium;
-    @apply transition-all duration-200 ease-out;
-    @apply focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:ring-offset-2;
-    @apply disabled:transform-none disabled:cursor-not-allowed disabled:opacity-50;
-    @apply active:scale-[0.98];
+    @apply focus:outline-none;
+    @apply focus-visible:ring-2 focus-visible:ring-primary-500/50 focus-visible:ring-offset-2;
+    @apply dark:focus-visible:ring-offset-dark-900;
+    @apply disabled:cursor-not-allowed disabled:opacity-50;
+    transition:
+      transform 150ms ease-out,
+      box-shadow 150ms ease-out,
+      background-color 150ms ease-out,
+      border-color 150ms ease-out,
+      color 150ms ease-out,
+      opacity 150ms ease-out;
+  }
+
+  .btn:not(:disabled):not(.btn-loading):hover {
+    transform: translateY(-1px);
+  }
+
+  .btn:not(:disabled):not(.btn-loading):active {
+    transform: scale(0.98);
+  }
+
+  .btn:disabled,
+  .btn.btn-loading {
+    transform: none !important;
+  }
+
+  .btn-loading {
+    pointer-events: none;
+    color: transparent !important;
+  }
+
+  .btn-loading > * {
+    opacity: 0;
+    transition: opacity 150ms ease-out;
+  }
+
+  .btn-loading::after {
+    content: '';
+    position: absolute;
+    width: 1em;
+    height: 1em;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 9999px;
+    color: inherit;
+    opacity: 1;
+    animation: btn-spinner 0.65s linear infinite;
+  }
+
+  .btn-primary.btn-loading::after,
+  .btn-danger.btn-loading::after,
+  .btn-success.btn-loading::after,
+  .btn-warning.btn-loading::after,
+  .btn-stripe.btn-loading::after,
+  .btn-airwallex.btn-loading::after,
+  .btn-alipay.btn-loading::after,
+  .btn-wxpay.btn-loading::after {
+    border-color: rgba(255, 255, 255, 0.35);
+    border-right-color: #fff;
+  }
+
+  .btn-secondary.btn-loading::after,
+  .btn-ghost.btn-loading::after {
+    border-color: rgba(100, 116, 139, 0.25);
+    border-right-color: currentColor;
+    color: #0d9488;
+  }
+
+  .btn-success-flash {
+    @apply bg-gradient-to-r from-emerald-500 to-emerald-600 text-white;
+    box-shadow: 0 4px 14px rgba(16, 185, 129, 0.28);
+  }
+
+  @keyframes btn-spinner {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .btn:not(:disabled):not(.btn-loading):hover,
+    .btn:not(:disabled):not(.btn-loading):active {
+      transform: none;
+    }
+
+    .btn-loading::after {
+      animation: none;
+    }
   }
 
   .btn-primary {
@@ -197,18 +307,95 @@
     -moz-appearance: textfield;
   }
 
-  /* ============ 玻璃效果 ============ */
-  .glass {
-    @apply bg-white/80 backdrop-blur-xl dark:bg-dark-800/80;
+  /* ============ 玻璃效果（语义 Token） ============ */
+  .glass,
+  .glass-strong,
+  .glass-panel,
+  .glass-popover,
+  .glass-card-accent,
+  .card-glass {
+    background-color: var(--glass-fallback);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
   }
 
-  .glass-card {
-    @apply bg-white/70 dark:bg-dark-800/70;
-    @apply backdrop-blur-xl;
-    @apply rounded-2xl;
-    @apply border border-white/20 dark:border-dark-700/50;
-    @apply shadow-glass;
-    @apply transition-all duration-300;
+  .glass,
+  .card-glass {
+    background-color: var(--glass-bg);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  }
+
+  .glass-strong,
+  .glass-panel {
+    background-color: var(--glass-bg-strong);
+    -webkit-backdrop-filter: blur(var(--glass-blur-strong)) saturate(var(--glass-saturate));
+    backdrop-filter: blur(var(--glass-blur-strong)) saturate(var(--glass-saturate));
+  }
+
+  .glass-popover {
+    background-color: var(--glass-bg-strong);
+    -webkit-backdrop-filter: blur(var(--glass-blur-strong)) saturate(var(--glass-saturate));
+    backdrop-filter: blur(var(--glass-blur-strong)) saturate(var(--glass-saturate));
+    border-radius: 0.75rem;
+    padding-top: 0.25rem;
+    padding-bottom: 0.25rem;
+  }
+
+  .glass-card-accent {
+    position: relative;
+    overflow: hidden;
+    background-color: var(--glass-bg);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+    border-radius: 1rem;
+    transition:
+      transform 160ms ease-out,
+      border-color 160ms ease-out,
+      box-shadow 160ms ease-out;
+  }
+
+  .glass-card-accent::before {
+    content: '';
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 42%;
+    height: 40%;
+    pointer-events: none;
+    background: radial-gradient(ellipse at top left, var(--glass-highlight), transparent 70%);
+    opacity: 0.9;
+  }
+
+  .glass-card-accent:hover {
+    transform: translateY(-2px);
+    border-color: rgba(20, 184, 166, 0.35);
+    box-shadow: var(--glass-shadow), 0 0 0 1px rgba(20, 184, 166, 0.08);
+  }
+
+  .glass-card-accent .stat-value,
+  .glass-card-accent .kpi-value {
+    @apply text-gray-950 dark:text-white;
+    letter-spacing: -0.01em;
+  }
+
+  @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+    .glass,
+    .glass-card-accent,
+    .card-glass {
+      background-color: var(--glass-fallback);
+    }
+
+    .glass-strong,
+    .glass-panel,
+    .glass-popover {
+      background-color: var(--glass-fallback-strong);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .glass-card-accent:hover {
+      transform: none;
+    }
   }
 
   /* ============ 卡片样式 ============ */
@@ -220,16 +407,24 @@
     @apply transition-all duration-300;
   }
 
+  /* Accent glass KPI cards keep glass tokens when combined with .card */
+  .card.glass-card-accent {
+    background-color: var(--glass-bg);
+    border-color: var(--glass-border);
+    box-shadow: var(--glass-shadow);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  }
+
+  @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+    .card.glass-card-accent {
+      background-color: var(--glass-fallback);
+    }
+  }
+
   .card-hover {
     @apply hover:-translate-y-0.5 hover:shadow-card-hover;
     @apply hover:border-gray-200 dark:hover:border-dark-600;
-  }
-
-  .card-glass {
-    @apply bg-white/70 dark:bg-dark-800/70;
-    @apply backdrop-blur-xl;
-    @apply border border-white/20 dark:border-dark-700/50;
-    @apply shadow-glass;
   }
 
   .card-header {
@@ -357,13 +552,21 @@
 
   /* ============ 下拉菜单 ============ */
   .dropdown {
-    @apply absolute z-50;
-    @apply bg-white dark:bg-dark-800;
-    @apply rounded-xl;
-    @apply border border-gray-200 dark:border-dark-700;
-    @apply shadow-lg;
-    @apply py-1;
-    @apply origin-top-right animate-scale-in;
+    @apply absolute z-50 origin-top-right;
+    background-color: var(--glass-bg-strong);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+    border-radius: 0.75rem;
+    padding-top: 0.25rem;
+    padding-bottom: 0.25rem;
+    -webkit-backdrop-filter: blur(var(--glass-blur-strong)) saturate(var(--glass-saturate));
+    backdrop-filter: blur(var(--glass-blur-strong)) saturate(var(--glass-saturate));
+  }
+
+  @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+    .dropdown {
+      background-color: var(--glass-fallback-strong);
+    }
   }
 
   .dropdown-item {
@@ -382,12 +585,18 @@
   }
 
   .modal-content {
-    @apply w-full;
-    @apply max-h-[95vh] sm:max-h-[90vh];
-    @apply bg-white dark:bg-dark-800;
-    @apply rounded-2xl shadow-2xl;
-    @apply border border-gray-200 dark:border-dark-700;
-    @apply flex flex-col;
+    @apply w-full max-h-[95vh] sm:max-h-[90vh] rounded-2xl flex flex-col;
+    background-color: var(--glass-bg-strong);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+    -webkit-backdrop-filter: blur(var(--glass-blur-strong)) saturate(var(--glass-saturate));
+    backdrop-filter: blur(var(--glass-blur-strong)) saturate(var(--glass-saturate));
+  }
+
+  @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+    .modal-content {
+      background-color: var(--glass-fallback-strong);
+    }
   }
 
   .modal-header {
@@ -440,15 +649,15 @@
     transition: transform 200ms ease-in, opacity 200ms ease-in;
   }
 
+  /* Modal enter/leave transforms are owned by motion-v in BaseDialog.
+     Keep opacity-only CSS transitions for any legacy Transition name="modal" callers. */
   .modal-enter-from .modal-content,
   .modal-leave-to .modal-content {
-    transform: scale(0.95);
     opacity: 0;
   }
 
   .modal-enter-to .modal-content,
   .modal-leave-from .modal-content {
-    transform: scale(1);
     opacity: 1;
   }
 
@@ -459,11 +668,6 @@
     .modal-leave-active .modal-content {
       transition-duration: 1ms;
       transition-delay: 0ms;
-    }
-
-    .modal-enter-from .modal-content,
-    .modal-leave-to .modal-content {
-      transform: none;
     }
   }
 
@@ -738,11 +942,6 @@
   /* 文字渐变 */
   .text-gradient {
     @apply bg-gradient-to-r from-primary-500 to-accent-500 bg-clip-text text-transparent;
-  }
-
-  /* 玻璃效果 */
-  .glass {
-    @apply bg-white/80 backdrop-blur-xl dark:bg-dark-800/80;
   }
 
   /* 隐藏滚动条 */

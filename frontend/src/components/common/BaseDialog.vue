@@ -1,17 +1,29 @@
 <template>
   <Teleport to="body">
-    <Transition name="modal">
-      <div
+    <AnimatePresence>
+      <motion.div
         v-if="show"
+        :key="dialogId"
         class="modal-overlay"
         :style="zIndexStyle"
         :aria-labelledby="dialogId"
         role="dialog"
         aria-modal="true"
+        :initial="overlayInitial"
+        :animate="overlayAnimate"
+        :exit="overlayExit"
+        :transition="overlayTransition"
         @click.self="handleClose"
       >
-        <!-- Modal panel -->
-        <div ref="dialogRef" :class="['modal-content', widthClasses]" @click.stop>
+        <motion.div
+          ref="dialogRef"
+          :class="['modal-content', widthClasses]"
+          :initial="panelInitial"
+          :animate="panelAnimate"
+          :exit="panelExit"
+          :transition="panelTransition"
+          @click.stop
+        >
           <!-- Header -->
           <div class="modal-header">
             <h3 :id="dialogId" class="modal-title">
@@ -36,15 +48,17 @@
           <div v-if="$slots.footer" class="modal-footer">
             <slot name="footer"></slot>
           </div>
-        </div>
-      </div>
-    </Transition>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
   </Teleport>
 </template>
 
 <script setup lang="ts">
 import { computed, watch, onMounted, onUnmounted, ref, nextTick } from 'vue'
+import { AnimatePresence, motion } from 'motion-v'
 import Icon from '@/components/icons/Icon.vue'
+import { usePrefersReducedMotion } from '@/composables/usePrefersReducedMotion'
 
 // 生成唯一ID以避免多个对话框时ID冲突
 let dialogIdCounter = 0
@@ -79,6 +93,35 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 const emit = defineEmits<Emits>()
+const prefersReducedMotion = usePrefersReducedMotion()
+
+const overlayInitial = computed(() => ({ opacity: 0 }))
+const overlayAnimate = computed(() => ({ opacity: 1 }))
+const overlayExit = computed(() => ({ opacity: 0 }))
+const overlayTransition = computed(() => ({
+  duration: prefersReducedMotion.value ? 0.01 : 0.2,
+  ease: 'easeOut'
+}))
+
+const panelInitial = computed(() =>
+  prefersReducedMotion.value
+    ? { opacity: 0 }
+    : { opacity: 0, scale: 0.97, y: 6 }
+)
+const panelAnimate = computed(() =>
+  prefersReducedMotion.value
+    ? { opacity: 1 }
+    : { opacity: 1, scale: 1, y: 0 }
+)
+const panelExit = computed(() =>
+  prefersReducedMotion.value
+    ? { opacity: 0 }
+    : { opacity: 0, scale: 0.97, y: 6 }
+)
+const panelTransition = computed(() => ({
+  duration: prefersReducedMotion.value ? 0.01 : 0.22,
+  ease: 'easeOut'
+}))
 
 // Custom z-index style (overrides the default z-50 from CSS)
 const zIndexStyle = computed(() => {
@@ -98,6 +141,14 @@ const widthClasses = computed(() => {
   }
   return widths[props.width]
 })
+
+const resolveDialogEl = (): HTMLElement | null => {
+  const value = dialogRef.value as unknown
+  if (!value) return null
+  if (value instanceof HTMLElement) return value
+  const maybeEl = (value as { $el?: unknown }).$el
+  return maybeEl instanceof HTMLElement ? maybeEl : null
+}
 
 const handleClose = () => {
   if (props.closeOnClickOutside) {
@@ -123,8 +174,9 @@ watch(
 
       // 等待DOM更新后设置焦点到对话框
       await nextTick()
-      if (dialogRef.value) {
-        const firstFocusable = dialogRef.value.querySelector<HTMLElement>(
+      const dialogEl = resolveDialogEl()
+      if (dialogEl) {
+        const firstFocusable = dialogEl.querySelector<HTMLElement>(
           'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
         )
         firstFocusable?.focus()

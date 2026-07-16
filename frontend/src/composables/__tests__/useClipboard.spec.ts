@@ -58,13 +58,13 @@ describe('useClipboard', () => {
     expect(copied.value).toBe(true)
   })
 
-  it('copied 在 2 秒后自动恢复为 false', async () => {
+  it('copied 在 1.5 秒后自动恢复为 false', async () => {
     const { copied, copyToClipboard } = useClipboard()
 
     await copyToClipboard('hello')
     expect(copied.value).toBe(true)
 
-    vi.advanceTimersByTime(2000)
+    vi.advanceTimersByTime(1500)
 
     expect(copied.value).toBe(false)
   })

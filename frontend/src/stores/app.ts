@@ -48,6 +48,15 @@ export const useAppStore = defineStore('app', () => {
   // Auto-incrementing ID for toasts
   let toastIdCounter = 0
 
+  type ToastTimerState = {
+    timeoutId: ReturnType<typeof setTimeout> | null
+    remaining: number
+    startedAt: number
+    duration: number
+    paused: boolean
+  }
+  const toastTimers = new Map<string, ToastTimerState>()
+
   // ==================== Computed ====================
 
   const hasActiveToasts = computed(() => toasts.value.length > 0)
@@ -56,6 +65,31 @@ export const useAppStore = defineStore('app', () => {
   const loadingCount = ref<number>(0)
 
   // ==================== Actions ====================
+
+  function clearToastTimer(id: string): void {
+    const timer = toastTimers.get(id)
+    if (timer?.timeoutId != null) {
+      clearTimeout(timer.timeoutId)
+    }
+    toastTimers.delete(id)
+  }
+
+  function scheduleToastDismiss(id: string, duration: number): void {
+    const existing = toastTimers.get(id)
+    if (existing?.timeoutId != null) {
+      clearTimeout(existing.timeoutId)
+    }
+    const timeoutId = setTimeout(() => {
+      hideToast(id)
+    }, duration)
+    toastTimers.set(id, {
+      timeoutId,
+      remaining: duration,
+      startedAt: Date.now(),
+      duration,
+      paused: false
+    })
+  }
 
   /**
    * Toggle sidebar collapsed state
@@ -108,6 +142,19 @@ export const useAppStore = defineStore('app', () => {
    * @returns Toast ID for manual dismissal
    */
   function showToast(type: ToastType, message: string, duration?: number): string {
+    // Avoid stacking identical toasts; refresh the existing one instead
+    const existing = toasts.value.find((t) => t.type === type && t.message === message)
+    if (existing) {
+      existing.duration = duration
+      existing.startTime = duration !== undefined ? Date.now() : undefined
+      if (duration !== undefined) {
+        scheduleToastDismiss(existing.id, duration)
+      } else {
+        clearToastTimer(existing.id)
+      }
+      return existing.id
+    }
+
     const id = `toast-${++toastIdCounter}`
     const toast: Toast = {
       id,
@@ -119,11 +166,8 @@ export const useAppStore = defineStore('app', () => {
 
     toasts.value.push(toast)
 
-    // Auto-dismiss if duration is specified
     if (duration !== undefined) {
-      setTimeout(() => {
-        hideToast(id)
-      }, duration)
+      scheduleToastDismiss(id, duration)
     }
 
     return id
@@ -170,6 +214,7 @@ export const useAppStore = defineStore('app', () => {
    * @param id - Toast ID to hide
    */
   function hideToast(id: string): void {
+    clearToastTimer(id)
     const index = toasts.value.findIndex((t) => t.id === id)
     if (index !== -1) {
       toasts.value.splice(index, 1)
@@ -180,7 +225,60 @@ export const useAppStore = defineStore('app', () => {
    * Clear all toasts
    */
   function clearAllToasts(): void {
+    for (const id of toastTimers.keys()) {
+      clearToastTimer(id)
+    }
     toasts.value = []
+  }
+
+  /**
+   * Pause auto-dismiss countdown (e.g. on hover)
+   */
+  function pauseToast(id: string): void {
+    const timer = toastTimers.get(id)
+    if (!timer || timer.paused) return
+    if (timer.timeoutId != null) {
+      clearTimeout(timer.timeoutId)
+    }
+    const elapsed = Date.now() - timer.startedAt
+    const remaining = Math.max(0, timer.remaining - elapsed)
+    toastTimers.set(id, {
+      timeoutId: null,
+      remaining,
+      startedAt: Date.now(),
+      duration: timer.duration,
+      paused: true
+    })
+  }
+
+  /**
+   * Resume auto-dismiss countdown after pause
+   */
+  function resumeToast(id: string): void {
+    const timer = toastTimers.get(id)
+    if (!timer || !timer.paused) return
+    if (timer.remaining <= 0) {
+      hideToast(id)
+      return
+    }
+    const timeoutId = setTimeout(() => {
+      hideToast(id)
+    }, timer.remaining)
+    toastTimers.set(id, {
+      timeoutId,
+      remaining: timer.remaining,
+      startedAt: Date.now(),
+      duration: timer.duration,
+      paused: false
+    })
+  }
+
+  function getToastRemaining(id: string): number | undefined {
+    const timer = toastTimers.get(id)
+    if (!timer) return undefined
+    if (timer.paused || timer.timeoutId == null) return timer.remaining
+    const elapsed = Date.now() - timer.startedAt
+    return Math.max(0, timer.remaining - elapsed)
   }
 
   /**
@@ -232,7 +330,7 @@ export const useAppStore = defineStore('app', () => {
     sidebarCollapsed.value = false
     loading.value = false
     loadingCount.value = 0
-    toasts.value = []
+    clearAllToasts()
   }
 
   // ==================== Version Management ====================
@@ -470,6 +568,9 @@ export const useAppStore = defineStore('app', () => {
     showWarning,
     hideToast,
     clearAllToasts,
+    pauseToast,
+    resumeToast,
+    getToastRemaining,
     withLoading,
     withLoadingAndError,
     reset,
