@@ -137,6 +137,7 @@ docs/*
 !docs/ADMIN_PAYMENT_INTEGRATION_API.md
 !docs/BRANCHING.md
 !docs/UI_REFACTOR_PLAN.md
+!docs/ASYNC_IMAGE_TASKS.md
 !docs/legal/
 !docs/legal/*.md
 .serena/

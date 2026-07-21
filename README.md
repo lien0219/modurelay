@@ -14,7 +14,6 @@ Connect once. Route any model.
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18-336791.svg)](https://www.postgresql.org/)
 [![Redis](https://img.shields.io/badge/Redis-8-DC382D.svg)](https://redis.io/)
 [![Docker](https://img.shields.io/badge/Docker-Build-2496ED.svg)](https://www.docker.com/)
-
 ## Overview
 
 ModuRelay is an open-source AI API gateway for multi-provider routing, account pooling, usage metering, and API management.
@@ -155,6 +154,53 @@ Root helpers:
 make build
 make test-frontend
 make test-backend
+```
+
+> The `-tags embed` flag embeds the frontend build into the backend binary. Without it, the binary will not serve the frontend UI.
+
+Key `config.yaml` areas to review before source deployment:
+
+```yaml
+server:
+  host: "0.0.0.0"
+  port: 8080
+  mode: "release"
+
+database:
+  host: "localhost"
+  port: 5432
+  user: "postgres"
+  password: "your_password"
+  dbname: "sub2api"
+
+redis:
+  host: "localhost"
+  port: 6379
+  username: ""
+  password: ""
+
+jwt:
+  secret: "change-this-to-a-secure-random-string"
+  expire_hour: 24
+
+default:
+  user_concurrency: 5
+  user_balance: 0
+  api_key_prefix: "sk-"
+  rate_multiplier: 1.0
+```
+
+Security-related options include CORS allowlists, upstream URL allowlists, response-header filtering, CSP, billing circuit breakers, trusted proxy handling, custom forwarded client IP headers, and Turnstile requirements. Custom client IP headers can also be supplied with:
+
+```bash
+SECURITY_FORWARDED_CLIENT_IP_HEADERS=True-Client-IP,X-CDN-Client-IP
+```
+
+For production, avoid allowing insecure HTTP upstream URLs unless the network boundary is explicitly controlled:
+
+```bash
+SECURITY_URL_ALLOWLIST_ENABLED=false
+SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP=false
 ```
 
 ## Branches and contribution
