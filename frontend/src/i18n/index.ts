@@ -1,9 +1,4 @@
 import { createI18n } from 'vue-i18n'
-import router from '@/router'
-import { resolveRouteDocumentTitle } from '@/router/title'
-import { useAdminSettingsStore } from '@/stores/adminSettings'
-import { useAppStore } from '@/stores/app'
-import { useAuthStore } from '@/stores/auth'
 
 type LocaleCode = 'en' | 'zh'
 
@@ -75,6 +70,11 @@ export async function setLocale(locale: string): Promise<void> {
   document.documentElement.setAttribute('lang', locale)
 
   // 同步更新浏览器页签标题，使其跟随语言切换
+  const { resolveRouteDocumentTitle } = await import('@/router/title')
+  const { default: router } = await import('@/router')
+  const { useAppStore } = await import('@/stores/app')
+  const { useAuthStore } = await import('@/stores/auth')
+  const { useAdminSettingsStore } = await import('@/stores/adminSettings')
   const route = router.currentRoute.value
   const appStore = useAppStore()
   const authStore = useAuthStore()
