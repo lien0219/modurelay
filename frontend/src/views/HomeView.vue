@@ -126,13 +126,21 @@
               {{ siteSubtitle }}
             </p>
 
-            <!-- CTA Button -->
-            <div>
+            <!-- CTA Buttons -->
+            <div class="flex flex-wrap items-center justify-center gap-3 lg:justify-start">
               <router-link
                 :to="isAuthenticated ? dashboardPath : '/login'"
                 class="btn btn-primary px-8 py-3 text-base shadow-lg shadow-primary-500/30"
               >
                 {{ isAuthenticated ? t('home.goToDashboard') : t('home.getStarted') }}
+                <Icon name="arrowRight" size="md" class="ml-2" :stroke-width="2" />
+              </router-link>
+
+              <router-link
+                to="/key-usage"
+                class="inline-flex items-center rounded-lg border border-gray-200/80 bg-white/70 px-6 py-3 text-base font-medium text-gray-700 shadow-sm backdrop-blur-sm transition-all duration-200 hover:border-primary-300 hover:bg-white hover:text-primary-600 hover:shadow-md dark:border-dark-700 dark:bg-dark-800/70 dark:text-dark-200 dark:hover:border-primary-700 dark:hover:bg-dark-800 dark:hover:text-primary-400"
+              >
+                {{ t('home.quotaQuery') }}
                 <Icon name="arrowRight" size="md" class="ml-2" :stroke-width="2" />
               </router-link>
             </div>
