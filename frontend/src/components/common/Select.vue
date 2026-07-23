@@ -14,8 +14,8 @@
       aria-haspopup="listbox"
       :aria-invalid="!!error || undefined"
       :aria-required="required || undefined"
-      :aria-describedby="describedBy"
-      :aria-label="label || 'Select option'"
+      :aria-describedby="ariaDescriptionId"
+      :aria-label="ariaLabelText"
       :class="[
         'select-trigger',
         isOpen && 'select-trigger-open',
@@ -74,6 +74,7 @@
               v-model="searchQuery"
               type="text"
               :placeholder="searchPlaceholderText"
+              :aria-label="searchPlaceholderText"
               class="select-search-input"
               @click.stop
             />
@@ -163,6 +164,8 @@ interface Props {
   creatablePrefix?: string
   clearable?: boolean
   id?: string
+  ariaLabel?: string
+  ariaDescribedby?: string
 }
 
 interface Emits {
@@ -193,6 +196,8 @@ const labelStateClass = computed(() => {
   if (props.success) return 'text-emerald-700 dark:text-emerald-400'
   return ''
 })
+const ariaLabelText = computed(() => props.ariaLabel ?? props.label ?? 'Select option')
+const ariaDescriptionId = computed(() => props.ariaDescribedby ?? props.describedBy)
 
 const isOpen = ref(false)
 const searchQuery = ref('')
