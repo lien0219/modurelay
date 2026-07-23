@@ -36,6 +36,9 @@
       <button type="button" @click="$emit('refresh-token')" class="btn btn-secondary btn-sm">
         {{ t('admin.accounts.bulkActions.refreshToken') }}
       </button>
+      <button type="button" @click="$emit('probe-upstream-billing')" class="btn btn-secondary btn-sm">
+        {{ t('admin.accounts.bulkActions.probeUpstreamBilling') }}
+      </button>
       <button type="button" @click="$emit('toggle-schedulable', true)" class="btn btn-success btn-sm">
         {{ t('admin.accounts.bulkActions.enableScheduling') }}
       </button>
@@ -59,7 +62,6 @@ import BulkActionBar from '@/components/common/BulkActionBar.vue'
 defineProps<{
   selectedIds: Array<string | number>
 }>()
-
 defineEmits([
   'delete',
   'edit-selected',
@@ -68,7 +70,8 @@ defineEmits([
   'select-page',
   'toggle-schedulable',
   'reset-status',
-  'refresh-token'
+  'refresh-token',
+  'probe-upstream-billing'
 ])
 
 const { t } = useI18n()

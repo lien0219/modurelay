@@ -88,10 +88,14 @@ func (s *OpenAIGatewayService) failoverOpenAIUpstreamHTTPError(
 	upstreamMsg string,
 	upstreamModel string,
 ) *UpstreamFailoverError {
+	shouldFailover := s.shouldFailoverOpenAIUpstreamResponse(resp.StatusCode, upstreamMsg, respBody)
+	if account != nil && account.Platform == PlatformGrok {
+		shouldFailover = s.shouldFailoverGrokUpstreamError(resp.StatusCode, respBody)
+	}
 	if account != nil && account.Platform == PlatformGrok {
 		s.handleGrokAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
 	}
-	if !s.shouldFailoverOpenAIUpstreamResponse(resp.StatusCode, upstreamMsg, respBody) {
+	if !shouldFailover {
 		return nil
 	}
 	upstreamDetail := ""
@@ -112,15 +116,17 @@ func (s *OpenAIGatewayService) failoverOpenAIUpstreamHTTPError(
 		Message:            upstreamMsg,
 		Detail:             upstreamDetail,
 	})
+	shouldDisable := false
 	if account.Platform != PlatformGrok {
-		s.handleOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, upstreamModel)
+		shouldDisable = s.handleOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, upstreamModel)
 	}
-	return &UpstreamFailoverError{
-		StatusCode:             resp.StatusCode,
-		ResponseBody:           respBody,
-		ResponseHeaders:        resp.Header.Clone(),
-		RetryableOnSameAccount: account.IsPoolMode() && (account.IsPoolModeRetryableStatus(resp.StatusCode) || isOpenAITransientProcessingError(resp.StatusCode, upstreamMsg, respBody)),
-	}
+	return newOpenAIUpstreamFailoverError(
+		resp.StatusCode,
+		resp.Header,
+		respBody,
+		upstreamMsg,
+		!shouldDisable && account.IsPoolMode() && (account.IsPoolModeRetryableStatus(resp.StatusCode) || isOpenAITransientProcessingError(resp.StatusCode, upstreamMsg, respBody)),
+	)
 }
 
 // openAIChatCompletionsTargetURL 解析账号的（非 Grok）Chat Completions 上游端点。

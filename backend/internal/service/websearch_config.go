@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync/atomic"
@@ -81,6 +82,12 @@ const (
 	webSearchEmulationDBTimeout = 5 * time.Second
 )
 
+func defaultWebSearchEmulationConfig() *WebSearchEmulationConfig {
+	return &WebSearchEmulationConfig{
+		Providers: []WebSearchProviderConfig{},
+	}
+}
+
 // GetWebSearchEmulationConfig returns the configuration with in-process cache + singleflight.
 func (s *SettingService) GetWebSearchEmulationConfig(ctx context.Context) (*WebSearchEmulationConfig, error) {
 	if cached := webSearchEmulationCache.Load(); cached != nil {
@@ -92,12 +99,12 @@ func (s *SettingService) GetWebSearchEmulationConfig(ctx context.Context) (*WebS
 		return s.loadWebSearchConfigFromDB()
 	})
 	if err != nil {
-		return &WebSearchEmulationConfig{}, err
+		return defaultWebSearchEmulationConfig(), err
 	}
 	if cfg, ok := result.(*WebSearchEmulationConfig); ok {
 		return cfg, nil
 	}
-	return &WebSearchEmulationConfig{}, nil
+	return defaultWebSearchEmulationConfig(), nil
 }
 
 func (s *SettingService) loadWebSearchConfigFromDB() (*WebSearchEmulationConfig, error) {
@@ -106,11 +113,19 @@ func (s *SettingService) loadWebSearchConfigFromDB() (*WebSearchEmulationConfig,
 
 	raw, err := s.settingRepo.GetValue(dbCtx, SettingKeyWebSearchEmulationConfig)
 	if err != nil {
+		if errors.Is(err, ErrSettingNotFound) {
+			cfg := defaultWebSearchEmulationConfig()
+			webSearchEmulationCache.Store(&cachedWebSearchEmulationConfig{
+				config:    cfg,
+				expiresAt: time.Now().Add(webSearchEmulationCacheTTL).UnixNano(),
+			})
+			return cfg, nil
+		}
 		webSearchEmulationCache.Store(&cachedWebSearchEmulationConfig{
-			config:    &WebSearchEmulationConfig{},
+			config:    defaultWebSearchEmulationConfig(),
 			expiresAt: time.Now().Add(webSearchEmulationErrorTTL).UnixNano(),
 		})
-		return &WebSearchEmulationConfig{}, err
+		return defaultWebSearchEmulationConfig(), err
 	}
 	cfg := parseWebSearchConfigJSON(raw)
 	webSearchEmulationCache.Store(&cachedWebSearchEmulationConfig{
@@ -121,13 +136,16 @@ func (s *SettingService) loadWebSearchConfigFromDB() (*WebSearchEmulationConfig,
 }
 
 func parseWebSearchConfigJSON(raw string) *WebSearchEmulationConfig {
-	cfg := &WebSearchEmulationConfig{}
+	cfg := defaultWebSearchEmulationConfig()
 	if raw == "" {
 		return cfg
 	}
 	if err := json.Unmarshal([]byte(raw), cfg); err != nil {
 		slog.Warn("websearch: failed to parse config JSON", "error", err)
-		return &WebSearchEmulationConfig{}
+		return defaultWebSearchEmulationConfig()
+	}
+	if cfg.Providers == nil {
+		cfg.Providers = []WebSearchProviderConfig{}
 	}
 	return cfg
 }

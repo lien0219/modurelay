@@ -26,10 +26,26 @@ It helps you:
 - Route traffic with scheduling and sticky sessions
 - Meter token usage and apply concurrency / rate limits
 - Operate the system from a built-in admin console
+- Support built-in payment and self-service top-up flows where configured
+- Use composite groups to resolve requested models to concrete upstream providers
+- Embed external systems such as ticketing pages into the admin dashboard
 
 ModuRelay can serve as a model access layer for self-hosted agents, IDE plugins, and other AI tools that speak OpenAI-compatible or provider-native APIs.
 
 > Integrations such as Langflow or ComfyUI-oriented workflows are planned. See [Roadmap](#roadmap).
+
+## Important notice
+
+Please read the following carefully before deploying or using this project:
+
+- Using this software with upstream providers may conflict with those providers' terms of service. Review those agreements yourself.
+- Use the software only in compliance with the laws and regulations of your country or region.
+- You are responsible for the accounts, API keys, and credentials you configure.
+- Upstream account stability and provider availability are not guaranteed.
+- This project does not provide any official authorization from AI providers.
+- Operators assume deployment and operational risk.
+- Do not use this project for unlawful purposes.
+- ModuRelay has not granted any commercial authorization for third parties to operate services in the name of this project.
 
 ## Project relationship
 
@@ -47,14 +63,15 @@ ModuRelay is an independently maintained derivative project based on [Sub2API](h
 | Multi-account management | Manage upstream accounts across supported providers |
 | Credential types | OAuth and API Key style credentials where the provider supports them |
 | API Key management | Issue, rotate, and control access for end users |
-| Smart scheduling | Select accounts with load-aware scheduling |
-| Sticky sessions | Keep related requests on a preferred account when configured |
+| Smart scheduling | Select accounts with load-aware scheduling and sticky sessions |
 | Usage metering | Track token usage and request statistics |
-| Billing controls | Apply multipliers, balances, and related billing settings |
-| Concurrency control | Limit concurrent requests per user / group |
+| Precise billing | Apply token-level usage tracking, multipliers, balances, and related billing settings |
+| Concurrency control | Limit concurrent requests per user / group / account where supported |
 | RPM / rate limits | Apply RPM and related rate-limiting policies |
 | Admin console | Vue-based dashboard for operators |
-| Payments | Optional payment integrations (see `docs/PAYMENT.md`) |
+| Payments | Built-in payment integrations such as EasyPay, Alipay, WeChat Pay, and Stripe where configured |
+| Composite groups | Resolve requested models to concrete providers for multi-provider groups ([operator guide](docs/COMPOSITE_GROUPS.md)) |
+| External system integration | Embed external systems such as ticketing pages into the admin dashboard via iframe |
 | Docker deployment | Build and run with Docker Compose from source |
 
 ## Architecture
@@ -157,6 +174,61 @@ make test-frontend
 make test-backend
 ```
 
+> The `-tags embed` flag embeds the frontend build into the backend binary. Without it, the binary will not serve the frontend UI.
+
+Key `config.yaml` areas to review before source deployment:
+
+```yaml
+server:
+  host: "0.0.0.0"
+  port: 8080
+  mode: "release"
+
+database:
+  host: "localhost"
+  port: 5432
+  user: "postgres"
+  password: "your_password"
+  dbname: "sub2api"
+
+redis:
+  host: "localhost"
+  port: 6379
+  username: ""
+  password: ""
+
+jwt:
+  secret: "change-this-to-a-secure-random-string"
+  expire_hour: 24
+
+default:
+  user_concurrency: 5
+  user_balance: 0
+  api_key_prefix: "sk-"
+  rate_multiplier: 1.0
+```
+
+Security-related options include CORS allowlists, upstream URL allowlists, response-header filtering, CSP, billing circuit breakers, trusted proxy handling, custom forwarded client IP headers, and Turnstile requirements. Custom client IP headers can also be supplied with:
+
+```bash
+SECURITY_FORWARDED_CLIENT_IP_HEADERS=True-Client-IP,X-CDN-Client-IP
+```
+
+For production, avoid allowing insecure HTTP upstream URLs unless the network boundary is explicitly controlled:
+
+```bash
+SECURITY_URL_ALLOWLIST_ENABLED=false
+SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP=false
+```
+
+### Nginx reverse proxy note
+
+When reverse-proxying ModuRelay with Nginx and clients such as Codex CLI, add the following setting to the Nginx `http` block so underscore headers are preserved:
+
+```nginx
+underscores_in_headers on;
+```
+
 ## Branches and contribution
 
 | Branch | Role |
@@ -226,17 +298,7 @@ Planned work (not claimed as shipped):
 
 ## Security and compliance
 
-Please read carefully before deploying:
-
-- Using this software with upstream providers may conflict with those providers’ terms of service. Review those agreements yourself.
-- Use the software only in compliance with local laws and regulations.
-- You are responsible for the accounts, API keys, and credentials you configure.
-- Upstream account stability and provider availability are not guaranteed.
-- This project does **not** provide any official authorization from AI providers.
-- Operators assume deployment and operational risk.
-- Do not use this project for unlawful purposes.
-
-This notice is a ModuRelay project reminder. It does not restate any upstream commercial authorization claims.
+This notice is a ModuRelay project reminder. It does not restate any upstream commercial authorization claims. See [Important notice](#important-notice) before deploying.
 
 ## Sponsors
 

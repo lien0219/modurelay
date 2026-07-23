@@ -4,7 +4,9 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/websearch"
 	"github.com/stretchr/testify/require"
@@ -87,6 +89,13 @@ func TestParseWebSearchConfigJSON_InvalidJSON(t *testing.T) {
 	cfg := parseWebSearchConfigJSON("not{json")
 	require.False(t, cfg.Enabled)
 	require.Empty(t, cfg.Providers)
+}
+
+func TestParseWebSearchConfigJSON_DefaultProvidersMarshalAsEmptyArray(t *testing.T) {
+	cfg := parseWebSearchConfigJSON("")
+	raw, err := json.Marshal(cfg)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"enabled":false,"providers":[]}`, string(raw))
 }
 
 func TestParseWebSearchConfigJSON_BackwardCompatibility(t *testing.T) {
@@ -254,6 +263,27 @@ func TestPopulateWebSearchUsage_DoesNotMutateOriginal(t *testing.T) {
 	require.Equal(t, int64(0), cfg.Providers[0].QuotaUsed)
 }
 
+// --- GetWebSearchEmulationConfig ---
+
+func TestGetWebSearchEmulationConfig_NotFoundReturnsDefaultConfig(t *testing.T) {
+	webSearchEmulationSF.Forget(sfKeyWebSearchConfig)
+	webSearchEmulationCache.Store(&cachedWebSearchEmulationConfig{
+		config:    defaultWebSearchEmulationConfig(),
+		expiresAt: time.Now().Add(-time.Second).UnixNano(),
+	})
+
+	svc := &SettingService{settingRepo: &webSearchConfigSettingRepoStub{getValueErr: ErrSettingNotFound}}
+	cfg, err := svc.GetWebSearchEmulationConfig(context.Background())
+	require.NoError(t, err)
+	require.False(t, cfg.Enabled)
+	require.NotNil(t, cfg.Providers)
+	require.Empty(t, cfg.Providers)
+
+	raw, err := json.Marshal(cfg)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"enabled":false,"providers":[]}`, string(raw))
+}
+
 // --- ResetWebSearchUsage ---
 
 func TestResetWebSearchUsage_NilManager(t *testing.T) {
@@ -263,4 +293,36 @@ func TestResetWebSearchUsage_NilManager(t *testing.T) {
 	err := ResetWebSearchUsage(context.Background(), "brave")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "not initialized")
+}
+
+type webSearchConfigSettingRepoStub struct {
+	getValueErr error
+}
+
+func (r *webSearchConfigSettingRepoStub) Get(ctx context.Context, key string) (*Setting, error) {
+	return nil, r.getValueErr
+}
+
+func (r *webSearchConfigSettingRepoStub) GetValue(ctx context.Context, key string) (string, error) {
+	return "", r.getValueErr
+}
+
+func (r *webSearchConfigSettingRepoStub) Set(ctx context.Context, key, value string) error {
+	return nil
+}
+
+func (r *webSearchConfigSettingRepoStub) GetMultiple(ctx context.Context, keys []string) (map[string]string, error) {
+	return map[string]string{}, nil
+}
+
+func (r *webSearchConfigSettingRepoStub) SetMultiple(ctx context.Context, settings map[string]string) error {
+	return nil
+}
+
+func (r *webSearchConfigSettingRepoStub) GetAll(ctx context.Context) (map[string]string, error) {
+	return map[string]string{}, nil
+}
+
+func (r *webSearchConfigSettingRepoStub) Delete(ctx context.Context, key string) error {
+	return nil
 }
