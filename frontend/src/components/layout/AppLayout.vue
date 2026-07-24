@@ -24,11 +24,13 @@
 
 <script setup lang="ts">
 import '@/styles/onboarding.css'
-import { computed, onMounted } from 'vue'
+import '@/styles/layout-fixes.css'
+import { computed, onMounted, watch } from 'vue'
 import { useAppStore } from '@/stores'
 import { useAuthStore } from '@/stores/auth'
 import { useOnboardingTour } from '@/composables/useOnboardingTour'
 import { useOnboardingStore } from '@/stores/onboarding'
+import { extractSemanticVersion } from '@/utils/version'
 import AppSidebar from './AppSidebar.vue'
 import AppHeader from './AppHeader.vue'
 
@@ -36,6 +38,17 @@ const appStore = useAppStore()
 const authStore = useAuthStore()
 const sidebarCollapsed = computed(() => appStore.sidebarCollapsed)
 const isAdmin = computed(() => authStore.user?.role === 'admin')
+
+watch(
+  () => appStore.siteVersion,
+  (version) => {
+    const normalizedVersion = extractSemanticVersion(version)
+    if (normalizedVersion && normalizedVersion !== version) {
+      appStore.siteVersion = normalizedVersion
+    }
+  },
+  { immediate: true }
+)
 
 const { replayTour } = useOnboardingTour({
   storageKey: isAdmin.value ? 'admin_guide' : 'user_guide',
