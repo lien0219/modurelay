@@ -3,6 +3,7 @@
  */
 
 import { apiClient } from '../client'
+import { extractSemanticVersion } from '@/utils/version'
 
 export interface ReleaseInfo {
   name: string
@@ -26,7 +27,10 @@ export interface VersionInfo {
  */
 export async function getVersion(): Promise<{ version: string }> {
   const { data } = await apiClient.get<{ version: string }>('/admin/system/version')
-  return data
+  return {
+    ...data,
+    version: extractSemanticVersion(data.version)
+  }
 }
 
 /**
@@ -37,7 +41,11 @@ export async function checkUpdates(force = false): Promise<VersionInfo> {
   const { data } = await apiClient.get<VersionInfo>('/admin/system/check-updates', {
     params: force ? { force: 'true' } : undefined
   })
-  return data
+  return {
+    ...data,
+    current_version: extractSemanticVersion(data.current_version),
+    latest_version: extractSemanticVersion(data.latest_version)
+  }
 }
 
 export interface UpdateResult {
