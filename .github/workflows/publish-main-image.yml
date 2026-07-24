@@ -26,13 +26,41 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Resolve image version
+        id: image_version
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          version="$(tr -d '[:space:]' < deploy/IMAGE_VERSION)"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::deploy/IMAGE_VERSION must be a semantic version such as 0.0.1"
+            exit 1
+          fi
+
+          publish_version=false
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            publish_version=true
+          elif [ "${{ github.event.before }}" = "0000000000000000000000000000000000000000" ]; then
+            publish_version=true
+          elif ! git diff --quiet "${{ github.event.before }}" "${{ github.sha }}" -- deploy/IMAGE_VERSION; then
+            publish_version=true
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "publish_version=$publish_version" >> "$GITHUB_OUTPUT"
+          echo "Version: $version"
+          echo "Publish version tag: $publish_version"
 
       - name: Resolve build metadata
         id: build_info
         shell: bash
         run: |
           short_sha="${GITHUB_SHA:0:12}"
-          echo "version=main-${short_sha}" >> "$GITHUB_OUTPUT"
+          echo "version=main-v${{ steps.image_version.outputs.version }}-${short_sha}" >> "$GITHUB_OUTPUT"
           echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
@@ -53,6 +81,7 @@ jobs:
           tags: |
             type=raw,value=main
             type=raw,value=sha-${{ github.sha }}
+            type=raw,value=main-v${{ steps.image_version.outputs.version }},enable=${{ steps.image_version.outputs.publish_version == 'true' }}
 
       - name: Build and push image
         uses: docker/build-push-action@v6
