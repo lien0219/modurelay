@@ -1,0 +1,9 @@
+/* Keep the fixed-width account dropdown readable for long email addresses. */
+header.glass .dropdown.glass-popover.w-56 {
+  width: min(16rem, calc(100vw - 1rem));
+}
+
+header.glass .dropdown.glass-popover.w-56 > .border-b:first-child > div:last-child {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
