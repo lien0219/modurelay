@@ -4,8 +4,8 @@ footer a[href*='github.com'] {
 }
 
 /*
- * 首页深色模式：背景保持接近项目 dark-950，正文、卡片和 3D 场景使用
- * 更亮一级的 surface，形成清晰层级。浅色模式继续使用 HomeView.vue 原样式。
+ * 首页深色主题只做视觉覆盖，不改变 HomeView 的滚动监听、栏目观察器和交互逻辑。
+ * 层级约定：页面背景 < 内容面板 < 浮层卡片 < 重点文字和操作按钮。
  */
 html.dark {
   color-scheme: dark;
@@ -20,19 +20,21 @@ html.dark #app {
 html.dark .home-page {
   isolation: isolate;
   opacity: 1 !important;
+  visibility: visible !important;
   filter: none !important;
-  color: #e5edf7 !important;
+  color: #e6eef9 !important;
   background:
-    radial-gradient(ellipse at 100% 0%, rgba(8, 145, 178, 0.105), transparent 39%),
-    radial-gradient(ellipse at 0% 72%, rgba(13, 148, 136, 0.055), transparent 34%),
+    radial-gradient(ellipse at 100% 0%, rgba(8, 145, 178, 0.11), transparent 40%),
+    radial-gradient(ellipse at 0% 70%, rgba(13, 148, 136, 0.06), transparent 34%),
     #020617 !important;
 }
 
-/* 恢复背景视差层。该层只负责网格与彩色光斑，不承载深色蒙层。 */
+/* 背景层只保留低强度网格和光斑，绝不覆盖正文。 */
 html.dark .home-background {
   display: block !important;
   z-index: 0 !important;
   opacity: 1 !important;
+  visibility: visible !important;
   background: transparent !important;
   filter: none !important;
   mix-blend-mode: normal !important;
@@ -41,10 +43,10 @@ html.dark .home-background {
 
 html.dark .home-grid {
   display: block !important;
-  opacity: 0.34 !important;
+  opacity: 0.28 !important;
   background-image:
-    linear-gradient(rgba(45, 212, 191, 0.055) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(45, 212, 191, 0.055) 1px, transparent 1px) !important;
+    linear-gradient(rgba(45, 212, 191, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(45, 212, 191, 0.06) 1px, transparent 1px) !important;
   background-size: 64px 64px !important;
 }
 
@@ -54,22 +56,14 @@ html.dark .home-noise {
 
 html.dark .home-glow {
   display: block !important;
-  filter: blur(92px) !important;
-  opacity: 0.22 !important;
-  mix-blend-mode: screen !important;
+  opacity: 0.2 !important;
+  filter: blur(96px) !important;
+  mix-blend-mode: normal !important;
 }
 
-html.dark .home-glow-one {
-  background: rgba(14, 165, 233, 0.15) !important;
-}
-
-html.dark .home-glow-two {
-  background: rgba(20, 184, 166, 0.12) !important;
-}
-
-html.dark .home-glow-three {
-  background: rgba(99, 102, 241, 0.08) !important;
-}
+html.dark .home-glow-one { background: rgba(14, 165, 233, 0.17) !important; }
+html.dark .home-glow-two { background: rgba(20, 184, 166, 0.14) !important; }
+html.dark .home-glow-three { background: rgba(99, 102, 241, 0.1) !important; }
 
 html.dark .home-page::before,
 html.dark .home-page::after {
@@ -82,24 +76,55 @@ html.dark .home-page > .home-footer {
   position: relative;
   z-index: 1;
   opacity: 1 !important;
+  visibility: visible !important;
   filter: none !important;
   mix-blend-mode: normal !important;
 }
 
 /*
- * 顶部导航与滚动联动：初始状态轻透，滚动后变为更亮的实体深色导航，
- * 同时缩小高度与 Logo，并保留顶部进度条和当前栏目高亮。
+ * 首屏原动画使用 opacity: 0 作为初态。部分 Chromium 环境切换主题后会停留在
+ * 中间透明度，因此深色主题改为仅位移动画，始终保持内容不透明。
  */
+html.dark .hero-copy,
+html.dark .hero-scene-wrap,
+html.dark .quick-service-wrap,
+html.dark .hero-enter {
+  opacity: 1 !important;
+  visibility: visible !important;
+  filter: none !important;
+  mix-blend-mode: normal !important;
+}
+
+html.dark .hero-enter {
+  animation-name: dark-home-rise !important;
+  animation-duration: 620ms !important;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1) !important;
+  animation-fill-mode: both !important;
+}
+
+@keyframes dark-home-rise {
+  from { opacity: 1; transform: translateY(18px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* 顶部导航：初始轻透，滚动后变为更亮、更紧凑的实体导航。 */
 html.dark .home-header {
   z-index: 50;
+  opacity: 1 !important;
   border-bottom-color: transparent !important;
-  background: rgba(2, 6, 23, 0.72) !important;
+  background: rgba(2, 6, 23, 0.76) !important;
   box-shadow: none !important;
   backdrop-filter: blur(14px) saturate(120%) !important;
   -webkit-backdrop-filter: blur(14px) saturate(120%) !important;
+  transition:
+    border-color 220ms ease,
+    background-color 220ms ease,
+    box-shadow 220ms ease,
+    backdrop-filter 220ms ease !important;
 }
 
 html.dark .home-navbar {
+  min-height: 76px;
   transition: min-height 240ms ease, padding 240ms ease !important;
 }
 
@@ -108,47 +133,59 @@ html.dark .home-brand-logo {
 }
 
 html.dark .home-page-scrolled .home-header {
-  border-bottom-color: rgba(71, 93, 122, 0.72) !important;
-  background: rgba(8, 18, 34, 0.97) !important;
+  border-bottom-color: rgba(74, 96, 126, 0.8) !important;
+  background: rgba(12, 25, 44, 0.98) !important;
   box-shadow:
-    0 16px 42px rgba(0, 0, 0, 0.42),
-    inset 0 -1px 0 rgba(45, 212, 191, 0.045) !important;
-  backdrop-filter: blur(18px) saturate(130%) !important;
-  -webkit-backdrop-filter: blur(18px) saturate(130%) !important;
+    0 18px 46px rgba(0, 0, 0, 0.46),
+    inset 0 -1px 0 rgba(94, 234, 212, 0.06) !important;
+  backdrop-filter: blur(20px) saturate(135%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(135%) !important;
 }
 
 html.dark .home-page-scrolled .home-navbar {
-  min-height: 64px !important;
+  min-height: 62px !important;
 }
 
 html.dark .home-page-scrolled .home-brand-logo {
-  transform: scale(0.9);
-  box-shadow: 0 8px 24px rgba(20, 184, 166, 0.3) !important;
+  transform: scale(0.88);
+  box-shadow: 0 9px 26px rgba(20, 184, 166, 0.36) !important;
 }
 
 html.dark .home-scroll-progress {
   height: 3px !important;
   opacity: 1 !important;
   background: linear-gradient(90deg, #14b8a6, #22d3ee, #60a5fa) !important;
-  box-shadow: 0 0 14px rgba(45, 212, 191, 0.72) !important;
+  box-shadow: 0 0 14px rgba(45, 212, 191, 0.8) !important;
 }
 
-html.dark .home-nav-link {
-  color: #a7b4c7 !important;
+html.dark .home-brand-name {
+  color: #f8fafc !important;
+}
+
+html.dark .home-nav-link,
+html.dark .home-icon-button,
+html.dark .home-text-button {
+  color: #aebdd1 !important;
 }
 
 html.dark .home-nav-link:hover,
-html.dark .home-nav-link.is-active {
-  color: #7ff4df !important;
+html.dark .home-nav-link.is-active,
+html.dark .home-icon-button:hover,
+html.dark .home-text-button:hover {
+  color: #8cf7e3 !important;
 }
 
 html.dark .home-nav-link::after {
   background: linear-gradient(90deg, #2dd4bf, #38bdf8) !important;
-  box-shadow: 0 0 10px rgba(45, 212, 191, 0.5);
+  box-shadow: 0 0 11px rgba(45, 212, 191, 0.62) !important;
 }
 
-/* 主要文字必须明显亮于页面背景。 */
-html.dark .home-brand-name,
+html.dark .home-icon-button:hover {
+  border-color: rgba(94, 234, 212, 0.34) !important;
+  background: #182a43 !important;
+}
+
+/* 首屏内容：标题和正文必须明显亮于根背景。 */
 html.dark .hero-title,
 html.dark .section-heading h2,
 html.dark .solutions-copy h2,
@@ -163,16 +200,21 @@ html.dark .footer-link-group strong {
   text-shadow: none !important;
 }
 
+html.dark .hero-title > span:not(.hero-title-gradient) {
+  color: #ffffff !important;
+  text-shadow: 0 0 28px rgba(148, 163, 184, 0.1) !important;
+}
+
 html.dark .hero-title-gradient {
   color: transparent !important;
-  background-image: linear-gradient(105deg, #2dd4bf 6%, #67e8f9 52%, #60a5fa 96%) !important;
+  background-image: linear-gradient(105deg, #34e3c8 4%, #7dd3fc 54%, #60a5fa 98%) !important;
   background-clip: text !important;
   -webkit-background-clip: text !important;
-  filter: none !important;
+  filter: drop-shadow(0 0 20px rgba(45, 212, 191, 0.12)) !important;
 }
 
 html.dark .hero-subtitle {
-  color: #dbe7f5 !important;
+  color: #e2e8f0 !important;
 }
 
 html.dark .hero-description,
@@ -188,66 +230,57 @@ html.dark .footer-link-group button,
 html.dark .footer-bottom,
 html.dark .hero-trust,
 html.dark .capability-track span {
-  color: #aebcd0 !important;
-}
-
-html.dark .home-icon-button,
-html.dark .home-text-button {
-  color: #a7b4c7 !important;
-}
-
-html.dark .home-icon-button:hover,
-html.dark .home-text-button:hover,
-html.dark .service-link,
-html.dark .section-kicker,
-html.dark .solution-stat strong,
-html.dark .process-step-number,
-html.dark .process-step-icon,
-html.dark .ad-badge,
-html.dark .ad-metrics strong {
-  color: #7ff4df !important;
-}
-
-html.dark .home-icon-button:hover {
-  border-color: rgba(45, 212, 191, 0.32) !important;
-  background: #17243a !important;
-}
-
-/* 内容 surface 比背景亮一到两级，避免整页一个色。 */
-html.dark .hero-eyebrow,
-html.dark .home-secondary-button,
-html.dark .quick-service-bar,
-html.dark .solution-stat,
-html.dark .service-card,
-html.dark .advantage-card,
-html.dark .process-card,
-html.dark .contact-panel,
-html.dark .ad-badge,
-html.dark .ad-metrics,
-html.dark .back-to-top {
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
+  color: #b8c6d9 !important;
 }
 
 html.dark .hero-eyebrow,
 html.dark .home-secondary-button {
-  border-color: #31435d !important;
-  color: #b5fff0 !important;
-  background: #101d31 !important;
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22) !important;
+  border-color: #38506e !important;
+  color: #bafff2 !important;
+  background: #12243b !important;
+  box-shadow:
+    0 12px 30px rgba(0, 0, 0, 0.26),
+    inset 0 1px 0 rgba(255, 255, 255, 0.055) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+html.dark .home-primary-button,
+html.dark .home-login-button {
+  color: #ffffff !important;
+  background: linear-gradient(135deg, #0d9488, #0891b2) !important;
+  box-shadow:
+    0 12px 30px rgba(13, 148, 136, 0.34),
+    0 0 22px rgba(45, 212, 191, 0.08) !important;
 }
 
 html.dark .home-secondary-button:hover {
-  border-color: rgba(94, 234, 212, 0.56) !important;
-  background: #172842 !important;
+  border-color: rgba(94, 234, 212, 0.62) !important;
+  background: #1a304c !important;
 }
 
+/* 面板层：相较 #020617 背景提高两个亮度层级。 */
 html.dark .quick-service-bar {
-  border-color: #263a55 !important;
-  background: #0b1729 !important;
+  border-color: #304765 !important;
+  background: #0f2037 !important;
   box-shadow:
-    0 18px 44px rgba(0, 0, 0, 0.32),
-    inset 0 1px 0 rgba(255, 255, 255, 0.045) !important;
+    0 20px 48px rgba(0, 0, 0, 0.36),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+html.dark .quick-service-item {
+  color: #d3deeb !important;
+}
+
+html.dark .quick-service-item + .quick-service-item {
+  border-color: #3a506d !important;
+}
+
+html.dark .quick-service-item:hover {
+  color: #8cf7e3 !important;
+  background: rgba(20, 184, 166, 0.15) !important;
 }
 
 html.dark .solution-stat,
@@ -255,165 +288,177 @@ html.dark .service-card,
 html.dark .advantage-card,
 html.dark .process-card,
 html.dark .contact-panel {
-  border-color: #293c57 !important;
-  background: #0d1b2f !important;
+  opacity: 1 !important;
+  border-color: #314966 !important;
+  background: #102139 !important;
   box-shadow:
-    0 20px 48px rgba(0, 0, 0, 0.34),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+    0 22px 54px rgba(0, 0, 0, 0.38),
+    inset 0 1px 0 rgba(255, 255, 255, 0.065) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
 html.dark .service-card {
   background:
-    radial-gradient(circle at 86% 8%, rgba(20, 184, 166, 0.075), transparent 34%),
-    linear-gradient(155deg, #102039, #0a1628) !important;
+    radial-gradient(circle at 86% 8%, rgba(20, 184, 166, 0.1), transparent 35%),
+    linear-gradient(155deg, #132944, #0d1c31) !important;
 }
 
 html.dark .service-card:hover,
 html.dark .service-card:focus-visible,
 html.dark .advantage-card:hover,
 html.dark .process-card:hover {
-  border-color: rgba(94, 234, 212, 0.48) !important;
-  background-color: #12233b !important;
+  border-color: rgba(94, 234, 212, 0.56) !important;
   box-shadow:
-    0 26px 66px rgba(0, 0, 0, 0.46),
-    0 0 0 1px rgba(45, 212, 191, 0.055) !important;
+    0 28px 70px rgba(0, 0, 0, 0.48),
+    0 0 0 1px rgba(45, 212, 191, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
 }
 
-html.dark .quick-service-item {
-  color: #c8d5e5 !important;
-}
-
-html.dark .quick-service-item + .quick-service-item,
-html.dark .ad-metrics > div + div {
-  border-color: #31445f !important;
-}
-
-html.dark .quick-service-item:hover {
-  color: #7ff4df !important;
-  background: rgba(20, 184, 166, 0.12) !important;
+html.dark .service-link,
+html.dark .section-kicker,
+html.dark .solution-stat strong,
+html.dark .process-step-number,
+html.dark .process-step-icon,
+html.dark .ad-badge,
+html.dark .ad-metrics strong {
+  color: #8cf7e3 !important;
 }
 
 html.dark .solutions-section {
-  background: linear-gradient(180deg, transparent, rgba(20, 184, 166, 0.04), transparent) !important;
+  background: linear-gradient(180deg, transparent, rgba(20, 184, 166, 0.05), transparent) !important;
 }
 
 html.dark .capability-rail {
-  border-color: rgba(45, 212, 191, 0.2) !important;
-  background: #0b182a !important;
+  border-color: rgba(94, 234, 212, 0.22) !important;
+  background: #0d1d32 !important;
 }
 
 html.dark .advertising-panel {
-  border-color: rgba(94, 234, 212, 0.34) !important;
+  border-color: rgba(94, 234, 212, 0.38) !important;
   background:
-    radial-gradient(circle at 76% 35%, rgba(14, 165, 233, 0.14), transparent 31%),
-    linear-gradient(125deg, #0b2a35 0%, #0b1b2e 52%, #10172f 100%) !important;
+    radial-gradient(circle at 76% 35%, rgba(14, 165, 233, 0.17), transparent 31%),
+    linear-gradient(125deg, #0d303b 0%, #0d2035 52%, #121b37 100%) !important;
   box-shadow:
-    0 36px 90px rgba(0, 0, 0, 0.46),
-    0 0 56px rgba(20, 184, 166, 0.075) !important;
-}
-
-html.dark .ad-copy p,
-html.dark .ad-metrics span {
-  color: #afbdd0 !important;
+    0 38px 94px rgba(0, 0, 0, 0.48),
+    0 0 60px rgba(20, 184, 166, 0.09) !important;
 }
 
 html.dark .ad-badge,
 html.dark .ad-metrics {
-  border-color: #31445f !important;
-  background: #101e33 !important;
+  border-color: #3a506d !important;
+  background: #13263f !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+html.dark .ad-copy p,
+html.dark .ad-metrics span {
+  color: #bdcadb !important;
 }
 
 html.dark .home-footer {
-  border-color: #263850 !important;
-  background: #07101f !important;
+  border-color: #2e435e !important;
+  background: #081325 !important;
 }
 
 html.dark .footer-bottom {
-  border-color: rgba(71, 93, 122, 0.72) !important;
+  border-color: rgba(74, 96, 126, 0.76) !important;
 }
 
 html.dark .back-to-top {
-  border-color: #31445f !important;
-  color: #99f6e4 !important;
-  background: #101e33 !important;
-  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.44) !important;
+  border-color: #3a506d !important;
+  color: #bafff2 !important;
+  background: #13263f !important;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.46) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
-/* 3D 服务网络：舞台明显亮于根背景，内部浮层再亮一级。 */
+/* 3D 舞台：舞台、浮层和核心立方体逐层增亮。 */
 html.dark .hero-orbit-stage {
   opacity: 1 !important;
+  visibility: visible !important;
   filter: none !important;
+  mix-blend-mode: normal !important;
 }
 
 html.dark .hero-orbit-stage .scene-shell {
   opacity: 1 !important;
-  border-color: #2b405c !important;
+  border-color: #324b68 !important;
   background:
-    radial-gradient(circle at 50% 48%, rgba(13, 148, 136, 0.25), transparent 29%),
-    radial-gradient(circle at 82% 10%, rgba(14, 165, 233, 0.17), transparent 37%),
-    linear-gradient(145deg, #10223a, #081525) !important;
+    radial-gradient(circle at 50% 48%, rgba(13, 148, 136, 0.29), transparent 29%),
+    radial-gradient(circle at 82% 10%, rgba(14, 165, 233, 0.2), transparent 37%),
+    linear-gradient(145deg, #132b47, #0b1a2d) !important;
   box-shadow:
-    0 34px 86px rgba(0, 0, 0, 0.5),
-    inset 0 1px 0 rgba(255, 255, 255, 0.065),
-    0 0 52px rgba(13, 148, 136, 0.09) !important;
+    0 36px 90px rgba(0, 0, 0, 0.52),
+    inset 0 1px 0 rgba(255, 255, 255, 0.075),
+    0 0 58px rgba(13, 148, 136, 0.11) !important;
 }
 
 html.dark .hero-orbit-stage .scene-grid {
-  opacity: 0.42 !important;
+  opacity: 0.46 !important;
   background-image:
-    linear-gradient(rgba(94, 234, 212, 0.08) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(94, 234, 212, 0.08) 1px, transparent 1px) !important;
+    linear-gradient(rgba(94, 234, 212, 0.09) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(94, 234, 212, 0.09) 1px, transparent 1px) !important;
 }
 
 html.dark .hero-orbit-stage .globe {
-  border-color: rgba(56, 189, 248, 0.38) !important;
+  border-color: rgba(56, 189, 248, 0.46) !important;
   background:
-    radial-gradient(circle at 40% 36%, rgba(125, 211, 252, 0.2), transparent 14%),
-    radial-gradient(circle, rgba(14, 165, 233, 0.17), transparent 68%) !important;
+    radial-gradient(circle at 40% 36%, rgba(125, 211, 252, 0.24), transparent 14%),
+    radial-gradient(circle, rgba(14, 165, 233, 0.2), transparent 68%) !important;
   box-shadow:
-    inset 0 0 60px rgba(14, 165, 233, 0.15),
-    0 0 62px rgba(14, 165, 233, 0.14) !important;
+    inset 0 0 64px rgba(14, 165, 233, 0.18),
+    0 0 66px rgba(14, 165, 233, 0.17) !important;
 }
 
 html.dark .hero-orbit-stage .service-float,
 html.dark .hero-orbit-stage .scene-dashboard,
 html.dark .hero-orbit-stage .scene-status {
   opacity: 1 !important;
-  border-color: #354a66 !important;
-  background: #14243a !important;
+  border-color: #405b79 !important;
+  background: #182d49 !important;
+  box-shadow:
+    0 16px 38px rgba(0, 0, 0, 0.44),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
-  box-shadow:
-    0 14px 36px rgba(0, 0, 0, 0.42),
-    inset 0 1px 0 rgba(255, 255, 255, 0.065) !important;
 }
 
 html.dark .hero-orbit-stage .service-float strong,
 html.dark .hero-orbit-stage .scene-status strong {
-  color: #f8fafc !important;
+  color: #ffffff !important;
 }
 
 html.dark .hero-orbit-stage .service-float small,
 html.dark .hero-orbit-stage .scene-status span {
-  color: #b5c3d5 !important;
+  color: #c4d0df !important;
 }
 
 html.dark .hero-orbit-stage .cube-face {
-  border-color: rgba(153, 246, 228, 0.58) !important;
-  background: linear-gradient(145deg, #0f8c82, #0a6177) !important;
+  border-color: rgba(153, 246, 228, 0.68) !important;
+  background: linear-gradient(145deg, #10a294, #08738b) !important;
   box-shadow:
-    inset 0 0 24px rgba(153, 246, 228, 0.13),
-    0 0 28px rgba(45, 212, 191, 0.2) !important;
+    inset 0 0 26px rgba(153, 246, 228, 0.16),
+    0 0 34px rgba(45, 212, 191, 0.26) !important;
 }
 
 html.dark .hero-orbit-stage .cube-front {
-  background: linear-gradient(145deg, #11a596, #08769a) !important;
+  background: linear-gradient(145deg, #14b8a6, #0b85a8) !important;
 }
 
 html.dark .hero-orbit-stage .dashboard-head span {
-  background: #7c8da3 !important;
+  background: #8fa0b5 !important;
 }
 
 html.dark .hero-orbit-stage .dashboard-bars i {
-  background: linear-gradient(to top, rgba(20, 184, 166, 0.52), #5eead4) !important;
+  background: linear-gradient(to top, rgba(20, 184, 166, 0.58), #67f3dd) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.dark .hero-enter {
+    animation: none !important;
+    transform: none !important;
+  }
 }
