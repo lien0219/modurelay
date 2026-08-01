@@ -98,6 +98,8 @@ watch(
       announcementStore.reset()
       adminComplianceStore.reset()
       document.removeEventListener('visibilitychange', onVisibilityChange)
+      document.body.classList.remove('modal-open')
+      document.body.style.removeProperty('overflow')
     }
   },
   { immediate: true }
@@ -141,6 +143,6 @@ onMounted(async () => {
   <NavigationProgress />
   <RouterView />
   <Toast />
-  <AnnouncementPopup />
-  <AdminComplianceDialog />
+  <AnnouncementPopup v-if="authStore.isAuthenticated" />
+  <AdminComplianceDialog v-if="authStore.isAuthenticated && authStore.isAdmin" />
 </template>
