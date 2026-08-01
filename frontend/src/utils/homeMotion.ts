@@ -1,4 +1,5 @@
 import type { Router } from 'vue-router'
+import { mountHomeThreeBackground } from '@/utils/homeThreeBackground'
 
 const HOME_PATHS = new Set(['/', '/home'])
 const MOTION_SELECTOR = [
@@ -11,10 +12,16 @@ const MOTION_SELECTOR = [
 
 const enhancedElements = new WeakSet<HTMLElement>()
 let scanFrame = 0
+let activationFrame = 0
+let cleanupThreeBackground: (() => void) | null = null
 
 function normalizePath(path: string): string {
   const normalized = path.replace(/\/+$/, '')
   return normalized || '/'
+}
+
+function isHomePath(path: string): boolean {
+  return HOME_PATHS.has(normalizePath(path))
 }
 
 function supportsPointerMotion(): boolean {
@@ -60,13 +67,30 @@ function scanHomeMotionElements(): void {
   })
 }
 
+function deactivateHomeMotion(): void {
+  window.cancelAnimationFrame(scanFrame)
+  window.cancelAnimationFrame(activationFrame)
+  cleanupThreeBackground?.()
+  cleanupThreeBackground = null
+}
+
+function activateHomeMotion(): void {
+  deactivateHomeMotion()
+
+  // Wait for the routed component and its background host to be committed.
+  activationFrame = window.requestAnimationFrame(() => {
+    activationFrame = window.requestAnimationFrame(() => {
+      scanHomeMotionElements()
+      cleanupThreeBackground = mountHomeThreeBackground()
+    })
+  })
+}
+
 export function installHomeMotion(router: Router): void {
-  if (HOME_PATHS.has(normalizePath(router.currentRoute.value.path))) {
-    scanHomeMotionElements()
-  }
+  if (isHomePath(router.currentRoute.value.path)) activateHomeMotion()
 
   router.afterEach((to) => {
-    if (!HOME_PATHS.has(normalizePath(to.path))) return
-    scanHomeMotionElements()
+    if (isHomePath(to.path)) activateHomeMotion()
+    else deactivateHomeMotion()
   })
 }
