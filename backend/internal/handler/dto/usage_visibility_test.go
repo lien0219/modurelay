@@ -20,6 +20,11 @@ func TestRedactUsageLogForUserOmitsDisabledBillingFields(t *testing.T) {
 		TotalCost:         7,
 		ActualCost:        0.42,
 		RateMultiplier:    0.06,
+		Group:             &Group{ID: 1, RateMultiplier: 0.06},
+		APIKey: &APIKey{
+			ID:    2,
+			Group: &Group{ID: 1, RateMultiplier: 0.06},
+		},
 	}
 
 	payload := RedactUsageLogForUser(log, service.UsageDetailVisibility{})
