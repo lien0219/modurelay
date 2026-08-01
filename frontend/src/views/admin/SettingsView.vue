@@ -5724,6 +5724,56 @@
             </div>
           </div>
 
+          <!-- User Usage Cost Detail Visibility -->
+          <div class="card">
+            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ localText("用户费用明细展示", "User cost detail display") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ localText("控制普通用户在用量记录中看到的计费计算信息。管理员用量记录始终完整显示。", "Control billing-calculation details shown in ordinary users' usage records. Admin usage records always remain complete.") }}
+              </p>
+            </div>
+            <div class="divide-y divide-gray-100 px-6 dark:divide-dark-700">
+              <div class="flex items-center justify-between gap-6 py-4">
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">
+                    {{ localText("显示输入/输出单价", "Show input/output unit prices") }}
+                  </label>
+                  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                    {{ localText("关闭后，同时隐藏费用拆分、缓存及图片单价，并从普通用户用量 API 响应中移除对应成本字段。图片和按次单价同时依赖“显示原始金额”开关，以避免反推出原始金额。", "When disabled, cost breakdown, cache and image unit prices are hidden and the related cost fields are removed from user usage API responses. Image and per-request unit prices also require original cost to remain enabled so the original amount cannot be reconstructed.") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.usage_detail_show_unit_prices" />
+              </div>
+              <div class="flex items-center justify-between gap-6 py-4">
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">
+                    {{ localText("显示计费倍率", "Show billing multiplier") }}
+                  </label>
+                  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                    {{ localText("关闭后隐藏本次请求倍率，并从普通用户用量 API 响应中移除倍率字段。", "When disabled, the request multiplier is hidden and removed from user usage API responses.") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.usage_detail_show_rate_multiplier" />
+              </div>
+              <div class="flex items-center justify-between gap-6 py-4">
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">
+                    {{ localText("显示原始金额", "Show original cost") }}
+                  </label>
+                  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                    {{ localText("关闭后仅保留用户实际扣费，并从普通用户用量 API 响应中移除倍率应用前的原始金额。", "When disabled, only the user-billed amount remains and the pre-multiplier original cost is removed from user usage API responses.") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.usage_detail_show_original_cost" />
+              </div>
+            </div>
+            <div class="border-t border-amber-200 bg-amber-50 px-6 py-3 text-xs text-amber-700 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
+              {{ localText("严格脱敏已启用：关闭任一开关后，相关字段不仅在界面隐藏，也无法通过浏览器开发者工具从普通用户接口读取。", "Strict redaction is enforced: disabling a switch also removes the related fields from ordinary-user API responses, not just the UI.") }}
+            </div>
+          </div>
+
           <!-- Custom Menu Items -->
           <div class="card">
             <div
@@ -8711,6 +8761,10 @@ const form = reactive<SettingsForm>({
   affiliate_enabled: false,
   // Allow user view error requests
   allow_user_view_error_requests: false,
+  // User usage cost-detail visibility (opt-out for upgrade compatibility)
+  usage_detail_show_unit_prices: true,
+  usage_detail_show_rate_multiplier: true,
+  usage_detail_show_original_cost: true,
 });
 
 type OpenAIAdvancedSchedulerOverrideKey =
@@ -10254,6 +10308,9 @@ async function saveSettings() {
       // Affiliate (邀请返利) feature switch
       affiliate_enabled: form.affiliate_enabled,
       allow_user_view_error_requests: form.allow_user_view_error_requests,
+      usage_detail_show_unit_prices: form.usage_detail_show_unit_prices,
+      usage_detail_show_rate_multiplier: form.usage_detail_show_rate_multiplier,
+      usage_detail_show_original_cost: form.usage_detail_show_original_cost,
     };
 
     // 仅当 openai_fast_policy_settings 已成功从后端加载时才回写，

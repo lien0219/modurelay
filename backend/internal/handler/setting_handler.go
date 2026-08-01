@@ -102,7 +102,10 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 
 		RiskControlEnabled: settings.RiskControlEnabled,
 
-		AllowUserViewErrorRequests: settings.AllowUserViewErrorRequests,
+		AllowUserViewErrorRequests:    settings.AllowUserViewErrorRequests,
+		UsageDetailShowUnitPrices:     settings.UsageDetailShowUnitPrices,
+		UsageDetailShowRateMultiplier: settings.UsageDetailShowRateMultiplier,
+		UsageDetailShowOriginalCost:   settings.UsageDetailShowOriginalCost,
 	})
 }
 
