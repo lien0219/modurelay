@@ -2018,10 +2018,13 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 
 		AffiliateEnabled: updatedSettings.AffiliateEnabled,
 
-		RiskControlEnabled:          updatedSettings.RiskControlEnabled,
-		CyberSessionBlockEnabled:    updatedSettings.CyberSessionBlockEnabled,
-		CyberSessionBlockTTLSeconds: updatedSettings.CyberSessionBlockTTLSeconds,
-		AllowUserViewErrorRequests:  updatedSettings.AllowUserViewErrorRequests,
+		RiskControlEnabled:            updatedSettings.RiskControlEnabled,
+		CyberSessionBlockEnabled:      updatedSettings.CyberSessionBlockEnabled,
+		CyberSessionBlockTTLSeconds:   updatedSettings.CyberSessionBlockTTLSeconds,
+		AllowUserViewErrorRequests:    updatedSettings.AllowUserViewErrorRequests,
+		UsageDetailShowUnitPrices:     updatedSettings.UsageDetailShowUnitPrices,
+		UsageDetailShowRateMultiplier: updatedSettings.UsageDetailShowRateMultiplier,
+		UsageDetailShowOriginalCost:   updatedSettings.UsageDetailShowOriginalCost,
 	}
 	if fastPolicy, err := h.settingService.GetOpenAIFastPolicySettings(c.Request.Context()); err != nil {
 		slog.Error("openai_fast_policy_settings_get_failed", "error", err)
