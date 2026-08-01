@@ -58,3 +58,26 @@ func TestRedactUsageLogForUserKeepsEnabledBillingFields(t *testing.T) {
 	require.Equal(t, 3.75, payload["total_cost"])
 	require.Equal(t, 0.06, payload["rate_multiplier"])
 }
+
+func TestRedactUsageLogForUserSupportsIndependentSwitches(t *testing.T) {
+	log := &UsageLog{
+		ID:             1,
+		InputCost:      1.25,
+		OutputCost:     2.5,
+		TotalCost:      3.75,
+		ActualCost:     0.225,
+		RateMultiplier: 0.06,
+	}
+
+	payload := RedactUsageLogForUser(log, service.UsageDetailVisibility{
+		ShowUnitPrices:     true,
+		ShowRateMultiplier: false,
+		ShowOriginalCost:   true,
+	})
+
+	require.Equal(t, 1.25, payload["input_cost"])
+	require.Equal(t, 2.5, payload["output_cost"])
+	require.Equal(t, 3.75, payload["total_cost"])
+	require.NotContains(t, payload, "rate_multiplier")
+	require.Equal(t, 0.225, payload["actual_cost"])
+}
