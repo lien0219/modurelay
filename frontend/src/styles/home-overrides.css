@@ -1,0 +1,4 @@
+/* 首页底部不对外展示代码仓库入口。 */
+footer a[href*='github.com'] {
+  display: none !important;
+}
