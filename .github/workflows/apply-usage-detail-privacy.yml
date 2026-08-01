@@ -7,6 +7,12 @@ on:
     paths:
       - tools/apply_usage_detail_privacy.py
       - .github/workflows/apply-usage-detail-privacy.yml
+  pull_request:
+    branches:
+      - develop
+    paths:
+      - tools/apply_usage_detail_privacy.py
+      - .github/workflows/apply-usage-detail-privacy.yml
 
 permissions:
   contents: write
@@ -24,12 +30,13 @@ jobs:
       - name: Checkout feature branch
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
           fetch-depth: 0
 
       - name: Apply guarded patch
         run: |
           set -o pipefail
-          python3 tools/apply_usage_detail_privacy.py 2>&1 | tee usage-privacy-patch.log
+          python3 tools/apply_usage_detail_privacy.py 2>&1 | tee /tmp/usage-privacy-patch.log
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -57,7 +64,7 @@ jobs:
         working-directory: backend
         run: |
           set -o pipefail
-          go test ./internal/handler/dto ./internal/handler ./internal/service 2>&1 | tee ../usage-privacy-backend.log
+          go test ./internal/handler/dto ./internal/handler ./internal/service 2>&1 | tee /tmp/usage-privacy-backend.log
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
@@ -79,28 +86,27 @@ jobs:
         working-directory: frontend
         run: |
           set -o pipefail
-          pnpm typecheck 2>&1 | tee ../usage-privacy-typecheck.log
+          pnpm typecheck 2>&1 | tee /tmp/usage-privacy-typecheck.log
 
       - name: Test frontend
         working-directory: frontend
         run: |
           set -o pipefail
-          pnpm test:run 2>&1 | tee ../usage-privacy-frontend-tests.log
+          pnpm test:run 2>&1 | tee /tmp/usage-privacy-frontend-tests.log
 
       - name: Build frontend
         working-directory: frontend
         run: |
           set -o pipefail
-          pnpm build 2>&1 | tee ../usage-privacy-build.log
+          pnpm build 2>&1 | tee /tmp/usage-privacy-build.log
 
       - name: Verify patch cleanliness
         run: git diff --check
 
-      - name: Remove temporary patch machinery and diagnostics
+      - name: Remove temporary patch machinery
         run: |
           rm -f tools/apply_usage_detail_privacy.py
           rm -f .github/workflows/apply-usage-detail-privacy.yml
-          rm -f usage-privacy-*.log
           rmdir tools 2>/dev/null || true
 
       - name: Commit verified implementation
@@ -117,7 +123,7 @@ jobs:
         run: |
           git reset --hard HEAD
           git clean -fd
-          for f in /tmp/usage-privacy-*.log usage-privacy-*.log; do
+          for f in /tmp/usage-privacy-*.log; do
             if [ -f "$f" ]; then cp "$f" .; fi
           done
           {
