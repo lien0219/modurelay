@@ -1,9 +1,9 @@
 name: Apply usage privacy hardening
 
 on:
-  push:
+  pull_request:
     branches:
-      - feature/usage-detail-privacy
+      - develop
     paths:
       - tools/apply_usage_privacy_hardening.py
       - .github/workflows/apply-usage-privacy-hardening.yml
@@ -12,8 +12,8 @@ permissions:
   contents: write
 
 concurrency:
-  group: apply-usage-privacy-hardening
-  cancel-in-progress: false
+  group: apply-usage-privacy-hardening-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   apply-and-verify:
@@ -24,7 +24,7 @@ jobs:
       - name: Checkout feature branch
         uses: actions/checkout@v4
         with:
-          ref: feature/usage-detail-privacy
+          ref: ${{ github.head_ref }}
           fetch-depth: 0
 
       - name: Apply guarded hardening patch
