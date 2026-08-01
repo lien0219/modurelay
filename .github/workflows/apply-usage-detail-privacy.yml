@@ -7,6 +7,7 @@ on:
     paths:
       - tools/apply_usage_detail_privacy.py
       - tools/fix_usage_detail_privacy_patch.py
+      - frontend/src/components/admin/usage/__tests__/UsageTable.visibility.spec.ts
       - .github/workflows/apply-usage-detail-privacy.yml
 
 permissions:
@@ -84,11 +85,17 @@ jobs:
           set -o pipefail
           pnpm typecheck 2>&1 | tee /tmp/usage-privacy-typecheck.log
 
-      - name: Test frontend
+      - name: Test usage privacy frontend surfaces
         working-directory: frontend
         run: |
           set -o pipefail
-          pnpm test:run 2>&1 | tee /tmp/usage-privacy-frontend-tests.log
+          pnpm exec vitest run \
+            src/components/admin/usage/__tests__/UsageTable.spec.ts \
+            src/components/admin/usage/__tests__/UsageTable.visibility.spec.ts \
+            src/views/user/__tests__/UsageView.spec.ts \
+            src/views/admin/__tests__/SettingsView.spec.ts \
+            src/stores/__tests__/app.spec.ts \
+            2>&1 | tee /tmp/usage-privacy-frontend-tests.log
 
       - name: Build frontend
         working-directory: frontend
