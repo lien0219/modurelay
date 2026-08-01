@@ -6,12 +6,14 @@ on:
       - feature/usage-detail-privacy
     paths:
       - tools/apply_usage_detail_privacy.py
+      - tools/fix_usage_detail_privacy_patch.py
       - .github/workflows/apply-usage-detail-privacy.yml
   pull_request:
     branches:
       - develop
     paths:
       - tools/apply_usage_detail_privacy.py
+      - tools/fix_usage_detail_privacy_patch.py
       - .github/workflows/apply-usage-detail-privacy.yml
 
 permissions:
@@ -36,6 +38,7 @@ jobs:
       - name: Apply guarded patch
         run: |
           set -o pipefail
+          python3 tools/fix_usage_detail_privacy_patch.py
           python3 tools/apply_usage_detail_privacy.py 2>&1 | tee /tmp/usage-privacy-patch.log
 
       - name: Set up Go
@@ -105,9 +108,9 @@ jobs:
 
       - name: Remove temporary patch machinery
         run: |
-          rm -f tools/apply_usage_detail_privacy.py
+          rm -rf tools
           rm -f .github/workflows/apply-usage-detail-privacy.yml
-          rmdir tools 2>/dev/null || true
+          rm -f usage-privacy-failure.txt usage-privacy-*.log
 
       - name: Commit verified implementation
         run: |
