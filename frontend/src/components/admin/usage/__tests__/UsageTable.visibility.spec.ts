@@ -113,4 +113,70 @@ describe('UsageTable billing detail visibility', () => {
     expect(text).not.toContain('0.03x')
     expect(text).not.toContain('$1.292880')
   })
+
+  it('does not reconstruct image original cost through a unit price when original cost is hidden', async () => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      x: 0,
+      y: 0,
+      top: 20,
+      left: 20,
+      right: 120,
+      bottom: 40,
+      width: 100,
+      height: 20,
+      toJSON: () => ({}),
+    } as DOMRect)
+
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [{
+          request_id: 'req-user-image-redacted-original',
+          model: 'gpt-image-2',
+          actual_cost: 0.12,
+          rate_multiplier: 0.6,
+          account_rate_multiplier: 1,
+          service_tier: 'standard',
+          input_cost: 0,
+          output_cost: 0,
+          cache_creation_cost: 0,
+          cache_read_cost: 0,
+          input_tokens: 0,
+          output_tokens: 0,
+          cache_creation_tokens: 0,
+          cache_read_tokens: 0,
+          billing_mode: 'image',
+          image_count: 2,
+          image_size: '2K',
+          image_input_size: null,
+          image_output_size: null,
+          image_size_source: null,
+          image_size_breakdown: null,
+        }],
+        loading: false,
+        columns: [],
+        showAccountBilling: false,
+        showUnitPrices: true,
+        showRateMultiplier: true,
+        showOriginalCost: false,
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    await wrapper.get('.group.relative').trigger('mouseenter')
+    await nextTick()
+
+    const text = wrapper.text()
+    expect(text).toContain('User billed')
+    expect(text).not.toContain('Original')
+    expect(text).not.toContain('usage.imageUnitPrice')
+    expect(text).not.toContain('$0.000000')
+  })
+
 })

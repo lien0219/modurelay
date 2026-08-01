@@ -447,9 +447,9 @@ func defaultUsageDetailVisibility() UsageDetailVisibility {
 	}
 }
 
-// GetUsageDetailVisibility reads all three switches in one query. It deliberately
-// fails open to the historical behavior so a transient settings-store failure does
-// not unexpectedly remove fields from an already-running production deployment.
+// GetUsageDetailVisibility reads all three switches in one query. Missing keys
+// preserve the historical visible behavior, while repository failures fail closed
+// so a temporary infrastructure error cannot disclose fields an operator hid.
 func (s *SettingService) GetUsageDetailVisibility(ctx context.Context) UsageDetailVisibility {
 	defaults := defaultUsageDetailVisibility()
 	if s == nil || s.settingRepo == nil {
@@ -461,8 +461,8 @@ func (s *SettingService) GetUsageDetailVisibility(ctx context.Context) UsageDeta
 		SettingKeyUsageDetailShowOriginalCost,
 	})
 	if err != nil {
-		slog.Warn("failed to get user usage detail visibility, defaulting to visible", "error", err)
-		return defaults
+		slog.Error("failed to get user usage detail visibility, redacting all optional billing details", "error", err)
+		return UsageDetailVisibility{}
 	}
 	return UsageDetailVisibility{
 		ShowUnitPrices:     !isFalseSettingValue(vals[SettingKeyUsageDetailShowUnitPrices]),

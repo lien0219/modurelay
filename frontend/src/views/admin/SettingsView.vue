@@ -5741,7 +5741,7 @@
                     {{ localText("显示输入/输出单价", "Show input/output unit prices") }}
                   </label>
                   <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                    {{ localText("关闭后，同时隐藏费用拆分、缓存及图片单价，并从普通用户用量 API 响应中移除对应成本字段。", "When disabled, cost breakdown, cache and image unit prices are hidden and the related cost fields are removed from user usage API responses.") }}
+                    {{ localText("关闭后，同时隐藏费用拆分、缓存及图片单价，并从普通用户用量 API 响应中移除对应成本字段。图片和按次单价同时依赖“显示原始金额”开关，以避免反推出原始金额。", "When disabled, cost breakdown, cache and image unit prices are hidden and the related cost fields are removed from user usage API responses. Image and per-request unit prices also require original cost to remain enabled so the original amount cannot be reconstructed.") }}
                   </p>
                 </div>
                 <Toggle v-model="form.usage_detail_show_unit_prices" />
