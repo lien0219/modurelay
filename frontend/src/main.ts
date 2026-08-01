@@ -13,6 +13,7 @@ import './style.css'
 import './styles/home-overrides.css'
 import './styles/home-route-guard.css'
 import './styles/home-motion.css'
+import './styles/home-hero-guidance.css'
 
 function initIOSViewportZoomFix() {
   // iOS Safari 在输入框字号小于 16px 时聚焦会自动放大页面，且失焦后不会恢复。
