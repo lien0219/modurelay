@@ -1,0 +1,75 @@
+/*
+ * Public homepage safety layer.
+ * The homepage has no blocking dialogs, so any full-viewport overlay left under
+ * <body> is stale and must not dim the official site.
+ */
+body.modurelay-home-route > .fixed.inset-0,
+body.modurelay-home-route > .modal-overlay,
+body.modurelay-home-route > .dialog-overlay {
+  display: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  background: transparent !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+html.dark body.modurelay-home-route,
+html.dark body.modurelay-home-route #app,
+html.dark body.modurelay-home-route .home-page,
+html.dark body.modurelay-home-route .home-page > .home-header,
+html.dark body.modurelay-home-route .home-page > main,
+html.dark body.modurelay-home-route .home-page > .home-footer {
+  opacity: 1 !important;
+  visibility: visible !important;
+  filter: none !important;
+  mix-blend-mode: normal !important;
+}
+
+html.dark body.modurelay-home-route .home-page {
+  color: #eaf2ff !important;
+  background-color: #020617 !important;
+}
+
+html.dark body.modurelay-home-route .hero-title > span:not(.hero-title-gradient),
+html.dark body.modurelay-home-route .section-heading h2,
+html.dark body.modurelay-home-route .solutions-copy h2,
+html.dark body.modurelay-home-route .ad-copy h2,
+html.dark body.modurelay-home-route .contact-panel h2,
+html.dark body.modurelay-home-route .service-card h3,
+html.dark body.modurelay-home-route .advantage-card h3,
+html.dark body.modurelay-home-route .process-card h3 {
+  color: #ffffff !important;
+  opacity: 1 !important;
+}
+
+html.dark body.modurelay-home-route .hero-title-gradient {
+  opacity: 1 !important;
+  filter: none !important;
+}
+
+html.dark body.modurelay-home-route .hero-subtitle {
+  color: #e7edf6 !important;
+}
+
+html.dark body.modurelay-home-route .hero-description,
+html.dark body.modurelay-home-route .hero-trust,
+html.dark body.modurelay-home-route .section-heading p,
+html.dark body.modurelay-home-route .service-card p,
+html.dark body.modurelay-home-route .advantage-card p,
+html.dark body.modurelay-home-route .process-card p {
+  color: #b9c7da !important;
+}
+
+html.dark body.modurelay-home-route .hero-enter,
+html.dark body.modurelay-home-route .reveal-on-scroll.is-visible,
+html.dark body.modurelay-home-route .hero-copy,
+html.dark body.modurelay-home-route .hero-scene-wrap,
+html.dark body.modurelay-home-route .quick-service-wrap,
+html.dark body.modurelay-home-route .hero-orbit-stage,
+html.dark body.modurelay-home-route .hero-orbit-stage .scene-shell {
+  opacity: 1 !important;
+  visibility: visible !important;
+  filter: none !important;
+}

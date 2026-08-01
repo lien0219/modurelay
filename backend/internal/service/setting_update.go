@@ -433,6 +433,9 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	}
 
 	updates[SettingKeyAllowUserViewErrorRequests] = strconv.FormatBool(settings.AllowUserViewErrorRequests)
+	updates[SettingKeyUsageDetailShowUnitPrices] = strconv.FormatBool(settings.UsageDetailShowUnitPrices)
+	updates[SettingKeyUsageDetailShowRateMultiplier] = strconv.FormatBool(settings.UsageDetailShowRateMultiplier)
+	updates[SettingKeyUsageDetailShowOriginalCost] = strconv.FormatBool(settings.UsageDetailShowOriginalCost)
 
 	return updates, nil
 }

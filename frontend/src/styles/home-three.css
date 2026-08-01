@@ -1,0 +1,47 @@
+/* Three.js ambient layer for the public homepage. */
+.home-three-background-canvas {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  width: 100vw;
+  height: 100vh;
+  opacity: 0.62;
+  pointer-events: none;
+  mix-blend-mode: multiply;
+  transition: opacity 300ms ease, filter 300ms ease;
+}
+
+html.dark .home-three-background-canvas {
+  opacity: 0.72;
+  mix-blend-mode: screen;
+  filter: saturate(1.16) contrast(1.08);
+}
+
+.home-three-runtime-fallback::after {
+  content: '';
+  position: fixed;
+  inset: 8% 10%;
+  z-index: 0;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 36% 40%, rgba(20, 184, 166, 0.1), transparent 32%),
+    radial-gradient(circle at 68% 62%, rgba(56, 189, 248, 0.08), transparent 30%);
+  filter: blur(56px);
+  pointer-events: none;
+}
+
+@media (max-width: 768px) {
+  .home-three-background-canvas {
+    opacity: 0.42;
+  }
+
+  html.dark .home-three-background-canvas {
+    opacity: 0.5;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-three-background-canvas {
+    opacity: 0.3;
+  }
+}

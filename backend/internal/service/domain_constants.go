@@ -549,3 +549,11 @@ const AdminAPIKeyPrefix = "admin-"
 // SettingKeyAllowUserViewErrorRequests controls whether end users can view
 // their own failed requests on the usage page. Default false (opt-in).
 const SettingKeyAllowUserViewErrorRequests = "allow_user_view_error_requests"
+
+// User usage cost-detail visibility. These are opt-out settings so existing
+// installations preserve their current UI and API behavior after upgrading.
+const (
+	SettingKeyUsageDetailShowUnitPrices     = "usage_detail_show_unit_prices"
+	SettingKeyUsageDetailShowRateMultiplier = "usage_detail_show_rate_multiplier"
+	SettingKeyUsageDetailShowOriginalCost   = "usage_detail_show_original_cost"
+)
