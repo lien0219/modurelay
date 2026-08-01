@@ -1,3 +1,4 @@
+// UI contract: hidden billing metadata must disappear while the final user charge remains visible.
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import { describe, expect, it, vi } from 'vitest'
