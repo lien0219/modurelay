@@ -1,0 +1,102 @@
+name: Apply usage detail privacy
+
+on:
+  push:
+    branches:
+      - feature/usage-detail-privacy
+    paths:
+      - tools/apply_usage_detail_privacy.py
+      - .github/workflows/apply-usage-detail-privacy.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-usage-detail-privacy
+  cancel-in-progress: false
+
+jobs:
+  apply-and-verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply guarded patch
+        run: python3 tools/apply_usage_detail_privacy.py
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Format Go changes
+        run: |
+          gofmt -w \
+            backend/internal/service/domain_constants.go \
+            backend/internal/service/setting_parse.go \
+            backend/internal/service/settings_view.go \
+            backend/internal/service/setting_update.go \
+            backend/internal/service/setting_public.go \
+            backend/internal/handler/dto/settings.go \
+            backend/internal/handler/dto/usage_visibility.go \
+            backend/internal/handler/dto/usage_visibility_test.go \
+            backend/internal/handler/admin/setting_handler_update.go \
+            backend/internal/handler/admin/setting_handler.go \
+            backend/internal/handler/setting_handler.go \
+            backend/internal/handler/usage_handler.go
+
+      - name: Test backend
+        working-directory: backend
+        run: go test ./internal/handler/dto ./internal/handler ./internal/service
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Type-check frontend
+        working-directory: frontend
+        run: pnpm typecheck
+
+      - name: Test frontend
+        working-directory: frontend
+        run: pnpm test:run
+
+      - name: Build frontend
+        working-directory: frontend
+        run: pnpm build
+
+      - name: Verify patch cleanliness
+        run: git diff --check
+
+      - name: Remove temporary patch machinery
+        run: |
+          rm -f tools/apply_usage_detail_privacy.py
+          rm -f .github/workflows/apply-usage-detail-privacy.yml
+          rmdir tools 2>/dev/null || true
+
+      - name: Commit verified implementation
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "feat: control and redact user usage billing details"
+          git push origin HEAD:feature/usage-detail-privacy
