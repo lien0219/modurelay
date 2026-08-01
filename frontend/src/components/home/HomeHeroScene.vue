@@ -68,10 +68,17 @@ type HomeIcon = 'link' | 'server' | 'shield' | 'chat' | 'chart'
 type ServiceTone = 'teal' | 'blue' | 'violet' | 'cyan' | 'amber'
 type Disposable = { dispose: () => void }
 type TrailParticle = {
-  mesh: { position: { copy: (point: unknown) => void }; scale: { setScalar: (value: number) => void } }
+  mesh: {
+    position: { copy: (point: unknown) => void }
+    scale: { setScalar: (value: number) => void }
+  }
   curve: { getPointAt: (progress: number) => unknown }
   offset: number
   speed: number
+}
+type OrbitChild = {
+  userData: { speed?: number }
+  rotation: { z: number }
 }
 
 interface SceneService {
@@ -103,6 +110,7 @@ function supportsWebGL(): boolean {
 onMounted(() => {
   const stage = stageRef.value
   const host = canvasHostRef.value
+
   if (!stage || !host || !supportsWebGL()) {
     isLoading.value = false
     hasFallback.value = true
@@ -126,6 +134,53 @@ onBeforeUnmount(() => {
   cleanupScene = null
 })
 
+function createBrandTexture(THREE: any, dark: boolean) {
+  const canvas = document.createElement('canvas')
+  canvas.width = 512
+  canvas.height = 512
+  const context = canvas.getContext('2d')
+
+  if (!context) throw new Error('Unable to create brand texture canvas')
+
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  texture.anisotropy = 8
+
+  const redraw = (isDark: boolean) => {
+    const gradient = context.createLinearGradient(0, 0, 512, 512)
+    gradient.addColorStop(0, isDark ? '#0f766e' : '#0d9488')
+    gradient.addColorStop(0.55, isDark ? '#075985' : '#0284c7')
+    gradient.addColorStop(1, isDark ? '#172554' : '#2563eb')
+
+    context.clearRect(0, 0, 512, 512)
+    context.fillStyle = gradient
+    context.fillRect(0, 0, 512, 512)
+
+    context.strokeStyle = isDark ? 'rgba(153, 246, 228, 0.78)' : 'rgba(255, 255, 255, 0.72)'
+    context.lineWidth = 12
+    context.strokeRect(18, 18, 476, 476)
+
+    context.fillStyle = isDark ? '#f8fafc' : '#ffffff'
+    context.textAlign = 'center'
+    context.textBaseline = 'middle'
+    context.font = '900 252px Inter, system-ui, sans-serif'
+    context.shadowColor = isDark ? 'rgba(94, 234, 212, 0.65)' : 'rgba(15, 118, 110, 0.35)'
+    context.shadowBlur = 34
+    context.fillText('M', 256, 246)
+
+    context.shadowBlur = 0
+    context.fillStyle = isDark ? 'rgba(226, 232, 240, 0.82)' : 'rgba(255, 255, 255, 0.9)'
+    context.font = '700 28px Inter, system-ui, sans-serif'
+    context.letterSpacing = '8px'
+    context.fillText('MODURELAY', 256, 414)
+
+    texture.needsUpdate = true
+  }
+
+  redraw(dark)
+  return { texture, redraw }
+}
+
 async function initializeScene(stage: HTMLElement, host: HTMLElement): Promise<() => void> {
   const THREE = await loadThree()
   let stopped = false
@@ -141,7 +196,7 @@ async function initializeScene(stage: HTMLElement, host: HTMLElement): Promise<(
 
   const resources: Disposable[] = []
   const trailParticles: TrailParticle[] = []
-  const trailMaterials: Array<{ color: { setHex: (value: number) => void }; opacity: number }> = []
+  const trailMaterials: Array<{ opacity: number }> = []
   const ringMaterials: Array<{ color: { setHex: (value: number) => void }; opacity: number }> = []
 
   const renderer = new THREE.WebGLRenderer({
@@ -153,17 +208,17 @@ async function initializeScene(stage: HTMLElement, host: HTMLElement): Promise<(
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.8))
   renderer.outputColorSpace = THREE.SRGBColorSpace
   renderer.toneMapping = THREE.ACESFilmicToneMapping
-  renderer.toneMappingExposure = isDarkTheme() ? 1.22 : 1.08
+  renderer.toneMappingExposure = isDarkTheme() ? 1.2 : 1.04
   renderer.setClearColor(0x000000, 0)
   renderer.domElement.className = 'three-hero-canvas'
   renderer.domElement.setAttribute('aria-hidden', 'true')
   host.appendChild(renderer.domElement)
 
   const scene = new THREE.Scene()
-  scene.fog = new THREE.FogExp2(isDarkTheme() ? 0x030914 : 0xeaf7f5, isDarkTheme() ? 0.052 : 0.036)
+  scene.fog = new THREE.FogExp2(isDarkTheme() ? 0x030914 : 0xecfdfb, isDarkTheme() ? 0.046 : 0.028)
 
   const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 80)
-  camera.position.set(0, 0.7, 10.8)
+  camera.position.set(0, 0.65, 10.6)
 
   const world = new THREE.Group()
   const coreGroup = new THREE.Group()
@@ -172,48 +227,53 @@ async function initializeScene(stage: HTMLElement, host: HTMLElement): Promise<(
   scene.add(world)
   world.add(coreGroup, orbitGroup, trailGroup)
 
-  const ambientLight = new THREE.HemisphereLight(0xbffdfa, 0x071426, isDarkTheme() ? 1.35 : 1.7)
+  const ambientLight = new THREE.HemisphereLight(0xd5fffb, 0x071426, isDarkTheme() ? 1.25 : 1.65)
   scene.add(ambientLight)
 
-  const keyLight = new THREE.DirectionalLight(0xffffff, isDarkTheme() ? 2.5 : 3.2)
+  const keyLight = new THREE.DirectionalLight(0xffffff, isDarkTheme() ? 2.35 : 3)
   keyLight.position.set(4, 6, 7)
   scene.add(keyLight)
 
-  const tealLight = new THREE.PointLight(0x2dd4bf, 38, 18, 2)
+  const tealLight = new THREE.PointLight(0x2dd4bf, 34, 18, 2)
   tealLight.position.set(-3.5, 1.8, 3.5)
   scene.add(tealLight)
 
-  const blueLight = new THREE.PointLight(0x38bdf8, 34, 18, 2)
+  const blueLight = new THREE.PointLight(0x38bdf8, 30, 18, 2)
   blueLight.position.set(4, -1.2, 2.8)
   scene.add(blueLight)
 
-  const violetLight = new THREE.PointLight(0xa855f7, 22, 14, 2)
+  const violetLight = new THREE.PointLight(0xa855f7, 18, 14, 2)
   violetLight.position.set(0, 4, -1)
   scene.add(violetLight)
 
-  const cubeGeometry = new THREE.BoxGeometry(2.15, 2.15, 2.15, 7, 7, 7)
-  const cubeMaterial = new THREE.MeshPhysicalMaterial({
-    color: isDarkTheme() ? 0x08756e : 0x0d9488,
-    emissive: isDarkTheme() ? 0x063c44 : 0x052e36,
-    emissiveIntensity: isDarkTheme() ? 1.15 : 0.48,
-    metalness: 0.58,
-    roughness: 0.22,
+  const brandTexture = createBrandTexture(THREE, isDarkTheme())
+  resources.push(brandTexture.texture)
+
+  const cubeGeometry = new THREE.BoxGeometry(2.25, 2.25, 2.25, 2, 2, 2)
+  resources.push(cubeGeometry)
+
+  const cubeMaterials = Array.from({ length: 6 }, () => new THREE.MeshPhysicalMaterial({
+    map: brandTexture.texture,
+    emissiveMap: brandTexture.texture,
+    emissive: isDarkTheme() ? 0x063c44 : 0x032f35,
+    emissiveIntensity: isDarkTheme() ? 0.48 : 0.18,
+    metalness: 0.5,
+    roughness: 0.26,
     clearcoat: 1,
-    clearcoatRoughness: 0.15,
-    transmission: isDarkTheme() ? 0.08 : 0.15,
-    transparent: true,
-    opacity: 0.96
-  })
-  resources.push(cubeGeometry, cubeMaterial)
-  const cube = new THREE.Mesh(cubeGeometry, cubeMaterial)
-  cube.rotation.set(-0.28, 0.58, 0.08)
+    clearcoatRoughness: 0.12,
+    transparent: false
+  }))
+  resources.push(...cubeMaterials)
+
+  const cube = new THREE.Mesh(cubeGeometry, cubeMaterials)
+  cube.rotation.set(-0.22, 0.56, 0.04)
   coreGroup.add(cube)
 
   const edgeGeometry = new THREE.EdgesGeometry(cubeGeometry, 18)
   const edgeMaterial = new THREE.LineBasicMaterial({
     color: isDarkTheme() ? 0x99f6e4 : 0x0f766e,
     transparent: true,
-    opacity: isDarkTheme() ? 0.82 : 0.52,
+    opacity: isDarkTheme() ? 0.85 : 0.52,
     blending: THREE.AdditiveBlending
   })
   resources.push(edgeGeometry, edgeMaterial)
@@ -221,52 +281,40 @@ async function initializeScene(stage: HTMLElement, host: HTMLElement): Promise<(
   cubeEdges.scale.setScalar(1.012)
   coreGroup.add(cubeEdges)
 
-  const innerGeometry = new THREE.IcosahedronGeometry(0.88, 2)
+  const innerGeometry = new THREE.IcosahedronGeometry(0.9, 1)
   const innerMaterial = new THREE.MeshBasicMaterial({
     color: isDarkTheme() ? 0x67e8f9 : 0x0284c7,
     wireframe: true,
     transparent: true,
-    opacity: isDarkTheme() ? 0.34 : 0.2,
+    opacity: isDarkTheme() ? 0.24 : 0.12,
     blending: THREE.AdditiveBlending
   })
   resources.push(innerGeometry, innerMaterial)
   const innerCore = new THREE.Mesh(innerGeometry, innerMaterial)
   coreGroup.add(innerCore)
 
-  const haloGeometry = new THREE.IcosahedronGeometry(1.72, 2)
-  const haloMaterial = new THREE.MeshBasicMaterial({
-    color: isDarkTheme() ? 0x2dd4bf : 0x0f766e,
-    wireframe: true,
-    transparent: true,
-    opacity: isDarkTheme() ? 0.13 : 0.085,
-    blending: THREE.AdditiveBlending
-  })
-  resources.push(haloGeometry, haloMaterial)
-  const halo = new THREE.Mesh(haloGeometry, haloMaterial)
-  coreGroup.add(halo)
-
-  const platformGeometry = new THREE.CylinderGeometry(2.55, 3.25, 0.24, 96, 1, true)
+  const platformGeometry = new THREE.CylinderGeometry(2.55, 3.15, 0.22, 96, 1, true)
   const platformMaterial = new THREE.MeshPhysicalMaterial({
     color: isDarkTheme() ? 0x082f49 : 0xcffafe,
     emissive: isDarkTheme() ? 0x0f766e : 0x0d9488,
-    emissiveIntensity: isDarkTheme() ? 0.76 : 0.18,
+    emissiveIntensity: isDarkTheme() ? 0.68 : 0.14,
     metalness: 0.72,
     roughness: 0.25,
     transparent: true,
-    opacity: isDarkTheme() ? 0.72 : 0.5,
+    opacity: isDarkTheme() ? 0.68 : 0.45,
     side: THREE.DoubleSide
   })
   resources.push(platformGeometry, platformMaterial)
   const platform = new THREE.Mesh(platformGeometry, platformMaterial)
-  platform.position.y = -1.78
+  platform.position.y = -1.82
   coreGroup.add(platform)
 
   for (let index = 0; index < 5; index += 1) {
-    const geometry = new THREE.TorusGeometry(2.25 + index * 0.48, 0.018 + index * 0.004, 8, 180)
+    const geometry = new THREE.TorusGeometry(2.2 + index * 0.48, 0.017 + index * 0.003, 8, 180)
     const material = new THREE.MeshBasicMaterial({
       color: index % 3 === 0 ? 0x2dd4bf : index % 3 === 1 ? 0x38bdf8 : 0xa855f7,
       transparent: true,
-      opacity: isDarkTheme() ? 0.5 - index * 0.055 : 0.28 - index * 0.03,
+      opacity: isDarkTheme() ? 0.46 - index * 0.05 : 0.24 - index * 0.026,
       depthWrite: false,
       blending: THREE.AdditiveBlending
     })
@@ -280,69 +328,17 @@ async function initializeScene(stage: HTMLElement, host: HTMLElement): Promise<(
     orbitGroup.add(ring)
   }
 
-  const knotGeometry = new THREE.TorusKnotGeometry(2.28, 0.025, 220, 6, 2, 5)
+  const knotGeometry = new THREE.TorusKnotGeometry(2.28, 0.022, 220, 6, 2, 5)
   const knotMaterial = new THREE.MeshBasicMaterial({
     color: isDarkTheme() ? 0x22d3ee : 0x0891b2,
     transparent: true,
-    opacity: isDarkTheme() ? 0.24 : 0.13,
+    opacity: isDarkTheme() ? 0.2 : 0.1,
     blending: THREE.AdditiveBlending
   })
   resources.push(knotGeometry, knotMaterial)
   const energyKnot = new THREE.Mesh(knotGeometry, knotMaterial)
   energyKnot.rotation.x = 0.58
   orbitGroup.add(energyKnot)
-
-  const particleCount = window.innerWidth < 768 ? 620 : 1450
-  const particlePositions = new Float32Array(particleCount * 3)
-  const particleSizes = new Float32Array(particleCount)
-  for (let index = 0; index < particleCount; index += 1) {
-    const radius = 2.7 + Math.pow(Math.random(), 0.7) * 4.2
-    const theta = Math.random() * Math.PI * 2
-    const phi = Math.acos(2 * Math.random() - 1)
-    particlePositions[index * 3] = Math.sin(phi) * Math.cos(theta) * radius
-    particlePositions[index * 3 + 1] = Math.cos(phi) * radius * 0.72
-    particlePositions[index * 3 + 2] = Math.sin(phi) * Math.sin(theta) * radius
-    particleSizes[index] = 0.7 + Math.random() * 2.2
-  }
-
-  const particleGeometry = new THREE.BufferGeometry()
-  particleGeometry.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3))
-  particleGeometry.setAttribute('aSize', new THREE.BufferAttribute(particleSizes, 1))
-  resources.push(particleGeometry)
-  const particleMaterial = new THREE.ShaderMaterial({
-    transparent: true,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-    uniforms: {
-      uColor: { value: new THREE.Color(isDarkTheme() ? 0x67e8f9 : 0x0f766e) },
-      uPixelRatio: { value: Math.min(window.devicePixelRatio, 1.8) },
-      uOpacity: { value: isDarkTheme() ? 0.92 : 0.58 }
-    },
-    vertexShader: `
-      attribute float aSize;
-      uniform float uPixelRatio;
-      varying float vDepth;
-      void main() {
-        vec4 viewPosition = modelViewMatrix * vec4(position, 1.0);
-        gl_Position = projectionMatrix * viewPosition;
-        gl_PointSize = aSize * uPixelRatio * (52.0 / max(1.0, -viewPosition.z));
-        vDepth = smoothstep(-9.0, 3.0, position.z);
-      }
-    `,
-    fragmentShader: `
-      uniform vec3 uColor;
-      uniform float uOpacity;
-      varying float vDepth;
-      void main() {
-        float d = distance(gl_PointCoord, vec2(0.5));
-        float glow = smoothstep(0.5, 0.02, d);
-        gl_FragColor = vec4(uColor, glow * uOpacity * vDepth);
-      }
-    `
-  })
-  resources.push(particleMaterial)
-  const pointCloud = new THREE.Points(particleGeometry, particleMaterial)
-  world.add(pointCloud)
 
   const endpoints = [
     new THREE.Vector3(-4.7, 2.5, -0.8),
@@ -352,7 +348,7 @@ async function initializeScene(stage: HTMLElement, host: HTMLElement): Promise<(
     new THREE.Vector3(5.1, 0.1, -1.5)
   ]
 
-  endpoints.forEach((end, index) => {
+  endpoints.forEach((end: any, index: number) => {
     const bend = new THREE.Vector3(
       end.x * 0.48,
       end.y * 0.42 + (index % 2 === 0 ? 0.65 : -0.35),
@@ -364,11 +360,11 @@ async function initializeScene(stage: HTMLElement, host: HTMLElement): Promise<(
       end
     ])
 
-    const tubeGeometry = new THREE.TubeGeometry(curve, 72, 0.018 + index * 0.002, 6, false)
+    const tubeGeometry = new THREE.TubeGeometry(curve, 72, 0.014 + index * 0.0015, 6, false)
     const tubeMaterial = new THREE.MeshBasicMaterial({
       color: index === 2 ? 0xa855f7 : index === 4 ? 0xf59e0b : index % 2 === 0 ? 0x2dd4bf : 0x38bdf8,
       transparent: true,
-      opacity: isDarkTheme() ? 0.34 : 0.2,
+      opacity: isDarkTheme() ? 0.3 : 0.16,
       blending: THREE.AdditiveBlending,
       depthWrite: false
     })
@@ -376,7 +372,7 @@ async function initializeScene(stage: HTMLElement, host: HTMLElement): Promise<(
     trailMaterials.push(tubeMaterial)
     trailGroup.add(new THREE.Mesh(tubeGeometry, tubeMaterial))
 
-    const beadGeometry = new THREE.SphereGeometry(0.07, 12, 12)
+    const beadGeometry = new THREE.SphereGeometry(0.066, 12, 12)
     const beadMaterial = new THREE.MeshBasicMaterial({
       color: index === 2 ? 0xc084fc : index === 4 ? 0xfbbf24 : index % 2 === 0 ? 0x99f6e4 : 0x7dd3fc,
       transparent: true,
@@ -397,59 +393,59 @@ async function initializeScene(stage: HTMLElement, host: HTMLElement): Promise<(
     }
   })
 
-  const shardGeometry = new THREE.TetrahedronGeometry(0.08, 0)
+  const shardGeometry = new THREE.TetrahedronGeometry(0.09, 0)
   const shardMaterial = new THREE.MeshBasicMaterial({
     color: isDarkTheme() ? 0x5eead4 : 0x0d9488,
     transparent: true,
-    opacity: isDarkTheme() ? 0.78 : 0.46,
+    opacity: isDarkTheme() ? 0.64 : 0.32,
     blending: THREE.AdditiveBlending
   })
   resources.push(shardGeometry, shardMaterial)
-  const shardCount = window.innerWidth < 768 ? 18 : 34
+
+  const shardCount = window.innerWidth < 768 ? 10 : 18
   const shards = new THREE.InstancedMesh(shardGeometry, shardMaterial, shardCount)
   const shardDummy = new THREE.Object3D()
   const shardStates = Array.from({ length: shardCount }, (_, index) => ({
-    radius: 2.8 + Math.random() * 2.7,
+    radius: 3 + Math.random() * 2.2,
     angle: (index / shardCount) * Math.PI * 2,
-    speed: (0.12 + Math.random() * 0.22) * (index % 2 === 0 ? 1 : -1),
-    height: (Math.random() - 0.5) * 4.4,
-    scale: 0.55 + Math.random() * 1.35
+    speed: (0.1 + Math.random() * 0.16) * (index % 2 === 0 ? 1 : -1),
+    height: (Math.random() - 0.5) * 3.8,
+    scale: 0.65 + Math.random() * 1.05
   }))
   world.add(shards)
 
   const updateTheme = (dark: boolean) => {
-    renderer.toneMappingExposure = dark ? 1.22 : 1.08
-    scene.fog.color.setHex(dark ? 0x030914 : 0xeaf7f5)
-    scene.fog.density = dark ? 0.052 : 0.036
-    ambientLight.intensity = dark ? 1.35 : 1.7
-    keyLight.intensity = dark ? 2.5 : 3.2
-    cubeMaterial.color.setHex(dark ? 0x08756e : 0x0d9488)
-    cubeMaterial.emissive.setHex(dark ? 0x063c44 : 0x052e36)
-    cubeMaterial.emissiveIntensity = dark ? 1.15 : 0.48
+    renderer.toneMappingExposure = dark ? 1.2 : 1.04
+    scene.fog.color.setHex(dark ? 0x030914 : 0xecfdfb)
+    scene.fog.density = dark ? 0.046 : 0.028
+    ambientLight.intensity = dark ? 1.25 : 1.65
+    keyLight.intensity = dark ? 2.35 : 3
+    brandTexture.redraw(dark)
+    cubeMaterials.forEach((material: any) => {
+      material.emissive.setHex(dark ? 0x063c44 : 0x032f35)
+      material.emissiveIntensity = dark ? 0.48 : 0.18
+      material.needsUpdate = true
+    })
     edgeMaterial.color.setHex(dark ? 0x99f6e4 : 0x0f766e)
-    edgeMaterial.opacity = dark ? 0.82 : 0.52
+    edgeMaterial.opacity = dark ? 0.85 : 0.52
     innerMaterial.color.setHex(dark ? 0x67e8f9 : 0x0284c7)
-    innerMaterial.opacity = dark ? 0.34 : 0.2
-    haloMaterial.color.setHex(dark ? 0x2dd4bf : 0x0f766e)
-    haloMaterial.opacity = dark ? 0.13 : 0.085
+    innerMaterial.opacity = dark ? 0.24 : 0.12
     platformMaterial.color.setHex(dark ? 0x082f49 : 0xcffafe)
     platformMaterial.emissive.setHex(dark ? 0x0f766e : 0x0d9488)
-    platformMaterial.emissiveIntensity = dark ? 0.76 : 0.18
-    platformMaterial.opacity = dark ? 0.72 : 0.5
+    platformMaterial.emissiveIntensity = dark ? 0.68 : 0.14
+    platformMaterial.opacity = dark ? 0.68 : 0.45
     knotMaterial.color.setHex(dark ? 0x22d3ee : 0x0891b2)
-    knotMaterial.opacity = dark ? 0.24 : 0.13
-    particleMaterial.uniforms.uColor.value.setHex(dark ? 0x67e8f9 : 0x0f766e)
-    particleMaterial.uniforms.uOpacity.value = dark ? 0.92 : 0.58
+    knotMaterial.opacity = dark ? 0.2 : 0.1
     shardMaterial.color.setHex(dark ? 0x5eead4 : 0x0d9488)
-    shardMaterial.opacity = dark ? 0.78 : 0.46
+    shardMaterial.opacity = dark ? 0.64 : 0.32
     ringMaterials.forEach((material, index) => {
       const darkColors = [0x2dd4bf, 0x38bdf8, 0xa855f7]
       const lightColors = [0x0f766e, 0x0284c7, 0x7c3aed]
       material.color.setHex((dark ? darkColors : lightColors)[index % 3])
-      material.opacity = dark ? 0.5 - index * 0.055 : 0.28 - index * 0.03
+      material.opacity = dark ? 0.46 - index * 0.05 : 0.24 - index * 0.026
     })
     trailMaterials.forEach((material) => {
-      material.opacity = dark ? 0.34 : 0.2
+      material.opacity = dark ? 0.3 : 0.16
     })
   }
   const stopThemeObserver = observeTheme(updateTheme)
@@ -462,7 +458,6 @@ async function initializeScene(stage: HTMLElement, host: HTMLElement): Promise<(
     camera.updateProjectionMatrix()
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.8))
     renderer.setSize(width, height, false)
-    particleMaterial.uniforms.uPixelRatio.value = Math.min(window.devicePixelRatio, 1.8)
   }
   const resizeObserver = new ResizeObserver(resize)
   resizeObserver.observe(host)
@@ -490,7 +485,7 @@ async function initializeScene(stage: HTMLElement, host: HTMLElement): Promise<(
   handleScroll()
 
   const intersectionObserver = new IntersectionObserver((entries) => {
-    visible = entries.some(entry => entry.isIntersecting)
+    visible = entries.some((entry) => entry.isIntersecting)
     lastTime = performance.now()
   }, { rootMargin: '180px' })
   intersectionObserver.observe(stage)
@@ -501,6 +496,7 @@ async function initializeScene(stage: HTMLElement, host: HTMLElement): Promise<(
   const animate = (time: number) => {
     if (stopped) return
     animationFrame = window.requestAnimationFrame(animate)
+
     if (!visible || document.hidden) {
       lastTime = time
       return
@@ -514,21 +510,17 @@ async function initializeScene(stage: HTMLElement, host: HTMLElement): Promise<(
     scrollValue += (scrollTarget - scrollValue) * Math.min(1, delta * 3.4)
 
     if (!reducedMotion) {
-      cube.rotation.x = -0.28 + Math.sin(elapsed * 0.52) * 0.08 + pointerY * 0.2
-      cube.rotation.y = 0.58 + elapsed * 0.22 + pointerX * 0.48
-      cube.position.y = Math.sin(elapsed * 1.1) * 0.12
+      cube.rotation.x = -0.22 + Math.sin(elapsed * 0.52) * 0.06 + pointerY * 0.16
+      cube.rotation.y = 0.56 + elapsed * 0.17 + pointerX * 0.42
+      cube.position.y = Math.sin(elapsed * 1.1) * 0.1
       cubeEdges.rotation.copy(cube.rotation)
       cubeEdges.position.copy(cube.position)
       innerCore.rotation.x = elapsed * 0.18
       innerCore.rotation.y = -elapsed * 0.3
-      halo.rotation.x = -elapsed * 0.09
-      halo.rotation.y = elapsed * 0.12
       energyKnot.rotation.z = elapsed * 0.08
       energyKnot.rotation.y = -elapsed * 0.06
-      pointCloud.rotation.y = elapsed * 0.025
-      pointCloud.rotation.x = Math.sin(elapsed * 0.17) * 0.04
 
-      orbitGroup.children.forEach((child) => {
+      orbitGroup.children.forEach((child: OrbitChild) => {
         if (typeof child.userData.speed === 'number') {
           child.rotation.z += child.userData.speed * delta
         }
@@ -544,7 +536,7 @@ async function initializeScene(stage: HTMLElement, host: HTMLElement): Promise<(
         const angle = state.angle + elapsed * state.speed
         shardDummy.position.set(
           Math.cos(angle) * state.radius,
-          state.height + Math.sin(elapsed * 0.9 + index) * 0.28,
+          state.height + Math.sin(elapsed * 0.9 + index) * 0.22,
           Math.sin(angle) * state.radius * 0.55
         )
         shardDummy.rotation.set(angle * 0.7, angle, angle * 0.4)
@@ -555,12 +547,12 @@ async function initializeScene(stage: HTMLElement, host: HTMLElement): Promise<(
       shards.instanceMatrix.needsUpdate = true
     }
 
-    world.rotation.x = pointerY * -0.12 + scrollValue * 0.05
-    world.rotation.y = pointerX * 0.18 + scrollValue * 0.2
-    world.position.y = -scrollValue * 0.35
-    camera.position.x = pointerX * 0.85
-    camera.position.y = 0.7 - pointerY * 0.65 + scrollValue * 0.22
-    camera.position.z = 10.8 + Math.abs(scrollValue) * 0.35
+    world.rotation.x = pointerY * -0.1 + scrollValue * 0.04
+    world.rotation.y = pointerX * 0.16 + scrollValue * 0.16
+    world.position.y = -scrollValue * 0.28
+    camera.position.x = pointerX * 0.72
+    camera.position.y = 0.65 - pointerY * 0.54 + scrollValue * 0.18
+    camera.position.z = 10.6 + Math.abs(scrollValue) * 0.28
     camera.lookAt(0, 0, 0)
     renderer.render(scene, camera)
   }
@@ -597,28 +589,28 @@ async function initializeScene(stage: HTMLElement, host: HTMLElement): Promise<(
   position: absolute;
   inset: 0;
   overflow: hidden;
-  border: 1px solid rgba(15, 118, 110, 0.18);
+  border: 1px solid rgba(15, 118, 110, 0.2);
   border-radius: 34px;
   background:
-    radial-gradient(circle at 50% 45%, rgba(20, 184, 166, 0.14), transparent 32%),
-    radial-gradient(circle at 88% 12%, rgba(56, 189, 248, 0.13), transparent 34%),
-    linear-gradient(145deg, rgba(255, 255, 255, 0.9), rgba(236, 254, 255, 0.7));
+    radial-gradient(circle at 50% 45%, rgba(20, 184, 166, 0.11), transparent 34%),
+    radial-gradient(circle at 88% 12%, rgba(56, 189, 248, 0.1), transparent 36%),
+    linear-gradient(145deg, rgba(248, 255, 254, 0.98), rgba(234, 249, 248, 0.96));
   box-shadow:
     0 34px 94px rgba(15, 23, 42, 0.14),
-    inset 0 1px 0 rgba(255, 255, 255, 0.92);
+    inset 0 1px 0 rgba(255, 255, 255, 0.96);
   transition: border-color 240ms ease, box-shadow 240ms ease, background 300ms ease;
 }
 
 :global(.dark) .scene-shell {
-  border-color: rgba(94, 234, 212, 0.2);
+  border-color: rgba(94, 234, 212, 0.22);
   background:
-    radial-gradient(circle at 50% 45%, rgba(13, 148, 136, 0.2), transparent 34%),
-    radial-gradient(circle at 88% 12%, rgba(14, 165, 233, 0.14), transparent 36%),
-    linear-gradient(145deg, rgba(7, 18, 36, 0.97), rgba(2, 8, 20, 0.94));
+    radial-gradient(circle at 50% 45%, rgba(13, 148, 136, 0.16), transparent 36%),
+    radial-gradient(circle at 88% 12%, rgba(14, 165, 233, 0.11), transparent 38%),
+    linear-gradient(145deg, rgba(7, 18, 36, 0.985), rgba(2, 8, 20, 0.98));
   box-shadow:
     0 38px 110px rgba(0, 0, 0, 0.52),
     inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    0 0 80px rgba(20, 184, 166, 0.08);
+    0 0 80px rgba(20, 184, 166, 0.07);
 }
 
 .three-canvas-host,
@@ -643,7 +635,6 @@ async function initializeScene(stage: HTMLElement, host: HTMLElement): Promise<(
   color: #0f766e;
   background: rgba(255, 255, 255, 0.18);
   backdrop-filter: blur(4px);
-  transition: opacity 240ms ease;
 }
 
 :global(.dark) .scene-loading { color: #5eead4; background: rgba(2, 8, 20, 0.18); }
@@ -660,16 +651,16 @@ async function initializeScene(stage: HTMLElement, host: HTMLElement): Promise<(
   padding: 12px 14px;
   border: 1px solid rgba(15, 118, 110, 0.2);
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.76);
+  background: rgba(255, 255, 255, 0.82);
   box-shadow: 0 14px 38px rgba(15, 23, 42, 0.12);
-  backdrop-filter: blur(15px) saturate(130%);
+  backdrop-filter: blur(14px) saturate(125%);
   animation: service-hover 6s ease-in-out infinite;
   transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
 }
 
 :global(.dark) .service-float {
   border-color: rgba(94, 234, 212, 0.2);
-  background: rgba(7, 18, 36, 0.76);
+  background: rgba(7, 18, 36, 0.82);
   box-shadow: 0 18px 44px rgba(0, 0, 0, 0.38), 0 0 26px rgba(20, 184, 166, 0.04);
 }
 
@@ -701,11 +692,11 @@ async function initializeScene(stage: HTMLElement, host: HTMLElement): Promise<(
   padding: 11px;
   border: 1px solid rgba(14, 165, 233, 0.2);
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.66);
+  background: rgba(255, 255, 255, 0.78);
   box-shadow: 0 14px 32px rgba(15, 23, 42, 0.11);
   backdrop-filter: blur(14px);
 }
-:global(.dark) .scene-dashboard { background: rgba(5, 16, 31, 0.76); box-shadow: 0 14px 36px rgba(0, 0, 0, 0.34); }
+:global(.dark) .scene-dashboard { background: rgba(5, 16, 31, 0.82); box-shadow: 0 14px 36px rgba(0, 0, 0, 0.34); }
 .dashboard-head { display: flex; gap: 4px; }
 .dashboard-head span { width: 4px; height: 4px; border-radius: 50%; background: #14b8a6; }
 .dashboard-bars { position: absolute; left: 12px; bottom: 12px; display: flex; height: 44px; align-items: end; gap: 5px; }
@@ -726,7 +717,6 @@ async function initializeScene(stage: HTMLElement, host: HTMLElement): Promise<(
 
 .scene-interaction-hint { position: absolute; z-index: 7; left: 50%; bottom: 5%; display: flex; align-items: center; gap: 7px; color: #64748b; font-size: 8px; font-weight: 700; letter-spacing: 0.12em; transform: translateX(-50%); opacity: 0.68; }
 .scene-interaction-hint span { width: 16px; height: 1px; background: linear-gradient(90deg, transparent, #14b8a6); animation: hint-flow 1.4s ease-in-out infinite; }
-:global(.dark) .scene-interaction-hint { color: #64748b; }
 
 .fallback-core { position: absolute; z-index: 3; left: 50%; top: 48%; width: 270px; height: 270px; transform: translate(-50%, -50%); }
 .fallback-ring { position: absolute; inset: 14%; border: 1px solid rgba(20, 184, 166, 0.42); border-radius: 50%; transform: rotateX(68deg); animation: fallback-spin 10s linear infinite; }
@@ -756,7 +746,7 @@ async function initializeScene(stage: HTMLElement, host: HTMLElement): Promise<(
   .service-float-3 { left: 3%; bottom: 16%; }
   .service-float-4 { right: 3%; bottom: 17%; }
   .service-float-5 { display: none; }
-  .scene-dashboard { right: 4%; bottom: 4%; width: 132px; opacity: 0.76; }
+  .scene-dashboard { right: 4%; bottom: 4%; width: 132px; opacity: 0.78; }
   .scene-status, .scene-interaction-hint { display: none; }
 }
 
