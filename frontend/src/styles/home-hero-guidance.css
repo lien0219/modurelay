@@ -1,0 +1,220 @@
+/*
+ * 首页首屏滚动引导与循环标题动画。
+ * 仅增强视觉表现，不改变 HomeView 的滚动观察器和 Three.js 生命周期。
+ */
+
+.home-page .hero-section {
+  position: relative;
+}
+
+/* 首次进入时在首屏留白区域给出继续浏览提示。 */
+.home-page .hero-section::before {
+  content: 'SCROLL TO EXPLORE';
+  position: absolute;
+  left: 50%;
+  bottom: 76px;
+  z-index: 8;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 142px;
+  min-height: 34px;
+  padding: 7px 16px;
+  border: 1px solid rgba(13, 148, 136, 0.22);
+  border-radius: 999px;
+  color: rgba(15, 118, 110, 0.8);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.78), rgba(236, 254, 255, 0.54));
+  box-shadow:
+    0 14px 34px rgba(15, 23, 42, 0.09),
+    inset 0 1px 0 rgba(255, 255, 255, 0.88),
+    0 0 28px rgba(20, 184, 166, 0.08);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translateX(-50%) perspective(180px) rotateX(10deg);
+  transform-origin: 50% 100%;
+  animation: home-scroll-label 2.6s ease-in-out infinite;
+  transition: opacity 220ms ease, transform 220ms ease;
+  backdrop-filter: blur(12px) saturate(130%);
+  -webkit-backdrop-filter: blur(12px) saturate(130%);
+}
+
+.home-page .hero-section::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 39px;
+  z-index: 8;
+  width: 17px;
+  height: 17px;
+  border-right: 2px solid #0d9488;
+  border-bottom: 2px solid #0d9488;
+  pointer-events: none;
+  filter: drop-shadow(0 0 8px rgba(20, 184, 166, 0.5));
+  transform: translateX(-50%) rotate(45deg);
+  animation: home-scroll-arrow 1.65s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  transition: opacity 220ms ease, transform 220ms ease;
+}
+
+/* 页面开始滚动后自动收起提示，避免覆盖后续内容。 */
+.home-page.home-page-scrolled .hero-section::before,
+.home-page.home-page-scrolled .hero-section::after {
+  opacity: 0;
+  animation-play-state: paused;
+}
+
+.home-page.home-page-scrolled .hero-section::before {
+  transform: translateX(-50%) translateY(14px) perspective(180px) rotateX(14deg);
+}
+
+.home-page.home-page-scrolled .hero-section::after {
+  transform: translateX(-50%) translateY(14px) rotate(45deg);
+}
+
+/* 品牌字样使用持续流光，动画只作用于文字本身，不干扰首屏入场动画。 */
+.home-page .hero-title-gradient {
+  display: inline-block;
+  background-size: 240% 100% !important;
+  will-change: background-position, filter, transform;
+  animation:
+    home-brand-shimmer 5.6s linear infinite,
+    home-brand-float 4.4s ease-in-out infinite;
+}
+
+.home-page .hero-title > span:last-child {
+  display: inline-block;
+  transform-origin: 18% 70%;
+  will-change: transform, text-shadow;
+  animation: home-title-suffix 4.4s ease-in-out infinite;
+}
+
+.home-page .hero-subtitle {
+  will-change: transform, text-shadow, opacity;
+  animation: home-subtitle-breathe 4.8s ease-in-out infinite;
+}
+
+html.dark .home-page .hero-section::before {
+  border-color: rgba(94, 234, 212, 0.3);
+  color: rgba(153, 246, 228, 0.9);
+  background:
+    linear-gradient(135deg, rgba(16, 35, 57, 0.92), rgba(7, 24, 39, 0.82));
+  box-shadow:
+    0 18px 42px rgba(0, 0, 0, 0.36),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    0 0 32px rgba(45, 212, 191, 0.12);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+html.dark .home-page .hero-section::after {
+  border-color: #5eead4;
+  filter: drop-shadow(0 0 10px rgba(94, 234, 212, 0.7));
+}
+
+html.dark .home-page .hero-title-gradient {
+  background-image: linear-gradient(
+    105deg,
+    #2dd4bf 0%,
+    #67e8f9 28%,
+    #60a5fa 52%,
+    #a78bfa 72%,
+    #2dd4bf 100%
+  ) !important;
+}
+
+@keyframes home-scroll-label {
+  0%, 100% {
+    opacity: 0.58;
+    transform: translateX(-50%) translateY(0) perspective(180px) rotateX(10deg) scale(0.98);
+    box-shadow:
+      0 12px 28px rgba(15, 23, 42, 0.07),
+      inset 0 1px 0 rgba(255, 255, 255, 0.82),
+      0 0 18px rgba(20, 184, 166, 0.05);
+  }
+  50% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(-5px) perspective(180px) rotateX(4deg) scale(1.025);
+    box-shadow:
+      0 18px 42px rgba(15, 23, 42, 0.11),
+      inset 0 1px 0 rgba(255, 255, 255, 0.96),
+      0 0 36px rgba(20, 184, 166, 0.15);
+  }
+}
+
+@keyframes home-scroll-arrow {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-9px) rotate(45deg) scale(0.78);
+  }
+  35% {
+    opacity: 1;
+  }
+  75% {
+    opacity: 0.9;
+    transform: translateX(-50%) translateY(7px) rotate(45deg) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(14px) rotate(45deg) scale(0.82);
+  }
+}
+
+@keyframes home-brand-shimmer {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 240% 50%; }
+}
+
+@keyframes home-brand-float {
+  0%, 100% {
+    transform: translate3d(0, 0, 0);
+    filter: drop-shadow(0 0 0 rgba(20, 184, 166, 0));
+  }
+  50% {
+    transform: translate3d(0, -3px, 0);
+    filter: drop-shadow(0 9px 18px rgba(20, 184, 166, 0.16));
+  }
+}
+
+@keyframes home-title-suffix {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) rotateX(0deg);
+    text-shadow: 0 0 0 rgba(14, 165, 233, 0);
+  }
+  50% {
+    transform: translate3d(0, -3px, 0) rotateX(1.5deg);
+    text-shadow: 0 10px 28px rgba(14, 165, 233, 0.12);
+  }
+}
+
+@keyframes home-subtitle-breathe {
+  0%, 100% {
+    opacity: 0.92;
+    transform: translate3d(0, 0, 0);
+    text-shadow: 0 0 0 rgba(20, 184, 166, 0);
+  }
+  50% {
+    opacity: 1;
+    transform: translate3d(0, -2px, 0);
+    text-shadow: 0 8px 24px rgba(20, 184, 166, 0.1);
+  }
+}
+
+@media (max-width: 900px) {
+  .home-page .hero-section::before,
+  .home-page .hero-section::after {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-page .hero-section::before,
+  .home-page .hero-section::after,
+  .home-page .hero-title-gradient,
+  .home-page .hero-title > span:last-child,
+  .home-page .hero-subtitle {
+    animation: none !important;
+  }
+}
