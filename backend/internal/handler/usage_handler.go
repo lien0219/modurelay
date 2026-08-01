@@ -241,9 +241,17 @@ func (h *UsageHandler) List(c *gin.Context) {
 		return
 	}
 
-	out := make([]dto.UsageLog, 0, len(records))
+	visibility := service.UsageDetailVisibility{
+		ShowUnitPrices:     true,
+		ShowRateMultiplier: true,
+		ShowOriginalCost:   true,
+	}
+	if h.settingService != nil {
+		visibility = h.settingService.GetUsageDetailVisibility(c.Request.Context())
+	}
+	out := make([]map[string]any, 0, len(records))
 	for i := range records {
-		out = append(out, *dto.UsageLogFromService(&records[i]))
+		out = append(out, dto.UsageLogFromServiceWithVisibility(&records[i], visibility))
 	}
 	response.Paginated(c, out, result.Total, page, pageSize)
 }
@@ -389,7 +397,15 @@ func (h *UsageHandler) GetByID(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, dto.UsageLogFromService(record))
+	visibility := service.UsageDetailVisibility{
+		ShowUnitPrices:     true,
+		ShowRateMultiplier: true,
+		ShowOriginalCost:   true,
+	}
+	if h.settingService != nil {
+		visibility = h.settingService.GetUsageDetailVisibility(c.Request.Context())
+	}
+	response.Success(c, dto.UsageLogFromServiceWithVisibility(record, visibility))
 }
 
 // Stats handles getting usage statistics

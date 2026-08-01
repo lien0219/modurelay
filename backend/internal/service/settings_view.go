@@ -268,6 +268,11 @@ type SystemSettings struct {
 
 	// 允许终端用户在用量页查看自己的失败请求
 	AllowUserViewErrorRequests bool
+
+	// 普通用户用量费用明细展示（管理员始终可见）
+	UsageDetailShowUnitPrices     bool
+	UsageDetailShowRateMultiplier bool
+	UsageDetailShowOriginalCost   bool
 }
 
 type DefaultSubscriptionSetting struct {
@@ -341,6 +346,10 @@ type PublicSettings struct {
 
 	// 允许终端用户在用量页查看自己的失败请求
 	AllowUserViewErrorRequests bool `json:"allow_user_view_error_requests"`
+
+	UsageDetailShowUnitPrices     bool `json:"usage_detail_show_unit_prices"`
+	UsageDetailShowRateMultiplier bool `json:"usage_detail_show_rate_multiplier"`
+	UsageDetailShowOriginalCost   bool `json:"usage_detail_show_original_cost"`
 }
 
 type LoginAgreementDocument struct {

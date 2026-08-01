@@ -335,7 +335,10 @@ type UpdateSettingsRequest struct {
 	AuthSourceGooglePlatformQuotas   map[string]*service.DefaultPlatformQuotaSetting `json:"auth_source_default_google_platform_quotas"`
 	AuthSourceDingTalkPlatformQuotas map[string]*service.DefaultPlatformQuotaSetting `json:"auth_source_default_dingtalk_platform_quotas"`
 
-	AllowUserViewErrorRequests *bool `json:"allow_user_view_error_requests"`
+	AllowUserViewErrorRequests    *bool `json:"allow_user_view_error_requests"`
+	UsageDetailShowUnitPrices     *bool `json:"usage_detail_show_unit_prices"`
+	UsageDetailShowRateMultiplier *bool `json:"usage_detail_show_rate_multiplier"`
+	UsageDetailShowOriginalCost   *bool `json:"usage_detail_show_original_cost"`
 }
 
 // UpdateSettings 更新系统设置
@@ -1384,6 +1387,24 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				return *req.AllowUserViewErrorRequests
 			}
 			return previousSettings.AllowUserViewErrorRequests
+		}(),
+		UsageDetailShowUnitPrices: func() bool {
+			if req.UsageDetailShowUnitPrices != nil {
+				return *req.UsageDetailShowUnitPrices
+			}
+			return previousSettings.UsageDetailShowUnitPrices
+		}(),
+		UsageDetailShowRateMultiplier: func() bool {
+			if req.UsageDetailShowRateMultiplier != nil {
+				return *req.UsageDetailShowRateMultiplier
+			}
+			return previousSettings.UsageDetailShowRateMultiplier
+		}(),
+		UsageDetailShowOriginalCost: func() bool {
+			if req.UsageDetailShowOriginalCost != nil {
+				return *req.UsageDetailShowOriginalCost
+			}
+			return previousSettings.UsageDetailShowOriginalCost
 		}(),
 		OpsMonitoringEnabled: func() bool {
 			if req.OpsMonitoringEnabled != nil {

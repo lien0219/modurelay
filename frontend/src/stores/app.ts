@@ -61,6 +61,9 @@ export const useAppStore = defineStore('app', () => {
 
   const hasActiveToasts = computed(() => toasts.value.length > 0)
   const backendModeEnabled = computed(() => cachedPublicSettings.value?.backend_mode_enabled ?? false)
+  const usageDetailShowUnitPrices = computed(() => cachedPublicSettings.value?.usage_detail_show_unit_prices ?? true)
+  const usageDetailShowRateMultiplier = computed(() => cachedPublicSettings.value?.usage_detail_show_rate_multiplier ?? true)
+  const usageDetailShowOriginalCost = computed(() => cachedPublicSettings.value?.usage_detail_show_original_cost ?? true)
 
   const loadingCount = ref<number>(0)
 
@@ -468,6 +471,9 @@ export const useAppStore = defineStore('app', () => {
         service_quota_enabled: false,
         affiliate_enabled: false,
         allow_user_view_error_requests: false,
+        usage_detail_show_unit_prices: true,
+        usage_detail_show_rate_multiplier: true,
+        usage_detail_show_original_cost: true,
       })
     }
 
@@ -554,6 +560,9 @@ export const useAppStore = defineStore('app', () => {
     // Computed
     hasActiveToasts,
     backendModeEnabled,
+    usageDetailShowUnitPrices,
+    usageDetailShowRateMultiplier,
+    usageDetailShowOriginalCost,
 
     // Actions
     toggleSidebar,

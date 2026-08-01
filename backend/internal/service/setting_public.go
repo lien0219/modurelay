@@ -223,6 +223,9 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyAffiliateEnabled,
 		SettingKeyRiskControlEnabled,
 		SettingKeyAllowUserViewErrorRequests,
+		SettingKeyUsageDetailShowUnitPrices,
+		SettingKeyUsageDetailShowRateMultiplier,
+		SettingKeyUsageDetailShowOriginalCost,
 	}
 
 	settings, err := s.settingRepo.GetMultiple(ctx, keys)
@@ -336,7 +339,10 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 
 		RiskControlEnabled: settings[SettingKeyRiskControlEnabled] == "true",
 
-		AllowUserViewErrorRequests: settings[SettingKeyAllowUserViewErrorRequests] == "true",
+		AllowUserViewErrorRequests:    settings[SettingKeyAllowUserViewErrorRequests] == "true",
+		UsageDetailShowUnitPrices:     !isFalseSettingValue(settings[SettingKeyUsageDetailShowUnitPrices]),
+		UsageDetailShowRateMultiplier: !isFalseSettingValue(settings[SettingKeyUsageDetailShowRateMultiplier]),
+		UsageDetailShowOriginalCost:   !isFalseSettingValue(settings[SettingKeyUsageDetailShowOriginalCost]),
 	}, nil
 }
 
@@ -425,6 +431,46 @@ func (s *SettingService) IsUserErrorViewAllowed(ctx context.Context) bool {
 	return vals[SettingKeyAllowUserViewErrorRequests] == "true"
 }
 
+// UsageDetailVisibility controls which billing calculation details are exposed to
+// ordinary users. It affects both rendering and the user usage API response.
+type UsageDetailVisibility struct {
+	ShowUnitPrices     bool
+	ShowRateMultiplier bool
+	ShowOriginalCost   bool
+}
+
+func defaultUsageDetailVisibility() UsageDetailVisibility {
+	return UsageDetailVisibility{
+		ShowUnitPrices:     true,
+		ShowRateMultiplier: true,
+		ShowOriginalCost:   true,
+	}
+}
+
+// GetUsageDetailVisibility reads all three switches in one query. It deliberately
+// fails open to the historical behavior so a transient settings-store failure does
+// not unexpectedly remove fields from an already-running production deployment.
+func (s *SettingService) GetUsageDetailVisibility(ctx context.Context) UsageDetailVisibility {
+	defaults := defaultUsageDetailVisibility()
+	if s == nil || s.settingRepo == nil {
+		return defaults
+	}
+	vals, err := s.settingRepo.GetMultiple(ctx, []string{
+		SettingKeyUsageDetailShowUnitPrices,
+		SettingKeyUsageDetailShowRateMultiplier,
+		SettingKeyUsageDetailShowOriginalCost,
+	})
+	if err != nil {
+		slog.Warn("failed to get user usage detail visibility, defaulting to visible", "error", err)
+		return defaults
+	}
+	return UsageDetailVisibility{
+		ShowUnitPrices:     !isFalseSettingValue(vals[SettingKeyUsageDetailShowUnitPrices]),
+		ShowRateMultiplier: !isFalseSettingValue(vals[SettingKeyUsageDetailShowRateMultiplier]),
+		ShowOriginalCost:   !isFalseSettingValue(vals[SettingKeyUsageDetailShowOriginalCost]),
+	}
+}
+
 // PublicSettingsInjectionPayload is the JSON shape embedded into HTML as
 // `window.__APP_CONFIG__` so the frontend can hydrate feature flags & site
 // config before the first XHR finishes.
@@ -497,6 +543,9 @@ type PublicSettingsInjectionPayload struct {
 	AffiliateEnabled                     bool `json:"affiliate_enabled"`
 	RiskControlEnabled                   bool `json:"risk_control_enabled"`
 	AllowUserViewErrorRequests           bool `json:"allow_user_view_error_requests"`
+	UsageDetailShowUnitPrices            bool `json:"usage_detail_show_unit_prices"`
+	UsageDetailShowRateMultiplier        bool `json:"usage_detail_show_rate_multiplier"`
+	UsageDetailShowOriginalCost          bool `json:"usage_detail_show_original_cost"`
 }
 
 // GetPublicSettingsForInjection returns public settings in a format suitable for HTML injection.
@@ -562,6 +611,9 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		AffiliateEnabled:                     settings.AffiliateEnabled,
 		RiskControlEnabled:                   settings.RiskControlEnabled,
 		AllowUserViewErrorRequests:           settings.AllowUserViewErrorRequests,
+		UsageDetailShowUnitPrices:            settings.UsageDetailShowUnitPrices,
+		UsageDetailShowRateMultiplier:        settings.UsageDetailShowRateMultiplier,
+		UsageDetailShowOriginalCost:          settings.UsageDetailShowOriginalCost,
 	}, nil
 }
 

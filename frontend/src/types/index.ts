@@ -241,6 +241,9 @@ export interface PublicSettings {
   service_quota_enabled: boolean
   affiliate_enabled: boolean
   allow_user_view_error_requests?: boolean
+  usage_detail_show_unit_prices?: boolean
+  usage_detail_show_rate_multiplier?: boolean
+  usage_detail_show_original_cost?: boolean
 }
 
 export interface AuthResponse {
