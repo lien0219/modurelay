@@ -1,13 +1,6 @@
 name: Apply usage detail privacy
 
 on:
-  push:
-    branches:
-      - feature/usage-detail-privacy
-    paths:
-      - tools/apply_usage_detail_privacy.py
-      - tools/fix_usage_detail_privacy_patch.py
-      - .github/workflows/apply-usage-detail-privacy.yml
   pull_request:
     branches:
       - develop
@@ -20,8 +13,8 @@ permissions:
   contents: write
 
 concurrency:
-  group: apply-usage-detail-privacy
-  cancel-in-progress: false
+  group: apply-usage-detail-privacy-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   apply-and-verify:
@@ -32,7 +25,7 @@ jobs:
       - name: Checkout feature branch
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
+          ref: ${{ github.head_ref }}
           fetch-depth: 0
 
       - name: Apply guarded patch
