@@ -2,3 +2,294 @@
 footer a[href*='github.com'] {
   display: none !important;
 }
+
+/*
+ * 首页深色模式兜底样式。
+ * 首页组件使用 scoped CSS，这里通过项目统一的 html.dark 主题类提供全局覆盖，
+ * 保证首页、3D 场景和后续内容区域都与控制台的 dark-950 / dark-900 风格一致。
+ */
+html.dark {
+  color-scheme: dark;
+  background: #020617;
+}
+
+html.dark body,
+html.dark #app {
+  background: #020617;
+}
+
+html.dark .home-page {
+  color: #e2e8f0 !important;
+  background:
+    radial-gradient(circle at 82% 4%, rgba(8, 145, 178, 0.13), transparent 34%),
+    radial-gradient(circle at 8% 33%, rgba(13, 148, 136, 0.09), transparent 30%),
+    linear-gradient(180deg, #020617 0%, #07101f 48%, #020617 100%) !important;
+}
+
+html.dark .home-background {
+  opacity: 1 !important;
+}
+
+html.dark .home-grid {
+  opacity: 0.72 !important;
+  background-image:
+    linear-gradient(rgba(51, 65, 85, 0.24) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(51, 65, 85, 0.24) 1px, transparent 1px) !important;
+}
+
+html.dark .home-noise {
+  opacity: 0.025 !important;
+  mix-blend-mode: screen;
+}
+
+html.dark .home-glow-one {
+  background: rgba(14, 165, 233, 0.13) !important;
+  opacity: 0.52 !important;
+}
+
+html.dark .home-glow-two {
+  background: rgba(20, 184, 166, 0.11) !important;
+  opacity: 0.5 !important;
+}
+
+html.dark .home-glow-three {
+  background: rgba(99, 102, 241, 0.09) !important;
+  opacity: 0.42 !important;
+}
+
+html.dark .home-header {
+  border-bottom-color: rgba(51, 65, 85, 0.52) !important;
+  background: rgba(2, 6, 23, 0.84) !important;
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.2) !important;
+  backdrop-filter: blur(18px) saturate(125%) !important;
+}
+
+html.dark .home-page-scrolled .home-header {
+  border-bottom-color: rgba(51, 65, 85, 0.82) !important;
+  background: rgba(2, 6, 23, 0.94) !important;
+  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.42) !important;
+}
+
+html.dark .home-brand-name,
+html.dark .hero-title,
+html.dark .section-heading h2,
+html.dark .solutions-copy h2,
+html.dark .ad-copy h2,
+html.dark .contact-panel h2,
+html.dark .service-card h3,
+html.dark .advantage-card h3,
+html.dark .process-card h3,
+html.dark .footer-brand-line,
+html.dark .footer-link-group strong {
+  color: #f8fafc !important;
+}
+
+html.dark .hero-subtitle {
+  color: #cbd5e1 !important;
+}
+
+html.dark .hero-description,
+html.dark .section-heading p,
+html.dark .solutions-copy > p,
+html.dark .contact-panel p,
+html.dark .service-card p,
+html.dark .advantage-card p,
+html.dark .process-card p,
+html.dark .footer-brand-block p,
+html.dark .footer-link-group a,
+html.dark .footer-link-group button,
+html.dark .footer-bottom,
+html.dark .hero-trust,
+html.dark .capability-track span {
+  color: #94a3b8 !important;
+}
+
+html.dark .home-nav-link,
+html.dark .home-icon-button,
+html.dark .home-text-button {
+  color: #94a3b8 !important;
+}
+
+html.dark .home-nav-link:hover,
+html.dark .home-nav-link.is-active,
+html.dark .home-icon-button:hover,
+html.dark .home-text-button:hover,
+html.dark .service-link,
+html.dark .section-kicker,
+html.dark .solution-stat strong,
+html.dark .process-step-number,
+html.dark .process-step-icon,
+html.dark .ad-badge,
+html.dark .ad-metrics strong {
+  color: #5eead4 !important;
+}
+
+html.dark .home-icon-button:hover {
+  border-color: rgba(45, 212, 191, 0.22) !important;
+  background: rgba(30, 41, 59, 0.72) !important;
+}
+
+html.dark .hero-eyebrow,
+html.dark .home-secondary-button {
+  border-color: rgba(51, 65, 85, 0.9) !important;
+  color: #99f6e4 !important;
+  background: rgba(15, 23, 42, 0.82) !important;
+  box-shadow: none !important;
+}
+
+html.dark .home-secondary-button:hover {
+  border-color: rgba(45, 212, 191, 0.42) !important;
+  background: #1e293b !important;
+}
+
+html.dark .quick-service-bar,
+html.dark .solution-stat,
+html.dark .service-card,
+html.dark .advantage-card,
+html.dark .process-card,
+html.dark .contact-panel {
+  border-color: rgba(51, 65, 85, 0.82) !important;
+  background: rgba(15, 23, 42, 0.78) !important;
+  box-shadow:
+    0 20px 52px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.025) !important;
+}
+
+html.dark .service-card {
+  background: linear-gradient(155deg, rgba(15, 23, 42, 0.94), rgba(7, 15, 29, 0.9)) !important;
+}
+
+html.dark .service-card:hover,
+html.dark .service-card:focus-visible,
+html.dark .advantage-card:hover {
+  border-color: rgba(45, 212, 191, 0.36) !important;
+  box-shadow: 0 26px 68px rgba(0, 0, 0, 0.42) !important;
+}
+
+html.dark .quick-service-item {
+  color: #cbd5e1 !important;
+}
+
+html.dark .quick-service-item + .quick-service-item,
+html.dark .ad-metrics > div + div {
+  border-color: rgba(51, 65, 85, 0.72) !important;
+}
+
+html.dark .quick-service-item:hover {
+  color: #5eead4 !important;
+  background: rgba(20, 184, 166, 0.08) !important;
+}
+
+html.dark .solutions-section {
+  background: linear-gradient(180deg, transparent, rgba(20, 184, 166, 0.035), transparent) !important;
+}
+
+html.dark .capability-rail {
+  border-color: rgba(45, 212, 191, 0.13) !important;
+  background: rgba(15, 23, 42, 0.72) !important;
+}
+
+html.dark .advertising-panel {
+  border-color: rgba(45, 212, 191, 0.22) !important;
+  background:
+    radial-gradient(circle at 75% 36%, rgba(14, 165, 233, 0.11), transparent 34%),
+    linear-gradient(125deg, #071c25 0%, #071424 52%, #0b1024 100%) !important;
+  box-shadow:
+    0 38px 100px rgba(0, 0, 0, 0.42),
+    0 0 70px rgba(20, 184, 166, 0.07) !important;
+}
+
+html.dark .ad-copy p,
+html.dark .ad-metrics span {
+  color: #94a3b8 !important;
+}
+
+html.dark .ad-badge,
+html.dark .ad-metrics {
+  border-color: rgba(51, 65, 85, 0.84) !important;
+  background: rgba(15, 23, 42, 0.76) !important;
+}
+
+html.dark .home-footer {
+  border-color: rgba(51, 65, 85, 0.72) !important;
+  background: rgba(2, 6, 23, 0.92) !important;
+}
+
+html.dark .footer-bottom {
+  border-color: rgba(51, 65, 85, 0.62) !important;
+}
+
+html.dark .back-to-top {
+  border-color: rgba(51, 65, 85, 0.9) !important;
+  color: #99f6e4 !important;
+  background: rgba(15, 23, 42, 0.92) !important;
+  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.38) !important;
+}
+
+/* 首页 3D 服务网络：使用与项目卡片一致的深蓝灰材质。 */
+html.dark .hero-orbit-stage .scene-shell {
+  border-color: rgba(51, 65, 85, 0.9) !important;
+  background:
+    radial-gradient(circle at 50% 48%, rgba(13, 148, 136, 0.2), transparent 29%),
+    radial-gradient(circle at 82% 10%, rgba(14, 165, 233, 0.12), transparent 36%),
+    linear-gradient(145deg, #0f172a, #020617) !important;
+  box-shadow:
+    0 34px 90px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.035),
+    0 0 64px rgba(13, 148, 136, 0.07) !important;
+}
+
+html.dark .hero-orbit-stage .scene-grid {
+  opacity: 0.42 !important;
+  background-image:
+    linear-gradient(rgba(51, 65, 85, 0.38) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(51, 65, 85, 0.38) 1px, transparent 1px) !important;
+}
+
+html.dark .hero-orbit-stage .globe {
+  border-color: rgba(56, 189, 248, 0.28) !important;
+  background:
+    radial-gradient(circle at 40% 36%, rgba(125, 211, 252, 0.14), transparent 14%),
+    radial-gradient(circle, rgba(14, 165, 233, 0.12), transparent 68%) !important;
+  box-shadow:
+    inset 0 0 60px rgba(14, 165, 233, 0.12),
+    0 0 70px rgba(14, 165, 233, 0.12) !important;
+}
+
+html.dark .hero-orbit-stage .service-float,
+html.dark .hero-orbit-stage .scene-dashboard,
+html.dark .hero-orbit-stage .scene-status {
+  border-color: rgba(51, 65, 85, 0.86) !important;
+  background: rgba(15, 23, 42, 0.9) !important;
+  box-shadow:
+    0 14px 38px rgba(0, 0, 0, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.035) !important;
+}
+
+html.dark .hero-orbit-stage .service-float strong,
+html.dark .hero-orbit-stage .scene-status strong {
+  color: #f8fafc !important;
+}
+
+html.dark .hero-orbit-stage .service-float small,
+html.dark .hero-orbit-stage .scene-status span {
+  color: #94a3b8 !important;
+}
+
+html.dark .hero-orbit-stage .cube-face {
+  border-color: rgba(94, 234, 212, 0.3) !important;
+  background: linear-gradient(145deg, #0f766e, #0b4f61) !important;
+  box-shadow: inset 0 0 24px rgba(45, 212, 191, 0.12) !important;
+}
+
+html.dark .hero-orbit-stage .cube-front {
+  background: linear-gradient(145deg, #0d9488, #075985) !important;
+}
+
+html.dark .hero-orbit-stage .dashboard-head span {
+  background: #475569 !important;
+}
+
+html.dark .hero-orbit-stage .dashboard-bars i {
+  background: linear-gradient(to top, rgba(20, 184, 166, 0.38), #2dd4bf) !important;
+}
