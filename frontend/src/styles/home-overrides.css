@@ -4,9 +4,11 @@ footer a[href*='github.com'] {
 }
 
 /*
- * 首页深色模式：采用项目统一的 dark-950 / dark-900 风格。
- * 重点保持内容清晰，避免多层半透明、噪点和 backdrop-filter 叠加后
- * 产生类似整页遮罩的灰雾感。
+ * 首页深色模式
+ * - 延续项目原首页的深蓝黑 + teal 品牌色
+ * - 深色模式不再使用覆盖整页的独立背景层，避免 Chromium 在多层
+ *   mask / blur / transform 合成时出现类似半透明黑色遮罩的问题
+ * - 浅色主题仍使用 HomeView.vue 原有背景与动效
  */
 html.dark {
   color-scheme: dark;
@@ -19,71 +21,60 @@ html.dark #app {
 }
 
 html.dark .home-page {
-  isolation: isolate;
   opacity: 1 !important;
   filter: none !important;
+  isolation: auto !important;
   color: #e2e8f0 !important;
   background:
-    radial-gradient(circle at 82% 5%, rgba(8, 145, 178, 0.09), transparent 31%),
-    radial-gradient(circle at 9% 31%, rgba(13, 148, 136, 0.055), transparent 27%),
-    linear-gradient(180deg, #020617 0%, #07101f 50%, #020617 100%) !important;
+    radial-gradient(ellipse at 100% 0%, rgba(13, 148, 136, 0.14) 0%, rgba(13, 148, 136, 0.055) 22%, transparent 43%),
+    radial-gradient(ellipse at 0% 100%, rgba(8, 145, 178, 0.07) 0%, transparent 34%),
+    #020617 !important;
 }
 
-/* 防止未来样式在页面根节点叠加暗色遮罩。 */
+/*
+ * 深色模式直接关闭全页绝对定位装饰层。
+ * 网格、噪点、模糊光斑统一收进根背景，确保不存在任何层覆盖正文。
+ */
+html.dark .home-background {
+  display: none !important;
+}
+
 html.dark .home-page::before,
 html.dark .home-page::after {
-  opacity: 0 !important;
-  pointer-events: none !important;
+  display: none !important;
+  content: none !important;
 }
 
 html.dark .home-page > .home-header,
 html.dark .home-page > main,
 html.dark .home-page > .home-footer {
+  position: relative;
   opacity: 1 !important;
   filter: none !important;
   mix-blend-mode: normal !important;
 }
 
-html.dark .home-background {
+html.dark .home-page > main {
+  z-index: 1;
+}
+
+html.dark .home-page > .home-footer {
+  z-index: 1;
+}
+
+/* 避免首屏进入动画在浏览器切换主题或后台标签恢复时停留在低透明度。 */
+html.dark .hero-enter {
   opacity: 1 !important;
-  filter: none !important;
+  animation: none !important;
+  transform: none !important;
 }
 
-html.dark .home-grid {
-  opacity: 0.4 !important;
-  background-image:
-    linear-gradient(rgba(51, 65, 85, 0.22) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(51, 65, 85, 0.22) 1px, transparent 1px) !important;
-}
-
-/* 深色模式关闭噪点层，避免文字和图形看起来发灰、发虚。 */
-html.dark .home-noise {
-  display: none !important;
-}
-
-/* 背景光仅保留轻微层次，不覆盖正文。 */
-html.dark .home-glow {
-  filter: blur(76px) !important;
-  opacity: 0.2 !important;
-}
-
-html.dark .home-glow-one {
-  background: rgba(14, 165, 233, 0.12) !important;
-}
-
-html.dark .home-glow-two {
-  background: rgba(20, 184, 166, 0.09) !important;
-}
-
-html.dark .home-glow-three {
-  background: rgba(99, 102, 241, 0.07) !important;
-}
-
-/* 顶部导航使用清晰的实体深色底，不再叠加大范围毛玻璃。 */
+/* 顶部导航保持原项目清晰的深色实体风格。 */
 html.dark .home-header {
-  border-bottom-color: rgba(51, 65, 85, 0.72) !important;
+  z-index: 50;
+  border-bottom-color: rgba(51, 65, 85, 0.58) !important;
   background: rgba(2, 6, 23, 0.96) !important;
-  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.26) !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.24) !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
@@ -91,10 +82,10 @@ html.dark .home-header {
 html.dark .home-page-scrolled .home-header {
   border-bottom-color: #334155 !important;
   background: #020617 !important;
-  box-shadow: 0 15px 42px rgba(0, 0, 0, 0.4) !important;
+  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.4) !important;
 }
 
-/* 主要文字提高对比度。 */
+/* 文字沿用原首页深色模式对比度。 */
 html.dark .home-brand-name,
 html.dark .hero-title,
 html.dark .section-heading h2,
@@ -111,12 +102,15 @@ html.dark .footer-link-group strong {
 }
 
 html.dark .hero-title-gradient {
-  background-image: linear-gradient(105deg, #2dd4bf 8%, #67e8f9 55%, #60a5fa 96%) !important;
+  color: transparent !important;
+  background-image: linear-gradient(105deg, #2dd4bf 8%, #67e8f9 56%, #60a5fa 96%) !important;
+  background-clip: text !important;
+  -webkit-background-clip: text !important;
   filter: none !important;
 }
 
 html.dark .hero-subtitle {
-  color: #dbeafe !important;
+  color: #cbd5e1 !important;
 }
 
 html.dark .hero-description,
@@ -132,13 +126,13 @@ html.dark .footer-link-group button,
 html.dark .footer-bottom,
 html.dark .hero-trust,
 html.dark .capability-track span {
-  color: #a8b5c7 !important;
+  color: #94a3b8 !important;
 }
 
 html.dark .home-nav-link,
 html.dark .home-icon-button,
 html.dark .home-text-button {
-  color: #a8b5c7 !important;
+  color: #94a3b8 !important;
 }
 
 html.dark .home-nav-link:hover,
@@ -156,11 +150,11 @@ html.dark .ad-metrics strong {
 }
 
 html.dark .home-icon-button:hover {
-  border-color: rgba(45, 212, 191, 0.28) !important;
+  border-color: rgba(45, 212, 191, 0.22) !important;
   background: #1e293b !important;
 }
 
-/* 去除首页玻璃组件的模糊滤镜，使用实体深色卡片。 */
+/* 深色卡片使用实体 surface，不叠加整块 backdrop blur。 */
 html.dark .hero-eyebrow,
 html.dark .home-secondary-button,
 html.dark .quick-service-bar,
@@ -185,7 +179,7 @@ html.dark .home-secondary-button {
 }
 
 html.dark .home-secondary-button:hover {
-  border-color: rgba(45, 212, 191, 0.5) !important;
+  border-color: rgba(45, 212, 191, 0.42) !important;
   background: #1e293b !important;
 }
 
@@ -195,7 +189,7 @@ html.dark .service-card,
 html.dark .advantage-card,
 html.dark .process-card,
 html.dark .contact-panel {
-  border-color: #334155 !important;
+  border-color: #1e293b !important;
   background: #0f172a !important;
   box-shadow:
     0 18px 44px rgba(0, 0, 0, 0.3),
@@ -209,7 +203,7 @@ html.dark .service-card {
 html.dark .service-card:hover,
 html.dark .service-card:focus-visible,
 html.dark .advantage-card:hover {
-  border-color: rgba(45, 212, 191, 0.42) !important;
+  border-color: rgba(45, 212, 191, 0.36) !important;
   box-shadow: 0 25px 62px rgba(0, 0, 0, 0.44) !important;
 }
 
@@ -232,23 +226,23 @@ html.dark .solutions-section {
 }
 
 html.dark .capability-rail {
-  border-color: rgba(45, 212, 191, 0.16) !important;
+  border-color: rgba(45, 212, 191, 0.14) !important;
   background: #0b1424 !important;
 }
 
 html.dark .advertising-panel {
-  border-color: rgba(45, 212, 191, 0.3) !important;
+  border-color: rgba(45, 212, 191, 0.26) !important;
   background:
     radial-gradient(circle at 76% 35%, rgba(14, 165, 233, 0.09), transparent 31%),
     linear-gradient(125deg, #08202a 0%, #071424 52%, #0b1024 100%) !important;
   box-shadow:
     0 34px 88px rgba(0, 0, 0, 0.44),
-    0 0 50px rgba(20, 184, 166, 0.06) !important;
+    0 0 50px rgba(20, 184, 166, 0.055) !important;
 }
 
 html.dark .ad-copy p,
 html.dark .ad-metrics span {
-  color: #a8b5c7 !important;
+  color: #94a3b8 !important;
 }
 
 html.dark .ad-badge,
@@ -258,12 +252,12 @@ html.dark .ad-metrics {
 }
 
 html.dark .home-footer {
-  border-color: #334155 !important;
+  border-color: #1e293b !important;
   background: #020617 !important;
 }
 
 html.dark .footer-bottom {
-  border-color: rgba(51, 65, 85, 0.72) !important;
+  border-color: rgba(51, 65, 85, 0.68) !important;
 }
 
 html.dark .back-to-top {
@@ -273,33 +267,34 @@ html.dark .back-to-top {
   box-shadow: 0 14px 36px rgba(0, 0, 0, 0.42) !important;
 }
 
-/* 首页 3D 服务网络同样改为清晰的实体深色材质。 */
-html.dark .hero-orbit-stage,
-html.dark .hero-orbit-stage * {
-  filter: none;
+/* 3D 服务网络保持深色主题，但不使用会影响整页合成的 backdrop-filter。 */
+html.dark .hero-orbit-stage {
+  opacity: 1 !important;
+  filter: none !important;
 }
 
 html.dark .hero-orbit-stage .scene-shell {
-  border-color: #334155 !important;
+  opacity: 1 !important;
+  border-color: #1e293b !important;
   background:
-    radial-gradient(circle at 50% 48%, rgba(13, 148, 136, 0.16), transparent 27%),
-    radial-gradient(circle at 82% 10%, rgba(14, 165, 233, 0.09), transparent 32%),
-    linear-gradient(145deg, #0f172a, #020617) !important;
+    radial-gradient(circle at 50% 48%, rgba(13, 148, 136, 0.2), transparent 28%),
+    radial-gradient(circle at 82% 10%, rgba(14, 165, 233, 0.12), transparent 36%),
+    linear-gradient(145deg, #0f172a, #030a18) !important;
   box-shadow:
     0 30px 78px rgba(0, 0, 0, 0.48),
     inset 0 1px 0 rgba(255, 255, 255, 0.04),
-    0 0 44px rgba(13, 148, 136, 0.055) !important;
+    0 0 44px rgba(13, 148, 136, 0.06) !important;
 }
 
 html.dark .hero-orbit-stage .scene-grid {
   opacity: 0.34 !important;
   background-image:
-    linear-gradient(rgba(51, 65, 85, 0.34) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(51, 65, 85, 0.34) 1px, transparent 1px) !important;
+    linear-gradient(rgba(45, 212, 191, 0.065) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(45, 212, 191, 0.065) 1px, transparent 1px) !important;
 }
 
 html.dark .hero-orbit-stage .globe {
-  border-color: rgba(56, 189, 248, 0.3) !important;
+  border-color: rgba(56, 189, 248, 0.28) !important;
   background:
     radial-gradient(circle at 40% 36%, rgba(125, 211, 252, 0.16), transparent 14%),
     radial-gradient(circle, rgba(14, 165, 233, 0.13), transparent 68%) !important;
@@ -311,6 +306,7 @@ html.dark .hero-orbit-stage .globe {
 html.dark .hero-orbit-stage .service-float,
 html.dark .hero-orbit-stage .scene-dashboard,
 html.dark .hero-orbit-stage .scene-status {
+  opacity: 1 !important;
   border-color: #334155 !important;
   background: #0f172a !important;
   backdrop-filter: none !important;
@@ -327,7 +323,7 @@ html.dark .hero-orbit-stage .scene-status strong {
 
 html.dark .hero-orbit-stage .service-float small,
 html.dark .hero-orbit-stage .scene-status span {
-  color: #a8b5c7 !important;
+  color: #94a3b8 !important;
 }
 
 html.dark .hero-orbit-stage .cube-face {
