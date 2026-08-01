@@ -1,4 +1,5 @@
 import type { Router } from 'vue-router'
+import { mountHomeAdvertisingThree } from '@/utils/homeAdvertisingThree'
 import { mountHomeThreeBackground } from '@/utils/homeThreeBackground'
 
 const HOME_PATHS = new Set(['/', '/home'])
@@ -14,6 +15,7 @@ const enhancedElements = new WeakSet<HTMLElement>()
 let scanFrame = 0
 let activationFrame = 0
 let cleanupThreeBackground: (() => void) | null = null
+let cleanupAdvertisingThree: (() => void) | null = null
 
 function normalizePath(path: string): string {
   const normalized = path.replace(/\/+$/, '')
@@ -72,16 +74,19 @@ function deactivateHomeMotion(): void {
   window.cancelAnimationFrame(activationFrame)
   cleanupThreeBackground?.()
   cleanupThreeBackground = null
+  cleanupAdvertisingThree?.()
+  cleanupAdvertisingThree = null
 }
 
 function activateHomeMotion(): void {
   deactivateHomeMotion()
 
-  // Wait for the routed component and its background host to be committed.
+  // Wait for the routed component and its visual hosts to be committed.
   activationFrame = window.requestAnimationFrame(() => {
     activationFrame = window.requestAnimationFrame(() => {
       scanHomeMotionElements()
       cleanupThreeBackground = mountHomeThreeBackground()
+      cleanupAdvertisingThree = mountHomeAdvertisingThree()
     })
   })
 }
