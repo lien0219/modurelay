@@ -8,8 +8,11 @@ footer a[href*='github.com'] {
  * 层级约定：页面背景 < 内容面板 < 浮层卡片 < 重点文字和操作按钮。
  */
 html.dark {
+  opacity: 1 !important;
+  visibility: visible !important;
+  filter: none !important;
   color-scheme: dark;
-  background: #020617;
+  background: #020617 !important;
 }
 
 html.dark body,
@@ -56,14 +59,14 @@ html.dark .home-noise {
 
 html.dark .home-glow {
   display: block !important;
-  opacity: 0.2 !important;
-  filter: blur(96px) !important;
+  opacity: 0.28 !important;
+  filter: blur(92px) !important;
   mix-blend-mode: normal !important;
 }
 
-html.dark .home-glow-one { background: rgba(14, 165, 233, 0.17) !important; }
-html.dark .home-glow-two { background: rgba(20, 184, 166, 0.14) !important; }
-html.dark .home-glow-three { background: rgba(99, 102, 241, 0.1) !important; }
+html.dark .home-glow-one { background: rgba(14, 165, 233, 0.22) !important; }
+html.dark .home-glow-two { background: rgba(20, 184, 166, 0.19) !important; }
+html.dark .home-glow-three { background: rgba(99, 102, 241, 0.14) !important; }
 
 html.dark .home-page::before,
 html.dark .home-page::after {
@@ -111,9 +114,9 @@ html.dark .hero-enter {
 html.dark .home-header {
   z-index: 50;
   opacity: 1 !important;
-  border-bottom-color: transparent !important;
-  background: rgba(2, 6, 23, 0.76) !important;
-  box-shadow: none !important;
+  border-bottom-color: rgba(82, 111, 145, 0.28) !important;
+  background: rgba(7, 17, 34, 0.9) !important;
+  box-shadow: inset 0 -1px 0 rgba(125, 211, 252, 0.035) !important;
   backdrop-filter: blur(14px) saturate(120%) !important;
   -webkit-backdrop-filter: blur(14px) saturate(120%) !important;
   transition:
@@ -133,11 +136,11 @@ html.dark .home-brand-logo {
 }
 
 html.dark .home-page-scrolled .home-header {
-  border-bottom-color: rgba(74, 96, 126, 0.8) !important;
-  background: rgba(12, 25, 44, 0.98) !important;
+  border-bottom-color: rgba(94, 126, 162, 0.82) !important;
+  background: rgba(15, 31, 53, 0.98) !important;
   box-shadow:
-    0 18px 46px rgba(0, 0, 0, 0.46),
-    inset 0 -1px 0 rgba(94, 234, 212, 0.06) !important;
+    0 18px 46px rgba(0, 0, 0, 0.42),
+    inset 0 -1px 0 rgba(94, 234, 212, 0.1) !important;
   backdrop-filter: blur(20px) saturate(135%) !important;
   -webkit-backdrop-filter: blur(20px) saturate(135%) !important;
 }
@@ -230,7 +233,7 @@ html.dark .footer-link-group button,
 html.dark .footer-bottom,
 html.dark .hero-trust,
 html.dark .capability-track span {
-  color: #b8c6d9 !important;
+  color: #c5d2e2 !important;
 }
 
 html.dark .hero-eyebrow,
@@ -261,11 +264,13 @@ html.dark .home-secondary-button:hover {
 
 /* 面板层：相较 #020617 背景提高两个亮度层级。 */
 html.dark .quick-service-bar {
-  border-color: #304765 !important;
-  background: #0f2037 !important;
+  border-color: #46617f !important;
+  background:
+    linear-gradient(180deg, rgba(28, 54, 83, 0.98), rgba(15, 34, 58, 0.98)) !important;
   box-shadow:
-    0 20px 48px rgba(0, 0, 0, 0.36),
-    inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+    0 20px 48px rgba(0, 0, 0, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.11),
+    0 0 30px rgba(45, 212, 191, 0.055) !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
@@ -289,19 +294,23 @@ html.dark .advantage-card,
 html.dark .process-card,
 html.dark .contact-panel {
   opacity: 1 !important;
-  border-color: #314966 !important;
-  background: #102139 !important;
+  border-color: #42607f !important;
+  background:
+    radial-gradient(circle at 92% 0%, rgba(56, 189, 248, 0.075), transparent 34%),
+    linear-gradient(155deg, #172f4d, #102139) !important;
   box-shadow:
-    0 22px 54px rgba(0, 0, 0, 0.38),
-    inset 0 1px 0 rgba(255, 255, 255, 0.065) !important;
+    0 22px 54px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.115),
+    inset 1px 0 0 rgba(94, 234, 212, 0.025),
+    0 0 34px rgba(45, 212, 191, 0.035) !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
 
 html.dark .service-card {
   background:
-    radial-gradient(circle at 86% 8%, rgba(20, 184, 166, 0.1), transparent 35%),
-    linear-gradient(155deg, #132944, #0d1c31) !important;
+    radial-gradient(circle at 86% 8%, rgba(45, 212, 191, 0.14), transparent 36%),
+    linear-gradient(155deg, #1a3554, #102139) !important;
 }
 
 html.dark .service-card:hover,
@@ -322,7 +331,17 @@ html.dark .process-step-number,
 html.dark .process-step-icon,
 html.dark .ad-badge,
 html.dark .ad-metrics strong {
-  color: #8cf7e3 !important;
+  color: #9af9e8 !important;
+}
+
+html.dark .service-icon-wrap,
+html.dark .advantage-icon,
+html.dark .process-step-icon {
+  border-color: rgba(94, 234, 212, 0.28) !important;
+  background: linear-gradient(145deg, rgba(45, 212, 191, 0.2), rgba(14, 165, 233, 0.09)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.09),
+    0 10px 26px rgba(20, 184, 166, 0.1) !important;
 }
 
 html.dark .solutions-section {
@@ -330,36 +349,44 @@ html.dark .solutions-section {
 }
 
 html.dark .capability-rail {
-  border-color: rgba(94, 234, 212, 0.22) !important;
-  background: #0d1d32 !important;
+  border-color: rgba(94, 234, 212, 0.3) !important;
+  background: linear-gradient(90deg, #10243d, #122c45, #10243d) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.055),
+    inset 0 -1px 0 rgba(45, 212, 191, 0.035) !important;
 }
 
 html.dark .advertising-panel {
-  border-color: rgba(94, 234, 212, 0.38) !important;
+  border-color: rgba(94, 234, 212, 0.5) !important;
   background:
-    radial-gradient(circle at 76% 35%, rgba(14, 165, 233, 0.17), transparent 31%),
-    linear-gradient(125deg, #0d303b 0%, #0d2035 52%, #121b37 100%) !important;
+    radial-gradient(circle at 76% 35%, rgba(14, 165, 233, 0.23), transparent 33%),
+    radial-gradient(circle at 18% 0%, rgba(45, 212, 191, 0.1), transparent 34%),
+    linear-gradient(125deg, #123c49 0%, #112941 52%, #182344 100%) !important;
   box-shadow:
-    0 38px 94px rgba(0, 0, 0, 0.48),
-    0 0 60px rgba(20, 184, 166, 0.09) !important;
+    0 38px 94px rgba(0, 0, 0, 0.44),
+    inset 0 1px 0 rgba(255, 255, 255, 0.11),
+    0 0 68px rgba(20, 184, 166, 0.12) !important;
 }
 
 html.dark .ad-badge,
 html.dark .ad-metrics {
-  border-color: #3a506d !important;
-  background: #13263f !important;
+  border-color: #4b6683 !important;
+  background: #19304c !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
 
 html.dark .ad-copy p,
 html.dark .ad-metrics span {
-  color: #bdcadb !important;
+  color: #cfdae8 !important;
 }
 
 html.dark .home-footer {
-  border-color: #2e435e !important;
-  background: #081325 !important;
+  border-color: #38516e !important;
+  background:
+    radial-gradient(circle at 16% 0%, rgba(20, 184, 166, 0.055), transparent 30%),
+    #0b192d !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045) !important;
 }
 
 html.dark .footer-bottom {
@@ -385,32 +412,15 @@ html.dark .hero-orbit-stage {
 
 html.dark .hero-orbit-stage .scene-shell {
   opacity: 1 !important;
-  border-color: #324b68 !important;
+  border-color: #486784 !important;
   background:
-    radial-gradient(circle at 50% 48%, rgba(13, 148, 136, 0.29), transparent 29%),
-    radial-gradient(circle at 82% 10%, rgba(14, 165, 233, 0.2), transparent 37%),
-    linear-gradient(145deg, #132b47, #0b1a2d) !important;
+    radial-gradient(circle at 50% 48%, rgba(13, 148, 136, 0.34), transparent 31%),
+    radial-gradient(circle at 82% 10%, rgba(14, 165, 233, 0.25), transparent 39%),
+    linear-gradient(145deg, #183553, #0e2037) !important;
   box-shadow:
-    0 36px 90px rgba(0, 0, 0, 0.52),
-    inset 0 1px 0 rgba(255, 255, 255, 0.075),
-    0 0 58px rgba(13, 148, 136, 0.11) !important;
-}
-
-html.dark .hero-orbit-stage .scene-grid {
-  opacity: 0.46 !important;
-  background-image:
-    linear-gradient(rgba(94, 234, 212, 0.09) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(94, 234, 212, 0.09) 1px, transparent 1px) !important;
-}
-
-html.dark .hero-orbit-stage .globe {
-  border-color: rgba(56, 189, 248, 0.46) !important;
-  background:
-    radial-gradient(circle at 40% 36%, rgba(125, 211, 252, 0.24), transparent 14%),
-    radial-gradient(circle, rgba(14, 165, 233, 0.2), transparent 68%) !important;
-  box-shadow:
-    inset 0 0 64px rgba(14, 165, 233, 0.18),
-    0 0 66px rgba(14, 165, 233, 0.17) !important;
+    0 36px 90px rgba(0, 0, 0, 0.48),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 0 68px rgba(13, 148, 136, 0.14) !important;
 }
 
 html.dark .hero-orbit-stage .service-float,
@@ -434,18 +444,6 @@ html.dark .hero-orbit-stage .scene-status strong {
 html.dark .hero-orbit-stage .service-float small,
 html.dark .hero-orbit-stage .scene-status span {
   color: #c4d0df !important;
-}
-
-html.dark .hero-orbit-stage .cube-face {
-  border-color: rgba(153, 246, 228, 0.68) !important;
-  background: linear-gradient(145deg, #10a294, #08738b) !important;
-  box-shadow:
-    inset 0 0 26px rgba(153, 246, 228, 0.16),
-    0 0 34px rgba(45, 212, 191, 0.26) !important;
-}
-
-html.dark .hero-orbit-stage .cube-front {
-  background: linear-gradient(145deg, #14b8a6, #0b85a8) !important;
 }
 
 html.dark .hero-orbit-stage .dashboard-head span {

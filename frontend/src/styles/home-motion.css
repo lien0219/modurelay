@@ -69,17 +69,22 @@ html.dark .advantage-card.home-motion-card::after,
 html.dark .process-card.home-motion-card::after,
 html.dark .advertising-panel.home-motion-card::after,
 html.dark .contact-panel.home-motion-card::after {
+  opacity: 0.34;
   background:
     radial-gradient(
-      circle 190px at var(--motion-shine-x) var(--motion-shine-y),
-      rgba(94, 234, 212, 0.13),
-      rgba(56, 189, 248, 0.055) 38%,
-      transparent 72%
+      circle 210px at var(--motion-shine-x) var(--motion-shine-y),
+      rgba(153, 246, 228, 0.18),
+      rgba(56, 189, 248, 0.075) 38%,
+      transparent 74%
     );
 }
 
 .home-motion-card.is-pointer-active::after {
   opacity: 1;
+}
+
+html.dark .home-motion-card.is-pointer-active::after {
+  opacity: 0.92;
 }
 
 .home-motion-card > * {
@@ -575,6 +580,17 @@ html.dark .hero-orbit-stage .service-float:hover {
 
   .home-motion-card.reveal-on-scroll:not(.is-visible) {
     transform: translateY(32px);
+  }
+
+  html.dark .home-motion-card::after {
+    opacity: 0.42;
+    background:
+      radial-gradient(
+        circle 240px at 82% 8%,
+        rgba(153, 246, 228, 0.16),
+        rgba(56, 189, 248, 0.07) 40%,
+        transparent 76%
+      );
   }
 }
 

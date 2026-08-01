@@ -208,14 +208,14 @@ async function initializeScene(stage: HTMLElement, host: HTMLElement): Promise<(
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.8))
   renderer.outputColorSpace = THREE.SRGBColorSpace
   renderer.toneMapping = THREE.ACESFilmicToneMapping
-  renderer.toneMappingExposure = isDarkTheme() ? 1.2 : 1.04
+  renderer.toneMappingExposure = isDarkTheme() ? 1.34 : 1.04
   renderer.setClearColor(0x000000, 0)
   renderer.domElement.className = 'three-hero-canvas'
   renderer.domElement.setAttribute('aria-hidden', 'true')
   host.appendChild(renderer.domElement)
 
   const scene = new THREE.Scene()
-  scene.fog = new THREE.FogExp2(isDarkTheme() ? 0x030914 : 0xecfdfb, isDarkTheme() ? 0.046 : 0.028)
+  scene.fog = new THREE.FogExp2(isDarkTheme() ? 0x030914 : 0xecfdfb, isDarkTheme() ? 0.036 : 0.028)
 
   const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 80)
   camera.position.set(0, 0.65, 10.6)
@@ -227,10 +227,10 @@ async function initializeScene(stage: HTMLElement, host: HTMLElement): Promise<(
   scene.add(world)
   world.add(coreGroup, orbitGroup, trailGroup)
 
-  const ambientLight = new THREE.HemisphereLight(0xd5fffb, 0x071426, isDarkTheme() ? 1.25 : 1.65)
+  const ambientLight = new THREE.HemisphereLight(0xd5fffb, 0x071426, isDarkTheme() ? 1.55 : 1.65)
   scene.add(ambientLight)
 
-  const keyLight = new THREE.DirectionalLight(0xffffff, isDarkTheme() ? 2.35 : 3)
+  const keyLight = new THREE.DirectionalLight(0xffffff, isDarkTheme() ? 2.75 : 3)
   keyLight.position.set(4, 6, 7)
   scene.add(keyLight)
 
@@ -256,7 +256,7 @@ async function initializeScene(stage: HTMLElement, host: HTMLElement): Promise<(
     map: brandTexture.texture,
     emissiveMap: brandTexture.texture,
     emissive: isDarkTheme() ? 0x063c44 : 0x032f35,
-    emissiveIntensity: isDarkTheme() ? 0.48 : 0.18,
+    emissiveIntensity: isDarkTheme() ? 0.62 : 0.18,
     metalness: 0.5,
     roughness: 0.26,
     clearcoat: 1,
@@ -415,15 +415,15 @@ async function initializeScene(stage: HTMLElement, host: HTMLElement): Promise<(
   world.add(shards)
 
   const updateTheme = (dark: boolean) => {
-    renderer.toneMappingExposure = dark ? 1.2 : 1.04
+    renderer.toneMappingExposure = dark ? 1.34 : 1.04
     scene.fog.color.setHex(dark ? 0x030914 : 0xecfdfb)
-    scene.fog.density = dark ? 0.046 : 0.028
-    ambientLight.intensity = dark ? 1.25 : 1.65
-    keyLight.intensity = dark ? 2.35 : 3
+    scene.fog.density = dark ? 0.036 : 0.028
+    ambientLight.intensity = dark ? 1.55 : 1.65
+    keyLight.intensity = dark ? 2.75 : 3
     brandTexture.redraw(dark)
     cubeMaterials.forEach((material: any) => {
       material.emissive.setHex(dark ? 0x063c44 : 0x032f35)
-      material.emissiveIntensity = dark ? 0.48 : 0.18
+      material.emissiveIntensity = dark ? 0.62 : 0.18
       material.needsUpdate = true
     })
     edgeMaterial.color.setHex(dark ? 0x99f6e4 : 0x0f766e)

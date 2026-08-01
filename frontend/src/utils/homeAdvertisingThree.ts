@@ -247,7 +247,7 @@ async function initializeScene(panel: HTMLElement, visual: HTMLElement): Promise
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.7))
   renderer.outputColorSpace = THREE.SRGBColorSpace
   renderer.toneMapping = THREE.ACESFilmicToneMapping
-  renderer.toneMappingExposure = isDarkTheme() ? 1.24 : 1.08
+  renderer.toneMappingExposure = isDarkTheme() ? 1.36 : 1.08
   renderer.setClearColor(0x000000, 0)
 
   const scene = new THREE.Scene()
@@ -262,8 +262,8 @@ async function initializeScene(panel: HTMLElement, visual: HTMLElement): Promise
   scene.add(world)
   world.add(plateGroup, ringGroup, nodeGroup, flowGroup)
 
-  const ambientLight = new THREE.HemisphereLight(0xd8fffb, 0x071426, isDarkTheme() ? 1.5 : 1.8)
-  const keyLight = new THREE.DirectionalLight(0xffffff, isDarkTheme() ? 3.4 : 3.8)
+  const ambientLight = new THREE.HemisphereLight(0xd8fffb, 0x071426, isDarkTheme() ? 1.72 : 1.8)
+  const keyLight = new THREE.DirectionalLight(0xffffff, isDarkTheme() ? 3.65 : 3.8)
   keyLight.position.set(4.5, 6.5, 7)
   const tealLight = new THREE.PointLight(0x2dd4bf, 42, 20, 2)
   tealLight.position.set(-4, 2.4, 4)
@@ -279,7 +279,7 @@ async function initializeScene(panel: HTMLElement, visual: HTMLElement): Promise
   const sideMaterial = new THREE.MeshPhysicalMaterial({
     color: isDarkTheme() ? 0x062b38 : 0x0e7490,
     emissive: isDarkTheme() ? 0x063f47 : 0x064e5b,
-    emissiveIntensity: isDarkTheme() ? 0.72 : 0.28,
+    emissiveIntensity: isDarkTheme() ? 0.84 : 0.28,
     metalness: 0.82,
     roughness: 0.18,
     clearcoat: 1,
@@ -289,7 +289,7 @@ async function initializeScene(panel: HTMLElement, visual: HTMLElement): Promise
     map: adTexture.texture,
     emissiveMap: adTexture.texture,
     emissive: isDarkTheme() ? 0x073b49 : 0x063a45,
-    emissiveIntensity: isDarkTheme() ? 0.56 : 0.24,
+    emissiveIntensity: isDarkTheme() ? 0.68 : 0.24,
     metalness: 0.38,
     roughness: 0.22,
     clearcoat: 1,
@@ -468,15 +468,15 @@ async function initializeScene(panel: HTMLElement, visual: HTMLElement): Promise
   world.add(pointField)
 
   const updateTheme = (dark: boolean) => {
-    renderer.toneMappingExposure = dark ? 1.24 : 1.08
-    ambientLight.intensity = dark ? 1.5 : 1.8
-    keyLight.intensity = dark ? 3.4 : 3.8
+    renderer.toneMappingExposure = dark ? 1.36 : 1.08
+    ambientLight.intensity = dark ? 1.72 : 1.8
+    keyLight.intensity = dark ? 3.65 : 3.8
     adTexture.redraw(dark)
     sideMaterial.color.setHex(dark ? 0x062b38 : 0x0e7490)
     sideMaterial.emissive.setHex(dark ? 0x063f47 : 0x064e5b)
-    sideMaterial.emissiveIntensity = dark ? 0.72 : 0.28
+    sideMaterial.emissiveIntensity = dark ? 0.84 : 0.28
     faceMaterial.emissive.setHex(dark ? 0x073b49 : 0x063a45)
-    faceMaterial.emissiveIntensity = dark ? 0.56 : 0.24
+    faceMaterial.emissiveIntensity = dark ? 0.68 : 0.24
     edgeMaterial.color.setHex(dark ? 0x99f6e4 : 0xffffff)
     edgeMaterial.opacity = dark ? 0.92 : 0.66
     frameMaterial.color.setHex(dark ? 0x22d3ee : 0x0891b2)
