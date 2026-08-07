@@ -42,10 +42,12 @@ type RecordUsageInput struct {
 	User               *User
 	Account            *Account
 	Subscription       *UserSubscription  // 可选：订阅信息
+	PricingAt          time.Time          // token 售价固定时刻；零值保持既有的记录时刻语义
 	InboundEndpoint    string             // 入站端点（客户端请求路径）
 	UpstreamEndpoint   string             // 上游端点（标准化后的上游路径）
 	UserAgent          string             // 请求的 User-Agent
 	IPAddress          string             // 请求的客户端 IP 地址
+	SessionID          string             // 客户端显式会话标识（session_id / X-Session-Id 等请求头），仅用于用量行会话关联
 	RequestPayloadHash string             // 请求体语义哈希，用于降低 request_id 误复用时的静默误去重风险
 	ForceCacheBilling  bool               // 强制缓存计费：将 input_tokens 转为 cache_read 计费（用于粘性会话切换）
 	APIKeyService      APIKeyQuotaUpdater // 可选：用于更新API Key配额
@@ -568,10 +570,12 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 		User:               input.User,
 		Account:            input.Account,
 		Subscription:       input.Subscription,
+		PricingAt:          input.PricingAt,
 		InboundEndpoint:    input.InboundEndpoint,
 		UpstreamEndpoint:   input.UpstreamEndpoint,
 		UserAgent:          input.UserAgent,
 		IPAddress:          input.IPAddress,
+		SessionID:          input.SessionID,
 		RequestPayloadHash: input.RequestPayloadHash,
 		ForceCacheBilling:  input.ForceCacheBilling,
 		APIKeyService:      input.APIKeyService,
@@ -587,10 +591,12 @@ type RecordUsageLongContextInput struct {
 	User                  *User
 	Account               *Account
 	Subscription          *UserSubscription  // 可选：订阅信息
+	PricingAt             time.Time          // token 售价固定时刻；零值保持既有的记录时刻语义
 	InboundEndpoint       string             // 入站端点（客户端请求路径）
 	UpstreamEndpoint      string             // 上游端点（标准化后的上游路径）
 	UserAgent             string             // 请求的 User-Agent
 	IPAddress             string             // 请求的客户端 IP 地址
+	SessionID             string             // 客户端显式会话标识（session_id / X-Session-Id 等请求头），仅用于用量行会话关联
 	RequestPayloadHash    string             // 请求体语义哈希，用于降低 request_id 误复用时的静默误去重风险
 	LongContextThreshold  int                // 长上下文阈值（如 200000）
 	LongContextMultiplier float64            // 超出阈值部分的倍率（如 2.0）
@@ -609,10 +615,12 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 		User:               input.User,
 		Account:            input.Account,
 		Subscription:       input.Subscription,
+		PricingAt:          input.PricingAt,
 		InboundEndpoint:    input.InboundEndpoint,
 		UpstreamEndpoint:   input.UpstreamEndpoint,
 		UserAgent:          input.UserAgent,
 		IPAddress:          input.IPAddress,
+		SessionID:          input.SessionID,
 		RequestPayloadHash: input.RequestPayloadHash,
 		ForceCacheBilling:  input.ForceCacheBilling,
 		APIKeyService:      input.APIKeyService,
@@ -631,10 +639,12 @@ type recordUsageCoreInput struct {
 	User               *User
 	Account            *Account
 	Subscription       *UserSubscription
+	PricingAt          time.Time
 	InboundEndpoint    string
 	UpstreamEndpoint   string
 	UserAgent          string
 	IPAddress          string
+	SessionID          string
 	RequestPayloadHash string
 	ForceCacheBilling  bool
 	APIKeyService      APIKeyQuotaUpdater
@@ -680,7 +690,11 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	}
 	// token 倍率叠加高峰因子（token 计费含图片 token，图片按次倍率不受影响）。高峰因子按请求时刻现算，
 	// 不并入上面的 getUserGroupRateMultiplier，以免污染 user:group 倍率缓存。
-	multiplier, imageMultiplier := computePeakAwareMultipliers(apiKey, multiplier, timezone.Now())
+	pricingAt := input.PricingAt
+	if pricingAt.IsZero() {
+		pricingAt = timezone.Now()
+	}
+	multiplier, imageMultiplier := computePeakAwareMultipliers(apiKey, multiplier, pricingAt)
 
 	// 确定计费模型
 	concreteBillingModel := forwardResultBillingModel(result.Model, result.UpstreamModel)
@@ -772,6 +786,8 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	}, s.billingDeps(), s.usageBillingRepo)
 
 	if billingErr != nil {
+		usageLog.ActualCost = 0
+		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
 		return billingErr
 	}
 	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
@@ -981,7 +997,7 @@ func (s *GatewayService) buildRecordUsageLog(
 		RequestID:             requestID,
 		Model:                 result.Model,
 		RequestedModel:        requestedModel,
-		UpstreamModel:         optionalNonEqualStringPtr(result.UpstreamModel, result.Model),
+		UpstreamModel:         optionalTrimmedStringPtr(result.UpstreamModel),
 		ReasoningEffort:       result.ReasoningEffort,
 		InboundEndpoint:       optionalTrimmedStringPtr(input.InboundEndpoint),
 		UpstreamEndpoint:      optionalTrimmedStringPtr(input.UpstreamEndpoint),
@@ -1010,6 +1026,7 @@ func (s *GatewayService) buildRecordUsageLog(
 		ModelMappingChain:     optionalTrimmedStringPtr(input.ModelMappingChain),
 		UserAgent:             optionalTrimmedStringPtr(input.UserAgent),
 		IPAddress:             optionalTrimmedStringPtr(input.IPAddress),
+		SessionID:             optionalTrimmedStringPtr(input.SessionID),
 		GroupID:               apiKey.GroupID,
 		SubscriptionID:        optionalSubscriptionID(subscription),
 		CreatedAt:             time.Now(),

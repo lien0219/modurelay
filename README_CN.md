@@ -266,6 +266,7 @@ underscores_in_headers on;
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | 自动初始化场景下的管理员账号 |
 | `JWT_SECRET` | JWT 签名密钥 |
 | `TOTP_ENCRYPTION_KEY` | 可选 TOTP 加密密钥 |
+| `XAI_GROK_CLI_VERSION` | 可选的 Grok CLI 客户端标识覆盖；最低接受版本为 `0.2.114` |
 | `TZ` | 时区 |
 
 当前代码尚未实现 `MODURELAY_` 环境变量前缀。兼容性标识说明见 [BRANDING.md](BRANDING.md)。

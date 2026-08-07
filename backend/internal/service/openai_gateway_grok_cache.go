@@ -104,7 +104,7 @@ func resolveGrokCacheIdentity(c *gin.Context, body []byte, explicitKey, upstream
 func explicitGrokCacheSeed(c *gin.Context, body []byte, explicitKey string) string {
 	// Claude Code session is the most stable multi-turn identity for
 	// /v1/messages → Grok bridges. Prefer it over generic session headers so
-	// prompt cache routing matches CPA behavior.
+	// prompt cache routing follows the gateway's existing cache affinity rules.
 	seed := extractClaudeCodeSessionID(c, body)
 	if seed == "" {
 		seed = explicitOpenAIHeaderSessionID(c)
@@ -124,6 +124,11 @@ func explicitGrokCacheSeed(c *gin.Context, body []byte, explicitKey string) stri
 func isGrokRequestContext(c *gin.Context) bool {
 	if c == nil {
 		return false
+	}
+	if c.Request != nil {
+		if platform, ok := ResolvedTargetPlatformFromContext(c.Request.Context()); ok {
+			return platform == PlatformGrok
+		}
 	}
 	v, exists := c.Get("api_key")
 	if !exists {

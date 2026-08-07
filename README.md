@@ -266,6 +266,7 @@ Copy `deploy/.env.example` or start from `deploy/config.example.yaml`. Do not co
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Initial admin credentials for auto-setup flows |
 | `JWT_SECRET` | JWT signing secret |
 | `TOTP_ENCRYPTION_KEY` | Optional TOTP encryption key |
+| `XAI_GROK_CLI_VERSION` | Optional Grok CLI identity override; `0.2.114` is the minimum accepted version |
 | `TZ` | Timezone |
 
 There is no `MODURELAY_` environment prefix in the current codebase. Legacy deployment identifiers remain documented in [BRANDING.md](BRANDING.md).
