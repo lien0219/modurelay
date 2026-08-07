@@ -259,6 +259,7 @@ underscores_in_headers on;
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | 自動セットアップ時の管理者 |
 | `JWT_SECRET` | JWT 署名秘密鍵 |
 | `TOTP_ENCRYPTION_KEY` | 任意の TOTP 暗号化鍵 |
+| `XAI_GROK_CLI_VERSION` | 任意の Grok CLI クライアント識別子。受け入れ可能な最低バージョンは `0.2.114` |
 | `TZ` | タイムゾーン |
 
 現時点で `MODURELAY_` プレフィックスの環境変数は未実装です。[BRANDING.md](BRANDING.md) を参照。
