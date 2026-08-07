@@ -1,7 +1,10 @@
 <template>
   <BulkActionBar :show="true" :selected-count="selectedIds.length">
     <template #meta>
-      <span v-if="selectedIds.length > 0" class="text-sm font-medium text-primary-900 dark:text-primary-100">
+      <span v-if="allResultsSelected" class="text-sm font-medium text-primary-900 dark:text-primary-100">
+        {{ t('admin.accounts.bulkActions.selectedAll', { count: selectedIds.length }) }}
+      </span>
+      <span v-else-if="selectedIds.length > 0" class="text-sm font-medium text-primary-900 dark:text-primary-100">
         {{ t('admin.accounts.bulkActions.selected', { count: selectedIds.length }) }}
       </span>
       <span v-else class="text-sm font-medium text-primary-900 dark:text-primary-100">
@@ -15,6 +18,23 @@
         >
           {{ t('admin.accounts.bulkActions.selectCurrentPage') }}
         </button>
+      </template>
+      <template v-if="!allResultsSelected && totalResults > selectedIds.length">
+        <span v-if="selectedIds.length > 0" class="text-gray-300 dark:text-primary-800">•</span>
+        <button
+          type="button"
+          :disabled="selectingAll"
+          @click="$emit('select-all-results')"
+          class="text-xs font-medium text-primary-700 hover:text-primary-800 disabled:cursor-not-allowed disabled:opacity-60 dark:text-primary-300 dark:hover:text-primary-200"
+        >
+          {{
+            selectingAll
+              ? t('admin.accounts.bulkActions.selectingAll')
+              : t('admin.accounts.bulkActions.selectAllResults', { count: totalResults })
+          }}
+        </button>
+      </template>
+      <template v-if="selectedIds.length > 0">
         <span class="text-gray-300 dark:text-primary-800">•</span>
         <button
           type="button"
@@ -61,13 +81,18 @@ import BulkActionBar from '@/components/common/BulkActionBar.vue'
 
 defineProps<{
   selectedIds: Array<string | number>
+  totalResults: number
+  selectingAll: boolean
+  allResultsSelected: boolean
 }>()
+
 defineEmits([
   'delete',
   'edit-selected',
   'edit-filtered',
   'clear',
   'select-page',
+  'select-all-results',
   'toggle-schedulable',
   'reset-status',
   'refresh-token',
