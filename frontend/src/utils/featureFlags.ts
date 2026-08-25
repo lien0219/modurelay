@@ -114,6 +114,11 @@ export const FeatureFlags = {
     mode: 'opt-out',
     label: 'Payment',
   }),
+  rechargeCenter: defineFlag({
+    key: 'purchase_subscription_enabled',
+    mode: 'opt-in',
+    label: 'Recharge Center',
+  }),
   riskControl: defineFlag({
     key: 'risk_control_enabled',
     mode: 'opt-in',
@@ -123,6 +128,11 @@ export const FeatureFlags = {
     key: 'affiliate_enabled',
     mode: 'opt-in',
     label: 'Affiliate',
+  }),
+  resourceCenter: defineFlag({
+    key: 'resource_center_enabled',
+    mode: 'opt-out',
+    label: 'Resource Center',
   }),
 } as const
 

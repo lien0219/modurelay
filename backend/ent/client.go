@@ -42,6 +42,11 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/promocodeusage"
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
+	"github.com/Wei-Shaw/sub2api/ent/resourcecategory"
+	"github.com/Wei-Shaw/sub2api/ent/resourcecomment"
+	"github.com/Wei-Shaw/sub2api/ent/resourcelike"
+	"github.com/Wei-Shaw/sub2api/ent/resourcenotification"
+	"github.com/Wei-Shaw/sub2api/ent/resourcepost"
 	"github.com/Wei-Shaw/sub2api/ent/securitysecret"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
 	"github.com/Wei-Shaw/sub2api/ent/subscriptionplan"
@@ -117,6 +122,16 @@ type Client struct {
 	Proxy *ProxyClient
 	// RedeemCode is the client for interacting with the RedeemCode builders.
 	RedeemCode *RedeemCodeClient
+	// ResourceCategory is the client for interacting with the ResourceCategory builders.
+	ResourceCategory *ResourceCategoryClient
+	// ResourceComment is the client for interacting with the ResourceComment builders.
+	ResourceComment *ResourceCommentClient
+	// ResourceLike is the client for interacting with the ResourceLike builders.
+	ResourceLike *ResourceLikeClient
+	// ResourceNotification is the client for interacting with the ResourceNotification builders.
+	ResourceNotification *ResourceNotificationClient
+	// ResourcePost is the client for interacting with the ResourcePost builders.
+	ResourcePost *ResourcePostClient
 	// SecuritySecret is the client for interacting with the SecuritySecret builders.
 	SecuritySecret *SecuritySecretClient
 	// Setting is the client for interacting with the Setting builders.
@@ -179,6 +194,11 @@ func (c *Client) init() {
 	c.PromoCodeUsage = NewPromoCodeUsageClient(c.config)
 	c.Proxy = NewProxyClient(c.config)
 	c.RedeemCode = NewRedeemCodeClient(c.config)
+	c.ResourceCategory = NewResourceCategoryClient(c.config)
+	c.ResourceComment = NewResourceCommentClient(c.config)
+	c.ResourceLike = NewResourceLikeClient(c.config)
+	c.ResourceNotification = NewResourceNotificationClient(c.config)
+	c.ResourcePost = NewResourcePostClient(c.config)
 	c.SecuritySecret = NewSecuritySecretClient(c.config)
 	c.Setting = NewSettingClient(c.config)
 	c.SubscriptionPlan = NewSubscriptionPlanClient(c.config)
@@ -310,6 +330,11 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		PromoCodeUsage:                NewPromoCodeUsageClient(cfg),
 		Proxy:                         NewProxyClient(cfg),
 		RedeemCode:                    NewRedeemCodeClient(cfg),
+		ResourceCategory:              NewResourceCategoryClient(cfg),
+		ResourceComment:               NewResourceCommentClient(cfg),
+		ResourceLike:                  NewResourceLikeClient(cfg),
+		ResourceNotification:          NewResourceNotificationClient(cfg),
+		ResourcePost:                  NewResourcePostClient(cfg),
 		SecuritySecret:                NewSecuritySecretClient(cfg),
 		Setting:                       NewSettingClient(cfg),
 		SubscriptionPlan:              NewSubscriptionPlanClient(cfg),
@@ -368,6 +393,11 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		PromoCodeUsage:                NewPromoCodeUsageClient(cfg),
 		Proxy:                         NewProxyClient(cfg),
 		RedeemCode:                    NewRedeemCodeClient(cfg),
+		ResourceCategory:              NewResourceCategoryClient(cfg),
+		ResourceComment:               NewResourceCommentClient(cfg),
+		ResourceLike:                  NewResourceLikeClient(cfg),
+		ResourceNotification:          NewResourceNotificationClient(cfg),
+		ResourcePost:                  NewResourcePostClient(cfg),
 		SecuritySecret:                NewSecuritySecretClient(cfg),
 		Setting:                       NewSettingClient(cfg),
 		SubscriptionPlan:              NewSubscriptionPlanClient(cfg),
@@ -416,9 +446,10 @@ func (c *Client) Use(hooks ...Hook) {
 		c.CompositeModelRoute, c.ErrorPassthroughRule, c.Group, c.IdempotencyRecord,
 		c.IdentityAdoptionDecision, c.PaymentAuditLog, c.PaymentOrder,
 		c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode, c.PromoCodeUsage,
-		c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting, c.SubscriptionPlan,
-		c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog, c.User,
-		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
+		c.Proxy, c.RedeemCode, c.ResourceCategory, c.ResourceComment, c.ResourceLike,
+		c.ResourceNotification, c.ResourcePost, c.SecuritySecret, c.Setting,
+		c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
+		c.User, c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
 		c.UserPlatformQuota, c.UserSubscription,
 	} {
 		n.Use(hooks...)
@@ -436,9 +467,10 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.CompositeModelRoute, c.ErrorPassthroughRule, c.Group, c.IdempotencyRecord,
 		c.IdentityAdoptionDecision, c.PaymentAuditLog, c.PaymentOrder,
 		c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode, c.PromoCodeUsage,
-		c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting, c.SubscriptionPlan,
-		c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog, c.User,
-		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
+		c.Proxy, c.RedeemCode, c.ResourceCategory, c.ResourceComment, c.ResourceLike,
+		c.ResourceNotification, c.ResourcePost, c.SecuritySecret, c.Setting,
+		c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
+		c.User, c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
 		c.UserPlatformQuota, c.UserSubscription,
 	} {
 		n.Intercept(interceptors...)
@@ -502,6 +534,16 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Proxy.mutate(ctx, m)
 	case *RedeemCodeMutation:
 		return c.RedeemCode.mutate(ctx, m)
+	case *ResourceCategoryMutation:
+		return c.ResourceCategory.mutate(ctx, m)
+	case *ResourceCommentMutation:
+		return c.ResourceComment.mutate(ctx, m)
+	case *ResourceLikeMutation:
+		return c.ResourceLike.mutate(ctx, m)
+	case *ResourceNotificationMutation:
+		return c.ResourceNotification.mutate(ctx, m)
+	case *ResourcePostMutation:
+		return c.ResourcePost.mutate(ctx, m)
 	case *SecuritySecretMutation:
 		return c.SecuritySecret.mutate(ctx, m)
 	case *SettingMutation:
@@ -4803,6 +4845,671 @@ func (c *RedeemCodeClient) mutate(ctx context.Context, m *RedeemCodeMutation) (V
 	}
 }
 
+// ResourceCategoryClient is a client for the ResourceCategory schema.
+type ResourceCategoryClient struct {
+	config
+}
+
+// NewResourceCategoryClient returns a client for the ResourceCategory from the given config.
+func NewResourceCategoryClient(c config) *ResourceCategoryClient {
+	return &ResourceCategoryClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `resourcecategory.Hooks(f(g(h())))`.
+func (c *ResourceCategoryClient) Use(hooks ...Hook) {
+	c.hooks.ResourceCategory = append(c.hooks.ResourceCategory, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `resourcecategory.Intercept(f(g(h())))`.
+func (c *ResourceCategoryClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ResourceCategory = append(c.inters.ResourceCategory, interceptors...)
+}
+
+// Create returns a builder for creating a ResourceCategory entity.
+func (c *ResourceCategoryClient) Create() *ResourceCategoryCreate {
+	mutation := newResourceCategoryMutation(c.config, OpCreate)
+	return &ResourceCategoryCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ResourceCategory entities.
+func (c *ResourceCategoryClient) CreateBulk(builders ...*ResourceCategoryCreate) *ResourceCategoryCreateBulk {
+	return &ResourceCategoryCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ResourceCategoryClient) MapCreateBulk(slice any, setFunc func(*ResourceCategoryCreate, int)) *ResourceCategoryCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ResourceCategoryCreateBulk{err: fmt.Errorf("calling to ResourceCategoryClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ResourceCategoryCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ResourceCategoryCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ResourceCategory.
+func (c *ResourceCategoryClient) Update() *ResourceCategoryUpdate {
+	mutation := newResourceCategoryMutation(c.config, OpUpdate)
+	return &ResourceCategoryUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ResourceCategoryClient) UpdateOne(_m *ResourceCategory) *ResourceCategoryUpdateOne {
+	mutation := newResourceCategoryMutation(c.config, OpUpdateOne, withResourceCategory(_m))
+	return &ResourceCategoryUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ResourceCategoryClient) UpdateOneID(id int64) *ResourceCategoryUpdateOne {
+	mutation := newResourceCategoryMutation(c.config, OpUpdateOne, withResourceCategoryID(id))
+	return &ResourceCategoryUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ResourceCategory.
+func (c *ResourceCategoryClient) Delete() *ResourceCategoryDelete {
+	mutation := newResourceCategoryMutation(c.config, OpDelete)
+	return &ResourceCategoryDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ResourceCategoryClient) DeleteOne(_m *ResourceCategory) *ResourceCategoryDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ResourceCategoryClient) DeleteOneID(id int64) *ResourceCategoryDeleteOne {
+	builder := c.Delete().Where(resourcecategory.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ResourceCategoryDeleteOne{builder}
+}
+
+// Query returns a query builder for ResourceCategory.
+func (c *ResourceCategoryClient) Query() *ResourceCategoryQuery {
+	return &ResourceCategoryQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeResourceCategory},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ResourceCategory entity by its id.
+func (c *ResourceCategoryClient) Get(ctx context.Context, id int64) (*ResourceCategory, error) {
+	return c.Query().Where(resourcecategory.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ResourceCategoryClient) GetX(ctx context.Context, id int64) *ResourceCategory {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *ResourceCategoryClient) Hooks() []Hook {
+	return c.hooks.ResourceCategory
+}
+
+// Interceptors returns the client interceptors.
+func (c *ResourceCategoryClient) Interceptors() []Interceptor {
+	return c.inters.ResourceCategory
+}
+
+func (c *ResourceCategoryClient) mutate(ctx context.Context, m *ResourceCategoryMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ResourceCategoryCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ResourceCategoryUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ResourceCategoryUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ResourceCategoryDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ResourceCategory mutation op: %q", m.Op())
+	}
+}
+
+// ResourceCommentClient is a client for the ResourceComment schema.
+type ResourceCommentClient struct {
+	config
+}
+
+// NewResourceCommentClient returns a client for the ResourceComment from the given config.
+func NewResourceCommentClient(c config) *ResourceCommentClient {
+	return &ResourceCommentClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `resourcecomment.Hooks(f(g(h())))`.
+func (c *ResourceCommentClient) Use(hooks ...Hook) {
+	c.hooks.ResourceComment = append(c.hooks.ResourceComment, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `resourcecomment.Intercept(f(g(h())))`.
+func (c *ResourceCommentClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ResourceComment = append(c.inters.ResourceComment, interceptors...)
+}
+
+// Create returns a builder for creating a ResourceComment entity.
+func (c *ResourceCommentClient) Create() *ResourceCommentCreate {
+	mutation := newResourceCommentMutation(c.config, OpCreate)
+	return &ResourceCommentCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ResourceComment entities.
+func (c *ResourceCommentClient) CreateBulk(builders ...*ResourceCommentCreate) *ResourceCommentCreateBulk {
+	return &ResourceCommentCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ResourceCommentClient) MapCreateBulk(slice any, setFunc func(*ResourceCommentCreate, int)) *ResourceCommentCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ResourceCommentCreateBulk{err: fmt.Errorf("calling to ResourceCommentClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ResourceCommentCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ResourceCommentCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ResourceComment.
+func (c *ResourceCommentClient) Update() *ResourceCommentUpdate {
+	mutation := newResourceCommentMutation(c.config, OpUpdate)
+	return &ResourceCommentUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ResourceCommentClient) UpdateOne(_m *ResourceComment) *ResourceCommentUpdateOne {
+	mutation := newResourceCommentMutation(c.config, OpUpdateOne, withResourceComment(_m))
+	return &ResourceCommentUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ResourceCommentClient) UpdateOneID(id int64) *ResourceCommentUpdateOne {
+	mutation := newResourceCommentMutation(c.config, OpUpdateOne, withResourceCommentID(id))
+	return &ResourceCommentUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ResourceComment.
+func (c *ResourceCommentClient) Delete() *ResourceCommentDelete {
+	mutation := newResourceCommentMutation(c.config, OpDelete)
+	return &ResourceCommentDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ResourceCommentClient) DeleteOne(_m *ResourceComment) *ResourceCommentDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ResourceCommentClient) DeleteOneID(id int64) *ResourceCommentDeleteOne {
+	builder := c.Delete().Where(resourcecomment.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ResourceCommentDeleteOne{builder}
+}
+
+// Query returns a query builder for ResourceComment.
+func (c *ResourceCommentClient) Query() *ResourceCommentQuery {
+	return &ResourceCommentQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeResourceComment},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ResourceComment entity by its id.
+func (c *ResourceCommentClient) Get(ctx context.Context, id int64) (*ResourceComment, error) {
+	return c.Query().Where(resourcecomment.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ResourceCommentClient) GetX(ctx context.Context, id int64) *ResourceComment {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *ResourceCommentClient) Hooks() []Hook {
+	return c.hooks.ResourceComment
+}
+
+// Interceptors returns the client interceptors.
+func (c *ResourceCommentClient) Interceptors() []Interceptor {
+	return c.inters.ResourceComment
+}
+
+func (c *ResourceCommentClient) mutate(ctx context.Context, m *ResourceCommentMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ResourceCommentCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ResourceCommentUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ResourceCommentUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ResourceCommentDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ResourceComment mutation op: %q", m.Op())
+	}
+}
+
+// ResourceLikeClient is a client for the ResourceLike schema.
+type ResourceLikeClient struct {
+	config
+}
+
+// NewResourceLikeClient returns a client for the ResourceLike from the given config.
+func NewResourceLikeClient(c config) *ResourceLikeClient {
+	return &ResourceLikeClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `resourcelike.Hooks(f(g(h())))`.
+func (c *ResourceLikeClient) Use(hooks ...Hook) {
+	c.hooks.ResourceLike = append(c.hooks.ResourceLike, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `resourcelike.Intercept(f(g(h())))`.
+func (c *ResourceLikeClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ResourceLike = append(c.inters.ResourceLike, interceptors...)
+}
+
+// Create returns a builder for creating a ResourceLike entity.
+func (c *ResourceLikeClient) Create() *ResourceLikeCreate {
+	mutation := newResourceLikeMutation(c.config, OpCreate)
+	return &ResourceLikeCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ResourceLike entities.
+func (c *ResourceLikeClient) CreateBulk(builders ...*ResourceLikeCreate) *ResourceLikeCreateBulk {
+	return &ResourceLikeCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ResourceLikeClient) MapCreateBulk(slice any, setFunc func(*ResourceLikeCreate, int)) *ResourceLikeCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ResourceLikeCreateBulk{err: fmt.Errorf("calling to ResourceLikeClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ResourceLikeCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ResourceLikeCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ResourceLike.
+func (c *ResourceLikeClient) Update() *ResourceLikeUpdate {
+	mutation := newResourceLikeMutation(c.config, OpUpdate)
+	return &ResourceLikeUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ResourceLikeClient) UpdateOne(_m *ResourceLike) *ResourceLikeUpdateOne {
+	mutation := newResourceLikeMutation(c.config, OpUpdateOne, withResourceLike(_m))
+	return &ResourceLikeUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ResourceLikeClient) UpdateOneID(id int64) *ResourceLikeUpdateOne {
+	mutation := newResourceLikeMutation(c.config, OpUpdateOne, withResourceLikeID(id))
+	return &ResourceLikeUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ResourceLike.
+func (c *ResourceLikeClient) Delete() *ResourceLikeDelete {
+	mutation := newResourceLikeMutation(c.config, OpDelete)
+	return &ResourceLikeDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ResourceLikeClient) DeleteOne(_m *ResourceLike) *ResourceLikeDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ResourceLikeClient) DeleteOneID(id int64) *ResourceLikeDeleteOne {
+	builder := c.Delete().Where(resourcelike.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ResourceLikeDeleteOne{builder}
+}
+
+// Query returns a query builder for ResourceLike.
+func (c *ResourceLikeClient) Query() *ResourceLikeQuery {
+	return &ResourceLikeQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeResourceLike},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ResourceLike entity by its id.
+func (c *ResourceLikeClient) Get(ctx context.Context, id int64) (*ResourceLike, error) {
+	return c.Query().Where(resourcelike.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ResourceLikeClient) GetX(ctx context.Context, id int64) *ResourceLike {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *ResourceLikeClient) Hooks() []Hook {
+	return c.hooks.ResourceLike
+}
+
+// Interceptors returns the client interceptors.
+func (c *ResourceLikeClient) Interceptors() []Interceptor {
+	return c.inters.ResourceLike
+}
+
+func (c *ResourceLikeClient) mutate(ctx context.Context, m *ResourceLikeMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ResourceLikeCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ResourceLikeUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ResourceLikeUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ResourceLikeDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ResourceLike mutation op: %q", m.Op())
+	}
+}
+
+// ResourceNotificationClient is a client for the ResourceNotification schema.
+type ResourceNotificationClient struct {
+	config
+}
+
+// NewResourceNotificationClient returns a client for the ResourceNotification from the given config.
+func NewResourceNotificationClient(c config) *ResourceNotificationClient {
+	return &ResourceNotificationClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `resourcenotification.Hooks(f(g(h())))`.
+func (c *ResourceNotificationClient) Use(hooks ...Hook) {
+	c.hooks.ResourceNotification = append(c.hooks.ResourceNotification, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `resourcenotification.Intercept(f(g(h())))`.
+func (c *ResourceNotificationClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ResourceNotification = append(c.inters.ResourceNotification, interceptors...)
+}
+
+// Create returns a builder for creating a ResourceNotification entity.
+func (c *ResourceNotificationClient) Create() *ResourceNotificationCreate {
+	mutation := newResourceNotificationMutation(c.config, OpCreate)
+	return &ResourceNotificationCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ResourceNotification entities.
+func (c *ResourceNotificationClient) CreateBulk(builders ...*ResourceNotificationCreate) *ResourceNotificationCreateBulk {
+	return &ResourceNotificationCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ResourceNotificationClient) MapCreateBulk(slice any, setFunc func(*ResourceNotificationCreate, int)) *ResourceNotificationCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ResourceNotificationCreateBulk{err: fmt.Errorf("calling to ResourceNotificationClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ResourceNotificationCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ResourceNotificationCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ResourceNotification.
+func (c *ResourceNotificationClient) Update() *ResourceNotificationUpdate {
+	mutation := newResourceNotificationMutation(c.config, OpUpdate)
+	return &ResourceNotificationUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ResourceNotificationClient) UpdateOne(_m *ResourceNotification) *ResourceNotificationUpdateOne {
+	mutation := newResourceNotificationMutation(c.config, OpUpdateOne, withResourceNotification(_m))
+	return &ResourceNotificationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ResourceNotificationClient) UpdateOneID(id int64) *ResourceNotificationUpdateOne {
+	mutation := newResourceNotificationMutation(c.config, OpUpdateOne, withResourceNotificationID(id))
+	return &ResourceNotificationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ResourceNotification.
+func (c *ResourceNotificationClient) Delete() *ResourceNotificationDelete {
+	mutation := newResourceNotificationMutation(c.config, OpDelete)
+	return &ResourceNotificationDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ResourceNotificationClient) DeleteOne(_m *ResourceNotification) *ResourceNotificationDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ResourceNotificationClient) DeleteOneID(id int64) *ResourceNotificationDeleteOne {
+	builder := c.Delete().Where(resourcenotification.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ResourceNotificationDeleteOne{builder}
+}
+
+// Query returns a query builder for ResourceNotification.
+func (c *ResourceNotificationClient) Query() *ResourceNotificationQuery {
+	return &ResourceNotificationQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeResourceNotification},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ResourceNotification entity by its id.
+func (c *ResourceNotificationClient) Get(ctx context.Context, id int64) (*ResourceNotification, error) {
+	return c.Query().Where(resourcenotification.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ResourceNotificationClient) GetX(ctx context.Context, id int64) *ResourceNotification {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *ResourceNotificationClient) Hooks() []Hook {
+	return c.hooks.ResourceNotification
+}
+
+// Interceptors returns the client interceptors.
+func (c *ResourceNotificationClient) Interceptors() []Interceptor {
+	return c.inters.ResourceNotification
+}
+
+func (c *ResourceNotificationClient) mutate(ctx context.Context, m *ResourceNotificationMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ResourceNotificationCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ResourceNotificationUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ResourceNotificationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ResourceNotificationDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ResourceNotification mutation op: %q", m.Op())
+	}
+}
+
+// ResourcePostClient is a client for the ResourcePost schema.
+type ResourcePostClient struct {
+	config
+}
+
+// NewResourcePostClient returns a client for the ResourcePost from the given config.
+func NewResourcePostClient(c config) *ResourcePostClient {
+	return &ResourcePostClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `resourcepost.Hooks(f(g(h())))`.
+func (c *ResourcePostClient) Use(hooks ...Hook) {
+	c.hooks.ResourcePost = append(c.hooks.ResourcePost, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `resourcepost.Intercept(f(g(h())))`.
+func (c *ResourcePostClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ResourcePost = append(c.inters.ResourcePost, interceptors...)
+}
+
+// Create returns a builder for creating a ResourcePost entity.
+func (c *ResourcePostClient) Create() *ResourcePostCreate {
+	mutation := newResourcePostMutation(c.config, OpCreate)
+	return &ResourcePostCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ResourcePost entities.
+func (c *ResourcePostClient) CreateBulk(builders ...*ResourcePostCreate) *ResourcePostCreateBulk {
+	return &ResourcePostCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ResourcePostClient) MapCreateBulk(slice any, setFunc func(*ResourcePostCreate, int)) *ResourcePostCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ResourcePostCreateBulk{err: fmt.Errorf("calling to ResourcePostClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ResourcePostCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ResourcePostCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ResourcePost.
+func (c *ResourcePostClient) Update() *ResourcePostUpdate {
+	mutation := newResourcePostMutation(c.config, OpUpdate)
+	return &ResourcePostUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ResourcePostClient) UpdateOne(_m *ResourcePost) *ResourcePostUpdateOne {
+	mutation := newResourcePostMutation(c.config, OpUpdateOne, withResourcePost(_m))
+	return &ResourcePostUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ResourcePostClient) UpdateOneID(id int64) *ResourcePostUpdateOne {
+	mutation := newResourcePostMutation(c.config, OpUpdateOne, withResourcePostID(id))
+	return &ResourcePostUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ResourcePost.
+func (c *ResourcePostClient) Delete() *ResourcePostDelete {
+	mutation := newResourcePostMutation(c.config, OpDelete)
+	return &ResourcePostDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ResourcePostClient) DeleteOne(_m *ResourcePost) *ResourcePostDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ResourcePostClient) DeleteOneID(id int64) *ResourcePostDeleteOne {
+	builder := c.Delete().Where(resourcepost.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ResourcePostDeleteOne{builder}
+}
+
+// Query returns a query builder for ResourcePost.
+func (c *ResourcePostClient) Query() *ResourcePostQuery {
+	return &ResourcePostQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeResourcePost},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ResourcePost entity by its id.
+func (c *ResourcePostClient) Get(ctx context.Context, id int64) (*ResourcePost, error) {
+	return c.Query().Where(resourcepost.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ResourcePostClient) GetX(ctx context.Context, id int64) *ResourcePost {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *ResourcePostClient) Hooks() []Hook {
+	return c.hooks.ResourcePost
+}
+
+// Interceptors returns the client interceptors.
+func (c *ResourcePostClient) Interceptors() []Interceptor {
+	return c.inters.ResourcePost
+}
+
+func (c *ResourcePostClient) mutate(ctx context.Context, m *ResourcePostMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ResourcePostCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ResourcePostUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ResourcePostUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ResourcePostDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ResourcePost mutation op: %q", m.Op())
+	}
+}
+
 // SecuritySecretClient is a client for the SecuritySecret schema.
 type SecuritySecretClient struct {
 	config
@@ -6831,10 +7538,11 @@ type (
 		ChannelMonitorRequestTemplate, CompositeModelRoute, ErrorPassthroughRule,
 		Group, IdempotencyRecord, IdentityAdoptionDecision, PaymentAuditLog,
 		PaymentOrder, PaymentProviderInstance, PendingAuthSession, PromoCode,
-		PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting, SubscriptionPlan,
-		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
-		UserAttributeDefinition, UserAttributeValue, UserPlatformQuota,
-		UserSubscription []ent.Hook
+		PromoCodeUsage, Proxy, RedeemCode, ResourceCategory, ResourceComment,
+		ResourceLike, ResourceNotification, ResourcePost, SecuritySecret, Setting,
+		SubscriptionPlan, TLSFingerprintProfile, UsageCleanupTask, UsageLog, User,
+		UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
+		UserPlatformQuota, UserSubscription []ent.Hook
 	}
 	inters struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AuthIdentity,
@@ -6843,10 +7551,11 @@ type (
 		ChannelMonitorRequestTemplate, CompositeModelRoute, ErrorPassthroughRule,
 		Group, IdempotencyRecord, IdentityAdoptionDecision, PaymentAuditLog,
 		PaymentOrder, PaymentProviderInstance, PendingAuthSession, PromoCode,
-		PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting, SubscriptionPlan,
-		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
-		UserAttributeDefinition, UserAttributeValue, UserPlatformQuota,
-		UserSubscription []ent.Interceptor
+		PromoCodeUsage, Proxy, RedeemCode, ResourceCategory, ResourceComment,
+		ResourceLike, ResourceNotification, ResourcePost, SecuritySecret, Setting,
+		SubscriptionPlan, TLSFingerprintProfile, UsageCleanupTask, UsageLog, User,
+		UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
+		UserPlatformQuota, UserSubscription []ent.Interceptor
 	}
 )
 

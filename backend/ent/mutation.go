@@ -40,6 +40,11 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/promocodeusage"
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
+	"github.com/Wei-Shaw/sub2api/ent/resourcecategory"
+	"github.com/Wei-Shaw/sub2api/ent/resourcecomment"
+	"github.com/Wei-Shaw/sub2api/ent/resourcelike"
+	"github.com/Wei-Shaw/sub2api/ent/resourcenotification"
+	"github.com/Wei-Shaw/sub2api/ent/resourcepost"
 	"github.com/Wei-Shaw/sub2api/ent/securitysecret"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
 	"github.com/Wei-Shaw/sub2api/ent/subscriptionplan"
@@ -91,6 +96,11 @@ const (
 	TypePromoCodeUsage                = "PromoCodeUsage"
 	TypeProxy                         = "Proxy"
 	TypeRedeemCode                    = "RedeemCode"
+	TypeResourceCategory              = "ResourceCategory"
+	TypeResourceComment               = "ResourceComment"
+	TypeResourceLike                  = "ResourceLike"
+	TypeResourceNotification          = "ResourceNotification"
+	TypeResourcePost                  = "ResourcePost"
 	TypeSecuritySecret                = "SecuritySecret"
 	TypeSetting                       = "Setting"
 	TypeSubscriptionPlan              = "SubscriptionPlan"
@@ -38746,6 +38756,4299 @@ func (m *RedeemCodeMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown RedeemCode edge %s", name)
+}
+
+// ResourceCategoryMutation represents an operation that mutates the ResourceCategory nodes in the graph.
+type ResourceCategoryMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *int64
+	slug          *string
+	name          *string
+	description   *string
+	sort_order    *int
+	addsort_order *int
+	enabled       *bool
+	created_at    *time.Time
+	updated_at    *time.Time
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*ResourceCategory, error)
+	predicates    []predicate.ResourceCategory
+}
+
+var _ ent.Mutation = (*ResourceCategoryMutation)(nil)
+
+// resourcecategoryOption allows management of the mutation configuration using functional options.
+type resourcecategoryOption func(*ResourceCategoryMutation)
+
+// newResourceCategoryMutation creates new mutation for the ResourceCategory entity.
+func newResourceCategoryMutation(c config, op Op, opts ...resourcecategoryOption) *ResourceCategoryMutation {
+	m := &ResourceCategoryMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeResourceCategory,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withResourceCategoryID sets the ID field of the mutation.
+func withResourceCategoryID(id int64) resourcecategoryOption {
+	return func(m *ResourceCategoryMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *ResourceCategory
+		)
+		m.oldValue = func(ctx context.Context) (*ResourceCategory, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().ResourceCategory.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withResourceCategory sets the old ResourceCategory of the mutation.
+func withResourceCategory(node *ResourceCategory) resourcecategoryOption {
+	return func(m *ResourceCategoryMutation) {
+		m.oldValue = func(context.Context) (*ResourceCategory, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m ResourceCategoryMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m ResourceCategoryMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *ResourceCategoryMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *ResourceCategoryMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().ResourceCategory.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetSlug sets the "slug" field.
+func (m *ResourceCategoryMutation) SetSlug(s string) {
+	m.slug = &s
+}
+
+// Slug returns the value of the "slug" field in the mutation.
+func (m *ResourceCategoryMutation) Slug() (r string, exists bool) {
+	v := m.slug
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSlug returns the old "slug" field's value of the ResourceCategory entity.
+// If the ResourceCategory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ResourceCategoryMutation) OldSlug(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSlug is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSlug requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSlug: %w", err)
+	}
+	return oldValue.Slug, nil
+}
+
+// ResetSlug resets all changes to the "slug" field.
+func (m *ResourceCategoryMutation) ResetSlug() {
+	m.slug = nil
+}
+
+// SetName sets the "name" field.
+func (m *ResourceCategoryMutation) SetName(s string) {
+	m.name = &s
+}
+
+// Name returns the value of the "name" field in the mutation.
+func (m *ResourceCategoryMutation) Name() (r string, exists bool) {
+	v := m.name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldName returns the old "name" field's value of the ResourceCategory entity.
+// If the ResourceCategory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ResourceCategoryMutation) OldName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldName: %w", err)
+	}
+	return oldValue.Name, nil
+}
+
+// ResetName resets all changes to the "name" field.
+func (m *ResourceCategoryMutation) ResetName() {
+	m.name = nil
+}
+
+// SetDescription sets the "description" field.
+func (m *ResourceCategoryMutation) SetDescription(s string) {
+	m.description = &s
+}
+
+// Description returns the value of the "description" field in the mutation.
+func (m *ResourceCategoryMutation) Description() (r string, exists bool) {
+	v := m.description
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDescription returns the old "description" field's value of the ResourceCategory entity.
+// If the ResourceCategory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ResourceCategoryMutation) OldDescription(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDescription is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDescription requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDescription: %w", err)
+	}
+	return oldValue.Description, nil
+}
+
+// ResetDescription resets all changes to the "description" field.
+func (m *ResourceCategoryMutation) ResetDescription() {
+	m.description = nil
+}
+
+// SetSortOrder sets the "sort_order" field.
+func (m *ResourceCategoryMutation) SetSortOrder(i int) {
+	m.sort_order = &i
+	m.addsort_order = nil
+}
+
+// SortOrder returns the value of the "sort_order" field in the mutation.
+func (m *ResourceCategoryMutation) SortOrder() (r int, exists bool) {
+	v := m.sort_order
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSortOrder returns the old "sort_order" field's value of the ResourceCategory entity.
+// If the ResourceCategory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ResourceCategoryMutation) OldSortOrder(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSortOrder is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSortOrder requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSortOrder: %w", err)
+	}
+	return oldValue.SortOrder, nil
+}
+
+// AddSortOrder adds i to the "sort_order" field.
+func (m *ResourceCategoryMutation) AddSortOrder(i int) {
+	if m.addsort_order != nil {
+		*m.addsort_order += i
+	} else {
+		m.addsort_order = &i
+	}
+}
+
+// AddedSortOrder returns the value that was added to the "sort_order" field in this mutation.
+func (m *ResourceCategoryMutation) AddedSortOrder() (r int, exists bool) {
+	v := m.addsort_order
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetSortOrder resets all changes to the "sort_order" field.
+func (m *ResourceCategoryMutation) ResetSortOrder() {
+	m.sort_order = nil
+	m.addsort_order = nil
+}
+
+// SetEnabled sets the "enabled" field.
+func (m *ResourceCategoryMutation) SetEnabled(b bool) {
+	m.enabled = &b
+}
+
+// Enabled returns the value of the "enabled" field in the mutation.
+func (m *ResourceCategoryMutation) Enabled() (r bool, exists bool) {
+	v := m.enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEnabled returns the old "enabled" field's value of the ResourceCategory entity.
+// If the ResourceCategory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ResourceCategoryMutation) OldEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEnabled: %w", err)
+	}
+	return oldValue.Enabled, nil
+}
+
+// ResetEnabled resets all changes to the "enabled" field.
+func (m *ResourceCategoryMutation) ResetEnabled() {
+	m.enabled = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *ResourceCategoryMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *ResourceCategoryMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the ResourceCategory entity.
+// If the ResourceCategory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ResourceCategoryMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *ResourceCategoryMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *ResourceCategoryMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *ResourceCategoryMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the ResourceCategory entity.
+// If the ResourceCategory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ResourceCategoryMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *ResourceCategoryMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// Where appends a list predicates to the ResourceCategoryMutation builder.
+func (m *ResourceCategoryMutation) Where(ps ...predicate.ResourceCategory) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the ResourceCategoryMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *ResourceCategoryMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.ResourceCategory, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *ResourceCategoryMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *ResourceCategoryMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (ResourceCategory).
+func (m *ResourceCategoryMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *ResourceCategoryMutation) Fields() []string {
+	fields := make([]string, 0, 7)
+	if m.slug != nil {
+		fields = append(fields, resourcecategory.FieldSlug)
+	}
+	if m.name != nil {
+		fields = append(fields, resourcecategory.FieldName)
+	}
+	if m.description != nil {
+		fields = append(fields, resourcecategory.FieldDescription)
+	}
+	if m.sort_order != nil {
+		fields = append(fields, resourcecategory.FieldSortOrder)
+	}
+	if m.enabled != nil {
+		fields = append(fields, resourcecategory.FieldEnabled)
+	}
+	if m.created_at != nil {
+		fields = append(fields, resourcecategory.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, resourcecategory.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *ResourceCategoryMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case resourcecategory.FieldSlug:
+		return m.Slug()
+	case resourcecategory.FieldName:
+		return m.Name()
+	case resourcecategory.FieldDescription:
+		return m.Description()
+	case resourcecategory.FieldSortOrder:
+		return m.SortOrder()
+	case resourcecategory.FieldEnabled:
+		return m.Enabled()
+	case resourcecategory.FieldCreatedAt:
+		return m.CreatedAt()
+	case resourcecategory.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *ResourceCategoryMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case resourcecategory.FieldSlug:
+		return m.OldSlug(ctx)
+	case resourcecategory.FieldName:
+		return m.OldName(ctx)
+	case resourcecategory.FieldDescription:
+		return m.OldDescription(ctx)
+	case resourcecategory.FieldSortOrder:
+		return m.OldSortOrder(ctx)
+	case resourcecategory.FieldEnabled:
+		return m.OldEnabled(ctx)
+	case resourcecategory.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case resourcecategory.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown ResourceCategory field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ResourceCategoryMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case resourcecategory.FieldSlug:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSlug(v)
+		return nil
+	case resourcecategory.FieldName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetName(v)
+		return nil
+	case resourcecategory.FieldDescription:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDescription(v)
+		return nil
+	case resourcecategory.FieldSortOrder:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSortOrder(v)
+		return nil
+	case resourcecategory.FieldEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEnabled(v)
+		return nil
+	case resourcecategory.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case resourcecategory.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ResourceCategory field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *ResourceCategoryMutation) AddedFields() []string {
+	var fields []string
+	if m.addsort_order != nil {
+		fields = append(fields, resourcecategory.FieldSortOrder)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *ResourceCategoryMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case resourcecategory.FieldSortOrder:
+		return m.AddedSortOrder()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ResourceCategoryMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case resourcecategory.FieldSortOrder:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddSortOrder(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ResourceCategory numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *ResourceCategoryMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *ResourceCategoryMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *ResourceCategoryMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown ResourceCategory nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *ResourceCategoryMutation) ResetField(name string) error {
+	switch name {
+	case resourcecategory.FieldSlug:
+		m.ResetSlug()
+		return nil
+	case resourcecategory.FieldName:
+		m.ResetName()
+		return nil
+	case resourcecategory.FieldDescription:
+		m.ResetDescription()
+		return nil
+	case resourcecategory.FieldSortOrder:
+		m.ResetSortOrder()
+		return nil
+	case resourcecategory.FieldEnabled:
+		m.ResetEnabled()
+		return nil
+	case resourcecategory.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case resourcecategory.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown ResourceCategory field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *ResourceCategoryMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *ResourceCategoryMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *ResourceCategoryMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *ResourceCategoryMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *ResourceCategoryMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *ResourceCategoryMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *ResourceCategoryMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown ResourceCategory unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *ResourceCategoryMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown ResourceCategory edge %s", name)
+}
+
+// ResourceCommentMutation represents an operation that mutates the ResourceComment nodes in the graph.
+type ResourceCommentMutation struct {
+	config
+	op              Op
+	typ             string
+	id              *int64
+	post_id         *int64
+	addpost_id      *int64
+	parent_id       *int64
+	addparent_id    *int64
+	author_id       *int64
+	addauthor_id    *int64
+	author_username *string
+	author_role     *string
+	content         *string
+	status          *string
+	like_count      *int
+	addlike_count   *int
+	created_at      *time.Time
+	updated_at      *time.Time
+	clearedFields   map[string]struct{}
+	done            bool
+	oldValue        func(context.Context) (*ResourceComment, error)
+	predicates      []predicate.ResourceComment
+}
+
+var _ ent.Mutation = (*ResourceCommentMutation)(nil)
+
+// resourcecommentOption allows management of the mutation configuration using functional options.
+type resourcecommentOption func(*ResourceCommentMutation)
+
+// newResourceCommentMutation creates new mutation for the ResourceComment entity.
+func newResourceCommentMutation(c config, op Op, opts ...resourcecommentOption) *ResourceCommentMutation {
+	m := &ResourceCommentMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeResourceComment,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withResourceCommentID sets the ID field of the mutation.
+func withResourceCommentID(id int64) resourcecommentOption {
+	return func(m *ResourceCommentMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *ResourceComment
+		)
+		m.oldValue = func(ctx context.Context) (*ResourceComment, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().ResourceComment.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withResourceComment sets the old ResourceComment of the mutation.
+func withResourceComment(node *ResourceComment) resourcecommentOption {
+	return func(m *ResourceCommentMutation) {
+		m.oldValue = func(context.Context) (*ResourceComment, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m ResourceCommentMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m ResourceCommentMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *ResourceCommentMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *ResourceCommentMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().ResourceComment.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetPostID sets the "post_id" field.
+func (m *ResourceCommentMutation) SetPostID(i int64) {
+	m.post_id = &i
+	m.addpost_id = nil
+}
+
+// PostID returns the value of the "post_id" field in the mutation.
+func (m *ResourceCommentMutation) PostID() (r int64, exists bool) {
+	v := m.post_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPostID returns the old "post_id" field's value of the ResourceComment entity.
+// If the ResourceComment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ResourceCommentMutation) OldPostID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPostID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPostID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPostID: %w", err)
+	}
+	return oldValue.PostID, nil
+}
+
+// AddPostID adds i to the "post_id" field.
+func (m *ResourceCommentMutation) AddPostID(i int64) {
+	if m.addpost_id != nil {
+		*m.addpost_id += i
+	} else {
+		m.addpost_id = &i
+	}
+}
+
+// AddedPostID returns the value that was added to the "post_id" field in this mutation.
+func (m *ResourceCommentMutation) AddedPostID() (r int64, exists bool) {
+	v := m.addpost_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetPostID resets all changes to the "post_id" field.
+func (m *ResourceCommentMutation) ResetPostID() {
+	m.post_id = nil
+	m.addpost_id = nil
+}
+
+// SetParentID sets the "parent_id" field.
+func (m *ResourceCommentMutation) SetParentID(i int64) {
+	m.parent_id = &i
+	m.addparent_id = nil
+}
+
+// ParentID returns the value of the "parent_id" field in the mutation.
+func (m *ResourceCommentMutation) ParentID() (r int64, exists bool) {
+	v := m.parent_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldParentID returns the old "parent_id" field's value of the ResourceComment entity.
+// If the ResourceComment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ResourceCommentMutation) OldParentID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldParentID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldParentID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldParentID: %w", err)
+	}
+	return oldValue.ParentID, nil
+}
+
+// AddParentID adds i to the "parent_id" field.
+func (m *ResourceCommentMutation) AddParentID(i int64) {
+	if m.addparent_id != nil {
+		*m.addparent_id += i
+	} else {
+		m.addparent_id = &i
+	}
+}
+
+// AddedParentID returns the value that was added to the "parent_id" field in this mutation.
+func (m *ResourceCommentMutation) AddedParentID() (r int64, exists bool) {
+	v := m.addparent_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearParentID clears the value of the "parent_id" field.
+func (m *ResourceCommentMutation) ClearParentID() {
+	m.parent_id = nil
+	m.addparent_id = nil
+	m.clearedFields[resourcecomment.FieldParentID] = struct{}{}
+}
+
+// ParentIDCleared returns if the "parent_id" field was cleared in this mutation.
+func (m *ResourceCommentMutation) ParentIDCleared() bool {
+	_, ok := m.clearedFields[resourcecomment.FieldParentID]
+	return ok
+}
+
+// ResetParentID resets all changes to the "parent_id" field.
+func (m *ResourceCommentMutation) ResetParentID() {
+	m.parent_id = nil
+	m.addparent_id = nil
+	delete(m.clearedFields, resourcecomment.FieldParentID)
+}
+
+// SetAuthorID sets the "author_id" field.
+func (m *ResourceCommentMutation) SetAuthorID(i int64) {
+	m.author_id = &i
+	m.addauthor_id = nil
+}
+
+// AuthorID returns the value of the "author_id" field in the mutation.
+func (m *ResourceCommentMutation) AuthorID() (r int64, exists bool) {
+	v := m.author_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAuthorID returns the old "author_id" field's value of the ResourceComment entity.
+// If the ResourceComment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ResourceCommentMutation) OldAuthorID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAuthorID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAuthorID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAuthorID: %w", err)
+	}
+	return oldValue.AuthorID, nil
+}
+
+// AddAuthorID adds i to the "author_id" field.
+func (m *ResourceCommentMutation) AddAuthorID(i int64) {
+	if m.addauthor_id != nil {
+		*m.addauthor_id += i
+	} else {
+		m.addauthor_id = &i
+	}
+}
+
+// AddedAuthorID returns the value that was added to the "author_id" field in this mutation.
+func (m *ResourceCommentMutation) AddedAuthorID() (r int64, exists bool) {
+	v := m.addauthor_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAuthorID resets all changes to the "author_id" field.
+func (m *ResourceCommentMutation) ResetAuthorID() {
+	m.author_id = nil
+	m.addauthor_id = nil
+}
+
+// SetAuthorUsername sets the "author_username" field.
+func (m *ResourceCommentMutation) SetAuthorUsername(s string) {
+	m.author_username = &s
+}
+
+// AuthorUsername returns the value of the "author_username" field in the mutation.
+func (m *ResourceCommentMutation) AuthorUsername() (r string, exists bool) {
+	v := m.author_username
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAuthorUsername returns the old "author_username" field's value of the ResourceComment entity.
+// If the ResourceComment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ResourceCommentMutation) OldAuthorUsername(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAuthorUsername is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAuthorUsername requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAuthorUsername: %w", err)
+	}
+	return oldValue.AuthorUsername, nil
+}
+
+// ResetAuthorUsername resets all changes to the "author_username" field.
+func (m *ResourceCommentMutation) ResetAuthorUsername() {
+	m.author_username = nil
+}
+
+// SetAuthorRole sets the "author_role" field.
+func (m *ResourceCommentMutation) SetAuthorRole(s string) {
+	m.author_role = &s
+}
+
+// AuthorRole returns the value of the "author_role" field in the mutation.
+func (m *ResourceCommentMutation) AuthorRole() (r string, exists bool) {
+	v := m.author_role
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAuthorRole returns the old "author_role" field's value of the ResourceComment entity.
+// If the ResourceComment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ResourceCommentMutation) OldAuthorRole(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAuthorRole is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAuthorRole requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAuthorRole: %w", err)
+	}
+	return oldValue.AuthorRole, nil
+}
+
+// ResetAuthorRole resets all changes to the "author_role" field.
+func (m *ResourceCommentMutation) ResetAuthorRole() {
+	m.author_role = nil
+}
+
+// SetContent sets the "content" field.
+func (m *ResourceCommentMutation) SetContent(s string) {
+	m.content = &s
+}
+
+// Content returns the value of the "content" field in the mutation.
+func (m *ResourceCommentMutation) Content() (r string, exists bool) {
+	v := m.content
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldContent returns the old "content" field's value of the ResourceComment entity.
+// If the ResourceComment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ResourceCommentMutation) OldContent(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldContent is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldContent requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldContent: %w", err)
+	}
+	return oldValue.Content, nil
+}
+
+// ResetContent resets all changes to the "content" field.
+func (m *ResourceCommentMutation) ResetContent() {
+	m.content = nil
+}
+
+// SetStatus sets the "status" field.
+func (m *ResourceCommentMutation) SetStatus(s string) {
+	m.status = &s
+}
+
+// Status returns the value of the "status" field in the mutation.
+func (m *ResourceCommentMutation) Status() (r string, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatus returns the old "status" field's value of the ResourceComment entity.
+// If the ResourceComment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ResourceCommentMutation) OldStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+	}
+	return oldValue.Status, nil
+}
+
+// ResetStatus resets all changes to the "status" field.
+func (m *ResourceCommentMutation) ResetStatus() {
+	m.status = nil
+}
+
+// SetLikeCount sets the "like_count" field.
+func (m *ResourceCommentMutation) SetLikeCount(i int) {
+	m.like_count = &i
+	m.addlike_count = nil
+}
+
+// LikeCount returns the value of the "like_count" field in the mutation.
+func (m *ResourceCommentMutation) LikeCount() (r int, exists bool) {
+	v := m.like_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLikeCount returns the old "like_count" field's value of the ResourceComment entity.
+// If the ResourceComment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ResourceCommentMutation) OldLikeCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLikeCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLikeCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLikeCount: %w", err)
+	}
+	return oldValue.LikeCount, nil
+}
+
+// AddLikeCount adds i to the "like_count" field.
+func (m *ResourceCommentMutation) AddLikeCount(i int) {
+	if m.addlike_count != nil {
+		*m.addlike_count += i
+	} else {
+		m.addlike_count = &i
+	}
+}
+
+// AddedLikeCount returns the value that was added to the "like_count" field in this mutation.
+func (m *ResourceCommentMutation) AddedLikeCount() (r int, exists bool) {
+	v := m.addlike_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetLikeCount resets all changes to the "like_count" field.
+func (m *ResourceCommentMutation) ResetLikeCount() {
+	m.like_count = nil
+	m.addlike_count = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *ResourceCommentMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *ResourceCommentMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the ResourceComment entity.
+// If the ResourceComment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ResourceCommentMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *ResourceCommentMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *ResourceCommentMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *ResourceCommentMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the ResourceComment entity.
+// If the ResourceComment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ResourceCommentMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *ResourceCommentMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// Where appends a list predicates to the ResourceCommentMutation builder.
+func (m *ResourceCommentMutation) Where(ps ...predicate.ResourceComment) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the ResourceCommentMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *ResourceCommentMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.ResourceComment, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *ResourceCommentMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *ResourceCommentMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (ResourceComment).
+func (m *ResourceCommentMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *ResourceCommentMutation) Fields() []string {
+	fields := make([]string, 0, 10)
+	if m.post_id != nil {
+		fields = append(fields, resourcecomment.FieldPostID)
+	}
+	if m.parent_id != nil {
+		fields = append(fields, resourcecomment.FieldParentID)
+	}
+	if m.author_id != nil {
+		fields = append(fields, resourcecomment.FieldAuthorID)
+	}
+	if m.author_username != nil {
+		fields = append(fields, resourcecomment.FieldAuthorUsername)
+	}
+	if m.author_role != nil {
+		fields = append(fields, resourcecomment.FieldAuthorRole)
+	}
+	if m.content != nil {
+		fields = append(fields, resourcecomment.FieldContent)
+	}
+	if m.status != nil {
+		fields = append(fields, resourcecomment.FieldStatus)
+	}
+	if m.like_count != nil {
+		fields = append(fields, resourcecomment.FieldLikeCount)
+	}
+	if m.created_at != nil {
+		fields = append(fields, resourcecomment.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, resourcecomment.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *ResourceCommentMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case resourcecomment.FieldPostID:
+		return m.PostID()
+	case resourcecomment.FieldParentID:
+		return m.ParentID()
+	case resourcecomment.FieldAuthorID:
+		return m.AuthorID()
+	case resourcecomment.FieldAuthorUsername:
+		return m.AuthorUsername()
+	case resourcecomment.FieldAuthorRole:
+		return m.AuthorRole()
+	case resourcecomment.FieldContent:
+		return m.Content()
+	case resourcecomment.FieldStatus:
+		return m.Status()
+	case resourcecomment.FieldLikeCount:
+		return m.LikeCount()
+	case resourcecomment.FieldCreatedAt:
+		return m.CreatedAt()
+	case resourcecomment.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *ResourceCommentMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case resourcecomment.FieldPostID:
+		return m.OldPostID(ctx)
+	case resourcecomment.FieldParentID:
+		return m.OldParentID(ctx)
+	case resourcecomment.FieldAuthorID:
+		return m.OldAuthorID(ctx)
+	case resourcecomment.FieldAuthorUsername:
+		return m.OldAuthorUsername(ctx)
+	case resourcecomment.FieldAuthorRole:
+		return m.OldAuthorRole(ctx)
+	case resourcecomment.FieldContent:
+		return m.OldContent(ctx)
+	case resourcecomment.FieldStatus:
+		return m.OldStatus(ctx)
+	case resourcecomment.FieldLikeCount:
+		return m.OldLikeCount(ctx)
+	case resourcecomment.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case resourcecomment.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown ResourceComment field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ResourceCommentMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case resourcecomment.FieldPostID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPostID(v)
+		return nil
+	case resourcecomment.FieldParentID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetParentID(v)
+		return nil
+	case resourcecomment.FieldAuthorID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAuthorID(v)
+		return nil
+	case resourcecomment.FieldAuthorUsername:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAuthorUsername(v)
+		return nil
+	case resourcecomment.FieldAuthorRole:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAuthorRole(v)
+		return nil
+	case resourcecomment.FieldContent:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetContent(v)
+		return nil
+	case resourcecomment.FieldStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatus(v)
+		return nil
+	case resourcecomment.FieldLikeCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLikeCount(v)
+		return nil
+	case resourcecomment.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case resourcecomment.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ResourceComment field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *ResourceCommentMutation) AddedFields() []string {
+	var fields []string
+	if m.addpost_id != nil {
+		fields = append(fields, resourcecomment.FieldPostID)
+	}
+	if m.addparent_id != nil {
+		fields = append(fields, resourcecomment.FieldParentID)
+	}
+	if m.addauthor_id != nil {
+		fields = append(fields, resourcecomment.FieldAuthorID)
+	}
+	if m.addlike_count != nil {
+		fields = append(fields, resourcecomment.FieldLikeCount)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *ResourceCommentMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case resourcecomment.FieldPostID:
+		return m.AddedPostID()
+	case resourcecomment.FieldParentID:
+		return m.AddedParentID()
+	case resourcecomment.FieldAuthorID:
+		return m.AddedAuthorID()
+	case resourcecomment.FieldLikeCount:
+		return m.AddedLikeCount()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ResourceCommentMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case resourcecomment.FieldPostID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPostID(v)
+		return nil
+	case resourcecomment.FieldParentID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddParentID(v)
+		return nil
+	case resourcecomment.FieldAuthorID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAuthorID(v)
+		return nil
+	case resourcecomment.FieldLikeCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddLikeCount(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ResourceComment numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *ResourceCommentMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(resourcecomment.FieldParentID) {
+		fields = append(fields, resourcecomment.FieldParentID)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *ResourceCommentMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *ResourceCommentMutation) ClearField(name string) error {
+	switch name {
+	case resourcecomment.FieldParentID:
+		m.ClearParentID()
+		return nil
+	}
+	return fmt.Errorf("unknown ResourceComment nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *ResourceCommentMutation) ResetField(name string) error {
+	switch name {
+	case resourcecomment.FieldPostID:
+		m.ResetPostID()
+		return nil
+	case resourcecomment.FieldParentID:
+		m.ResetParentID()
+		return nil
+	case resourcecomment.FieldAuthorID:
+		m.ResetAuthorID()
+		return nil
+	case resourcecomment.FieldAuthorUsername:
+		m.ResetAuthorUsername()
+		return nil
+	case resourcecomment.FieldAuthorRole:
+		m.ResetAuthorRole()
+		return nil
+	case resourcecomment.FieldContent:
+		m.ResetContent()
+		return nil
+	case resourcecomment.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case resourcecomment.FieldLikeCount:
+		m.ResetLikeCount()
+		return nil
+	case resourcecomment.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case resourcecomment.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown ResourceComment field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *ResourceCommentMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *ResourceCommentMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *ResourceCommentMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *ResourceCommentMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *ResourceCommentMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *ResourceCommentMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *ResourceCommentMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown ResourceComment unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *ResourceCommentMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown ResourceComment edge %s", name)
+}
+
+// ResourceLikeMutation represents an operation that mutates the ResourceLike nodes in the graph.
+type ResourceLikeMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *int64
+	user_id       *int64
+	adduser_id    *int64
+	post_id       *int64
+	addpost_id    *int64
+	comment_id    *int64
+	addcomment_id *int64
+	created_at    *time.Time
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*ResourceLike, error)
+	predicates    []predicate.ResourceLike
+}
+
+var _ ent.Mutation = (*ResourceLikeMutation)(nil)
+
+// resourcelikeOption allows management of the mutation configuration using functional options.
+type resourcelikeOption func(*ResourceLikeMutation)
+
+// newResourceLikeMutation creates new mutation for the ResourceLike entity.
+func newResourceLikeMutation(c config, op Op, opts ...resourcelikeOption) *ResourceLikeMutation {
+	m := &ResourceLikeMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeResourceLike,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withResourceLikeID sets the ID field of the mutation.
+func withResourceLikeID(id int64) resourcelikeOption {
+	return func(m *ResourceLikeMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *ResourceLike
+		)
+		m.oldValue = func(ctx context.Context) (*ResourceLike, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().ResourceLike.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withResourceLike sets the old ResourceLike of the mutation.
+func withResourceLike(node *ResourceLike) resourcelikeOption {
+	return func(m *ResourceLikeMutation) {
+		m.oldValue = func(context.Context) (*ResourceLike, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m ResourceLikeMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m ResourceLikeMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *ResourceLikeMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *ResourceLikeMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().ResourceLike.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetUserID sets the "user_id" field.
+func (m *ResourceLikeMutation) SetUserID(i int64) {
+	m.user_id = &i
+	m.adduser_id = nil
+}
+
+// UserID returns the value of the "user_id" field in the mutation.
+func (m *ResourceLikeMutation) UserID() (r int64, exists bool) {
+	v := m.user_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUserID returns the old "user_id" field's value of the ResourceLike entity.
+// If the ResourceLike object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ResourceLikeMutation) OldUserID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUserID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUserID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUserID: %w", err)
+	}
+	return oldValue.UserID, nil
+}
+
+// AddUserID adds i to the "user_id" field.
+func (m *ResourceLikeMutation) AddUserID(i int64) {
+	if m.adduser_id != nil {
+		*m.adduser_id += i
+	} else {
+		m.adduser_id = &i
+	}
+}
+
+// AddedUserID returns the value that was added to the "user_id" field in this mutation.
+func (m *ResourceLikeMutation) AddedUserID() (r int64, exists bool) {
+	v := m.adduser_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetUserID resets all changes to the "user_id" field.
+func (m *ResourceLikeMutation) ResetUserID() {
+	m.user_id = nil
+	m.adduser_id = nil
+}
+
+// SetPostID sets the "post_id" field.
+func (m *ResourceLikeMutation) SetPostID(i int64) {
+	m.post_id = &i
+	m.addpost_id = nil
+}
+
+// PostID returns the value of the "post_id" field in the mutation.
+func (m *ResourceLikeMutation) PostID() (r int64, exists bool) {
+	v := m.post_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPostID returns the old "post_id" field's value of the ResourceLike entity.
+// If the ResourceLike object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ResourceLikeMutation) OldPostID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPostID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPostID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPostID: %w", err)
+	}
+	return oldValue.PostID, nil
+}
+
+// AddPostID adds i to the "post_id" field.
+func (m *ResourceLikeMutation) AddPostID(i int64) {
+	if m.addpost_id != nil {
+		*m.addpost_id += i
+	} else {
+		m.addpost_id = &i
+	}
+}
+
+// AddedPostID returns the value that was added to the "post_id" field in this mutation.
+func (m *ResourceLikeMutation) AddedPostID() (r int64, exists bool) {
+	v := m.addpost_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearPostID clears the value of the "post_id" field.
+func (m *ResourceLikeMutation) ClearPostID() {
+	m.post_id = nil
+	m.addpost_id = nil
+	m.clearedFields[resourcelike.FieldPostID] = struct{}{}
+}
+
+// PostIDCleared returns if the "post_id" field was cleared in this mutation.
+func (m *ResourceLikeMutation) PostIDCleared() bool {
+	_, ok := m.clearedFields[resourcelike.FieldPostID]
+	return ok
+}
+
+// ResetPostID resets all changes to the "post_id" field.
+func (m *ResourceLikeMutation) ResetPostID() {
+	m.post_id = nil
+	m.addpost_id = nil
+	delete(m.clearedFields, resourcelike.FieldPostID)
+}
+
+// SetCommentID sets the "comment_id" field.
+func (m *ResourceLikeMutation) SetCommentID(i int64) {
+	m.comment_id = &i
+	m.addcomment_id = nil
+}
+
+// CommentID returns the value of the "comment_id" field in the mutation.
+func (m *ResourceLikeMutation) CommentID() (r int64, exists bool) {
+	v := m.comment_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCommentID returns the old "comment_id" field's value of the ResourceLike entity.
+// If the ResourceLike object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ResourceLikeMutation) OldCommentID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCommentID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCommentID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCommentID: %w", err)
+	}
+	return oldValue.CommentID, nil
+}
+
+// AddCommentID adds i to the "comment_id" field.
+func (m *ResourceLikeMutation) AddCommentID(i int64) {
+	if m.addcomment_id != nil {
+		*m.addcomment_id += i
+	} else {
+		m.addcomment_id = &i
+	}
+}
+
+// AddedCommentID returns the value that was added to the "comment_id" field in this mutation.
+func (m *ResourceLikeMutation) AddedCommentID() (r int64, exists bool) {
+	v := m.addcomment_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearCommentID clears the value of the "comment_id" field.
+func (m *ResourceLikeMutation) ClearCommentID() {
+	m.comment_id = nil
+	m.addcomment_id = nil
+	m.clearedFields[resourcelike.FieldCommentID] = struct{}{}
+}
+
+// CommentIDCleared returns if the "comment_id" field was cleared in this mutation.
+func (m *ResourceLikeMutation) CommentIDCleared() bool {
+	_, ok := m.clearedFields[resourcelike.FieldCommentID]
+	return ok
+}
+
+// ResetCommentID resets all changes to the "comment_id" field.
+func (m *ResourceLikeMutation) ResetCommentID() {
+	m.comment_id = nil
+	m.addcomment_id = nil
+	delete(m.clearedFields, resourcelike.FieldCommentID)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *ResourceLikeMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *ResourceLikeMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the ResourceLike entity.
+// If the ResourceLike object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ResourceLikeMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *ResourceLikeMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// Where appends a list predicates to the ResourceLikeMutation builder.
+func (m *ResourceLikeMutation) Where(ps ...predicate.ResourceLike) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the ResourceLikeMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *ResourceLikeMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.ResourceLike, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *ResourceLikeMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *ResourceLikeMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (ResourceLike).
+func (m *ResourceLikeMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *ResourceLikeMutation) Fields() []string {
+	fields := make([]string, 0, 4)
+	if m.user_id != nil {
+		fields = append(fields, resourcelike.FieldUserID)
+	}
+	if m.post_id != nil {
+		fields = append(fields, resourcelike.FieldPostID)
+	}
+	if m.comment_id != nil {
+		fields = append(fields, resourcelike.FieldCommentID)
+	}
+	if m.created_at != nil {
+		fields = append(fields, resourcelike.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *ResourceLikeMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case resourcelike.FieldUserID:
+		return m.UserID()
+	case resourcelike.FieldPostID:
+		return m.PostID()
+	case resourcelike.FieldCommentID:
+		return m.CommentID()
+	case resourcelike.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *ResourceLikeMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case resourcelike.FieldUserID:
+		return m.OldUserID(ctx)
+	case resourcelike.FieldPostID:
+		return m.OldPostID(ctx)
+	case resourcelike.FieldCommentID:
+		return m.OldCommentID(ctx)
+	case resourcelike.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown ResourceLike field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ResourceLikeMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case resourcelike.FieldUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUserID(v)
+		return nil
+	case resourcelike.FieldPostID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPostID(v)
+		return nil
+	case resourcelike.FieldCommentID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCommentID(v)
+		return nil
+	case resourcelike.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ResourceLike field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *ResourceLikeMutation) AddedFields() []string {
+	var fields []string
+	if m.adduser_id != nil {
+		fields = append(fields, resourcelike.FieldUserID)
+	}
+	if m.addpost_id != nil {
+		fields = append(fields, resourcelike.FieldPostID)
+	}
+	if m.addcomment_id != nil {
+		fields = append(fields, resourcelike.FieldCommentID)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *ResourceLikeMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case resourcelike.FieldUserID:
+		return m.AddedUserID()
+	case resourcelike.FieldPostID:
+		return m.AddedPostID()
+	case resourcelike.FieldCommentID:
+		return m.AddedCommentID()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ResourceLikeMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case resourcelike.FieldUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddUserID(v)
+		return nil
+	case resourcelike.FieldPostID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPostID(v)
+		return nil
+	case resourcelike.FieldCommentID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddCommentID(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ResourceLike numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *ResourceLikeMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(resourcelike.FieldPostID) {
+		fields = append(fields, resourcelike.FieldPostID)
+	}
+	if m.FieldCleared(resourcelike.FieldCommentID) {
+		fields = append(fields, resourcelike.FieldCommentID)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *ResourceLikeMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *ResourceLikeMutation) ClearField(name string) error {
+	switch name {
+	case resourcelike.FieldPostID:
+		m.ClearPostID()
+		return nil
+	case resourcelike.FieldCommentID:
+		m.ClearCommentID()
+		return nil
+	}
+	return fmt.Errorf("unknown ResourceLike nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *ResourceLikeMutation) ResetField(name string) error {
+	switch name {
+	case resourcelike.FieldUserID:
+		m.ResetUserID()
+		return nil
+	case resourcelike.FieldPostID:
+		m.ResetPostID()
+		return nil
+	case resourcelike.FieldCommentID:
+		m.ResetCommentID()
+		return nil
+	case resourcelike.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown ResourceLike field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *ResourceLikeMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *ResourceLikeMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *ResourceLikeMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *ResourceLikeMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *ResourceLikeMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *ResourceLikeMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *ResourceLikeMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown ResourceLike unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *ResourceLikeMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown ResourceLike edge %s", name)
+}
+
+// ResourceNotificationMutation represents an operation that mutates the ResourceNotification nodes in the graph.
+type ResourceNotificationMutation struct {
+	config
+	op             Op
+	typ            string
+	id             *int64
+	user_id        *int64
+	adduser_id     *int64
+	actor_id       *int64
+	addactor_id    *int64
+	actor_username *string
+	actor_role     *string
+	post_id        *int64
+	addpost_id     *int64
+	comment_id     *int64
+	addcomment_id  *int64
+	kind           *string
+	read           *bool
+	created_at     *time.Time
+	clearedFields  map[string]struct{}
+	done           bool
+	oldValue       func(context.Context) (*ResourceNotification, error)
+	predicates     []predicate.ResourceNotification
+}
+
+var _ ent.Mutation = (*ResourceNotificationMutation)(nil)
+
+// resourcenotificationOption allows management of the mutation configuration using functional options.
+type resourcenotificationOption func(*ResourceNotificationMutation)
+
+// newResourceNotificationMutation creates new mutation for the ResourceNotification entity.
+func newResourceNotificationMutation(c config, op Op, opts ...resourcenotificationOption) *ResourceNotificationMutation {
+	m := &ResourceNotificationMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeResourceNotification,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withResourceNotificationID sets the ID field of the mutation.
+func withResourceNotificationID(id int64) resourcenotificationOption {
+	return func(m *ResourceNotificationMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *ResourceNotification
+		)
+		m.oldValue = func(ctx context.Context) (*ResourceNotification, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().ResourceNotification.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withResourceNotification sets the old ResourceNotification of the mutation.
+func withResourceNotification(node *ResourceNotification) resourcenotificationOption {
+	return func(m *ResourceNotificationMutation) {
+		m.oldValue = func(context.Context) (*ResourceNotification, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m ResourceNotificationMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m ResourceNotificationMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *ResourceNotificationMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *ResourceNotificationMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().ResourceNotification.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetUserID sets the "user_id" field.
+func (m *ResourceNotificationMutation) SetUserID(i int64) {
+	m.user_id = &i
+	m.adduser_id = nil
+}
+
+// UserID returns the value of the "user_id" field in the mutation.
+func (m *ResourceNotificationMutation) UserID() (r int64, exists bool) {
+	v := m.user_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUserID returns the old "user_id" field's value of the ResourceNotification entity.
+// If the ResourceNotification object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ResourceNotificationMutation) OldUserID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUserID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUserID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUserID: %w", err)
+	}
+	return oldValue.UserID, nil
+}
+
+// AddUserID adds i to the "user_id" field.
+func (m *ResourceNotificationMutation) AddUserID(i int64) {
+	if m.adduser_id != nil {
+		*m.adduser_id += i
+	} else {
+		m.adduser_id = &i
+	}
+}
+
+// AddedUserID returns the value that was added to the "user_id" field in this mutation.
+func (m *ResourceNotificationMutation) AddedUserID() (r int64, exists bool) {
+	v := m.adduser_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetUserID resets all changes to the "user_id" field.
+func (m *ResourceNotificationMutation) ResetUserID() {
+	m.user_id = nil
+	m.adduser_id = nil
+}
+
+// SetActorID sets the "actor_id" field.
+func (m *ResourceNotificationMutation) SetActorID(i int64) {
+	m.actor_id = &i
+	m.addactor_id = nil
+}
+
+// ActorID returns the value of the "actor_id" field in the mutation.
+func (m *ResourceNotificationMutation) ActorID() (r int64, exists bool) {
+	v := m.actor_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldActorID returns the old "actor_id" field's value of the ResourceNotification entity.
+// If the ResourceNotification object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ResourceNotificationMutation) OldActorID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldActorID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldActorID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldActorID: %w", err)
+	}
+	return oldValue.ActorID, nil
+}
+
+// AddActorID adds i to the "actor_id" field.
+func (m *ResourceNotificationMutation) AddActorID(i int64) {
+	if m.addactor_id != nil {
+		*m.addactor_id += i
+	} else {
+		m.addactor_id = &i
+	}
+}
+
+// AddedActorID returns the value that was added to the "actor_id" field in this mutation.
+func (m *ResourceNotificationMutation) AddedActorID() (r int64, exists bool) {
+	v := m.addactor_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetActorID resets all changes to the "actor_id" field.
+func (m *ResourceNotificationMutation) ResetActorID() {
+	m.actor_id = nil
+	m.addactor_id = nil
+}
+
+// SetActorUsername sets the "actor_username" field.
+func (m *ResourceNotificationMutation) SetActorUsername(s string) {
+	m.actor_username = &s
+}
+
+// ActorUsername returns the value of the "actor_username" field in the mutation.
+func (m *ResourceNotificationMutation) ActorUsername() (r string, exists bool) {
+	v := m.actor_username
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldActorUsername returns the old "actor_username" field's value of the ResourceNotification entity.
+// If the ResourceNotification object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ResourceNotificationMutation) OldActorUsername(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldActorUsername is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldActorUsername requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldActorUsername: %w", err)
+	}
+	return oldValue.ActorUsername, nil
+}
+
+// ResetActorUsername resets all changes to the "actor_username" field.
+func (m *ResourceNotificationMutation) ResetActorUsername() {
+	m.actor_username = nil
+}
+
+// SetActorRole sets the "actor_role" field.
+func (m *ResourceNotificationMutation) SetActorRole(s string) {
+	m.actor_role = &s
+}
+
+// ActorRole returns the value of the "actor_role" field in the mutation.
+func (m *ResourceNotificationMutation) ActorRole() (r string, exists bool) {
+	v := m.actor_role
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldActorRole returns the old "actor_role" field's value of the ResourceNotification entity.
+// If the ResourceNotification object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ResourceNotificationMutation) OldActorRole(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldActorRole is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldActorRole requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldActorRole: %w", err)
+	}
+	return oldValue.ActorRole, nil
+}
+
+// ResetActorRole resets all changes to the "actor_role" field.
+func (m *ResourceNotificationMutation) ResetActorRole() {
+	m.actor_role = nil
+}
+
+// SetPostID sets the "post_id" field.
+func (m *ResourceNotificationMutation) SetPostID(i int64) {
+	m.post_id = &i
+	m.addpost_id = nil
+}
+
+// PostID returns the value of the "post_id" field in the mutation.
+func (m *ResourceNotificationMutation) PostID() (r int64, exists bool) {
+	v := m.post_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPostID returns the old "post_id" field's value of the ResourceNotification entity.
+// If the ResourceNotification object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ResourceNotificationMutation) OldPostID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPostID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPostID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPostID: %w", err)
+	}
+	return oldValue.PostID, nil
+}
+
+// AddPostID adds i to the "post_id" field.
+func (m *ResourceNotificationMutation) AddPostID(i int64) {
+	if m.addpost_id != nil {
+		*m.addpost_id += i
+	} else {
+		m.addpost_id = &i
+	}
+}
+
+// AddedPostID returns the value that was added to the "post_id" field in this mutation.
+func (m *ResourceNotificationMutation) AddedPostID() (r int64, exists bool) {
+	v := m.addpost_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetPostID resets all changes to the "post_id" field.
+func (m *ResourceNotificationMutation) ResetPostID() {
+	m.post_id = nil
+	m.addpost_id = nil
+}
+
+// SetCommentID sets the "comment_id" field.
+func (m *ResourceNotificationMutation) SetCommentID(i int64) {
+	m.comment_id = &i
+	m.addcomment_id = nil
+}
+
+// CommentID returns the value of the "comment_id" field in the mutation.
+func (m *ResourceNotificationMutation) CommentID() (r int64, exists bool) {
+	v := m.comment_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCommentID returns the old "comment_id" field's value of the ResourceNotification entity.
+// If the ResourceNotification object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ResourceNotificationMutation) OldCommentID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCommentID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCommentID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCommentID: %w", err)
+	}
+	return oldValue.CommentID, nil
+}
+
+// AddCommentID adds i to the "comment_id" field.
+func (m *ResourceNotificationMutation) AddCommentID(i int64) {
+	if m.addcomment_id != nil {
+		*m.addcomment_id += i
+	} else {
+		m.addcomment_id = &i
+	}
+}
+
+// AddedCommentID returns the value that was added to the "comment_id" field in this mutation.
+func (m *ResourceNotificationMutation) AddedCommentID() (r int64, exists bool) {
+	v := m.addcomment_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearCommentID clears the value of the "comment_id" field.
+func (m *ResourceNotificationMutation) ClearCommentID() {
+	m.comment_id = nil
+	m.addcomment_id = nil
+	m.clearedFields[resourcenotification.FieldCommentID] = struct{}{}
+}
+
+// CommentIDCleared returns if the "comment_id" field was cleared in this mutation.
+func (m *ResourceNotificationMutation) CommentIDCleared() bool {
+	_, ok := m.clearedFields[resourcenotification.FieldCommentID]
+	return ok
+}
+
+// ResetCommentID resets all changes to the "comment_id" field.
+func (m *ResourceNotificationMutation) ResetCommentID() {
+	m.comment_id = nil
+	m.addcomment_id = nil
+	delete(m.clearedFields, resourcenotification.FieldCommentID)
+}
+
+// SetKind sets the "kind" field.
+func (m *ResourceNotificationMutation) SetKind(s string) {
+	m.kind = &s
+}
+
+// Kind returns the value of the "kind" field in the mutation.
+func (m *ResourceNotificationMutation) Kind() (r string, exists bool) {
+	v := m.kind
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldKind returns the old "kind" field's value of the ResourceNotification entity.
+// If the ResourceNotification object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ResourceNotificationMutation) OldKind(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldKind is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldKind requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldKind: %w", err)
+	}
+	return oldValue.Kind, nil
+}
+
+// ResetKind resets all changes to the "kind" field.
+func (m *ResourceNotificationMutation) ResetKind() {
+	m.kind = nil
+}
+
+// SetRead sets the "read" field.
+func (m *ResourceNotificationMutation) SetRead(b bool) {
+	m.read = &b
+}
+
+// Read returns the value of the "read" field in the mutation.
+func (m *ResourceNotificationMutation) Read() (r bool, exists bool) {
+	v := m.read
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRead returns the old "read" field's value of the ResourceNotification entity.
+// If the ResourceNotification object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ResourceNotificationMutation) OldRead(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRead is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRead requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRead: %w", err)
+	}
+	return oldValue.Read, nil
+}
+
+// ResetRead resets all changes to the "read" field.
+func (m *ResourceNotificationMutation) ResetRead() {
+	m.read = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *ResourceNotificationMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *ResourceNotificationMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the ResourceNotification entity.
+// If the ResourceNotification object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ResourceNotificationMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *ResourceNotificationMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// Where appends a list predicates to the ResourceNotificationMutation builder.
+func (m *ResourceNotificationMutation) Where(ps ...predicate.ResourceNotification) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the ResourceNotificationMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *ResourceNotificationMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.ResourceNotification, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *ResourceNotificationMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *ResourceNotificationMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (ResourceNotification).
+func (m *ResourceNotificationMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *ResourceNotificationMutation) Fields() []string {
+	fields := make([]string, 0, 9)
+	if m.user_id != nil {
+		fields = append(fields, resourcenotification.FieldUserID)
+	}
+	if m.actor_id != nil {
+		fields = append(fields, resourcenotification.FieldActorID)
+	}
+	if m.actor_username != nil {
+		fields = append(fields, resourcenotification.FieldActorUsername)
+	}
+	if m.actor_role != nil {
+		fields = append(fields, resourcenotification.FieldActorRole)
+	}
+	if m.post_id != nil {
+		fields = append(fields, resourcenotification.FieldPostID)
+	}
+	if m.comment_id != nil {
+		fields = append(fields, resourcenotification.FieldCommentID)
+	}
+	if m.kind != nil {
+		fields = append(fields, resourcenotification.FieldKind)
+	}
+	if m.read != nil {
+		fields = append(fields, resourcenotification.FieldRead)
+	}
+	if m.created_at != nil {
+		fields = append(fields, resourcenotification.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *ResourceNotificationMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case resourcenotification.FieldUserID:
+		return m.UserID()
+	case resourcenotification.FieldActorID:
+		return m.ActorID()
+	case resourcenotification.FieldActorUsername:
+		return m.ActorUsername()
+	case resourcenotification.FieldActorRole:
+		return m.ActorRole()
+	case resourcenotification.FieldPostID:
+		return m.PostID()
+	case resourcenotification.FieldCommentID:
+		return m.CommentID()
+	case resourcenotification.FieldKind:
+		return m.Kind()
+	case resourcenotification.FieldRead:
+		return m.Read()
+	case resourcenotification.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *ResourceNotificationMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case resourcenotification.FieldUserID:
+		return m.OldUserID(ctx)
+	case resourcenotification.FieldActorID:
+		return m.OldActorID(ctx)
+	case resourcenotification.FieldActorUsername:
+		return m.OldActorUsername(ctx)
+	case resourcenotification.FieldActorRole:
+		return m.OldActorRole(ctx)
+	case resourcenotification.FieldPostID:
+		return m.OldPostID(ctx)
+	case resourcenotification.FieldCommentID:
+		return m.OldCommentID(ctx)
+	case resourcenotification.FieldKind:
+		return m.OldKind(ctx)
+	case resourcenotification.FieldRead:
+		return m.OldRead(ctx)
+	case resourcenotification.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown ResourceNotification field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ResourceNotificationMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case resourcenotification.FieldUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUserID(v)
+		return nil
+	case resourcenotification.FieldActorID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetActorID(v)
+		return nil
+	case resourcenotification.FieldActorUsername:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetActorUsername(v)
+		return nil
+	case resourcenotification.FieldActorRole:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetActorRole(v)
+		return nil
+	case resourcenotification.FieldPostID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPostID(v)
+		return nil
+	case resourcenotification.FieldCommentID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCommentID(v)
+		return nil
+	case resourcenotification.FieldKind:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetKind(v)
+		return nil
+	case resourcenotification.FieldRead:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRead(v)
+		return nil
+	case resourcenotification.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ResourceNotification field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *ResourceNotificationMutation) AddedFields() []string {
+	var fields []string
+	if m.adduser_id != nil {
+		fields = append(fields, resourcenotification.FieldUserID)
+	}
+	if m.addactor_id != nil {
+		fields = append(fields, resourcenotification.FieldActorID)
+	}
+	if m.addpost_id != nil {
+		fields = append(fields, resourcenotification.FieldPostID)
+	}
+	if m.addcomment_id != nil {
+		fields = append(fields, resourcenotification.FieldCommentID)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *ResourceNotificationMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case resourcenotification.FieldUserID:
+		return m.AddedUserID()
+	case resourcenotification.FieldActorID:
+		return m.AddedActorID()
+	case resourcenotification.FieldPostID:
+		return m.AddedPostID()
+	case resourcenotification.FieldCommentID:
+		return m.AddedCommentID()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ResourceNotificationMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case resourcenotification.FieldUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddUserID(v)
+		return nil
+	case resourcenotification.FieldActorID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddActorID(v)
+		return nil
+	case resourcenotification.FieldPostID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPostID(v)
+		return nil
+	case resourcenotification.FieldCommentID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddCommentID(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ResourceNotification numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *ResourceNotificationMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(resourcenotification.FieldCommentID) {
+		fields = append(fields, resourcenotification.FieldCommentID)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *ResourceNotificationMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *ResourceNotificationMutation) ClearField(name string) error {
+	switch name {
+	case resourcenotification.FieldCommentID:
+		m.ClearCommentID()
+		return nil
+	}
+	return fmt.Errorf("unknown ResourceNotification nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *ResourceNotificationMutation) ResetField(name string) error {
+	switch name {
+	case resourcenotification.FieldUserID:
+		m.ResetUserID()
+		return nil
+	case resourcenotification.FieldActorID:
+		m.ResetActorID()
+		return nil
+	case resourcenotification.FieldActorUsername:
+		m.ResetActorUsername()
+		return nil
+	case resourcenotification.FieldActorRole:
+		m.ResetActorRole()
+		return nil
+	case resourcenotification.FieldPostID:
+		m.ResetPostID()
+		return nil
+	case resourcenotification.FieldCommentID:
+		m.ResetCommentID()
+		return nil
+	case resourcenotification.FieldKind:
+		m.ResetKind()
+		return nil
+	case resourcenotification.FieldRead:
+		m.ResetRead()
+		return nil
+	case resourcenotification.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown ResourceNotification field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *ResourceNotificationMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *ResourceNotificationMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *ResourceNotificationMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *ResourceNotificationMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *ResourceNotificationMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *ResourceNotificationMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *ResourceNotificationMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown ResourceNotification unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *ResourceNotificationMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown ResourceNotification edge %s", name)
+}
+
+// ResourcePostMutation represents an operation that mutates the ResourcePost nodes in the graph.
+type ResourcePostMutation struct {
+	config
+	op               Op
+	typ              string
+	id               *int64
+	category_id      *int64
+	addcategory_id   *int64
+	author_id        *int64
+	addauthor_id     *int64
+	author_username  *string
+	author_role      *string
+	title            *string
+	content          *string
+	status           *string
+	view_count       *int
+	addview_count    *int
+	like_count       *int
+	addlike_count    *int
+	comment_count    *int
+	addcomment_count *int
+	created_at       *time.Time
+	updated_at       *time.Time
+	clearedFields    map[string]struct{}
+	done             bool
+	oldValue         func(context.Context) (*ResourcePost, error)
+	predicates       []predicate.ResourcePost
+}
+
+var _ ent.Mutation = (*ResourcePostMutation)(nil)
+
+// resourcepostOption allows management of the mutation configuration using functional options.
+type resourcepostOption func(*ResourcePostMutation)
+
+// newResourcePostMutation creates new mutation for the ResourcePost entity.
+func newResourcePostMutation(c config, op Op, opts ...resourcepostOption) *ResourcePostMutation {
+	m := &ResourcePostMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeResourcePost,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withResourcePostID sets the ID field of the mutation.
+func withResourcePostID(id int64) resourcepostOption {
+	return func(m *ResourcePostMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *ResourcePost
+		)
+		m.oldValue = func(ctx context.Context) (*ResourcePost, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().ResourcePost.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withResourcePost sets the old ResourcePost of the mutation.
+func withResourcePost(node *ResourcePost) resourcepostOption {
+	return func(m *ResourcePostMutation) {
+		m.oldValue = func(context.Context) (*ResourcePost, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m ResourcePostMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m ResourcePostMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *ResourcePostMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *ResourcePostMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().ResourcePost.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCategoryID sets the "category_id" field.
+func (m *ResourcePostMutation) SetCategoryID(i int64) {
+	m.category_id = &i
+	m.addcategory_id = nil
+}
+
+// CategoryID returns the value of the "category_id" field in the mutation.
+func (m *ResourcePostMutation) CategoryID() (r int64, exists bool) {
+	v := m.category_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCategoryID returns the old "category_id" field's value of the ResourcePost entity.
+// If the ResourcePost object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ResourcePostMutation) OldCategoryID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCategoryID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCategoryID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCategoryID: %w", err)
+	}
+	return oldValue.CategoryID, nil
+}
+
+// AddCategoryID adds i to the "category_id" field.
+func (m *ResourcePostMutation) AddCategoryID(i int64) {
+	if m.addcategory_id != nil {
+		*m.addcategory_id += i
+	} else {
+		m.addcategory_id = &i
+	}
+}
+
+// AddedCategoryID returns the value that was added to the "category_id" field in this mutation.
+func (m *ResourcePostMutation) AddedCategoryID() (r int64, exists bool) {
+	v := m.addcategory_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetCategoryID resets all changes to the "category_id" field.
+func (m *ResourcePostMutation) ResetCategoryID() {
+	m.category_id = nil
+	m.addcategory_id = nil
+}
+
+// SetAuthorID sets the "author_id" field.
+func (m *ResourcePostMutation) SetAuthorID(i int64) {
+	m.author_id = &i
+	m.addauthor_id = nil
+}
+
+// AuthorID returns the value of the "author_id" field in the mutation.
+func (m *ResourcePostMutation) AuthorID() (r int64, exists bool) {
+	v := m.author_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAuthorID returns the old "author_id" field's value of the ResourcePost entity.
+// If the ResourcePost object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ResourcePostMutation) OldAuthorID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAuthorID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAuthorID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAuthorID: %w", err)
+	}
+	return oldValue.AuthorID, nil
+}
+
+// AddAuthorID adds i to the "author_id" field.
+func (m *ResourcePostMutation) AddAuthorID(i int64) {
+	if m.addauthor_id != nil {
+		*m.addauthor_id += i
+	} else {
+		m.addauthor_id = &i
+	}
+}
+
+// AddedAuthorID returns the value that was added to the "author_id" field in this mutation.
+func (m *ResourcePostMutation) AddedAuthorID() (r int64, exists bool) {
+	v := m.addauthor_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAuthorID resets all changes to the "author_id" field.
+func (m *ResourcePostMutation) ResetAuthorID() {
+	m.author_id = nil
+	m.addauthor_id = nil
+}
+
+// SetAuthorUsername sets the "author_username" field.
+func (m *ResourcePostMutation) SetAuthorUsername(s string) {
+	m.author_username = &s
+}
+
+// AuthorUsername returns the value of the "author_username" field in the mutation.
+func (m *ResourcePostMutation) AuthorUsername() (r string, exists bool) {
+	v := m.author_username
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAuthorUsername returns the old "author_username" field's value of the ResourcePost entity.
+// If the ResourcePost object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ResourcePostMutation) OldAuthorUsername(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAuthorUsername is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAuthorUsername requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAuthorUsername: %w", err)
+	}
+	return oldValue.AuthorUsername, nil
+}
+
+// ResetAuthorUsername resets all changes to the "author_username" field.
+func (m *ResourcePostMutation) ResetAuthorUsername() {
+	m.author_username = nil
+}
+
+// SetAuthorRole sets the "author_role" field.
+func (m *ResourcePostMutation) SetAuthorRole(s string) {
+	m.author_role = &s
+}
+
+// AuthorRole returns the value of the "author_role" field in the mutation.
+func (m *ResourcePostMutation) AuthorRole() (r string, exists bool) {
+	v := m.author_role
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAuthorRole returns the old "author_role" field's value of the ResourcePost entity.
+// If the ResourcePost object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ResourcePostMutation) OldAuthorRole(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAuthorRole is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAuthorRole requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAuthorRole: %w", err)
+	}
+	return oldValue.AuthorRole, nil
+}
+
+// ResetAuthorRole resets all changes to the "author_role" field.
+func (m *ResourcePostMutation) ResetAuthorRole() {
+	m.author_role = nil
+}
+
+// SetTitle sets the "title" field.
+func (m *ResourcePostMutation) SetTitle(s string) {
+	m.title = &s
+}
+
+// Title returns the value of the "title" field in the mutation.
+func (m *ResourcePostMutation) Title() (r string, exists bool) {
+	v := m.title
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTitle returns the old "title" field's value of the ResourcePost entity.
+// If the ResourcePost object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ResourcePostMutation) OldTitle(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTitle is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTitle requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTitle: %w", err)
+	}
+	return oldValue.Title, nil
+}
+
+// ResetTitle resets all changes to the "title" field.
+func (m *ResourcePostMutation) ResetTitle() {
+	m.title = nil
+}
+
+// SetContent sets the "content" field.
+func (m *ResourcePostMutation) SetContent(s string) {
+	m.content = &s
+}
+
+// Content returns the value of the "content" field in the mutation.
+func (m *ResourcePostMutation) Content() (r string, exists bool) {
+	v := m.content
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldContent returns the old "content" field's value of the ResourcePost entity.
+// If the ResourcePost object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ResourcePostMutation) OldContent(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldContent is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldContent requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldContent: %w", err)
+	}
+	return oldValue.Content, nil
+}
+
+// ResetContent resets all changes to the "content" field.
+func (m *ResourcePostMutation) ResetContent() {
+	m.content = nil
+}
+
+// SetStatus sets the "status" field.
+func (m *ResourcePostMutation) SetStatus(s string) {
+	m.status = &s
+}
+
+// Status returns the value of the "status" field in the mutation.
+func (m *ResourcePostMutation) Status() (r string, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatus returns the old "status" field's value of the ResourcePost entity.
+// If the ResourcePost object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ResourcePostMutation) OldStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+	}
+	return oldValue.Status, nil
+}
+
+// ResetStatus resets all changes to the "status" field.
+func (m *ResourcePostMutation) ResetStatus() {
+	m.status = nil
+}
+
+// SetViewCount sets the "view_count" field.
+func (m *ResourcePostMutation) SetViewCount(i int) {
+	m.view_count = &i
+	m.addview_count = nil
+}
+
+// ViewCount returns the value of the "view_count" field in the mutation.
+func (m *ResourcePostMutation) ViewCount() (r int, exists bool) {
+	v := m.view_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldViewCount returns the old "view_count" field's value of the ResourcePost entity.
+// If the ResourcePost object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ResourcePostMutation) OldViewCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldViewCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldViewCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldViewCount: %w", err)
+	}
+	return oldValue.ViewCount, nil
+}
+
+// AddViewCount adds i to the "view_count" field.
+func (m *ResourcePostMutation) AddViewCount(i int) {
+	if m.addview_count != nil {
+		*m.addview_count += i
+	} else {
+		m.addview_count = &i
+	}
+}
+
+// AddedViewCount returns the value that was added to the "view_count" field in this mutation.
+func (m *ResourcePostMutation) AddedViewCount() (r int, exists bool) {
+	v := m.addview_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetViewCount resets all changes to the "view_count" field.
+func (m *ResourcePostMutation) ResetViewCount() {
+	m.view_count = nil
+	m.addview_count = nil
+}
+
+// SetLikeCount sets the "like_count" field.
+func (m *ResourcePostMutation) SetLikeCount(i int) {
+	m.like_count = &i
+	m.addlike_count = nil
+}
+
+// LikeCount returns the value of the "like_count" field in the mutation.
+func (m *ResourcePostMutation) LikeCount() (r int, exists bool) {
+	v := m.like_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLikeCount returns the old "like_count" field's value of the ResourcePost entity.
+// If the ResourcePost object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ResourcePostMutation) OldLikeCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLikeCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLikeCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLikeCount: %w", err)
+	}
+	return oldValue.LikeCount, nil
+}
+
+// AddLikeCount adds i to the "like_count" field.
+func (m *ResourcePostMutation) AddLikeCount(i int) {
+	if m.addlike_count != nil {
+		*m.addlike_count += i
+	} else {
+		m.addlike_count = &i
+	}
+}
+
+// AddedLikeCount returns the value that was added to the "like_count" field in this mutation.
+func (m *ResourcePostMutation) AddedLikeCount() (r int, exists bool) {
+	v := m.addlike_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetLikeCount resets all changes to the "like_count" field.
+func (m *ResourcePostMutation) ResetLikeCount() {
+	m.like_count = nil
+	m.addlike_count = nil
+}
+
+// SetCommentCount sets the "comment_count" field.
+func (m *ResourcePostMutation) SetCommentCount(i int) {
+	m.comment_count = &i
+	m.addcomment_count = nil
+}
+
+// CommentCount returns the value of the "comment_count" field in the mutation.
+func (m *ResourcePostMutation) CommentCount() (r int, exists bool) {
+	v := m.comment_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCommentCount returns the old "comment_count" field's value of the ResourcePost entity.
+// If the ResourcePost object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ResourcePostMutation) OldCommentCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCommentCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCommentCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCommentCount: %w", err)
+	}
+	return oldValue.CommentCount, nil
+}
+
+// AddCommentCount adds i to the "comment_count" field.
+func (m *ResourcePostMutation) AddCommentCount(i int) {
+	if m.addcomment_count != nil {
+		*m.addcomment_count += i
+	} else {
+		m.addcomment_count = &i
+	}
+}
+
+// AddedCommentCount returns the value that was added to the "comment_count" field in this mutation.
+func (m *ResourcePostMutation) AddedCommentCount() (r int, exists bool) {
+	v := m.addcomment_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetCommentCount resets all changes to the "comment_count" field.
+func (m *ResourcePostMutation) ResetCommentCount() {
+	m.comment_count = nil
+	m.addcomment_count = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *ResourcePostMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *ResourcePostMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the ResourcePost entity.
+// If the ResourcePost object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ResourcePostMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *ResourcePostMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *ResourcePostMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *ResourcePostMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the ResourcePost entity.
+// If the ResourcePost object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ResourcePostMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *ResourcePostMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// Where appends a list predicates to the ResourcePostMutation builder.
+func (m *ResourcePostMutation) Where(ps ...predicate.ResourcePost) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the ResourcePostMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *ResourcePostMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.ResourcePost, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *ResourcePostMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *ResourcePostMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (ResourcePost).
+func (m *ResourcePostMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *ResourcePostMutation) Fields() []string {
+	fields := make([]string, 0, 12)
+	if m.category_id != nil {
+		fields = append(fields, resourcepost.FieldCategoryID)
+	}
+	if m.author_id != nil {
+		fields = append(fields, resourcepost.FieldAuthorID)
+	}
+	if m.author_username != nil {
+		fields = append(fields, resourcepost.FieldAuthorUsername)
+	}
+	if m.author_role != nil {
+		fields = append(fields, resourcepost.FieldAuthorRole)
+	}
+	if m.title != nil {
+		fields = append(fields, resourcepost.FieldTitle)
+	}
+	if m.content != nil {
+		fields = append(fields, resourcepost.FieldContent)
+	}
+	if m.status != nil {
+		fields = append(fields, resourcepost.FieldStatus)
+	}
+	if m.view_count != nil {
+		fields = append(fields, resourcepost.FieldViewCount)
+	}
+	if m.like_count != nil {
+		fields = append(fields, resourcepost.FieldLikeCount)
+	}
+	if m.comment_count != nil {
+		fields = append(fields, resourcepost.FieldCommentCount)
+	}
+	if m.created_at != nil {
+		fields = append(fields, resourcepost.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, resourcepost.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *ResourcePostMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case resourcepost.FieldCategoryID:
+		return m.CategoryID()
+	case resourcepost.FieldAuthorID:
+		return m.AuthorID()
+	case resourcepost.FieldAuthorUsername:
+		return m.AuthorUsername()
+	case resourcepost.FieldAuthorRole:
+		return m.AuthorRole()
+	case resourcepost.FieldTitle:
+		return m.Title()
+	case resourcepost.FieldContent:
+		return m.Content()
+	case resourcepost.FieldStatus:
+		return m.Status()
+	case resourcepost.FieldViewCount:
+		return m.ViewCount()
+	case resourcepost.FieldLikeCount:
+		return m.LikeCount()
+	case resourcepost.FieldCommentCount:
+		return m.CommentCount()
+	case resourcepost.FieldCreatedAt:
+		return m.CreatedAt()
+	case resourcepost.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *ResourcePostMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case resourcepost.FieldCategoryID:
+		return m.OldCategoryID(ctx)
+	case resourcepost.FieldAuthorID:
+		return m.OldAuthorID(ctx)
+	case resourcepost.FieldAuthorUsername:
+		return m.OldAuthorUsername(ctx)
+	case resourcepost.FieldAuthorRole:
+		return m.OldAuthorRole(ctx)
+	case resourcepost.FieldTitle:
+		return m.OldTitle(ctx)
+	case resourcepost.FieldContent:
+		return m.OldContent(ctx)
+	case resourcepost.FieldStatus:
+		return m.OldStatus(ctx)
+	case resourcepost.FieldViewCount:
+		return m.OldViewCount(ctx)
+	case resourcepost.FieldLikeCount:
+		return m.OldLikeCount(ctx)
+	case resourcepost.FieldCommentCount:
+		return m.OldCommentCount(ctx)
+	case resourcepost.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case resourcepost.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown ResourcePost field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ResourcePostMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case resourcepost.FieldCategoryID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCategoryID(v)
+		return nil
+	case resourcepost.FieldAuthorID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAuthorID(v)
+		return nil
+	case resourcepost.FieldAuthorUsername:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAuthorUsername(v)
+		return nil
+	case resourcepost.FieldAuthorRole:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAuthorRole(v)
+		return nil
+	case resourcepost.FieldTitle:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTitle(v)
+		return nil
+	case resourcepost.FieldContent:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetContent(v)
+		return nil
+	case resourcepost.FieldStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatus(v)
+		return nil
+	case resourcepost.FieldViewCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetViewCount(v)
+		return nil
+	case resourcepost.FieldLikeCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLikeCount(v)
+		return nil
+	case resourcepost.FieldCommentCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCommentCount(v)
+		return nil
+	case resourcepost.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case resourcepost.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ResourcePost field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *ResourcePostMutation) AddedFields() []string {
+	var fields []string
+	if m.addcategory_id != nil {
+		fields = append(fields, resourcepost.FieldCategoryID)
+	}
+	if m.addauthor_id != nil {
+		fields = append(fields, resourcepost.FieldAuthorID)
+	}
+	if m.addview_count != nil {
+		fields = append(fields, resourcepost.FieldViewCount)
+	}
+	if m.addlike_count != nil {
+		fields = append(fields, resourcepost.FieldLikeCount)
+	}
+	if m.addcomment_count != nil {
+		fields = append(fields, resourcepost.FieldCommentCount)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *ResourcePostMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case resourcepost.FieldCategoryID:
+		return m.AddedCategoryID()
+	case resourcepost.FieldAuthorID:
+		return m.AddedAuthorID()
+	case resourcepost.FieldViewCount:
+		return m.AddedViewCount()
+	case resourcepost.FieldLikeCount:
+		return m.AddedLikeCount()
+	case resourcepost.FieldCommentCount:
+		return m.AddedCommentCount()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ResourcePostMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case resourcepost.FieldCategoryID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddCategoryID(v)
+		return nil
+	case resourcepost.FieldAuthorID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAuthorID(v)
+		return nil
+	case resourcepost.FieldViewCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddViewCount(v)
+		return nil
+	case resourcepost.FieldLikeCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddLikeCount(v)
+		return nil
+	case resourcepost.FieldCommentCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddCommentCount(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ResourcePost numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *ResourcePostMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *ResourcePostMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *ResourcePostMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown ResourcePost nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *ResourcePostMutation) ResetField(name string) error {
+	switch name {
+	case resourcepost.FieldCategoryID:
+		m.ResetCategoryID()
+		return nil
+	case resourcepost.FieldAuthorID:
+		m.ResetAuthorID()
+		return nil
+	case resourcepost.FieldAuthorUsername:
+		m.ResetAuthorUsername()
+		return nil
+	case resourcepost.FieldAuthorRole:
+		m.ResetAuthorRole()
+		return nil
+	case resourcepost.FieldTitle:
+		m.ResetTitle()
+		return nil
+	case resourcepost.FieldContent:
+		m.ResetContent()
+		return nil
+	case resourcepost.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case resourcepost.FieldViewCount:
+		m.ResetViewCount()
+		return nil
+	case resourcepost.FieldLikeCount:
+		m.ResetLikeCount()
+		return nil
+	case resourcepost.FieldCommentCount:
+		m.ResetCommentCount()
+		return nil
+	case resourcepost.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case resourcepost.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown ResourcePost field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *ResourcePostMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *ResourcePostMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *ResourcePostMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *ResourcePostMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *ResourcePostMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *ResourcePostMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *ResourcePostMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown ResourcePost unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *ResourcePostMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown ResourcePost edge %s", name)
 }
 
 // SecuritySecretMutation represents an operation that mutates the SecuritySecret nodes in the graph.

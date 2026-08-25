@@ -236,12 +236,16 @@ export interface PublicSettings {
   home_content: string
   compact_home_enabled: boolean
   hide_ccs_import_button: boolean
+  /** External recharge page entry, kept separate from the built-in payment flow. */
+  purchase_subscription_enabled: boolean
+  purchase_subscription_url: string
   payment_enabled: boolean
   risk_control_enabled: boolean
   table_default_page_size: number
   table_page_size_options: number[]
   custom_menu_items: CustomMenuItem[]
   custom_endpoints: CustomEndpoint[]
+  resource_center_enabled?: boolean
   linuxdo_oauth_enabled: boolean
   dingtalk_oauth_enabled?: boolean
   wechat_oauth_enabled: boolean
@@ -272,6 +276,87 @@ export interface PublicSettings {
   usage_detail_show_unit_prices?: boolean
   usage_detail_show_rate_multiplier?: boolean
   usage_detail_show_original_cost?: boolean
+}
+
+export type ResourceAuthorRole = 'admin' | 'user'
+
+export interface ResourceAuthor {
+  id: number
+  username: string
+  role: ResourceAuthorRole
+}
+
+export interface ResourceCategory {
+  id: number
+  slug: string
+  name: string
+  description: string
+}
+
+export interface ResourcePost {
+  id: number
+  category: ResourceCategory
+  author: ResourceAuthor
+  title: string
+  content: string
+  view_count: number
+  like_count: number
+  comment_count: number
+  liked: boolean
+  created_at: string
+  updated_at: string
+  status?: string
+}
+
+export interface ResourceComment {
+  id: number
+  post_id: number
+  post_title?: string
+  parent_id?: number
+  author: ResourceAuthor
+  content: string
+  like_count: number
+  liked: boolean
+  created_at: string
+  replies?: ResourceComment[]
+  status?: string
+}
+
+export interface ResourcePageInfo {
+  page: number
+  page_size: number
+  total: number
+  has_more: boolean
+}
+
+export interface ResourcePostPage extends ResourcePageInfo {
+  items: ResourcePost[]
+}
+
+export interface ResourceCommentPage extends ResourcePageInfo {
+  items: ResourceComment[]
+}
+
+export interface ResourcePostDetail {
+  post: ResourcePost
+  comments: ResourceComment[]
+  comments_page: ResourcePageInfo
+}
+
+export interface ResourceCenterConfig {
+  enabled: boolean
+  forbid_urls: boolean
+  banned_words: string[]
+}
+
+export interface ResourceNotification {
+  id: number
+  post_id: number
+  comment_id?: number
+  kind: 'comment' | 'reply' | string
+  actor: ResourceAuthor
+  read: boolean
+  created_at: string
 }
 
 export interface AuthResponse {

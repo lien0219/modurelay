@@ -70,6 +70,16 @@ export default {
     notConfiguredDesc:
       'The administrator enabled the entry but has not configured a recharge/subscription URL. Please contact admin.'
   },
+  recharge: {
+    title: 'Recharge Center',
+    description: 'Recharge your balance through the embedded page',
+    openInNewTab: 'Open in new tab',
+    notEnabledTitle: 'Feature not enabled',
+    notEnabledDesc: 'The administrator has not enabled the recharge center entry. Please contact admin.',
+    notConfiguredTitle: 'Recharge page URL not configured',
+    notConfiguredDesc:
+      'The administrator enabled the entry but has not configured a recharge page URL. Please contact admin.'
+  },
 
   // Custom Page (iframe embed)
   customPage: {
@@ -107,6 +117,56 @@ export default {
     emptyDescription: 'There are no system announcements at this time',
     readStatus: 'You have read this announcement',
     markReadHint: 'Click "Mark as read" to mark this announcement'
+  },
+
+  resourceCenter: {
+    title: 'Forum',
+    description: 'Publish posts, exchange ideas, and share useful resources',
+    disclaimer: 'Disclaimer: Content is posted by community members. Only accounts marked “Administrator” represent ModuRelay officially. Verify links, accounts, prices, and services yourself.',
+    categories: 'Categories',
+    allCategories: 'All posts',
+    latest: 'Latest',
+    popular: 'Most liked',
+    searchPlaceholder: 'Search post titles or content',
+    newPost: 'New post',
+    notifications: 'Activity',
+    markAllRead: 'Mark all read',
+    noNotifications: 'No activity yet',
+    notificationComment: '{actor} commented on your post',
+    notificationReply: '{actor} replied to your comment',
+    official: 'Official administrator',
+    member: 'Member',
+    views: 'views',
+    comments: 'comments',
+    likes: 'likes',
+    reply: 'Reply',
+    like: 'Like',
+    liked: 'Liked',
+    writeComment: 'Write a comment...',
+    submitComment: 'Comment',
+    replyTo: 'Reply to {name}',
+    cancelReply: 'Cancel reply',
+    noPosts: 'No posts yet. Be the first to share.',
+    noComments: 'No comments yet',
+    postTitle: 'Post title',
+    postContent: 'Share your content',
+    chooseCategory: 'Choose a category',
+    publish: 'Publish',
+    postPublished: 'Post published',
+    commentPublished: 'Comment published',
+    blockedContent: 'This content contains prohibited words or links and cannot be published.',
+    titleTooLong: 'Post titles are limited to 120 characters.',
+    contentTooLong: 'Post content is limited to 10,000 characters; comments to 2,000.',
+    loadMore: 'Load more posts',
+    loadMoreComments: 'Load more comments',
+    loadFailed: 'The forum failed to load. Please try again.',
+    deleted: 'This content was removed by an administrator',
+    backToList: 'Back to list',
+    close: 'Close',
+    search: 'Search',
+    postDetail: 'Post details',
+    expandComments: 'Expand comments',
+    collapseComments: 'Collapse comments',
   },
 
   // User Subscriptions Page

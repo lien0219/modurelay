@@ -608,15 +608,15 @@ export default {
         hideCcsImportButtonHint: '启用后将在 API Keys 页面隐藏"导入 CCS"按钮'
       },
       purchase: {
-        title: '充值/订阅页面',
-        description: '在侧边栏展示“充值/订阅”入口，并在页面内通过 iframe 打开指定链接',
-        enabled: '显示充值/订阅入口',
-        enabledHint: '仅在标准模式（非简单模式）下展示',
-        url: '充值/订阅页面 URL',
-        urlPlaceholder: 'https://example.com/purchase',
+        title: '充值中心',
+        description: '在侧边栏展示充值中心入口，并在页面内通过 iframe 打开指定充值页面',
+        enabled: '显示充值中心入口',
+        enabledHint: '开启后，用户可从侧边栏进入充值中心；关闭后入口立即隐藏',
+        url: '充值页面 URL',
+        urlPlaceholder: 'https://example.com/recharge',
         urlHint: '必须是完整的 http(s) 链接',
         iframeWarning:
-          '⚠️ iframe 提示：部分网站会通过 X-Frame-Options 或 CSP（frame-ancestors）禁止被 iframe 嵌入，出现空白时可引导用户使用”新窗口打开”。',
+          '⚠️ iframe 提示：部分网站会通过 X-Frame-Options 或 CSP（frame-ancestors）禁止被 iframe 嵌入，出现空白时可引导用户使用“新窗口打开”。',
         integrationDoc: '支付集成文档',
         integrationDocHint: '包含接口说明、幂等语义及示例代码'
       },

@@ -1489,6 +1489,120 @@ var (
 			},
 		},
 	}
+	// ResourceCategoriesColumns holds the columns for the "resource_categories" table.
+	ResourceCategoriesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "slug", Type: field.TypeString, Unique: true, Size: 80},
+		{Name: "name", Type: field.TypeString, Size: 120},
+		{Name: "description", Type: field.TypeString, Default: "", SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "sort_order", Type: field.TypeInt, Default: 0},
+		{Name: "enabled", Type: field.TypeBool, Default: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// ResourceCategoriesTable holds the schema information for the "resource_categories" table.
+	ResourceCategoriesTable = &schema.Table{
+		Name:       "resource_categories",
+		Columns:    ResourceCategoriesColumns,
+		PrimaryKey: []*schema.Column{ResourceCategoriesColumns[0]},
+	}
+	// ResourceCommentsColumns holds the columns for the "resource_comments" table.
+	ResourceCommentsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "post_id", Type: field.TypeInt64},
+		{Name: "parent_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "author_id", Type: field.TypeInt64},
+		{Name: "author_username", Type: field.TypeString, Size: 100},
+		{Name: "author_role", Type: field.TypeString, Size: 20},
+		{Name: "content", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "status", Type: field.TypeString, Size: 20, Default: "published"},
+		{Name: "like_count", Type: field.TypeInt, Default: 0},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// ResourceCommentsTable holds the schema information for the "resource_comments" table.
+	ResourceCommentsTable = &schema.Table{
+		Name:       "resource_comments",
+		Columns:    ResourceCommentsColumns,
+		PrimaryKey: []*schema.Column{ResourceCommentsColumns[0]},
+	}
+	// ResourceLikesColumns holds the columns for the "resource_likes" table.
+	ResourceLikesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "post_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "comment_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// ResourceLikesTable holds the schema information for the "resource_likes" table.
+	ResourceLikesTable = &schema.Table{
+		Name:       "resource_likes",
+		Columns:    ResourceLikesColumns,
+		PrimaryKey: []*schema.Column{ResourceLikesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "resourcelike_user_id_post_id",
+				Unique:  true,
+				Columns: []*schema.Column{ResourceLikesColumns[1], ResourceLikesColumns[2]},
+			},
+			{
+				Name:    "resourcelike_user_id_comment_id",
+				Unique:  true,
+				Columns: []*schema.Column{ResourceLikesColumns[1], ResourceLikesColumns[3]},
+			},
+			{
+				Name:    "resourcelike_post_id",
+				Unique:  false,
+				Columns: []*schema.Column{ResourceLikesColumns[2]},
+			},
+			{
+				Name:    "resourcelike_comment_id",
+				Unique:  false,
+				Columns: []*schema.Column{ResourceLikesColumns[3]},
+			},
+		},
+	}
+	// ResourceNotificationsColumns holds the columns for the "resource_notifications" table.
+	ResourceNotificationsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "actor_id", Type: field.TypeInt64},
+		{Name: "actor_username", Type: field.TypeString, Size: 100},
+		{Name: "actor_role", Type: field.TypeString, Size: 20},
+		{Name: "post_id", Type: field.TypeInt64},
+		{Name: "comment_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "kind", Type: field.TypeString, Size: 20},
+		{Name: "read", Type: field.TypeBool, Default: false},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// ResourceNotificationsTable holds the schema information for the "resource_notifications" table.
+	ResourceNotificationsTable = &schema.Table{
+		Name:       "resource_notifications",
+		Columns:    ResourceNotificationsColumns,
+		PrimaryKey: []*schema.Column{ResourceNotificationsColumns[0]},
+	}
+	// ResourcePostsColumns holds the columns for the "resource_posts" table.
+	ResourcePostsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "category_id", Type: field.TypeInt64},
+		{Name: "author_id", Type: field.TypeInt64},
+		{Name: "author_username", Type: field.TypeString, Size: 100},
+		{Name: "author_role", Type: field.TypeString, Size: 20},
+		{Name: "title", Type: field.TypeString, Size: 200},
+		{Name: "content", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "status", Type: field.TypeString, Size: 20, Default: "published"},
+		{Name: "view_count", Type: field.TypeInt, Default: 0},
+		{Name: "like_count", Type: field.TypeInt, Default: 0},
+		{Name: "comment_count", Type: field.TypeInt, Default: 0},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// ResourcePostsTable holds the schema information for the "resource_posts" table.
+	ResourcePostsTable = &schema.Table{
+		Name:       "resource_posts",
+		Columns:    ResourcePostsColumns,
+		PrimaryKey: []*schema.Column{ResourcePostsColumns[0]},
+	}
 	// SecuritySecretsColumns holds the columns for the "security_secrets" table.
 	SecuritySecretsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -2093,6 +2207,11 @@ var (
 		PromoCodeUsagesTable,
 		ProxiesTable,
 		RedeemCodesTable,
+		ResourceCategoriesTable,
+		ResourceCommentsTable,
+		ResourceLikesTable,
+		ResourceNotificationsTable,
+		ResourcePostsTable,
 		SecuritySecretsTable,
 		SettingsTable,
 		SubscriptionPlansTable,
@@ -2212,6 +2331,21 @@ func init() {
 	RedeemCodesTable.ForeignKeys[1].RefTable = UsersTable
 	RedeemCodesTable.Annotation = &entsql.Annotation{
 		Table: "redeem_codes",
+	}
+	ResourceCategoriesTable.Annotation = &entsql.Annotation{
+		Table: "resource_categories",
+	}
+	ResourceCommentsTable.Annotation = &entsql.Annotation{
+		Table: "resource_comments",
+	}
+	ResourceLikesTable.Annotation = &entsql.Annotation{
+		Table: "resource_likes",
+	}
+	ResourceNotificationsTable.Annotation = &entsql.Annotation{
+		Table: "resource_notifications",
+	}
+	ResourcePostsTable.Annotation = &entsql.Annotation{
+		Table: "resource_posts",
 	}
 	SecuritySecretsTable.Annotation = &entsql.Annotation{
 		Table: "security_secrets",

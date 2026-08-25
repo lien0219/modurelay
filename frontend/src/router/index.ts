@@ -204,6 +204,30 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/resource-center',
+    name: 'ResourceCenter',
+    component: () => import('@/views/user/ResourceCenterView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Resource Center',
+      titleKey: 'nav.resourceCenter',
+      descriptionKey: 'resourceCenter.description'
+    }
+  },
+  {
+    path: '/resource-center/posts/:id',
+    name: 'ResourcePostDetail',
+    component: () => import('@/views/user/ResourcePostDetailView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Forum Post',
+      titleKey: 'resourceCenter.postDetail',
+      descriptionKey: 'resourceCenter.description'
+    }
+  },
+  {
     path: '/keys',
     name: 'Keys',
     component: () => import('@/views/user/KeysView.vue'),
@@ -311,6 +335,18 @@ const routes: RouteRecordRaw[] = [
       titleKey: 'nav.buySubscription',
       descriptionKey: 'purchase.description',
       requiresPayment: true
+    }
+  },
+  {
+    path: '/recharge',
+    name: 'RechargeCenter',
+    component: () => import('@/views/user/RechargeView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Recharge Center',
+      titleKey: 'recharge.title',
+      descriptionKey: 'recharge.description'
     }
   },
   {
@@ -582,6 +618,18 @@ const routes: RouteRecordRaw[] = [
       title: 'System Settings',
       titleKey: 'admin.settings.title',
       descriptionKey: 'admin.settings.description'
+    }
+  },
+  {
+    path: '/admin/resource-center',
+    name: 'AdminResourceCenter',
+    component: () => import('@/views/admin/ResourceCenterAdminView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Resource Center',
+      titleKey: 'admin.resourceCenter.title',
+      descriptionKey: 'admin.resourceCenter.description'
     }
   },
   {
@@ -875,6 +923,20 @@ router.beforeEach(async (to, _from, next) => {
     // User is authenticated but not admin, redirect to user dashboard
     next('/dashboard')
     return
+  }
+
+  if (to.path.startsWith('/resource-center') && !authStore.isAdmin) {
+    if (!appStore.publicSettingsLoaded) {
+      try {
+        await appStore.fetchPublicSettings()
+      } catch (error) {
+        console.warn('Failed to load resource center setting in route guard', error)
+      }
+    }
+    if (appStore.publicSettingsLoaded && appStore.cachedPublicSettings?.resource_center_enabled === false) {
+      next('/dashboard')
+      return
+    }
   }
 
   if (requiresAdmin && authStore.isAdmin) {
