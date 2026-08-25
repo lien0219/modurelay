@@ -11,7 +11,9 @@ import (
 )
 
 // ResourceNotification notifies an author when another user comments or replies.
-type ResourceNotification struct { ent.Schema }
+type ResourceNotification struct {
+	ent.Schema
+}
 
 func (ResourceNotification) Annotations() []schema.Annotation {
 	return []schema.Annotation{entsql.Annotation{Table: "resource_notifications"}}

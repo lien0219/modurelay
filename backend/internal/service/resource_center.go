@@ -784,8 +784,8 @@ func sanitizeResourceContent(input string) (string, string, error) {
 	render = func(node *xhtml.Node) {
 		switch node.Type {
 		case xhtml.TextNode:
-			rendered.WriteString(stdhtml.EscapeString(node.Data))
-			plain.WriteString(node.Data)
+			_, _ = rendered.WriteString(stdhtml.EscapeString(node.Data))
+			_, _ = plain.WriteString(node.Data)
 		case xhtml.ElementNode:
 			tag := strings.ToLower(node.Data)
 			if tag == "script" || tag == "style" || tag == "iframe" || tag == "object" || tag == "svg" {
@@ -798,30 +798,30 @@ func sanitizeResourceContent(input string) (string, string, error) {
 				}
 				return
 			}
-			rendered.WriteByte('<')
-			rendered.WriteString(tag)
+			_ = rendered.WriteByte('<')
+			_, _ = rendered.WriteString(tag)
 			if tag == "a" {
 				for _, attr := range node.Attr {
 					if strings.EqualFold(attr.Key, "href") && resourceSafeHref(attr.Val) {
-						rendered.WriteString(` href="`)
-						rendered.WriteString(stdhtml.EscapeString(attr.Val))
-						rendered.WriteByte('"')
-						rendered.WriteString(` target="_blank" rel="noopener noreferrer"`)
+						_, _ = rendered.WriteString(` href="`)
+						_, _ = rendered.WriteString(stdhtml.EscapeString(attr.Val))
+						_ = rendered.WriteByte('"')
+						_, _ = rendered.WriteString(` target="_blank" rel="noopener noreferrer"`)
 					}
 				}
 			}
-			rendered.WriteByte('>')
+			_ = rendered.WriteByte('>')
 			if tag == "br" {
-				plain.WriteByte('\n')
+				_ = plain.WriteByte('\n')
 			} else {
 				for child := node.FirstChild; child != nil; child = child.NextSibling {
 					render(child)
 				}
 			}
 			if tag != "br" {
-				rendered.WriteString(`</`)
-				rendered.WriteString(tag)
-				rendered.WriteByte('>')
+				_, _ = rendered.WriteString(`</`)
+				_, _ = rendered.WriteString(tag)
+				_ = rendered.WriteByte('>')
 			}
 		}
 	}

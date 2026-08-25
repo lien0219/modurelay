@@ -12,7 +12,9 @@ import (
 )
 
 // ResourceLike stores one user reaction for either a post or a comment.
-type ResourceLike struct { ent.Schema }
+type ResourceLike struct {
+	ent.Schema
+}
 
 func (ResourceLike) Annotations() []schema.Annotation {
 	return []schema.Annotation{entsql.Annotation{Table: "resource_likes"}}

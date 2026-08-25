@@ -11,7 +11,9 @@ import (
 )
 
 // ResourceComment supports threaded replies through parent_id.
-type ResourceComment struct { ent.Schema }
+type ResourceComment struct {
+	ent.Schema
+}
 
 func (ResourceComment) Annotations() []schema.Annotation {
 	return []schema.Annotation{entsql.Annotation{Table: "resource_comments"}}

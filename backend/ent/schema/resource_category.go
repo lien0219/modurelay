@@ -11,7 +11,9 @@ import (
 )
 
 // ResourceCategory groups resource-sharing posts for discovery and filtering.
-type ResourceCategory struct { ent.Schema }
+type ResourceCategory struct {
+	ent.Schema
+}
 
 func (ResourceCategory) Annotations() []schema.Annotation {
 	return []schema.Annotation{entsql.Annotation{Table: "resource_categories"}}

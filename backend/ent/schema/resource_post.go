@@ -11,7 +11,9 @@ import (
 )
 
 // ResourcePost is a user-generated resource-sharing topic.
-type ResourcePost struct { ent.Schema }
+type ResourcePost struct {
+	ent.Schema
+}
 
 func (ResourcePost) Annotations() []schema.Annotation {
 	return []schema.Annotation{entsql.Annotation{Table: "resource_posts"}}
