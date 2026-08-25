@@ -87,6 +87,21 @@ type Proxy func(*sql.Selector)
 // RedeemCode is the predicate function for redeemcode builders.
 type RedeemCode func(*sql.Selector)
 
+// ResourceCategory is the predicate function for resourcecategory builders.
+type ResourceCategory func(*sql.Selector)
+
+// ResourceComment is the predicate function for resourcecomment builders.
+type ResourceComment func(*sql.Selector)
+
+// ResourceLike is the predicate function for resourcelike builders.
+type ResourceLike func(*sql.Selector)
+
+// ResourceNotification is the predicate function for resourcenotification builders.
+type ResourceNotification func(*sql.Selector)
+
+// ResourcePost is the predicate function for resourcepost builders.
+type ResourcePost func(*sql.Selector)
+
 // SecuritySecret is the predicate function for securitysecret builders.
 type SecuritySecret func(*sql.Selector)
 

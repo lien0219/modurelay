@@ -68,6 +68,16 @@ type Tx struct {
 	Proxy *ProxyClient
 	// RedeemCode is the client for interacting with the RedeemCode builders.
 	RedeemCode *RedeemCodeClient
+	// ResourceCategory is the client for interacting with the ResourceCategory builders.
+	ResourceCategory *ResourceCategoryClient
+	// ResourceComment is the client for interacting with the ResourceComment builders.
+	ResourceComment *ResourceCommentClient
+	// ResourceLike is the client for interacting with the ResourceLike builders.
+	ResourceLike *ResourceLikeClient
+	// ResourceNotification is the client for interacting with the ResourceNotification builders.
+	ResourceNotification *ResourceNotificationClient
+	// ResourcePost is the client for interacting with the ResourcePost builders.
+	ResourcePost *ResourcePostClient
 	// SecuritySecret is the client for interacting with the SecuritySecret builders.
 	SecuritySecret *SecuritySecretClient
 	// Setting is the client for interacting with the Setting builders.
@@ -250,6 +260,11 @@ func (tx *Tx) init() {
 	tx.PromoCodeUsage = NewPromoCodeUsageClient(tx.config)
 	tx.Proxy = NewProxyClient(tx.config)
 	tx.RedeemCode = NewRedeemCodeClient(tx.config)
+	tx.ResourceCategory = NewResourceCategoryClient(tx.config)
+	tx.ResourceComment = NewResourceCommentClient(tx.config)
+	tx.ResourceLike = NewResourceLikeClient(tx.config)
+	tx.ResourceNotification = NewResourceNotificationClient(tx.config)
+	tx.ResourcePost = NewResourcePostClient(tx.config)
 	tx.SecuritySecret = NewSecuritySecretClient(tx.config)
 	tx.Setting = NewSettingClient(tx.config)
 	tx.SubscriptionPlan = NewSubscriptionPlanClient(tx.config)

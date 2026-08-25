@@ -25,6 +25,7 @@
       <div class="flex min-w-0 items-center gap-1 sm:gap-3">
         <!-- Announcement Bell -->
         <AnnouncementBell v-if="user" />
+        <ResourceNotificationBell v-if="user && resourceCenterEnabled" />
 
         <!-- Docs Link -->
         <a
@@ -268,6 +269,7 @@ import { useAdminSettingsStore } from '@/stores/adminSettings'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import SubscriptionProgressMini from '@/components/common/SubscriptionProgressMini.vue'
 import AnnouncementBell from '@/components/common/AnnouncementBell.vue'
+import ResourceNotificationBell from '@/components/common/ResourceNotificationBell.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { sanitizeUrl } from '@/utils/url'
 import { usePrefersReducedMotion } from '@/composables/usePrefersReducedMotion'
@@ -302,6 +304,7 @@ const menuTransition = computed(() => ({
 const contactInfo = computed(() => appStore.contactInfo)
 const docUrl = computed(() => sanitizeUrl(appStore.docUrl))
 const modelPlazaEnabled = computed(() => isFeatureFlagEnabled(FeatureFlags.modelPlaza))
+const resourceCenterEnabled = computed(() => isFeatureFlagEnabled(FeatureFlags.resourceCenter))
 const avatarUrl = computed(() => user.value?.avatar_url?.trim() || '')
 const availableBalance = computed(() => Number(user.value?.balance || 0))
 const frozenBalance = computed(() => Number(user.value?.frozen_balance || 0))

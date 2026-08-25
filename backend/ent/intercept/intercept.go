@@ -36,6 +36,11 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/promocodeusage"
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
+	"github.com/Wei-Shaw/sub2api/ent/resourcecategory"
+	"github.com/Wei-Shaw/sub2api/ent/resourcecomment"
+	"github.com/Wei-Shaw/sub2api/ent/resourcelike"
+	"github.com/Wei-Shaw/sub2api/ent/resourcenotification"
+	"github.com/Wei-Shaw/sub2api/ent/resourcepost"
 	"github.com/Wei-Shaw/sub2api/ent/securitysecret"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
 	"github.com/Wei-Shaw/sub2api/ent/subscriptionplan"
@@ -835,6 +840,141 @@ func (f TraverseRedeemCode) Traverse(ctx context.Context, q ent.Query) error {
 	return fmt.Errorf("unexpected query type %T. expect *ent.RedeemCodeQuery", q)
 }
 
+// The ResourceCategoryFunc type is an adapter to allow the use of ordinary function as a Querier.
+type ResourceCategoryFunc func(context.Context, *ent.ResourceCategoryQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f ResourceCategoryFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.ResourceCategoryQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.ResourceCategoryQuery", q)
+}
+
+// The TraverseResourceCategory type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseResourceCategory func(context.Context, *ent.ResourceCategoryQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseResourceCategory) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseResourceCategory) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.ResourceCategoryQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.ResourceCategoryQuery", q)
+}
+
+// The ResourceCommentFunc type is an adapter to allow the use of ordinary function as a Querier.
+type ResourceCommentFunc func(context.Context, *ent.ResourceCommentQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f ResourceCommentFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.ResourceCommentQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.ResourceCommentQuery", q)
+}
+
+// The TraverseResourceComment type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseResourceComment func(context.Context, *ent.ResourceCommentQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseResourceComment) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseResourceComment) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.ResourceCommentQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.ResourceCommentQuery", q)
+}
+
+// The ResourceLikeFunc type is an adapter to allow the use of ordinary function as a Querier.
+type ResourceLikeFunc func(context.Context, *ent.ResourceLikeQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f ResourceLikeFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.ResourceLikeQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.ResourceLikeQuery", q)
+}
+
+// The TraverseResourceLike type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseResourceLike func(context.Context, *ent.ResourceLikeQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseResourceLike) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseResourceLike) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.ResourceLikeQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.ResourceLikeQuery", q)
+}
+
+// The ResourceNotificationFunc type is an adapter to allow the use of ordinary function as a Querier.
+type ResourceNotificationFunc func(context.Context, *ent.ResourceNotificationQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f ResourceNotificationFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.ResourceNotificationQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.ResourceNotificationQuery", q)
+}
+
+// The TraverseResourceNotification type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseResourceNotification func(context.Context, *ent.ResourceNotificationQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseResourceNotification) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseResourceNotification) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.ResourceNotificationQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.ResourceNotificationQuery", q)
+}
+
+// The ResourcePostFunc type is an adapter to allow the use of ordinary function as a Querier.
+type ResourcePostFunc func(context.Context, *ent.ResourcePostQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f ResourcePostFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.ResourcePostQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.ResourcePostQuery", q)
+}
+
+// The TraverseResourcePost type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseResourcePost func(context.Context, *ent.ResourcePostQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseResourcePost) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseResourcePost) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.ResourcePostQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.ResourcePostQuery", q)
+}
+
 // The SecuritySecretFunc type is an adapter to allow the use of ordinary function as a Querier.
 type SecuritySecretFunc func(context.Context, *ent.SecuritySecretQuery) (ent.Value, error)
 
@@ -1216,6 +1356,16 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.ProxyQuery, predicate.Proxy, proxy.OrderOption]{typ: ent.TypeProxy, tq: q}, nil
 	case *ent.RedeemCodeQuery:
 		return &query[*ent.RedeemCodeQuery, predicate.RedeemCode, redeemcode.OrderOption]{typ: ent.TypeRedeemCode, tq: q}, nil
+	case *ent.ResourceCategoryQuery:
+		return &query[*ent.ResourceCategoryQuery, predicate.ResourceCategory, resourcecategory.OrderOption]{typ: ent.TypeResourceCategory, tq: q}, nil
+	case *ent.ResourceCommentQuery:
+		return &query[*ent.ResourceCommentQuery, predicate.ResourceComment, resourcecomment.OrderOption]{typ: ent.TypeResourceComment, tq: q}, nil
+	case *ent.ResourceLikeQuery:
+		return &query[*ent.ResourceLikeQuery, predicate.ResourceLike, resourcelike.OrderOption]{typ: ent.TypeResourceLike, tq: q}, nil
+	case *ent.ResourceNotificationQuery:
+		return &query[*ent.ResourceNotificationQuery, predicate.ResourceNotification, resourcenotification.OrderOption]{typ: ent.TypeResourceNotification, tq: q}, nil
+	case *ent.ResourcePostQuery:
+		return &query[*ent.ResourcePostQuery, predicate.ResourcePost, resourcepost.OrderOption]{typ: ent.TypeResourcePost, tq: q}, nil
 	case *ent.SecuritySecretQuery:
 		return &query[*ent.SecuritySecretQuery, predicate.SecuritySecret, securitysecret.OrderOption]{typ: ent.TypeSecuritySecret, tq: q}, nil
 	case *ent.SettingQuery:

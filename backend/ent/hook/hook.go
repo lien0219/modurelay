@@ -333,6 +333,66 @@ func (f RedeemCodeFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, 
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RedeemCodeMutation", m)
 }
 
+// The ResourceCategoryFunc type is an adapter to allow the use of ordinary
+// function as ResourceCategory mutator.
+type ResourceCategoryFunc func(context.Context, *ent.ResourceCategoryMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ResourceCategoryFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ResourceCategoryMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ResourceCategoryMutation", m)
+}
+
+// The ResourceCommentFunc type is an adapter to allow the use of ordinary
+// function as ResourceComment mutator.
+type ResourceCommentFunc func(context.Context, *ent.ResourceCommentMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ResourceCommentFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ResourceCommentMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ResourceCommentMutation", m)
+}
+
+// The ResourceLikeFunc type is an adapter to allow the use of ordinary
+// function as ResourceLike mutator.
+type ResourceLikeFunc func(context.Context, *ent.ResourceLikeMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ResourceLikeFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ResourceLikeMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ResourceLikeMutation", m)
+}
+
+// The ResourceNotificationFunc type is an adapter to allow the use of ordinary
+// function as ResourceNotification mutator.
+type ResourceNotificationFunc func(context.Context, *ent.ResourceNotificationMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ResourceNotificationFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ResourceNotificationMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ResourceNotificationMutation", m)
+}
+
+// The ResourcePostFunc type is an adapter to allow the use of ordinary
+// function as ResourcePost mutator.
+type ResourcePostFunc func(context.Context, *ent.ResourcePostMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ResourcePostFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ResourcePostMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ResourcePostMutation", m)
+}
+
 // The SecuritySecretFunc type is an adapter to allow the use of ordinary
 // function as SecuritySecret mutator.
 type SecuritySecretFunc func(context.Context, *ent.SecuritySecretMutation) (ent.Value, error)

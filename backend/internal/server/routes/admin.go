@@ -119,6 +119,25 @@ func RegisterAdminRoutes(
 
 		// 操作审计日志
 		registerAuditLogRoutes(admin, h, stepUpAuth)
+
+		// 资源共享中心管理
+		registerResourceCenterRoutes(admin, h)
+	}
+}
+
+func registerResourceCenterRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	resources := admin.Group("/resource-center")
+	{
+		resources.GET("/config", h.ResourceCenter.AdminConfig)
+		resources.PUT("/config", h.ResourceCenter.UpdateAdminConfig)
+		resources.GET("/posts", h.ResourceCenter.AdminListPosts)
+		resources.GET("/posts/:id", h.ResourceCenter.AdminGetPost)
+		resources.GET("/posts/:id/comments", h.ResourceCenter.AdminListPostComments)
+		resources.GET("/comments", h.ResourceCenter.AdminListComments)
+		resources.POST("/posts/batch-delete", h.ResourceCenter.AdminBatchDeletePosts)
+		resources.POST("/comments/batch-delete", h.ResourceCenter.AdminBatchDeleteComments)
+		resources.DELETE("/posts/:id", h.ResourceCenter.AdminDeletePost)
+		resources.DELETE("/comments/:id", h.ResourceCenter.AdminDeleteComment)
 	}
 }
 

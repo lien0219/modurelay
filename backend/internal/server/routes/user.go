@@ -119,6 +119,24 @@ func RegisterUserRoutes(
 			announcements.POST("/:id/read", h.Announcement.MarkRead)
 		}
 
+		resources := authenticated.Group("/resource-center")
+		{
+			resources.GET("/config", h.ResourceCenter.Config)
+			resources.GET("/categories", h.ResourceCenter.Categories)
+			resources.GET("/posts", h.ResourceCenter.ListPosts)
+			resources.GET("/posts/:id", h.ResourceCenter.GetPost)
+			resources.GET("/posts/:id/comments", h.ResourceCenter.ListComments)
+			resources.POST("/posts", h.ResourceCenter.CreatePost)
+			resources.DELETE("/posts/:id", h.ResourceCenter.DeleteOwnPost)
+			resources.POST("/posts/:id/comments", h.ResourceCenter.CreateComment)
+			resources.DELETE("/comments/:id", h.ResourceCenter.DeleteOwnComment)
+			resources.POST("/posts/:id/like", h.ResourceCenter.TogglePostLike)
+			resources.POST("/comments/:id/like", h.ResourceCenter.ToggleCommentLike)
+			resources.GET("/notifications", h.ResourceCenter.Notifications)
+			resources.POST("/notifications/read-all", h.ResourceCenter.MarkAllNotificationsRead)
+			resources.POST("/notifications/:id/read", h.ResourceCenter.MarkNotificationRead)
+		}
+
 		// 卡密兑换
 		redeem := authenticated.Group("/redeem")
 		{

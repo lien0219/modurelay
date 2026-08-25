@@ -204,6 +204,8 @@ export default {
     riskControl: 'Risk Control',
     securityAudit: 'Security Audit',
     contentModeration: 'Content Moderation',
+    resourceCenter: 'Forum',
+    resourceCenterAdmin: 'Forum Management',
     promptAudit: 'Prompt Audit',
     auditLogs: 'Audit Logs',
   },

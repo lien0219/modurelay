@@ -32,6 +32,11 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/promocodeusage"
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
+	"github.com/Wei-Shaw/sub2api/ent/resourcecategory"
+	"github.com/Wei-Shaw/sub2api/ent/resourcecomment"
+	"github.com/Wei-Shaw/sub2api/ent/resourcelike"
+	"github.com/Wei-Shaw/sub2api/ent/resourcenotification"
+	"github.com/Wei-Shaw/sub2api/ent/resourcepost"
 	"github.com/Wei-Shaw/sub2api/ent/schema"
 	"github.com/Wei-Shaw/sub2api/ent/securitysecret"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
@@ -1731,6 +1736,286 @@ func init() {
 	redeemcodeDescValidityDays := redeemcodeFields[10].Descriptor()
 	// redeemcode.DefaultValidityDays holds the default value on creation for the validity_days field.
 	redeemcode.DefaultValidityDays = redeemcodeDescValidityDays.Default.(int)
+	resourcecategoryFields := schema.ResourceCategory{}.Fields()
+	_ = resourcecategoryFields
+	// resourcecategoryDescSlug is the schema descriptor for slug field.
+	resourcecategoryDescSlug := resourcecategoryFields[0].Descriptor()
+	// resourcecategory.SlugValidator is a validator for the "slug" field. It is called by the builders before save.
+	resourcecategory.SlugValidator = func() func(string) error {
+		validators := resourcecategoryDescSlug.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(slug string) error {
+			for _, fn := range fns {
+				if err := fn(slug); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// resourcecategoryDescName is the schema descriptor for name field.
+	resourcecategoryDescName := resourcecategoryFields[1].Descriptor()
+	// resourcecategory.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	resourcecategory.NameValidator = func() func(string) error {
+		validators := resourcecategoryDescName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(name string) error {
+			for _, fn := range fns {
+				if err := fn(name); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// resourcecategoryDescDescription is the schema descriptor for description field.
+	resourcecategoryDescDescription := resourcecategoryFields[2].Descriptor()
+	// resourcecategory.DefaultDescription holds the default value on creation for the description field.
+	resourcecategory.DefaultDescription = resourcecategoryDescDescription.Default.(string)
+	// resourcecategoryDescSortOrder is the schema descriptor for sort_order field.
+	resourcecategoryDescSortOrder := resourcecategoryFields[3].Descriptor()
+	// resourcecategory.DefaultSortOrder holds the default value on creation for the sort_order field.
+	resourcecategory.DefaultSortOrder = resourcecategoryDescSortOrder.Default.(int)
+	// resourcecategoryDescEnabled is the schema descriptor for enabled field.
+	resourcecategoryDescEnabled := resourcecategoryFields[4].Descriptor()
+	// resourcecategory.DefaultEnabled holds the default value on creation for the enabled field.
+	resourcecategory.DefaultEnabled = resourcecategoryDescEnabled.Default.(bool)
+	// resourcecategoryDescCreatedAt is the schema descriptor for created_at field.
+	resourcecategoryDescCreatedAt := resourcecategoryFields[5].Descriptor()
+	// resourcecategory.DefaultCreatedAt holds the default value on creation for the created_at field.
+	resourcecategory.DefaultCreatedAt = resourcecategoryDescCreatedAt.Default.(func() time.Time)
+	// resourcecategoryDescUpdatedAt is the schema descriptor for updated_at field.
+	resourcecategoryDescUpdatedAt := resourcecategoryFields[6].Descriptor()
+	// resourcecategory.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	resourcecategory.DefaultUpdatedAt = resourcecategoryDescUpdatedAt.Default.(func() time.Time)
+	// resourcecategory.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	resourcecategory.UpdateDefaultUpdatedAt = resourcecategoryDescUpdatedAt.UpdateDefault.(func() time.Time)
+	resourcecommentFields := schema.ResourceComment{}.Fields()
+	_ = resourcecommentFields
+	// resourcecommentDescAuthorUsername is the schema descriptor for author_username field.
+	resourcecommentDescAuthorUsername := resourcecommentFields[3].Descriptor()
+	// resourcecomment.AuthorUsernameValidator is a validator for the "author_username" field. It is called by the builders before save.
+	resourcecomment.AuthorUsernameValidator = func() func(string) error {
+		validators := resourcecommentDescAuthorUsername.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(author_username string) error {
+			for _, fn := range fns {
+				if err := fn(author_username); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// resourcecommentDescAuthorRole is the schema descriptor for author_role field.
+	resourcecommentDescAuthorRole := resourcecommentFields[4].Descriptor()
+	// resourcecomment.AuthorRoleValidator is a validator for the "author_role" field. It is called by the builders before save.
+	resourcecomment.AuthorRoleValidator = func() func(string) error {
+		validators := resourcecommentDescAuthorRole.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(author_role string) error {
+			for _, fn := range fns {
+				if err := fn(author_role); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// resourcecommentDescContent is the schema descriptor for content field.
+	resourcecommentDescContent := resourcecommentFields[5].Descriptor()
+	// resourcecomment.ContentValidator is a validator for the "content" field. It is called by the builders before save.
+	resourcecomment.ContentValidator = resourcecommentDescContent.Validators[0].(func(string) error)
+	// resourcecommentDescStatus is the schema descriptor for status field.
+	resourcecommentDescStatus := resourcecommentFields[6].Descriptor()
+	// resourcecomment.DefaultStatus holds the default value on creation for the status field.
+	resourcecomment.DefaultStatus = resourcecommentDescStatus.Default.(string)
+	// resourcecomment.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	resourcecomment.StatusValidator = resourcecommentDescStatus.Validators[0].(func(string) error)
+	// resourcecommentDescLikeCount is the schema descriptor for like_count field.
+	resourcecommentDescLikeCount := resourcecommentFields[7].Descriptor()
+	// resourcecomment.DefaultLikeCount holds the default value on creation for the like_count field.
+	resourcecomment.DefaultLikeCount = resourcecommentDescLikeCount.Default.(int)
+	// resourcecommentDescCreatedAt is the schema descriptor for created_at field.
+	resourcecommentDescCreatedAt := resourcecommentFields[8].Descriptor()
+	// resourcecomment.DefaultCreatedAt holds the default value on creation for the created_at field.
+	resourcecomment.DefaultCreatedAt = resourcecommentDescCreatedAt.Default.(func() time.Time)
+	// resourcecommentDescUpdatedAt is the schema descriptor for updated_at field.
+	resourcecommentDescUpdatedAt := resourcecommentFields[9].Descriptor()
+	// resourcecomment.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	resourcecomment.DefaultUpdatedAt = resourcecommentDescUpdatedAt.Default.(func() time.Time)
+	// resourcecomment.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	resourcecomment.UpdateDefaultUpdatedAt = resourcecommentDescUpdatedAt.UpdateDefault.(func() time.Time)
+	resourcelikeFields := schema.ResourceLike{}.Fields()
+	_ = resourcelikeFields
+	// resourcelikeDescCreatedAt is the schema descriptor for created_at field.
+	resourcelikeDescCreatedAt := resourcelikeFields[3].Descriptor()
+	// resourcelike.DefaultCreatedAt holds the default value on creation for the created_at field.
+	resourcelike.DefaultCreatedAt = resourcelikeDescCreatedAt.Default.(func() time.Time)
+	resourcenotificationFields := schema.ResourceNotification{}.Fields()
+	_ = resourcenotificationFields
+	// resourcenotificationDescActorUsername is the schema descriptor for actor_username field.
+	resourcenotificationDescActorUsername := resourcenotificationFields[2].Descriptor()
+	// resourcenotification.ActorUsernameValidator is a validator for the "actor_username" field. It is called by the builders before save.
+	resourcenotification.ActorUsernameValidator = func() func(string) error {
+		validators := resourcenotificationDescActorUsername.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(actor_username string) error {
+			for _, fn := range fns {
+				if err := fn(actor_username); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// resourcenotificationDescActorRole is the schema descriptor for actor_role field.
+	resourcenotificationDescActorRole := resourcenotificationFields[3].Descriptor()
+	// resourcenotification.ActorRoleValidator is a validator for the "actor_role" field. It is called by the builders before save.
+	resourcenotification.ActorRoleValidator = func() func(string) error {
+		validators := resourcenotificationDescActorRole.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(actor_role string) error {
+			for _, fn := range fns {
+				if err := fn(actor_role); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// resourcenotificationDescKind is the schema descriptor for kind field.
+	resourcenotificationDescKind := resourcenotificationFields[6].Descriptor()
+	// resourcenotification.KindValidator is a validator for the "kind" field. It is called by the builders before save.
+	resourcenotification.KindValidator = func() func(string) error {
+		validators := resourcenotificationDescKind.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(kind string) error {
+			for _, fn := range fns {
+				if err := fn(kind); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// resourcenotificationDescRead is the schema descriptor for read field.
+	resourcenotificationDescRead := resourcenotificationFields[7].Descriptor()
+	// resourcenotification.DefaultRead holds the default value on creation for the read field.
+	resourcenotification.DefaultRead = resourcenotificationDescRead.Default.(bool)
+	// resourcenotificationDescCreatedAt is the schema descriptor for created_at field.
+	resourcenotificationDescCreatedAt := resourcenotificationFields[8].Descriptor()
+	// resourcenotification.DefaultCreatedAt holds the default value on creation for the created_at field.
+	resourcenotification.DefaultCreatedAt = resourcenotificationDescCreatedAt.Default.(func() time.Time)
+	resourcepostFields := schema.ResourcePost{}.Fields()
+	_ = resourcepostFields
+	// resourcepostDescAuthorUsername is the schema descriptor for author_username field.
+	resourcepostDescAuthorUsername := resourcepostFields[2].Descriptor()
+	// resourcepost.AuthorUsernameValidator is a validator for the "author_username" field. It is called by the builders before save.
+	resourcepost.AuthorUsernameValidator = func() func(string) error {
+		validators := resourcepostDescAuthorUsername.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(author_username string) error {
+			for _, fn := range fns {
+				if err := fn(author_username); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// resourcepostDescAuthorRole is the schema descriptor for author_role field.
+	resourcepostDescAuthorRole := resourcepostFields[3].Descriptor()
+	// resourcepost.AuthorRoleValidator is a validator for the "author_role" field. It is called by the builders before save.
+	resourcepost.AuthorRoleValidator = func() func(string) error {
+		validators := resourcepostDescAuthorRole.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(author_role string) error {
+			for _, fn := range fns {
+				if err := fn(author_role); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// resourcepostDescTitle is the schema descriptor for title field.
+	resourcepostDescTitle := resourcepostFields[4].Descriptor()
+	// resourcepost.TitleValidator is a validator for the "title" field. It is called by the builders before save.
+	resourcepost.TitleValidator = func() func(string) error {
+		validators := resourcepostDescTitle.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(title string) error {
+			for _, fn := range fns {
+				if err := fn(title); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// resourcepostDescContent is the schema descriptor for content field.
+	resourcepostDescContent := resourcepostFields[5].Descriptor()
+	// resourcepost.ContentValidator is a validator for the "content" field. It is called by the builders before save.
+	resourcepost.ContentValidator = resourcepostDescContent.Validators[0].(func(string) error)
+	// resourcepostDescStatus is the schema descriptor for status field.
+	resourcepostDescStatus := resourcepostFields[6].Descriptor()
+	// resourcepost.DefaultStatus holds the default value on creation for the status field.
+	resourcepost.DefaultStatus = resourcepostDescStatus.Default.(string)
+	// resourcepost.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	resourcepost.StatusValidator = resourcepostDescStatus.Validators[0].(func(string) error)
+	// resourcepostDescViewCount is the schema descriptor for view_count field.
+	resourcepostDescViewCount := resourcepostFields[7].Descriptor()
+	// resourcepost.DefaultViewCount holds the default value on creation for the view_count field.
+	resourcepost.DefaultViewCount = resourcepostDescViewCount.Default.(int)
+	// resourcepostDescLikeCount is the schema descriptor for like_count field.
+	resourcepostDescLikeCount := resourcepostFields[8].Descriptor()
+	// resourcepost.DefaultLikeCount holds the default value on creation for the like_count field.
+	resourcepost.DefaultLikeCount = resourcepostDescLikeCount.Default.(int)
+	// resourcepostDescCommentCount is the schema descriptor for comment_count field.
+	resourcepostDescCommentCount := resourcepostFields[9].Descriptor()
+	// resourcepost.DefaultCommentCount holds the default value on creation for the comment_count field.
+	resourcepost.DefaultCommentCount = resourcepostDescCommentCount.Default.(int)
+	// resourcepostDescCreatedAt is the schema descriptor for created_at field.
+	resourcepostDescCreatedAt := resourcepostFields[10].Descriptor()
+	// resourcepost.DefaultCreatedAt holds the default value on creation for the created_at field.
+	resourcepost.DefaultCreatedAt = resourcepostDescCreatedAt.Default.(func() time.Time)
+	// resourcepostDescUpdatedAt is the schema descriptor for updated_at field.
+	resourcepostDescUpdatedAt := resourcepostFields[11].Descriptor()
+	// resourcepost.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	resourcepost.DefaultUpdatedAt = resourcepostDescUpdatedAt.Default.(func() time.Time)
+	// resourcepost.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	resourcepost.UpdateDefaultUpdatedAt = resourcepostDescUpdatedAt.UpdateDefault.(func() time.Time)
 	securitysecretMixin := schema.SecuritySecret{}.Mixin()
 	securitysecretMixinFields0 := securitysecretMixin[0].Fields()
 	_ = securitysecretMixinFields0

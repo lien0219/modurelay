@@ -204,6 +204,8 @@ export default {
     riskControl: '风控中心',
     securityAudit: '安全审计',
     contentModeration: '内容审核',
+    resourceCenter: '论坛',
+    resourceCenterAdmin: '论坛管理',
     promptAudit: '提示词审计',
     auditLogs: '操作日志',
   },
