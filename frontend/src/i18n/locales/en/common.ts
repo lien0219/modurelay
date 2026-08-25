@@ -190,6 +190,7 @@ export default {
     github: 'GitHub',
     mySubscriptions: 'My Subscriptions',
     buySubscription: 'Recharge / Subscription',
+    rechargeCenter: 'Recharge Center',
     docs: 'Docs',
     myOrders: 'My Orders',
     orderManagement: 'Orders',

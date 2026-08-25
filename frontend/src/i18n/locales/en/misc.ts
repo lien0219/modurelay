@@ -70,6 +70,16 @@ export default {
     notConfiguredDesc:
       'The administrator enabled the entry but has not configured a recharge/subscription URL. Please contact admin.'
   },
+  recharge: {
+    title: 'Recharge Center',
+    description: 'Recharge your balance through the embedded page',
+    openInNewTab: 'Open in new tab',
+    notEnabledTitle: 'Feature not enabled',
+    notEnabledDesc: 'The administrator has not enabled the recharge center entry. Please contact admin.',
+    notConfiguredTitle: 'Recharge page URL not configured',
+    notConfiguredDesc:
+      'The administrator enabled the entry but has not configured a recharge page URL. Please contact admin.'
+  },
 
   // Custom Page (iframe embed)
   customPage: {
