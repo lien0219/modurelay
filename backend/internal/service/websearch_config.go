@@ -113,6 +113,7 @@ func (s *SettingService) loadWebSearchConfigFromDB() (*WebSearchEmulationConfig,
 
 	raw, err := s.settingRepo.GetValue(dbCtx, SettingKeyWebSearchEmulationConfig)
 	if err != nil {
+		// Missing key is the normal first-boot state; keep an explicit empty provider array.
 		if errors.Is(err, ErrSettingNotFound) {
 			cfg := defaultWebSearchEmulationConfig()
 			webSearchEmulationCache.Store(&cachedWebSearchEmulationConfig{

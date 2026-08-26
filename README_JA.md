@@ -9,11 +9,11 @@ Connect once. Route any model.
 ---
 
 [![License: LGPL v3](https://img.shields.io/badge/License-LGPL%20v3-blue.svg)](LICENSE)
-[![Go](https://img.shields.io/badge/Go-1.26.5-00ADD8.svg)](https://golang.org/)
+[![Go](https://img.shields.io/badge/Go-1.27.0-00ADD8.svg)](https://golang.org/)
 [![Vue](https://img.shields.io/badge/Vue-3.4+-4FC08D.svg)](https://vuejs.org/)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18-336791.svg)](https://www.postgresql.org/)
-[![Redis](https://img.shields.io/badge/Redis-8-DC382D.svg)](https://redis.io/)
-[![Docker](https://img.shields.io/badge/Docker-Build-2496ED.svg)](https://www.docker.com/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15+-336791.svg)](https://www.postgresql.org/)
+[![Redis](https://img.shields.io/badge/Redis-7+-DC382D.svg)](https://redis.io/)
+[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg)](https://www.docker.com/)
 
 > **Translation note:** 本文は英語版 README と同じ構成です。一部の表現は *translation pending* として、英語版を正とします。
 
@@ -94,14 +94,26 @@ flowchart LR
   gateway --> cache
 ```
 
+<!-- 上流のスポンサー広告、招待コード、プロモーションは ModuRelay を代表しないため掲載しません。 -->
+
+---
+
+## Nginx リバースプロキシに関する注意
+
+ModuRelay（または CRS）を Nginx でリバースプロキシし、Codex CLI と組み合わせて使用する場合、Nginx の `http` ブロックに以下の設定を追加してください:
+
+```nginx
+underscores_in_headers on;
+```
+
 ## Tech stack
 
 | Layer | Technology |
 | --- | --- |
-| Backend | Go `1.26.5` (`backend/go.mod`) |
+| Backend | Go `1.27.0` (`backend/go.mod`) |
 | Frontend | Vue `^3.4`, Vite, TypeScript, pnpm (`frontend/package.json`) |
-| Database | PostgreSQL（Compose: `postgres:18-alpine`） |
-| Cache | Redis（Compose: `redis:8-alpine`） |
+| Database | PostgreSQL 15+ |
+| Cache | Redis 7+ |
 | Deployment | Docker / Docker Compose、Linux systemd、ソースビルド |
 
 ## Quick start
@@ -135,7 +147,7 @@ docker compose -f docker-compose.dev.yml up --build -d
 
 ### Backend
 
-必要: Go `1.26.5+`、PostgreSQL、Redis。
+必要: Go `1.27.0+`、PostgreSQL、Redis。
 
 ```bash
 cd backend
@@ -204,6 +216,21 @@ default:
 `config.yaml` では CORS 許可リスト、上流 URL 許可リスト、レスポンスヘッダーフィルタリング、CSP、課金サーキットブレーカー、信頼済みプロキシ、カスタム転送クライアント IP ヘッダー、Turnstile 要件などのセキュリティ関連オプションも利用できます。
 
 カスタムクライアント IP ヘッダーは環境変数でも設定できます:
+`config.yaml` では追加のセキュリティ関連オプションも利用できます:
+
+- `cors.allowed_origins` - CORS 許可リスト
+- `security.url_allowlist` - 上流/価格/CRS ホストの許可リスト
+- `security.url_allowlist.enabled` - URL バリデーションの無効化（注意して使用）
+- `security.url_allowlist.allow_insecure_http` - バリデーション無効時に HTTP URL を許可
+- `security.url_allowlist.allow_private_hosts` - プライベート/ローカル IP アドレスを許可
+- `security.response_headers.enabled` - 設定可能なレスポンスヘッダーフィルタリングを有効化（無効時はデフォルトの許可リストを使用）
+- `security.csp` - Content-Security-Policy ヘッダーの制御
+- `billing.circuit_breaker` - 課金エラー時にフェイルクローズ
+- `security.trust_forwarded_ip_for_api_key_acl` - 従来の生転送ヘッダーによる上書きを制御（アップグレード互換性のため既定で有効）。無効にすると `server.trusted_proxies` を厳格に使用し、ModuRelay に直接接続するプロキシの正確な CIDR のみを指定
+- `security.forwarded_client_ip_headers` - サードパーティ CDN のクライアント IP ヘッダーを最大 16 個指定。従来モードが有効な場合のみ、設定順で組み込みヘッダーより先に評価
+- `turnstile.required` - リリースモードでの Turnstile 必須化
+
+カスタムクライアント IP ヘッダーは YAML またはカンマ区切りの環境変数で設定できます:
 
 ```bash
 SECURITY_FORWARDED_CLIENT_IP_HEADERS=True-Client-IP,X-CDN-Client-IP
@@ -312,3 +339,69 @@ underscores_in_headers on;
 - ModuRelay 固有の変更は [NOTICE.md](NOTICE.md) と [CUSTOM_CHANGELOG.md](CUSTOM_CHANGELOG.md) を参照
 - `LICENSE` と上流著作権表示を削除しないでください
 - ModuRelay は Sub2API 上流と公式な所属関係を持ちません
+```bash
+export ANTHROPIC_BASE_URL="http://localhost:8080/antigravity"
+export ANTHROPIC_AUTH_TOKEN="sk-xxx"
+```
+
+### ハイブリッドスケジューリングモード
+
+Antigravity アカウントはオプションの**ハイブリッドスケジューリング**をサポートしています。有効にすると、汎用エンドポイント `/v1/messages` および `/v1beta/` も Antigravity アカウントにリクエストをルーティングします。
+
+> **⚠️ 警告**: Anthropic Claude と Antigravity Claude は**同じ会話コンテキスト内で混在させることはできません**。グループを使用して適切に分離してください。
+
+---
+
+## プロジェクト構成
+
+```
+modurelay/
+├── backend/                  # Go バックエンドサービス
+│   ├── cmd/server/           # アプリケーションエントリ
+│   ├── internal/             # 内部モジュール
+│   │   ├── config/           # 設定
+│   │   ├── model/            # データモデル
+│   │   ├── service/          # ビジネスロジック
+│   │   ├── handler/          # HTTP ハンドラー
+│   │   └── gateway/          # API ゲートウェイコア
+│   └── resources/            # 静的リソース
+│
+├── frontend/                 # Vue 3 フロントエンド
+│   └── src/
+│       ├── api/              # API 呼び出し
+│       ├── stores/           # 状態管理
+│       ├── views/            # ページコンポーネント
+│       └── components/       # 再利用可能なコンポーネント
+│
+└── deploy/                   # デプロイファイル
+    ├── docker-compose.yml    # Docker Compose 設定
+    ├── .env.example          # Docker Compose 用環境変数
+    ├── config.example.yaml   # バイナリデプロイ用フル設定ファイル
+    └── install.sh            # ワンクリックインストールスクリプト
+```
+
+## スター履歴
+
+<a href="https://star-history.dera.page/#Wei-Shaw/sub2api&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=Wei-Shaw/sub2api&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://star-history.dera.page/svg?repos=Wei-Shaw/sub2api&type=Date" />
+   <img alt="Star History Chart" src="https://star-history.dera.page/svg?repos=Wei-Shaw/sub2api&type=Date" />
+ </picture>
+</a>
+
+---
+
+## ライセンス
+
+本プロジェクトは [GNU Lesser General Public License v3.0](LICENSE)（またはそれ以降のバージョン）の下でライセンスされています。
+
+Copyright (c) 2026 Wesley Liddick
+
+---
+
+<div align="center">
+
+**このプロジェクトが役に立ったら、ぜひスターをお願いします！**
+
+</div>

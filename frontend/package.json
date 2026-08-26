@@ -23,7 +23,7 @@
     "@vueuse/core": "^10.7.0",
     "axios": "^1.18.0",
     "chart.js": "^4.4.1",
-    "dompurify": "^3.3.1",
+    "dompurify": "^3.4.14",
     "driver.js": "^1.4.0",
     "file-saver": "^2.0.5",
     "gsap": "^3.15.0",
@@ -69,7 +69,8 @@
       "js-cookie": "3.0.7",
       "form-data@<4.0.6": ">=4.0.6",
       "postcss@<8.5.18": ">=8.5.18",
-      "nanoid@<3.3.18": "3.3.18"
+      "nanoid@<3.3.18": "3.3.18",
+      "dompurify@<3.4.14": ">=3.4.14"
     }
   },
   "packageManager": "pnpm@10.33.2+sha512.a90faf6feeab71ad6c6e57f94e0fe1a12f5dcc22cd754db40ae9593eb6a3e0b6b12e3540218bb37ae083404b1f2ce6db2a4121e979829b4aff94b99f49da1cf8"

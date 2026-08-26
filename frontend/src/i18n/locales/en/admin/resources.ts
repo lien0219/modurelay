@@ -411,6 +411,7 @@ export default {
     announcements: {
       title: 'Announcements',
       description: 'Create announcements and target by conditions',
+      createFirstAnnouncement: 'No announcements yet. Create your first one.',
       createAnnouncement: 'Create Announcement',
       editAnnouncement: 'Edit Announcement',
       deleteAnnouncement: 'Delete Announcement',
@@ -580,6 +581,10 @@ export default {
       billingModeImage: 'Image',
       billingModeVideo: 'Video',
       allBillingModes: 'All Billing Modes',
+	  upstreamModelAudit: 'Upstream model audit',
+	  allUpstreamModelAudit: 'All response model states',
+	  upstreamModelMismatchOnly: 'Mismatched only',
+	  upstreamModelMatchedOnly: 'Matched only',
       ipAddress: 'IP',
       clickToViewBalance: 'Click to view balance history',
       failedToLoadUser: 'Failed to load user info',

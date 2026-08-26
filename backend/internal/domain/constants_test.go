@@ -43,6 +43,21 @@ func TestDefaultAntigravityModelMapping_ContainsNewClaudeModels(t *testing.T) {
 	}
 }
 
+func TestDefaultAntigravityModelMapping_PreservesExplicitSonnet45AndMigratesLegacyAliases(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]string{
+		"claude-sonnet-4-5":          "claude-sonnet-4-5",
+		"claude-sonnet-4-5-thinking": "claude-sonnet-4-6",
+		"claude-sonnet-4-5-20250929": "claude-sonnet-4-6",
+	}
+	for model, want := range cases {
+		if got := DefaultAntigravityModelMapping[model]; got != want {
+			t.Fatalf("expected model %q to map to %q, got %q", model, want, got)
+		}
+	}
+}
+
 func TestDefaultAntigravityModelMapping_Gemini31ProAliases(t *testing.T) {
 	t.Parallel()
 
@@ -61,6 +76,14 @@ func TestDefaultAntigravityModelMapping_Gemini31ProAliases(t *testing.T) {
 		}
 		if got != want {
 			t.Fatalf("unexpected mapping for %q: got %q want %q", from, got, want)
+		}
+	}
+}
+
+func TestDefaultAntigravityModelMapping_Gemini36FlashModels(t *testing.T) {
+	for _, model := range []string{"gemini-3.6-flash", "gemini-3.6-flash-high", "gemini-3.6-flash-low", "gemini-3.6-flash-medium", "gemini-3.6-flash-tiered"} {
+		if got := DefaultAntigravityModelMapping[model]; got != model {
+			t.Fatalf("expected %s to map to itself, got %q", model, got)
 		}
 	}
 }
