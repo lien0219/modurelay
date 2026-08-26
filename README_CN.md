@@ -9,11 +9,11 @@
 ---
 
 [![License: LGPL v3](https://img.shields.io/badge/License-LGPL%20v3-blue.svg)](LICENSE)
-[![Go](https://img.shields.io/badge/Go-1.26.5-00ADD8.svg)](https://golang.org/)
+[![Go](https://img.shields.io/badge/Go-1.27.0-00ADD8.svg)](https://golang.org/)
 [![Vue](https://img.shields.io/badge/Vue-3.4+-4FC08D.svg)](https://vuejs.org/)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18-336791.svg)](https://www.postgresql.org/)
-[![Redis](https://img.shields.io/badge/Redis-8-DC382D.svg)](https://redis.io/)
-[![Docker](https://img.shields.io/badge/Docker-Build-2496ED.svg)](https://www.docker.com/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15+-336791.svg)](https://www.postgresql.org/)
+[![Redis](https://img.shields.io/badge/Redis-7+-DC382D.svg)](https://redis.io/)
+[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg)](https://www.docker.com/)
 
 ## 项目简介
 
@@ -56,6 +56,12 @@ ModuRelay 是基于 [Sub2API](https://github.com/Wei-Shaw/sub2api) 独立维护�
 - 上游仓库：[Wei-Shaw/sub2api](https://github.com/Wei-Shaw/sub2api)
 - 许可证与版权说明见 [LICENSE](LICENSE) 与 [NOTICE.md](NOTICE.md)
 
+<!-- 上游赞助商广告、邀请码和推广链接不代表 ModuRelay，故不在此展示。 -->
+
+## 项目概述
+
+ModuRelay 是一个 AI API 网关平台，用于统一接入多家供应商并管理账号池、用量和 API 访问。用户通过平台生成的 API Key 调用上游 AI 服务，平台负责鉴权、计费、负载均衡和请求转发。
+
 ## 核心功能
 
 | 功能 | 说明 |
@@ -96,10 +102,10 @@ flowchart LR
 
 | 层级 | 技术 |
 | --- | --- |
-| 后端 | Go `1.26.5`（`backend/go.mod`） |
-| 前端 | Vue `^3.4`、Vite、TypeScript、pnpm（`frontend/package.json`） |
-| 数据库 | PostgreSQL（Compose 使用 `postgres:18-alpine`） |
-| 缓存 | Redis（Compose 使用 `redis:8-alpine`） |
+| 后端 | Go 1.27.0、Gin、Ent |
+| 前端 | Vue 3.4+、Vite 5+、TypeScript、pnpm |
+| 数据库 | PostgreSQL 15+ |
+| 缓存/队列 | Redis 7+ |
 | 部署 | Docker / Docker Compose、Linux systemd、源码构建 |
 
 ## 快速开始
@@ -133,7 +139,7 @@ docker compose -f docker-compose.dev.yml up --build -d
 
 ### 后端
 
-需要：Go `1.26.5+`、PostgreSQL、Redis。
+需要：Go `1.27.0+`、PostgreSQL、Redis。
 
 ```bash
 cd backend
@@ -209,6 +215,21 @@ default:
 ```
 
 安全相关配置包括 CORS 允许列表、上游 URL 允许列表、响应头过滤、CSP、计费熔断、可信代理、自定义转发客户端 IP 头以及 Turnstile 要求。自定义客户端 IP 头也可以通过环境变量设置：
+`config.yaml` 还支持以下安全相关配置：
+
+- `cors.allowed_origins` 配置 CORS 白名单
+- `security.url_allowlist` 配置上游/价格数据/CRS 主机白名单
+- `security.url_allowlist.enabled` 可关闭 URL 校验（慎用）
+- `security.url_allowlist.allow_insecure_http` 关闭校验时允许 HTTP URL
+- `security.url_allowlist.allow_private_hosts` 允许私有/本地 IP 地址
+- `security.response_headers.enabled` 可启用可配置响应头过滤（关闭时使用默认白名单）
+- `security.csp` 配置 Content-Security-Policy
+- `billing.circuit_breaker` 计费异常时 fail-closed
+- `security.trust_forwarded_ip_for_api_key_acl` 控制旧版原始转发头接管（为升级兼容默认开启）；关闭后严格使用 `server.trusted_proxies`，其中只应填写直接连接 ModuRelay 的精确代理 CIDR
+- `security.forwarded_client_ip_headers` 最多配置 16 个第三方 CDN 客户端 IP 请求头；仅在旧版接管开启时按顺序优先于内置请求头解析
+- `turnstile.required` 在 release 模式强制启用 Turnstile
+
+自定义客户端 IP 请求头可通过 YAML 配置，也可使用逗号分隔的环境变量：
 
 ```bash
 SECURITY_FORWARDED_CLIENT_IP_HEADERS=True-Client-IP,X-CDN-Client-IP
@@ -321,3 +342,80 @@ underscores_in_headers on;
 - ModuRelay 相关修改见 [NOTICE.md](NOTICE.md) 与 [CUSTOM_CHANGELOG.md](CUSTOM_CHANGELOG.md)
 - 不得删除 `LICENSE` 或上游版权声明
 - ModuRelay 与 Sub2API 上游维护者不存在官方隶属关系
+ModuRelay 支持 [Antigravity](https://antigravity.so/) 账户，授权后可通过专用端点访问 Claude 和 Gemini 模型。
+
+### 专用端点
+
+| 端点 | 模型 |
+|------|------|
+| `/antigravity/v1/messages` | Claude 模型 |
+| `/antigravity/v1beta/` | Gemini 模型 |
+
+### Claude Code 配置示例
+
+```bash
+export ANTHROPIC_BASE_URL="http://localhost:8080/antigravity"
+export ANTHROPIC_AUTH_TOKEN="sk-xxx"
+```
+
+### 混合调度模式
+
+Antigravity 账户支持可选的**混合调度**功能。开启后，通用端点 `/v1/messages` 和 `/v1beta/` 也会调度该账户。
+
+> **⚠️ 注意**：Anthropic Claude 和 Antigravity Claude **不能在同一上下文中混合使用**，请通过分组功能做好隔离。
+
+---
+
+## 项目结构
+
+```
+modurelay/
+├── backend/                  # Go 后端服务
+│   ├── cmd/server/           # 应用入口
+│   ├── internal/             # 内部模块
+│   │   ├── config/           # 配置管理
+│   │   ├── model/            # 数据模型
+│   │   ├── service/          # 业务逻辑
+│   │   ├── handler/          # HTTP 处理器
+│   │   └── gateway/          # API 网关核心
+│   └── resources/            # 静态资源
+│
+├── frontend/                 # Vue 3 前端
+│   └── src/
+│       ├── api/              # API 调用
+│       ├── stores/           # 状态管理
+│       ├── views/            # 页面组件
+│       └── components/       # 通用组件
+│
+└── deploy/                   # 部署文件
+    ├── docker-compose.yml    # Docker Compose 配置
+    ├── .env.example          # Docker Compose 环境变量
+    ├── config.example.yaml   # 二进制部署完整配置文件
+    └── install.sh            # 一键安装脚本
+```
+
+## Star History
+
+<a href="https://star-history.dera.page/#Wei-Shaw/sub2api&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=Wei-Shaw/sub2api&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://star-history.dera.page/svg?repos=Wei-Shaw/sub2api&type=Date" />
+   <img alt="Star History Chart" src="https://star-history.dera.page/svg?repos=Wei-Shaw/sub2api&type=Date" />
+ </picture>
+</a>
+
+---
+
+## 许可证
+
+本项目基于 [GNU 宽通用公共许可证 v3.0](LICENSE)（或更高版本）授权。
+
+Copyright (c) 2026 Wesley Liddick
+
+---
+
+<div align="center">
+
+**如果觉得有用，请给个 Star 支持一下！**
+
+</div>
