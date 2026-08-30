@@ -578,7 +578,7 @@
             <button
               @click="copyGeneratedCodes"
               :class="[
-                'btn flex items-center gap-2 transition-all',
+                'btn flex items-center gap-2 transition-ui',
                 copiedAll ? 'btn-success' : 'btn-secondary'
               ]"
             >

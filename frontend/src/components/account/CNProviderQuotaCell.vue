@@ -20,7 +20,7 @@
         </span>
         <div class="h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-gray-200 dark:bg-dark-600">
           <div
-            class="h-full rounded-full transition-all"
+            class="h-full rounded-full transition-[width]"
             :class="utilizationColor(tier.used_percent)"
             :style="{ width: `${Math.min(100, Math.max(0, tier.used_percent))}%` }"
           />

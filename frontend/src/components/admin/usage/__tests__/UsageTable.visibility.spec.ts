@@ -1,5 +1,6 @@
 // UI contract: hidden billing metadata must disappear while the final user charge remains visible.
 import { mount } from '@vue/test-utils'
+import { createPinia } from 'pinia'
 import { nextTick } from 'vue'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -89,6 +90,7 @@ describe('UsageTable billing detail visibility', () => {
         showOriginalCost: false,
       },
       global: {
+        plugins: [createPinia()],
         stubs: {
           DataTable: DataTableStub,
           EmptyState: true,
@@ -160,6 +162,7 @@ describe('UsageTable billing detail visibility', () => {
         showOriginalCost: false,
       },
       global: {
+        plugins: [createPinia()],
         stubs: {
           DataTable: DataTableStub,
           EmptyState: true,

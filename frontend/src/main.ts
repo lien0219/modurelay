@@ -7,14 +7,11 @@ import { brand } from '@/config/brand'
 import { useAppStore } from '@/stores/app'
 import { updateFavicon } from '@/utils/branding'
 import { isIOSDevice } from '@/utils/device'
-import { installHomeMotion } from '@/utils/homeMotion'
 import { installHomeRouteGuard } from '@/utils/homeRouteGuard'
 import '@fontsource-variable/noto-sans-sc/wght.css'
 import './style.css'
-import './styles/home-overrides.css'
 import './styles/home-route-guard.css'
-import './styles/home-motion.css'
-import './styles/home-hero-guidance.css'
+import './styles/home.css'
 
 function initIOSViewportZoomFix() {
   // iOS Safari 在输入框字号小于 16px 时聚焦会自动放大页面，且失焦后不会恢复。
@@ -67,7 +64,6 @@ async function bootstrap() {
   await router.isReady()
   installHomeRouteGuard(router)
   app.mount('#app')
-  installHomeMotion(router)
 }
 
 bootstrap()

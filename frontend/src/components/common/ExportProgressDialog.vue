@@ -15,7 +15,7 @@
           aria-valuemin="0"
           aria-valuemax="100"
           :aria-label="`${t('usage.exportingProgress')}: ${normalizedProgress}%`"
-          class="h-2 rounded-full bg-primary-600 transition-all"
+          class="h-2 rounded-full bg-primary-600 transition-[width]"
           :style="{ width: `${normalizedProgress}%` }"
         ></div>
       </div>
