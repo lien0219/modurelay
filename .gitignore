@@ -158,6 +158,7 @@ docs/screenshots/*
 .serena/
 .codex/
 frontend/coverage/
+.tmp-ui/
 aicodex
 output/
 .codegraph/
