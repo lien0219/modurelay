@@ -1007,7 +1007,7 @@ onBeforeUnmount(() => {
 .home-brand:hover { opacity: 0.82; transform: translateY(-1px); }
 .brand-mark { border-radius: 10px; box-shadow: 0 9px 22px color-mix(in srgb, var(--mr-primary) 20%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.28); }
 .home-nav-links { gap: 2px; padding: 5px; border: 1px solid color-mix(in srgb, var(--mr-border-strong) 58%, transparent); border-radius: 999px; background: color-mix(in srgb, var(--mr-surface) 52%, transparent); box-shadow: inset 0 1px 0 var(--glass-highlight), 0 8px 22px color-mix(in srgb, var(--mr-primary) 5%, transparent); backdrop-filter: blur(14px) saturate(125%); -webkit-backdrop-filter: blur(14px) saturate(125%); }
-.home-nav-link { min-height: 34px; padding: 0 13px; border-radius: 999px; color: var(--mr-text-muted); transition: color 180ms var(--ease-standard), background-color 180ms var(--ease-standard), transform 180ms var(--ease-standard); }
+.home-nav-link { display: inline-flex; min-height: 34px; align-items: center; justify-content: center; padding: 0 13px; border-radius: 999px; color: var(--mr-text-muted); line-height: 1; white-space: nowrap; transition: color 180ms var(--ease-standard), background-color 180ms var(--ease-standard), transform 180ms var(--ease-standard); }
 .home-nav-link::after { display: none; }
 .home-nav-link:hover { color: var(--mr-text); background: color-mix(in srgb, var(--mr-surface-raised) 62%, transparent); transform: translateY(-1px); }
 .home-nav-link.is-active { color: var(--mr-text); background: var(--mr-surface-raised); box-shadow: 0 4px 12px color-mix(in srgb, var(--mr-primary) 10%, transparent), inset 0 1px 0 var(--glass-highlight); }

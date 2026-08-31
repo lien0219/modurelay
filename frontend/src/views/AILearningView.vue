@@ -51,6 +51,24 @@
               <span v-for="tag in copy.hero.tags" :key="tag"><i></i>{{ tag }}</span>
             </div>
 
+            <div v-if="availableResources.length > 1" class="learning-resource-switcher" :aria-label="copy.resourceLabel">
+              <span class="learning-resource-switcher-label">{{ copy.resourceLabel }}</span>
+              <div class="learning-resource-options" role="listbox" :aria-label="copy.resourceLabel">
+                <button
+                  v-for="resource in availableResources"
+                  :key="resource.id"
+                  type="button"
+                  :class="{ 'is-active': selectedResourceId === resource.id }"
+                  :aria-selected="selectedResourceId === resource.id"
+                  role="option"
+                  @click="selectResource(resource.id)"
+                >
+                  <span>{{ resource.label }}</span>
+                  <small>{{ resource.kindLabel }}</small>
+                </button>
+              </div>
+            </div>
+
             <div class="learning-hero-actions">
               <a href="#learning-map" class="learning-primary-button">
                 {{ copy.hero.primaryCta }}
@@ -102,8 +120,8 @@
           </div>
         </section>
 
-        <section class="learning-stat-strip" data-learning-reveal aria-label="Profile highlights">
-          <div v-for="stat in copy.stats" :key="stat.label" class="learning-stat-card">
+        <section class="learning-stat-strip" data-learning-reveal aria-label="Learning resource highlights">
+          <div v-for="stat in activeResourceStats" :key="stat.label" class="learning-stat-card">
             <strong>{{ stat.value }}</strong>
             <span>{{ stat.label }}</span>
           </div>
@@ -119,7 +137,7 @@
           <div class="learning-map-layout">
             <div class="learning-module-list" role="tablist" :aria-label="copy.map.title">
               <button
-                v-for="module in copy.modules"
+                v-for="module in activeResourceModules"
                 :key="module.id"
                 type="button"
                 class="learning-module-tab"
@@ -171,7 +189,7 @@
           </div>
 
           <div class="learning-experience-grid">
-            <article v-for="(item, index) in copy.experience.items" :key="item.title" class="learning-experience-card">
+            <article v-for="(item, index) in activeResourceExperience.items" :key="item.title" class="learning-experience-card">
               <div class="learning-experience-topline">
                 <span class="learning-experience-number">0{{ index + 1 }}</span>
                 <span class="learning-experience-role">{{ item.role }}</span>
@@ -200,27 +218,18 @@
           </div>
         </section>
 
-        <section class="learning-contact-panel" data-learning-reveal>
-          <div class="learning-privacy-card">
-            <span class="learning-section-index">{{ copy.privacy.eyebrow }}</span>
-            <h2>{{ copy.privacy.title }}</h2>
-            <p>{{ copy.privacy.description }}</p>
-            <div class="learning-privacy-list">
-              <span v-for="item in copy.privacy.items" :key="item"><Icon name="checkCircle" size="sm" />{{ item }}</span>
-            </div>
-          </div>
-
+        <section v-if="activeContact" class="learning-contact-panel" data-learning-reveal>
           <div class="learning-contact-card">
-            <div class="learning-contact-avatar">A</div>
+            <div class="learning-contact-avatar">{{ activeContact.initials }}</div>
             <div class="learning-contact-copy">
               <span class="learning-contact-label">{{ copy.contact.eyebrow }}</span>
-              <h3>{{ copy.contact.name }}</h3>
-              <p>{{ copy.contact.role }}</p>
+              <h3>{{ activeContact.name }}</h3>
+              <p>{{ activeContact.role }}</p>
             </div>
             <div class="learning-contact-links">
-              <a :href="`mailto:${contact.email}`"><Icon name="mail" size="sm" /><span>{{ contact.email }}</span></a>
-              <a :href="`tel:+86${contact.phone.replace(/\s+/g, '')}`"><Icon name="phone" size="sm" /><span>{{ contact.phone }}</span></a>
-              <a :href="contact.github" target="_blank" rel="noopener noreferrer"><Icon name="link" size="sm" /><span>Mojo MVP / GitHub</span><Icon name="externalLink" size="xs" /></a>
+              <a v-if="activeContact.email" :href="`mailto:${activeContact.email}`"><Icon name="mail" size="sm" /><span>{{ activeContact.email }}</span></a>
+              <a v-if="activeContact.phone" :href="`tel:${activeContact.phone.replace(/[^\d+]/g, '')}`"><Icon name="phone" size="sm" /><span>{{ activeContact.phone }}</span></a>
+              <a v-if="activeContact.github" :href="activeContact.github" target="_blank" rel="noopener noreferrer"><Icon name="link" size="sm" /><span>{{ activeContact.githubLabel || 'GitHub' }}</span><Icon name="externalLink" size="xs" /></a>
             </div>
           </div>
         </section>
@@ -267,7 +276,18 @@ interface LearningModule {
   points: string[]
 }
 
+interface LearningContact {
+  initials: string
+  name: string
+  role: string
+  email?: string
+  phone?: string
+  github?: string
+  githubLabel?: string
+}
+
 interface LearningCopy {
+  resourceLabel: string
   nav: { home: string; learning: string; modelPlaza: string; login: string; light: string; dark: string }
   hero: {
     eyebrow: string
@@ -296,12 +316,23 @@ interface LearningCopy {
     description: string
     items: Array<{ icon: LearningIcon; title: string; description: string }>
   }
-  privacy: { eyebrow: string; title: string; description: string; items: string[] }
   contact: { eyebrow: string; name: string; role: string }
   footer: string
 }
 
+interface LearningResource {
+  id: string
+  kind: 'profile' | 'course' | 'document' | 'collection'
+  label: string
+  kindLabel: string
+  stats: LearningCopy['stats']
+  modules: LearningModule[]
+  experience: LearningCopy['experience']
+  contact?: LearningContact
+}
+
 const zhCopy: LearningCopy = {
+  resourceLabel: '学习资源',
   nav: { home: '首页', learning: 'AI 学习', modelPlaza: '模型广场', login: '登录', light: '切换浅色模式', dark: '切换深色模式' },
   hero: {
     eyebrow: 'AI LEARNING / PUBLIC KNOWLEDGE',
@@ -353,13 +384,13 @@ const zhCopy: LearningCopy = {
       { icon: 'shield', title: '复盘提升', description: '根据结果和反馈调整方法，让能力可以持续进步。' },
     ],
   },
-  privacy: { eyebrow: 'PRIVACY BOUNDARY', title: '只展示能力，不展示隐私', description: '页面仅保留经授权的职业经历、项目方法和公开联系方式。原始简历不会展示，住址、出生信息和身份信息均已排除。', items: ['只保留职业经历、能力模块与项目方法', '联系方式单独标注为公开联系', '所有内容均为脱敏后的展示摘要'] },
   contact: { eyebrow: 'OPEN CONTACT', name: '谢剑浩 Ango', role: 'AI Agent 产品负责人 / AI 系统设计者' },
   footer: 'Public profile summary · Built with care for privacy',
 }
 
 const enCopy: LearningCopy = {
   nav: { home: 'Home', learning: 'AI Learning', modelPlaza: 'Model Plaza', login: 'Sign in', light: 'Switch to light mode', dark: 'Switch to dark mode' },
+  resourceLabel: 'Learning resources',
   hero: {
     eyebrow: 'AI LEARNING / PUBLIC KNOWLEDGE',
     title: 'Make experience useful to people',
@@ -410,16 +441,41 @@ const enCopy: LearningCopy = {
       { icon: 'shield', title: 'Review and improve', description: 'Use outcomes and feedback to refine the method and keep the capability growing.' },
     ],
   },
-  privacy: { eyebrow: 'PRIVACY BOUNDARY', title: 'Show capability not private data', description: 'Only authorized professional experience, project methods and public contact routes are included. The original resume is never displayed, and address, birth and identity details are excluded.', items: ['Only professional experience and methods are included', 'Contact routes are explicitly marked public', 'All content is a redacted display summary'] },
   contact: { eyebrow: 'OPEN CONTACT', name: 'Jianhao Xie / Ango', role: 'AI Agent product lead / AI systems designer' },
   footer: 'Public profile summary · Built with care for privacy',
 }
 
-const contact = {
+const publicContact = {
   email: 'sxmkwc@163.com',
   phone: '136 2687 8801',
   github: 'https://github.com/angolord/mojo-system',
 }
+
+const zhResources: LearningResource[] = [
+  {
+    id: 'ango-profile',
+    kind: 'profile',
+    label: '谢剑浩 Ango',
+    kindLabel: '个人实践',
+    stats: zhCopy.stats,
+    modules: zhCopy.modules,
+    experience: zhCopy.experience,
+    contact: { initials: 'A', name: zhCopy.contact.name, role: zhCopy.contact.role, ...publicContact, githubLabel: 'Mojo MVP / GitHub' },
+  },
+]
+
+const enResources: LearningResource[] = [
+  {
+    id: 'ango-profile',
+    kind: 'profile',
+    label: 'Jianhao Xie / Ango',
+    kindLabel: 'Professional practice',
+    stats: enCopy.stats,
+    modules: enCopy.modules,
+    experience: enCopy.experience,
+    contact: { initials: 'A', name: enCopy.contact.name, role: enCopy.contact.role, ...publicContact, githubLabel: 'Mojo MVP / GitHub' },
+  },
+]
 
 const { locale } = useI18n()
 const appStore = useAppStore()
@@ -427,14 +483,21 @@ const authStore = useAuthStore()
 const pageRef = ref<HTMLElement | null>(null)
 const heroStageRef = ref<HTMLElement | null>(null)
 const isDark = ref(document.documentElement.classList.contains('dark'))
+const selectedResourceId = ref('ango-profile')
 const selectedModuleId = ref<ModuleId>('agent')
 const copy = computed(() => locale.value.startsWith('zh') ? zhCopy : enCopy)
+const availableResources = computed(() => locale.value.startsWith('zh') ? zhResources : enResources)
 const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || brand.name)
 const siteLogo = computed(() => sanitizeUrl(appStore.cachedPublicSettings?.site_logo || appStore.siteLogo || '', { allowRelative: true, allowDataUrl: true }))
 const isAuthenticated = computed(() => authStore.isAuthenticated)
 const showModelPlazaEntry = computed(() => isFeatureFlagEnabled(FeatureFlags.modelPlaza))
 const currentYear = new Date().getFullYear()
-const activeModule = computed(() => copy.value.modules.find((module) => module.id === selectedModuleId.value) || copy.value.modules[0])
+const activeResource = computed(() => availableResources.value.find((resource) => resource.id === selectedResourceId.value) || availableResources.value[0])
+const activeResourceStats = computed(() => activeResource.value?.stats ?? copy.value.stats)
+const activeResourceModules = computed(() => activeResource.value?.modules ?? copy.value.modules)
+const activeResourceExperience = computed(() => activeResource.value?.experience ?? copy.value.experience)
+const activeContact = computed(() => activeResource.value?.contact)
+const activeModule = computed(() => activeResourceModules.value.find((module) => module.id === selectedModuleId.value) || activeResourceModules.value[0])
 let motionContext: gsap.Context | null = null
 let themeObserver: MutationObserver | null = null
 
@@ -445,6 +508,11 @@ function toggleTheme(event?: MouseEvent) {
 function selectModule(moduleId: ModuleId) {
   selectedModuleId.value = moduleId
   document.getElementById('learning-map')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
+function selectResource(resourceId: string) {
+  selectedResourceId.value = resourceId
+  selectedModuleId.value = activeResourceModules.value[0]?.id || 'agent'
 }
 
 function handlePointerMove(event: PointerEvent) {
@@ -524,7 +592,7 @@ onBeforeUnmount(() => {
 .learning-brand-mark { display: grid; width: 32px; height: 32px; place-items: center; overflow: hidden; border: 1px solid color-mix(in srgb, var(--mr-primary) 35%, transparent); border-radius: 10px; background: linear-gradient(145deg, var(--mr-primary), var(--mr-secondary)); box-shadow: 0 9px 22px color-mix(in srgb, var(--mr-primary) 22%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.4); }
 .learning-brand-mark img { width: 100%; height: 100%; object-fit: contain; }
 .learning-nav-links { display: flex; align-items: center; gap: 4px; margin-left: auto; padding: 4px; border: 1px solid var(--learning-border); border-radius: 999px; background: color-mix(in srgb, var(--mr-surface) 62%, transparent); box-shadow: inset 0 1px 0 var(--glass-highlight); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
-.learning-nav-links a { min-height: 32px; padding: 0 12px; border-radius: 999px; color: var(--mr-text-muted); font-size: 12px; font-weight: 600; line-height: 32px; transition: color 180ms ease, background-color 180ms ease, transform 180ms ease; }
+.learning-nav-links a { display: inline-flex; min-height: 32px; align-items: center; justify-content: center; padding: 0 12px; border-radius: 999px; color: var(--mr-text-muted); font-size: 12px; font-weight: 600; line-height: 1; white-space: nowrap; transition: color 180ms ease, background-color 180ms ease, transform 180ms ease; }
 .learning-nav-links a:hover, .learning-nav-links a.is-active { color: var(--mr-text); background: var(--mr-surface-raised); box-shadow: 0 7px 17px color-mix(in srgb, var(--mr-primary) 10%, transparent); transform: translateY(-1px); }
 .learning-nav-actions { display: flex; align-items: center; gap: 5px; }
 .learning-icon-button { display: inline-grid; width: 36px; height: 36px; place-items: center; border: 1px solid transparent; border-radius: 10px; color: var(--mr-text-muted); transition: color 180ms ease, background-color 180ms ease, border-color 180ms ease, transform 180ms ease; }
@@ -538,13 +606,19 @@ onBeforeUnmount(() => {
 .learning-hero { display: grid; min-height: min(760px, calc(100vh - 72px)); grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr); align-items: center; gap: 54px; padding: 82px 0 92px; }
 .learning-hero-copy { max-width: 550px; }
 .learning-eyebrow, .learning-section-index { color: var(--mr-primary); font-size: 11px; font-weight: 800; letter-spacing: 0.16em; }
-.learning-hero h1 { max-width: 620px; margin: 18px 0 0; color: var(--mr-text); font-size: clamp(48px, 6vw, 78px); font-weight: 760; letter-spacing: -0.065em; line-height: 1.02; text-wrap: balance; }
+.learning-hero h1 { display: block; max-width: 620px; margin: 18px 0 0; color: var(--mr-text); font-size: clamp(48px, 6vw, 78px); font-weight: 760; letter-spacing: -0.055em; line-height: 1.14; overflow-wrap: normal; text-wrap: balance; }
 .learning-hero h1::first-line { background: linear-gradient(100deg, var(--mr-text) 15%, var(--mr-primary) 66%, var(--mr-secondary)); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .learning-hero-subtitle { max-width: 520px; margin: 25px 0 0; color: var(--mr-text); font-size: clamp(18px, 2vw, 23px); font-weight: 560; line-height: 1.45; }
 .learning-hero-description { max-width: 510px; margin: 14px 0 0; color: var(--mr-text-muted); font-size: 14px; line-height: 1.8; }
 .learning-hero-tags { display: flex; flex-wrap: wrap; gap: 10px 16px; margin-top: 24px; color: var(--mr-text-subtle); font-size: 11px; }
 .learning-hero-tags span { display: inline-flex; align-items: center; gap: 7px; }
 .learning-hero-tags i, .learning-visual-caption i { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--mr-success); box-shadow: 0 0 0 4px color-mix(in srgb, var(--mr-success) 12%, transparent); }
+.learning-resource-switcher { display: grid; gap: 9px; margin-top: 22px; }
+.learning-resource-switcher-label { color: var(--mr-text-subtle); font-size: 10px; font-weight: 750; letter-spacing: 0.08em; text-transform: uppercase; }
+.learning-resource-options { display: flex; flex-wrap: wrap; gap: 7px; }
+.learning-resource-options button { display: inline-flex; align-items: center; gap: 8px; min-height: 34px; padding: 0 11px; border: 1px solid var(--learning-border); border-radius: 999px; color: var(--mr-text-muted); background: color-mix(in srgb, var(--mr-surface) 54%, transparent); font-size: 11px; transition: color 180ms ease, border-color 180ms ease, background-color 180ms ease, transform 180ms ease; }
+.learning-resource-options button small { color: var(--mr-text-subtle); font-size: 9px; }
+.learning-resource-options button:hover, .learning-resource-options button.is-active { border-color: color-mix(in srgb, var(--mr-primary) 46%, var(--learning-border-strong)); color: var(--mr-text); background: color-mix(in srgb, var(--mr-primary) 10%, var(--mr-surface)); transform: translateY(-1px); }
 .learning-hero-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 28px; }
 .learning-primary-button { min-height: 44px; padding: 0 18px; }
 .learning-hero-visual { --learning-rotate-x: 0deg; --learning-rotate-y: 0deg; --learning-light-x: 50%; --learning-light-y: 45%; position: relative; min-height: 560px; overflow: hidden; border: 1px solid color-mix(in srgb, var(--mr-primary) 26%, var(--mr-border-strong)); border-radius: 32px; background: radial-gradient(circle at var(--learning-light-x) var(--learning-light-y), color-mix(in srgb, var(--mr-primary) 15%, transparent), transparent 30%), color-mix(in srgb, var(--mr-surface) 56%, transparent); box-shadow: inset 0 1px 0 var(--glass-highlight), 0 30px 74px color-mix(in srgb, var(--mr-primary) 13%, transparent); backdrop-filter: blur(18px) saturate(135%); -webkit-backdrop-filter: blur(18px) saturate(135%); transform: perspective(1400px) rotateX(var(--learning-rotate-x)) rotateY(var(--learning-rotate-y)); transform-style: preserve-3d; transition: transform 600ms cubic-bezier(0.16, 1, 0.3, 1), border-color 220ms ease, box-shadow 220ms ease; }
@@ -583,8 +657,8 @@ onBeforeUnmount(() => {
 .learning-stat-card span { color: var(--mr-text-muted); font-size: 11px; }
 .learning-section { padding-top: 140px; scroll-margin-top: 96px; }
 .learning-section-heading { max-width: 680px; }
-.learning-section-heading h2, .learning-contact-card h3, .learning-privacy-card h2 { margin: 14px 0 0; color: var(--mr-text); font-size: clamp(32px, 4vw, 54px); font-weight: 720; letter-spacing: -0.055em; line-height: 1.08; }
-.learning-section-heading > p, .learning-privacy-card > p { margin: 19px 0 0; color: var(--mr-text-muted); font-size: 14px; line-height: 1.8; }
+.learning-section-heading h2, .learning-contact-card h3 { margin: 14px 0 0; color: var(--mr-text); font-size: clamp(32px, 4vw, 54px); font-weight: 720; letter-spacing: -0.055em; line-height: 1.08; }
+.learning-section-heading > p { margin: 19px 0 0; color: var(--mr-text-muted); font-size: 14px; line-height: 1.8; }
 .learning-map-layout { display: grid; grid-template-columns: minmax(260px, 0.72fr) minmax(0, 1.28fr); gap: 18px; margin-top: 46px; }
 .learning-module-list { display: grid; align-content: start; gap: 8px; }
 .learning-module-tab { display: grid; grid-template-columns: 42px minmax(0, 1fr) 18px; gap: 12px; align-items: center; min-height: 76px; padding: 12px 14px; border: 1px solid var(--learning-border); border-radius: 17px; color: var(--mr-text-muted); background: color-mix(in srgb, var(--mr-surface) 65%, transparent); text-align: left; box-shadow: inset 0 1px 0 var(--glass-highlight); transition: color 180ms ease, border-color 180ms ease, background-color 180ms ease, transform 180ms ease, box-shadow 180ms ease; }
@@ -632,14 +706,9 @@ onBeforeUnmount(() => {
 .learning-method-icon { margin-top: 30px; }
 .learning-method-card h3 { margin: 22px 0 0; color: var(--mr-text); font-size: 16px; font-weight: 700; }
 .learning-method-card p { margin: 10px 0 0; color: var(--mr-text-muted); font-size: 12px; line-height: 1.7; }
-.learning-contact-panel { display: grid; grid-template-columns: minmax(0, 1fr) minmax(360px, 0.9fr); gap: 18px; padding: 140px 0 100px; }
-.learning-privacy-card, .learning-contact-card { position: relative; overflow: hidden; border: 1px solid var(--learning-border-strong); border-radius: 24px; background: color-mix(in srgb, var(--mr-surface) 78%, transparent); box-shadow: inset 0 1px 0 var(--glass-highlight), 0 24px 54px color-mix(in srgb, var(--mr-primary) 8%, transparent); backdrop-filter: blur(16px) saturate(130%); -webkit-backdrop-filter: blur(16px) saturate(130%); }
-.learning-privacy-card { padding: 34px; }
-.learning-privacy-card::after { position: absolute; right: -70px; top: -100px; width: 260px; height: 260px; border: 1px solid color-mix(in srgb, var(--mr-secondary) 16%, transparent); border-radius: 50%; box-shadow: 0 0 0 22px color-mix(in srgb, var(--mr-secondary) 5%, transparent); content: ''; }
-.learning-privacy-list { position: relative; z-index: 1; display: grid; gap: 11px; margin-top: 28px; color: var(--mr-text-muted); font-size: 12px; }
-.learning-privacy-list span { display: flex; align-items: center; gap: 9px; }
-.learning-privacy-list svg { flex: 0 0 auto; color: var(--mr-success); }
-.learning-contact-card { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 18px; align-content: start; padding: 30px; background: linear-gradient(145deg, color-mix(in srgb, var(--mr-primary) 14%, var(--mr-surface)), color-mix(in srgb, var(--mr-secondary) 9%, var(--mr-surface))); }
+.learning-contact-panel { display: flex; justify-content: flex-end; padding: 140px 0 100px; }
+.learning-contact-card { position: relative; display: grid; width: min(100%, 700px); grid-template-columns: auto minmax(0, 1fr); gap: 18px; align-content: start; overflow: hidden; padding: 30px; border: 1px solid var(--learning-border-strong); border-radius: 24px; background: linear-gradient(145deg, color-mix(in srgb, var(--mr-primary) 14%, var(--mr-surface)), color-mix(in srgb, var(--mr-secondary) 9%, var(--mr-surface))); box-shadow: inset 0 1px 0 var(--glass-highlight), 0 24px 54px color-mix(in srgb, var(--mr-primary) 8%, transparent); backdrop-filter: blur(16px) saturate(130%); -webkit-backdrop-filter: blur(16px) saturate(130%); }
+.learning-contact-card::after { position: absolute; right: -72px; top: -114px; width: 250px; height: 250px; border: 1px solid color-mix(in srgb, var(--mr-secondary) 18%, transparent); border-radius: 50%; box-shadow: 0 0 0 24px color-mix(in srgb, var(--mr-secondary) 5%, transparent); content: ''; pointer-events: none; }
 .learning-contact-avatar { display: grid; width: 56px; height: 56px; place-items: center; border: 1px solid color-mix(in srgb, var(--mr-secondary) 42%, transparent); border-radius: 18px; color: #fff; background: linear-gradient(145deg, var(--mr-primary), var(--mr-secondary)); box-shadow: 0 14px 26px color-mix(in srgb, var(--mr-primary) 24%, transparent); font-size: 23px; font-weight: 800; }
 .learning-contact-copy { min-width: 0; }
 .learning-contact-label { color: var(--mr-secondary); font: 700 10px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.12em; }
@@ -664,7 +733,6 @@ onBeforeUnmount(() => {
   .learning-hero { grid-template-columns: minmax(0, 0.86fr) minmax(0, 1.14fr); gap: 24px; }
   .learning-hero h1 { font-size: clamp(44px, 6vw, 66px); }
   .learning-hero-visual { min-height: 500px; }
-  .learning-contact-panel { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 780px) {
@@ -711,7 +779,7 @@ onBeforeUnmount(() => {
   .learning-stat-card { min-height: 95px; padding: 16px; }
   .learning-stat-card strong { font-size: 28px; }
   .learning-section { padding-top: 90px; }
-  .learning-section-heading h2, .learning-privacy-card h2 { font-size: 35px; }
+  .learning-section-heading h2 { font-size: 35px; }
   .learning-module-list { grid-template-columns: 1fr; }
   .learning-module-detail { min-height: auto; padding: 22px; }
   .learning-detail-heading { margin-top: 28px; }
@@ -719,7 +787,7 @@ onBeforeUnmount(() => {
   .learning-detail-tags, .learning-detail-list { margin-left: 0; }
   .learning-detail-tags { margin-top: 20px; }
   .learning-detail-list { margin-top: 20px; }
-  .learning-privacy-card, .learning-contact-card { padding: 23px; border-radius: 20px; }
+  .learning-contact-card { width: 100%; padding: 23px; border-radius: 20px; }
   .learning-contact-card { grid-template-columns: 48px minmax(0, 1fr); gap: 13px; }
   .learning-contact-avatar { width: 48px; height: 48px; border-radius: 15px; }
   .learning-contact-card h3 { font-size: 21px; }
