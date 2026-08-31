@@ -184,18 +184,13 @@
               @pointerleave="resetHeroPointer"
             >
               <div class="home-stage-topline" aria-hidden="true">
-                <span>MODURELAY / ROUTING VIEW</span>
-                <span class="home-stage-status"><i></i> READY</span>
+                <span>MODURELAY / RELAY CORE</span>
+                <span class="home-stage-status"><i></i> LIVE ROUTE</span>
               </div>
-              <div class="home-stage-corner home-stage-corner-tl" aria-hidden="true"></div>
-              <div class="home-stage-corner home-stage-corner-tr" aria-hidden="true"></div>
-              <div class="home-stage-corner home-stage-corner-bl" aria-hidden="true"></div>
-              <div class="home-stage-corner home-stage-corner-br" aria-hidden="true"></div>
               <HomeHeroScene />
-              <div class="home-stage-scanline" aria-hidden="true"></div>
               <div class="home-stage-footline" aria-hidden="true">
-                <span>OPENAI-COMPATIBLE</span>
-                <span>MODELS / ROUTES / USAGE</span>
+                <span>OPENAI COMPATIBLE</span>
+                <span>MODEL / ROUTE / USAGE</span>
               </div>
             </div>
           </div>
@@ -546,8 +541,8 @@ function handleHeroPointerMove(event: PointerEvent) {
   const rect = stage.getBoundingClientRect()
   const x = (event.clientX - rect.left) / Math.max(rect.width, 1) - 0.5
   const y = (event.clientY - rect.top) / Math.max(rect.height, 1) - 0.5
-  stage.style.setProperty('--hero-rotate-x', `${y * -3.2}deg`)
-  stage.style.setProperty('--hero-rotate-y', `${x * 4.2}deg`)
+  stage.style.setProperty('--hero-rotate-x', `${y * -1.6}deg`)
+  stage.style.setProperty('--hero-rotate-y', `${x * 2.2}deg`)
   stage.style.setProperty('--hero-light-x', `${50 + x * 34}%`)
   stage.style.setProperty('--hero-light-y', `${44 + y * 28}%`)
 }
@@ -1080,5 +1075,53 @@ onBeforeUnmount(() => {
 @media (prefers-reduced-motion: reduce) {
   .home-page::after, .home-learning-orbit::before, .home-learning-orbit-ring, .home-learning-core::before, .home-learning-node { animation: none !important; }
   .home-hero-stage-frame:hover { transform: none !important; }
+}
+/* Active Theory-inspired hero: one original Relay Core in a quiet dark field. */
+.home-page::before { display: none; }
+.home-page::after { opacity: 0.22; }
+.home-background { opacity: 0; }
+.home-hero-stage-frame {
+  overflow: hidden;
+  border-color: color-mix(in srgb, var(--mr-border-strong) 78%, var(--mr-primary));
+  background: var(--color-bg-deep);
+  box-shadow: 0 30px 80px rgba(5, 8, 18, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.13);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.home-hero-stage-frame::before {
+  inset: 1px;
+  border-color: color-mix(in srgb, var(--mr-secondary) 22%, transparent);
+  border-radius: inherit;
+  transform: translateZ(2px);
+}
+.home-hero-stage-frame::after { display: none; }
+.home-hero-stage-frame:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--mr-secondary) 46%, var(--mr-border-strong));
+  box-shadow: 0 36px 88px rgba(5, 8, 18, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+.home-stage-topline,
+.home-stage-footline {
+  color: rgba(226, 232, 240, 0.6);
+}
+.home-stage-status { color: #86efac; }
+.home-stage-footline { color: rgba(148, 163, 184, 0.6); }
+.home-stage-footline span:last-child { color: rgba(165, 180, 252, 0.66); }
+.home-hero-stage-frame :deep(.hero-orbit-stage) { min-height: 632px; }
+
+@media (max-width: 1080px) {
+  .home-hero-layout { gap: 42px; }
+}
+
+@media (max-width: 820px) {
+  .home-hero-stage-frame :deep(.hero-orbit-stage) { min-height: 520px; }
+}
+
+@media (max-width: 620px) {
+  .home-hero-stage-frame :deep(.hero-orbit-stage) { min-height: 468px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-hero-stage-frame:hover { transform: none; }
 }
 </style>

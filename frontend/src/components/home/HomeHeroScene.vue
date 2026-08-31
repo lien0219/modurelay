@@ -3,35 +3,38 @@
     ref="stageRef"
     class="hero-orbit-stage"
     role="img"
-    aria-label="ModuRelay Relay Core"
+    aria-label="ModuRelay Relay Core interactive visualization"
   >
     <div class="scene-shell" :class="{ 'scene-is-loading': isLoading, 'scene-has-fallback': hasFallback }">
       <div class="scene-atmosphere" aria-hidden="true">
         <span class="scene-atmosphere-glow scene-atmosphere-glow-one"></span>
         <span class="scene-atmosphere-glow scene-atmosphere-glow-two"></span>
-        <span class="scene-atmosphere-grid"></span>
+        <span class="scene-depth-vignette"></span>
+        <span class="scene-depth-sweep scene-depth-sweep-one"></span>
+        <span class="scene-depth-sweep scene-depth-sweep-two"></span>
         <i class="scene-atmosphere-star scene-atmosphere-star-one"></i>
         <i class="scene-atmosphere-star scene-atmosphere-star-two"></i>
         <i class="scene-atmosphere-star scene-atmosphere-star-three"></i>
+        <i class="scene-atmosphere-star scene-atmosphere-star-four"></i>
       </div>
+
       <div ref="canvasHostRef" class="three-canvas-host" aria-hidden="true"></div>
 
       <div v-if="isLoading" class="scene-loading" aria-hidden="true">
         <span></span>
-        <small>INITIALIZING 3D NETWORK</small>
+        <small>BUILDING RELAY FIELD</small>
       </div>
 
       <div v-if="hasFallback" class="fallback-core" aria-hidden="true">
         <div class="fallback-aura"></div>
+        <div class="fallback-shadow"></div>
         <div class="fallback-ring fallback-ring-one"></div>
         <div class="fallback-ring fallback-ring-two"></div>
-        <span class="fallback-bubble fallback-bubble-one"></span>
-        <span class="fallback-bubble fallback-bubble-two"></span>
-        <span class="fallback-bubble fallback-bubble-three"></span>
-        <span class="fallback-bubble fallback-bubble-four"></span>
-        <div class="fallback-cube"><span>M</span></div>
+        <span class="fallback-signal fallback-signal-one"></span>
+        <span class="fallback-signal fallback-signal-two"></span>
+        <span class="fallback-signal fallback-signal-three"></span>
+        <div class="fallback-emblem"><span>M</span><small>RELAY CORE</small></div>
       </div>
-
     </div>
   </div>
 </template>
@@ -41,10 +44,6 @@ import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { isDarkTheme, loadThree, observeTheme } from '@/utils/threeRuntime'
 
 type Disposable = { dispose: () => void }
-type OrbitChild = {
-  userData: { speed?: number }
-  rotation: { z: number }
-}
 
 const stageRef = ref<HTMLElement | null>(null)
 const canvasHostRef = ref<HTMLElement | null>(null)
@@ -60,6 +59,220 @@ function supportsWebGL(): boolean {
   } catch {
     return false
   }
+}
+
+function readThemeToken(name: string, fallback: string): string {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback
+}
+
+function colorHex(THREE: any, value: string, fallback: string): number {
+  const color = new THREE.Color()
+  try {
+    color.set(value || fallback)
+  } catch {
+    color.set(fallback)
+  }
+  return color.getHex()
+}
+
+function createEmblemTexture(THREE: any, dark: boolean) {
+  const canvas = document.createElement('canvas')
+  canvas.width = 512
+  canvas.height = 512
+  const context = canvas.getContext('2d')
+
+  if (!context) throw new Error('Unable to create Relay Core texture canvas')
+
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  texture.anisotropy = 8
+
+  const redraw = (isDark: boolean) => {
+    const gradient = context.createLinearGradient(72, 48, 440, 470)
+    gradient.addColorStop(0, isDark ? '#1b2345' : '#11182d')
+    gradient.addColorStop(0.48, isDark ? '#172b59' : '#14234a')
+    gradient.addColorStop(1, isDark ? '#071b2c' : '#081628')
+
+    context.clearRect(0, 0, 512, 512)
+    context.fillStyle = gradient
+    context.fillRect(0, 0, 512, 512)
+
+    context.strokeStyle = isDark ? 'rgba(165, 180, 252, 0.84)' : 'rgba(148, 163, 184, 0.76)'
+    context.lineWidth = 8
+    context.strokeRect(26, 26, 460, 460)
+
+    const centerGlow = context.createRadialGradient(180, 130, 8, 260, 248, 260)
+    centerGlow.addColorStop(0, isDark ? 'rgba(34, 211, 238, 0.32)' : 'rgba(99, 102, 241, 0.24)')
+    centerGlow.addColorStop(0.62, 'rgba(9, 12, 18, 0)')
+    context.fillStyle = centerGlow
+    context.fillRect(0, 0, 512, 512)
+
+    context.fillStyle = isDark ? '#f8fafc' : '#eef2ff'
+    context.textAlign = 'center'
+    context.textBaseline = 'middle'
+    context.font = '900 250px Inter, system-ui, sans-serif'
+    context.shadowColor = isDark ? 'rgba(103, 232, 249, 0.7)' : 'rgba(99, 102, 241, 0.52)'
+    context.shadowBlur = 30
+    context.fillText('M', 256, 238)
+
+    context.shadowBlur = 0
+    context.fillStyle = isDark ? 'rgba(226, 232, 240, 0.84)' : 'rgba(224, 231, 255, 0.86)'
+    context.font = '700 26px Inter, system-ui, sans-serif'
+    context.fillText('RELAY CORE', 256, 408)
+
+    texture.needsUpdate = true
+  }
+
+  redraw(dark)
+  return { texture, redraw }
+}
+
+function createFlowMaterial(THREE: any, primary: string, accent: string, opacity: number) {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      uTime: { value: 0 },
+      uPrimary: { value: new THREE.Color(primary) },
+      uAccent: { value: new THREE.Color(accent) },
+      uOpacity: { value: opacity },
+      uMotion: { value: 1 },
+    },
+    vertexShader: `
+      varying vec2 vUv;
+
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform float uTime;
+      uniform vec3 uPrimary;
+      uniform vec3 uAccent;
+      uniform float uOpacity;
+      uniform float uMotion;
+      varying vec2 vUv;
+
+      void main() {
+        float flow = 0.5 + 0.5 * sin(vUv.x * 26.0 - uTime * 2.3 * uMotion);
+        float highlight = smoothstep(0.58, 1.0, flow);
+        vec3 color = mix(uPrimary, uAccent, clamp(vUv.x * 0.78 + highlight * 0.22, 0.0, 1.0));
+        float edge = 0.42 + 0.58 * pow(abs(sin(vUv.y * 3.14159)), 0.42);
+        float alpha = uOpacity * edge * (0.48 + highlight * 0.52);
+        gl_FragColor = vec4(color, alpha);
+      }
+    `,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide,
+  })
+}
+
+function createShellMaterial(THREE: any, primary: string, accent: string) {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      uTime: { value: 0 },
+      uPointer: { value: new THREE.Vector2(0, 0) },
+      uPrimary: { value: new THREE.Color(primary) },
+      uAccent: { value: new THREE.Color(accent) },
+      uOpacity: { value: 0.86 },
+      uMotion: { value: 1 },
+    },
+    vertexShader: `
+      uniform float uTime;
+      uniform vec2 uPointer;
+      uniform float uMotion;
+      varying vec3 vNormal;
+      varying vec3 vWorldPosition;
+
+      void main() {
+        vec3 displaced = position;
+        float wave = sin(position.y * 4.8 + uTime * 0.78 * uMotion + position.x * 2.1);
+        float swell = sin(position.z * 5.2 - uTime * 0.46 * uMotion + position.y * 1.7);
+        float touch = dot(normalize(position), vec3(uPointer * 0.13, 0.0));
+        displaced += normal * (wave * 0.035 + swell * 0.026 + touch * 0.065);
+
+        vec4 worldPosition = modelMatrix * vec4(displaced, 1.0);
+        vWorldPosition = worldPosition.xyz;
+        vNormal = normalize(normalMatrix * normal);
+        gl_Position = projectionMatrix * viewMatrix * worldPosition;
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 uPrimary;
+      uniform vec3 uAccent;
+      uniform float uOpacity;
+      varying vec3 vNormal;
+      varying vec3 vWorldPosition;
+
+      void main() {
+        vec3 viewDirection = normalize(cameraPosition - vWorldPosition);
+        float fresnel = pow(1.0 - max(dot(normalize(vNormal), viewDirection), 0.0), 2.45);
+        float band = 0.5 + 0.5 * sin(vWorldPosition.y * 8.0 + vWorldPosition.x * 2.8);
+        vec3 color = mix(uPrimary, uAccent, clamp(fresnel * 0.8 + band * 0.2, 0.0, 1.0));
+        float alpha = (0.035 + fresnel * 0.56 + band * 0.045) * uOpacity;
+        gl_FragColor = vec4(color, alpha);
+      }
+    `,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.FrontSide,
+  })
+}
+
+function createParticleMaterial(THREE: any, primary: string, accent: string, pixelRatio: number) {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      uTime: { value: 0 },
+      uPrimary: { value: new THREE.Color(primary) },
+      uAccent: { value: new THREE.Color(accent) },
+      uPixelRatio: { value: pixelRatio },
+      uMotion: { value: 1 },
+    },
+    vertexShader: `
+      attribute float aSize;
+      attribute float aSeed;
+      attribute float aAlpha;
+      uniform float uTime;
+      uniform float uPixelRatio;
+      uniform float uMotion;
+      varying float vAlpha;
+      varying float vSeed;
+
+      void main() {
+        vec3 transformed = position;
+        float drift = uTime * (0.42 + aSeed * 0.24) * uMotion;
+        transformed += vec3(
+          sin(drift + aSeed * 18.0) * 0.035,
+          cos(drift * 1.2 + aSeed * 9.0) * 0.045,
+          sin(drift * 0.8 + aSeed * 14.0) * 0.028
+        ) * uMotion;
+
+        vec4 mvPosition = modelViewMatrix * vec4(transformed, 1.0);
+        gl_PointSize = aSize * uPixelRatio * (72.0 / max(-mvPosition.z, 1.0));
+        gl_Position = projectionMatrix * mvPosition;
+        vAlpha = aAlpha * (0.7 + 0.3 * sin(drift + aSeed * 11.0));
+        vSeed = aSeed;
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 uPrimary;
+      uniform vec3 uAccent;
+      varying float vAlpha;
+      varying float vSeed;
+
+      void main() {
+        float distanceToCenter = distance(gl_PointCoord, vec2(0.5));
+        float softness = smoothstep(0.5, 0.0, distanceToCenter);
+        vec3 color = mix(uPrimary, uAccent, 0.35 + fract(vSeed * 7.0) * 0.5);
+        gl_FragColor = vec4(color, softness * vAlpha * 0.9);
+      }
+    `,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  })
 }
 
 onMounted(() => {
@@ -96,53 +309,6 @@ onBeforeUnmount(() => {
   cleanupScene = null
 })
 
-function createBrandTexture(THREE: any, dark: boolean) {
-  const canvas = document.createElement('canvas')
-  canvas.width = 512
-  canvas.height = 512
-  const context = canvas.getContext('2d')
-
-  if (!context) throw new Error('Unable to create brand texture canvas')
-
-  const texture = new THREE.CanvasTexture(canvas)
-  texture.colorSpace = THREE.SRGBColorSpace
-  texture.anisotropy = 8
-
-  const redraw = (isDark: boolean) => {
-    const gradient = context.createLinearGradient(0, 0, 512, 512)
-    gradient.addColorStop(0, isDark ? '#3730a3' : '#4f46e5')
-    gradient.addColorStop(0.55, isDark ? '#155e75' : '#0891b2')
-    gradient.addColorStop(1, isDark ? '#1e1b4b' : '#6366f1')
-
-    context.clearRect(0, 0, 512, 512)
-    context.fillStyle = gradient
-    context.fillRect(0, 0, 512, 512)
-
-    context.strokeStyle = isDark ? 'rgba(165, 243, 252, 0.78)' : 'rgba(255, 255, 255, 0.72)'
-    context.lineWidth = 12
-    context.strokeRect(18, 18, 476, 476)
-
-    context.fillStyle = isDark ? '#f8fafc' : '#ffffff'
-    context.textAlign = 'center'
-    context.textBaseline = 'middle'
-    context.font = '900 252px Inter, system-ui, sans-serif'
-    context.shadowColor = isDark ? 'rgba(103, 232, 249, 0.65)' : 'rgba(8, 145, 178, 0.35)'
-    context.shadowBlur = 34
-    context.fillText('M', 256, 246)
-
-    context.shadowBlur = 0
-    context.fillStyle = isDark ? 'rgba(226, 232, 240, 0.82)' : 'rgba(255, 255, 255, 0.9)'
-    context.font = '700 28px Inter, system-ui, sans-serif'
-    context.letterSpacing = '8px'
-    context.fillText('MODURELAY', 256, 414)
-
-    texture.needsUpdate = true
-  }
-
-  redraw(dark)
-  return { texture, redraw }
-}
-
 async function initializeScene(stage: HTMLElement, host: HTMLElement): Promise<() => void> {
   const THREE = await loadThree()
   let stopped = false
@@ -156,307 +322,339 @@ async function initializeScene(stage: HTMLElement, host: HTMLElement): Promise<(
   let scrollValue = 0
   let lastTime = performance.now()
 
+  const dark = isDarkTheme()
+  const primaryToken = readThemeToken('--color-primary', dark ? '#6366f1' : '#4f46e5')
+  const accentToken = readThemeToken('--color-accent', dark ? '#22d3ee' : '#0891b2')
+  const primaryHex = colorHex(THREE, primaryToken, dark ? '#6366f1' : '#4f46e5')
+  const accentHex = colorHex(THREE, accentToken, dark ? '#22d3ee' : '#0891b2')
+  const sceneBackground = colorHex(THREE, '#080b13', '#080b13')
+  const pixelRatio = Math.min(window.devicePixelRatio, window.innerWidth < 768 ? 1.2 : 1.45)
+
   const resources: Disposable[] = []
-  const ringMaterials: Array<{ color: { setHex: (value: number) => void }; opacity: number }> = []
-  const bubbleMaterials: Array<{ material: any; darkColor: number; lightColor: number; darkOpacity: number; lightOpacity: number }> = []
+  const ringMaterials: Array<{ material: any; index: number }> = []
+  const nodeMaterials: any[] = []
+  const flowMaterials: any[] = []
 
   const renderer = new THREE.WebGLRenderer({
     alpha: true,
-    antialias: window.devicePixelRatio <= 1.75,
+    antialias: window.devicePixelRatio <= 1.5,
     powerPreference: 'high-performance',
-    premultipliedAlpha: true
+    premultipliedAlpha: true,
   })
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, window.innerWidth < 768 ? 1.25 : 1.5))
+  renderer.setPixelRatio(pixelRatio)
   renderer.outputColorSpace = THREE.SRGBColorSpace
   renderer.toneMapping = THREE.ACESFilmicToneMapping
-  renderer.toneMappingExposure = isDarkTheme() ? 1.34 : 1.04
-  renderer.setClearColor(0x000000, 0)
+  renderer.toneMappingExposure = 1.2
+  renderer.setClearColor(sceneBackground, 0)
   renderer.domElement.className = 'three-hero-canvas'
   renderer.domElement.setAttribute('aria-hidden', 'true')
   host.appendChild(renderer.domElement)
 
   const scene = new THREE.Scene()
-  scene.fog = new THREE.FogExp2(isDarkTheme() ? 0x090c12 : 0xf5f7fb, isDarkTheme() ? 0.036 : 0.028)
+  scene.background = null
+  scene.fog = new THREE.FogExp2(sceneBackground, 0.044)
 
-  const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 80)
-  camera.position.set(0, 0.65, 10.6)
+  const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 60)
+  camera.position.set(0, 0.22, 8.6)
 
   const world = new THREE.Group()
   const coreGroup = new THREE.Group()
+  const ribbonGroup = new THREE.Group()
+  const particleGroup = new THREE.Group()
   const orbitGroup = new THREE.Group()
-  const bubbleGroup = new THREE.Group()
+  const signalGroup = new THREE.Group()
+  world.add(coreGroup, ribbonGroup, particleGroup, orbitGroup, signalGroup)
+  world.position.y = 0.08
   scene.add(world)
-  world.add(coreGroup, orbitGroup, bubbleGroup)
 
-  const ambientLight = new THREE.HemisphereLight(0xd9ddff, 0x071426, isDarkTheme() ? 1.55 : 1.65)
-  scene.add(ambientLight)
+  const ambientLight = new THREE.HemisphereLight(0x6173bd, 0x02040a, 1.55)
+  const keyLight = new THREE.DirectionalLight(0xf4f7ff, 3.25)
+  keyLight.position.set(4.5, 5.8, 7)
+  const primaryLight = new THREE.PointLight(primaryHex, 30, 14, 2)
+  primaryLight.position.set(-3.1, 1.9, 3.4)
+  const accentLight = new THREE.PointLight(accentHex, 28, 15, 2)
+  accentLight.position.set(3.5, -1.2, 2.7)
+  const topLight = new THREE.PointLight(0xa5b4fc, 15, 12, 2)
+  topLight.position.set(0, 4.2, -0.5)
+  scene.add(ambientLight, keyLight, primaryLight, accentLight, topLight)
 
-  const keyLight = new THREE.DirectionalLight(0xffffff, isDarkTheme() ? 2.75 : 3)
-  keyLight.position.set(4, 6, 7)
-  scene.add(keyLight)
+  const emblemTexture = createEmblemTexture(THREE, dark)
+  resources.push(emblemTexture.texture)
 
-  const primaryLight = new THREE.PointLight(0x6366f1, 34, 18, 2)
-  primaryLight.position.set(-3.5, 1.8, 3.5)
-  scene.add(primaryLight)
-
-  const blueLight = new THREE.PointLight(0x06b6d4, 30, 18, 2)
-  blueLight.position.set(4, -1.2, 2.8)
-  scene.add(blueLight)
-
-  const violetLight = new THREE.PointLight(0x818cf8, 18, 14, 2)
-  violetLight.position.set(0, 4, -1)
-  scene.add(violetLight)
-
-  const brandTexture = createBrandTexture(THREE, isDarkTheme())
-  resources.push(brandTexture.texture)
-
-  const cubeGeometry = new THREE.BoxGeometry(2.25, 2.25, 2.25, 2, 2, 2)
-  resources.push(cubeGeometry)
-
-  const cubeMaterials = Array.from({ length: 6 }, () => new THREE.MeshPhysicalMaterial({
-    map: brandTexture.texture,
-    emissiveMap: brandTexture.texture,
-    emissive: isDarkTheme() ? 0x1e1b4b : 0x312e81,
-    emissiveIntensity: isDarkTheme() ? 0.62 : 0.18,
-    metalness: 0.5,
-    roughness: 0.26,
+  const coreGeometry = new THREE.SphereGeometry(1.22, 64, 44)
+  const coreMaterial = new THREE.MeshPhysicalMaterial({
+    color: 0x111627,
+    metalness: 0.82,
+    roughness: 0.2,
     clearcoat: 1,
-    clearcoatRoughness: 0.12,
-    transparent: false
-  }))
-  resources.push(...cubeMaterials)
-
-  const cube = new THREE.Mesh(cubeGeometry, cubeMaterials)
-  cube.rotation.set(-0.22, 0.56, 0.04)
-  coreGroup.add(cube)
-
-  const edgeGeometry = new THREE.EdgesGeometry(cubeGeometry, 18)
-  const edgeMaterial = new THREE.LineBasicMaterial({
-    color: isDarkTheme() ? 0xa5b4fc : 0x4338ca,
-    transparent: true,
-    opacity: isDarkTheme() ? 0.85 : 0.52,
-    blending: THREE.AdditiveBlending
+    clearcoatRoughness: 0.08,
+    emissive: primaryHex,
+    emissiveIntensity: 0.11,
   })
-  resources.push(edgeGeometry, edgeMaterial)
-  const cubeEdges = new THREE.LineSegments(edgeGeometry, edgeMaterial)
-  cubeEdges.scale.setScalar(1.012)
-  coreGroup.add(cubeEdges)
+  resources.push(coreGeometry, coreMaterial)
+  const coreBody = new THREE.Mesh(coreGeometry, coreMaterial)
+  coreBody.scale.set(1, 1, 0.88)
+  coreBody.position.y = 0.04
+  coreGroup.add(coreBody)
 
-  const innerGeometry = new THREE.IcosahedronGeometry(0.9, 1)
-  const innerMaterial = new THREE.MeshBasicMaterial({
-    color: isDarkTheme() ? 0x67e8f9 : 0x0891b2,
-    wireframe: true,
-    transparent: true,
-    opacity: isDarkTheme() ? 0.24 : 0.12,
-    blending: THREE.AdditiveBlending
+  const shellGeometry = new THREE.IcosahedronGeometry(1.48, 5)
+  const shellMaterial = createShellMaterial(THREE, primaryToken, accentToken)
+  resources.push(shellGeometry, shellMaterial)
+  const shell = new THREE.Mesh(shellGeometry, shellMaterial)
+  shell.position.y = 0.04
+  shell.renderOrder = 2
+  coreGroup.add(shell)
+
+  const emblemBodyGeometry = new THREE.CylinderGeometry(0.79, 0.79, 0.12, 64)
+  const emblemBodyMaterial = new THREE.MeshPhysicalMaterial({
+    color: 0x090d18,
+    metalness: 0.9,
+    roughness: 0.18,
+    clearcoat: 1,
+    clearcoatRoughness: 0.06,
+    emissive: accentHex,
+    emissiveIntensity: 0.08,
   })
-  resources.push(innerGeometry, innerMaterial)
-  const innerCore = new THREE.Mesh(innerGeometry, innerMaterial)
-  coreGroup.add(innerCore)
+  resources.push(emblemBodyGeometry, emblemBodyMaterial)
+  const emblemBody = new THREE.Mesh(emblemBodyGeometry, emblemBodyMaterial)
+  emblemBody.rotation.x = Math.PI / 2
+  emblemBody.position.set(0, 0.04, 0.93)
+  coreGroup.add(emblemBody)
 
-  // A low-cost shader shell adds the soft, fluid depth that a static model
-  // cannot provide. It stays deliberately translucent so the Relay Core mark
-  // remains the focal point instead of becoming a decorative fog layer.
-  const fluidUniforms = {
-    uTime: { value: 0 },
-    uPointer: { value: new THREE.Vector2(0, 0) },
-    uColorA: { value: new THREE.Color(isDarkTheme() ? 0x6366f1 : 0x4f46e5) },
-    uColorB: { value: new THREE.Color(isDarkTheme() ? 0x22d3ee : 0x0891b2) },
-    uOpacity: { value: isDarkTheme() ? 0.92 : 0.7 },
-  }
-  const fluidGeometry = new THREE.IcosahedronGeometry(1.82, 5)
-  const fluidMaterial = new THREE.ShaderMaterial({
-    uniforms: fluidUniforms,
-    vertexShader: `
-      uniform float uTime;
-      uniform vec2 uPointer;
-      varying vec3 vNormal;
-      varying vec3 vWorldPosition;
+  const emblemFaceGeometry = new THREE.CircleGeometry(0.72, 64)
+  const emblemFaceMaterial = new THREE.MeshBasicMaterial({ map: emblemTexture.texture, transparent: true })
+  resources.push(emblemFaceGeometry, emblemFaceMaterial)
+  const emblemFace = new THREE.Mesh(emblemFaceGeometry, emblemFaceMaterial)
+  emblemFace.position.set(0, 0.04, 1.01)
+  coreGroup.add(emblemFace)
 
-      void main() {
-        vec3 displaced = position;
-        float waveA = sin(position.y * 4.2 + uTime * 0.82 + position.x * 1.7);
-        float waveB = sin(position.z * 5.4 - uTime * 0.58 + position.y * 2.1);
-        float touch = dot(normalize(position), vec3(uPointer * 0.12, 0.0));
-        displaced += normal * (waveA * 0.034 + waveB * 0.026 + touch * 0.08);
-
-        vec4 worldPosition = modelMatrix * vec4(displaced, 1.0);
-        vWorldPosition = worldPosition.xyz;
-        vNormal = normalize(normalMatrix * normal);
-        gl_Position = projectionMatrix * viewMatrix * worldPosition;
-      }
-    `,
-    fragmentShader: `
-      uniform float uTime;
-      uniform vec3 uColorA;
-      uniform vec3 uColorB;
-      uniform float uOpacity;
-      varying vec3 vNormal;
-      varying vec3 vWorldPosition;
-
-      void main() {
-        vec3 viewDirection = normalize(cameraPosition - vWorldPosition);
-        float fresnel = pow(1.0 - max(dot(normalize(vNormal), viewDirection), 0.0), 2.75);
-        float bands = 0.5 + 0.5 * sin(vWorldPosition.y * 7.4 + vWorldPosition.x * 3.1 + uTime * 0.52);
-        float contour = smoothstep(0.42, 0.92, fresnel + bands * 0.12);
-        vec3 color = mix(uColorA, uColorB, clamp(bands * 0.72 + fresnel * 0.48, 0.0, 1.0));
-        float alpha = (0.035 + fresnel * 0.6 + contour * 0.08) * uOpacity;
-        gl_FragColor = vec4(color, alpha);
-      }
-    `,
-    transparent: true,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-    side: THREE.FrontSide,
+  const focalRingGeometry = new THREE.TorusGeometry(1.48, 0.064, 24, 180)
+  const focalRingMaterial = new THREE.MeshPhysicalMaterial({
+    color: accentHex,
+    metalness: 0.88,
+    roughness: 0.16,
+    clearcoat: 1,
+    clearcoatRoughness: 0.06,
+    emissive: primaryHex,
+    emissiveIntensity: 0.46,
   })
-  resources.push(fluidGeometry, fluidMaterial)
-  const fluidShell = new THREE.Mesh(fluidGeometry, fluidMaterial)
-  fluidShell.position.y = 0.08
-  fluidShell.renderOrder = 1
-  coreGroup.add(fluidShell)
+  resources.push(focalRingGeometry, focalRingMaterial)
+  const focalRing = new THREE.Mesh(focalRingGeometry, focalRingMaterial)
+  focalRing.rotation.z = -0.08
+  focalRing.position.z = 0.03
+  orbitGroup.add(focalRing)
+  ringMaterials.push({ material: focalRingMaterial, index: 0 })
 
-  const particleCount = window.innerWidth < 768 ? 112 : 188
+  const ringConfigs = [
+    { radius: 1.68, tube: 0.018, rotation: [0.12, 0.44, 0.2], color: primaryHex, opacity: 0.62, speed: 0.12 },
+    { radius: 1.96, tube: 0.012, rotation: [1.22, -0.32, -0.38], color: accentHex, opacity: 0.48, speed: -0.085 },
+    { radius: 2.25, tube: 0.009, rotation: [0.46, 1.16, 0.72], color: 0xa5b4fc, opacity: 0.28, speed: 0.052 },
+  ]
+  const ringMeshes: Array<{ mesh: any; speed: number }> = []
+  ringConfigs.forEach((config, index) => {
+    const geometry = new THREE.TorusGeometry(config.radius, config.tube, 12, 200)
+    const material = new THREE.MeshBasicMaterial({
+      color: config.color,
+      transparent: true,
+      opacity: config.opacity,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    })
+    resources.push(geometry, material)
+    const mesh = new THREE.Mesh(geometry, material)
+    mesh.rotation.set(...config.rotation)
+    orbitGroup.add(mesh)
+    ringMeshes.push({ mesh, speed: config.speed })
+    ringMaterials.push({ material, index: index + 1 })
+  })
+
+  const shadowGeometry = new THREE.CircleGeometry(2.55, 96)
+  const shadowMaterial = new THREE.MeshBasicMaterial({ color: 0x010207, transparent: true, opacity: 0.72, depthWrite: false })
+  resources.push(shadowGeometry, shadowMaterial)
+  const shadow = new THREE.Mesh(shadowGeometry, shadowMaterial)
+  shadow.rotation.x = -Math.PI / 2
+  shadow.scale.set(1, 0.28, 1)
+  shadow.position.set(0, -1.68, 0.36)
+  orbitGroup.add(shadow)
+
+  const shadowRingGeometry = new THREE.TorusGeometry(2.05, 0.012, 8, 160)
+  const shadowRingMaterial = new THREE.MeshBasicMaterial({ color: primaryHex, transparent: true, opacity: 0.24, depthWrite: false, blending: THREE.AdditiveBlending })
+  resources.push(shadowRingGeometry, shadowRingMaterial)
+  const shadowRing = new THREE.Mesh(shadowRingGeometry, shadowRingMaterial)
+  shadowRing.rotation.x = Math.PI / 2
+  shadowRing.position.set(0, -1.64, 0.34)
+  shadowRing.scale.set(1.12, 0.36, 1)
+  orbitGroup.add(shadowRing)
+  ringMaterials.push({ material: shadowRingMaterial, index: 4 })
+
+  const curves = [
+    new THREE.CatmullRomCurve3([
+      new THREE.Vector3(-3.7, -2.4, -0.6),
+      new THREE.Vector3(-2.6, -1.62, 0.25),
+      new THREE.Vector3(-1.38, -0.28, -0.76),
+      new THREE.Vector3(-0.72, 1.42, 0.28),
+      new THREE.Vector3(0.35, 2.42, -0.38),
+      new THREE.Vector3(1.94, 1.54, 0.58),
+      new THREE.Vector3(3.45, 0.14, -0.24),
+      new THREE.Vector3(2.42, -1.44, 0.44),
+      new THREE.Vector3(0.68, -2.58, -0.48),
+      new THREE.Vector3(-1.54, -1.9, 0.3),
+      new THREE.Vector3(-2.9, -0.74, -0.58),
+    ], false, 'catmullrom', 0.62),
+    new THREE.CatmullRomCurve3([
+      new THREE.Vector3(-3.34, 1.12, 0.38),
+      new THREE.Vector3(-2.04, 1.9, -0.34),
+      new THREE.Vector3(-0.7, 1.05, 0.62),
+      new THREE.Vector3(0.92, -0.46, -0.68),
+      new THREE.Vector3(2.3, -1.86, 0.16),
+      new THREE.Vector3(3.42, -0.64, -0.5),
+      new THREE.Vector3(2.5, 1.06, 0.28),
+      new THREE.Vector3(0.94, 2.52, -0.3),
+      new THREE.Vector3(-0.62, 1.58, 0.54),
+      new THREE.Vector3(-2.14, 0.04, -0.62),
+      new THREE.Vector3(-3.44, -1.68, 0.3),
+    ], false, 'catmullrom', 0.6),
+  ]
+
+  curves.forEach((curve, index) => {
+    const material = createFlowMaterial(THREE, index === 0 ? primaryToken : accentToken, index === 0 ? accentToken : primaryToken, index === 0 ? 0.72 : 0.6)
+    const geometry = new THREE.TubeGeometry(curve, 180, index === 0 ? 0.026 : 0.02, 10, false)
+    resources.push(geometry, material)
+    flowMaterials.push(material)
+    const ribbon = new THREE.Mesh(geometry, material)
+    ribbon.renderOrder = 3
+    ribbonGroup.add(ribbon)
+
+    const glowMaterial = new THREE.MeshBasicMaterial({
+      color: index === 0 ? accentHex : primaryHex,
+      transparent: true,
+      opacity: 0.1,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    })
+    const glowGeometry = new THREE.TubeGeometry(curve, 120, index === 0 ? 0.072 : 0.058, 8, false)
+    resources.push(glowGeometry, glowMaterial)
+    const ribbonGlow = new THREE.Mesh(glowGeometry, glowMaterial)
+    ribbonGlow.renderOrder = 1
+    ribbonGroup.add(ribbonGlow)
+  })
+
+  const particleCount = window.innerWidth < 768 ? 230 : 430
   const particlePositions = new Float32Array(particleCount * 3)
+  const particleSizes = new Float32Array(particleCount)
+  const particleSeeds = new Float32Array(particleCount)
+  const particleAlphas = new Float32Array(particleCount)
   for (let index = 0; index < particleCount; index += 1) {
-    const angle = Math.random() * Math.PI * 2
-    const radius = 3.1 + Math.random() * 2.15
-    const height = (Math.random() - 0.5) * 4.7
-    particlePositions[index * 3] = Math.cos(angle) * radius
-    particlePositions[index * 3 + 1] = height
-    particlePositions[index * 3 + 2] = Math.sin(angle) * radius - 0.65
+    const curve = curves[index % curves.length]
+    const t = ((index * 0.61803398875) % 1 + (Math.random() - 0.5) * 0.04 + 1) % 1
+    const point = curve.getPointAt(t)
+    const spread = 0.05 + Math.random() * 0.22
+    particlePositions[index * 3] = point.x + (Math.random() - 0.5) * spread
+    particlePositions[index * 3 + 1] = point.y + (Math.random() - 0.5) * spread
+    particlePositions[index * 3 + 2] = point.z + (Math.random() - 0.5) * spread
+    particleSizes[index] = 1.6 + Math.random() * 3.8
+    particleSeeds[index] = Math.random()
+    particleAlphas[index] = 0.2 + Math.random() * 0.68
   }
   const particleGeometry = new THREE.BufferGeometry()
   particleGeometry.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3))
-  const particleMaterial = new THREE.PointsMaterial({
-    color: isDarkTheme() ? 0x93c5fd : 0x6366f1,
-    size: window.innerWidth < 768 ? 0.035 : 0.045,
+  particleGeometry.setAttribute('aSize', new THREE.BufferAttribute(particleSizes, 1))
+  particleGeometry.setAttribute('aSeed', new THREE.BufferAttribute(particleSeeds, 1))
+  particleGeometry.setAttribute('aAlpha', new THREE.BufferAttribute(particleAlphas, 1))
+  const particleMaterial = createParticleMaterial(THREE, primaryToken, accentToken, pixelRatio)
+  resources.push(particleGeometry, particleMaterial)
+  const particleCloud = new THREE.Points(particleGeometry, particleMaterial)
+  particleCloud.renderOrder = 4
+  particleGroup.add(particleCloud)
+
+  const ambientCount = window.innerWidth < 768 ? 64 : 106
+  const ambientPositions = new Float32Array(ambientCount * 3)
+  for (let index = 0; index < ambientCount; index += 1) {
+    const angle = Math.random() * Math.PI * 2
+    const radius = 3.4 + Math.random() * 1.85
+    ambientPositions[index * 3] = Math.cos(angle) * radius
+    ambientPositions[index * 3 + 1] = (Math.random() - 0.5) * 4.8
+    ambientPositions[index * 3 + 2] = Math.sin(angle) * radius - 0.8
+  }
+  const ambientGeometry = new THREE.BufferGeometry()
+  ambientGeometry.setAttribute('position', new THREE.BufferAttribute(ambientPositions, 3))
+  const ambientMaterial = new THREE.PointsMaterial({
+    color: accentHex,
+    size: window.innerWidth < 768 ? 0.025 : 0.032,
     transparent: true,
-    opacity: isDarkTheme() ? 0.58 : 0.3,
+    opacity: 0.36,
     depthWrite: false,
     blending: THREE.AdditiveBlending,
     sizeAttenuation: true,
   })
-  resources.push(particleGeometry, particleMaterial)
-  const particleCloud = new THREE.Points(particleGeometry, particleMaterial)
-  particleCloud.userData.speed = 0.018
-  particleCloud.position.y = 0.1
-  orbitGroup.add(particleCloud)
+  resources.push(ambientGeometry, ambientMaterial)
+  const ambientCloud = new THREE.Points(ambientGeometry, ambientMaterial)
+  particleGroup.add(ambientCloud)
 
-  const bubbleGeometry = new THREE.SphereGeometry(1, 24, 18)
-  resources.push(bubbleGeometry)
-  const bubbleConfigs = [
-    { x: -3.2, y: 1.65, z: 0.4, size: 0.3, phase: 0.4, darkColor: 0x818cf8, lightColor: 0x6366f1, darkOpacity: 0.62, lightOpacity: 0.42 },
-    { x: 3.28, y: 1.38, z: 0.1, size: 0.24, phase: 2.2, darkColor: 0x22d3ee, lightColor: 0x0891b2, darkOpacity: 0.58, lightOpacity: 0.38 },
-    { x: -3.55, y: -0.85, z: 0.35, size: 0.2, phase: 4.5, darkColor: 0xa78bfa, lightColor: 0x8b5cf6, darkOpacity: 0.54, lightOpacity: 0.34 },
-    { x: 3.65, y: -0.72, z: 0.65, size: 0.34, phase: 5.7, darkColor: 0x67e8f9, lightColor: 0x06b6d4, darkOpacity: 0.58, lightOpacity: 0.4 },
+  const signalGeometry = new THREE.SphereGeometry(1, 24, 18)
+  resources.push(signalGeometry)
+  const signalConfigs = [
+    { curve: curves[0], t: 0.08, color: primaryHex, size: 0.09, phase: 0.2 },
+    { curve: curves[0], t: 0.62, color: accentHex, size: 0.12, phase: 1.6 },
+    { curve: curves[1], t: 0.26, color: 0xa5b4fc, size: 0.075, phase: 3.2 },
+    { curve: curves[1], t: 0.78, color: accentHex, size: 0.1, phase: 4.4 },
   ]
-  const bubbles = bubbleConfigs.map((config) => {
+  const signals = signalConfigs.map((config) => {
     const material = new THREE.MeshPhysicalMaterial({
-      color: isDarkTheme() ? config.darkColor : config.lightColor,
-      transparent: true,
-      opacity: isDarkTheme() ? config.darkOpacity : config.lightOpacity,
-      roughness: 0.08,
-      metalness: 0.06,
-      transmission: 0.22,
-      thickness: 0.32,
+      color: config.color,
+      metalness: 0.42,
+      roughness: 0.14,
       clearcoat: 1,
       clearcoatRoughness: 0.08,
-      depthWrite: false,
+      emissive: config.color,
+      emissiveIntensity: 0.64,
     })
     resources.push(material)
-    bubbleMaterials.push({ material, darkColor: config.darkColor, lightColor: config.lightColor, darkOpacity: config.darkOpacity, lightOpacity: config.lightOpacity })
-    const mesh = new THREE.Mesh(bubbleGeometry, material)
-    mesh.position.set(config.x, config.y, config.z)
+    nodeMaterials.push(material)
+    const mesh = new THREE.Mesh(signalGeometry, material)
     mesh.scale.setScalar(config.size)
-    bubbleGroup.add(mesh)
-    return { mesh, config }
+    const point = config.curve.getPointAt(config.t)
+    mesh.position.copy(point)
+    signalGroup.add(mesh)
+    return { mesh, config, basePoint: point.clone() }
   })
 
-  const platformGeometry = new THREE.CylinderGeometry(2.55, 3.15, 0.22, 96, 1, true)
-  const platformMaterial = new THREE.MeshPhysicalMaterial({
-    color: isDarkTheme() ? 0x172554 : 0xe0e7ff,
-    emissive: isDarkTheme() ? 0x3730a3 : 0x4f46e5,
-    emissiveIntensity: isDarkTheme() ? 0.68 : 0.14,
-    metalness: 0.72,
-    roughness: 0.25,
-    transparent: true,
-    opacity: isDarkTheme() ? 0.68 : 0.45,
-    side: THREE.DoubleSide
-  })
-  resources.push(platformGeometry, platformMaterial)
-  const platform = new THREE.Mesh(platformGeometry, platformMaterial)
-  platform.position.y = -1.82
-  coreGroup.add(platform)
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  const flowUniforms = flowMaterials.map((material) => material.uniforms)
+  const particleUniforms = particleMaterial.uniforms
+  const shellUniforms = shellMaterial.uniforms
+  const clock = new THREE.Clock()
 
-  for (let index = 0; index < 5; index += 1) {
-    const geometry = new THREE.TorusGeometry(2.2 + index * 0.48, 0.017 + index * 0.003, 8, 180)
-    const material = new THREE.MeshBasicMaterial({
-      color: index % 3 === 0 ? 0x6366f1 : index % 3 === 1 ? 0x06b6d4 : 0x818cf8,
-      transparent: true,
-      opacity: isDarkTheme() ? 0.46 - index * 0.05 : 0.24 - index * 0.026,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending
-    })
-    resources.push(geometry, material)
-    ringMaterials.push(material)
-    const ring = new THREE.Mesh(geometry, material)
-    ring.rotation.x = Math.PI / 2.25 + index * 0.11
-    ring.rotation.y = index * 0.24
-    ring.rotation.z = index * 0.33
-    ring.userData.speed = (index % 2 === 0 ? 1 : -1) * (0.08 + index * 0.018)
-    orbitGroup.add(ring)
-  }
+  const updateTheme = (isDark: boolean) => {
+    const nextPrimaryToken = readThemeToken('--color-primary', isDark ? '#6366f1' : '#4f46e5')
+    const nextAccentToken = readThemeToken('--color-accent', isDark ? '#22d3ee' : '#0891b2')
+    const nextPrimaryHex = colorHex(THREE, nextPrimaryToken, isDark ? '#6366f1' : '#4f46e5')
+    const nextAccentHex = colorHex(THREE, nextAccentToken, isDark ? '#22d3ee' : '#0891b2')
 
-  const knotGeometry = new THREE.TorusKnotGeometry(2.28, 0.022, 220, 6, 2, 5)
-  const knotMaterial = new THREE.MeshBasicMaterial({
-    color: isDarkTheme() ? 0x22d3ee : 0x0891b2,
-    transparent: true,
-    opacity: isDarkTheme() ? 0.2 : 0.1,
-    blending: THREE.AdditiveBlending
-  })
-  resources.push(knotGeometry, knotMaterial)
-  const energyKnot = new THREE.Mesh(knotGeometry, knotMaterial)
-  energyKnot.rotation.x = 0.58
-  orbitGroup.add(energyKnot)
-
-  const updateTheme = (dark: boolean) => {
-    renderer.toneMappingExposure = dark ? 1.34 : 1.04
-    scene.fog.color.setHex(dark ? 0x090c12 : 0xf5f7fb)
-    scene.fog.density = dark ? 0.036 : 0.028
-    ambientLight.intensity = dark ? 1.55 : 1.65
-    keyLight.intensity = dark ? 2.75 : 3
-    brandTexture.redraw(dark)
-    cubeMaterials.forEach((material: any) => {
-      material.emissive.setHex(dark ? 0x1e1b4b : 0x312e81)
-      material.emissiveIntensity = dark ? 0.62 : 0.18
-      material.needsUpdate = true
+    primaryLight.color.setHex(nextPrimaryHex)
+    accentLight.color.setHex(nextAccentHex)
+    coreMaterial.emissive.setHex(nextPrimaryHex)
+    coreMaterial.emissiveIntensity = isDark ? 0.14 : 0.1
+    emblemBodyMaterial.emissive.setHex(nextAccentHex)
+    focalRingMaterial.color.setHex(nextAccentHex)
+    focalRingMaterial.emissive.setHex(nextPrimaryHex)
+    shadowRingMaterial.color.setHex(nextPrimaryHex)
+    ambientMaterial.color.setHex(nextAccentHex)
+    nodeMaterials.forEach((material, index) => material.color.setHex(index % 2 === 0 ? nextPrimaryHex : nextAccentHex))
+    ringMaterials.forEach(({ material, index }) => {
+      const colors = [nextAccentHex, nextPrimaryHex, 0xa5b4fc, nextAccentHex, nextPrimaryHex]
+      material.color.setHex(colors[index % colors.length])
     })
-    edgeMaterial.color.setHex(dark ? 0xa5b4fc : 0x4338ca)
-    edgeMaterial.opacity = dark ? 0.85 : 0.52
-    innerMaterial.color.setHex(dark ? 0x67e8f9 : 0x0891b2)
-    innerMaterial.opacity = dark ? 0.24 : 0.12
-    fluidUniforms.uColorA.value.setHex(dark ? 0x6366f1 : 0x4f46e5)
-    fluidUniforms.uColorB.value.setHex(dark ? 0x22d3ee : 0x0891b2)
-    fluidUniforms.uOpacity.value = dark ? 0.92 : 0.7
-    particleMaterial.color.setHex(dark ? 0x93c5fd : 0x6366f1)
-    particleMaterial.opacity = dark ? 0.58 : 0.3
-    platformMaterial.color.setHex(dark ? 0x172554 : 0xe0e7ff)
-    platformMaterial.emissive.setHex(dark ? 0x3730a3 : 0x4f46e5)
-    platformMaterial.emissiveIntensity = dark ? 0.68 : 0.14
-    platformMaterial.opacity = dark ? 0.68 : 0.45
-    knotMaterial.color.setHex(dark ? 0x22d3ee : 0x0891b2)
-    knotMaterial.opacity = dark ? 0.2 : 0.1
-    bubbleMaterials.forEach(({ material, darkColor, lightColor, darkOpacity, lightOpacity }) => {
-      material.color.setHex(dark ? darkColor : lightColor)
-      material.opacity = dark ? darkOpacity : lightOpacity
-      material.needsUpdate = true
+    flowUniforms.forEach((uniforms, index) => {
+      uniforms.uPrimary.value.set(nextPrimaryToken)
+      uniforms.uAccent.value.set(nextAccentToken)
+      uniforms.uOpacity.value = index === 0 ? 0.72 : 0.6
     })
-    ringMaterials.forEach((material, index) => {
-      const darkColors = [0x6366f1, 0x06b6d4, 0x818cf8]
-      const lightColors = [0x4f46e5, 0x0891b2, 0x6366f1]
-      material.color.setHex((dark ? darkColors : lightColors)[index % 3])
-      material.opacity = dark ? 0.46 - index * 0.05 : 0.24 - index * 0.026
-    })
+    shellUniforms.uPrimary.value.set(nextPrimaryToken)
+    shellUniforms.uAccent.value.set(nextAccentToken)
+    particleUniforms.uPrimary.value.set(nextPrimaryToken)
+    particleUniforms.uAccent.value.set(nextAccentToken)
+    emblemTexture.redraw(isDark)
   }
   const stopThemeObserver = observeTheme(updateTheme)
 
@@ -466,7 +664,7 @@ async function initializeScene(stage: HTMLElement, host: HTMLElement): Promise<(
     const height = Math.max(rect.height, 1)
     camera.aspect = width / height
     camera.updateProjectionMatrix()
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, window.innerWidth < 768 ? 1.25 : 1.5))
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, window.innerWidth < 768 ? 1.2 : 1.45))
     renderer.setSize(width, height, false)
   }
   const resizeObserver = new ResizeObserver(resize)
@@ -474,6 +672,7 @@ async function initializeScene(stage: HTMLElement, host: HTMLElement): Promise<(
   resize()
 
   const handlePointerMove = (event: PointerEvent) => {
+    if (event.pointerType === 'touch') return
     const rect = stage.getBoundingClientRect()
     pointerTargetX = (event.clientX - rect.left) / Math.max(rect.width, 1) - 0.5
     pointerTargetY = (event.clientY - rect.top) / Math.max(rect.height, 1) - 0.5
@@ -497,11 +696,8 @@ async function initializeScene(stage: HTMLElement, host: HTMLElement): Promise<(
   const intersectionObserver = new IntersectionObserver((entries) => {
     visible = entries.some((entry) => entry.isIntersecting)
     lastTime = performance.now()
-  }, { rootMargin: '180px' })
+  }, { rootMargin: '160px' })
   intersectionObserver.observe(stage)
-
-  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  const clock = new THREE.Clock()
 
   const animate = (time: number) => {
     if (stopped) return
@@ -515,50 +711,50 @@ async function initializeScene(stage: HTMLElement, host: HTMLElement): Promise<(
     const delta = Math.min((time - lastTime) / 1000, 0.05)
     lastTime = time
     const elapsed = clock.getElapsedTime()
-    pointerX += (pointerTargetX - pointerX) * Math.min(1, delta * 4.8)
-    pointerY += (pointerTargetY - pointerY) * Math.min(1, delta * 4.8)
-    scrollValue += (scrollTarget - scrollValue) * Math.min(1, delta * 3.4)
-    fluidUniforms.uTime.value = elapsed
-    fluidUniforms.uPointer.value.set(pointerX, pointerY)
+    pointerX += (pointerTargetX - pointerX) * Math.min(1, delta * 4.4)
+    pointerY += (pointerTargetY - pointerY) * Math.min(1, delta * 4.4)
+    scrollValue += (scrollTarget - scrollValue) * Math.min(1, delta * 3.2)
+
+    shellUniforms.uTime.value = elapsed
+    shellUniforms.uPointer.value.set(pointerX, pointerY)
+    flowUniforms.forEach((uniforms) => { uniforms.uTime.value = elapsed })
+    particleUniforms.uTime.value = elapsed
 
     if (!reducedMotion) {
-      cube.rotation.x = -0.22 + Math.sin(elapsed * 0.52) * 0.06 + pointerY * 0.16
-      cube.rotation.y = 0.56 + elapsed * 0.17 + pointerX * 0.42
-      cube.position.y = Math.sin(elapsed * 1.1) * 0.1
-      cubeEdges.rotation.copy(cube.rotation)
-      cubeEdges.position.copy(cube.position)
-      innerCore.rotation.x = elapsed * 0.18
-      innerCore.rotation.y = -elapsed * 0.3
-      fluidShell.rotation.x = elapsed * 0.06 + pointerY * 0.08
-      fluidShell.rotation.y = -elapsed * 0.08 + pointerX * 0.1
-      particleCloud.rotation.y = elapsed * 0.018
-      energyKnot.rotation.z = elapsed * 0.08
-      energyKnot.rotation.y = -elapsed * 0.06
-      bubbles.forEach(({ mesh, config }) => {
-        const floatX = Math.sin(elapsed * 0.64 + config.phase) * 0.09
-        const floatY = Math.cos(elapsed * 0.82 + config.phase) * 0.14
-        const floatZ = Math.sin(elapsed * 0.46 + config.phase) * 0.12
-        const pulse = 1 + Math.sin(elapsed * 1.12 + config.phase) * 0.06
-        mesh.position.set(config.x + floatX, config.y + floatY, config.z + floatZ)
+      coreGroup.rotation.x = pointerY * -0.08 + Math.sin(elapsed * 0.42) * 0.025
+      coreGroup.rotation.y = pointerX * 0.12 + elapsed * 0.11
+      coreGroup.position.y = Math.sin(elapsed * 0.82) * 0.055
+      shell.rotation.x = elapsed * 0.035 + pointerY * 0.04
+      shell.rotation.y = -elapsed * 0.048 + pointerX * 0.06
+      emblemFace.rotation.z = elapsed * 0.018
+      focalRing.rotation.z = -0.08 + elapsed * 0.09
+      ribbonGroup.rotation.y = pointerX * 0.07 + elapsed * 0.028
+      ribbonGroup.rotation.x = pointerY * -0.035
+      particleGroup.rotation.y = elapsed * 0.012
+      particleGroup.rotation.x = pointerY * -0.018
+      ambientCloud.rotation.y = -elapsed * 0.009
+      shadowRing.rotation.z = elapsed * 0.06
+      ringMeshes.forEach(({ mesh, speed }) => {
+        mesh.rotation.z += speed * delta
+        mesh.rotation.y += speed * delta * 0.34
+      })
+      signals.forEach(({ mesh, config, basePoint }) => {
+        const pulse = 1 + Math.sin(elapsed * 1.45 + config.phase) * 0.2
         mesh.scale.setScalar(config.size * pulse)
-        mesh.rotation.x += delta * 0.24
-        mesh.rotation.y -= delta * 0.32
+        mesh.position.set(
+          basePoint.x,
+          basePoint.y + Math.sin(elapsed * 1.1 + config.phase) * 0.018,
+          basePoint.z,
+        )
       })
-
-      orbitGroup.children.forEach((child: OrbitChild) => {
-        if (typeof child.userData.speed === 'number') {
-          child.rotation.z += child.userData.speed * delta
-        }
-      })
-
     }
 
-    world.rotation.x = pointerY * -0.1 + scrollValue * 0.04
-    world.rotation.y = pointerX * 0.16 + scrollValue * 0.16
-    world.position.y = -scrollValue * 0.28
-    camera.position.x = pointerX * 0.72
-    camera.position.y = 0.65 - pointerY * 0.54 + scrollValue * 0.18
-    camera.position.z = 10.6 + Math.abs(scrollValue) * 0.28
+    world.rotation.x = pointerY * -0.075 + scrollValue * 0.025
+    world.rotation.y = pointerX * 0.12 + scrollValue * 0.12
+    world.position.y = 0.08 - scrollValue * 0.14
+    camera.position.x = pointerX * 0.42
+    camera.position.y = 0.22 - pointerY * 0.28 + scrollValue * 0.08
+    camera.position.z = 8.6 + Math.abs(scrollValue) * 0.2
     camera.lookAt(0, 0, 0)
     renderer.render(scene, camera)
   }
@@ -585,17 +781,19 @@ async function initializeScene(stage: HTMLElement, host: HTMLElement): Promise<(
 <style scoped>
 .hero-orbit-stage {
   position: relative;
-  width: min(100%, 720px);
-  min-height: 540px;
-  perspective: 1200px;
+  width: min(100%, 760px);
+  min-height: 632px;
+  overflow: hidden;
   isolation: isolate;
+  perspective: 1200px;
 }
 
 .scene-shell {
   position: absolute;
   inset: 0;
   overflow: hidden;
-  background: transparent;
+  color-scheme: dark;
+  background: #080b13;
 }
 
 .scene-atmosphere {
@@ -604,64 +802,89 @@ async function initializeScene(stage: HTMLElement, host: HTMLElement): Promise<(
   inset: 0;
   overflow: hidden;
   background:
-    radial-gradient(circle at 50% 48%, color-mix(in srgb, var(--mr-primary) 14%, transparent), transparent 32%),
-    radial-gradient(circle at 76% 28%, color-mix(in srgb, var(--mr-secondary) 12%, transparent), transparent 27%);
+    radial-gradient(ellipse at 50% 44%, rgba(48, 54, 126, 0.22), transparent 38%),
+    radial-gradient(ellipse at 82% 23%, rgba(34, 211, 238, 0.12), transparent 30%),
+    radial-gradient(ellipse at 10% 84%, rgba(79, 70, 229, 0.13), transparent 36%),
+    #080b13;
   pointer-events: none;
 }
 
-.scene-atmosphere-grid {
+.scene-atmosphere::after {
   position: absolute;
-  inset: -20%;
-  background-image:
-    linear-gradient(color-mix(in srgb, var(--mr-border-strong) 28%, transparent) 1px, transparent 1px),
-    linear-gradient(90deg, color-mix(in srgb, var(--mr-border-strong) 28%, transparent) 1px, transparent 1px);
-  background-size: 44px 44px;
-  mask-image: radial-gradient(ellipse at center, black 0%, transparent 68%);
-  opacity: 0.34;
-  transform: perspective(600px) rotateX(64deg) translateY(23%);
-  transform-origin: center bottom;
+  inset: 0;
+  background: linear-gradient(112deg, transparent 20%, rgba(165, 180, 252, 0.05) 42%, transparent 66%);
+  content: '';
+  mix-blend-mode: screen;
+  opacity: 0.72;
+}
+
+.scene-atmosphere-glow,
+.scene-depth-vignette,
+.scene-depth-sweep {
+  position: absolute;
+  display: block;
 }
 
 .scene-atmosphere-glow {
-  position: absolute;
-  display: block;
   border-radius: 50%;
-  filter: blur(2px);
-  opacity: 0.56;
-  animation: scene-glow-drift 9s ease-in-out infinite alternate;
+  filter: blur(12px);
+  opacity: 0.52;
+  animation: scene-glow-drift 12s ease-in-out infinite alternate;
 }
 
 .scene-atmosphere-glow-one {
-  top: 20%;
-  left: 28%;
-  width: 42%;
-  height: 42%;
-  background: radial-gradient(circle, color-mix(in srgb, var(--mr-primary) 28%, transparent), transparent 68%);
+  top: 18%;
+  left: 25%;
+  width: 50%;
+  height: 50%;
+  background: radial-gradient(circle, rgba(99, 102, 241, 0.28), transparent 68%);
 }
 
 .scene-atmosphere-glow-two {
-  right: 10%;
-  bottom: 17%;
-  width: 30%;
-  height: 30%;
-  background: radial-gradient(circle, color-mix(in srgb, var(--mr-secondary) 26%, transparent), transparent 70%);
+  right: 7%;
+  bottom: 10%;
+  width: 34%;
+  height: 34%;
+  background: radial-gradient(circle, rgba(34, 211, 238, 0.2), transparent 70%);
   animation-delay: -4s;
 }
 
+.scene-depth-vignette {
+  z-index: 3;
+  inset: 0;
+  background: radial-gradient(ellipse at center, transparent 38%, rgba(1, 3, 8, 0.38) 100%);
+}
+
+.scene-depth-sweep {
+  z-index: 2;
+  width: 74%;
+  height: 1px;
+  opacity: 0.44;
+  background: linear-gradient(90deg, transparent, rgba(103, 232, 249, 0.72), transparent);
+  box-shadow: 0 0 26px rgba(34, 211, 238, 0.28);
+  transform: rotate(-19deg);
+  animation: scene-sweep 8s ease-in-out infinite;
+}
+
+.scene-depth-sweep-one { top: 28%; left: -14%; }
+.scene-depth-sweep-two { right: -12%; bottom: 31%; animation-delay: -4s; transform: rotate(18deg); }
+
 .scene-atmosphere-star {
   position: absolute;
+  z-index: 3;
   display: block;
   width: 4px;
   height: 4px;
   border-radius: 50%;
-  background: var(--mr-secondary);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--mr-secondary) 9%, transparent), 0 0 16px color-mix(in srgb, var(--mr-secondary) 58%, transparent);
-  animation: scene-star-pulse 3.6s ease-in-out infinite;
+  background: #67e8f9;
+  box-shadow: 0 0 0 4px rgba(103, 232, 249, 0.08), 0 0 18px rgba(103, 232, 249, 0.56);
+  animation: scene-star-pulse 4.4s ease-in-out infinite;
 }
 
-.scene-atmosphere-star-one { top: 22%; left: 18%; }
+.scene-atmosphere-star-one { top: 21%; left: 18%; }
 .scene-atmosphere-star-two { top: 34%; right: 15%; width: 3px; height: 3px; animation-delay: -1.5s; }
-.scene-atmosphere-star-three { bottom: 23%; left: 28%; width: 3px; height: 3px; animation-delay: -2.4s; }
+.scene-atmosphere-star-three { bottom: 22%; left: 28%; width: 3px; height: 3px; animation-delay: -2.4s; }
+.scene-atmosphere-star-four { right: 26%; bottom: 17%; width: 2px; height: 2px; animation-delay: -3.1s; }
 
 .three-canvas-host,
 :deep(.three-hero-canvas) {
@@ -682,48 +905,133 @@ async function initializeScene(stage: HTMLElement, host: HTMLElement): Promise<(
   place-content: center;
   justify-items: center;
   gap: 14px;
-  color: var(--mr-primary);
-  background: rgba(255, 255, 255, 0.18);
-  backdrop-filter: blur(4px);
+  color: #a5b4fc;
+  pointer-events: none;
 }
 
-:global(.dark) .scene-loading { color: var(--mr-primary); background: rgba(7, 9, 16, 0.18); }
-.scene-loading span { width: 42px; height: 42px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: scene-loader 0.9s linear infinite; }
-.scene-loading small { font-size: 9px; font-weight: 700; letter-spacing: 0.18em; }
+.scene-loading span {
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgba(165, 180, 252, 0.68);
+  border-right-color: transparent;
+  border-radius: 50%;
+  box-shadow: 0 0 26px rgba(99, 102, 241, 0.28);
+  animation: scene-loader 0.9s linear infinite;
+}
 
-.fallback-core { position: absolute; z-index: 3; left: 50%; top: 48%; width: 300px; height: 300px; transform: translate(-50%, -50%); }
-.fallback-aura { position: absolute; inset: 12%; border: 1px solid color-mix(in srgb, var(--mr-secondary) 30%, transparent); border-radius: 50%; background: radial-gradient(circle at 33% 26%, rgba(255, 255, 255, 0.22), transparent 20%), radial-gradient(circle, color-mix(in srgb, var(--mr-primary) 17%, transparent), transparent 66%); box-shadow: 0 0 0 20px color-mix(in srgb, var(--mr-primary) 4%, transparent), 0 0 70px color-mix(in srgb, var(--mr-primary) 18%, transparent); animation: fallback-aura-breathe 5.5s ease-in-out infinite; }
-.fallback-ring { position: absolute; inset: 14%; border: 1px solid color-mix(in srgb, var(--mr-primary) 55%, transparent); border-radius: 50%; transform: rotateX(68deg); animation: fallback-spin 10s linear infinite; }
-.fallback-ring-two { inset: 24% 2%; border-color: color-mix(in srgb, var(--mr-secondary) 50%, transparent); animation-direction: reverse; animation-duration: 14s; }
-.fallback-bubble { position: absolute; display: block; border: 1px solid color-mix(in srgb, var(--mr-secondary) 55%, transparent); border-radius: 50%; background: radial-gradient(circle at 29% 23%, rgba(255, 255, 255, 0.78), transparent 18%), radial-gradient(circle at 67% 72%, color-mix(in srgb, var(--mr-secondary) 58%, transparent), color-mix(in srgb, var(--mr-primary) 26%, transparent) 58%, transparent 74%); box-shadow: inset -8px -10px 16px rgba(79, 70, 229, 0.16), inset 5px 5px 10px rgba(255, 255, 255, 0.35), 0 14px 24px color-mix(in srgb, var(--mr-primary) 14%, transparent); animation: fallback-bubble-float 5.8s ease-in-out infinite; }
-.fallback-bubble-one { top: 22%; left: 17%; width: 36px; height: 36px; animation-delay: -1.2s; }
-.fallback-bubble-two { top: 21%; right: 14%; width: 29px; height: 29px; animation-delay: -3.4s; }
-.fallback-bubble-three { bottom: 27%; left: 13%; width: 22px; height: 22px; animation-delay: -4.7s; }
-.fallback-bubble-four { right: 13%; bottom: 24%; width: 42px; height: 42px; animation-delay: -2.4s; }
-.fallback-cube { position: absolute; left: 50%; top: 50%; display: grid; width: 110px; height: 110px; place-items: center; border: 1px solid var(--color-primary-border); color: var(--color-text-primary); background: var(--color-surface-raised); box-shadow: var(--shadow-lg); transform: translate(-50%, -50%) rotateX(-18deg) rotateY(34deg); }
-.fallback-cube span { font-size: 44px; font-weight: 800; }
+.scene-loading small {
+  color: rgba(226, 232, 240, 0.68);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+}
+
+.fallback-core {
+  position: absolute;
+  z-index: 4;
+  top: 50%;
+  left: 50%;
+  width: 330px;
+  height: 330px;
+  transform: translate(-50%, -50%);
+}
+
+.fallback-aura,
+.fallback-shadow,
+.fallback-ring,
+.fallback-emblem,
+.fallback-signal {
+  position: absolute;
+  display: block;
+}
+
+.fallback-aura {
+  inset: 12%;
+  border: 1px solid rgba(103, 232, 249, 0.32);
+  border-radius: 50%;
+  background: radial-gradient(circle at 32% 24%, rgba(255, 255, 255, 0.15), transparent 20%), radial-gradient(circle, rgba(99, 102, 241, 0.26), transparent 68%);
+  box-shadow: 0 0 0 24px rgba(99, 102, 241, 0.045), 0 0 72px rgba(99, 102, 241, 0.2);
+}
+
+.fallback-shadow {
+  right: 10%;
+  bottom: 16%;
+  left: 10%;
+  height: 11%;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.58);
+  filter: blur(12px);
+  transform: rotate(-4deg);
+}
+
+.fallback-ring {
+  inset: 8%;
+  border: 1px solid rgba(165, 180, 252, 0.74);
+  border-radius: 50%;
+  transform: rotateX(66deg) rotateZ(-12deg);
+}
+
+.fallback-ring-one { animation: fallback-spin 10s linear infinite; }
+.fallback-ring-two { inset: 19% -2%; border-color: rgba(34, 211, 238, 0.62); transform: rotateY(66deg) rotateZ(28deg); animation: fallback-spin-two 14s linear infinite reverse; }
+
+.fallback-emblem {
+  top: 50%;
+  left: 50%;
+  display: grid;
+  width: 130px;
+  height: 130px;
+  place-content: center;
+  justify-items: center;
+  border: 1px solid rgba(165, 180, 252, 0.72);
+  border-radius: 50%;
+  color: #f8fafc;
+  background: linear-gradient(145deg, #1b2345, #071b2c);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.22), 0 24px 46px rgba(0, 0, 0, 0.42), 0 0 42px rgba(99, 102, 241, 0.26);
+  transform: translate(-50%, -50%);
+}
+
+.fallback-emblem span { font-size: 48px; font-weight: 800; line-height: 1; }
+.fallback-emblem small { margin-top: 6px; color: rgba(226, 232, 240, 0.7); font: 700 8px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.14em; }
+
+.fallback-signal {
+  width: 12px;
+  height: 12px;
+  border: 1px solid rgba(103, 232, 249, 0.84);
+  border-radius: 50%;
+  background: rgba(34, 211, 238, 0.34);
+  box-shadow: 0 0 0 8px rgba(34, 211, 238, 0.06), 0 0 24px rgba(34, 211, 238, 0.5);
+  animation: fallback-signal-pulse 3.8s ease-in-out infinite;
+}
+
+.fallback-signal-one { top: 28%; left: 11%; }
+.fallback-signal-two { top: 25%; right: 11%; width: 9px; height: 9px; animation-delay: -1.4s; }
+.fallback-signal-three { right: 18%; bottom: 25%; width: 15px; height: 15px; animation-delay: -2.2s; }
 
 @keyframes scene-loader { to { transform: rotate(360deg); } }
-@keyframes scene-glow-drift { from { transform: translate3d(-8px, 6px, 0) scale(0.94); } to { transform: translate3d(10px, -9px, 0) scale(1.08); } }
-@keyframes scene-star-pulse { 0%, 100% { opacity: 0.32; transform: scale(0.8); } 50% { opacity: 0.9; transform: scale(1.2); } }
-@keyframes fallback-aura-breathe { 0%, 100% { opacity: 0.58; transform: scale(0.94); } 50% { opacity: 0.94; transform: scale(1.05); } }
-@keyframes fallback-spin { to { transform: rotateX(68deg) rotateZ(360deg); } }
-@keyframes fallback-bubble-float { 0%, 100% { transform: translate3d(0, 0, 0) scale(1); } 50% { transform: translate3d(0, -9px, 0) scale(1.08); } }
+@keyframes scene-glow-drift { from { transform: translate3d(-10px, 7px, 0) scale(0.94); } to { transform: translate3d(12px, -10px, 0) scale(1.08); } }
+@keyframes scene-star-pulse { 0%, 100% { opacity: 0.24; transform: scale(0.8); } 50% { opacity: 0.9; transform: scale(1.26); } }
+@keyframes scene-sweep { 0%, 100% { opacity: 0; transform: translate3d(-9%, 0, 0) rotate(-19deg); } 32%, 70% { opacity: 0.5; } 50% { transform: translate3d(25%, 100px, 0) rotate(-19deg); } }
+@keyframes fallback-spin { to { transform: rotateX(66deg) rotateZ(348deg); } }
+@keyframes fallback-spin-two { to { transform: rotateY(66deg) rotateZ(-332deg); } }
+@keyframes fallback-signal-pulse { 0%, 100% { opacity: 0.4; transform: scale(0.8); } 50% { opacity: 1; transform: scale(1.2); } }
 
 @media (max-width: 1023px) {
-  .hero-orbit-stage { min-height: 510px; }
+  .hero-orbit-stage { min-height: 560px; }
 }
 
 @media (max-width: 640px) {
-  .hero-orbit-stage { min-height: 440px; }
+  .hero-orbit-stage { min-height: 468px; }
+  .fallback-core { width: 286px; height: 286px; }
+  .fallback-emblem { width: 112px; height: 112px; }
+  .fallback-emblem span { font-size: 40px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .scene-loading span,
   .scene-atmosphere-glow,
   .scene-atmosphere-star,
-  .fallback-aura,
+  .scene-depth-sweep,
+  .scene-loading span,
   .fallback-ring,
-  .fallback-bubble { animation: none !important; }
+  .fallback-signal { animation: none !important; }
 }
 </style>
