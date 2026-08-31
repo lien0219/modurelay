@@ -76,6 +76,7 @@ describe('HomeView compact mode', () => {
     appStore.fetchPublicSettings.mockClear()
     localStorage.clear()
     vi.spyOn(window, 'matchMedia').mockReturnValue({ matches: false } as MediaQueryList)
+    vi.spyOn(window, 'scrollTo').mockImplementation(() => undefined)
   })
 
   it('renders custom HTML ahead of compact mode', () => {
@@ -183,41 +184,37 @@ describe('HomeView compact mode', () => {
     expect(modelPlazaDestination(wrapper)).toBeUndefined()
   })
 
-  it('renders the immersive official home as six full-screen chapters', () => {
+  it('renders the kinetic official home as five narrative stages', () => {
     const wrapper = mountHome()
 
-    expect(wrapper.get('.home-page.at-home').exists()).toBe(true)
+    expect(wrapper.get('.home-page.kinetic-home').exists()).toBe(true)
     expect(wrapper.get('[data-testid="home-hero-scene"]').exists()).toBe(true)
     expect(wrapper.findAll('[data-home-section]').map(section => section.attributes('id'))).toEqual([
       'home',
-      'integrate',
-      'routing',
-      'observability',
-      'learning',
+      'manifesto',
+      'work',
+      'lab',
       'contact',
     ])
-    expect(wrapper.findAll('.at-pill-items button')).toHaveLength(6)
+    expect(wrapper.findAll('.kinetic-card')).toHaveLength(5)
+    expect(wrapper.findAll('.kinetic-top-nav button')).toHaveLength(2)
   })
 
-  it('opens and closes the full-screen chapter menu', async () => {
+  it('switches the spatial work deck from its filter controls', async () => {
     const wrapper = mountHome()
-    const menuButton = wrapper.get('[aria-controls="at-home-menu"]')
+    const filters = wrapper.findAll('.kinetic-work-filter button')
 
-    expect(menuButton.attributes('aria-expanded')).toBe('false')
-    await menuButton.trigger('click')
-
-    expect(menuButton.attributes('aria-expanded')).toBe('true')
-    expect(wrapper.get('#at-home-menu').attributes('role')).toBe('dialog')
-
-    await menuButton.trigger('click')
-    expect(menuButton.attributes('aria-expanded')).toBe('false')
+    expect(filters).toHaveLength(5)
+    expect(filters[0].classes()).toContain('is-active')
+    await filters[1].trigger('click')
+    expect(wrapper.findAll('.kinetic-card')[1].classes()).toContain('is-active')
   })
 
-  it('keeps the primary immersive CTA connected to the existing login route', () => {
+  it('keeps the primary kinetic CTA connected to the existing login route', () => {
     const wrapper = mountHome()
     const primaryCta = wrapper
       .findAllComponents(RouterLinkStub)
-      .find(link => link.classes().includes('at-orbit-link'))
+      .find(link => link.classes().includes('kinetic-primary-cta'))
 
     expect(primaryCta?.props('to')).toBe('/login')
   })
