@@ -182,4 +182,43 @@ describe('HomeView compact mode', () => {
 
     expect(modelPlazaDestination(wrapper)).toBeUndefined()
   })
+
+  it('renders the immersive official home as six full-screen chapters', () => {
+    const wrapper = mountHome()
+
+    expect(wrapper.get('.home-page.at-home').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="home-hero-scene"]').exists()).toBe(true)
+    expect(wrapper.findAll('[data-home-section]').map(section => section.attributes('id'))).toEqual([
+      'home',
+      'integrate',
+      'routing',
+      'observability',
+      'learning',
+      'contact',
+    ])
+    expect(wrapper.findAll('.at-pill-items button')).toHaveLength(6)
+  })
+
+  it('opens and closes the full-screen chapter menu', async () => {
+    const wrapper = mountHome()
+    const menuButton = wrapper.get('[aria-controls="at-home-menu"]')
+
+    expect(menuButton.attributes('aria-expanded')).toBe('false')
+    await menuButton.trigger('click')
+
+    expect(menuButton.attributes('aria-expanded')).toBe('true')
+    expect(wrapper.get('#at-home-menu').attributes('role')).toBe('dialog')
+
+    await menuButton.trigger('click')
+    expect(menuButton.attributes('aria-expanded')).toBe('false')
+  })
+
+  it('keeps the primary immersive CTA connected to the existing login route', () => {
+    const wrapper = mountHome()
+    const primaryCta = wrapper
+      .findAllComponents(RouterLinkStub)
+      .find(link => link.classes().includes('at-orbit-link'))
+
+    expect(primaryCta?.props('to')).toBe('/login')
+  })
 })
