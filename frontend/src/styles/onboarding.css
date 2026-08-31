@@ -6,11 +6,12 @@
   inset: 0 !important;
   z-index: 99999998 !important;
   background-color: transparent !important;
+  opacity: 0 !important;
   /*
    * 关键修复：让 overlay 不拦截点击事件
    * 因为已设置 allowClose: false，用户不能通过点击遮罩关闭引导
    * 这样 Select 下拉菜单等脱离高亮区域的元素才能正常交互
-   * 视觉遮罩效果保持不变（SVG 仍然渲染，pointer-events 只影响交互不影响渲染）
+   * 保留引导的高亮与提示，但不压暗整个工作区。
    */
   pointer-events: none !important;
 }

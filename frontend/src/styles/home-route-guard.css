@@ -4,7 +4,10 @@
  */
 body.modurelay-home-route > .fixed.inset-0,
 body.modurelay-home-route > .modal-overlay,
-body.modurelay-home-route > .dialog-overlay {
+body.modurelay-home-route > .dialog-overlay,
+body.modurelay-home-route > .driver-overlay,
+body.modurelay-home-route > .driver-popover,
+body.modurelay-home-route > .driver-popover-container {
   display: none !important;
   opacity: 0 !important;
   visibility: hidden !important;

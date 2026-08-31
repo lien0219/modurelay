@@ -7,7 +7,7 @@ import AdminComplianceDialog from '@/components/admin/AdminComplianceDialog.vue'
 import { resolveRouteDocumentTitle } from '@/router/title'
 import { brand } from '@/config/brand'
 import AnnouncementPopup from '@/components/common/AnnouncementPopup.vue'
-import { useAppStore, useAuthStore, useSubscriptionStore, useAnnouncementStore, useAdminComplianceStore, useAdminSettingsStore } from '@/stores'
+import { useAppStore, useAuthStore, useSubscriptionStore, useAnnouncementStore, useAdminComplianceStore, useAdminSettingsStore, useOnboardingStore } from '@/stores'
 import { getSetupStatus } from '@/api/setup'
 import { updateFavicon } from '@/utils/branding'
 
@@ -19,6 +19,21 @@ const subscriptionStore = useSubscriptionStore()
 const announcementStore = useAnnouncementStore()
 const adminComplianceStore = useAdminComplianceStore()
 const adminSettingsStore = useAdminSettingsStore()
+const onboardingStore = useOnboardingStore()
+
+function disposePublicOnboardingOverlay() {
+  const driverInstance = onboardingStore.getDriverInstance()
+  if (driverInstance) {
+    driverInstance.destroy()
+    onboardingStore.setDriverInstance(null)
+  }
+
+  // Driver.js owns these nodes outside Vue's component tree. Remove any node
+  // left behind during a route transition so public pages never inherit a dimmer.
+  document.querySelectorAll('.driver-overlay, .driver-popover, .driver-popover-container').forEach((element) => {
+    element.remove()
+  })
+}
 
 function updateDocumentTitle() {
   const customMenuItems = [
@@ -106,7 +121,11 @@ watch(
 )
 
 // Route change trigger (throttled by store)
-router.afterEach(() => {
+router.afterEach((to) => {
+  if (to.meta.requiresAuth === false) {
+    disposePublicOnboardingOverlay()
+  }
+
   if (authStore.isAuthenticated) {
     announcementStore.fetchAnnouncements()
   }

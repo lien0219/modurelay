@@ -311,8 +311,8 @@ const zhCopy: LearningCopy = {
   hero: {
     eyebrow: 'AI LEARNING / PUBLIC KNOWLEDGE',
     title: '把经验，变成可复用的智能系统。',
-    subtitle: '一份脱敏职业档案，拆解 AI Agent 产品与系统设计的思考路径。',
-    description: '从语音交互、训练数据，到具身智能与 Multi-Agent 工作流，持续关注智能系统如何理解上下文、组织协作并完成任务。',
+    subtitle: '一份脱敏职业档案，拆解老师能力培养与 AI 技术专家的系统方法。',
+    description: '从把复杂知识讲清楚，到设计 Agent、工作流与具身智能系统；这里将经验整理成可讲解、可实操、可复盘的学习路径。',
     tags: ['已授权公开摘要', '不含住址与出生信息', '可复用的方法论'],
     primaryCta: '浏览学习地图',
     secondaryCta: '返回首页',
@@ -332,7 +332,7 @@ const zhCopy: LearningCopy = {
     { value: '15', label: '具身智能团队' },
     { value: '32', label: 'AI 数据运营团队' },
   ],
-  map: { eyebrow: '01 / LEARNING MAP', title: '一张图，看懂能力如何连成系统。', description: '把简历里的项目经验整理成四个可学习、可讨论、可继续拆解的能力模块。点击左侧节点，查看对应的实践摘要。', activeLabel: 'ACTIVE MODULE' },
+  map: { eyebrow: '01 / LEARNING MAP', title: '老师能力与技术专家方法，如何成为一套系统？', description: '学习地图把职业经验拆成四个模块：训练老师的讲解与课程设计能力，也呈现技术专家在架构、工程与真实场景落地中的判断。点击左侧节点，查看对应的实践摘要。', activeLabel: 'ACTIVE MODULE' },
   modules: [
     { id: 'agent', code: 'MODULE / 01', label: 'Agent Architecture', caption: '从规划到执行', icon: 'brain', summary: '以主 Agent 负责规划与调度，让多个专业 Agent 围绕同一任务协作。', tags: ['Multi-Agent', 'Task planning', 'Orchestration'], points: ['从 0 到 1 设计 Mojo AIGC 智能体平台。', '用项目级 AGENTS、流程级 Skill、任务级 Rule 与 Prompt 模板组织执行。', '把复杂内容生产拆成可编排、可复用、可持续推进的流程。'] },
     { id: 'workflow', code: 'MODULE / 02', label: 'AI-native Workflow', caption: '让流程持续推进', icon: 'cpu', summary: '把调研、脚本、视觉、视频和质量复核组织成一条可追踪的 AI 产线。', tags: ['Workflow', 'Skill / Rule', 'Quality loop'], points: ['覆盖调研、策划、脚本、分镜、视觉生成、视频制作与交付。', '将纠错改进、伙伴训练与外部情报获取纳入运行机制。', '用反馈优化持续提升 Agent 的任务完成质量。'] },
@@ -351,12 +351,12 @@ const zhCopy: LearningCopy = {
   },
   method: {
     eyebrow: '03 / WORKING PRINCIPLES',
-    title: '把方法讲清楚，系统才有机会复用。',
-    description: '这不是一份简历复印件，而是一组可以继续讨论、验证和迁移的工作方法。',
+    title: '把老师的表达力与技术专家的系统力连接起来。',
+    description: '好的 AI 学习既要能讲清楚，也要能做出来、验出来；每个模块都对应一段可教学、可实操、可复盘的方法。',
     items: [
-      { icon: 'server', title: '先搭系统，再堆能力', description: '先定义任务边界、角色分工和反馈闭环，再让模型能力进入流程。' },
-      { icon: 'sparkles', title: '让经验变成机制', description: '把个人判断沉淀为 Skill、Rule、Prompt、数据评估与协作规范。' },
-      { icon: 'shield', title: '在真实场景中验证', description: '用真实用户、真实任务和可衡量结果检验 AI 是否真正完成了工作。' },
+      { icon: 'server', title: '老师先讲清楚，再搭系统', description: '把任务边界、角色分工和反馈闭环拆成可理解、可练习的课程单元。' },
+      { icon: 'sparkles', title: '用技术专家方式拆解', description: '把判断沉淀为 Skill、Rule、Prompt、评估和协作规范，让方法可复用。' },
+      { icon: 'shield', title: '在真实场景里验证', description: '用真实用户、真实任务和可衡量结果检验 AI 是否真正完成了工作。' },
     ],
   },
   privacy: { eyebrow: 'PRIVACY BOUNDARY', title: '公开的是能力，不是隐私。', description: '本页面只展示经授权的职业摘要与公开联系方式，不上传原始简历，也不展示出生年份、住址、身份证等敏感信息。', items: ['只保留职业经历、能力模块与项目方法', '联系方式单独标注为公开联系', '所有内容均为脱敏后的展示摘要'] },
@@ -369,8 +369,8 @@ const enCopy: LearningCopy = {
   hero: {
     eyebrow: 'AI LEARNING / PUBLIC KNOWLEDGE',
     title: 'Turn experience into reusable intelligent systems.',
-    subtitle: 'A privacy-first public profile that maps the thinking behind AI Agent products and system design.',
-    description: 'From voice interaction and training data to embodied intelligence and Multi-Agent workflows, the thread is consistent: understand context, organize collaboration, and complete the task.',
+    subtitle: 'A privacy-first profile mapping teacher capability and technical-expert practice.',
+    description: 'From making complex ideas teachable to designing Agent, workflow and embodied systems, the path turns experience into explainable lessons, hands-on practice and reviewable outcomes.',
     tags: ['Authorized public summary', 'No address or birth data', 'Reusable principles'],
     primaryCta: 'Explore the map',
     secondaryCta: 'Back home',
@@ -390,7 +390,7 @@ const enCopy: LearningCopy = {
     { value: '15', label: 'Embodied AI team' },
     { value: '32', label: 'AI data operations team' },
   ],
-  map: { eyebrow: '01 / LEARNING MAP', title: 'See how capabilities become a system.', description: 'The resume is distilled into four learnable modules that can be discussed, tested and decomposed further. Select a module to view its practice summary.', activeLabel: 'ACTIVE MODULE' },
+  map: { eyebrow: '01 / LEARNING MAP', title: 'How do teacher capability and technical-expert methods become a system?', description: 'The professional experience is distilled into four modules: build teaching and course-design capability while making architecture, engineering and real-world judgement visible to technical experts.', activeLabel: 'ACTIVE MODULE' },
   modules: [
     { id: 'agent', code: 'MODULE / 01', label: 'Agent Architecture', caption: 'Plan to execution', icon: 'brain', summary: 'Let a primary Agent plan and orchestrate work while specialist Agents collaborate around one task.', tags: ['Multi-Agent', 'Task planning', 'Orchestration'], points: ['Designed Mojo from 0 to 1 as an AIGC Agent platform.', 'Structured execution with project AGENTS, process Skills, task Rules and prompt templates.', 'Turned complex content production into an orchestrated, reusable and continuous workflow.'] },
     { id: 'workflow', code: 'MODULE / 02', label: 'AI-native Workflow', caption: 'Keep work moving', icon: 'cpu', summary: 'Organize research, scripting, visuals, video and quality review into a traceable AI production line.', tags: ['Workflow', 'Skill / Rule', 'Quality loop'], points: ['Covered research, planning, scripts, storyboards, visual generation, video and delivery.', 'Brought correction, partner training and external intelligence into the operating loop.', 'Used feedback to improve Agent task quality over time.'] },
@@ -409,11 +409,11 @@ const enCopy: LearningCopy = {
   },
   method: {
     eyebrow: '03 / WORKING PRINCIPLES',
-    title: 'Make the method clear, and the system can travel.',
-    description: 'This is not a resume copy. It is a small set of methods that can be discussed, tested and transferred.',
+    title: 'Connect teacher clarity with technical-expert systems thinking.',
+    description: 'Good AI learning must be explainable, buildable and testable; each module pairs a teachable concept with hands-on practice and review.',
     items: [
-      { icon: 'server', title: 'Build the system first', description: 'Define task boundaries, roles and feedback loops before adding model capabilities.' },
-      { icon: 'sparkles', title: 'Turn experience into mechanisms', description: 'Distill judgement into Skills, Rules, prompts, evaluation and collaboration norms.' },
+      { icon: 'server', title: 'Teach it clearly, then build it', description: 'Turn task boundaries, roles and feedback loops into understandable course units and practice.' },
+      { icon: 'sparkles', title: 'Decompose like a technical expert', description: 'Distill judgement into Skills, Rules, prompts, evaluation and collaboration norms.' },
       { icon: 'shield', title: 'Validate in real contexts', description: 'Use real users, real tasks and measurable outcomes to test whether AI completed the work.' },
     ],
   },

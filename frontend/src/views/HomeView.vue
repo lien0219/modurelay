@@ -36,10 +36,6 @@
             <Icon name="grid" size="sm" />
             <span class="hidden sm:inline">{{ t('nav.modelPlaza') }}</span>
           </router-link>
-          <router-link to="/ai-learning" class="home-quiet-link">
-            <Icon name="brain" size="sm" />
-            <span class="hidden sm:inline">{{ copy.nav.learning }}</span>
-          </router-link>
           <button
             type="button"
             class="home-icon-button"
@@ -89,17 +85,27 @@
         </button>
 
         <div class="home-nav-links">
-          <button
-            v-for="item in navigationItems"
-            :key="item.id"
-            type="button"
-            class="home-nav-link"
-            :class="{ 'is-active': activeSection === item.id }"
-            :aria-current="activeSection === item.id ? 'page' : undefined"
-            @click="scrollToSection(item.id)"
-          >
-            {{ item.label }}
-          </button>
+          <template v-for="item in navigationItems" :key="item.id">
+            <router-link
+              v-if="item.id === 'learning'"
+              :to="learningEntry"
+              class="home-nav-link"
+              :class="{ 'is-active': activeSection === item.id }"
+              :aria-current="activeSection === item.id ? 'page' : undefined"
+            >
+              {{ item.label }}
+            </router-link>
+            <button
+              v-else
+              type="button"
+              class="home-nav-link"
+              :class="{ 'is-active': activeSection === item.id }"
+              :aria-current="activeSection === item.id ? 'page' : undefined"
+              @click="scrollToSection(item.id)"
+            >
+              {{ item.label }}
+            </button>
+          </template>
         </div>
 
         <div class="home-nav-actions">
@@ -122,10 +128,6 @@
           >
             <Icon name="grid" size="sm" />
             <span class="hidden lg:inline">{{ t('nav.modelPlaza') }}</span>
-          </router-link>
-          <router-link to="/ai-learning" class="home-quiet-link" :title="copy.nav.learning">
-            <Icon name="brain" size="sm" />
-            <span class="hidden lg:inline">{{ copy.nav.learning }}</span>
           </router-link>
           <button
             type="button"
@@ -352,7 +354,7 @@
             <div class="home-learning-points">
               <span v-for="point in copy.learning.points" :key="point"><i></i>{{ point }}</span>
             </div>
-            <router-link to="/ai-learning" class="home-primary-button home-learning-cta">
+            <router-link :to="learningEntry" class="home-primary-button home-learning-cta">
               {{ copy.learning.cta }}
               <Icon name="arrowRight" size="sm" />
             </router-link>
@@ -374,7 +376,7 @@
             </div>
             <div class="home-learning-preview-footer">
               <span>{{ copy.learning.footer }}</span>
-              <router-link to="/ai-learning"><Icon name="arrowUp" size="xs" /></router-link>
+              <router-link :to="learningEntry"><Icon name="arrowUp" size="xs" /></router-link>
             </div>
           </div>
         </div>
@@ -405,7 +407,7 @@
           <p>{{ copy.footer.description }}</p>
         </div>
         <div class="home-footer-links"><strong>{{ copy.footer.product }}</strong><button type="button" @click="scrollToSection('integrate')">{{ copy.nav.integrate }}</button><button type="button" @click="scrollToSection('routing')">{{ copy.nav.routing }}</button><button type="button" @click="scrollToSection('observability')">{{ copy.nav.observability }}</button></div>
-        <div class="home-footer-links"><strong>{{ copy.footer.resources }}</strong><a v-if="docUrl" :href="docUrl" target="_blank" rel="noopener noreferrer">{{ copy.nav.docs }}</a><router-link to="/key-usage">{{ copy.footer.usage }}</router-link><router-link to="/model-plaza">{{ t('nav.modelPlaza') }}</router-link><router-link to="/ai-learning">{{ copy.nav.learning }}</router-link></div>
+        <div class="home-footer-links"><strong>{{ copy.footer.resources }}</strong><a v-if="docUrl" :href="docUrl" target="_blank" rel="noopener noreferrer">{{ copy.nav.docs }}</a><router-link to="/key-usage">{{ copy.footer.usage }}</router-link><router-link to="/model-plaza">{{ t('nav.modelPlaza') }}</router-link><router-link :to="learningEntry">{{ copy.nav.learning }}</router-link></div>
         <div class="home-footer-links"><strong>{{ copy.footer.account }}</strong><router-link :to="isAuthenticated ? dashboardPath : '/login'">{{ isAuthenticated ? copy.nav.dashboard : copy.nav.login }}</router-link><button type="button" @click="scrollToSection('contact')">{{ copy.nav.contact }}</button></div>
       </div>
       <div class="home-container home-footer-bottom"><span>&copy; {{ currentYear }} {{ siteName }}. {{ copy.footer.rights }}</span><span>{{ copy.footer.tagline }}</span></div>
@@ -436,12 +438,12 @@ const zhCopy = {
   hero: { eyebrow: 'OPENAI-COMPATIBLE API GATEWAY', title: '一个 API，', titleAccent: '连接多个模型。', subtitle: '自动路由请求，在 Provider 异常时切换可用线路。', description: '使用熟悉的 OpenAI-compatible 接口管理模型、密钥、用量和路由。保持接入简单，把复杂度留给 Relay Core。', primaryCta: '开始使用', dashboardCta: '进入控制台', secondaryCta: '查看接入方式', facts: ['OpenAI-compatible', 'Responses API', 'Usage & quota'] },
   capabilities: { strip: ['统一 API 网关', '多模型路由', '健康检查', '用量与额度'] },
   integrate: { title: '接入只需要一个端点。', description: '沿用 OpenAI-compatible 请求格式，使用现有 SDK 即可开始。根据账户和分组配置，网关负责请求转发与响应转换。', codeLabel: 'Code examples', codeFooter: 'Request shape validated at the gateway', endpoints: [{ method: 'POST', path: '/v1/chat/completions', label: 'Chat Completions' }, { method: 'POST', path: '/v1/responses', label: 'Responses API' }, { method: 'GET', path: '/v1/models', label: 'Model discovery' }] },
-  routing: { title: 'Routing that stays visible.', description: '每个请求都有清晰的入口、路由和结果。健康检查、故障切换和分组调度集中在同一个 Relay Core。', request: { title: 'Your application' }, coreCaption: 'policy + health + usage', routesLabel: 'Available routes', routes: [{ title: 'OpenAI compatible', detail: 'primary route' }, { title: 'Responses API', detail: 'capability match' }, { title: 'Fallback route', detail: 'on provider error' }], features: [{ number: '01', title: 'Provider pools', description: '将可用账户按分组组织，让路由策略可维护。' }, { number: '02', title: 'Failover', description: 'Provider 出错时根据现有策略切换可用线路。' }, { number: '03', title: 'Usage-aware', description: '围绕请求、模型和密钥保留用量上下文。' }] },
-  observability: { title: 'Control without guesswork.', description: '控制台把 API keys、usage、quota、channel status 和配置放在同一个工作空间，让运维信息可以被快速扫描。', previewTitle: 'Operations snapshot', previewRoutes: ['OpenAI / Chat', 'Responses / Primary', 'Fallback / Health'], items: [{ icon: 'chart' as const, title: 'Usage', description: '按日期、模型和密钥查看请求与 token。' }, { icon: 'shield' as const, title: 'Channel status', description: '查看线路健康状态和响应情况。' }, { icon: 'key' as const, title: 'API keys', description: '创建、管理并安全使用接入密钥。' }] },
-  workflow: { title: 'From request to response.', description: '保持业务流程清晰：客户端只面对一个 API，平台侧负责路由、Provider 和运行状态。', steps: [{ icon: 'link' as const, title: 'Connect', description: '使用 API key 指向 ModuRelay gateway。' }, { icon: 'server' as const, title: 'Relay', description: 'Relay Core 读取分组和路由配置。' }, { icon: 'sync' as const, title: 'Route', description: '选择可用 Provider，必要时执行切换。' }, { icon: 'check' as const, title: 'Respond', description: '返回兼容响应，同时保留用量信息。' }] },
-  learning: { eyebrow: '05 / AI LEARNING', title: '让经验成为可调用的能力。', description: '把脱敏职业摘要拆成能力节点，从 Agent 架构、工作流到记忆反馈，形成一张可继续学习的地图。', points: ['Multi-Agent 与 Workflow', 'Memory / Feedback / Evaluation', '具身智能与真实场景落地'], cta: '打开 AI 学习', status: 'PUBLIC SUMMARY', footer: '点击节点，展开能力地图', nodes: [{ label: 'Agent', detail: 'Architecture', icon: 'brain' as const }, { label: 'Workflow', detail: 'AI-native', icon: 'cpu' as const }, { label: 'Memory', detail: 'Feedback', icon: 'database' as const }, { label: 'Embodied', detail: 'Intelligence', icon: 'beaker' as const }] },
-  contact: { title: 'Build on a clearer route.', description: '从一个兼容端点开始，把模型接入、路由和运行信息集中到 ModuRelay。', primaryCta: '开始使用', docsCta: '查看文档' },
-  footer: { description: 'OpenAI-compatible API gateway for model routing, usage and operational control.', product: '产品', resources: '资源', account: '账户', usage: '用量查询', rights: '保留所有权利。', tagline: 'Connect clearly. Operate calmly.' }
+  routing: { title: '让每一次请求，都有清晰去处。', description: '从应用发起请求开始，Relay Core 负责健康检查、策略匹配、故障切换和用量记录。你看到的不只是一条线路，而是一条可解释的路径。', request: { title: 'Your application' }, coreCaption: 'policy + health + usage', routesLabel: 'Available routes', routes: [{ title: 'OpenAI compatible', detail: 'primary route' }, { title: 'Responses API', detail: 'capability match' }, { title: 'Fallback route', detail: 'on provider error' }], features: [{ number: '01', title: 'Provider pools', description: '将可用账户按分组组织，让路由策略可维护。' }, { number: '02', title: 'Failover', description: 'Provider 出错时根据现有策略切换可用线路。' }, { number: '03', title: 'Usage-aware', description: '围绕请求、模型和密钥保留用量上下文。' }] },
+  observability: { title: '运行状态，一眼就能读懂。', description: '把 API keys、用量、额度、线路健康和配置集中到一个工作空间，让运维信息可以被快速扫描，也让异常更早被发现。', previewTitle: 'Operations snapshot', previewRoutes: ['OpenAI / Chat', 'Responses / Primary', 'Fallback / Health'], items: [{ icon: 'chart' as const, title: 'Usage', description: '按日期、模型和密钥查看请求与 token。' }, { icon: 'shield' as const, title: 'Channel status', description: '查看线路健康状态和响应情况。' }, { icon: 'key' as const, title: 'API keys', description: '创建、管理并安全使用接入密钥。' }] },
+  workflow: { title: '从请求，到稳定抵达。', description: '客户端只需要一个兼容 API；平台侧负责把请求交给正确的 Provider，并在异常时稳妥切换。', steps: [{ icon: 'link' as const, title: 'Connect', description: '使用 API key 指向 ModuRelay gateway。' }, { icon: 'server' as const, title: 'Relay', description: 'Relay Core 读取分组和路由配置。' }, { icon: 'sync' as const, title: 'Route', description: '选择可用 Provider，必要时执行切换。' }, { icon: 'check' as const, title: 'Respond', description: '返回兼容响应，同时保留用量信息。' }] },
+  learning: { eyebrow: '05 / AI LEARNING', title: '把经验变成老师可讲、技术专家可复用的能力。', description: '这不是一段简历展示，而是一张面向老师能力培养与技术专家成长的 AI 学习地图：把复杂概念拆成课程、案例、实操与反馈，从 Agent 架构、工作流到具身智能，帮助知识真正被讲清、练会、落地。', points: ['老师能力：把复杂 AI 知识讲清、讲透、讲得可练', '技术专家：从 Agent 架构、模型路由到系统落地', '学习闭环：案例拆解 / 实操任务 / 评估反馈'], cta: '进入 AI 学习', status: 'PRIVACY-SAFE SUMMARY', footer: '点击节点，展开能力地图', nodes: [{ label: 'Agent', detail: '可教的架构', icon: 'brain' as const }, { label: 'Workflow', detail: '技术专家实践', icon: 'cpu' as const }, { label: 'Memory', detail: '反馈闭环', icon: 'database' as const }, { label: 'Embodied', detail: '真实落地', icon: 'beaker' as const }] },
+  contact: { title: '从一个端点开始，保持系统清晰。', description: '从一个兼容端点开始，把模型接入、路由和运行信息集中到 ModuRelay。', primaryCta: '开始使用', docsCta: '查看文档' },
+  footer: { description: '面向模型路由、用量与运行控制的 OpenAI-compatible API 网关。', product: '产品', resources: '资源', account: '账户', usage: '用量查询', rights: '保留所有权利。', tagline: '清晰接入，稳定运行。' }
 }
 
 const enCopy = {
@@ -452,7 +454,7 @@ const enCopy = {
   routing: { title: 'Routing that stays visible.', description: 'Every request has a clear entry, route and result. Health checks, failover and group scheduling live in one Relay Core.', request: { title: 'Your application' }, coreCaption: 'policy + health + usage', routesLabel: 'Available routes', routes: [{ title: 'OpenAI compatible', detail: 'primary route' }, { title: 'Responses API', detail: 'capability match' }, { title: 'Fallback route', detail: 'on provider error' }], features: [{ number: '01', title: 'Provider pools', description: 'Organize available accounts into maintainable groups and policies.' }, { number: '02', title: 'Failover', description: 'Switch to an available route when a Provider returns an error.' }, { number: '03', title: 'Usage-aware', description: 'Keep request, model and key context visible in usage data.' }] },
   observability: { title: 'Control without guesswork.', description: 'The console puts API keys, usage, quota, channel status and configuration in one workspace built for scanning.', previewTitle: 'Operations snapshot', previewRoutes: ['OpenAI / Chat', 'Responses / Primary', 'Fallback / Health'], items: [{ icon: 'chart' as const, title: 'Usage', description: 'Review requests and tokens by date, model and key.' }, { icon: 'shield' as const, title: 'Channel status', description: 'See route health and response behavior.' }, { icon: 'key' as const, title: 'API keys', description: 'Create, manage and use access keys securely.' }] },
   workflow: { title: 'From request to response.', description: 'The client sees one API while the platform owns routing, Providers and runtime visibility.', steps: [{ icon: 'link' as const, title: 'Connect', description: 'Point an existing client at the ModuRelay gateway.' }, { icon: 'server' as const, title: 'Relay', description: 'Relay Core reads group and route configuration.' }, { icon: 'sync' as const, title: 'Route', description: 'Choose an available Provider and fail over when needed.' }, { icon: 'check' as const, title: 'Respond', description: 'Return a compatible response with usage context.' }] },
-  learning: { eyebrow: '05 / AI LEARNING', title: 'Turn experience into callable capability.', description: 'Distill a privacy-safe professional summary into capability nodes spanning Agent architecture, workflows and memory feedback.', points: ['Multi-Agent & Workflow', 'Memory / Feedback / Evaluation', 'Embodied intelligence in real contexts'], cta: 'Open AI Learning', status: 'PUBLIC SUMMARY', footer: 'Select a node to open the map', nodes: [{ label: 'Agent', detail: 'Architecture', icon: 'brain' as const }, { label: 'Workflow', detail: 'AI-native', icon: 'cpu' as const }, { label: 'Memory', detail: 'Feedback', icon: 'database' as const }, { label: 'Embodied', detail: 'Intelligence', icon: 'beaker' as const }] },
+  learning: { eyebrow: '05 / AI LEARNING', title: 'Experience, shaped for teachers and technical experts.', description: 'Not a resume wall—a privacy-safe learning map for teaching capability and technical-expert practice. Break down Agent architecture, workflows and embodied intelligence into explainable lessons, hands-on tasks and feedback loops.', points: ['Teacher capability: make complex AI clear and teachable', 'Technical experts: connect architecture to production', 'Learning loop: cases / practice / evaluation'], cta: 'Enter AI Learning', status: 'PRIVACY-SAFE SUMMARY', footer: 'Select a node to open the map', nodes: [{ label: 'Agent', detail: 'Teach the architecture', icon: 'brain' as const }, { label: 'Workflow', detail: 'Expert practice', icon: 'cpu' as const }, { label: 'Memory', detail: 'Feedback loop', icon: 'database' as const }, { label: 'Embodied', detail: 'Real-world proof', icon: 'beaker' as const }] },
   contact: { title: 'Build on a clearer route.', description: 'Start with one compatible endpoint and bring models, routing and runtime visibility into ModuRelay.', primaryCta: 'Get started', docsCta: 'Read the docs' },
   footer: { description: 'OpenAI-compatible API gateway for model routing, usage and operational control.', product: 'Product', resources: 'Resources', account: 'Account', usage: 'Usage lookup', rights: 'All rights reserved.', tagline: 'Connect clearly. Operate calmly.' }
 }
@@ -489,6 +491,9 @@ const currentYear = computed(() => new Date().getFullYear())
 const modelPlazaEnabled = computed(() => isFeatureFlagEnabled(FeatureFlags.modelPlaza))
 const modelPlazaRequiresAuth = computed(() => appStore.cachedPublicSettings?.model_plaza_require_auth === true)
 const showModelPlazaEntry = computed(() => modelPlazaEnabled.value && (isAuthenticated.value || !modelPlazaRequiresAuth.value))
+const learningEntry = computed(() => isAuthenticated.value
+  ? '/ai-learning'
+  : { path: '/login', query: { redirect: '/ai-learning' } })
 const apiBaseUrl = computed(() => {
   const configured = appStore.cachedPublicSettings?.api_base_url
   return typeof configured === 'string' && configured.trim() ? configured.trim().replace(/\/+$/, '') : window.location.origin
@@ -985,4 +990,98 @@ onBeforeUnmount(() => {
   .home-learning-node-4 { right: 0; }
 }
 @media (prefers-reduced-motion: reduce) { .home-page *, .home-page *::before, .home-page *::after { scroll-behavior: auto !important; transition-duration: 1ms !important; animation-duration: 1ms !important; animation-iteration-count: 1 !important; }.home-reveal, .home-hero-reveal { opacity: 1 !important; transform: none !important; }.home-header, .home-hero-stage-frame, .home-code-panel, .home-product-preview, .home-final-panel { backdrop-filter: none; -webkit-backdrop-filter: none; }.home-hero-stage-frame { transform: none; }.home-stage-scanline { display: none; } }
+
+/* Final visual pass: quiet chrome, stronger depth, and one clear hero focal point. */
+.home-page {
+  background:
+    radial-gradient(760px 520px at 82% 0%, color-mix(in srgb, var(--mr-secondary) 8%, transparent), transparent 70%),
+    radial-gradient(620px 460px at 4% 28%, color-mix(in srgb, var(--mr-primary) 6%, transparent), transparent 72%),
+    var(--mr-canvas);
+}
+:global(.dark) .home-page {
+  background:
+    radial-gradient(760px 520px at 82% 0%, color-mix(in srgb, var(--mr-secondary) 10%, transparent), transparent 70%),
+    radial-gradient(620px 460px at 4% 28%, color-mix(in srgb, var(--mr-primary) 10%, transparent), transparent 72%),
+    var(--mr-canvas);
+}
+.home-header { background: transparent; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
+.home-page-scrolled .home-header { border-color: color-mix(in srgb, var(--mr-border-strong) 74%, transparent); background: color-mix(in srgb, var(--mr-canvas) 82%, transparent); box-shadow: 0 12px 34px color-mix(in srgb, var(--mr-primary) 7%, transparent); backdrop-filter: blur(18px) saturate(135%); -webkit-backdrop-filter: blur(18px) saturate(135%); }
+.home-navbar { min-height: 84px; gap: 24px; width: min(100% - 56px, 1200px); }
+.home-brand { transition: transform 180ms var(--ease-standard), opacity 180ms ease; }
+.home-brand:hover { opacity: 0.82; transform: translateY(-1px); }
+.brand-mark { border-radius: 10px; box-shadow: 0 9px 22px color-mix(in srgb, var(--mr-primary) 20%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.28); }
+.home-nav-links { gap: 2px; padding: 5px; border: 1px solid color-mix(in srgb, var(--mr-border-strong) 58%, transparent); border-radius: 999px; background: color-mix(in srgb, var(--mr-surface) 52%, transparent); box-shadow: inset 0 1px 0 var(--glass-highlight), 0 8px 22px color-mix(in srgb, var(--mr-primary) 5%, transparent); backdrop-filter: blur(14px) saturate(125%); -webkit-backdrop-filter: blur(14px) saturate(125%); }
+.home-nav-link { min-height: 34px; padding: 0 13px; border-radius: 999px; color: var(--mr-text-muted); transition: color 180ms var(--ease-standard), background-color 180ms var(--ease-standard), transform 180ms var(--ease-standard); }
+.home-nav-link::after { display: none; }
+.home-nav-link:hover { color: var(--mr-text); background: color-mix(in srgb, var(--mr-surface-raised) 62%, transparent); transform: translateY(-1px); }
+.home-nav-link.is-active { color: var(--mr-text); background: var(--mr-surface-raised); box-shadow: 0 4px 12px color-mix(in srgb, var(--mr-primary) 10%, transparent), inset 0 1px 0 var(--glass-highlight); }
+.home-icon-button, .home-quiet-link { border-radius: 999px; }
+.home-solid-button, .home-primary-button { min-height: 42px; padding-inline: 17px; border-radius: 999px; }
+.home-hero-section { min-height: min(900px, calc(100vh - 84px)); padding: 72px 0 96px; }
+.home-hero-layout { min-height: 650px; grid-template-columns: minmax(0, 0.86fr) minmax(0, 1.14fr); gap: 72px; }
+.home-hero-copy { max-width: 520px; }
+.home-hero-title { margin-top: 20px; max-width: 620px; font-size: clamp(58px, 6.7vw, 94px); letter-spacing: -0.075em; line-height: 0.98; }
+.home-hero-subtitle { max-width: 470px; margin-top: 28px; font-size: clamp(19px, 2.1vw, 25px); line-height: 1.4; }
+.home-hero-description { max-width: 455px; margin-top: 16px; font-size: 13px; line-height: 1.9; }
+.home-hero-actions { margin-top: 30px; }
+.home-secondary-button { min-height: 42px; padding-inline: 17px; border-radius: 999px; background: color-mix(in srgb, var(--mr-surface) 66%, transparent); }
+.home-hero-facts { margin-top: 36px; }
+.home-hero-stage-frame { min-height: 632px; border-radius: 34px; border-color: color-mix(in srgb, var(--mr-primary) 28%, var(--mr-border-strong)); background: linear-gradient(145deg, color-mix(in srgb, var(--mr-surface-raised) 70%, transparent), color-mix(in srgb, var(--mr-primary) 8%, var(--mr-canvas))); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), inset 0 -24px 60px color-mix(in srgb, var(--mr-primary) 5%, transparent), 0 34px 90px color-mix(in srgb, var(--mr-primary) 14%, transparent); backdrop-filter: blur(12px) saturate(132%); -webkit-backdrop-filter: blur(12px) saturate(132%); }
+.home-hero-stage-frame::before { border-radius: inherit; border-color: color-mix(in srgb, var(--mr-secondary) 18%, transparent); }
+.home-hero-stage-frame:hover { transform: perspective(1500px) rotateX(var(--hero-rotate-x)) rotateY(var(--hero-rotate-y)) translateY(-4px); border-color: color-mix(in srgb, var(--mr-secondary) 48%, var(--mr-border-strong)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), inset 0 -24px 60px color-mix(in srgb, var(--mr-primary) 7%, transparent), 0 42px 100px color-mix(in srgb, var(--mr-primary) 21%, transparent); }
+.home-hero-stage-frame :deep(.hero-orbit-stage) { min-height: 632px; }
+.home-capability-strip { background: color-mix(in srgb, var(--mr-surface) 54%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+.home-capability-grid { min-height: 76px; }
+.home-section-light { background: color-mix(in srgb, var(--mr-surface) 22%, var(--mr-canvas)); }
+.home-section-contrast { background: color-mix(in srgb, var(--mr-surface) 66%, transparent); }
+.home-section-copy h2, .home-section-heading h2, .home-final-panel h2 { font-size: clamp(42px, 5vw, 66px); letter-spacing: -0.06em; line-height: 1.03; }
+.home-section-copy > p, .home-section-heading > p, .home-final-panel p { max-width: 620px; font-size: 13px; line-height: 1.9; }
+.home-code-panel, .routing-visual, .home-product-preview, .home-final-panel { border-radius: 24px; }
+.home-code-panel { background: color-mix(in srgb, var(--mr-surface-raised) 70%, transparent); box-shadow: inset 0 1px 0 var(--glass-highlight), 0 30px 72px color-mix(in srgb, var(--mr-primary) 10%, transparent); }
+.routing-visual { background: linear-gradient(145deg, color-mix(in srgb, var(--mr-surface-raised) 76%, transparent), color-mix(in srgb, var(--mr-primary) 6%, var(--mr-surface))); box-shadow: inset 0 1px 0 var(--glass-highlight), 0 24px 58px color-mix(in srgb, var(--mr-primary) 8%, transparent); }
+.routing-node, .routing-core-node { border-radius: 16px; }
+.home-workflow-step { transition: background-color 180ms var(--ease-standard), transform 180ms var(--ease-standard), box-shadow 180ms var(--ease-standard); }
+.home-workflow-step:hover { position: relative; z-index: 1; transform: translateY(-3px); box-shadow: 0 18px 34px color-mix(in srgb, var(--mr-primary) 10%, transparent); }
+.home-learning-layout { gap: 74px; padding: 140px 0; }
+.home-learning-layout .home-section-copy h2 { max-width: 620px; font-size: clamp(42px, 4.8vw, 66px); }
+.home-learning-preview { min-height: 500px; border-radius: 32px; background: radial-gradient(circle at 50% 45%, color-mix(in srgb, var(--mr-primary) 14%, transparent), transparent 42%), linear-gradient(145deg, color-mix(in srgb, var(--mr-surface-raised) 82%, transparent), color-mix(in srgb, var(--mr-primary) 9%, var(--mr-canvas))); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.24), 0 32px 80px color-mix(in srgb, var(--mr-primary) 13%, transparent); }
+.home-learning-node { border-radius: 18px; box-shadow: inset 0 1px 0 var(--glass-highlight), 0 18px 34px color-mix(in srgb, var(--mr-primary) 10%, transparent); }
+.home-final-section { padding: 118px 0; }
+.home-final-panel { padding: 50px; border-radius: 28px; background: linear-gradient(135deg, color-mix(in srgb, var(--mr-surface-raised) 84%, transparent), color-mix(in srgb, var(--mr-primary) 8%, transparent)); }
+.back-to-top { border-radius: 999px; }
+
+@media (max-width: 1080px) {
+  .home-navbar { gap: 16px; flex-wrap: wrap; padding: 10px 0; }
+  .home-nav-links { order: 3; width: 100%; margin-left: 0; justify-content: center; overflow-x: auto; }
+  .home-hero-layout { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); gap: 34px; }
+  .home-hero-stage-frame, .home-hero-stage-frame :deep(.hero-orbit-stage) { min-height: 570px; }
+}
+@media (max-width: 820px) {
+  .home-hero-section { padding: 58px 0 76px; }
+  .home-hero-layout { display: grid; grid-template-columns: 1fr; gap: 42px; }
+  .home-hero-copy { max-width: 680px; }
+  .home-hero-stage-frame, .home-hero-stage-frame :deep(.hero-orbit-stage) { min-height: 520px; }
+  .home-section-light .home-two-column { padding-top: 88px; padding-bottom: 88px; }
+  .home-learning-layout { gap: 44px; padding: 106px 0; }
+  .home-learning-preview { min-height: 460px; }
+  .home-final-panel { padding: 38px; }
+}
+@media (max-width: 620px) {
+  .home-navbar { min-height: 78px; }
+  .home-nav-links { justify-content: flex-start; padding: 4px; }
+  .home-nav-link { min-height: 32px; padding-inline: 11px; font-size: 11px; }
+  .home-hero-section { padding: 44px 0 62px; }
+  .home-hero-title { font-size: clamp(42px, 13vw, 58px); }
+  .home-hero-subtitle { margin-top: 22px; font-size: 18px; }
+  .home-hero-stage-frame, .home-hero-stage-frame :deep(.hero-orbit-stage) { min-height: 468px; border-radius: 26px; }
+  .home-section-copy h2, .home-section-heading h2, .home-final-panel h2 { font-size: 36px; }
+  .home-learning-layout { gap: 34px; padding: 82px 0; }
+  .home-learning-preview { min-height: 430px; border-radius: 24px; }
+  .home-final-section { padding: 78px 0; }
+  .home-final-panel { padding: 28px; border-radius: 22px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .home-page::after, .home-learning-orbit::before, .home-learning-orbit-ring, .home-learning-core::before, .home-learning-node { animation: none !important; }
+  .home-hero-stage-frame:hover { transform: none !important; }
+}
 </style>

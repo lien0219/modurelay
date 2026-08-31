@@ -44,7 +44,7 @@ const routes: RouteRecordRaw[] = [
     name: 'AILearning',
     component: () => import('@/views/AILearningView.vue'),
     meta: {
-      requiresAuth: false,
+      requiresAuth: true,
       title: 'AI Learning',
       titleKey: 'nav.aiLearning'
     }
