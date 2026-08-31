@@ -16,6 +16,10 @@
       <div v-if="hasFallback" class="fallback-core" aria-hidden="true">
         <div class="fallback-ring fallback-ring-one"></div>
         <div class="fallback-ring fallback-ring-two"></div>
+        <span class="fallback-bubble fallback-bubble-one"></span>
+        <span class="fallback-bubble fallback-bubble-two"></span>
+        <span class="fallback-bubble fallback-bubble-three"></span>
+        <span class="fallback-bubble fallback-bubble-four"></span>
         <div class="fallback-cube"><span>M</span></div>
       </div>
 
@@ -145,6 +149,7 @@ async function initializeScene(stage: HTMLElement, host: HTMLElement): Promise<(
 
   const resources: Disposable[] = []
   const ringMaterials: Array<{ color: { setHex: (value: number) => void }; opacity: number }> = []
+  const bubbleMaterials: Array<{ material: any; darkColor: number; lightColor: number; darkOpacity: number; lightOpacity: number }> = []
 
   const renderer = new THREE.WebGLRenderer({
     alpha: true,
@@ -170,8 +175,9 @@ async function initializeScene(stage: HTMLElement, host: HTMLElement): Promise<(
   const world = new THREE.Group()
   const coreGroup = new THREE.Group()
   const orbitGroup = new THREE.Group()
+  const bubbleGroup = new THREE.Group()
   scene.add(world)
-  world.add(coreGroup, orbitGroup)
+  world.add(coreGroup, orbitGroup, bubbleGroup)
 
   const ambientLight = new THREE.HemisphereLight(0xd9ddff, 0x071426, isDarkTheme() ? 1.55 : 1.65)
   scene.add(ambientLight)
@@ -238,6 +244,36 @@ async function initializeScene(stage: HTMLElement, host: HTMLElement): Promise<(
   resources.push(innerGeometry, innerMaterial)
   const innerCore = new THREE.Mesh(innerGeometry, innerMaterial)
   coreGroup.add(innerCore)
+
+  const bubbleGeometry = new THREE.SphereGeometry(1, 24, 18)
+  resources.push(bubbleGeometry)
+  const bubbleConfigs = [
+    { x: -3.2, y: 1.65, z: 0.4, size: 0.3, phase: 0.4, darkColor: 0x818cf8, lightColor: 0x6366f1, darkOpacity: 0.62, lightOpacity: 0.42 },
+    { x: 3.28, y: 1.38, z: 0.1, size: 0.24, phase: 2.2, darkColor: 0x22d3ee, lightColor: 0x0891b2, darkOpacity: 0.58, lightOpacity: 0.38 },
+    { x: -3.55, y: -0.85, z: 0.35, size: 0.2, phase: 4.5, darkColor: 0xa78bfa, lightColor: 0x8b5cf6, darkOpacity: 0.54, lightOpacity: 0.34 },
+    { x: 3.65, y: -0.72, z: 0.65, size: 0.34, phase: 5.7, darkColor: 0x67e8f9, lightColor: 0x06b6d4, darkOpacity: 0.58, lightOpacity: 0.4 },
+  ]
+  const bubbles = bubbleConfigs.map((config) => {
+    const material = new THREE.MeshPhysicalMaterial({
+      color: isDarkTheme() ? config.darkColor : config.lightColor,
+      transparent: true,
+      opacity: isDarkTheme() ? config.darkOpacity : config.lightOpacity,
+      roughness: 0.08,
+      metalness: 0.06,
+      transmission: 0.22,
+      thickness: 0.32,
+      clearcoat: 1,
+      clearcoatRoughness: 0.08,
+      depthWrite: false,
+    })
+    resources.push(material)
+    bubbleMaterials.push({ material, darkColor: config.darkColor, lightColor: config.lightColor, darkOpacity: config.darkOpacity, lightOpacity: config.lightOpacity })
+    const mesh = new THREE.Mesh(bubbleGeometry, material)
+    mesh.position.set(config.x, config.y, config.z)
+    mesh.scale.setScalar(config.size)
+    bubbleGroup.add(mesh)
+    return { mesh, config }
+  })
 
   const platformGeometry = new THREE.CylinderGeometry(2.55, 3.15, 0.22, 96, 1, true)
   const platformMaterial = new THREE.MeshPhysicalMaterial({
@@ -308,6 +344,11 @@ async function initializeScene(stage: HTMLElement, host: HTMLElement): Promise<(
     platformMaterial.opacity = dark ? 0.68 : 0.45
     knotMaterial.color.setHex(dark ? 0x22d3ee : 0x0891b2)
     knotMaterial.opacity = dark ? 0.2 : 0.1
+    bubbleMaterials.forEach(({ material, darkColor, lightColor, darkOpacity, lightOpacity }) => {
+      material.color.setHex(dark ? darkColor : lightColor)
+      material.opacity = dark ? darkOpacity : lightOpacity
+      material.needsUpdate = true
+    })
     ringMaterials.forEach((material, index) => {
       const darkColors = [0x6366f1, 0x06b6d4, 0x818cf8]
       const lightColors = [0x4f46e5, 0x0891b2, 0x6366f1]
@@ -386,6 +427,16 @@ async function initializeScene(stage: HTMLElement, host: HTMLElement): Promise<(
       innerCore.rotation.y = -elapsed * 0.3
       energyKnot.rotation.z = elapsed * 0.08
       energyKnot.rotation.y = -elapsed * 0.06
+      bubbles.forEach(({ mesh, config }) => {
+        const floatX = Math.sin(elapsed * 0.64 + config.phase) * 0.09
+        const floatY = Math.cos(elapsed * 0.82 + config.phase) * 0.14
+        const floatZ = Math.sin(elapsed * 0.46 + config.phase) * 0.12
+        const pulse = 1 + Math.sin(elapsed * 1.12 + config.phase) * 0.06
+        mesh.position.set(config.x + floatX, config.y + floatY, config.z + floatZ)
+        mesh.scale.setScalar(config.size * pulse)
+        mesh.rotation.x += delta * 0.24
+        mesh.rotation.y -= delta * 0.32
+      })
 
       orbitGroup.children.forEach((child: OrbitChild) => {
         if (typeof child.userData.speed === 'number') {
@@ -471,11 +522,17 @@ async function initializeScene(stage: HTMLElement, host: HTMLElement): Promise<(
 .fallback-core { position: absolute; z-index: 3; left: 50%; top: 48%; width: 270px; height: 270px; transform: translate(-50%, -50%); }
 .fallback-ring { position: absolute; inset: 14%; border: 1px solid color-mix(in srgb, var(--mr-primary) 55%, transparent); border-radius: 50%; transform: rotateX(68deg); animation: fallback-spin 10s linear infinite; }
 .fallback-ring-two { inset: 24% 2%; border-color: color-mix(in srgb, var(--mr-secondary) 50%, transparent); animation-direction: reverse; animation-duration: 14s; }
+.fallback-bubble { position: absolute; display: block; border: 1px solid color-mix(in srgb, var(--mr-secondary) 55%, transparent); border-radius: 50%; background: radial-gradient(circle at 29% 23%, rgba(255, 255, 255, 0.78), transparent 18%), radial-gradient(circle at 67% 72%, color-mix(in srgb, var(--mr-secondary) 58%, transparent), color-mix(in srgb, var(--mr-primary) 26%, transparent) 58%, transparent 74%); box-shadow: inset -8px -10px 16px rgba(79, 70, 229, 0.16), inset 5px 5px 10px rgba(255, 255, 255, 0.35), 0 14px 24px color-mix(in srgb, var(--mr-primary) 14%, transparent); animation: fallback-bubble-float 5.8s ease-in-out infinite; }
+.fallback-bubble-one { top: 22%; left: 17%; width: 36px; height: 36px; animation-delay: -1.2s; }
+.fallback-bubble-two { top: 21%; right: 14%; width: 29px; height: 29px; animation-delay: -3.4s; }
+.fallback-bubble-three { bottom: 27%; left: 13%; width: 22px; height: 22px; animation-delay: -4.7s; }
+.fallback-bubble-four { right: 13%; bottom: 24%; width: 42px; height: 42px; animation-delay: -2.4s; }
 .fallback-cube { position: absolute; left: 50%; top: 50%; display: grid; width: 110px; height: 110px; place-items: center; border: 1px solid var(--color-primary-border); color: var(--color-text-primary); background: var(--color-surface-raised); box-shadow: var(--shadow-lg); transform: translate(-50%, -50%) rotateX(-18deg) rotateY(34deg); }
 .fallback-cube span { font-size: 44px; font-weight: 800; }
 
 @keyframes scene-loader { to { transform: rotate(360deg); } }
 @keyframes fallback-spin { to { transform: rotateX(68deg) rotateZ(360deg); } }
+@keyframes fallback-bubble-float { 0%, 100% { transform: translate3d(0, 0, 0) scale(1); } 50% { transform: translate3d(0, -9px, 0) scale(1.08); } }
 
 @media (max-width: 1023px) {
   .hero-orbit-stage { min-height: 510px; }
@@ -487,6 +544,7 @@ async function initializeScene(stage: HTMLElement, host: HTMLElement): Promise<(
 
 @media (prefers-reduced-motion: reduce) {
   .scene-loading span,
-  .fallback-ring { animation: none !important; }
+  .fallback-ring,
+  .fallback-bubble { animation: none !important; }
 }
 </style>

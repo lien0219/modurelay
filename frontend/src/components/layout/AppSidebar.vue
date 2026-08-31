@@ -689,6 +689,26 @@ const ResourceCenterIcon = {
     ),
 }
 
+const AILearningIcon = {
+  render: () =>
+    h(
+      'svg',
+      { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' },
+      [
+        h('path', {
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          d: 'M8.25 5.25A3.75 3.75 0 0112 3a3.75 3.75 0 013.75 2.25A3.75 3.75 0 0119.5 9a3.75 3.75 0 01-1.25 2.792A3.75 3.75 0 0119.5 15a3.75 3.75 0 01-3.75 3.75A3.75 3.75 0 0112 21a3.75 3.75 0 01-3.75-2.25A3.75 3.75 0 014.5 15a3.75 3.75 0 011.25-3.208A3.75 3.75 0 014.5 9a3.75 3.75 0 013.75-3.75z',
+        }),
+        h('path', {
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          d: 'M12 7.5v9m-3-6h6m-3-3h.008v.008H12V7.5zm0 9h.008v.008H12V16.5z',
+        }),
+      ],
+    ),
+}
+
 const ChevronDownIcon = {
   render: () =>
     h(
@@ -730,6 +750,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     items.push({ path: '/dashboard', label: t('nav.dashboard'), icon: DashboardIcon })
   }
   items.push(
+    { path: '/ai-learning', label: t('nav.aiLearning'), icon: AILearningIcon },
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
     { path: '/batch-image', label: t('nav.batchImage'), icon: BatchImageIcon, hideInSimpleMode: true, featureFlag: flagBatchImageAccess },
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },

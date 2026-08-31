@@ -36,6 +36,10 @@
             <Icon name="grid" size="sm" />
             <span class="hidden sm:inline">{{ t('nav.modelPlaza') }}</span>
           </router-link>
+          <router-link to="/ai-learning" class="home-quiet-link">
+            <Icon name="brain" size="sm" />
+            <span class="hidden sm:inline">{{ copy.nav.learning }}</span>
+          </router-link>
           <button
             type="button"
             class="home-icon-button"
@@ -118,6 +122,10 @@
           >
             <Icon name="grid" size="sm" />
             <span class="hidden lg:inline">{{ t('nav.modelPlaza') }}</span>
+          </router-link>
+          <router-link to="/ai-learning" class="home-quiet-link" :title="copy.nav.learning">
+            <Icon name="brain" size="sm" />
+            <span class="hidden lg:inline">{{ copy.nav.learning }}</span>
           </router-link>
           <button
             type="button"
@@ -335,6 +343,43 @@
         </div>
       </section>
 
+      <section id="learning" data-home-section class="home-section home-learning-section">
+        <div class="home-container home-learning-layout">
+          <div class="home-section-copy home-reveal">
+            <span class="home-section-index">{{ copy.learning.eyebrow }}</span>
+            <h2>{{ copy.learning.title }}</h2>
+            <p>{{ copy.learning.description }}</p>
+            <div class="home-learning-points">
+              <span v-for="point in copy.learning.points" :key="point"><i></i>{{ point }}</span>
+            </div>
+            <router-link to="/ai-learning" class="home-primary-button home-learning-cta">
+              {{ copy.learning.cta }}
+              <Icon name="arrowRight" size="sm" />
+            </router-link>
+          </div>
+
+          <div class="home-learning-preview home-reveal" aria-label="AI learning capability preview">
+            <div class="home-learning-preview-topline">
+              <span>AI LEARNING / PROFILE MAP</span>
+              <span><i></i>{{ copy.learning.status }}</span>
+            </div>
+            <div class="home-learning-orbit" aria-hidden="true">
+              <span class="home-learning-orbit-ring home-learning-orbit-ring-one"></span>
+              <span class="home-learning-orbit-ring home-learning-orbit-ring-two"></span>
+              <div class="home-learning-core"><strong>AI</strong><small>KNOWLEDGE</small></div>
+              <span v-for="(node, index) in copy.learning.nodes" :key="node.label" class="home-learning-node" :class="`home-learning-node-${index + 1}`">
+                <span class="home-learning-node-icon"><Icon :name="node.icon" size="sm" /></span>
+                <span><strong>{{ node.label }}</strong><small>{{ node.detail }}</small></span>
+              </span>
+            </div>
+            <div class="home-learning-preview-footer">
+              <span>{{ copy.learning.footer }}</span>
+              <router-link to="/ai-learning"><Icon name="arrowUp" size="xs" /></router-link>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section id="contact" data-home-section class="home-section home-final-section">
         <div class="home-container home-final-panel home-reveal">
           <div>
@@ -360,7 +405,7 @@
           <p>{{ copy.footer.description }}</p>
         </div>
         <div class="home-footer-links"><strong>{{ copy.footer.product }}</strong><button type="button" @click="scrollToSection('integrate')">{{ copy.nav.integrate }}</button><button type="button" @click="scrollToSection('routing')">{{ copy.nav.routing }}</button><button type="button" @click="scrollToSection('observability')">{{ copy.nav.observability }}</button></div>
-        <div class="home-footer-links"><strong>{{ copy.footer.resources }}</strong><a v-if="docUrl" :href="docUrl" target="_blank" rel="noopener noreferrer">{{ copy.nav.docs }}</a><router-link to="/key-usage">{{ copy.footer.usage }}</router-link><router-link to="/model-plaza">{{ t('nav.modelPlaza') }}</router-link></div>
+        <div class="home-footer-links"><strong>{{ copy.footer.resources }}</strong><a v-if="docUrl" :href="docUrl" target="_blank" rel="noopener noreferrer">{{ copy.nav.docs }}</a><router-link to="/key-usage">{{ copy.footer.usage }}</router-link><router-link to="/model-plaza">{{ t('nav.modelPlaza') }}</router-link><router-link to="/ai-learning">{{ copy.nav.learning }}</router-link></div>
         <div class="home-footer-links"><strong>{{ copy.footer.account }}</strong><router-link :to="isAuthenticated ? dashboardPath : '/login'">{{ isAuthenticated ? copy.nav.dashboard : copy.nav.login }}</router-link><button type="button" @click="scrollToSection('contact')">{{ copy.nav.contact }}</button></div>
       </div>
       <div class="home-container home-footer-bottom"><span>&copy; {{ currentYear }} {{ siteName }}. {{ copy.footer.rights }}</span><span>{{ copy.footer.tagline }}</span></div>
@@ -383,29 +428,31 @@ import { sanitizeUrl } from '@/utils/url'
 import { FeatureFlags, isFeatureFlagEnabled } from '@/utils/featureFlags'
 import { toggleThemeWithTransition } from '@/utils/themeTransition'
 
-type SectionId = 'home' | 'integrate' | 'routing' | 'observability' | 'workflow' | 'contact'
+type SectionId = 'home' | 'integrate' | 'routing' | 'observability' | 'workflow' | 'learning' | 'contact'
 type CodeSampleKey = 'curl' | 'python' | 'node'
 
 const zhCopy = {
-  nav: { home: '首页', integrate: '接入', routing: '路由核心', observability: '可观测性', workflow: '工作流', contact: '联系我们', docs: '文档', light: '切换浅色模式', dark: '切换深色模式', dashboard: '控制台', login: '登录', backToTop: '返回顶部' },
+  nav: { home: '首页', integrate: '接入', routing: '路由核心', observability: '可观测性', workflow: '工作流', learning: 'AI 学习', contact: '联系我们', docs: '文档', light: '切换浅色模式', dark: '切换深色模式', dashboard: '控制台', login: '登录', backToTop: '返回顶部' },
   hero: { eyebrow: 'OPENAI-COMPATIBLE API GATEWAY', title: '一个 API，', titleAccent: '连接多个模型。', subtitle: '自动路由请求，在 Provider 异常时切换可用线路。', description: '使用熟悉的 OpenAI-compatible 接口管理模型、密钥、用量和路由。保持接入简单，把复杂度留给 Relay Core。', primaryCta: '开始使用', dashboardCta: '进入控制台', secondaryCta: '查看接入方式', facts: ['OpenAI-compatible', 'Responses API', 'Usage & quota'] },
   capabilities: { strip: ['统一 API 网关', '多模型路由', '健康检查', '用量与额度'] },
   integrate: { title: '接入只需要一个端点。', description: '沿用 OpenAI-compatible 请求格式，使用现有 SDK 即可开始。根据账户和分组配置，网关负责请求转发与响应转换。', codeLabel: 'Code examples', codeFooter: 'Request shape validated at the gateway', endpoints: [{ method: 'POST', path: '/v1/chat/completions', label: 'Chat Completions' }, { method: 'POST', path: '/v1/responses', label: 'Responses API' }, { method: 'GET', path: '/v1/models', label: 'Model discovery' }] },
   routing: { title: 'Routing that stays visible.', description: '每个请求都有清晰的入口、路由和结果。健康检查、故障切换和分组调度集中在同一个 Relay Core。', request: { title: 'Your application' }, coreCaption: 'policy + health + usage', routesLabel: 'Available routes', routes: [{ title: 'OpenAI compatible', detail: 'primary route' }, { title: 'Responses API', detail: 'capability match' }, { title: 'Fallback route', detail: 'on provider error' }], features: [{ number: '01', title: 'Provider pools', description: '将可用账户按分组组织，让路由策略可维护。' }, { number: '02', title: 'Failover', description: 'Provider 出错时根据现有策略切换可用线路。' }, { number: '03', title: 'Usage-aware', description: '围绕请求、模型和密钥保留用量上下文。' }] },
   observability: { title: 'Control without guesswork.', description: '控制台把 API keys、usage、quota、channel status 和配置放在同一个工作空间，让运维信息可以被快速扫描。', previewTitle: 'Operations snapshot', previewRoutes: ['OpenAI / Chat', 'Responses / Primary', 'Fallback / Health'], items: [{ icon: 'chart' as const, title: 'Usage', description: '按日期、模型和密钥查看请求与 token。' }, { icon: 'shield' as const, title: 'Channel status', description: '查看线路健康状态和响应情况。' }, { icon: 'key' as const, title: 'API keys', description: '创建、管理并安全使用接入密钥。' }] },
   workflow: { title: 'From request to response.', description: '保持业务流程清晰：客户端只面对一个 API，平台侧负责路由、Provider 和运行状态。', steps: [{ icon: 'link' as const, title: 'Connect', description: '使用 API key 指向 ModuRelay gateway。' }, { icon: 'server' as const, title: 'Relay', description: 'Relay Core 读取分组和路由配置。' }, { icon: 'sync' as const, title: 'Route', description: '选择可用 Provider，必要时执行切换。' }, { icon: 'check' as const, title: 'Respond', description: '返回兼容响应，同时保留用量信息。' }] },
+  learning: { eyebrow: '05 / AI LEARNING', title: '让经验成为可调用的能力。', description: '把脱敏职业摘要拆成能力节点，从 Agent 架构、工作流到记忆反馈，形成一张可继续学习的地图。', points: ['Multi-Agent 与 Workflow', 'Memory / Feedback / Evaluation', '具身智能与真实场景落地'], cta: '打开 AI 学习', status: 'PUBLIC SUMMARY', footer: '点击节点，展开能力地图', nodes: [{ label: 'Agent', detail: 'Architecture', icon: 'brain' as const }, { label: 'Workflow', detail: 'AI-native', icon: 'cpu' as const }, { label: 'Memory', detail: 'Feedback', icon: 'database' as const }, { label: 'Embodied', detail: 'Intelligence', icon: 'beaker' as const }] },
   contact: { title: 'Build on a clearer route.', description: '从一个兼容端点开始，把模型接入、路由和运行信息集中到 ModuRelay。', primaryCta: '开始使用', docsCta: '查看文档' },
   footer: { description: 'OpenAI-compatible API gateway for model routing, usage and operational control.', product: '产品', resources: '资源', account: '账户', usage: '用量查询', rights: '保留所有权利。', tagline: 'Connect clearly. Operate calmly.' }
 }
 
 const enCopy = {
-  nav: { home: 'Home', integrate: 'Integrate', routing: 'Routing core', observability: 'Observability', workflow: 'Workflow', contact: 'Contact', docs: 'Docs', light: 'Switch to light mode', dark: 'Switch to dark mode', dashboard: 'Dashboard', login: 'Sign in', backToTop: 'Back to top' },
+  nav: { home: 'Home', integrate: 'Integrate', routing: 'Routing core', observability: 'Observability', workflow: 'Workflow', learning: 'AI Learning', contact: 'Contact', docs: 'Docs', light: 'Switch to light mode', dark: 'Switch to dark mode', dashboard: 'Dashboard', login: 'Sign in', backToTop: 'Back to top' },
   hero: { eyebrow: 'OPENAI-COMPATIBLE API GATEWAY', title: 'One API. ', titleAccent: 'Every route.', subtitle: 'Route requests automatically and fail over when a Provider is unavailable.', description: 'Use a familiar OpenAI-compatible interface to manage models, keys, usage and routes. Keep integration simple and let Relay Core handle the complexity.', primaryCta: 'Get started', dashboardCta: 'Open dashboard', secondaryCta: 'Explore the integration', facts: ['OpenAI-compatible', 'Responses API', 'Usage & quota'] },
   capabilities: { strip: ['Unified API gateway', 'Multi-model routing', 'Health checks', 'Usage & quota'] },
   integrate: { title: 'One endpoint to integrate.', description: 'Keep the OpenAI-compatible request shape and use the SDKs you already know. The gateway handles forwarding and response conversion based on your account and group configuration.', codeLabel: 'Code examples', codeFooter: 'Request shape validated at the gateway', endpoints: [{ method: 'POST', path: '/v1/chat/completions', label: 'Chat Completions' }, { method: 'POST', path: '/v1/responses', label: 'Responses API' }, { method: 'GET', path: '/v1/models', label: 'Model discovery' }] },
   routing: { title: 'Routing that stays visible.', description: 'Every request has a clear entry, route and result. Health checks, failover and group scheduling live in one Relay Core.', request: { title: 'Your application' }, coreCaption: 'policy + health + usage', routesLabel: 'Available routes', routes: [{ title: 'OpenAI compatible', detail: 'primary route' }, { title: 'Responses API', detail: 'capability match' }, { title: 'Fallback route', detail: 'on provider error' }], features: [{ number: '01', title: 'Provider pools', description: 'Organize available accounts into maintainable groups and policies.' }, { number: '02', title: 'Failover', description: 'Switch to an available route when a Provider returns an error.' }, { number: '03', title: 'Usage-aware', description: 'Keep request, model and key context visible in usage data.' }] },
   observability: { title: 'Control without guesswork.', description: 'The console puts API keys, usage, quota, channel status and configuration in one workspace built for scanning.', previewTitle: 'Operations snapshot', previewRoutes: ['OpenAI / Chat', 'Responses / Primary', 'Fallback / Health'], items: [{ icon: 'chart' as const, title: 'Usage', description: 'Review requests and tokens by date, model and key.' }, { icon: 'shield' as const, title: 'Channel status', description: 'See route health and response behavior.' }, { icon: 'key' as const, title: 'API keys', description: 'Create, manage and use access keys securely.' }] },
   workflow: { title: 'From request to response.', description: 'The client sees one API while the platform owns routing, Providers and runtime visibility.', steps: [{ icon: 'link' as const, title: 'Connect', description: 'Point an existing client at the ModuRelay gateway.' }, { icon: 'server' as const, title: 'Relay', description: 'Relay Core reads group and route configuration.' }, { icon: 'sync' as const, title: 'Route', description: 'Choose an available Provider and fail over when needed.' }, { icon: 'check' as const, title: 'Respond', description: 'Return a compatible response with usage context.' }] },
+  learning: { eyebrow: '05 / AI LEARNING', title: 'Turn experience into callable capability.', description: 'Distill a privacy-safe professional summary into capability nodes spanning Agent architecture, workflows and memory feedback.', points: ['Multi-Agent & Workflow', 'Memory / Feedback / Evaluation', 'Embodied intelligence in real contexts'], cta: 'Open AI Learning', status: 'PUBLIC SUMMARY', footer: 'Select a node to open the map', nodes: [{ label: 'Agent', detail: 'Architecture', icon: 'brain' as const }, { label: 'Workflow', detail: 'AI-native', icon: 'cpu' as const }, { label: 'Memory', detail: 'Feedback', icon: 'database' as const }, { label: 'Embodied', detail: 'Intelligence', icon: 'beaker' as const }] },
   contact: { title: 'Build on a clearer route.', description: 'Start with one compatible endpoint and bring models, routing and runtime visibility into ModuRelay.', primaryCta: 'Get started', docsCta: 'Read the docs' },
   footer: { description: 'OpenAI-compatible API gateway for model routing, usage and operational control.', product: 'Product', resources: 'Resources', account: 'Account', usage: 'Usage lookup', rights: 'All rights reserved.', tagline: 'Connect clearly. Operate calmly.' }
 }
@@ -453,6 +500,7 @@ const navigationItems = computed(() => [
   { id: 'routing' as const, label: copy.value.nav.routing },
   { id: 'observability' as const, label: copy.value.nav.observability },
   { id: 'workflow' as const, label: copy.value.nav.workflow },
+  { id: 'learning' as const, label: copy.value.nav.learning },
   { id: 'contact' as const, label: copy.value.nav.contact }
 ])
 
@@ -786,12 +834,60 @@ onBeforeUnmount(() => {
 .home-workflow-step { position: relative; min-height: 190px; padding: 22px; background: var(--mr-surface); }
 .workflow-step-top { display: flex; align-items: center; justify-content: space-between; color: var(--mr-primary); }.workflow-step-top > span { font: 700 11px ui-monospace, SFMono-Regular, Menlo, monospace; }.workflow-step-top > svg { opacity: 0.85; }
 .home-workflow-step h3 { margin-top: 36px; }.workflow-arrow { position: absolute; top: 31px; right: -15px; z-index: 2; display: grid; width: 30px; height: 30px; place-items: center; border: 1px solid var(--mr-border-strong); border-radius: 50%; color: var(--mr-primary); background: var(--mr-surface); }
+.home-page::before { position: absolute; inset: 0; z-index: 0; background-image: linear-gradient(color-mix(in srgb, var(--mr-border) 22%, transparent) 1px, transparent 1px), linear-gradient(90deg, color-mix(in srgb, var(--mr-border) 22%, transparent) 1px, transparent 1px); background-size: 46px 46px; content: ''; opacity: 0.2; pointer-events: none; mask-image: linear-gradient(to bottom, black 0%, transparent 42%); }
+.home-page::after { position: absolute; top: 86px; right: 7%; z-index: 0; width: 280px; height: 280px; border-radius: 50%; background: radial-gradient(circle at 34% 28%, color-mix(in srgb, var(--mr-secondary) 22%, transparent), transparent 66%); content: ''; filter: blur(3px); opacity: 0.55; pointer-events: none; animation: home-background-float 13s ease-in-out infinite alternate; }
+.home-hero-title-accent { color: transparent; background: linear-gradient(105deg, var(--mr-primary) 8%, var(--mr-secondary) 76%, #ec4899); -webkit-background-clip: text; background-clip: text; }
+.home-solid-button, .home-primary-button { border: 1px solid color-mix(in srgb, var(--mr-primary) 58%, transparent); background: linear-gradient(135deg, var(--mr-primary), var(--mr-secondary)); background-size: 150% 150%; box-shadow: 0 11px 24px color-mix(in srgb, var(--mr-primary) 24%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.28); transition: background-position 260ms ease, box-shadow 180ms var(--ease-standard), transform 180ms var(--ease-standard), filter 180ms ease; }
+.home-solid-button:hover, .home-primary-button:hover { background: linear-gradient(135deg, var(--mr-primary), var(--mr-secondary)); background-position: 100% 0; filter: saturate(1.08); }
+.home-learning-section { position: relative; overflow: hidden; border-top: 1px solid var(--home-section-border); background: radial-gradient(circle at 86% 44%, color-mix(in srgb, var(--mr-primary) 9%, transparent), transparent 33rem), color-mix(in srgb, var(--mr-canvas) 92%, var(--mr-surface)); }
+.home-learning-section::before { position: absolute; inset: 0; background: radial-gradient(circle at 12% 72%, color-mix(in srgb, var(--mr-secondary) 7%, transparent), transparent 25rem); content: ''; pointer-events: none; }
+.home-learning-layout { position: relative; z-index: 1; display: grid; grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr); align-items: center; gap: 68px; padding: 122px 0; }
+.home-learning-layout .home-section-copy { max-width: 500px; }
+.home-learning-layout .home-section-copy h2 { max-width: 500px; }
+.home-learning-layout .home-section-copy > p { max-width: 470px; }
+.home-learning-points { display: grid; gap: 11px; margin-top: 26px; color: var(--mr-text-muted); font-size: 12px; }
+.home-learning-points span { display: flex; align-items: center; gap: 10px; }
+.home-learning-points i { display: inline-block; width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: linear-gradient(135deg, var(--mr-primary), var(--mr-secondary)); box-shadow: 0 0 0 4px color-mix(in srgb, var(--mr-primary) 10%, transparent); }
+.home-learning-cta { margin-top: 28px; }
+.home-learning-preview { position: relative; min-height: 452px; overflow: hidden; border: 1px solid color-mix(in srgb, var(--mr-primary) 28%, var(--mr-border-strong)); border-radius: 28px; background: radial-gradient(circle at 50% 45%, color-mix(in srgb, var(--mr-primary) 11%, transparent), transparent 42%), color-mix(in srgb, var(--mr-surface) 64%, transparent); box-shadow: inset 0 1px 0 var(--glass-highlight), 0 28px 70px color-mix(in srgb, var(--mr-primary) 12%, transparent); backdrop-filter: blur(16px) saturate(130%); -webkit-backdrop-filter: blur(16px) saturate(130%); }
+.home-learning-preview::before { position: absolute; inset: 14px; border: 1px solid color-mix(in srgb, var(--mr-primary) 18%, transparent); border-radius: 20px; content: ''; pointer-events: none; }
+.home-learning-preview-topline, .home-learning-preview-footer { position: absolute; right: 27px; left: 27px; z-index: 3; display: flex; align-items: center; justify-content: space-between; gap: 16px; color: var(--mr-text-subtle); font: 700 9px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.12em; }
+.home-learning-preview-topline { top: 25px; }
+.home-learning-preview-topline span:last-child { display: inline-flex; align-items: center; gap: 7px; color: var(--mr-success); }
+.home-learning-preview-topline i { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--mr-success); box-shadow: 0 0 0 4px color-mix(in srgb, var(--mr-success) 12%, transparent); }
+.home-learning-preview-footer { bottom: 24px; color: var(--mr-text-subtle); letter-spacing: 0.03em; }
+.home-learning-preview-footer a { display: grid; width: 28px; height: 28px; place-items: center; border: 1px solid var(--home-section-border); border-radius: 50%; color: var(--mr-primary); background: color-mix(in srgb, var(--mr-surface-raised) 70%, transparent); transition: transform 180ms ease, border-color 180ms ease, background-color 180ms ease; }
+.home-learning-preview-footer a:hover { border-color: var(--mr-primary); background: var(--mr-surface-raised); transform: translateY(-2px); }
+.home-learning-orbit { position: relative; width: min(100%, 520px); height: 360px; margin: 58px auto 38px; perspective: 850px; transform-style: preserve-3d; }
+.home-learning-orbit::before { position: absolute; top: 50%; left: 50%; width: 240px; height: 240px; border-radius: 50%; background: radial-gradient(circle, color-mix(in srgb, var(--mr-primary) 20%, transparent), transparent 69%); content: ''; filter: blur(12px); transform: translate(-50%, -50%); animation: home-learning-pulse 4.8s ease-in-out infinite; }
+.home-learning-orbit-ring { position: absolute; top: 50%; left: 50%; width: 320px; height: 170px; border: 1px solid color-mix(in srgb, var(--mr-primary) 36%, transparent); border-radius: 50%; transform: translate(-50%, -50%) rotateX(68deg) rotateZ(-18deg); animation: home-learning-orbit-spin 13s linear infinite; }
+.home-learning-orbit-ring-two { width: 240px; height: 300px; border-color: color-mix(in srgb, var(--mr-secondary) 32%, transparent); transform: translate(-50%, -50%) rotateY(68deg) rotateZ(24deg); animation-direction: reverse; animation-duration: 17s; }
+.home-learning-core { position: absolute; top: 50%; left: 50%; z-index: 2; display: grid; width: 132px; height: 132px; place-content: center; justify-items: center; border: 1px solid color-mix(in srgb, var(--mr-primary) 62%, transparent); border-radius: 50%; color: #fff; background: linear-gradient(145deg, color-mix(in srgb, var(--mr-primary) 84%, #111827), color-mix(in srgb, var(--mr-secondary) 62%, #111827)); box-shadow: 0 0 0 13px color-mix(in srgb, var(--mr-primary) 7%, transparent), 0 18px 35px rgba(17, 24, 39, 0.24), inset 0 2px 0 rgba(255, 255, 255, 0.42); transform: translate(-50%, -50%) translateZ(54px); }
+.home-learning-core::before { position: absolute; inset: -24px; border: 1px solid color-mix(in srgb, var(--mr-secondary) 25%, transparent); border-radius: inherit; content: ''; animation: home-learning-core-ring 9s linear infinite; }
+.home-learning-core strong, .home-learning-core small { position: relative; z-index: 1; }
+.home-learning-core strong { font-size: 38px; font-weight: 800; letter-spacing: -0.1em; }
+.home-learning-core small { margin-top: 3px; color: rgba(255, 255, 255, 0.72); font: 700 8px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.12em; }
+.home-learning-node { position: absolute; z-index: 4; display: flex; align-items: center; gap: 9px; min-width: 135px; padding: 10px 12px 10px 10px; border: 1px solid color-mix(in srgb, var(--mr-primary) 30%, var(--mr-border-strong)); border-radius: 17px; color: var(--mr-text); background: linear-gradient(145deg, color-mix(in srgb, var(--mr-surface-raised) 86%, transparent), color-mix(in srgb, var(--mr-primary) 9%, transparent)); box-shadow: inset 0 1px 0 var(--glass-highlight), 0 14px 28px rgba(17, 24, 39, 0.12); backdrop-filter: blur(11px) saturate(135%); -webkit-backdrop-filter: blur(11px) saturate(135%); animation: home-learning-node-float 5.8s ease-in-out infinite; }
+.home-learning-node:hover { border-color: color-mix(in srgb, var(--mr-secondary) 60%, var(--mr-border-strong)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), 0 18px 34px color-mix(in srgb, var(--mr-primary) 18%, transparent); }
+.home-learning-node-icon { display: grid; width: 28px; height: 28px; flex: 0 0 auto; place-items: center; border-radius: 10px; color: var(--mr-primary); background: color-mix(in srgb, var(--mr-primary) 12%, transparent); }
+.home-learning-node > span:last-child { display: grid; gap: 3px; }
+.home-learning-node strong { font-size: 11px; font-weight: 750; }
+.home-learning-node small { color: var(--mr-text-subtle); font: 700 8px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.05em; text-transform: uppercase; }
+.home-learning-node-1 { top: 20%; left: 4%; animation-delay: -1s; }
+.home-learning-node-2 { top: 16%; right: 3%; animation-delay: -3.2s; }
+.home-learning-node-3 { bottom: 12%; left: 5%; animation-delay: -4.3s; }
+.home-learning-node-4 { right: 2%; bottom: 15%; animation-delay: -2.1s; }
 .home-final-section { padding: 100px 0; }.home-final-panel { display: flex; align-items: center; justify-content: space-between; gap: 48px; padding: 44px; border: 1px solid color-mix(in srgb, var(--mr-border-strong) 82%, transparent); border-radius: 16px; background: color-mix(in srgb, var(--mr-surface) 76%, transparent); box-shadow: inset 0 1px 0 var(--glass-highlight), 0 24px 56px color-mix(in srgb, var(--mr-primary) 8%, transparent); backdrop-filter: blur(16px) saturate(125%); -webkit-backdrop-filter: blur(16px) saturate(125%); }.home-final-panel > div:first-child { max-width: 670px; }.home-final-actions { display: flex; flex-wrap: wrap; gap: 9px; flex: 0 0 auto; }
 .home-footer { position: relative; z-index: 1; border-top: 1px solid var(--home-section-border); background: var(--mr-surface); }.home-footer-grid { display: grid; grid-template-columns: 1.45fr repeat(3, 0.7fr); gap: 44px; padding: 52px 0 44px; }.home-brand-line { display: flex; align-items: center; gap: 10px; color: var(--mr-text); font-size: 15px; }.home-footer-brand p { max-width: 320px; margin: 14px 0 0; color: var(--mr-text-muted); font-size: 11px; line-height: 1.75; }.home-footer-links { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }.home-footer-links strong { margin-bottom: 4px; color: var(--mr-text); font-size: 12px; }.home-footer-links a, .home-footer-links button { color: var(--mr-text-muted); font-size: 11px; transition: color 160ms ease; }.home-footer-links a:hover, .home-footer-links button:hover { color: var(--mr-primary); }.home-footer-bottom { display: flex; justify-content: space-between; gap: 20px; padding: 18px 0 22px; border-top: 1px solid var(--home-section-border); color: var(--mr-text-subtle); font-size: 10px; }
 .back-to-top { position: fixed; right: 22px; bottom: 22px; z-index: 20; display: grid; width: 40px; height: 40px; place-items: center; border: 1px solid var(--mr-border-strong); border-radius: 8px; color: var(--mr-primary); background: var(--mr-surface); box-shadow: 0 10px 24px rgba(31, 41, 55, 0.12); transition: transform 160ms ease, background-color 160ms ease; }.back-to-top:hover { background: var(--mr-surface-subtle); transform: translateY(-2px); }
 .home-reveal, .home-hero-reveal { will-change: transform, opacity; }
 
 @keyframes home-stage-scan { 0%, 18% { transform: translateY(0); opacity: 0; } 28% { opacity: 0.42; } 82% { opacity: 0.42; } 94%, 100% { transform: translateY(350px); opacity: 0; } }
+@keyframes home-background-float { from { transform: translate3d(0, 0, 0) scale(0.96); } to { transform: translate3d(-22px, 24px, 0) scale(1.06); } }
+@keyframes home-learning-pulse { 0%, 100% { opacity: 0.42; transform: translate(-50%, -50%) scale(0.92); } 50% { opacity: 0.78; transform: translate(-50%, -50%) scale(1.08); } }
+@keyframes home-learning-orbit-spin { to { transform: translate(-50%, -50%) rotateX(68deg) rotateZ(342deg); } }
+@keyframes home-learning-core-ring { to { transform: rotateZ(360deg) scale(1.04); } }
+@keyframes home-learning-node-float { 0%, 100% { transform: translate3d(0, 0, 0); } 50% { transform: translate3d(0, -7px, 0); } }
 
 @media (max-width: 1080px) { .home-navbar { gap: 14px; }.home-nav-links { order: 3; width: 100%; overflow-x: auto; margin-left: 0; scrollbar-width: none; }.home-nav-links::-webkit-scrollbar { display: none; }.home-navbar { flex-wrap: wrap; padding: 9px 0; }.home-hero-section { padding-top: 54px; }.home-hero-layout { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); gap: 20px; }.routing-visual { grid-template-columns: 1fr 42px 0.9fr 42px 1.2fr; padding: 20px; } }
 @media (max-width: 820px) { .home-hero-layout, .home-two-column { grid-template-columns: 1fr; }.home-hero-layout { min-height: auto; }.home-hero-copy { max-width: 680px; }.home-hero-scene { width: min(100%, 720px); margin: 0 auto; }.home-hero-stage-frame, .home-hero-stage-frame :deep(.hero-orbit-stage) { min-height: 520px; }.home-section-light .home-two-column { padding-top: 76px; padding-bottom: 76px; }.routing-visual { grid-template-columns: 1fr; gap: 20px; }.routing-connector { width: 1px; height: 26px; margin: 0 auto; }.routing-connector span { top: auto; right: -3px; bottom: 0; transform: rotate(135deg); }.routing-feature-grid { grid-template-columns: 1fr; margin-bottom: 76px; }.home-observability-layout { display: flex; flex-direction: column-reverse; }.home-workflow-grid { grid-template-columns: repeat(2, 1fr); padding-bottom: 76px; }.home-workflow-step:nth-child(2) .workflow-arrow { display: none; }.home-footer-grid { grid-template-columns: 1.2fr repeat(2, 1fr); }.home-footer-brand { grid-column: 1 / -1; } }
@@ -864,6 +960,29 @@ onBeforeUnmount(() => {
   }
   .home-hero-title span { max-width: 100%; }
   .home-hero-subtitle { line-height: 1.5; }
+}
+@media (max-width: 820px) {
+  .home-learning-layout { grid-template-columns: 1fr; gap: 38px; padding: 88px 0; }
+  .home-learning-layout .home-section-copy { max-width: 680px; }
+  .home-learning-preview { min-height: 430px; }
+}
+@media (max-width: 620px) {
+  .home-learning-layout { gap: 30px; padding: 72px 0; }
+  .home-learning-preview { min-height: 420px; border-radius: 22px; }
+  .home-learning-preview-topline, .home-learning-preview-footer { right: 20px; left: 20px; font-size: 8px; }
+  .home-learning-orbit { height: 340px; margin-top: 58px; }
+  .home-learning-orbit-ring { width: 250px; height: 140px; }
+  .home-learning-orbit-ring-two { width: 190px; height: 245px; }
+  .home-learning-core { width: 112px; height: 112px; }
+  .home-learning-core strong { font-size: 32px; }
+  .home-learning-node { min-width: 116px; padding: 8px; gap: 7px; border-radius: 14px; }
+  .home-learning-node-icon { width: 24px; height: 24px; border-radius: 8px; }
+  .home-learning-node strong { font-size: 10px; }
+  .home-learning-node small { font-size: 7px; }
+  .home-learning-node-1 { left: 0; }
+  .home-learning-node-2 { right: 0; }
+  .home-learning-node-3 { left: 0; }
+  .home-learning-node-4 { right: 0; }
 }
 @media (prefers-reduced-motion: reduce) { .home-page *, .home-page *::before, .home-page *::after { scroll-behavior: auto !important; transition-duration: 1ms !important; animation-duration: 1ms !important; animation-iteration-count: 1 !important; }.home-reveal, .home-hero-reveal { opacity: 1 !important; transform: none !important; }.home-header, .home-hero-stage-frame, .home-code-panel, .home-product-preview, .home-final-panel { backdrop-filter: none; -webkit-backdrop-filter: none; }.home-hero-stage-frame { transform: none; }.home-stage-scanline { display: none; } }
 </style>
