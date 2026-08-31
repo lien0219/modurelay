@@ -68,343 +68,231 @@
     <footer class="compact-home-footer">&copy; {{ currentYear }} {{ siteName }}</footer>
   </div>
 
-  <div v-else ref="pageRef" class="home-page" :class="{ 'home-page-scrolled': isScrolled }">
-    <div class="home-background" aria-hidden="true">
-      <span class="home-background-light home-background-light-one"></span>
-      <span class="home-background-light home-background-light-two"></span>
-      <span class="home-background-rule home-background-rule-one"></span>
-      <span class="home-background-rule home-background-rule-two"></span>
+  <div v-else ref="pageRef" class="home-page theory-home" :class="{ 'theory-home-scrolled': isScrolled }">
+    <div class="theory-scene-layer" aria-hidden="true">
+      <HomeHeroScene />
     </div>
+    <div class="theory-scene-wash" aria-hidden="true"></div>
+    <div class="theory-scene-haze theory-scene-haze-one" aria-hidden="true"></div>
+    <div class="theory-scene-haze theory-scene-haze-two" aria-hidden="true"></div>
 
-    <header class="home-header">
-      <div class="home-scroll-progress" :style="{ width: `${scrollProgress}%` }"></div>
-      <nav class="home-navbar" aria-label="Home navigation">
-        <button class="home-brand" type="button" @click="scrollToSection('home')">
-          <span class="brand-mark"><img :src="siteLogo || brand.logo" :alt="siteName" /></span>
-          <span class="home-brand-name">{{ siteName }}</span>
+    <header class="theory-header">
+      <div class="theory-progress" :style="{ width: `${scrollProgress}%` }"></div>
+      <nav class="theory-header-inner" aria-label="Home navigation">
+        <button class="theory-brand" type="button" @click="scrollToSection('home')">
+          <span class="theory-brand-mark"><img :src="siteLogo || brand.logo" :alt="siteName" /></span>
+          <span>{{ siteName }}</span>
         </button>
 
-        <div class="home-nav-links">
+        <div class="theory-nav" aria-label="Page sections">
           <template v-for="item in navigationItems" :key="item.id">
             <router-link
               v-if="item.id === 'learning'"
               :to="learningEntry"
-              class="home-nav-link"
+              class="theory-nav-link"
               :class="{ 'is-active': activeSection === item.id }"
               :aria-current="activeSection === item.id ? 'page' : undefined"
-            >
-              {{ item.label }}
-            </router-link>
+            >{{ item.label }}</router-link>
             <button
               v-else
               type="button"
-              class="home-nav-link"
+              class="theory-nav-link"
               :class="{ 'is-active': activeSection === item.id }"
               :aria-current="activeSection === item.id ? 'page' : undefined"
               @click="scrollToSection(item.id)"
-            >
-              {{ item.label }}
-            </button>
+            >{{ item.label }}</button>
           </template>
         </div>
 
-        <div class="home-nav-actions">
+        <div class="theory-actions">
           <LocaleSwitcher />
-          <a
-            v-if="docUrl"
-            :href="docUrl"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="home-icon-button home-doc-link"
-            :title="copy.nav.docs"
-          >
+          <a v-if="docUrl" :href="docUrl" target="_blank" rel="noopener noreferrer" class="theory-action-button" :title="copy.nav.docs" aria-label="Documentation">
             <Icon name="book" size="sm" />
           </a>
-          <router-link
-            v-if="showModelPlazaEntry"
-            to="/model-plaza"
-            class="home-quiet-link"
-            :title="t('nav.modelPlaza')"
-          >
+          <router-link v-if="showModelPlazaEntry" to="/model-plaza" class="theory-action-button" :title="t('nav.modelPlaza')" :aria-label="t('nav.modelPlaza')">
             <Icon name="grid" size="sm" />
-            <span class="hidden lg:inline">{{ t('nav.modelPlaza') }}</span>
           </router-link>
-          <button
-            type="button"
-            class="home-icon-button"
-            :title="isDark ? copy.nav.light : copy.nav.dark"
-            @click="toggleTheme"
-          >
+          <button type="button" class="theory-action-button" :title="isDark ? copy.nav.light : copy.nav.dark" @click="toggleTheme">
             <Icon v-if="isDark" name="sun" size="sm" />
             <Icon v-else name="moon" size="sm" />
           </button>
-          <router-link v-if="isAuthenticated" :to="dashboardPath" class="home-solid-button">
-            <span class="home-user-avatar">{{ userInitial }}</span>
-            <span class="hidden sm:inline">{{ copy.nav.dashboard }}</span>
+          <router-link v-if="isAuthenticated" :to="dashboardPath" class="theory-auth-button">
+            <span class="theory-user-avatar">{{ userInitial }}</span>
+            <span class="theory-auth-label">{{ copy.nav.dashboard }}</span>
           </router-link>
-          <router-link v-else to="/login" class="home-solid-button" :title="copy.nav.login" :aria-label="copy.nav.login">
-            <span class="home-auth-label">{{ copy.nav.login }}</span>
-            <Icon name="arrowRight" size="xs" />
+          <router-link v-else to="/login" class="theory-auth-button" :title="copy.nav.login" :aria-label="copy.nav.login">
+            <span>{{ copy.nav.login }}</span><Icon name="arrowRight" size="xs" />
           </router-link>
         </div>
       </nav>
     </header>
 
-    <main>
-      <section id="home" data-home-section class="home-section home-hero-section">
-        <div class="home-container home-hero-layout">
-          <div class="home-hero-copy">
-            <div class="home-overline home-hero-reveal">{{ copy.hero.eyebrow }}</div>
-            <h1 class="home-hero-title home-hero-reveal">
+    <aside class="theory-side-rail" aria-hidden="true">
+      <span>MODURELAY / 2026</span>
+      <span class="theory-side-rail-line"></span>
+      <span>RELAY CORE</span>
+    </aside>
+
+    <main class="theory-main">
+      <section id="home" data-home-section class="theory-hero">
+        <div class="theory-hero-inner">
+          <div class="theory-hero-copy">
+            <div class="theory-eyebrow home-hero-reveal"><span class="theory-live-dot"></span>{{ copy.hero.eyebrow }}</div>
+            <h1 class="theory-hero-title home-hero-reveal">
               <span>{{ copy.hero.title }}</span>
-              <span class="home-hero-title-accent">{{ copy.hero.titleAccent }}</span>
+              <span class="theory-hero-title-accent">{{ copy.hero.titleAccent }}</span>
             </h1>
-            <p class="home-hero-subtitle home-hero-reveal">{{ copy.hero.subtitle }}</p>
-            <p class="home-hero-description home-hero-reveal">{{ copy.hero.description }}</p>
-            <div class="home-hero-actions home-hero-reveal">
-              <router-link :to="isAuthenticated ? dashboardPath : '/login'" class="home-primary-button">
-                {{ isAuthenticated ? copy.hero.dashboardCta : copy.hero.primaryCta }}
-                <Icon name="arrowRight" size="sm" />
+            <p class="theory-hero-subtitle home-hero-reveal">{{ copy.hero.subtitle }}</p>
+            <p class="theory-hero-description home-hero-reveal">{{ copy.hero.description }}</p>
+            <div class="theory-hero-actions home-hero-reveal">
+              <router-link :to="isAuthenticated ? dashboardPath : '/login'" class="theory-primary-button">
+                {{ isAuthenticated ? copy.hero.dashboardCta : copy.hero.primaryCta }}<Icon name="arrowRight" size="sm" />
               </router-link>
-              <router-link to="/key-usage" class="home-secondary-button">
-                {{ copy.hero.secondaryCta }}
-                <Icon name="chart" size="sm" />
+              <router-link to="/key-usage" class="theory-secondary-button">
+                {{ copy.hero.secondaryCta }}<Icon name="chart" size="sm" />
               </router-link>
             </div>
-            <div class="home-hero-facts home-hero-reveal">
+            <div class="theory-hero-facts home-hero-reveal">
               <span v-for="fact in copy.hero.facts" :key="fact"><i></i>{{ fact }}</span>
             </div>
           </div>
 
-          <div class="home-hero-scene home-hero-reveal">
-            <div
-              ref="heroStageRef"
-              class="home-hero-stage-frame"
-              @pointermove="handleHeroPointerMove"
-              @pointerleave="resetHeroPointer"
-            >
-              <div class="home-stage-topline" aria-hidden="true">
-                <span>MODURELAY / RELAY CORE</span>
-                <span class="home-stage-status"><i></i> LIVE ROUTE</span>
-              </div>
-              <HomeHeroScene />
-              <div class="home-stage-footline" aria-hidden="true">
-                <span>OPENAI COMPATIBLE</span>
-                <span>MODEL / ROUTE / USAGE</span>
-              </div>
-            </div>
+          <div class="theory-telemetry home-hero-reveal" aria-hidden="true">
+            <div class="theory-telemetry-head"><span>LIVE SYSTEM</span><span class="theory-telemetry-status"><i></i>READY</span></div>
+            <div class="theory-telemetry-rule"></div>
+            <div class="theory-telemetry-row"><span>REQUEST</span><strong>/v1/chat/completions</strong></div>
+            <div class="theory-telemetry-row"><span>ROUTE</span><strong>POLICY MATCH</strong></div>
+            <div class="theory-telemetry-row"><span>USAGE</span><strong>TRACKED</strong></div>
           </div>
         </div>
-      </section>
 
-      <section class="home-capability-strip" aria-label="ModuRelay capabilities">
-        <div class="home-container home-capability-grid">
-          <span v-for="item in copy.capabilities.strip" :key="item"><i></i>{{ item }}</span>
+        <div class="theory-hero-footer">
+          <span>OPENAI COMPATIBLE <i></i> MODEL ROUTE USAGE</span>
+          <button type="button" class="theory-scroll-cue" @click="scrollToSection('integrate')"><span>SCROLL TO EXPLORE</span><Icon name="arrowDown" size="sm" /></button>
         </div>
       </section>
 
-      <section id="integrate" data-home-section class="home-section home-section-light">
-        <div class="home-container home-two-column">
-          <div class="home-section-copy home-reveal">
-            <span class="home-section-index">01 / INTEGRATE</span>
+      <section id="integrate" data-home-section class="theory-section theory-section-surface">
+        <div class="theory-section-inner">
+          <div class="theory-chapter-label home-reveal">01 / INTEGRATE</div>
+          <div class="theory-section-heading home-reveal">
             <h2>{{ copy.integrate.title }}</h2>
             <p>{{ copy.integrate.description }}</p>
-            <div class="home-endpoint-list">
-              <div v-for="endpoint in copy.integrate.endpoints" :key="endpoint.path" class="home-endpoint-row">
-                <span class="endpoint-method">{{ endpoint.method }}</span>
-                <code>{{ endpoint.path }}</code>
-                <span>{{ endpoint.label }}</span>
-              </div>
-            </div>
           </div>
-
-          <div class="home-code-panel home-reveal">
-            <div class="home-code-header">
-              <div class="home-window-dots"><i></i><i></i><i></i></div>
-              <div class="home-code-tabs" role="tablist" :aria-label="copy.integrate.codeLabel">
-                <button
-                  v-for="sample in codeSampleOptions"
-                  :key="sample.key"
-                  type="button"
-                  role="tab"
-                  :aria-selected="activeCodeSample === sample.key"
-                  :class="{ 'is-active': activeCodeSample === sample.key }"
-                  @click="activeCodeSample = sample.key"
-                >{{ sample.label }}</button>
+          <div class="theory-integrate-grid">
+            <div class="theory-endpoint-list home-reveal">
+              <div v-for="endpoint in copy.integrate.endpoints" :key="endpoint.path" class="theory-endpoint-row">
+                <span class="theory-endpoint-method">{{ endpoint.method }}</span>
+                <div><code>{{ endpoint.path }}</code><span>{{ endpoint.label }}</span></div>
+                <Icon name="arrowRight" size="sm" />
               </div>
             </div>
-            <Transition name="home-code-swap" mode="out-in">
-              <pre :key="activeCodeSample"><code>{{ activeCode }}</code></pre>
-            </Transition>
-            <div class="home-code-footer"><span class="home-status-dot"></span>{{ copy.integrate.codeFooter }}</div>
+            <div class="theory-terminal home-reveal">
+              <div class="theory-terminal-header">
+                <div class="theory-window-dots"><i></i><i></i><i></i></div>
+                <div class="theory-code-tabs" role="tablist" :aria-label="copy.integrate.codeLabel">
+                  <button v-for="sample in codeSampleOptions" :key="sample.key" type="button" role="tab" :aria-selected="activeCodeSample === sample.key" :class="{ 'is-active': activeCodeSample === sample.key }" @click="activeCodeSample = sample.key">{{ sample.label }}</button>
+                </div>
+              </div>
+              <Transition name="theory-code-swap" mode="out-in">
+                <pre :key="activeCodeSample"><code>{{ activeCode }}</code></pre>
+              </Transition>
+              <div class="theory-terminal-footer"><span class="theory-live-dot"></span>{{ copy.integrate.codeFooter }}</div>
+            </div>
           </div>
         </div>
       </section>
 
-      <section id="routing" data-home-section class="home-section home-section-contrast">
-        <div class="home-container">
-          <div class="home-section-heading home-reveal">
-            <span class="home-section-index">02 / ROUTING CORE</span>
+      <section id="routing" data-home-section class="theory-section theory-section-dark">
+        <div class="theory-section-inner">
+          <div class="theory-chapter-label home-reveal">02 / ROUTING CORE</div>
+          <div class="theory-section-heading theory-section-heading-wide home-reveal">
             <h2>{{ copy.routing.title }}</h2>
             <p>{{ copy.routing.description }}</p>
           </div>
-          <div class="routing-visual home-reveal">
-            <div class="routing-node routing-node-request">
-              <span class="routing-node-icon"><Icon name="link" size="md" /></span>
-              <strong>{{ copy.routing.request.title }}</strong>
-              <code>/v1/chat/completions</code>
+          <div class="theory-route-map home-reveal">
+            <div class="theory-route-track theory-route-track-one"></div>
+            <div class="theory-route-track theory-route-track-two"></div>
+            <div class="theory-route-node theory-route-node-request">
+              <span class="theory-route-node-index">01</span><Icon name="link" size="md" /><strong>{{ copy.routing.request.title }}</strong><code>/v1/chat/completions</code>
             </div>
-            <div class="routing-connector"><span></span></div>
-            <div class="routing-core-node">
-              <div class="routing-core-mark"><span>M</span></div>
-              <strong>Relay Core</strong>
-              <small>{{ copy.routing.coreCaption }}</small>
-            </div>
-            <div class="routing-connector"><span></span></div>
-            <div class="routing-node routing-node-routes">
-              <span class="routing-node-label">{{ copy.routing.routesLabel }}</span>
-              <div v-for="route in copy.routing.routes" :key="route.title" class="routing-route-row">
-                <span class="home-status-dot"></span>
-                <strong>{{ route.title }}</strong>
-                <small>{{ route.detail }}</small>
-              </div>
+            <div class="theory-route-core"><span class="theory-route-core-ring"></span><span class="theory-route-core-mark">M</span><strong>RELAY CORE</strong><small>{{ copy.routing.coreCaption }}</small></div>
+            <div class="theory-route-node theory-route-node-output">
+              <span class="theory-route-node-index">02</span><span class="theory-route-node-label">{{ copy.routing.routesLabel }}</span>
+              <div v-for="route in copy.routing.routes" :key="route.title" class="theory-route-output-row"><i></i><strong>{{ route.title }}</strong><small>{{ route.detail }}</small></div>
             </div>
           </div>
-          <div class="routing-feature-grid">
-            <article v-for="feature in copy.routing.features" :key="feature.title" class="routing-feature home-reveal">
-              <span class="routing-feature-number">{{ feature.number }}</span>
-              <div><h3>{{ feature.title }}</h3><p>{{ feature.description }}</p></div>
+          <div class="theory-feature-row">
+            <article v-for="feature in copy.routing.features" :key="feature.title" class="theory-feature home-reveal">
+              <span>{{ feature.number }}</span><div><h3>{{ feature.title }}</h3><p>{{ feature.description }}</p></div>
             </article>
           </div>
         </div>
       </section>
 
-      <section id="observability" data-home-section class="home-section home-section-light">
-        <div class="home-container home-two-column home-observability-layout">
-          <div class="home-product-preview home-reveal" aria-label="ModuRelay control and observability preview">
-            <div class="preview-window-bar"><span>MODURELAY / PREVIEW</span><span class="preview-live"><i></i>SAMPLE</span></div>
-            <div class="preview-body">
-              <aside class="preview-sidebar">
-                <span class="preview-logo">M</span>
-                <i></i><i></i><i></i><i></i>
-              </aside>
-              <div class="preview-main">
-                <div class="preview-title-row"><strong>{{ copy.observability.previewTitle }}</strong><span>Workspace view</span></div>
-                <div class="preview-kpis">
-                  <div><span>Requests</span><strong>Usage</strong><em>tracked</em></div>
-                  <div><span>Configured routes</span><strong>Policy</strong><em class="is-cyan">ready</em></div>
-                </div>
-                <div class="preview-chart" aria-hidden="true">
-                  <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
-                  <svg viewBox="0 0 520 120" preserveAspectRatio="none"><path d="M0 96 C30 87 42 92 62 70 S96 88 120 73 S147 35 171 61 S202 73 228 44 S262 58 286 42 S321 70 348 40 S380 61 406 25 S435 53 460 34 S489 42 520 9" /></svg>
-                </div>
-                <div class="preview-table">
-                  <div v-for="route in copy.observability.previewRoutes" :key="route" class="preview-table-row"><span>{{ route }}</span><span class="home-status-dot"></span><strong>Ready</strong><small>route</small></div>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div class="home-section-copy home-reveal">
-            <span class="home-section-index">03 / OBSERVABILITY</span>
+      <section id="observability" data-home-section class="theory-section theory-section-surface theory-observability-section">
+        <div class="theory-section-inner theory-split-section">
+          <div class="theory-observability-copy home-reveal">
+            <div class="theory-chapter-label">03 / OBSERVABILITY</div>
             <h2>{{ copy.observability.title }}</h2>
             <p>{{ copy.observability.description }}</p>
-            <div class="home-observability-list">
-              <div v-for="item in copy.observability.items" :key="item.title">
-                <span class="home-list-icon"><Icon :name="item.icon" size="sm" /></span>
-                <div><strong>{{ item.title }}</strong><p>{{ item.description }}</p></div>
-              </div>
+            <div class="theory-observability-list">
+              <div v-for="item in copy.observability.items" :key="item.title" class="theory-observability-item"><span><Icon :name="item.icon" size="sm" /></span><div><strong>{{ item.title }}</strong><p>{{ item.description }}</p></div></div>
             </div>
+          </div>
+          <div class="theory-console home-reveal" aria-label="ModuRelay control and observability preview">
+            <div class="theory-console-top"><span>MODURELAY / OPERATIONS</span><span><i></i>LIVE SAMPLE</span></div>
+            <div class="theory-console-title"><strong>{{ copy.observability.previewTitle }}</strong><span>Workspace view</span></div>
+            <div class="theory-console-kpis"><div><span>REQUESTS</span><strong>12.8K</strong><em>tracked</em></div><div><span>ROUTES</span><strong>04</strong><em>healthy</em></div><div><span>LATENCY</span><strong>182ms</strong><em>stable</em></div></div>
+            <div class="theory-console-chart" aria-hidden="true"><span v-for="index in 12" :key="index"></span><svg viewBox="0 0 620 150" preserveAspectRatio="none"><path d="M0 122 C34 111 48 118 75 94 S116 107 141 86 S181 52 208 82 S252 99 281 65 S318 79 349 59 S395 91 425 49 S465 72 496 41 S543 61 573 26 S603 36 620 15" /></svg></div>
+            <div class="theory-console-routes"><div v-for="route in copy.observability.previewRoutes" :key="route"><span>{{ route }}</span><i></i><strong>READY</strong><small>route</small></div></div>
           </div>
         </div>
       </section>
 
-      <section id="workflow" data-home-section class="home-section home-section-contrast home-workflow-section">
-        <div class="home-container">
-          <div class="home-section-heading home-reveal">
-            <span class="home-section-index">04 / WORKFLOW</span>
-            <h2>{{ copy.workflow.title }}</h2>
-            <p>{{ copy.workflow.description }}</p>
-          </div>
-          <div class="home-workflow-grid">
-            <article v-for="(step, index) in copy.workflow.steps" :key="step.title" class="home-workflow-step home-reveal">
-              <div class="workflow-step-top"><span>0{{ index + 1 }}</span><Icon :name="step.icon" size="md" /></div>
-              <h3>{{ step.title }}</h3>
-              <p>{{ step.description }}</p>
-              <div v-if="index < copy.workflow.steps.length - 1" class="workflow-arrow" aria-hidden="true"><Icon name="arrowRight" size="sm" /></div>
+      <section id="workflow" data-home-section class="theory-section theory-section-dark theory-workflow-section">
+        <div class="theory-section-inner">
+          <div class="theory-chapter-label home-reveal">04 / WORKFLOW</div>
+          <div class="theory-section-heading home-reveal"><h2>{{ copy.workflow.title }}</h2><p>{{ copy.workflow.description }}</p></div>
+          <div class="theory-workflow-track">
+            <article v-for="(step, index) in copy.workflow.steps" :key="step.title" class="theory-workflow-step home-reveal">
+              <div class="theory-workflow-step-top"><span>0{{ index + 1 }}</span><Icon :name="step.icon" size="md" /></div><h3>{{ step.title }}</h3><p>{{ step.description }}</p><span v-if="index < copy.workflow.steps.length - 1" class="theory-workflow-connector"><i></i></span>
             </article>
           </div>
         </div>
       </section>
 
-      <section id="learning" data-home-section class="home-section home-learning-section">
-        <div class="home-container home-learning-layout">
-          <div class="home-section-copy home-reveal">
-            <span class="home-section-index">{{ copy.learning.eyebrow }}</span>
+      <section id="learning" data-home-section class="theory-section theory-learning-section">
+        <div class="theory-section-inner theory-learning-layout">
+          <div class="theory-learning-copy home-reveal">
+            <div class="theory-chapter-label">{{ copy.learning.eyebrow }}</div>
             <h2>{{ copy.learning.title }}</h2>
             <p>{{ copy.learning.description }}</p>
-            <div class="home-learning-points">
-              <span v-for="point in copy.learning.points" :key="point"><i></i>{{ point }}</span>
-            </div>
-            <router-link :to="learningEntry" class="home-primary-button home-learning-cta">
-              {{ copy.learning.cta }}
-              <Icon name="arrowRight" size="sm" />
-            </router-link>
+            <div class="theory-learning-points"><span v-for="point in copy.learning.points" :key="point"><i></i>{{ point }}</span></div>
+            <router-link :to="learningEntry" class="theory-primary-button">{{ copy.learning.cta }}<Icon name="arrowRight" size="sm" /></router-link>
           </div>
-
-          <div class="home-learning-preview home-reveal" aria-label="AI learning capability preview">
-            <div class="home-learning-preview-topline">
-              <span>AI LEARNING / CAPABILITY MAP</span>
-              <span><i></i>{{ copy.learning.status }}</span>
-            </div>
-            <div class="home-learning-orbit" aria-hidden="true">
-              <span class="home-learning-orbit-ring home-learning-orbit-ring-one"></span>
-              <span class="home-learning-orbit-ring home-learning-orbit-ring-two"></span>
-              <div class="home-learning-core"><strong>AI</strong><small>KNOWLEDGE</small></div>
-              <span v-for="(node, index) in copy.learning.nodes" :key="node.label" class="home-learning-node" :class="`home-learning-node-${index + 1}`">
-                <span class="home-learning-node-icon"><Icon :name="node.icon" size="sm" /></span>
-                <span><strong>{{ node.label }}</strong><small>{{ node.detail }}</small></span>
-              </span>
-            </div>
-            <div class="home-learning-preview-footer">
-              <span>{{ copy.learning.footer }}</span>
-              <router-link :to="learningEntry"><Icon name="arrowUp" size="xs" /></router-link>
-            </div>
+          <div class="theory-learning-field home-reveal" aria-label="AI learning capability map">
+            <div class="theory-learning-field-head"><span>AI LEARNING / CAPABILITY MAP</span><span><i></i>{{ copy.learning.status }}</span></div>
+            <div class="theory-learning-field-body" aria-hidden="true"><span class="theory-learning-orbit theory-learning-orbit-one"></span><span class="theory-learning-orbit theory-learning-orbit-two"></span><span class="theory-learning-orbit theory-learning-orbit-three"></span><div class="theory-learning-core"><strong>AI</strong><small>LEARNING CORE</small></div><span v-for="(node, index) in copy.learning.nodes" :key="node.label" class="theory-learning-node" :class="`theory-learning-node-${index + 1}`"><span class="theory-learning-node-icon"><Icon :name="node.icon" size="sm" /></span><span><strong>{{ node.label }}</strong><small>{{ node.detail }}</small></span></span></div>
+            <div class="theory-learning-field-foot"><span>{{ copy.learning.footer }}</span><Icon name="arrowRight" size="sm" /></div>
           </div>
         </div>
       </section>
 
-      <section id="contact" data-home-section class="home-section home-final-section">
-        <div class="home-container home-final-panel home-reveal">
-          <div>
-            <span class="home-section-index">MODURELAY</span>
-            <h2>{{ copy.contact.title }}</h2>
-            <p>{{ copy.contact.description }}</p>
-          </div>
-          <div class="home-final-actions">
-            <router-link :to="isAuthenticated ? dashboardPath : '/login'" class="home-primary-button">
-              {{ isAuthenticated ? copy.hero.dashboardCta : copy.contact.primaryCta }}
-              <Icon name="arrowRight" size="sm" />
-            </router-link>
-            <a v-if="docUrl" :href="docUrl" target="_blank" rel="noopener noreferrer" class="home-secondary-button">{{ copy.contact.docsCta }}<Icon name="book" size="sm" /></a>
-          </div>
+      <section id="contact" data-home-section class="theory-section theory-contact-section">
+        <div class="theory-contact-panel home-reveal">
+          <div><div class="theory-chapter-label">MODURELAY</div><h2>{{ copy.contact.title }}</h2><p>{{ copy.contact.description }}</p></div>
+          <div class="theory-contact-actions"><router-link :to="isAuthenticated ? dashboardPath : '/login'" class="theory-primary-button">{{ isAuthenticated ? copy.hero.dashboardCta : copy.contact.primaryCta }}<Icon name="arrowRight" size="sm" /></router-link><a v-if="docUrl" :href="docUrl" target="_blank" rel="noopener noreferrer" class="theory-secondary-button">{{ copy.contact.docsCta }}<Icon name="book" size="sm" /></a></div>
         </div>
       </section>
     </main>
 
-    <footer class="home-footer">
-      <div class="home-container home-footer-grid">
-        <div class="home-footer-brand">
-          <div class="home-brand-line"><span class="brand-mark"><img :src="siteLogo || brand.logo" :alt="siteName" /></span><strong>{{ siteName }}</strong></div>
-          <p>{{ copy.footer.description }}</p>
-        </div>
-        <div class="home-footer-links"><strong>{{ copy.footer.product }}</strong><button type="button" @click="scrollToSection('integrate')">{{ copy.nav.integrate }}</button><button type="button" @click="scrollToSection('routing')">{{ copy.nav.routing }}</button><button type="button" @click="scrollToSection('observability')">{{ copy.nav.observability }}</button></div>
-        <div class="home-footer-links"><strong>{{ copy.footer.resources }}</strong><a v-if="docUrl" :href="docUrl" target="_blank" rel="noopener noreferrer">{{ copy.nav.docs }}</a><router-link to="/key-usage">{{ copy.footer.usage }}</router-link><router-link to="/model-plaza">{{ t('nav.modelPlaza') }}</router-link><router-link :to="learningEntry">{{ copy.nav.learning }}</router-link></div>
-        <div class="home-footer-links"><strong>{{ copy.footer.account }}</strong><router-link :to="isAuthenticated ? dashboardPath : '/login'">{{ isAuthenticated ? copy.nav.dashboard : copy.nav.login }}</router-link><button type="button" @click="scrollToSection('contact')">{{ copy.nav.contact }}</button></div>
-      </div>
-      <div class="home-container home-footer-bottom"><span>&copy; {{ currentYear }} {{ siteName }}. {{ copy.footer.rights }}</span><span>{{ copy.footer.tagline }}</span></div>
+    <footer class="theory-footer">
+      <div class="theory-footer-main"><div class="theory-footer-brand"><div class="theory-brand-line"><span class="theory-brand-mark"><img :src="siteLogo || brand.logo" :alt="siteName" /></span><strong>{{ siteName }}</strong></div><p>{{ copy.footer.description }}</p></div><div class="theory-footer-links"><strong>{{ copy.footer.product }}</strong><button type="button" @click="scrollToSection('integrate')">{{ copy.nav.integrate }}</button><button type="button" @click="scrollToSection('routing')">{{ copy.nav.routing }}</button><button type="button" @click="scrollToSection('observability')">{{ copy.nav.observability }}</button></div><div class="theory-footer-links"><strong>{{ copy.footer.resources }}</strong><a v-if="docUrl" :href="docUrl" target="_blank" rel="noopener noreferrer">{{ copy.nav.docs }}</a><router-link to="/key-usage">{{ copy.footer.usage }}</router-link><router-link :to="learningEntry">{{ copy.nav.learning }}</router-link></div><div class="theory-footer-links"><strong>{{ copy.footer.account }}</strong><router-link :to="isAuthenticated ? dashboardPath : '/login'">{{ isAuthenticated ? copy.nav.dashboard : copy.nav.login }}</router-link><button type="button" @click="scrollToSection('contact')">{{ copy.nav.contact }}</button></div></div>
+      <div class="theory-footer-bottom"><span>&copy; {{ currentYear }} {{ siteName }}. {{ copy.footer.rights }}</span><span>{{ copy.footer.tagline }}</span></div>
     </footer>
 
-    <button v-show="isScrolled" type="button" class="back-to-top" :title="copy.nav.backToTop" @click="scrollToSection('home')"><Icon name="arrowUp" size="sm" /></button>
+    <button v-show="isScrolled" type="button" class="theory-back-to-top" :title="copy.nav.backToTop" @click="scrollToSection('home')"><Icon name="arrowUp" size="sm" /></button>
   </div>
 </template>
 
@@ -426,27 +314,27 @@ type CodeSampleKey = 'curl' | 'python' | 'node'
 
 const zhCopy = {
   nav: { home: '首页', integrate: '接入', routing: '路由核心', observability: '可观测性', workflow: '工作流', learning: 'AI 学习', contact: '联系我们', docs: '文档', light: '切换浅色模式', dark: '切换深色模式', dashboard: '控制台', login: '登录', backToTop: '返回顶部' },
-  hero: { eyebrow: 'OPENAI-COMPATIBLE API GATEWAY', title: '一个 API', titleAccent: '连接模型与能力', subtitle: '统一接入 自动路由 稳定返回', description: '用熟悉的 OpenAI compatible 接口接入模型，管理密钥，追踪用量，把复杂的路由与故障切换交给 ModuRelay。', primaryCta: '开始使用', dashboardCta: '进入控制台', secondaryCta: '用量查询', facts: ['统一接入', '智能路由', '用量可见'] },
+  hero: { eyebrow: 'OPENAI-COMPATIBLE API GATEWAY', title: '模型很多', titleAccent: '入口只要一个', subtitle: '让接入保持熟悉 让运行保持清楚', description: '沿用 OpenAI 兼容接口，把多模型路由、健康切换与用量追踪交给 ModuRelay。应用只需要关心结果。', primaryCta: '开始使用', dashboardCta: '进入控制台', secondaryCta: '用量查询', facts: ['统一接入', '按策略路由', '用量可见'] },
   capabilities: { strip: ['统一 API 网关', '多模型路由', '健康检查', '用量与额度'] },
-  integrate: { title: '从一个端点开始', description: '沿用熟悉的接口和 SDK 轻松接入。模型选择、路由策略和响应处理统一由网关完成。', codeLabel: 'Code examples', codeFooter: 'Request shape validated at the gateway', endpoints: [{ method: 'POST', path: '/v1/chat/completions', label: 'Chat Completions' }, { method: 'POST', path: '/v1/responses', label: 'Responses API' }, { method: 'GET', path: '/v1/models', label: 'Model discovery' }] },
-  routing: { title: '每一次请求都有清晰去处', description: 'ModuRelay 根据模型能力、线路健康和分组策略选择路径。出现异常时自动切换，让应用保持稳定。', request: { title: 'Your application' }, coreCaption: 'policy + health + usage', routesLabel: 'Available routes', routes: [{ title: 'OpenAI compatible', detail: 'primary route' }, { title: 'Responses API', detail: 'capability match' }, { title: 'Fallback route', detail: 'on provider error' }], features: [{ number: '01', title: 'Provider pools', description: '将可用账户按分组组织，让路由策略清楚可维护。' }, { number: '02', title: 'Failover', description: 'Provider 出错时根据策略切换可用线路，减少中断。' }, { number: '03', title: 'Usage-aware', description: '围绕请求、模型和密钥保留完整的用量上下文。' }] },
-  observability: { title: '运行状态始终清楚', description: '请求、用量、额度和线路状态集中呈现，需要排查时直接找到原因。', previewTitle: 'Operations snapshot', previewRoutes: ['OpenAI / Chat', 'Responses / Primary', 'Fallback / Health'], items: [{ icon: 'chart' as const, title: 'Usage', description: '按日期、模型和密钥查看请求与 token。' }, { icon: 'shield' as const, title: 'Channel status', description: '查看线路健康状态和响应表现。' }, { icon: 'key' as const, title: 'API keys', description: '创建、管理并安全使用接入密钥。' }] },
-  workflow: { title: '让请求稳定抵达', description: '应用只面对一个兼容接口。网关负责选择线路、处理异常并返回结果。', steps: [{ icon: 'link' as const, title: 'Connect', description: '使用 API key 指向 ModuRelay gateway。' }, { icon: 'server' as const, title: 'Relay', description: 'Relay Core 读取分组和路由配置。' }, { icon: 'sync' as const, title: 'Route', description: '选择合适的 Provider，必要时执行切换。' }, { icon: 'check' as const, title: 'Respond', description: '返回兼容响应，同时保留用量信息。' }] },
+  integrate: { title: '从一个请求开始', description: '不改掉熟悉的调用方式。替换 base URL，剩下的接入、选择与返回由网关完成。', codeLabel: 'Code examples', codeFooter: '请求已通过网关校验', endpoints: [{ method: 'POST', path: '/v1/chat/completions', label: 'Chat Completions' }, { method: 'POST', path: '/v1/responses', label: 'Responses API' }, { method: 'GET', path: '/v1/models', label: 'Model discovery' }] },
+  routing: { title: '路由有策略 结果有去处', description: '按模型能力、线路健康和分组策略选择路径，异常时自动切换。每一次请求都有清晰上下文。', request: { title: 'Your application' }, coreCaption: 'policy + health + usage', routesLabel: 'Available routes', routes: [{ title: 'OpenAI compatible', detail: 'primary route' }, { title: 'Responses API', detail: 'capability match' }, { title: 'Fallback route', detail: 'on provider error' }], features: [{ number: '01', title: 'Provider pools', description: '将可用账户组织成清晰的资源池，让策略保持可维护。' }, { number: '02', title: 'Failover', description: '线路出现异常时按策略切换，减少应用中断。' }, { number: '03', title: 'Usage-aware', description: '请求、模型和密钥上下文统一留在用量记录里。' }] },
+  observability: { title: '让运行状态可见', description: '请求、用量、额度和线路状态聚合到同一个视图。需要排查时，信息就在眼前。', previewTitle: 'Operations snapshot', previewRoutes: ['OpenAI / Chat', 'Responses / Primary', 'Fallback / Health'], items: [{ icon: 'chart' as const, title: 'Usage', description: '按日期、模型和密钥查看请求与 token。' }, { icon: 'shield' as const, title: 'Channel status', description: '查看线路健康状态和响应表现。' }, { icon: 'key' as const, title: 'API keys', description: '创建、管理并安全使用接入密钥。' }] },
+  workflow: { title: '从接入到返回 只经过必要步骤', description: '应用只面对一个兼容接口。网关负责选择线路、处理异常并返回结果。', steps: [{ icon: 'link' as const, title: 'Connect', description: '使用 API key 指向 ModuRelay gateway。' }, { icon: 'server' as const, title: 'Relay', description: 'Relay Core 读取分组和路由配置。' }, { icon: 'sync' as const, title: 'Route', description: '选择合适的 Provider，必要时执行切换。' }, { icon: 'check' as const, title: 'Respond', description: '返回兼容响应，同时保留用量信息。' }] },
   learning: { eyebrow: '05 / AI LEARNING', title: '让 AI 经验变成可学习的能力', description: '面向老师与技术专家，把 Agent 设计、工作流、记忆反馈和具身智能整理成真实案例与练习，从看懂到做出结果。', points: ['老师能力：把复杂 AI 讲清楚，让学习有路径', '技术专家：把架构与工程判断落到真实任务', '学习方式：案例理解、动手练习、结果复盘'], cta: '进入 AI 学习', status: '公开内容', footer: '点击主题，查看学习内容', nodes: [{ label: 'Agent', detail: '可教的架构', icon: 'brain' as const }, { label: 'Workflow', detail: '技术专家实践', icon: 'cpu' as const }, { label: 'Memory', detail: '反馈闭环', icon: 'database' as const }, { label: 'Embodied', detail: '真实落地', icon: 'beaker' as const }] },
-  contact: { title: '从一个端点开始让系统更简单', description: '用一个清晰的入口连接模型、路由与用量信息。', primaryCta: '开始使用', docsCta: '查看文档' },
+  contact: { title: '把复杂度留给网关', description: '从一个兼容端点开始，让模型、路由和用量回到同一条链路。', primaryCta: '开始使用', docsCta: '查看文档' },
   footer: { description: '一个面向模型接入与运行管理的 OpenAI compatible API 网关。', product: '产品', resources: '资源', account: '账户', usage: '用量查询', rights: '保留所有权利', tagline: '接入简单 运行清楚' }
 }
 
 const enCopy = {
   nav: { home: 'Home', integrate: 'Integrate', routing: 'Routing core', observability: 'Observability', workflow: 'Workflow', learning: 'AI Learning', contact: 'Contact', docs: 'Docs', light: 'Switch to light mode', dark: 'Switch to dark mode', dashboard: 'Dashboard', login: 'Sign in', backToTop: 'Back to top' },
-  hero: { eyebrow: 'OPENAI-COMPATIBLE API GATEWAY', title: 'One API', titleAccent: 'Connect every capability', subtitle: 'One entry point Smart routing Clear responses', description: 'Use a familiar OpenAI compatible interface to connect models, manage keys and track usage while ModuRelay handles routing and failover.', primaryCta: 'Get started', dashboardCta: 'Open dashboard', secondaryCta: 'Usage lookup', facts: ['One entry point', 'Smart routing', 'Visible usage'] },
+  hero: { eyebrow: 'OPENAI-COMPATIBLE API GATEWAY', title: 'Many models', titleAccent: 'One entry point', subtitle: 'Keep integration familiar Keep runtime clear', description: 'Use an OpenAI-compatible interface while ModuRelay handles multi-model routing, health-based failover and usage tracking. Your application stays focused on the result.', primaryCta: 'Get started', dashboardCta: 'Open dashboard', secondaryCta: 'Usage lookup', facts: ['One entry point', 'Policy-based routing', 'Visible usage'] },
   capabilities: { strip: ['Unified API gateway', 'Multi-model routing', 'Health checks', 'Usage & quota'] },
-  integrate: { title: 'Start with one endpoint', description: 'Keep the interface and SDKs you already know. The gateway handles model choice, routing and response handling in one place.', codeLabel: 'Code examples', codeFooter: 'Request shape validated at the gateway', endpoints: [{ method: 'POST', path: '/v1/chat/completions', label: 'Chat Completions' }, { method: 'POST', path: '/v1/responses', label: 'Responses API' }, { method: 'GET', path: '/v1/models', label: 'Model discovery' }] },
-  routing: { title: 'Every request has a clear destination', description: 'ModuRelay chooses a path from model capability, route health and group policy. When something fails, it switches cleanly so the app can keep moving.', request: { title: 'Your application' }, coreCaption: 'policy + health + usage', routesLabel: 'Available routes', routes: [{ title: 'OpenAI compatible', detail: 'primary route' }, { title: 'Responses API', detail: 'capability match' }, { title: 'Fallback route', detail: 'on provider error' }], features: [{ number: '01', title: 'Provider pools', description: 'Organize available accounts into clear, maintainable groups.' }, { number: '02', title: 'Failover', description: 'Switch to an available route when a Provider returns an error.' }, { number: '03', title: 'Usage-aware', description: 'Keep request, model and key context visible in usage data.' }] },
+  integrate: { title: 'Start with one request', description: 'Keep the calling pattern you already know. Replace the base URL and let the gateway handle access, selection and response handling.', codeLabel: 'Code examples', codeFooter: 'Request shape validated at the gateway', endpoints: [{ method: 'POST', path: '/v1/chat/completions', label: 'Chat Completions' }, { method: 'POST', path: '/v1/responses', label: 'Responses API' }, { method: 'GET', path: '/v1/models', label: 'Model discovery' }] },
+  routing: { title: 'Policy finds the path Result keeps moving', description: 'ModuRelay chooses from model capability, route health and group policy, then fails over when a route needs attention.', request: { title: 'Your application' }, coreCaption: 'policy + health + usage', routesLabel: 'Available routes', routes: [{ title: 'OpenAI compatible', detail: 'primary route' }, { title: 'Responses API', detail: 'capability match' }, { title: 'Fallback route', detail: 'on provider error' }], features: [{ number: '01', title: 'Provider pools', description: 'Organize available accounts into clear, maintainable groups.' }, { number: '02', title: 'Failover', description: 'Switch to an available route when a Provider returns an error.' }, { number: '03', title: 'Usage-aware', description: 'Keep request, model and key context visible in usage data.' }] },
   observability: { title: 'Keep runtime easy to read', description: 'See requests, usage, quota and route status together, then get to the reason when something needs attention.', previewTitle: 'Operations snapshot', previewRoutes: ['OpenAI / Chat', 'Responses / Primary', 'Fallback / Health'], items: [{ icon: 'chart' as const, title: 'Usage', description: 'Review requests and tokens by date, model and key.' }, { icon: 'shield' as const, title: 'Channel status', description: 'See route health and response behavior.' }, { icon: 'key' as const, title: 'API keys', description: 'Create, manage and use access keys securely.' }] },
-  workflow: { title: 'Help every request arrive', description: 'The client sees one compatible API. The gateway chooses the route, handles exceptions and returns the result.', steps: [{ icon: 'link' as const, title: 'Connect', description: 'Point an existing client at the ModuRelay gateway.' }, { icon: 'server' as const, title: 'Relay', description: 'Relay Core reads group and route configuration.' }, { icon: 'sync' as const, title: 'Route', description: 'Choose the right Provider and fail over when needed.' }, { icon: 'check' as const, title: 'Respond', description: 'Return a compatible response with usage context.' }] },
+  workflow: { title: 'Only the necessary steps', description: 'The client sees one compatible API. The gateway chooses the route, handles exceptions and returns the result.', steps: [{ icon: 'link' as const, title: 'Connect', description: 'Point an existing client at the ModuRelay gateway.' }, { icon: 'server' as const, title: 'Relay', description: 'Relay Core reads group and route configuration.' }, { icon: 'sync' as const, title: 'Route', description: 'Choose the right Provider and fail over when needed.' }, { icon: 'check' as const, title: 'Respond', description: 'Return a compatible response with usage context.' }] },
   learning: { eyebrow: '05 / AI LEARNING', title: 'Turn AI experience into learnable capability', description: 'For teachers and technical experts, real cases turn Agent design, workflows, memory and embodied intelligence into something you can understand and practise.', points: ['Teacher capability: make complex AI clear and teachable', 'Technical experts: bring architecture and engineering judgement into real tasks', 'Learning method: understand, practise and review'], cta: 'Enter AI Learning', status: 'PUBLIC SUMMARY', footer: 'Select a topic to explore', nodes: [{ label: 'Agent', detail: 'Teach the architecture', icon: 'brain' as const }, { label: 'Workflow', detail: 'Expert practice', icon: 'cpu' as const }, { label: 'Memory', detail: 'Feedback loop', icon: 'database' as const }, { label: 'Embodied', detail: 'Real-world proof', icon: 'beaker' as const }] },
-  contact: { title: 'Start with one endpoint and simplify the system', description: 'Bring models, routing and usage into one clear entry point.', primaryCta: 'Get started', docsCta: 'Read the docs' },
+  contact: { title: 'Leave the complexity to the gateway', description: 'Start with one compatible endpoint and bring models, routing and usage back into one clear path.', primaryCta: 'Get started', docsCta: 'Read the docs' },
   footer: { description: 'An OpenAI compatible API gateway for model access and runtime management.', product: 'Product', resources: 'Resources', account: 'Account', usage: 'Usage lookup', rights: 'All rights reserved', tagline: 'Simple to connect Clear to operate' }
 }
 
@@ -459,7 +347,6 @@ const isScrolled = ref(false)
 const scrollProgress = ref(0)
 const isDark = ref(document.documentElement.classList.contains('dark'))
 const activeCodeSample = ref<CodeSampleKey>('curl')
-const heroStageRef = ref<HTMLElement | null>(null)
 let sectionObserver: IntersectionObserver | null = null
 let revealObserver: IntersectionObserver | null = null
 let scrollFrame = 0
@@ -533,27 +420,6 @@ const activeCode = computed(() => codeSamples.value[activeCodeSample.value])
 
 function toggleTheme(event?: MouseEvent) {
   isDark.value = toggleThemeWithTransition(isDark.value, event)
-}
-
-function handleHeroPointerMove(event: PointerEvent) {
-  const stage = heroStageRef.value
-  if (!stage || event.pointerType === 'touch') return
-  const rect = stage.getBoundingClientRect()
-  const x = (event.clientX - rect.left) / Math.max(rect.width, 1) - 0.5
-  const y = (event.clientY - rect.top) / Math.max(rect.height, 1) - 0.5
-  stage.style.setProperty('--hero-rotate-x', `${y * -1.6}deg`)
-  stage.style.setProperty('--hero-rotate-y', `${x * 2.2}deg`)
-  stage.style.setProperty('--hero-light-x', `${50 + x * 34}%`)
-  stage.style.setProperty('--hero-light-y', `${44 + y * 28}%`)
-}
-
-function resetHeroPointer() {
-  const stage = heroStageRef.value
-  if (!stage) return
-  stage.style.setProperty('--hero-rotate-x', '0deg')
-  stage.style.setProperty('--hero-rotate-y', '0deg')
-  stage.style.setProperty('--hero-light-x', '50%')
-  stage.style.setProperty('--hero-light-y', '44%')
 }
 
 function scrollToSection(id: SectionId) {
@@ -1123,5 +989,312 @@ onBeforeUnmount(() => {
 
 @media (prefers-reduced-motion: reduce) {
   .home-hero-stage-frame:hover { transform: none; }
+}
+
+/* Immersive official home: a scene-first composition with product chapters below it. */
+.theory-home {
+  --theory-bg: #070a12;
+  --theory-bg-deep: #04060c;
+  --theory-surface: rgba(16, 21, 35, 0.76);
+  --theory-surface-strong: #0e1423;
+  --theory-ink: #f5f7ff;
+  --theory-muted: rgba(204, 211, 229, 0.7);
+  --theory-subtle: rgba(165, 176, 201, 0.56);
+  --theory-line: rgba(159, 171, 204, 0.2);
+  --theory-indigo: #8589ff;
+  --theory-cyan: #64e7ee;
+  position: relative;
+  width: 100%;
+  min-height: 100vh;
+  overflow: clip;
+  isolation: isolate;
+  color: var(--theory-ink);
+  background: var(--theory-bg);
+  font-family: "Noto Sans SC Variable", system-ui, sans-serif;
+  font-synthesis: none;
+}
+
+.theory-home.home-page::before,
+.theory-home.home-page::after { display: none; }
+
+:global(.dark) .theory-home {
+  --theory-bg: #03050a;
+  --theory-bg-deep: #010208;
+  --theory-surface: rgba(11, 15, 27, 0.82);
+  --theory-surface-strong: #090d18;
+  --theory-line: rgba(151, 166, 204, 0.24);
+}
+
+.theory-home button,
+.theory-home a { font: inherit; }
+.theory-home button { cursor: pointer; }
+.theory-home button:focus-visible,
+.theory-home a:focus-visible { outline: 2px solid var(--theory-cyan); outline-offset: 4px; }
+.theory-home :where(h1, h2, h3, p) { margin: 0; }
+
+.theory-scene-layer {
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: min(100vh, 980px);
+  min-height: 720px;
+  overflow: hidden;
+  background: #070a12;
+  pointer-events: auto;
+}
+
+.theory-scene-layer :deep(.hero-orbit-stage) {
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  min-height: 100%;
+  transform: translate3d(10vw, 0, 0) scale(1.04);
+  transform-origin: center;
+}
+
+.theory-scene-layer :deep(.scene-shell) { background: #070a12; }
+.theory-scene-wash {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  left: 0;
+  width: min(78%, 1080px);
+  height: min(100vh, 980px);
+  background: linear-gradient(90deg, #070a12 0%, rgba(7, 10, 18, 0.96) 28%, rgba(7, 10, 18, 0.68) 55%, rgba(7, 10, 18, 0) 100%);
+  pointer-events: none;
+}
+
+.theory-scene-haze {
+  position: absolute;
+  z-index: 1;
+  width: 36vw;
+  height: 36vw;
+  min-width: 300px;
+  min-height: 300px;
+  border-radius: 50%;
+  filter: blur(36px);
+  opacity: 0.32;
+  pointer-events: none;
+}
+.theory-scene-haze-one { top: 8%; right: -12%; background: radial-gradient(circle, rgba(76, 225, 235, 0.26), transparent 68%); }
+.theory-scene-haze-two { bottom: -16%; left: 20%; background: radial-gradient(circle, rgba(113, 102, 255, 0.2), transparent 68%); }
+
+.theory-header {
+  position: sticky;
+  z-index: 20;
+  top: 0;
+  border-bottom: 1px solid rgba(159, 171, 204, 0.1);
+  background: rgba(7, 10, 18, 0.28);
+  backdrop-filter: blur(18px) saturate(125%);
+  -webkit-backdrop-filter: blur(18px) saturate(125%);
+  transition: background-color 220ms var(--ease-standard), border-color 220ms var(--ease-standard), box-shadow 220ms var(--ease-standard);
+}
+.theory-home-scrolled .theory-header { border-color: var(--theory-line); background: rgba(5, 7, 13, 0.8); box-shadow: 0 14px 42px rgba(0, 0, 0, 0.18); }
+.theory-progress { position: absolute; top: 0; left: 0; z-index: 2; height: 2px; background: linear-gradient(90deg, var(--theory-indigo), var(--theory-cyan)); transition: width 120ms linear; }
+.theory-header-inner { display: flex; align-items: center; gap: 20px; width: min(calc(100% - 64px), 1400px); min-height: 76px; margin: 0 auto; }
+.theory-brand { display: inline-flex; min-width: max-content; align-items: center; gap: 10px; padding: 0; border: 0; color: var(--theory-ink); background: transparent; font-size: 14px; font-weight: 720; letter-spacing: -0.02em; transition: opacity 180ms ease, transform 180ms var(--ease-standard); }
+.theory-brand:hover { opacity: 0.8; transform: translateY(-1px); }
+.theory-brand-mark { display: grid; width: 30px; height: 30px; flex: 0 0 auto; place-items: center; overflow: hidden; border: 1px solid rgba(125, 231, 236, 0.38); border-radius: 10px; background: linear-gradient(145deg, #4f56d8, #137d84); box-shadow: 0 8px 24px rgba(38, 94, 192, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.32); }
+.theory-brand-mark img { width: 100%; height: 100%; object-fit: contain; }
+.theory-nav { display: flex; min-width: 0; align-items: center; justify-content: center; gap: 2px; margin: 0 auto; padding: 4px; overflow-x: auto; border: 1px solid rgba(159, 171, 204, 0.17); border-radius: 999px; background: rgba(14, 19, 33, 0.58); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 10px 30px rgba(0, 0, 0, 0.12); scrollbar-width: none; }
+.theory-nav::-webkit-scrollbar { display: none; }
+.theory-nav-link { display: inline-flex; min-height: 32px; flex: 0 0 auto; align-items: center; justify-content: center; padding: 0 12px; border: 0; border-radius: 999px; color: var(--theory-subtle); background: transparent; font-size: 11px; font-weight: 590; line-height: 1; white-space: nowrap; transition: color 180ms ease, background-color 180ms ease, transform 180ms var(--ease-standard); }
+.theory-nav-link:hover { color: var(--theory-ink); background: rgba(154, 163, 255, 0.1); transform: translateY(-1px); }
+.theory-nav-link.is-active { color: #fff; background: rgba(116, 123, 255, 0.2); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12); }
+.theory-actions { display: flex; min-width: max-content; align-items: center; gap: 4px; }
+.theory-actions :deep(button) { color: var(--theory-muted); }
+.theory-action-button { display: inline-flex; width: 34px; height: 34px; align-items: center; justify-content: center; border: 1px solid transparent; border-radius: 50%; color: var(--theory-muted); background: transparent; transition: color 180ms ease, border-color 180ms ease, background-color 180ms ease, transform 180ms var(--ease-standard); }
+.theory-action-button:hover { border-color: var(--theory-line); color: var(--theory-ink); background: rgba(159, 171, 204, 0.1); transform: translateY(-1px); }
+.theory-auth-button { display: inline-flex; min-height: 36px; align-items: center; justify-content: center; gap: 7px; padding: 0 13px; border: 1px solid rgba(129, 228, 235, 0.4); border-radius: 999px; color: #071018; background: linear-gradient(120deg, #9296ff, #67e5e8); box-shadow: 0 10px 26px rgba(64, 133, 223, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.5); font-size: 11px; font-weight: 760; transition: filter 180ms ease, transform 180ms var(--ease-standard), box-shadow 180ms ease; }
+.theory-auth-button:hover { filter: saturate(1.12) brightness(1.06); box-shadow: 0 13px 30px rgba(64, 133, 223, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.6); transform: translateY(-2px); }
+.theory-user-avatar { display: grid; width: 20px; height: 20px; place-items: center; border-radius: 50%; color: #fff; background: rgba(8, 15, 34, 0.58); font-size: 9px; font-weight: 800; }
+
+.theory-side-rail { position: absolute; z-index: 4; top: 50%; left: max(24px, calc((100vw - 1400px) / 2)); display: grid; gap: 10px; color: rgba(181, 192, 218, 0.48); font: 700 9px/1.1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.14em; writing-mode: vertical-rl; transform: translateY(-50%); pointer-events: none; }
+.theory-side-rail-line { width: 1px; height: 56px; margin: 5px 0; background: linear-gradient(var(--theory-cyan), transparent); }
+
+.theory-main { position: relative; z-index: 2; }
+.theory-hero { position: relative; display: flex; min-height: max(680px, calc(100svh - 76px)); height: min(920px, calc(100svh - 76px)); flex-direction: column; justify-content: center; padding: 68px 0 76px; scroll-margin-top: 76px; }
+.theory-hero-inner { display: grid; width: min(calc(100% - 64px), 1400px); min-height: 0; grid-template-columns: minmax(0, 0.94fr) minmax(240px, 0.42fr); align-items: center; gap: 48px; margin: auto; }
+.theory-hero-copy { position: relative; z-index: 4; max-width: 690px; }
+.theory-eyebrow, .theory-chapter-label { display: inline-flex; align-items: center; gap: 9px; color: var(--theory-indigo); font: 720 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.18em; text-transform: uppercase; }
+.theory-live-dot { display: inline-block; width: 6px; height: 6px; flex: 0 0 auto; border-radius: 50%; background: var(--theory-cyan); box-shadow: 0 0 0 5px rgba(100, 231, 238, 0.1), 0 0 16px rgba(100, 231, 238, 0.56); }
+.theory-hero-title { max-width: 760px; margin-top: 27px; color: var(--theory-ink); font-size: clamp(66px, 8.2vw, 128px); font-weight: 700; letter-spacing: -0.085em; line-height: 0.88; }
+.theory-hero-title span { display: block; }
+.theory-hero-title-accent { color: transparent; background: linear-gradient(105deg, #8b8fff 4%, #63e4ea 82%); -webkit-background-clip: text; background-clip: text; }
+.theory-hero-subtitle { max-width: 560px; margin-top: 31px !important; color: rgba(241, 244, 255, 0.9); font-size: clamp(17px, 2vw, 23px); font-weight: 520; letter-spacing: -0.03em; line-height: 1.35; }
+.theory-hero-description { max-width: 520px; margin-top: 14px !important; color: var(--theory-muted); font-size: 13px; line-height: 1.9; }
+.theory-hero-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 29px; }
+.theory-primary-button, .theory-secondary-button { display: inline-flex; min-height: 42px; align-items: center; justify-content: center; gap: 9px; border-radius: 999px; font-size: 12px; font-weight: 700; transition: transform 180ms var(--ease-standard), box-shadow 180ms ease, border-color 180ms ease, background-color 180ms ease, color 180ms ease; }
+.theory-primary-button { padding: 0 17px; border: 1px solid rgba(130, 225, 235, 0.42); color: #071018; background: linear-gradient(120deg, #8d92ff, #64e5e9); box-shadow: 0 14px 30px rgba(64, 133, 223, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.52); }
+.theory-secondary-button { padding: 0 16px; border: 1px solid var(--theory-line); color: var(--theory-ink); background: rgba(17, 22, 37, 0.48); }
+.theory-primary-button:hover, .theory-secondary-button:hover { transform: translateY(-2px); }
+.theory-primary-button:hover { box-shadow: 0 18px 38px rgba(64, 133, 223, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.62); filter: saturate(1.08); }
+.theory-secondary-button:hover { border-color: rgba(141, 146, 255, 0.58); background: rgba(116, 123, 255, 0.12); }
+.theory-hero-facts { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 31px; color: var(--theory-subtle); font-size: 11px; }
+.theory-hero-facts span { display: inline-flex; align-items: center; gap: 8px; }
+.theory-hero-facts i, .theory-telemetry-status i, .theory-terminal-footer .theory-live-dot { display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: #6ef0af; box-shadow: 0 0 0 4px rgba(110, 240, 175, 0.1); }
+.theory-telemetry { position: relative; z-index: 4; align-self: end; justify-self: end; width: min(100%, 260px); margin-bottom: 13%; padding: 18px 0 2px; border-top: 1px solid rgba(161, 176, 212, 0.32); border-bottom: 1px solid rgba(161, 176, 212, 0.18); color: var(--theory-subtle); font: 700 9px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.1em; }
+.theory-telemetry-head, .theory-telemetry-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.theory-telemetry-head { color: rgba(226, 231, 248, 0.7); }
+.theory-telemetry-status { display: inline-flex; align-items: center; gap: 7px; color: #6ef0af; }
+.theory-telemetry-rule { height: 1px; margin: 15px 0 5px; background: rgba(161, 176, 212, 0.16); }
+.theory-telemetry-row { padding: 9px 0; border-bottom: 1px solid rgba(161, 176, 212, 0.1); }
+.theory-telemetry-row:last-child { border-bottom: 0; }
+.theory-telemetry-row strong { color: rgba(233, 238, 255, 0.82); font-size: 9px; font-weight: 680; letter-spacing: 0.04em; }
+.theory-hero-footer { display: flex; position: absolute; right: max(32px, calc((100% - 1400px) / 2)); bottom: 27px; left: max(32px, calc((100% - 1400px) / 2)); z-index: 4; align-items: center; justify-content: space-between; gap: 20px; color: rgba(173, 183, 207, 0.5); font: 700 9px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.12em; }
+.theory-hero-footer > span { display: inline-flex; align-items: center; gap: 10px; }
+.theory-hero-footer > span i { display: inline-block; width: 3px; height: 3px; border-radius: 50%; background: var(--theory-cyan); }
+.theory-scroll-cue { display: inline-flex; align-items: center; gap: 12px; padding: 0; border: 0; color: rgba(215, 221, 240, 0.68); background: transparent; font: inherit; letter-spacing: 0.1em; transition: color 180ms ease, transform 180ms var(--ease-standard); }
+.theory-scroll-cue:hover { color: #fff; transform: translateY(2px); }
+.theory-scroll-cue svg { color: var(--theory-cyan); animation: theory-scroll-cue 2.2s ease-in-out infinite; }
+
+.theory-section { position: relative; min-height: 760px; padding: 136px 0; border-top: 1px solid var(--theory-line); scroll-margin-top: 76px; }
+.theory-section-surface { background: linear-gradient(180deg, rgba(15, 20, 34, 0.94), rgba(8, 11, 19, 0.98)); }
+.theory-section-dark { background: var(--theory-bg-deep); }
+.theory-section-inner { width: min(calc(100% - 64px), 1240px); margin: 0 auto; }
+.theory-section-heading { max-width: 760px; margin-top: 24px; }
+.theory-section-heading-wide { max-width: 910px; }
+.theory-section-heading h2, .theory-observability-copy h2, .theory-learning-copy h2, .theory-contact-panel h2 { color: var(--theory-ink); font-size: clamp(48px, 6.5vw, 90px); font-weight: 680; letter-spacing: -0.08em; line-height: 0.94; }
+.theory-section-heading p, .theory-observability-copy > p, .theory-learning-copy > p, .theory-contact-panel p { max-width: 650px; margin-top: 24px; color: var(--theory-muted); font-size: 14px; line-height: 1.9; }
+
+.theory-integrate-grid { display: grid; grid-template-columns: minmax(0, 0.77fr) minmax(0, 1.23fr); align-items: start; gap: 72px; margin-top: 78px; }
+.theory-endpoint-list { border-top: 1px solid var(--theory-line); }
+.theory-endpoint-row { display: grid; grid-template-columns: 48px minmax(0, 1fr) 24px; align-items: center; gap: 14px; min-height: 84px; border-bottom: 1px solid var(--theory-line); color: var(--theory-subtle); transition: padding 180ms var(--ease-standard), background-color 180ms ease, color 180ms ease; }
+.theory-endpoint-row:hover { padding-right: 8px; padding-left: 8px; color: var(--theory-ink); background: rgba(126, 135, 255, 0.06); }
+.theory-endpoint-method { color: var(--theory-cyan); font: 700 10px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.theory-endpoint-row div { display: grid; min-width: 0; gap: 7px; }
+.theory-endpoint-row code { overflow: hidden; color: var(--theory-ink); font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; text-overflow: ellipsis; white-space: nowrap; }
+.theory-endpoint-row div span { color: var(--theory-subtle); font-size: 11px; }
+.theory-endpoint-row svg { color: var(--theory-indigo); transition: transform 180ms var(--ease-standard); }
+.theory-endpoint-row:hover svg { transform: translateX(3px); }
+.theory-terminal { position: relative; min-height: 342px; overflow: hidden; border: 1px solid rgba(152, 168, 209, 0.25); border-radius: 18px; background: rgba(3, 6, 13, 0.84); box-shadow: 0 30px 80px rgba(0, 0, 0, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.08); }
+.theory-terminal::after { position: absolute; top: 0; right: 8%; bottom: 0; width: 1px; background: linear-gradient(transparent, rgba(100, 231, 238, 0.28), transparent); content: ''; opacity: 0.55; pointer-events: none; }
+.theory-terminal-header { display: flex; align-items: center; justify-content: space-between; min-height: 48px; padding: 0 18px; border-bottom: 1px solid rgba(152, 168, 209, 0.18); }
+.theory-window-dots { display: flex; gap: 5px; }
+.theory-window-dots i { width: 6px; height: 6px; border-radius: 50%; background: rgba(168, 181, 215, 0.45); }
+.theory-window-dots i:first-child { background: rgba(255, 123, 149, 0.72); }.theory-window-dots i:nth-child(2) { background: rgba(255, 209, 113, 0.72); }.theory-window-dots i:nth-child(3) { background: rgba(110, 240, 175, 0.72); }
+.theory-code-tabs { display: flex; align-items: center; gap: 2px; }
+.theory-code-tabs button { padding: 6px 8px; border: 0; border-radius: 6px; color: var(--theory-subtle); background: transparent; font: 700 9px ui-monospace, SFMono-Regular, Menlo, monospace; transition: color 160ms ease, background-color 160ms ease; }
+.theory-code-tabs button:hover, .theory-code-tabs button.is-active { color: var(--theory-ink); background: rgba(126, 135, 255, 0.14); }
+.theory-terminal pre { min-height: 244px; margin: 0; padding: 28px 25px; overflow: auto; color: #dce3ff; font: 12px/1.9 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; }
+.theory-terminal code { font: inherit; }
+.theory-terminal-footer { display: flex; align-items: center; gap: 9px; min-height: 48px; padding: 0 18px; border-top: 1px solid rgba(152, 168, 209, 0.16); color: rgba(181, 194, 222, 0.58); font-size: 10px; }
+.theory-code-swap-enter-active, .theory-code-swap-leave-active { transition: opacity 160ms ease, transform 160ms var(--ease-standard); }
+.theory-code-swap-enter-from { opacity: 0; transform: translateY(6px); }.theory-code-swap-leave-to { opacity: 0; transform: translateY(-6px); }
+
+.theory-route-map { position: relative; display: grid; min-height: 370px; grid-template-columns: minmax(0, 1fr) 180px minmax(0, 1fr); align-items: center; gap: 48px; margin-top: 72px; padding: 46px; overflow: hidden; border: 1px solid rgba(154, 169, 212, 0.2); border-radius: 24px; background: radial-gradient(circle at 50% 50%, rgba(113, 109, 255, 0.13), transparent 34%), rgba(12, 16, 28, 0.78); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 32px 80px rgba(0, 0, 0, 0.2); }
+.theory-route-map::before, .theory-route-map::after { position: absolute; left: 50%; width: 64%; height: 1px; content: ''; pointer-events: none; transform: translateX(-50%); }
+.theory-route-map::before { top: 29%; background: linear-gradient(90deg, transparent, rgba(100, 231, 238, 0.42), transparent); }.theory-route-map::after { bottom: 26%; background: linear-gradient(90deg, transparent, rgba(133, 137, 255, 0.42), transparent); }
+.theory-route-track { position: absolute; z-index: 0; top: 50%; height: 1px; background: linear-gradient(90deg, transparent, rgba(100, 231, 238, 0.52), transparent); }
+.theory-route-track-one { right: 22%; left: 11%; }.theory-route-track-two { right: 11%; left: 22%; background: linear-gradient(90deg, transparent, rgba(133, 137, 255, 0.48), transparent); transform: translateY(1px); }
+.theory-route-node, .theory-route-core { position: relative; z-index: 2; }
+.theory-route-node { min-height: 164px; padding: 22px; border: 1px solid rgba(154, 169, 212, 0.26); border-radius: 16px; background: rgba(14, 19, 33, 0.86); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 16px 36px rgba(0, 0, 0, 0.16); }
+.theory-route-node-request { display: grid; align-content: center; gap: 10px; }.theory-route-node-request svg { color: var(--theory-cyan); }.theory-route-node strong { color: var(--theory-ink); font-size: 13px; }.theory-route-node code { color: var(--theory-subtle); font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; }.theory-route-node-index { position: absolute; top: 16px; right: 18px; color: var(--theory-indigo); font: 700 9px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.theory-route-core { display: grid; min-height: 180px; place-items: center; align-content: center; gap: 8px; text-align: center; }.theory-route-core-ring { position: absolute; width: 166px; height: 166px; border: 1px solid rgba(100, 231, 238, 0.4); border-radius: 50%; box-shadow: 0 0 0 18px rgba(133, 137, 255, 0.05), 0 0 60px rgba(100, 231, 238, 0.16); animation: theory-core-ring 11s linear infinite; }.theory-route-core-mark { display: grid; width: 86px; height: 86px; place-items: center; border: 1px solid rgba(151, 164, 255, 0.7); border-radius: 50%; color: #fff; background: linear-gradient(145deg, #33328f, #0f6471); box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.35), 0 16px 36px rgba(0, 0, 0, 0.32); font-size: 32px; font-weight: 800; }.theory-route-core strong { color: var(--theory-ink); font: 700 10px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.13em; }.theory-route-core small { color: var(--theory-subtle); font: 9px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.theory-route-node-output { display: grid; align-content: center; gap: 10px; }.theory-route-node-label { color: var(--theory-subtle); font: 700 9px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.12em; }.theory-route-output-row { display: grid; grid-template-columns: 7px minmax(0, 1fr) auto; align-items: center; gap: 7px; }.theory-route-output-row i { width: 5px; height: 5px; border-radius: 50%; background: #6ef0af; box-shadow: 0 0 0 4px rgba(110, 240, 175, 0.08); }.theory-route-output-row strong { font-size: 11px; }.theory-route-output-row small { color: var(--theory-subtle); font-size: 9px; }
+.theory-feature-row { display: grid; grid-template-columns: repeat(3, 1fr); margin-top: 42px; border-top: 1px solid var(--theory-line); border-bottom: 1px solid var(--theory-line); }.theory-feature { display: grid; grid-template-columns: 38px minmax(0, 1fr); gap: 12px; min-height: 168px; padding: 24px 25px 22px 0; border-right: 1px solid var(--theory-line); }.theory-feature + .theory-feature { padding-left: 25px; }.theory-feature:last-child { border-right: 0; }.theory-feature > span { color: var(--theory-indigo); font: 700 10px ui-monospace, SFMono-Regular, Menlo, monospace; }.theory-feature h3 { color: var(--theory-ink); font-size: 13px; font-weight: 700; }.theory-feature p { margin-top: 10px; color: var(--theory-subtle); font-size: 11px; line-height: 1.7; }
+
+.theory-observability-section { background: linear-gradient(130deg, #0b0f1b 0%, #11182b 60%, #0b0f1b 100%); }.theory-split-section { display: grid; grid-template-columns: minmax(0, 0.78fr) minmax(0, 1.22fr); align-items: center; gap: 76px; }.theory-observability-copy { max-width: 500px; }.theory-observability-copy h2, .theory-learning-copy h2 { margin-top: 24px; }.theory-observability-list { margin-top: 34px; border-top: 1px solid var(--theory-line); }.theory-observability-item { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 12px; padding: 15px 0; border-bottom: 1px solid var(--theory-line); }.theory-observability-item > span { display: grid; width: 30px; height: 30px; place-items: center; border: 1px solid rgba(133, 137, 255, 0.24); border-radius: 9px; color: var(--theory-indigo); background: rgba(133, 137, 255, 0.1); }.theory-observability-item strong { color: var(--theory-ink); font-size: 12px; }.theory-observability-item p { margin-top: 4px; color: var(--theory-subtle); font-size: 11px; line-height: 1.65; }
+.theory-console { position: relative; padding: 22px; overflow: hidden; border: 1px solid rgba(154, 169, 212, 0.26); border-radius: 22px; background: rgba(5, 8, 15, 0.72); box-shadow: 0 36px 80px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.08); }.theory-console::before { position: absolute; top: -28%; right: -12%; width: 48%; height: 70%; border-radius: 50%; background: radial-gradient(circle, rgba(100, 231, 238, 0.16), transparent 68%); content: ''; pointer-events: none; }.theory-console-top, .theory-console-title, .theory-console-routes > div { display: flex; align-items: center; justify-content: space-between; gap: 14px; }.theory-console-top { color: var(--theory-subtle); font: 700 9px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.12em; }.theory-console-top span:last-child { display: inline-flex; align-items: center; gap: 7px; color: #6ef0af; }.theory-console-top i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }.theory-console-title { margin-top: 36px; }.theory-console-title strong { color: var(--theory-ink); font-size: 17px; }.theory-console-title span { color: var(--theory-subtle); font-size: 10px; }.theory-console-kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 18px; }.theory-console-kpis > div { display: grid; gap: 7px; padding: 14px; border: 1px solid rgba(154, 169, 212, 0.16); border-radius: 10px; background: rgba(18, 25, 42, 0.55); }.theory-console-kpis span { color: var(--theory-subtle); font: 700 8px ui-monospace, SFMono-Regular, Menlo, monospace; }.theory-console-kpis strong { color: var(--theory-ink); font-size: 21px; letter-spacing: -0.04em; }.theory-console-kpis em { color: #6ef0af; font-size: 9px; font-style: normal; }.theory-console-chart { position: relative; height: 142px; margin-top: 16px; overflow: hidden; border-top: 1px solid rgba(154, 169, 212, 0.14); border-bottom: 1px solid rgba(154, 169, 212, 0.18); }.theory-console-chart span { position: absolute; bottom: 0; width: 1px; height: 100%; background: rgba(154, 169, 212, 0.12); }.theory-console-chart span:nth-child(1) { left: 8%; }.theory-console-chart span:nth-child(2) { left: 16%; }.theory-console-chart span:nth-child(3) { left: 24%; }.theory-console-chart span:nth-child(4) { left: 32%; }.theory-console-chart span:nth-child(5) { left: 40%; }.theory-console-chart span:nth-child(6) { left: 48%; }.theory-console-chart span:nth-child(7) { left: 56%; }.theory-console-chart span:nth-child(8) { left: 64%; }.theory-console-chart span:nth-child(9) { left: 72%; }.theory-console-chart span:nth-child(10) { left: 80%; }.theory-console-chart span:nth-child(11) { left: 88%; }.theory-console-chart span:nth-child(12) { left: 96%; }.theory-console-chart svg { position: absolute; inset: 0; width: 100%; height: 100%; }.theory-console-chart path { fill: none; stroke: var(--theory-cyan); stroke-width: 2; vector-effect: non-scaling-stroke; filter: drop-shadow(0 0 7px rgba(100, 231, 238, 0.48)); }.theory-console-routes { margin-top: 13px; }.theory-console-routes > div { padding: 8px 0; border-bottom: 1px solid rgba(154, 169, 212, 0.1); color: var(--theory-subtle); font-size: 10px; }.theory-console-routes > div:last-child { border-bottom: 0; }.theory-console-routes i { width: 5px; height: 5px; margin-left: auto; border-radius: 50%; background: #6ef0af; }.theory-console-routes strong { color: #6ef0af; font-size: 9px; }.theory-console-routes small { width: 33px; color: var(--theory-subtle); font-size: 9px; text-align: right; }
+
+.theory-workflow-section { min-height: 620px; }.theory-workflow-track { display: grid; grid-template-columns: repeat(4, 1fr); margin-top: 72px; border-top: 1px solid var(--theory-line); border-bottom: 1px solid var(--theory-line); }.theory-workflow-step { position: relative; min-height: 232px; padding: 24px 26px 24px 0; border-right: 1px solid var(--theory-line); }.theory-workflow-step + .theory-workflow-step { padding-left: 26px; }.theory-workflow-step:last-child { border-right: 0; }.theory-workflow-step-top { display: flex; align-items: center; justify-content: space-between; color: var(--theory-indigo); }.theory-workflow-step-top > span { font: 700 10px ui-monospace, SFMono-Regular, Menlo, monospace; }.theory-workflow-step h3 { margin-top: 52px; color: var(--theory-ink); font-size: 16px; }.theory-workflow-step p { max-width: 210px; margin-top: 11px; color: var(--theory-subtle); font-size: 11px; line-height: 1.7; }.theory-workflow-connector { position: absolute; top: 35px; right: -5px; z-index: 2; display: block; width: 9px; height: 9px; border-top: 1px solid var(--theory-cyan); border-right: 1px solid var(--theory-cyan); transform: rotate(45deg); }.theory-workflow-connector i { position: absolute; top: 3px; right: 3px; width: 48px; height: 1px; background: linear-gradient(90deg, var(--theory-cyan), transparent); transform: rotate(-45deg); transform-origin: right center; }
+
+.theory-learning-section { min-height: 820px; background: radial-gradient(circle at 82% 47%, rgba(133, 137, 255, 0.14), transparent 30%), linear-gradient(145deg, #080c18, #12182a 62%, #080b14); }.theory-learning-layout { display: grid; grid-template-columns: minmax(0, 0.76fr) minmax(0, 1.24fr); align-items: center; gap: 72px; }.theory-learning-copy { max-width: 520px; }.theory-learning-points { display: grid; gap: 11px; margin-top: 29px; color: var(--theory-muted); font-size: 12px; }.theory-learning-points span { display: flex; align-items: flex-start; gap: 10px; line-height: 1.6; }.theory-learning-points i { display: inline-block; width: 6px; height: 6px; flex: 0 0 auto; margin-top: 6px; border-radius: 50%; background: linear-gradient(135deg, var(--theory-indigo), var(--theory-cyan)); box-shadow: 0 0 0 4px rgba(133, 137, 255, 0.1); }.theory-learning-copy .theory-primary-button { margin-top: 30px; }
+.theory-learning-field { position: relative; min-height: 482px; overflow: hidden; border: 1px solid rgba(154, 169, 212, 0.28); border-radius: 24px; background: radial-gradient(circle at 50% 49%, rgba(133, 137, 255, 0.18), transparent 28%), rgba(5, 8, 16, 0.7); box-shadow: 0 34px 90px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.08); }.theory-learning-field::before, .theory-learning-field::after { position: absolute; top: 19%; bottom: 19%; width: 1px; background: linear-gradient(transparent, rgba(100, 231, 238, 0.28), transparent); content: ''; }.theory-learning-field::before { left: 11%; }.theory-learning-field::after { right: 11%; }.theory-learning-field-head, .theory-learning-field-foot { position: absolute; right: 24px; left: 24px; z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 16px; color: var(--theory-subtle); font: 700 9px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.12em; }.theory-learning-field-head { top: 24px; }.theory-learning-field-head span:last-child { display: inline-flex; align-items: center; gap: 7px; color: #6ef0af; }.theory-learning-field-head i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }.theory-learning-field-foot { bottom: 23px; letter-spacing: 0.04em; }.theory-learning-field-foot svg { color: var(--theory-cyan); }
+.theory-learning-field-body { position: absolute; top: 54px; right: 0; bottom: 50px; left: 0; }.theory-learning-orbit { position: absolute; top: 50%; left: 50%; border: 1px solid rgba(133, 137, 255, 0.36); border-radius: 50%; transform: translate(-50%, -50%) rotateX(66deg) rotateZ(-18deg); animation: theory-learning-orbit 14s linear infinite; }.theory-learning-orbit-one { width: 340px; height: 180px; }.theory-learning-orbit-two { width: 248px; height: 340px; border-color: rgba(100, 231, 238, 0.34); transform: translate(-50%, -50%) rotateY(68deg) rotateZ(20deg); animation-direction: reverse; animation-duration: 18s; }.theory-learning-orbit-three { width: 470px; height: 250px; border-color: rgba(133, 137, 255, 0.16); transform: translate(-50%, -50%) rotateX(76deg) rotateZ(42deg); animation-duration: 22s; }.theory-learning-core { position: absolute; top: 50%; left: 50%; z-index: 2; display: grid; width: 124px; height: 124px; place-content: center; justify-items: center; border: 1px solid rgba(151, 164, 255, 0.72); border-radius: 50%; color: #fff; background: linear-gradient(145deg, #3b3c9e, #0c6972); box-shadow: 0 0 0 14px rgba(133, 137, 255, 0.06), inset 0 2px 0 rgba(255, 255, 255, 0.36), 0 22px 40px rgba(0, 0, 0, 0.34); transform: translate(-50%, -50%); }.theory-learning-core::before { position: absolute; inset: -25px; border: 1px solid rgba(100, 231, 238, 0.23); border-radius: inherit; content: ''; animation: theory-learning-core-ring 9s linear infinite; }.theory-learning-core strong, .theory-learning-core small { position: relative; z-index: 1; }.theory-learning-core strong { font-size: 37px; font-weight: 820; letter-spacing: -0.1em; }.theory-learning-core small { margin-top: 5px; color: rgba(233, 242, 255, 0.72); font: 700 8px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.12em; }.theory-learning-node { position: absolute; z-index: 4; display: flex; align-items: center; gap: 9px; min-width: 144px; padding: 10px 12px 10px 10px; border: 1px solid rgba(154, 169, 212, 0.3); border-radius: 14px; color: var(--theory-ink); background: rgba(17, 24, 42, 0.78); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 16px 34px rgba(0, 0, 0, 0.2); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); animation: theory-learning-node 5.8s ease-in-out infinite; }.theory-learning-node:hover { border-color: rgba(100, 231, 238, 0.6); background: rgba(24, 34, 58, 0.92); }.theory-learning-node-icon { display: grid; width: 28px; height: 28px; flex: 0 0 auto; place-items: center; border-radius: 9px; color: var(--theory-cyan); background: rgba(100, 231, 238, 0.1); }.theory-learning-node > span:last-child { display: grid; gap: 3px; }.theory-learning-node strong { font-size: 11px; }.theory-learning-node small { color: var(--theory-subtle); font: 700 8px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.03em; }.theory-learning-node-1 { top: 15%; left: 7%; animation-delay: -1.2s; }.theory-learning-node-2 { top: 12%; right: 7%; animation-delay: -3.2s; }.theory-learning-node-3 { bottom: 13%; left: 8%; animation-delay: -4.2s; }.theory-learning-node-4 { right: 7%; bottom: 12%; animation-delay: -2.1s; }
+
+.theory-contact-section { min-height: 440px; padding: 112px 0 130px; background: var(--theory-bg); }.theory-contact-panel { display: flex; align-items: end; justify-content: space-between; gap: 54px; width: min(calc(100% - 64px), 1240px); margin: 0 auto; padding-top: 45px; border-top: 1px solid rgba(159, 171, 204, 0.32); }.theory-contact-panel h2 { max-width: 800px; margin-top: 24px; }.theory-contact-panel p { max-width: 580px; }.theory-contact-actions { display: flex; flex: 0 0 auto; flex-wrap: wrap; gap: 9px; }
+.theory-footer { position: relative; z-index: 2; border-top: 1px solid var(--theory-line); background: #03050a; }.theory-footer-main { display: grid; grid-template-columns: 1.5fr repeat(3, 0.68fr); gap: 42px; width: min(calc(100% - 64px), 1240px); margin: 0 auto; padding: 50px 0 44px; }.theory-footer-brand p { max-width: 300px; margin-top: 14px; color: var(--theory-subtle); font-size: 11px; line-height: 1.75; }.theory-brand-line { display: flex; align-items: center; gap: 10px; color: var(--theory-ink); font-size: 14px; }.theory-footer-links { display: flex; flex-direction: column; align-items: flex-start; gap: 11px; }.theory-footer-links strong { margin-bottom: 4px; color: var(--theory-ink); font-size: 11px; }.theory-footer-links a, .theory-footer-links button { padding: 0; border: 0; color: var(--theory-subtle); background: transparent; font-size: 11px; transition: color 160ms ease; }.theory-footer-links a:hover, .theory-footer-links button:hover { color: var(--theory-cyan); }.theory-footer-bottom { display: flex; justify-content: space-between; gap: 20px; width: min(calc(100% - 64px), 1240px); margin: 0 auto; padding: 18px 0 22px; border-top: 1px solid var(--theory-line); color: rgba(165, 176, 201, 0.45); font-size: 10px; }.theory-back-to-top { position: fixed; right: 24px; bottom: 24px; z-index: 30; display: grid; width: 42px; height: 42px; place-items: center; border: 1px solid rgba(159, 171, 204, 0.3); border-radius: 50%; color: var(--theory-cyan); background: rgba(12, 17, 29, 0.82); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); transition: transform 180ms var(--ease-standard), border-color 180ms ease, background-color 180ms ease; }.theory-back-to-top:hover { border-color: rgba(100, 231, 238, 0.65); background: rgba(21, 31, 52, 0.96); transform: translateY(-3px); }
+
+@keyframes theory-scroll-cue { 0%, 100% { transform: translateY(-2px); opacity: 0.6; } 50% { transform: translateY(3px); opacity: 1; } }
+@keyframes theory-core-ring { to { transform: rotate(360deg); } }
+@keyframes theory-learning-orbit { to { transform: translate(-50%, -50%) rotateX(66deg) rotateZ(342deg); } }
+@keyframes theory-learning-core-ring { to { transform: rotateZ(360deg) scale(1.05); } }
+@keyframes theory-learning-node { 0%, 100% { transform: translate3d(0, 0, 0); } 50% { transform: translate3d(0, -7px, 0); } }
+
+@media (max-width: 1180px) {
+  .theory-header-inner, .theory-hero-inner, .theory-section-inner, .theory-contact-panel, .theory-footer-main, .theory-footer-bottom { width: calc(100% - 48px); }
+  .theory-nav-link { padding-inline: 9px; }
+  .theory-hero-footer { right: 24px; left: 24px; }
+  .theory-side-rail { left: 13px; }
+  .theory-integrate-grid, .theory-split-section, .theory-learning-layout { gap: 48px; }
+}
+
+@media (max-width: 900px) {
+  .theory-header-inner { flex-wrap: wrap; gap: 9px 16px; padding: 10px 0; }
+  .theory-nav { order: 3; width: 100%; justify-content: flex-start; margin: 0; }
+  .theory-actions { margin-left: auto; }
+  .theory-hero { height: auto; min-height: 800px; }
+  .theory-hero-inner { grid-template-columns: minmax(0, 1fr) 220px; gap: 25px; }
+  .theory-hero-title { font-size: clamp(58px, 10vw, 92px); }
+  .theory-telemetry { width: 210px; margin-bottom: 6%; }
+  .theory-integrate-grid, .theory-split-section, .theory-learning-layout { grid-template-columns: 1fr; }
+  .theory-integrate-grid { margin-top: 58px; }
+  .theory-section-heading h2, .theory-observability-copy h2, .theory-learning-copy h2, .theory-contact-panel h2 { font-size: clamp(46px, 8vw, 70px); }
+  .theory-observability-copy { max-width: 680px; }
+  .theory-console { max-width: 780px; }
+  .theory-learning-field { min-height: 450px; }
+  .theory-contact-panel { align-items: flex-start; flex-direction: column; }
+}
+
+@media (max-width: 680px) {
+  .theory-header-inner, .theory-hero-inner, .theory-section-inner, .theory-contact-panel, .theory-footer-main, .theory-footer-bottom { width: calc(100% - 32px); }
+  .theory-header-inner { min-height: 70px; }
+  .theory-brand { font-size: 13px; }
+  .theory-brand-mark { width: 28px; height: 28px; }
+  .theory-actions { gap: 1px; }
+  .theory-action-button { width: 31px; height: 31px; }
+  .theory-auth-button { min-height: 34px; padding-inline: 11px; }
+  .theory-auth-label { display: none; }
+  .theory-nav-link { min-height: 30px; padding-inline: 10px; font-size: 10px; }
+  .theory-side-rail { display: none; }
+  .theory-scene-layer { min-height: 690px; height: 760px; }
+  .theory-scene-layer :deep(.hero-orbit-stage) { transform: translate3d(13vw, 0, 0) scale(1.04); }
+  .theory-scene-wash { width: 100%; height: 760px; background: linear-gradient(180deg, rgba(7, 10, 18, 0.94) 0%, rgba(7, 10, 18, 0.78) 42%, rgba(7, 10, 18, 0.2) 100%); }
+  .theory-scene-haze { width: 80vw; height: 80vw; }
+  .theory-hero { min-height: 760px; padding: 54px 0 78px; }
+  .theory-hero-inner { display: block; }
+  .theory-hero-copy { max-width: 100%; }
+  .theory-hero-title { margin-top: 22px; font-size: clamp(52px, 15vw, 74px); line-height: 0.92; }
+  .theory-hero-subtitle { margin-top: 24px !important; font-size: 18px; }
+  .theory-hero-description { font-size: 12px; line-height: 1.8; }
+  .theory-hero-actions { flex-direction: column; align-items: stretch; }
+  .theory-primary-button, .theory-secondary-button { width: 100%; }
+  .theory-hero-facts { gap: 10px 14px; margin-top: 24px; }
+  .theory-telemetry { display: none; }
+  .theory-hero-footer { right: 16px; bottom: 22px; left: 16px; align-items: flex-end; font-size: 8px; }
+  .theory-hero-footer > span { max-width: 132px; line-height: 1.45; }
+  .theory-scroll-cue span { display: none; }
+  .theory-section { min-height: auto; padding: 92px 0; }
+  .theory-section-heading { margin-top: 20px; }
+  .theory-section-heading h2, .theory-observability-copy h2, .theory-learning-copy h2, .theory-contact-panel h2 { font-size: clamp(42px, 12vw, 62px); }
+  .theory-section-heading p, .theory-observability-copy > p, .theory-learning-copy > p, .theory-contact-panel p { margin-top: 18px; font-size: 12px; line-height: 1.8; }
+  .theory-integrate-grid { gap: 38px; margin-top: 44px; }
+  .theory-endpoint-row { min-height: 74px; grid-template-columns: 42px minmax(0, 1fr) 20px; gap: 9px; }
+  .theory-endpoint-row div span { font-size: 10px; }
+  .theory-terminal { min-height: 340px; border-radius: 16px; }
+  .theory-terminal-header { padding-inline: 14px; }
+  .theory-terminal pre { min-height: 245px; padding: 20px 15px; font-size: 10px; }
+  .theory-terminal-footer { padding-inline: 14px; font-size: 9px; }
+  .theory-route-map { display: grid; min-height: auto; grid-template-columns: 1fr; gap: 26px; margin-top: 44px; padding: 22px; }
+  .theory-route-map::before, .theory-route-map::after { left: 50%; width: 1px; height: 68%; background: linear-gradient(transparent, rgba(100, 231, 238, 0.38), transparent); }
+  .theory-route-map::before { top: 17%; }.theory-route-map::after { top: 17%; bottom: auto; transform: translateX(-50%) translateX(4px); }
+  .theory-route-track { right: auto; left: 50%; width: 1px; height: 78px; top: 24%; background: linear-gradient(transparent, rgba(100, 231, 238, 0.48), transparent); transform: translateX(-50%); }
+  .theory-route-track-two { top: auto; right: auto; bottom: 24%; left: 50%; background: linear-gradient(transparent, rgba(133, 137, 255, 0.46), transparent); transform: translateX(-50%); }
+  .theory-route-node, .theory-route-core { width: 100%; }.theory-route-core { min-height: 166px; }.theory-route-core-ring { width: 150px; height: 150px; }
+  .theory-feature-row { grid-template-columns: 1fr; margin-top: 30px; }.theory-feature, .theory-feature + .theory-feature { min-height: auto; padding: 20px 0; border-right: 0; border-bottom: 1px solid var(--theory-line); }.theory-feature:last-child { border-bottom: 0; }
+  .theory-split-section { gap: 42px; }.theory-console { padding: 15px; border-radius: 17px; }.theory-console-title { margin-top: 28px; }.theory-console-kpis strong { font-size: 17px; }.theory-console-kpis > div { padding: 10px; }.theory-console-chart { height: 120px; }
+  .theory-workflow-section { padding-bottom: 100px; }.theory-workflow-track { grid-template-columns: 1fr; margin-top: 44px; }.theory-workflow-step, .theory-workflow-step + .theory-workflow-step { min-height: 170px; padding: 21px 0; border-right: 0; border-bottom: 1px solid var(--theory-line); }.theory-workflow-step:last-child { border-bottom: 0; }.theory-workflow-step h3 { margin-top: 32px; }.theory-workflow-connector { display: none; }
+  .theory-learning-section { min-height: auto; }.theory-learning-layout { gap: 42px; }.theory-learning-field { min-height: 410px; border-radius: 18px; }.theory-learning-field-head, .theory-learning-field-foot { right: 16px; left: 16px; font-size: 8px; }.theory-learning-field-body { top: 50px; }.theory-learning-orbit-one { width: 260px; height: 140px; }.theory-learning-orbit-two { width: 195px; height: 260px; }.theory-learning-orbit-three { width: 340px; height: 190px; }.theory-learning-core { width: 102px; height: 102px; }.theory-learning-core strong { font-size: 31px; }.theory-learning-node { min-width: 116px; padding: 8px; border-radius: 12px; }.theory-learning-node-icon { width: 24px; height: 24px; }.theory-learning-node strong { font-size: 10px; }.theory-learning-node small { font-size: 7px; }.theory-learning-node-1 { left: 0; }.theory-learning-node-2 { right: 0; }.theory-learning-node-3 { left: 0; }.theory-learning-node-4 { right: 0; }
+  .theory-contact-section { padding: 86px 0 100px; }.theory-contact-panel { gap: 34px; padding-top: 34px; }.theory-contact-actions { width: 100%; flex-direction: column; }.theory-footer-main { grid-template-columns: 1fr 1fr; gap: 34px 20px; padding: 40px 0 34px; }.theory-footer-brand { grid-column: 1 / -1; }.theory-footer-bottom { align-items: flex-start; flex-direction: column; gap: 8px; }.theory-back-to-top { right: 16px; bottom: 16px; width: 38px; height: 38px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theory-home *, .theory-home *::before, .theory-home *::after { scroll-behavior: auto !important; animation-duration: 1ms !important; animation-iteration-count: 1 !important; transition-duration: 1ms !important; }
+  .theory-home .home-reveal, .theory-home .home-hero-reveal { opacity: 1 !important; transform: none !important; }
+  .theory-scene-layer :deep(.hero-orbit-stage) { transform: none; }
+  .theory-header { backdrop-filter: none; -webkit-backdrop-filter: none; }
 }
 </style>
