@@ -2,34 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Progressive circular theme reveal, matching the click origin of the toggle. */
-::view-transition-group(root) {
-  animation-duration: 620ms;
-  animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1);
-}
-
-::view-transition-old(root),
-::view-transition-new(root) {
-  width: 100vw;
-  height: 100vh;
-  animation: none;
-  mix-blend-mode: normal;
-}
-
-::view-transition-old(root) {
-  z-index: 1;
-}
-
-::view-transition-new(root) {
-  z-index: 2;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  ::view-transition-group(root) {
-    animation-duration: 1ms;
-  }
-}
-
 @layer base {
   :root {
     --color-bg-deep: #eef1f7;

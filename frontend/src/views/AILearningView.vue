@@ -42,8 +42,14 @@
       <main class="learning-main" :class="{ 'learning-main-app': isAuthenticated }">
         <section class="learning-hero" data-learning-reveal>
           <div class="learning-hero-copy">
+            <div class="learning-hero-badge" :aria-label="copy.hero.badgeLabel">
+              <span class="learning-hero-badge-icon"><Icon name="sparkles" size="sm" /></span>
+              <strong>{{ copy.hero.badgeLabel }}</strong>
+            </div>
             <span class="learning-eyebrow">{{ copy.hero.eyebrow }}</span>
-            <h1>{{ copy.hero.title }}</h1>
+            <h1 :aria-label="copy.hero.title">
+              <span v-for="(line, index) in copy.hero.titleLines" :key="line" :class="{ 'learning-hero-title-accent': index === 0 }">{{ line }}</span>
+            </h1>
             <p class="learning-hero-subtitle">{{ copy.hero.subtitle }}</p>
             <p class="learning-hero-description">{{ copy.hero.description }}</p>
 
@@ -220,16 +226,27 @@
 
         <section v-if="activeContact" class="learning-contact-panel" data-learning-reveal>
           <div class="learning-contact-card">
-            <div class="learning-contact-avatar">{{ activeContact.initials }}</div>
-            <div class="learning-contact-copy">
-              <span class="learning-contact-label">{{ copy.contact.eyebrow }}</span>
-              <h3>{{ activeContact.name }}</h3>
-              <p>{{ activeContact.role }}</p>
+            <div class="learning-contact-intro">
+              <div class="learning-contact-avatar">{{ activeContact.initials }}</div>
+              <div class="learning-contact-copy">
+                <span class="learning-contact-label">{{ copy.contact.eyebrow }}</span>
+                <h3>{{ activeContact.name }}</h3>
+                <p>{{ activeContact.role }}</p>
+              </div>
             </div>
             <div class="learning-contact-links">
-              <a v-if="activeContact.email" :href="`mailto:${activeContact.email}`"><Icon name="mail" size="sm" /><span>{{ activeContact.email }}</span></a>
-              <a v-if="activeContact.phone" :href="`tel:${activeContact.phone.replace(/[^\d+]/g, '')}`"><Icon name="phone" size="sm" /><span>{{ activeContact.phone }}</span></a>
-              <a v-if="activeContact.github" :href="activeContact.github" target="_blank" rel="noopener noreferrer"><Icon name="link" size="sm" /><span>{{ activeContact.githubLabel || 'GitHub' }}</span><Icon name="externalLink" size="xs" /></a>
+              <div v-if="activeContact.email" class="learning-contact-link">
+                <a :href="`mailto:${activeContact.email}`"><Icon name="mail" size="sm" /><span>{{ activeContact.email }}</span></a>
+                <CopyButton :text="activeContact.email" class="learning-contact-copy-button" />
+              </div>
+              <div v-if="activeContact.phone" class="learning-contact-link">
+                <a :href="`tel:${activeContact.phone.replace(/[^\d+]/g, '')}`"><Icon name="phone" size="sm" /><span>{{ activeContact.phone }}</span></a>
+                <CopyButton :text="activeContact.phone" class="learning-contact-copy-button" />
+              </div>
+              <div v-if="activeContact.github" class="learning-contact-link">
+                <a :href="activeContact.github" target="_blank" rel="noopener noreferrer"><Icon name="link" size="sm" /><span>{{ activeContact.githubLabel || 'GitHub' }}</span><Icon name="externalLink" size="xs" /></a>
+                <CopyButton :text="activeContact.github" class="learning-contact-copy-button" />
+              </div>
             </div>
           </div>
         </section>
@@ -248,6 +265,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { gsap } from 'gsap'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import CopyButton from '@/components/common/CopyButton.vue'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { brand } from '@/config/brand'
@@ -292,6 +310,8 @@ interface LearningCopy {
   hero: {
     eyebrow: string
     title: string
+    titleLines: string[]
+    badgeLabel: string
     subtitle: string
     description: string
     tags: string[]
@@ -337,6 +357,8 @@ const zhCopy: LearningCopy = {
   hero: {
     eyebrow: 'AI LEARNING / PUBLIC KNOWLEDGE',
     title: '让经验真正帮到人',
+    titleLines: ['让经验真', '正帮到人'],
+    badgeLabel: '合作讲师',
     subtitle: '面向老师与技术专家的 AI 学习空间',
     description: '把多年 AI 产品、Agent 系统与具身智能实践，整理成看得懂的案例、学得会的方法和做得出的练习。',
     tags: ['公开职业摘要', '隐私信息已排除', '案例与方法可复用'],
@@ -394,6 +416,8 @@ const enCopy: LearningCopy = {
   hero: {
     eyebrow: 'AI LEARNING / PUBLIC KNOWLEDGE',
     title: 'Make experience useful to people',
+    titleLines: ['Make experience useful to people'],
+    badgeLabel: 'Collaborating instructor',
     subtitle: 'An AI learning space for teachers and technical experts',
     description: 'Real AI product, Agent system and embodied intelligence practice, shaped into clear cases, practical methods and exercises you can use.',
     tags: ['Public professional summary', 'Private data excluded', 'Reusable cases and methods'],
@@ -605,9 +629,12 @@ onBeforeUnmount(() => {
 .learning-main-app { width: 100%; max-width: 1220px; padding: 0 4px; }
 .learning-hero { display: grid; min-height: min(760px, calc(100vh - 72px)); grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr); align-items: center; gap: 54px; padding: 82px 0 92px; }
 .learning-hero-copy { max-width: 550px; }
+.learning-hero-badge { display: flex; width: fit-content; max-width: 100%; align-items: center; gap: 9px; min-height: 34px; margin-bottom: 14px; padding: 0 13px 0 7px; border: 1px solid color-mix(in srgb, var(--mr-primary) 40%, var(--learning-border)); border-radius: 999px; color: var(--mr-primary); background: color-mix(in srgb, var(--mr-primary) 10%, var(--mr-surface)); box-shadow: inset 0 1px 0 var(--glass-highlight), 0 9px 20px color-mix(in srgb, var(--mr-primary) 9%, transparent); font-size: 12px; font-weight: 750; }
+.learning-hero-badge-icon { display: inline-grid; width: 22px; height: 22px; place-items: center; border-radius: 50%; color: #fff; background: var(--mr-primary); }
 .learning-eyebrow, .learning-section-index { color: var(--mr-primary); font-size: 11px; font-weight: 800; letter-spacing: 0.16em; }
-.learning-hero h1 { display: block; max-width: 620px; margin: 18px 0 0; color: var(--mr-text); font-size: clamp(48px, 6vw, 78px); font-weight: 760; letter-spacing: -0.055em; line-height: 1.14; overflow-wrap: normal; text-wrap: balance; }
-.learning-hero h1::first-line { background: linear-gradient(100deg, var(--mr-text) 15%, var(--mr-primary) 66%, var(--mr-secondary)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.learning-hero h1 { display: block; max-width: 620px; margin: 18px 0 0; color: var(--mr-text); font-size: clamp(48px, 6vw, 78px); font-weight: 760; letter-spacing: 0; line-height: 1.2; overflow-wrap: normal; }
+.learning-hero h1 > span { display: block; }
+.learning-hero-title-accent { background: linear-gradient(100deg, var(--mr-text) 15%, var(--mr-primary) 66%, var(--mr-secondary)); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .learning-hero-subtitle { max-width: 520px; margin: 25px 0 0; color: var(--mr-text); font-size: clamp(18px, 2vw, 23px); font-weight: 560; line-height: 1.45; }
 .learning-hero-description { max-width: 510px; margin: 14px 0 0; color: var(--mr-text-muted); font-size: 14px; line-height: 1.8; }
 .learning-hero-tags { display: flex; flex-wrap: wrap; gap: 10px 16px; margin-top: 24px; color: var(--mr-text-subtle); font-size: 11px; }
@@ -706,19 +733,23 @@ onBeforeUnmount(() => {
 .learning-method-icon { margin-top: 30px; }
 .learning-method-card h3 { margin: 22px 0 0; color: var(--mr-text); font-size: 16px; font-weight: 700; }
 .learning-method-card p { margin: 10px 0 0; color: var(--mr-text-muted); font-size: 12px; line-height: 1.7; }
-.learning-contact-panel { display: flex; justify-content: flex-end; padding: 140px 0 100px; }
-.learning-contact-card { position: relative; display: grid; width: min(100%, 700px); grid-template-columns: auto minmax(0, 1fr); gap: 18px; align-content: start; overflow: hidden; padding: 30px; border: 1px solid var(--learning-border-strong); border-radius: 24px; background: linear-gradient(145deg, color-mix(in srgb, var(--mr-primary) 14%, var(--mr-surface)), color-mix(in srgb, var(--mr-secondary) 9%, var(--mr-surface))); box-shadow: inset 0 1px 0 var(--glass-highlight), 0 24px 54px color-mix(in srgb, var(--mr-primary) 8%, transparent); backdrop-filter: blur(16px) saturate(130%); -webkit-backdrop-filter: blur(16px) saturate(130%); }
+.learning-contact-panel { padding: 112px 0 92px; }
+.learning-contact-card { position: relative; display: grid; width: 100%; grid-template-columns: minmax(280px, 0.72fr) minmax(0, 1.28fr); gap: 36px; align-items: center; overflow: hidden; padding: 34px 36px; border: 1px solid var(--learning-border-strong); border-radius: 24px; background: linear-gradient(145deg, color-mix(in srgb, var(--mr-primary) 14%, var(--mr-surface)), color-mix(in srgb, var(--mr-secondary) 9%, var(--mr-surface))); box-shadow: inset 0 1px 0 var(--glass-highlight), 0 24px 54px color-mix(in srgb, var(--mr-primary) 8%, transparent); backdrop-filter: blur(16px) saturate(130%); -webkit-backdrop-filter: blur(16px) saturate(130%); }
 .learning-contact-card::after { position: absolute; right: -72px; top: -114px; width: 250px; height: 250px; border: 1px solid color-mix(in srgb, var(--mr-secondary) 18%, transparent); border-radius: 50%; box-shadow: 0 0 0 24px color-mix(in srgb, var(--mr-secondary) 5%, transparent); content: ''; pointer-events: none; }
+.learning-contact-intro { position: relative; z-index: 1; display: flex; align-items: flex-start; gap: 18px; }
 .learning-contact-avatar { display: grid; width: 56px; height: 56px; place-items: center; border: 1px solid color-mix(in srgb, var(--mr-secondary) 42%, transparent); border-radius: 18px; color: #fff; background: linear-gradient(145deg, var(--mr-primary), var(--mr-secondary)); box-shadow: 0 14px 26px color-mix(in srgb, var(--mr-primary) 24%, transparent); font-size: 23px; font-weight: 800; }
 .learning-contact-copy { min-width: 0; }
 .learning-contact-label { color: var(--mr-secondary); font: 700 10px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.12em; }
 .learning-contact-card h3 { margin-top: 8px; font-size: 25px; }
 .learning-contact-copy p { margin: 7px 0 0; color: var(--mr-text-muted); font-size: 12px; line-height: 1.6; }
-.learning-contact-links { display: grid; grid-column: 1 / -1; gap: 8px; margin-top: 15px; }
-.learning-contact-links a { display: flex; min-height: 42px; align-items: center; gap: 9px; padding: 0 12px; border: 1px solid var(--learning-border); border-radius: 12px; color: var(--mr-text-muted); background: color-mix(in srgb, var(--mr-surface) 48%, transparent); font-size: 11px; transition: color 180ms ease, border-color 180ms ease, background-color 180ms ease, transform 180ms ease; }
-.learning-contact-links a span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.learning-contact-links a svg:last-child { margin-left: auto; }
-.learning-contact-links a:hover { border-color: var(--mr-primary); color: var(--mr-text); background: var(--mr-surface); transform: translateX(2px); }
+.learning-contact-links { position: relative; z-index: 1; display: grid; gap: 8px; }
+.learning-contact-link { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; align-items: center; }
+.learning-contact-link > a { display: flex; min-height: 42px; min-width: 0; align-items: center; gap: 9px; padding: 0 12px; border: 1px solid var(--learning-border); border-radius: 12px; color: var(--mr-text-muted); background: color-mix(in srgb, var(--mr-surface) 48%, transparent); font-size: 11px; transition: color 180ms ease, border-color 180ms ease, background-color 180ms ease, transform 180ms ease; }
+.learning-contact-link > a span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.learning-contact-link > a svg:last-child { margin-left: auto; }
+.learning-contact-link > a:hover { border-color: var(--mr-primary); color: var(--mr-text); background: var(--mr-surface); transform: translateX(2px); }
+.learning-contact-copy-button { display: inline-grid; width: 34px; height: 34px; place-items: center; border: 1px solid var(--learning-border); border-radius: 10px; color: var(--mr-text-muted); background: color-mix(in srgb, var(--mr-surface) 52%, transparent); }
+.learning-contact-copy-button:hover { border-color: var(--mr-primary); color: var(--mr-primary); background: var(--mr-surface); }
 .learning-footer { position: relative; z-index: 1; display: flex; justify-content: space-between; gap: 20px; width: min(100% - 48px, 1180px); margin: 0 auto; padding: 20px 0 26px; border-top: 1px solid var(--learning-border); color: var(--mr-text-subtle); font-size: 10px; }
 
 @keyframes learning-orb-float { from { transform: translate3d(-12px, 6px, 0) scale(0.96); } to { transform: translate3d(12px, -10px, 0) scale(1.04); } }
@@ -787,8 +818,8 @@ onBeforeUnmount(() => {
   .learning-detail-tags, .learning-detail-list { margin-left: 0; }
   .learning-detail-tags { margin-top: 20px; }
   .learning-detail-list { margin-top: 20px; }
-  .learning-contact-card { width: 100%; padding: 23px; border-radius: 20px; }
-  .learning-contact-card { grid-template-columns: 48px minmax(0, 1fr); gap: 13px; }
+  .learning-contact-card { grid-template-columns: 1fr; gap: 22px; width: 100%; padding: 23px; border-radius: 20px; }
+  .learning-contact-intro { gap: 13px; }
   .learning-contact-avatar { width: 48px; height: 48px; border-radius: 15px; }
   .learning-contact-card h3 { font-size: 21px; }
   .learning-footer { align-items: flex-start; flex-direction: column; }
