@@ -3,11 +3,15 @@
  * any full-viewport overlay left under <body> must not dim the page.
  */
 body.modurelay-home-route > .fixed.inset-0,
+body.modurelay-home-route #app > .fixed.inset-0,
 body.modurelay-home-route > .modal-overlay,
+body.modurelay-home-route #app > .modal-overlay,
 body.modurelay-home-route > .dialog-overlay,
-body.modurelay-home-route > .driver-overlay,
-body.modurelay-home-route > .driver-popover,
-body.modurelay-home-route > .driver-popover-container {
+body.modurelay-home-route #app > .dialog-overlay,
+body.modurelay-home-route .driver-overlay,
+body.modurelay-home-route .driver-popover,
+body.modurelay-home-route .driver-popover-container,
+body.modurelay-home-route .driver-popover-arrow {
   display: none !important;
   opacity: 0 !important;
   visibility: hidden !important;
@@ -15,6 +19,15 @@ body.modurelay-home-route > .driver-popover-container {
   background: transparent !important;
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
+}
+
+body.modurelay-home-route,
+body.modurelay-home-route #app,
+body.modurelay-home-route .home-page {
+  opacity: 1 !important;
+  visibility: visible !important;
+  filter: none !important;
+  mix-blend-mode: normal !important;
 }
 
 html.dark body.modurelay-home-route,

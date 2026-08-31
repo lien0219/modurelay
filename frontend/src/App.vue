@@ -20,6 +20,20 @@ const announcementStore = useAnnouncementStore()
 const adminComplianceStore = useAdminComplianceStore()
 const adminSettingsStore = useAdminSettingsStore()
 const onboardingStore = useOnboardingStore()
+const HOME_ROUTE_PATH = '/home'
+const PUBLIC_ONBOARDING_SELECTORS = '.driver-overlay, .driver-popover, .driver-popover-container, .driver-popover-arrow'
+let homeOverlayObserver: MutationObserver | null = null
+let homeOverlayCleanupFrame = 0
+
+function isHomeRoute(path = router.currentRoute.value.path) {
+  return path === HOME_ROUTE_PATH
+}
+
+function removePublicOnboardingNodes() {
+  document.querySelectorAll(PUBLIC_ONBOARDING_SELECTORS).forEach((element) => {
+    element.remove()
+  })
+}
 
 function disposePublicOnboardingOverlay() {
   const driverInstance = onboardingStore.getDriverInstance()
@@ -30,9 +44,57 @@ function disposePublicOnboardingOverlay() {
 
   // Driver.js owns these nodes outside Vue's component tree. Remove any node
   // left behind during a route transition so public pages never inherit a dimmer.
-  document.querySelectorAll('.driver-overlay, .driver-popover, .driver-popover-container').forEach((element) => {
-    element.remove()
+  removePublicOnboardingNodes()
+}
+
+function cleanupHomeOverlayState() {
+  if (!isHomeRoute()) return
+
+  // The public home has no modal state. Clear the body lock left behind by a
+  // tour or dialog before it can affect the next render.
+  document.body.classList.remove('modal-open')
+  document.body.style.removeProperty('overflow')
+  removePublicOnboardingNodes()
+}
+
+function scheduleHomeOverlayCleanup() {
+  if (!isHomeRoute()) return
+  if (homeOverlayCleanupFrame) window.cancelAnimationFrame(homeOverlayCleanupFrame)
+
+  homeOverlayCleanupFrame = window.requestAnimationFrame(() => {
+    homeOverlayCleanupFrame = window.requestAnimationFrame(() => {
+      homeOverlayCleanupFrame = 0
+      cleanupHomeOverlayState()
+    })
   })
+}
+
+function stopHomeOverlayGuard() {
+  homeOverlayObserver?.disconnect()
+  homeOverlayObserver = null
+}
+
+function startHomeOverlayGuard() {
+  stopHomeOverlayGuard()
+  if (!isHomeRoute() || !document.body) return
+
+  homeOverlayObserver = new MutationObserver(() => {
+    cleanupHomeOverlayState()
+  })
+  homeOverlayObserver.observe(document.body, { childList: true, subtree: true })
+  cleanupHomeOverlayState()
+}
+
+function syncHomeRouteGuard(path: string) {
+  const isHome = path === HOME_ROUTE_PATH
+  document.body.classList.toggle('modurelay-home-route', isHome)
+
+  if (isHome) {
+    startHomeOverlayGuard()
+    scheduleHomeOverlayCleanup()
+  } else {
+    stopHomeOverlayGuard()
+  }
 }
 
 function updateDocumentTitle() {
@@ -51,6 +113,12 @@ watch(
       updateFavicon(newLogo)
     }
   },
+  { immediate: true }
+)
+
+watch(
+  () => route.path,
+  (path) => syncHomeRouteGuard(path),
   { immediate: true }
 )
 
@@ -121,10 +189,21 @@ watch(
 )
 
 // Route change trigger (throttled by store)
+const removeHomeBeforeEach = router.beforeEach((to) => {
+  if (to.path === HOME_ROUTE_PATH) {
+    syncHomeRouteGuard(to.path)
+    disposePublicOnboardingOverlay()
+    scheduleHomeOverlayCleanup()
+  }
+})
+
 router.afterEach((to) => {
   if (to.meta.requiresAuth === false) {
     disposePublicOnboardingOverlay()
   }
+
+  syncHomeRouteGuard(to.path)
+  if (to.path === HOME_ROUTE_PATH) scheduleHomeOverlayCleanup()
 
   if (authStore.isAuthenticated) {
     announcementStore.fetchAnnouncements()
@@ -134,10 +213,15 @@ router.afterEach((to) => {
 onBeforeUnmount(() => {
   document.removeEventListener('visibilitychange', onVisibilityChange)
   window.removeEventListener('admin-compliance-required', onAdminComplianceRequired)
+  removeHomeBeforeEach()
+  stopHomeOverlayGuard()
+  if (homeOverlayCleanupFrame) window.cancelAnimationFrame(homeOverlayCleanupFrame)
+  document.body.classList.remove('modurelay-home-route')
 })
 
 onMounted(async () => {
   window.addEventListener('admin-compliance-required', onAdminComplianceRequired)
+  syncHomeRouteGuard(route.path)
 
   // Check if setup is needed
   try {

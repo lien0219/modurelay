@@ -6,6 +6,14 @@
     aria-label="ModuRelay Relay Core"
   >
     <div class="scene-shell" :class="{ 'scene-is-loading': isLoading, 'scene-has-fallback': hasFallback }">
+      <div class="scene-atmosphere" aria-hidden="true">
+        <span class="scene-atmosphere-glow scene-atmosphere-glow-one"></span>
+        <span class="scene-atmosphere-glow scene-atmosphere-glow-two"></span>
+        <span class="scene-atmosphere-grid"></span>
+        <i class="scene-atmosphere-star scene-atmosphere-star-one"></i>
+        <i class="scene-atmosphere-star scene-atmosphere-star-two"></i>
+        <i class="scene-atmosphere-star scene-atmosphere-star-three"></i>
+      </div>
       <div ref="canvasHostRef" class="three-canvas-host" aria-hidden="true"></div>
 
       <div v-if="isLoading" class="scene-loading" aria-hidden="true">
@@ -14,6 +22,7 @@
       </div>
 
       <div v-if="hasFallback" class="fallback-core" aria-hidden="true">
+        <div class="fallback-aura"></div>
         <div class="fallback-ring fallback-ring-one"></div>
         <div class="fallback-ring fallback-ring-two"></div>
         <span class="fallback-bubble fallback-bubble-one"></span>
@@ -245,6 +254,94 @@ async function initializeScene(stage: HTMLElement, host: HTMLElement): Promise<(
   const innerCore = new THREE.Mesh(innerGeometry, innerMaterial)
   coreGroup.add(innerCore)
 
+  // A low-cost shader shell adds the soft, fluid depth that a static model
+  // cannot provide. It stays deliberately translucent so the Relay Core mark
+  // remains the focal point instead of becoming a decorative fog layer.
+  const fluidUniforms = {
+    uTime: { value: 0 },
+    uPointer: { value: new THREE.Vector2(0, 0) },
+    uColorA: { value: new THREE.Color(isDarkTheme() ? 0x6366f1 : 0x4f46e5) },
+    uColorB: { value: new THREE.Color(isDarkTheme() ? 0x22d3ee : 0x0891b2) },
+    uOpacity: { value: isDarkTheme() ? 0.92 : 0.7 },
+  }
+  const fluidGeometry = new THREE.IcosahedronGeometry(1.82, 5)
+  const fluidMaterial = new THREE.ShaderMaterial({
+    uniforms: fluidUniforms,
+    vertexShader: `
+      uniform float uTime;
+      uniform vec2 uPointer;
+      varying vec3 vNormal;
+      varying vec3 vWorldPosition;
+
+      void main() {
+        vec3 displaced = position;
+        float waveA = sin(position.y * 4.2 + uTime * 0.82 + position.x * 1.7);
+        float waveB = sin(position.z * 5.4 - uTime * 0.58 + position.y * 2.1);
+        float touch = dot(normalize(position), vec3(uPointer * 0.12, 0.0));
+        displaced += normal * (waveA * 0.034 + waveB * 0.026 + touch * 0.08);
+
+        vec4 worldPosition = modelMatrix * vec4(displaced, 1.0);
+        vWorldPosition = worldPosition.xyz;
+        vNormal = normalize(normalMatrix * normal);
+        gl_Position = projectionMatrix * viewMatrix * worldPosition;
+      }
+    `,
+    fragmentShader: `
+      uniform float uTime;
+      uniform vec3 uColorA;
+      uniform vec3 uColorB;
+      uniform float uOpacity;
+      varying vec3 vNormal;
+      varying vec3 vWorldPosition;
+
+      void main() {
+        vec3 viewDirection = normalize(cameraPosition - vWorldPosition);
+        float fresnel = pow(1.0 - max(dot(normalize(vNormal), viewDirection), 0.0), 2.75);
+        float bands = 0.5 + 0.5 * sin(vWorldPosition.y * 7.4 + vWorldPosition.x * 3.1 + uTime * 0.52);
+        float contour = smoothstep(0.42, 0.92, fresnel + bands * 0.12);
+        vec3 color = mix(uColorA, uColorB, clamp(bands * 0.72 + fresnel * 0.48, 0.0, 1.0));
+        float alpha = (0.035 + fresnel * 0.6 + contour * 0.08) * uOpacity;
+        gl_FragColor = vec4(color, alpha);
+      }
+    `,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.FrontSide,
+  })
+  resources.push(fluidGeometry, fluidMaterial)
+  const fluidShell = new THREE.Mesh(fluidGeometry, fluidMaterial)
+  fluidShell.position.y = 0.08
+  fluidShell.renderOrder = 1
+  coreGroup.add(fluidShell)
+
+  const particleCount = window.innerWidth < 768 ? 112 : 188
+  const particlePositions = new Float32Array(particleCount * 3)
+  for (let index = 0; index < particleCount; index += 1) {
+    const angle = Math.random() * Math.PI * 2
+    const radius = 3.1 + Math.random() * 2.15
+    const height = (Math.random() - 0.5) * 4.7
+    particlePositions[index * 3] = Math.cos(angle) * radius
+    particlePositions[index * 3 + 1] = height
+    particlePositions[index * 3 + 2] = Math.sin(angle) * radius - 0.65
+  }
+  const particleGeometry = new THREE.BufferGeometry()
+  particleGeometry.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3))
+  const particleMaterial = new THREE.PointsMaterial({
+    color: isDarkTheme() ? 0x93c5fd : 0x6366f1,
+    size: window.innerWidth < 768 ? 0.035 : 0.045,
+    transparent: true,
+    opacity: isDarkTheme() ? 0.58 : 0.3,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    sizeAttenuation: true,
+  })
+  resources.push(particleGeometry, particleMaterial)
+  const particleCloud = new THREE.Points(particleGeometry, particleMaterial)
+  particleCloud.userData.speed = 0.018
+  particleCloud.position.y = 0.1
+  orbitGroup.add(particleCloud)
+
   const bubbleGeometry = new THREE.SphereGeometry(1, 24, 18)
   resources.push(bubbleGeometry)
   const bubbleConfigs = [
@@ -338,6 +435,11 @@ async function initializeScene(stage: HTMLElement, host: HTMLElement): Promise<(
     edgeMaterial.opacity = dark ? 0.85 : 0.52
     innerMaterial.color.setHex(dark ? 0x67e8f9 : 0x0891b2)
     innerMaterial.opacity = dark ? 0.24 : 0.12
+    fluidUniforms.uColorA.value.setHex(dark ? 0x6366f1 : 0x4f46e5)
+    fluidUniforms.uColorB.value.setHex(dark ? 0x22d3ee : 0x0891b2)
+    fluidUniforms.uOpacity.value = dark ? 0.92 : 0.7
+    particleMaterial.color.setHex(dark ? 0x93c5fd : 0x6366f1)
+    particleMaterial.opacity = dark ? 0.58 : 0.3
     platformMaterial.color.setHex(dark ? 0x172554 : 0xe0e7ff)
     platformMaterial.emissive.setHex(dark ? 0x3730a3 : 0x4f46e5)
     platformMaterial.emissiveIntensity = dark ? 0.68 : 0.14
@@ -416,6 +518,8 @@ async function initializeScene(stage: HTMLElement, host: HTMLElement): Promise<(
     pointerX += (pointerTargetX - pointerX) * Math.min(1, delta * 4.8)
     pointerY += (pointerTargetY - pointerY) * Math.min(1, delta * 4.8)
     scrollValue += (scrollTarget - scrollValue) * Math.min(1, delta * 3.4)
+    fluidUniforms.uTime.value = elapsed
+    fluidUniforms.uPointer.value.set(pointerX, pointerY)
 
     if (!reducedMotion) {
       cube.rotation.x = -0.22 + Math.sin(elapsed * 0.52) * 0.06 + pointerY * 0.16
@@ -425,6 +529,9 @@ async function initializeScene(stage: HTMLElement, host: HTMLElement): Promise<(
       cubeEdges.position.copy(cube.position)
       innerCore.rotation.x = elapsed * 0.18
       innerCore.rotation.y = -elapsed * 0.3
+      fluidShell.rotation.x = elapsed * 0.06 + pointerY * 0.08
+      fluidShell.rotation.y = -elapsed * 0.08 + pointerX * 0.1
+      particleCloud.rotation.y = elapsed * 0.018
       energyKnot.rotation.z = elapsed * 0.08
       energyKnot.rotation.y = -elapsed * 0.06
       bubbles.forEach(({ mesh, config }) => {
@@ -491,6 +598,71 @@ async function initializeScene(stage: HTMLElement, host: HTMLElement): Promise<(
   background: transparent;
 }
 
+.scene-atmosphere {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 48%, color-mix(in srgb, var(--mr-primary) 14%, transparent), transparent 32%),
+    radial-gradient(circle at 76% 28%, color-mix(in srgb, var(--mr-secondary) 12%, transparent), transparent 27%);
+  pointer-events: none;
+}
+
+.scene-atmosphere-grid {
+  position: absolute;
+  inset: -20%;
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--mr-border-strong) 28%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--mr-border-strong) 28%, transparent) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(ellipse at center, black 0%, transparent 68%);
+  opacity: 0.34;
+  transform: perspective(600px) rotateX(64deg) translateY(23%);
+  transform-origin: center bottom;
+}
+
+.scene-atmosphere-glow {
+  position: absolute;
+  display: block;
+  border-radius: 50%;
+  filter: blur(2px);
+  opacity: 0.56;
+  animation: scene-glow-drift 9s ease-in-out infinite alternate;
+}
+
+.scene-atmosphere-glow-one {
+  top: 20%;
+  left: 28%;
+  width: 42%;
+  height: 42%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--mr-primary) 28%, transparent), transparent 68%);
+}
+
+.scene-atmosphere-glow-two {
+  right: 10%;
+  bottom: 17%;
+  width: 30%;
+  height: 30%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--mr-secondary) 26%, transparent), transparent 70%);
+  animation-delay: -4s;
+}
+
+.scene-atmosphere-star {
+  position: absolute;
+  display: block;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--mr-secondary);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--mr-secondary) 9%, transparent), 0 0 16px color-mix(in srgb, var(--mr-secondary) 58%, transparent);
+  animation: scene-star-pulse 3.6s ease-in-out infinite;
+}
+
+.scene-atmosphere-star-one { top: 22%; left: 18%; }
+.scene-atmosphere-star-two { top: 34%; right: 15%; width: 3px; height: 3px; animation-delay: -1.5s; }
+.scene-atmosphere-star-three { bottom: 23%; left: 28%; width: 3px; height: 3px; animation-delay: -2.4s; }
+
 .three-canvas-host,
 :deep(.three-hero-canvas) {
   position: absolute;
@@ -519,7 +691,8 @@ async function initializeScene(stage: HTMLElement, host: HTMLElement): Promise<(
 .scene-loading span { width: 42px; height: 42px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: scene-loader 0.9s linear infinite; }
 .scene-loading small { font-size: 9px; font-weight: 700; letter-spacing: 0.18em; }
 
-.fallback-core { position: absolute; z-index: 3; left: 50%; top: 48%; width: 270px; height: 270px; transform: translate(-50%, -50%); }
+.fallback-core { position: absolute; z-index: 3; left: 50%; top: 48%; width: 300px; height: 300px; transform: translate(-50%, -50%); }
+.fallback-aura { position: absolute; inset: 12%; border: 1px solid color-mix(in srgb, var(--mr-secondary) 30%, transparent); border-radius: 50%; background: radial-gradient(circle at 33% 26%, rgba(255, 255, 255, 0.22), transparent 20%), radial-gradient(circle, color-mix(in srgb, var(--mr-primary) 17%, transparent), transparent 66%); box-shadow: 0 0 0 20px color-mix(in srgb, var(--mr-primary) 4%, transparent), 0 0 70px color-mix(in srgb, var(--mr-primary) 18%, transparent); animation: fallback-aura-breathe 5.5s ease-in-out infinite; }
 .fallback-ring { position: absolute; inset: 14%; border: 1px solid color-mix(in srgb, var(--mr-primary) 55%, transparent); border-radius: 50%; transform: rotateX(68deg); animation: fallback-spin 10s linear infinite; }
 .fallback-ring-two { inset: 24% 2%; border-color: color-mix(in srgb, var(--mr-secondary) 50%, transparent); animation-direction: reverse; animation-duration: 14s; }
 .fallback-bubble { position: absolute; display: block; border: 1px solid color-mix(in srgb, var(--mr-secondary) 55%, transparent); border-radius: 50%; background: radial-gradient(circle at 29% 23%, rgba(255, 255, 255, 0.78), transparent 18%), radial-gradient(circle at 67% 72%, color-mix(in srgb, var(--mr-secondary) 58%, transparent), color-mix(in srgb, var(--mr-primary) 26%, transparent) 58%, transparent 74%); box-shadow: inset -8px -10px 16px rgba(79, 70, 229, 0.16), inset 5px 5px 10px rgba(255, 255, 255, 0.35), 0 14px 24px color-mix(in srgb, var(--mr-primary) 14%, transparent); animation: fallback-bubble-float 5.8s ease-in-out infinite; }
@@ -531,6 +704,9 @@ async function initializeScene(stage: HTMLElement, host: HTMLElement): Promise<(
 .fallback-cube span { font-size: 44px; font-weight: 800; }
 
 @keyframes scene-loader { to { transform: rotate(360deg); } }
+@keyframes scene-glow-drift { from { transform: translate3d(-8px, 6px, 0) scale(0.94); } to { transform: translate3d(10px, -9px, 0) scale(1.08); } }
+@keyframes scene-star-pulse { 0%, 100% { opacity: 0.32; transform: scale(0.8); } 50% { opacity: 0.9; transform: scale(1.2); } }
+@keyframes fallback-aura-breathe { 0%, 100% { opacity: 0.58; transform: scale(0.94); } 50% { opacity: 0.94; transform: scale(1.05); } }
 @keyframes fallback-spin { to { transform: rotateX(68deg) rotateZ(360deg); } }
 @keyframes fallback-bubble-float { 0%, 100% { transform: translate3d(0, 0, 0) scale(1); } 50% { transform: translate3d(0, -9px, 0) scale(1.08); } }
 
@@ -544,6 +720,9 @@ async function initializeScene(stage: HTMLElement, host: HTMLElement): Promise<(
 
 @media (prefers-reduced-motion: reduce) {
   .scene-loading span,
+  .scene-atmosphere-glow,
+  .scene-atmosphere-star,
+  .fallback-aura,
   .fallback-ring,
   .fallback-bubble { animation: none !important; }
 }

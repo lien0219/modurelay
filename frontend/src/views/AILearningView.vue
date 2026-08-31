@@ -56,10 +56,6 @@
                 {{ copy.hero.primaryCta }}
                 <Icon name="arrowDown" size="sm" />
               </a>
-              <router-link to="/home" class="learning-secondary-button">
-                {{ copy.hero.secondaryCta }}
-                <Icon name="arrowRight" size="sm" />
-              </router-link>
             </div>
           </div>
 
@@ -165,24 +161,24 @@
           </div>
         </section>
 
-        <section class="learning-section learning-timeline-section" data-learning-reveal>
+        <section class="learning-section learning-experience-section" data-learning-reveal>
           <div class="learning-section-heading learning-section-heading-split">
             <div>
-              <span class="learning-section-index">{{ copy.timeline.eyebrow }}</span>
-              <h2>{{ copy.timeline.title }}</h2>
+              <span class="learning-section-index">{{ copy.experience.eyebrow }}</span>
+              <h2>{{ copy.experience.title }}</h2>
             </div>
-            <p>{{ copy.timeline.description }}</p>
+            <p>{{ copy.experience.description }}</p>
           </div>
 
-          <div class="learning-timeline">
-            <article v-for="(item, index) in copy.timeline.items" :key="item.title" class="learning-timeline-card">
-              <div class="learning-timeline-marker"><span>0{{ index + 1 }}</span><i></i></div>
-              <div class="learning-timeline-card-body">
-                <div class="learning-card-meta"><span>{{ item.period }}</span><span>{{ item.role }}</span></div>
-                <h3>{{ item.title }}</h3>
-                <p>{{ item.description }}</p>
-                <div class="learning-card-tags"><span v-for="tag in item.tags" :key="tag">{{ tag }}</span></div>
+          <div class="learning-experience-grid">
+            <article v-for="(item, index) in copy.experience.items" :key="item.title" class="learning-experience-card">
+              <div class="learning-experience-topline">
+                <span class="learning-experience-number">0{{ index + 1 }}</span>
+                <span class="learning-experience-role">{{ item.role }}</span>
               </div>
+              <h3>{{ item.title }}</h3>
+              <p>{{ item.description }}</p>
+              <div class="learning-card-tags"><span v-for="tag in item.tags" :key="tag">{{ tag }}</span></div>
             </article>
           </div>
         </section>
@@ -280,7 +276,6 @@ interface LearningCopy {
     description: string
     tags: string[]
     primaryCta: string
-    secondaryCta: string
     visualLabel: string
     visualStatus: string
     visualHint: string
@@ -289,11 +284,11 @@ interface LearningCopy {
   stats: Array<{ value: string; label: string }>
   map: { eyebrow: string; title: string; description: string; activeLabel: string }
   modules: LearningModule[]
-  timeline: {
+  experience: {
     eyebrow: string
     title: string
     description: string
-    items: Array<{ period: string; role: string; title: string; description: string; tags: string[] }>
+    items: Array<{ role: string; title: string; description: string; tags: string[] }>
   }
   method: {
     eyebrow: string
@@ -310,15 +305,14 @@ const zhCopy: LearningCopy = {
   nav: { home: '首页', learning: 'AI 学习', modelPlaza: '模型广场', login: '登录', light: '切换浅色模式', dark: '切换深色模式' },
   hero: {
     eyebrow: 'AI LEARNING / PUBLIC KNOWLEDGE',
-    title: '把经验，变成可复用的智能系统。',
-    subtitle: '一份脱敏职业档案，拆解老师能力培养与 AI 技术专家的系统方法。',
-    description: '从把复杂知识讲清楚，到设计 Agent、工作流与具身智能系统；这里将经验整理成可讲解、可实操、可复盘的学习路径。',
-    tags: ['已授权公开摘要', '不含住址与出生信息', '可复用的方法论'],
+    title: '让经验真正帮到人',
+    subtitle: '面向老师与技术专家的 AI 学习空间',
+    description: '把多年 AI 产品、Agent 系统与具身智能实践，整理成看得懂的案例、学得会的方法和做得出的练习。',
+    tags: ['公开职业摘要', '隐私信息已排除', '案例与方法可复用'],
     primaryCta: '浏览学习地图',
-    secondaryCta: '返回首页',
     visualLabel: 'AI 学习能力关系图',
-    visualStatus: 'PUBLIC KNOWLEDGE / READY',
-    visualHint: '点击气泡查看模块',
+    visualStatus: '学习内容已整理',
+    visualHint: '点击任意主题开始了解',
     nodes: [
       { id: 'agent', label: 'Agent', caption: 'Architecture' },
       { id: 'workflow', label: 'Workflow', caption: 'AI-native' },
@@ -332,34 +326,34 @@ const zhCopy: LearningCopy = {
     { value: '15', label: '具身智能团队' },
     { value: '32', label: 'AI 数据运营团队' },
   ],
-  map: { eyebrow: '01 / LEARNING MAP', title: '老师能力与技术专家方法，如何成为一套系统？', description: '学习地图把职业经验拆成四个模块：训练老师的讲解与课程设计能力，也呈现技术专家在架构、工程与真实场景落地中的判断。点击左侧节点，查看对应的实践摘要。', activeLabel: 'ACTIVE MODULE' },
+  map: { eyebrow: '01 / LEARNING MAP', title: '从理解原理到做出结果', description: '围绕四个主题，逐步建立从概念理解、任务拆解到系统落地的能力。每个主题都包含真实项目中的判断、方法和可练习的切入点。', activeLabel: '当前主题' },
   modules: [
-    { id: 'agent', code: 'MODULE / 01', label: 'Agent Architecture', caption: '从规划到执行', icon: 'brain', summary: '以主 Agent 负责规划与调度，让多个专业 Agent 围绕同一任务协作。', tags: ['Multi-Agent', 'Task planning', 'Orchestration'], points: ['从 0 到 1 设计 Mojo AIGC 智能体平台。', '用项目级 AGENTS、流程级 Skill、任务级 Rule 与 Prompt 模板组织执行。', '把复杂内容生产拆成可编排、可复用、可持续推进的流程。'] },
-    { id: 'workflow', code: 'MODULE / 02', label: 'AI-native Workflow', caption: '让流程持续推进', icon: 'cpu', summary: '把调研、脚本、视觉、视频和质量复核组织成一条可追踪的 AI 产线。', tags: ['Workflow', 'Skill / Rule', 'Quality loop'], points: ['覆盖调研、策划、脚本、分镜、视觉生成、视频制作与交付。', '将纠错改进、伙伴训练与外部情报获取纳入运行机制。', '用反馈优化持续提升 Agent 的任务完成质量。'] },
-    { id: 'memory', code: 'MODULE / 03', label: 'Memory & Feedback', caption: '让上下文可延续', icon: 'database', summary: '关注长流程任务中的记忆、状态保持和错误复盘，让系统不止完成一次调用。', tags: ['Memory', 'Feedback', 'Evaluation'], points: ['探索连续任务中的上下文延续和多 Agent 协作。', '将错误复盘、能力训练与信息更新变成可重复的机制。', '围绕数据评估体系，建立从输入到结果的质量反馈。'] },
-    { id: 'embodied', code: 'MODULE / 04', label: 'Embodied Intelligence', caption: '从模型走向现场', icon: 'beaker', summary: '把视觉感知、任务规划和机器人本体放进真实仓储场景，验证 AI 如何落地。', tags: ['Robotics', 'Vision', 'Task planning'], points: ['发起“墨工”具身智能机器人项目，面向中小仓储现实任务。', '协调具身大脑、计算机视觉、多模态感知、机器人本体与导航资源。', '从产品定位、技术路线到商业模式，推进从能运行到能落地。'] },
+    { id: 'agent', code: '核心能力', label: 'Agent 设计', caption: '把问题拆清楚', icon: 'brain', summary: '学会把一个复杂目标拆成角色、步骤和协作关系，让 AI 从会回答走向能完成任务。', tags: ['任务拆解', '多 Agent 协作', '执行闭环'], points: ['如何设计主 Agent 与专业 Agent 的分工。', '如何把任务拆成可执行的步骤与检查点。', '如何把一次成功沉淀成下一次可复用的方法。'] },
+    { id: 'workflow', code: '工作方法', label: 'AI 工作流', caption: '让过程稳定复用', icon: 'cpu', summary: '把调研、创作、审核和交付串成清晰流程，让 AI 能在真实工作里持续产出。', tags: ['流程设计', '工具协作', '持续改进'], points: ['从需求到交付，明确每一步的输入与结果。', '用工具、规则和模板减少重复沟通。', '用复盘让流程越用越顺。'] },
+    { id: 'memory', code: '持续改进', label: '记忆与反馈', caption: '让系统持续变好', icon: 'database', summary: '让 AI 记住重要上下文，也能从错误和反馈中调整下一次行动。', tags: ['上下文', '反馈机制', '结果评估'], points: ['保留长期任务真正需要的上下文。', '把错误复盘变成可执行的改进动作。', '用清晰的评估标准判断结果好不好。'] },
+    { id: 'embodied', code: '现场实践', label: '具身智能', caption: '把能力带到现场', icon: 'beaker', summary: '从视觉、规划到机器人执行，理解 AI 如何在真实环境中感知、判断并完成动作。', tags: ['真实场景', '视觉与规划', '产品落地'], points: ['用真实仓储任务验证 AI 能否落地。', '理解感知、规划与执行之间的配合。', '从产品目标出发平衡技术与实际价值。'] },
   ],
-  timeline: {
-    eyebrow: '02 / PRACTICE TRAJECTORY',
-    title: '三段经历，一条清晰的系统化路径。',
-    description: '从“理解一句话”，到“完成一项任务”，再到“让一组 Agent 持续协作”，关注点逐步从交互走向系统。',
+  experience: {
+    eyebrow: '02 / PROJECT EXPERIENCE',
+    title: '三类真实项目，三种能力落点',
+    description: '这些项目不是时间线，而是三种可迁移的实践：把产品做出来，把复杂流程跑起来，把技术带到真实场景。',
     items: [
-      { period: '2026.06 - 至今', role: 'AI 产线负责人', title: 'Mojo AIGC 智能体平台', description: '从 0 到 1 设计并实现面向复杂内容生产的 AI Agent 系统，建立端到端 AIGC 生产流程。', tags: ['Multi-Agent', 'AIGC', 'MVP'] },
-      { period: '2024.06 - 2026.04', role: '创始人', title: '“墨工”具身智能机器人', description: '面向中小仓库的搬运、入库、盘点与分拣等现实任务，组建跨学科研发团队并探索商业化路径。', tags: ['Embodied AI', 'Robotics', 'Team building'] },
-      { period: '2018.02 - 2023.08', role: 'AI 产品 / 交互设计师', title: '晓悟智能助手', description: '围绕语音交互、自然语言理解与智能任务响应，参与 50 余个细分应用场景的产品化落地。', tags: ['Voice AI', 'NLU', 'Interaction'] },
+      { role: 'AI 产线负责人', title: 'Mojo AIGC 智能体平台', description: '把调研、脚本、视觉与交付组织成一条可协作的 AI 生产流程，让复杂内容工作从灵感走向稳定交付。', tags: ['内容生产', 'Agent 协作'] },
+      { role: '项目发起与产品负责人', title: '“墨工”具身智能机器人', description: '面向中小仓储的搬运、入库、盘点和分拣，把多模态感知、任务规划与机器人本体放进真实场景验证。', tags: ['具身智能', '真实场景'] },
+      { role: 'AI 产品与交互设计', title: '晓悟智能助手', description: '围绕语音交互、自然语言理解和任务响应，推动 AI 能力进入 50 余个可使用的产品场景。', tags: ['语音交互', '产品化'] },
     ],
   },
   method: {
     eyebrow: '03 / WORKING PRINCIPLES',
-    title: '把老师的表达力与技术专家的系统力连接起来。',
-    description: '好的 AI 学习既要能讲清楚，也要能做出来、验出来；每个模块都对应一段可教学、可实操、可复盘的方法。',
+    title: '把会做的事，变成会教的方法',
+    description: '适合老师，也适合技术专家：先理解，再练习，最后用真实结果验证。',
     items: [
-      { icon: 'server', title: '老师先讲清楚，再搭系统', description: '把任务边界、角色分工和反馈闭环拆成可理解、可练习的课程单元。' },
-      { icon: 'sparkles', title: '用技术专家方式拆解', description: '把判断沉淀为 Skill、Rule、Prompt、评估和协作规范，让方法可复用。' },
-      { icon: 'shield', title: '在真实场景里验证', description: '用真实用户、真实任务和可衡量结果检验 AI 是否真正完成了工作。' },
+      { icon: 'server', title: '讲清楚', description: '把复杂概念拆成容易理解的例子、步骤和练习。' },
+      { icon: 'sparkles', title: '做出来', description: '用 Agent、工作流和工具把方法放进真实任务。' },
+      { icon: 'shield', title: '复盘提升', description: '根据结果和反馈调整方法，让能力可以持续进步。' },
     ],
   },
-  privacy: { eyebrow: 'PRIVACY BOUNDARY', title: '公开的是能力，不是隐私。', description: '本页面只展示经授权的职业摘要与公开联系方式，不上传原始简历，也不展示出生年份、住址、身份证等敏感信息。', items: ['只保留职业经历、能力模块与项目方法', '联系方式单独标注为公开联系', '所有内容均为脱敏后的展示摘要'] },
+  privacy: { eyebrow: 'PRIVACY BOUNDARY', title: '只展示能力，不展示隐私', description: '页面仅保留经授权的职业经历、项目方法和公开联系方式。原始简历不会展示，住址、出生信息和身份信息均已排除。', items: ['只保留职业经历、能力模块与项目方法', '联系方式单独标注为公开联系', '所有内容均为脱敏后的展示摘要'] },
   contact: { eyebrow: 'OPEN CONTACT', name: '谢剑浩 Ango', role: 'AI Agent 产品负责人 / AI 系统设计者' },
   footer: 'Public profile summary · Built with care for privacy',
 }
@@ -368,15 +362,14 @@ const enCopy: LearningCopy = {
   nav: { home: 'Home', learning: 'AI Learning', modelPlaza: 'Model Plaza', login: 'Sign in', light: 'Switch to light mode', dark: 'Switch to dark mode' },
   hero: {
     eyebrow: 'AI LEARNING / PUBLIC KNOWLEDGE',
-    title: 'Turn experience into reusable intelligent systems.',
-    subtitle: 'A privacy-first profile mapping teacher capability and technical-expert practice.',
-    description: 'From making complex ideas teachable to designing Agent, workflow and embodied systems, the path turns experience into explainable lessons, hands-on practice and reviewable outcomes.',
-    tags: ['Authorized public summary', 'No address or birth data', 'Reusable principles'],
+    title: 'Make experience useful to people',
+    subtitle: 'An AI learning space for teachers and technical experts',
+    description: 'Real AI product, Agent system and embodied intelligence practice, shaped into clear cases, practical methods and exercises you can use.',
+    tags: ['Public professional summary', 'Private data excluded', 'Reusable cases and methods'],
     primaryCta: 'Explore the map',
-    secondaryCta: 'Back home',
     visualLabel: 'AI learning capability map',
-    visualStatus: 'PUBLIC KNOWLEDGE / READY',
-    visualHint: 'Select a bubble to explore',
+    visualStatus: 'LEARNING CONTENT READY',
+    visualHint: 'Select a topic to begin',
     nodes: [
       { id: 'agent', label: 'Agent', caption: 'Architecture' },
       { id: 'workflow', label: 'Workflow', caption: 'AI-native' },
@@ -390,34 +383,34 @@ const enCopy: LearningCopy = {
     { value: '15', label: 'Embodied AI team' },
     { value: '32', label: 'AI data operations team' },
   ],
-  map: { eyebrow: '01 / LEARNING MAP', title: 'How do teacher capability and technical-expert methods become a system?', description: 'The professional experience is distilled into four modules: build teaching and course-design capability while making architecture, engineering and real-world judgement visible to technical experts.', activeLabel: 'ACTIVE MODULE' },
+  map: { eyebrow: '01 / LEARNING MAP', title: 'From understanding principles to making results', description: 'Four connected topics build capability step by step, from understanding concepts and breaking down tasks to putting a system into the real world. Each topic starts with a judgement, method or practice from an actual project.', activeLabel: 'CURRENT TOPIC' },
   modules: [
-    { id: 'agent', code: 'MODULE / 01', label: 'Agent Architecture', caption: 'Plan to execution', icon: 'brain', summary: 'Let a primary Agent plan and orchestrate work while specialist Agents collaborate around one task.', tags: ['Multi-Agent', 'Task planning', 'Orchestration'], points: ['Designed Mojo from 0 to 1 as an AIGC Agent platform.', 'Structured execution with project AGENTS, process Skills, task Rules and prompt templates.', 'Turned complex content production into an orchestrated, reusable and continuous workflow.'] },
-    { id: 'workflow', code: 'MODULE / 02', label: 'AI-native Workflow', caption: 'Keep work moving', icon: 'cpu', summary: 'Organize research, scripting, visuals, video and quality review into a traceable AI production line.', tags: ['Workflow', 'Skill / Rule', 'Quality loop'], points: ['Covered research, planning, scripts, storyboards, visual generation, video and delivery.', 'Brought correction, partner training and external intelligence into the operating loop.', 'Used feedback to improve Agent task quality over time.'] },
-    { id: 'memory', code: 'MODULE / 03', label: 'Memory & Feedback', caption: 'Carry context forward', icon: 'database', summary: 'Explore memory, state and error review in long-running tasks so the system does more than answer once.', tags: ['Memory', 'Feedback', 'Evaluation'], points: ['Explored context continuity and Multi-Agent collaboration across ongoing tasks.', 'Made error review, capability training and information updates repeatable mechanisms.', 'Built quality feedback from input to outcome around an evaluation mindset.'] },
-    { id: 'embodied', code: 'MODULE / 04', label: 'Embodied Intelligence', caption: 'Bring models to the field', icon: 'beaker', summary: 'Put vision, task planning and robot bodies into real warehouse scenarios to test how AI lands in the world.', tags: ['Robotics', 'Vision', 'Task planning'], points: ['Started the “Mogong” embodied robot project for real SMB warehouse tasks.', 'Coordinated embodied brains, computer vision, multimodal perception, robotics and navigation.', 'Moved from product definition and technical route to business validation.'] },
+    { id: 'agent', code: 'Core capability', label: 'Agent design', caption: 'Break the problem down', icon: 'brain', summary: 'Break a complex goal into roles, steps and collaboration so AI moves from giving answers to completing useful work.', tags: ['Task breakdown', 'Agent collaboration', 'Execution loop'], points: ['Design a lead Agent and specialist Agents with clear responsibilities.', 'Turn a goal into executable steps and checkpoints.', 'Capture a successful approach so it can be reused next time.'] },
+    { id: 'workflow', code: 'Working method', label: 'AI workflow', caption: 'Make the process repeatable', icon: 'cpu', summary: 'Connect research, creation, review and delivery into a clear process that keeps producing in real work.', tags: ['Process design', 'Tool collaboration', 'Continuous improvement'], points: ['Define the input and outcome for every step from request to delivery.', 'Use tools, rules and templates to remove repetitive communication.', 'Use review to make the workflow smoother each time.'] },
+    { id: 'memory', code: 'Continuous improvement', label: 'Memory & feedback', caption: 'Help the system improve', icon: 'database', summary: 'Keep the context that matters and turn mistakes and feedback into better next actions.', tags: ['Context', 'Feedback', 'Outcome review'], points: ['Keep the context that an ongoing task actually needs.', 'Turn error review into a concrete improvement action.', 'Use clear criteria to decide whether the result is good.'] },
+    { id: 'embodied', code: 'Field practice', label: 'Embodied intelligence', caption: 'Bring ability to the field', icon: 'beaker', summary: 'See how AI senses, decides and acts in a real environment through vision, planning and robotics.', tags: ['Real-world use', 'Vision and planning', 'Product delivery'], points: ['Test whether AI can help with real warehouse work.', 'Understand how perception, planning and execution work together.', 'Balance technical ambition with user value and product reality.'] },
   ],
-  timeline: {
-    eyebrow: '02 / PRACTICE TRAJECTORY',
-    title: 'Three chapters, one systems path.',
-    description: 'The focus moved from understanding one sentence, to completing one task, to helping a group of Agents collaborate continuously.',
+  experience: {
+    eyebrow: '02 / PROJECT EXPERIENCE',
+    title: 'Three real projects three kinds of capability',
+    description: 'Three transferable ways of working: bring a product to life, make a complex process run, and take technology into the field.',
     items: [
-      { period: '2026.06 - present', role: 'AI production lead', title: 'Mojo AIGC Agent platform', description: 'Designed and built an AI Agent system for complex content production from 0 to 1, including an end-to-end AIGC workflow.', tags: ['Multi-Agent', 'AIGC', 'MVP'] },
-      { period: '2024.06 - 2026.04', role: 'Founder', title: '“Mogong” embodied robot', description: 'Built a cross-disciplinary team and explored product and commercial paths for real SMB warehouse tasks.', tags: ['Embodied AI', 'Robotics', 'Team building'] },
-      { period: '2018.02 - 2023.08', role: 'AI product / interaction designer', title: 'Xiaowu intelligent assistant', description: 'Worked on voice interaction, language understanding and task response across more than 50 product scenarios.', tags: ['Voice AI', 'NLU', 'Interaction'] },
+      { role: 'AI production lead', title: 'Mojo AIGC Agent platform', description: 'Organized research, scripts, visuals and delivery into a collaborative AI production process, helping complex content work move from ideas to steady delivery.', tags: ['Content production', 'Agent collaboration'] },
+      { role: 'Founder and product lead', title: 'Mogong embodied robot', description: 'Put multimodal perception, task planning and robotics into real SMB warehouse work such as handling, stocking, counting and sorting.', tags: ['Embodied AI', 'Real-world use'] },
+      { role: 'AI product and interaction design', title: 'Xiaowu intelligent assistant', description: 'Moved voice interaction, language understanding and task response into more than 50 usable product scenarios.', tags: ['Voice interaction', 'Product delivery'] },
     ],
   },
   method: {
     eyebrow: '03 / WORKING PRINCIPLES',
-    title: 'Connect teacher clarity with technical-expert systems thinking.',
-    description: 'Good AI learning must be explainable, buildable and testable; each module pairs a teachable concept with hands-on practice and review.',
+    title: 'Turn what you can do into what you can teach',
+    description: 'Useful for teachers and technical experts: understand first, practise next, then use a real result to verify the method.',
     items: [
-      { icon: 'server', title: 'Teach it clearly, then build it', description: 'Turn task boundaries, roles and feedback loops into understandable course units and practice.' },
-      { icon: 'sparkles', title: 'Decompose like a technical expert', description: 'Distill judgement into Skills, Rules, prompts, evaluation and collaboration norms.' },
-      { icon: 'shield', title: 'Validate in real contexts', description: 'Use real users, real tasks and measurable outcomes to test whether AI completed the work.' },
+      { icon: 'server', title: 'Make it clear', description: 'Turn a complex idea into examples, steps and practice people can understand.' },
+      { icon: 'sparkles', title: 'Make it work', description: 'Put the method into real tasks with Agents, workflows and tools.' },
+      { icon: 'shield', title: 'Review and improve', description: 'Use outcomes and feedback to refine the method and keep the capability growing.' },
     ],
   },
-  privacy: { eyebrow: 'PRIVACY BOUNDARY', title: 'Share capability, not private data.', description: 'This page shows only an authorized professional summary and public contact routes. The original resume is not uploaded, and birth data, address and identity details are excluded.', items: ['Only professional experience and methods are included', 'Contact routes are explicitly marked public', 'All content is a redacted display summary'] },
+  privacy: { eyebrow: 'PRIVACY BOUNDARY', title: 'Show capability not private data', description: 'Only authorized professional experience, project methods and public contact routes are included. The original resume is never displayed, and address, birth and identity details are excluded.', items: ['Only professional experience and methods are included', 'Contact routes are explicitly marked public', 'All content is a redacted display summary'] },
   contact: { eyebrow: 'OPEN CONTACT', name: 'Jianhao Xie / Ango', role: 'AI Agent product lead / AI systems designer' },
   footer: 'Public profile summary · Built with care for privacy',
 }
@@ -554,8 +547,6 @@ onBeforeUnmount(() => {
 .learning-hero-tags i, .learning-visual-caption i { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--mr-success); box-shadow: 0 0 0 4px color-mix(in srgb, var(--mr-success) 12%, transparent); }
 .learning-hero-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 28px; }
 .learning-primary-button { min-height: 44px; padding: 0 18px; }
-.learning-secondary-button { display: inline-flex; min-height: 44px; align-items: center; justify-content: center; gap: 7px; padding: 0 17px; border: 1px solid var(--learning-border-strong); border-radius: 999px; color: var(--mr-text); background: color-mix(in srgb, var(--mr-surface) 74%, transparent); box-shadow: inset 0 1px 0 var(--glass-highlight); font-size: 12px; font-weight: 650; transition: transform 180ms ease, border-color 180ms ease, background-color 180ms ease; }
-.learning-secondary-button:hover { border-color: var(--mr-primary); background: var(--mr-surface); transform: translateY(-2px); }
 .learning-hero-visual { --learning-rotate-x: 0deg; --learning-rotate-y: 0deg; --learning-light-x: 50%; --learning-light-y: 45%; position: relative; min-height: 560px; overflow: hidden; border: 1px solid color-mix(in srgb, var(--mr-primary) 26%, var(--mr-border-strong)); border-radius: 32px; background: radial-gradient(circle at var(--learning-light-x) var(--learning-light-y), color-mix(in srgb, var(--mr-primary) 15%, transparent), transparent 30%), color-mix(in srgb, var(--mr-surface) 56%, transparent); box-shadow: inset 0 1px 0 var(--glass-highlight), 0 30px 74px color-mix(in srgb, var(--mr-primary) 13%, transparent); backdrop-filter: blur(18px) saturate(135%); -webkit-backdrop-filter: blur(18px) saturate(135%); transform: perspective(1400px) rotateX(var(--learning-rotate-x)) rotateY(var(--learning-rotate-y)); transform-style: preserve-3d; transition: transform 600ms cubic-bezier(0.16, 1, 0.3, 1), border-color 220ms ease, box-shadow 220ms ease; }
 .learning-hero-visual::before { position: absolute; inset: 16px; border: 1px solid color-mix(in srgb, var(--mr-primary) 17%, transparent); border-radius: 23px; content: ''; pointer-events: none; transform: translateZ(16px); }
 .learning-hero-visual::after { position: absolute; inset: 13% 12%; border-right: 1px solid color-mix(in srgb, var(--mr-secondary) 20%, transparent); border-left: 1px solid color-mix(in srgb, var(--mr-primary) 20%, transparent); content: ''; pointer-events: none; transform: translateZ(8px); }
@@ -623,16 +614,17 @@ onBeforeUnmount(() => {
 .learning-detail-enter-from { opacity: 0; transform: translateY(8px); }
 .learning-detail-leave-to { opacity: 0; transform: translateY(-8px); }
 .learning-section-heading-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 0.72fr); gap: 56px; align-items: end; max-width: none; }
-.learning-timeline { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; margin-top: 46px; background: var(--learning-border); }
-.learning-timeline-card { min-height: 300px; padding: 26px; background: var(--mr-surface); }
-.learning-timeline-marker { display: flex; align-items: center; gap: 12px; color: var(--mr-primary); font: 700 11px ui-monospace, SFMono-Regular, Menlo, monospace; }
-.learning-timeline-marker i { display: block; height: 1px; flex: 1; background: color-mix(in srgb, var(--mr-primary) 28%, transparent); }
-.learning-timeline-card-body { margin-top: 44px; }
-.learning-card-meta { display: flex; flex-wrap: wrap; gap: 8px 14px; color: var(--mr-text-subtle); font: 700 10px ui-monospace, SFMono-Regular, Menlo, monospace; }
-.learning-card-meta span:last-child { color: var(--mr-primary); }
-.learning-timeline-card h3 { margin: 13px 0 0; color: var(--mr-text); font-size: 19px; font-weight: 700; letter-spacing: -0.03em; }
-.learning-timeline-card p { margin: 12px 0 0; color: var(--mr-text-muted); font-size: 12px; line-height: 1.75; }
-.learning-card-tags { margin-top: 22px; }
+.learning-experience-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 46px; }
+.learning-experience-card { position: relative; min-height: 300px; overflow: hidden; padding: 27px; border: 1px solid var(--learning-border); border-radius: 22px; background: linear-gradient(145deg, color-mix(in srgb, var(--mr-surface-raised) 82%, transparent), color-mix(in srgb, var(--mr-primary) 6%, var(--mr-surface))); box-shadow: inset 0 1px 0 var(--glass-highlight), 0 18px 36px color-mix(in srgb, var(--mr-primary) 7%, transparent); transition: transform 220ms ease, border-color 220ms ease, box-shadow 220ms ease; }
+.learning-experience-card::before { position: absolute; top: 0; right: 24px; left: 24px; height: 2px; background: linear-gradient(90deg, var(--mr-primary), var(--mr-secondary), transparent); content: ''; opacity: 0.7; }
+.learning-experience-card::after { position: absolute; right: -72px; bottom: -92px; width: 220px; height: 220px; border: 1px solid color-mix(in srgb, var(--mr-primary) 12%, transparent); border-radius: 50%; box-shadow: 0 0 0 20px color-mix(in srgb, var(--mr-secondary) 4%, transparent); content: ''; pointer-events: none; }
+.learning-experience-card:hover { border-color: color-mix(in srgb, var(--mr-primary) 42%, var(--learning-border)); box-shadow: inset 0 1px 0 var(--glass-highlight), 0 24px 44px color-mix(in srgb, var(--mr-primary) 13%, transparent); transform: translateY(-5px); }
+.learning-experience-topline { position: relative; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.learning-experience-number { color: var(--mr-primary); font: 700 11px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.12em; }
+.learning-experience-role { color: var(--mr-text-subtle); font-size: 11px; font-weight: 650; text-align: right; }
+.learning-experience-card h3 { position: relative; z-index: 1; margin: 54px 0 0; color: var(--mr-text); font-size: 20px; font-weight: 720; letter-spacing: -0.035em; }
+.learning-experience-card p { position: relative; z-index: 1; min-height: 86px; margin: 13px 0 0; color: var(--mr-text-muted); font-size: 12px; line-height: 1.78; }
+.learning-card-tags { position: relative; z-index: 1; margin-top: 22px; }
 .learning-card-tags span { color: var(--mr-text-subtle); border-color: var(--learning-border); background: transparent; font-size: 9px; }
 .learning-method-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; margin-top: 46px; background: var(--learning-border); }
 .learning-method-card { min-height: 230px; padding: 26px; background: var(--mr-surface); }
@@ -685,8 +677,9 @@ onBeforeUnmount(() => {
   .learning-module-list { grid-template-columns: repeat(2, 1fr); }
   .learning-module-tab { grid-template-columns: 35px minmax(0, 1fr); }
   .learning-module-tab > svg { display: none; }
-  .learning-timeline { grid-template-columns: 1fr; }
-  .learning-timeline-card { min-height: auto; }
+  .learning-experience-grid { grid-template-columns: 1fr; }
+  .learning-experience-card { min-height: auto; }
+  .learning-experience-card p { min-height: auto; }
   .learning-section-heading-split { display: block; }
   .learning-section-heading-split > p { max-width: 620px; margin-top: 18px; }
   .learning-method-grid { grid-template-columns: 1fr; }
@@ -704,7 +697,7 @@ onBeforeUnmount(() => {
   .learning-hero h1 { font-size: clamp(40px, 13vw, 56px); }
   .learning-hero-subtitle { font-size: 18px; }
   .learning-hero-actions { flex-direction: column; align-items: stretch; }
-  .learning-primary-button, .learning-secondary-button { width: 100%; }
+  .learning-primary-button { width: 100%; }
   .learning-hero-visual { min-height: 430px; border-radius: 24px; }
   .learning-core { width: 122px; height: 122px; }
   .learning-core strong { font-size: 34px; }
