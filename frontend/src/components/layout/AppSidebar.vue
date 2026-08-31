@@ -199,6 +199,7 @@ import { sanitizeSvg } from '@/utils/sanitize'
 import { sanitizeUrl } from '@/utils/url'
 import { FeatureFlags, makeSidebarFlag } from '@/utils/featureFlags'
 import { useBatchImageAccess } from '@/composables/useBatchImageAccess'
+import { toggleThemeWithTransition } from '@/utils/themeTransition'
 
 interface NavItem {
   path: string
@@ -872,10 +873,8 @@ function toggleSidebar() {
   appStore.toggleSidebar()
 }
 
-function toggleTheme() {
-  isDark.value = !isDark.value
-  document.documentElement.classList.toggle('dark', isDark.value)
-  localStorage.setItem('theme', isDark.value ? 'dark' : 'light')
+function toggleTheme(event?: MouseEvent) {
+  isDark.value = toggleThemeWithTransition(isDark.value, event)
 }
 
 function closeMobile() {

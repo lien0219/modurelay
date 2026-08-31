@@ -14,7 +14,12 @@
 }
 
 @supports not ((backdrop-filter: blur(1px))) {
-  .home-header {
+  .home-header,
+  .compact-home-header,
+  .home-hero-stage-frame,
+  .home-code-panel,
+  .home-product-preview,
+  .home-final-panel {
     background: var(--mr-canvas);
   }
 }
