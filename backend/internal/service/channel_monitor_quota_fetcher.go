@@ -141,6 +141,12 @@ func (f *ChannelMonitorQuotaFetcher) Fetch(ctx context.Context, accountID int64)
 	// 避免某个监控的取消波及共享同一账号的其他监控。
 	key := "monitor-quota:" + strconv.FormatInt(accountID, 10)
 	ch := f.flight.DoChan(key, func() (any, error) {
+		// 调用方可能在第一次缓存检查后才进入 singleflight。若前一个
+		// flight 已经完成，二次检查可避免这个迟到的调用再次命中上游。
+		if cached, ok := f.cachedSnapshot(accountID, time.Now()); ok {
+			return cached, nil
+		}
+
 		fetchCtx, cancel := context.WithTimeout(context.Background(), monitorQuotaFetchTimeout)
 		defer cancel()
 		snapshot := f.fetchUncached(fetchCtx, accountID, time.Now())
