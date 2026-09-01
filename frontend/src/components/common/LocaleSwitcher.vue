@@ -1,8 +1,10 @@
 <template>
-  <div class="relative" ref="dropdownRef">
+  <div ref="dropdownRef" class="locale-switcher relative">
     <button
       @click="toggleDropdown"
       :disabled="switching"
+      :aria-expanded="isOpen"
+      aria-haspopup="menu"
       class="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
       :title="currentLocale?.name"
     >
@@ -20,7 +22,9 @@
       <motion.div
         v-if="isOpen"
         key="locale-menu"
-        class="glass-popover absolute right-0 z-50 mt-1 w-32 overflow-hidden"
+        class="glass-popover absolute right-0 z-[90] w-32 overflow-hidden"
+        :class="menuPlacementClass"
+        role="menu"
         :initial="menuInitial"
         :animate="menuAnimate"
         :exit="menuExit"
@@ -31,6 +35,8 @@
           :key="locale.code"
           :disabled="switching"
           @click="selectLocale(locale.code)"
+          role="menuitemradio"
+          :aria-checked="locale.code === currentLocaleCode"
           class="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-dark-700"
           :class="{
             'bg-primary-50 text-primary-600 dark:bg-primary-900/20 dark:text-primary-400':
@@ -56,6 +62,9 @@ import { usePrefersReducedMotion } from '@/composables/usePrefersReducedMotion'
 
 const { locale } = useI18n()
 const prefersReducedMotion = usePrefersReducedMotion()
+const props = withDefaults(defineProps<{ placement?: 'bottom-end' | 'top-end' }>(), {
+  placement: 'bottom-end'
+})
 
 const isOpen = ref(false)
 const dropdownRef = ref<HTMLElement | null>(null)
@@ -63,6 +72,9 @@ const switching = ref(false)
 
 const currentLocaleCode = computed(() => locale.value)
 const currentLocale = computed(() => availableLocales.find((l) => l.code === locale.value))
+const menuPlacementClass = computed(() =>
+  props.placement === 'top-end' ? 'bottom-full mb-1' : 'top-full mt-1'
+)
 
 const menuInitial = computed(() =>
   prefersReducedMotion.value ? { opacity: 0 } : { opacity: 0, y: -4, scale: 0.98 }

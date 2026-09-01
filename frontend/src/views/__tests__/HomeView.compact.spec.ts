@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount, RouterLinkStub } from '@vue/test-utils'
+import { defineComponent, h, type Component } from 'vue'
 
 import HomeView from '../HomeView.vue'
 
@@ -37,7 +38,12 @@ vi.mock('vue-i18n', async (importOriginal) => {
   }
 })
 
-function mountHome(settings: Record<string, unknown> = {}) {
+const defaultHomeHeroSceneStub = { template: '<div data-testid="home-hero-scene" />' }
+
+function mountHome(
+  settings: Record<string, unknown> = {},
+  homeHeroSceneStub: Component = defaultHomeHeroSceneStub,
+) {
   appStore.cachedPublicSettings = {
     site_name: 'Test site',
     site_subtitle: 'Test subtitle',
@@ -48,9 +54,16 @@ function mountHome(settings: Record<string, unknown> = {}) {
     global: {
       stubs: {
         RouterLink: RouterLinkStub,
-        LocaleSwitcher: { template: '<div data-testid="locale-switcher" />' },
+        LocaleSwitcher: {
+          props: ['placement'],
+          template: '<div data-testid="locale-switcher" :data-placement="placement" />'
+        },
         Icon: { template: '<span data-testid="icon" />' },
-        HomeHeroScene: { template: '<div data-testid="home-hero-scene" />' },
+        HomeHeroScene: homeHeroSceneStub,
+        HomeAmbientEffects: {
+          props: ['enabled', 'progress'],
+          template: '<div data-testid="home-ambient-effects" :data-enabled="String(enabled)" />'
+        },
       },
     },
   })
@@ -189,6 +202,7 @@ describe('HomeView compact mode', () => {
 
     expect(wrapper.get('.home-page.kinetic-home').exists()).toBe(true)
     expect(wrapper.get('[data-testid="home-hero-scene"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="home-ambient-effects"]').exists()).toBe(true)
     expect(wrapper.findAll('[data-home-section]').map(section => section.attributes('id'))).toEqual([
       'home',
       'manifesto',
@@ -197,7 +211,52 @@ describe('HomeView compact mode', () => {
       'contact',
     ])
     expect(wrapper.findAll('.kinetic-card')).toHaveLength(5)
-    expect(wrapper.findAll('.kinetic-top-nav button')).toHaveLength(2)
+    expect(wrapper.findAll('.kinetic-top-nav button')).toHaveLength(1)
+    expect(wrapper.findComponent('.kinetic-login-link').props('to')).toBe('/login')
+    expect(wrapper.get('.kinetic-lab-route').exists()).toBe(true)
+    expect(wrapper.find('.kinetic-lab-horizon').exists()).toBe(false)
+    expect(wrapper.get('.kinetic-footer').text()).not.toContain('Dark mode')
+    expect(wrapper.get('.kinetic-footer').text()).not.toContain('Light mode')
+    expect(wrapper.get('.kinetic-footer [data-testid="locale-switcher"]').attributes('data-placement')).toBe('top-end')
+  })
+
+  it('does not restart the loader when the scene reports an immediate fallback', async () => {
+    const immediateReadyScene = defineComponent({
+      emits: ['ready'],
+      setup(_, { emit }) {
+        emit('ready')
+        return () => h('div', { 'data-testid': 'home-hero-scene' })
+      },
+    })
+    const wrapper = mountHome({}, immediateReadyScene)
+
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.classes()).toContain('kinetic-home-ready')
+    expect(wrapper.get('[data-testid="home-ambient-effects"]').attributes('data-enabled')).toBe('true')
+  })
+
+  it('uses the dashboard destination in the official home navigation after sign-in', () => {
+    authStore.isAuthenticated = true
+    const wrapper = mountHome()
+
+    expect(wrapper.findComponent('.kinetic-login-link').props('to')).toBe('/dashboard')
+    expect(wrapper.findComponent('.kinetic-login-link').text()).toBe('Dashboard')
+  })
+
+  it('keeps the official hero connected to the configured product and API surface', () => {
+    const wrapper = mountHome({
+      api_base_url: 'https://relay.example.com/',
+      model_plaza_enabled: true,
+      model_plaza_require_auth: false,
+    })
+
+    expect(wrapper.get('.kinetic-hero-copy h1').text()).toBe('Test site')
+    expect(wrapper.get('.kinetic-hero-eyebrow').text()).toBe('An enterprise-grade AI API gateway')
+    expect(wrapper.get('.kinetic-hero-endpoint').text()).toContain('https://relay.example.com/v1/chat/completions')
+    const links = wrapper.findAllComponents(RouterLinkStub)
+    expect(links.find(link => link.classes().includes('kinetic-hero-primary'))?.props('to')).toBe('/login')
+    expect(links.find(link => link.classes().includes('kinetic-hero-secondary'))?.props('to')).toBe('/model-plaza')
   })
 
   it('switches the spatial work deck from its filter controls', async () => {

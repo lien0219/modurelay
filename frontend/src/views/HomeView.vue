@@ -57,26 +57,29 @@
     ref="pageRef"
     class="home-page kinetic-home"
     :class="{ 'kinetic-home-ready': !loaderVisible, 'kinetic-home-scrolled': scrollProgress > 2 }"
-    @pointermove="updatePointerVars"
   >
     <a class="kinetic-skip-link" href="#kinetic-main">{{ copy.chrome.skip }}</a>
 
     <div class="kinetic-world" aria-hidden="true">
       <HomeHeroScene :progress="sceneProgress" @ready="handleSceneReady" />
     </div>
+    <HomeAmbientEffects class="kinetic-ambient" :enabled="ambientEnabled" :progress="sceneProgress" />
 
     <Transition name="kinetic-loader">
       <div v-if="loaderVisible" class="kinetic-loader" role="status" :aria-label="copy.chrome.loading">
         <div class="kinetic-loader-shell">
-          <i
-            v-for="tick in 25"
-            :key="tick"
-            class="kinetic-loader-tick"
-            :style="loaderTickStyle(tick - 1)"
-          ></i>
-          <span>{{ String(Math.round(loaderProgress)).padStart(2, '0') }}</span>
+          <span class="kinetic-loader-mark" aria-hidden="true">
+            <img v-if="siteLogo" :src="siteLogo" alt="" />
+            <span v-else>M</span>
+          </span>
+          <div class="kinetic-loader-status">
+            <span>{{ copy.chrome.loading }}</span>
+            <strong>{{ String(Math.round(loaderProgress)).padStart(2, '0') }}</strong>
+          </div>
+          <i class="kinetic-loader-track" aria-hidden="true">
+            <b :style="{ transform: 'scaleX(' + loaderProgress / 100 + ')' }"></b>
+          </i>
         </div>
-        <p>{{ copy.chrome.loading }}</p>
       </div>
     </Transition>
 
@@ -93,14 +96,9 @@
       </button>
 
       <nav class="kinetic-top-nav" :aria-label="copy.chrome.navigation">
-        <button
-          type="button"
-          :class="{ 'is-current': activeSection === 'work' }"
-          :aria-current="activeSection === 'work' ? 'page' : undefined"
-          @click="scrollToSection('work')"
-        >
-          {{ copy.chrome.work }}
-        </button>
+        <router-link :to="isAuthenticated ? dashboardPath : '/login'" class="kinetic-login-link">
+          {{ isAuthenticated ? copy.chrome.dashboard : copy.chrome.login }}
+        </router-link>
         <span class="kinetic-nav-signal" aria-hidden="true"><i></i></span>
         <button
           type="button"
@@ -121,16 +119,32 @@
 
     <main id="kinetic-main">
       <section id="home" data-home-section class="kinetic-section kinetic-hero" aria-label="ModuRelay">
+        <div class="kinetic-hero-copy kinetic-reveal">
+          <span class="kinetic-hero-eyebrow">{{ copy.hero.eyebrow }}</span>
+          <h1>{{ siteName }}</h1>
+          <p class="kinetic-hero-tagline">{{ copy.hero.tagline }}</p>
+          <p class="kinetic-hero-description">{{ copy.hero.description }}</p>
+          <div class="kinetic-hero-actions">
+            <router-link :to="isAuthenticated ? dashboardPath : '/login'" class="kinetic-hero-primary">
+              {{ isAuthenticated ? copy.contact.dashboardCta : copy.hero.primaryCta }}
+              <Icon name="arrowRight" size="sm" />
+            </router-link>
+            <router-link v-if="showModelPlazaEntry" to="/model-plaza" class="kinetic-hero-secondary">
+              {{ copy.hero.secondaryCta }}
+            </router-link>
+            <a v-else-if="docUrl" :href="docUrl" target="_blank" rel="noopener noreferrer" class="kinetic-hero-secondary">
+              {{ copy.chrome.docs }}
+            </a>
+          </div>
+          <code class="kinetic-hero-endpoint">
+            <span>{{ copy.hero.endpoint }}</span>
+            {{ apiBaseUrl }}/v1/chat/completions
+          </code>
+        </div>
         <div class="kinetic-hero-meta kinetic-reveal">
           <span>MODURELAY / SIGNAL 01</span>
           <p>{{ copy.hero.signal }}</p>
         </div>
-        <div class="kinetic-hero-instruction kinetic-reveal">
-          <span>{{ copy.chrome.move }}</span>
-          <i></i>
-          <span>{{ copy.chrome.scroll }}</span>
-        </div>
-        <span class="kinetic-hero-coordinate kinetic-reveal" aria-hidden="true">30.2° N / 120.2° E</span>
       </section>
 
       <section id="manifesto" data-home-section class="kinetic-section kinetic-manifesto" aria-labelledby="kinetic-manifesto-title">
@@ -139,7 +153,7 @@
           <div class="kinetic-manifesto-layout">
             <div class="kinetic-manifesto-heading kinetic-reveal">
               <span class="kinetic-section-label">01 / {{ copy.nav.manifesto }}</span>
-              <h1 id="kinetic-manifesto-title" :data-text="copy.manifesto.ariaTitle">
+              <h1 id="kinetic-manifesto-title">
                 <span>{{ copy.manifesto.lineOne }}</span>
                 <span>{{ copy.manifesto.lineTwo }}</span>
                 <span>{{ copy.manifesto.lineThree }}</span>
@@ -168,8 +182,13 @@
               :key="card.key"
               class="kinetic-card"
               :class="['kinetic-card-' + card.key, { 'is-active': index === activeCardIndex }]"
+              :data-card-index="index"
               :style="cardStyle(index)"
               :aria-hidden="Math.abs(index - deckPosition) > 1.45 ? 'true' : 'false'"
+              @pointerenter="animateCardParticles"
+              @pointerleave="settleCardParticles"
+              @focusin="animateCardParticles"
+              @focusout="settleCardParticles"
             >
               <div class="kinetic-card-visual" aria-hidden="true">
                 <span class="kinetic-card-plane kinetic-card-plane-one"></span>
@@ -177,6 +196,14 @@
                 <span class="kinetic-card-plane kinetic-card-plane-three"></span>
                 <span class="kinetic-card-orbit"></span>
                 <span class="kinetic-card-scan"></span>
+                <span class="kinetic-card-particles">
+                  <i
+                    v-for="particleIndex in 12"
+                    :key="particleIndex"
+                    class="kinetic-card-particle"
+                    :style="cardParticleStyle(index, particleIndex - 1)"
+                  ></i>
+                </span>
               </div>
               <div class="kinetic-card-topline">
                 <span>{{ String(index + 1).padStart(2, '0') }}</span>
@@ -215,12 +242,22 @@
 
       <section id="lab" data-home-section class="kinetic-section kinetic-lab" aria-labelledby="kinetic-lab-title">
         <div class="kinetic-lab-sticky">
-          <div class="kinetic-lab-water" aria-hidden="true"></div>
-          <div class="kinetic-lab-shell kinetic-reveal">
-            <div class="kinetic-lab-mark" aria-hidden="true"><span>M</span></div>
-            <h2 id="kinetic-lab-title">{{ copy.lab.title }}</h2>
-            <i class="kinetic-lab-arrow" aria-hidden="true"></i>
-            <div class="kinetic-lab-copy">
+          <div class="kinetic-lab-shell">
+            <div class="kinetic-lab-heading kinetic-reveal">
+              <span class="kinetic-section-label">03 / {{ copy.nav.lab }}</span>
+              <div class="kinetic-lab-title-row">
+                <div class="kinetic-lab-mark" aria-hidden="true"><span>M</span></div>
+                <h2 id="kinetic-lab-title">{{ copy.lab.title }}</h2>
+              </div>
+            </div>
+            <div class="kinetic-lab-route kinetic-reveal" aria-hidden="true">
+              <span class="kinetic-lab-route-line"></span>
+              <i class="kinetic-lab-route-node kinetic-lab-route-node-start"></i>
+              <i class="kinetic-lab-route-node kinetic-lab-route-node-middle"></i>
+              <i class="kinetic-lab-route-node kinetic-lab-route-node-end"></i>
+              <strong>M</strong>
+            </div>
+            <div class="kinetic-lab-copy kinetic-reveal">
               <span>{{ copy.lab.eyebrow }}</span>
               <p>{{ copy.lab.description }}</p>
               <router-link :to="learningEntry">{{ copy.lab.action }}<Icon name="arrowRight" size="sm" /></router-link>
@@ -249,8 +286,7 @@
             <a v-if="docUrl" :href="docUrl" target="_blank" rel="noopener noreferrer">{{ copy.chrome.docs }}</a>
             <router-link v-if="showModelPlazaEntry" to="/model-plaza">{{ t('nav.modelPlaza') }}</router-link>
             <router-link to="/key-usage">{{ copy.chrome.usage }}</router-link>
-            <LocaleSwitcher />
-            <button type="button" @click="toggleTheme">{{ isDark ? copy.chrome.light : copy.chrome.dark }}</button>
+            <LocaleSwitcher placement="top-end" />
           </div>
           <span>MODURELAY / SYSTEM 01</span>
         </footer>
@@ -263,11 +299,13 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type CSSProperties } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { gsap } from 'gsap'
+import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import { brand } from '@/config/brand'
 import { useAuthStore, useAppStore } from '@/stores'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import Icon from '@/components/icons/Icon.vue'
 import HomeHeroScene from '@/components/home/HomeHeroScene.vue'
+import HomeAmbientEffects from '@/components/home/HomeAmbientEffects.vue'
 import { sanitizeUrl } from '@/utils/url'
 import { FeatureFlags, isFeatureFlagEnabled } from '@/utils/featureFlags'
 import { toggleThemeWithTransition } from '@/utils/themeTransition'
@@ -276,13 +314,20 @@ type SectionId = 'home' | 'manifesto' | 'work' | 'lab' | 'contact'
 
 const zhCopy = {
   chrome: {
-    loading: '正在构建信号场', navigation: '首页导航', work: '作品', contact: '联系',
+    loading: '正在加载中继生态场', navigation: '首页导航', work: '作品', contact: '联系',
     docs: '文档', usage: '用量查询', dashboard: '控制台', login: '登录',
-    light: '浅色模式', dark: '深色模式', skip: '跳到主要内容',
-    move: '移动指针扰动信号', scroll: '滚动进入系统'
+    light: '浅色模式', dark: '深色模式', skip: '跳到主要内容'
   },
   nav: { home: '首页', manifesto: '系统宣言', work: '核心能力', lab: '中继实验室', contact: '开始使用' },
-  hero: { signal: '一个持续响应指针与请求流的中继生命体。' },
+  hero: {
+    eyebrow: '企业级的 AI API 网关',
+    tagline: '一个入口，连接每个模型。',
+    description: '用兼容接口统一模型接入，把策略路由、故障切换与用量记录留在同一条可观测链路中。',
+    primaryCta: '开始使用',
+    secondaryCta: '查看模型',
+    endpoint: '兼容端点',
+    signal: '策略路由 / 故障切换 / 用量可见'
+  },
   manifesto: {
     ariaTitle: '可靠的 AI 接口体验',
     lineOne: '可靠的',
@@ -318,13 +363,20 @@ const zhCopy = {
 
 const enCopy = {
   chrome: {
-    loading: 'Building the signal field', navigation: 'Homepage navigation', work: 'Work', contact: 'Contact',
+    loading: 'Loading the relay landscape', navigation: 'Homepage navigation', work: 'Work', contact: 'Contact',
     docs: 'Docs', usage: 'Usage', dashboard: 'Dashboard', login: 'Sign in',
-    light: 'Light mode', dark: 'Dark mode', skip: 'Skip to main content',
-    move: 'Move to disturb the signal', scroll: 'Scroll into the system'
+    light: 'Light mode', dark: 'Dark mode', skip: 'Skip to main content'
   },
   nav: { home: 'Home', manifesto: 'System manifesto', work: 'Core systems', lab: 'Relay lab', contact: 'Get started' },
-  hero: { signal: 'A relay organism that responds to pointers and request flow.' },
+  hero: {
+    eyebrow: 'An enterprise-grade AI API gateway',
+    tagline: 'One entry. Every model.',
+    description: 'Unify model access through a compatible API while policy routing, failover, and usage records stay on one observable path.',
+    primaryCta: 'Get started',
+    secondaryCta: 'Browse models',
+    endpoint: 'Compatible endpoint',
+    signal: 'Policy routing / failover / visible usage'
+  },
   manifesto: {
     ariaTitle: 'Reliable AI API experiences',
     lineOne: 'Reliable',
@@ -370,15 +422,24 @@ const activeCardIndex = ref(0)
 const isDark = ref(document.documentElement.classList.contains('dark'))
 const loaderVisible = ref(true)
 const loaderProgress = ref(4)
+const sceneReady = ref(false)
+const ambientEnabled = ref(false)
 
 let sectionObserver: IntersectionObserver | null = null
-let revealObserver: IntersectionObserver | null = null
 let homeMatchMedia: ReturnType<typeof gsap.matchMedia> | null = null
+let heroIntroTimeline: gsap.core.Timeline | null = null
+let cardTransitionTimeline: gsap.core.Timeline | null = null
+let cardTransitionTarget: HTMLElement | null = null
+let cardTransitionToken = 0
 let scrollFrame = 0
+let deckAnimationFrame = 0
 let loaderTimer = 0
 let loaderSafetyTimer = 0
 let loaderHideTimer = 0
 let homeMounted = false
+let targetDeckPosition = 0
+const cardParticleTimelines = new Set<gsap.core.Timeline>()
+const cardParticleTimelineByCard = new WeakMap<HTMLElement, gsap.core.Timeline>()
 
 const copy = computed(() => locale.value === 'zh' ? zhCopy : enCopy)
 const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || brand.name)
@@ -426,24 +487,17 @@ function toggleTheme(event?: MouseEvent) {
   isDark.value = toggleThemeWithTransition(isDark.value, event)
 }
 
-function loaderTickStyle(index: number): CSSProperties {
-  const angle = -90 + (index / 24) * 180
-  return {
-    transform: 'rotate(' + angle + 'deg) translateY(-42px)',
-    opacity: index / 24 <= loaderProgress.value / 100 ? '1' : '0.14'
-  }
-}
-
 function cardStyle(index: number): CSSProperties {
   const delta = index - deckPosition.value
   const distance = Math.abs(delta)
-  const x = delta * (window.innerWidth < 700 ? 76 : 37)
-  const y = Math.sin(index * 1.7) * (window.innerWidth < 700 ? 2.4 : 4.8) + distance * 1.3
-  const z = -distance * 390
-  const rotateY = delta * -12
-  const rotateZ = delta * 1.4
-  const scale = Math.max(0.7, 1 - distance * 0.1)
-  const opacity = Math.max(0, 1 - Math.max(0, distance - 0.72) * 0.54)
+  const isMobileViewport = window.innerWidth < 700
+  const x = delta * (isMobileViewport ? 78 : 34)
+  const y = distance * (isMobileViewport ? 1.2 : 1.8)
+  const z = -distance * 260
+  const rotateY = delta * -6
+  const rotateZ = delta * 0.45
+  const scale = Math.max(0.76, 1 - distance * 0.11)
+  const opacity = Math.max(0, 1 - Math.max(0, distance - 0.3) * 0.88)
   return {
     '--deck-x': x + 'vw',
     '--deck-y': y + 'vh',
@@ -454,6 +508,131 @@ function cardStyle(index: number): CSSProperties {
     '--deck-opacity': String(opacity),
     '--deck-order': String(100 - Math.round(distance * 10))
   } as CSSProperties
+}
+
+function cardParticleStyle(cardIndex: number, particleIndex: number): CSSProperties {
+  const horizontal = ((cardIndex * 37 + particleIndex * 61) % 89) / 88
+  const vertical = ((cardIndex * 53 + particleIndex * 29) % 83) / 82
+  const size = 1.2 + ((cardIndex + particleIndex * 3) % 5) * 0.55
+  return {
+    '--particle-left': `${7 + horizontal * 86}%`,
+    '--particle-top': `${8 + vertical * 84}%`,
+    '--particle-size': `${size.toFixed(2)}px`,
+    '--particle-alpha': String(0.16 + ((particleIndex * 7) % 6) * 0.045),
+  } as CSSProperties
+}
+
+function animateCardParticles(event: Event) {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+  const card = event.currentTarget as HTMLElement | null
+  if (!card) return
+  const particles = Array.from(card.querySelectorAll<HTMLElement>('.kinetic-card-particle'))
+  const planes = Array.from(card.querySelectorAll<HTMLElement>('.kinetic-card-plane'))
+  const orbit = card.querySelector<HTMLElement>('.kinetic-card-orbit')
+  if (!particles.length) return
+
+  const previousTimeline = cardParticleTimelineByCard.get(card)
+  previousTimeline?.kill()
+  if (previousTimeline) cardParticleTimelines.delete(previousTimeline)
+  const timeline = gsap.timeline({
+    defaults: { overwrite: 'auto' },
+    onComplete: () => {
+      cardParticleTimelines.delete(timeline)
+      if (cardParticleTimelineByCard.get(card) === timeline) cardParticleTimelineByCard.delete(card)
+    },
+  })
+  cardParticleTimelines.add(timeline)
+  cardParticleTimelineByCard.set(card, timeline)
+  timeline
+    .to(particles, {
+      x: index => ((index * 47) % 58) - 29,
+      y: index => ((index * 31) % 44) - 22,
+      scale: index => 1.15 + (index % 4) * 0.18,
+      autoAlpha: 0.72,
+      duration: 0.28,
+      ease: 'power2.out',
+      stagger: { amount: 0.14, from: 'random' },
+    }, 0)
+    .to(planes, {
+      x: index => (index - 1) * 7,
+      y: index => (1 - index) * 5,
+      duration: 0.42,
+      ease: 'power2.out',
+    }, 0)
+    .to(orbit, { rotation: 18, duration: 0.48, ease: 'power2.out' }, 0)
+    .to(particles, {
+      x: 0,
+      y: 0,
+      scale: 1,
+      autoAlpha: index => 0.16 + ((index * 7) % 6) * 0.045,
+      duration: 0.58,
+      ease: 'elastic.out(1, 0.42)',
+      stagger: { amount: 0.18, from: 'random' },
+    }, '>-0.06')
+}
+
+function settleCardParticles(event: Event) {
+  const card = event.currentTarget as HTMLElement | null
+  const relatedTarget = 'relatedTarget' in event ? event.relatedTarget as Node | null : null
+  if (!card || (relatedTarget && card.contains(relatedTarget))) return
+  const particles = card.querySelectorAll<HTMLElement>('.kinetic-card-particle')
+  const planes = card.querySelectorAll<HTMLElement>('.kinetic-card-plane')
+  const orbit = card.querySelector<HTMLElement>('.kinetic-card-orbit')
+  const timeline = cardParticleTimelineByCard.get(card)
+  timeline?.kill()
+  if (timeline) cardParticleTimelines.delete(timeline)
+  cardParticleTimelineByCard.delete(card)
+  gsap.to(particles, {
+    x: 0,
+    y: 0,
+    scale: 1,
+    autoAlpha: index => 0.16 + ((index * 7) % 6) * 0.045,
+    duration: 0.34,
+    ease: 'power2.out',
+    overwrite: true,
+  })
+  gsap.to(planes, { x: 0, y: 0, duration: 0.34, ease: 'power2.out', overwrite: true })
+  gsap.to(orbit, { rotation: 0, duration: 0.34, ease: 'power2.out', overwrite: true })
+}
+
+async function animateActiveCard(index: number) {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+  const transitionToken = ++cardTransitionToken
+  await nextTick()
+  if (transitionToken !== cardTransitionToken) return
+  const card = pageRef.value?.querySelector<HTMLElement>(`.kinetic-card[data-card-index="${index}"]`)
+  if (!card) return
+  const topline = card.querySelector<HTMLElement>('.kinetic-card-topline')
+  const content = Array.from(card.querySelectorAll<HTMLElement>('.kinetic-card-content > *'))
+  const visual = card.querySelector<HTMLElement>('.kinetic-card-visual')
+
+  cardTransitionTimeline?.kill()
+  if (cardTransitionTarget) {
+    gsap.set(cardTransitionTarget.querySelectorAll('.kinetic-card-topline, .kinetic-card-content > *, .kinetic-card-visual'), {
+      clearProps: 'transform,opacity,visibility',
+    })
+  }
+  cardTransitionTarget = card
+  cardTransitionTimeline = gsap.timeline({ defaults: { ease: 'power3.out', overwrite: 'auto' } })
+    .fromTo(visual, { scale: 1.035, autoAlpha: 0.76 }, {
+      scale: 1,
+      autoAlpha: 1,
+      duration: 0.48,
+      clearProps: 'transform,opacity,visibility',
+    }, 0)
+    .fromTo(topline, { y: -4, autoAlpha: 0.45 }, {
+      y: 0,
+      autoAlpha: 1,
+      duration: 0.3,
+      clearProps: 'transform,opacity,visibility',
+    }, 0.06)
+    .fromTo(content, { y: 8, autoAlpha: 0.38 }, {
+      y: 0,
+      autoAlpha: 1,
+      duration: 0.34,
+      stagger: 0.04,
+      clearProps: 'transform,opacity,visibility',
+    }, 0.1)
 }
 
 function scrollToSection(id: SectionId) {
@@ -467,6 +646,7 @@ function selectCard(index: number) {
   const work = workSectionRef.value
   activeCardIndex.value = index
   deckPosition.value = index
+  targetDeckPosition = index
   if (!work) return
   const scrollSpan = Math.max(1, work.offsetHeight - window.innerHeight)
   const destination = work.offsetTop + (index / Math.max(1, workCards.value.length - 1)) * scrollSpan
@@ -476,15 +656,22 @@ function selectCard(index: number) {
   })
 }
 
-function updatePointerVars(event: PointerEvent) {
-  const root = pageRef.value
-  if (!root) return
-  const pointerX = event.clientX / Math.max(1, window.innerWidth) - 0.5
-  const pointerY = event.clientY / Math.max(1, window.innerHeight) - 0.5
-  root.style.setProperty('--pointer-shift-x', pointerX * 22 + 'px')
-  root.style.setProperty('--pointer-shift-y', pointerY * 14 + 'px')
-  root.style.setProperty('--pointer-tilt-x', pointerY * -6 + 'deg')
-  root.style.setProperty('--pointer-tilt-y', pointerX * 8 + 'deg')
+function scheduleDeckMotion() {
+  if (deckAnimationFrame) return
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  const update = () => {
+    const delta = targetDeckPosition - deckPosition.value
+    if (reduceMotion || Math.abs(delta) < 0.001) {
+      deckPosition.value = targetDeckPosition
+      activeCardIndex.value = Math.round(deckPosition.value)
+      deckAnimationFrame = 0
+      return
+    }
+    deckPosition.value += delta * 0.16
+    activeCardIndex.value = Math.round(deckPosition.value)
+    deckAnimationFrame = requestAnimationFrame(update)
+  }
+  deckAnimationFrame = requestAnimationFrame(update)
 }
 
 function updateScrollState() {
@@ -497,8 +684,8 @@ function updateScrollState() {
     if (work) {
       const workSpan = Math.max(1, work.offsetHeight - window.innerHeight)
       const local = Math.min(1, Math.max(0, (scrollTop - work.offsetTop) / workSpan))
-      deckPosition.value = local * Math.max(0, workCards.value.length - 1)
-      activeCardIndex.value = Math.round(deckPosition.value)
+      targetDeckPosition = local * Math.max(0, workCards.value.length - 1)
+      scheduleDeckMotion()
     }
   })
 }
@@ -514,15 +701,23 @@ function clearLoaderTimers() {
 
 function beginLoader() {
   clearLoaderTimers()
+  ambientEnabled.value = false
+  if (sceneReady.value) {
+    loaderProgress.value = 100
+    loaderVisible.value = false
+    ambientEnabled.value = true
+    return
+  }
   loaderVisible.value = true
   loaderProgress.value = 4
   loaderTimer = window.setInterval(() => {
     loaderProgress.value = Math.min(94, loaderProgress.value + Math.max(1, (96 - loaderProgress.value) * 0.07))
   }, 72)
-  loaderSafetyTimer = window.setTimeout(handleSceneReady, 7000)
+  loaderSafetyTimer = window.setTimeout(handleSceneReady, 17_500)
 }
 
 function handleSceneReady() {
+  sceneReady.value = true
   window.clearInterval(loaderTimer)
   window.clearTimeout(loaderSafetyTimer)
   loaderTimer = 0
@@ -530,8 +725,11 @@ function handleSceneReady() {
   loaderProgress.value = 100
   loaderHideTimer = window.setTimeout(() => {
     loaderVisible.value = false
+    ambientEnabled.value = true
+    heroIntroTimeline?.play(0)
+    if (homeMatchMedia) window.requestAnimationFrame(() => ScrollTrigger.refresh())
     loaderHideTimer = 0
-  }, window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 520)
+  }, window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 280)
 }
 
 function initializeMotion() {
@@ -552,39 +750,64 @@ function initializeMotion() {
     gsap.set(reveals, { autoAlpha: 1, y: 0 })
     return
   }
+  gsap.registerPlugin(ScrollTrigger)
   homeMatchMedia = gsap.matchMedia()
   homeMatchMedia.add('(prefers-reduced-motion: no-preference)', () => {
     const hero = Array.from(root.querySelectorAll<HTMLElement>('.kinetic-hero .kinetic-reveal'))
-    gsap.timeline({ defaults: { ease: 'power3.out' } })
-      .fromTo(hero, { autoAlpha: 0, y: 18 }, { autoAlpha: 1, y: 0, duration: 0.88, stagger: 0.08 })
-    if ('IntersectionObserver' in window) {
-      revealObserver = new IntersectionObserver((entries, observer) => {
-        entries.forEach((entry) => {
-          if (!entry.isIntersecting || entry.target.closest('.kinetic-hero')) return
-          gsap.fromTo(entry.target, { autoAlpha: 0, y: 34 }, {
-            autoAlpha: 1, y: 0, duration: 0.82, ease: 'power3.out'
-          })
-          observer.unobserve(entry.target)
+    heroIntroTimeline = gsap.timeline({ paused: true, defaults: { ease: 'power3.out' } })
+      .fromTo(hero, { autoAlpha: 0, y: 18 }, {
+        autoAlpha: 1,
+        y: 0,
+        duration: 0.72,
+        stagger: 0.075,
+      })
+    if (!loaderVisible.value) heroIntroTimeline.play(0)
+
+    sections.filter(section => section.id !== 'home').forEach((section) => {
+      const sectionReveals = Array.from(section.querySelectorAll<HTMLElement>('.kinetic-reveal'))
+      if (!sectionReveals.length) return
+      const timeline = gsap.timeline({ paused: true, defaults: { ease: 'power3.out' } })
+        .fromTo(sectionReveals, { autoAlpha: 0, y: 24 }, {
+          autoAlpha: 1,
+          y: 0,
+          duration: 0.58,
+          stagger: 0.07,
         })
-      }, { rootMargin: '0px 0px -15% 0px', threshold: 0.12 })
-      reveals.forEach(element => revealObserver?.observe(element))
-    } else {
-      gsap.set(reveals, { autoAlpha: 1, y: 0 })
-    }
-    return () => revealObserver?.disconnect()
-  })
+      ScrollTrigger.create({
+        trigger: section,
+        start: 'top 82%',
+        end: 'bottom 16%',
+        animation: timeline,
+        toggleActions: 'play reverse play reverse',
+        fastScrollEnd: true,
+      })
+    })
+  }, root)
 }
 
 function cleanupMotion() {
   cancelAnimationFrame(scrollFrame)
+  cancelAnimationFrame(deckAnimationFrame)
+  deckAnimationFrame = 0
   window.removeEventListener('scroll', updateScrollState)
   window.removeEventListener('resize', updateScrollState)
   sectionObserver?.disconnect()
-  revealObserver?.disconnect()
   sectionObserver = null
-  revealObserver = null
   homeMatchMedia?.revert()
   homeMatchMedia = null
+  heroIntroTimeline?.kill()
+  heroIntroTimeline = null
+  cardTransitionToken += 1
+  cardTransitionTimeline?.kill()
+  cardTransitionTimeline = null
+  if (cardTransitionTarget) {
+    gsap.set(cardTransitionTarget.querySelectorAll('.kinetic-card-topline, .kinetic-card-content > *, .kinetic-card-visual'), {
+      clearProps: 'transform,opacity,visibility',
+    })
+  }
+  cardTransitionTarget = null
+  cardParticleTimelines.forEach(timeline => timeline.kill())
+  cardParticleTimelines.clear()
 }
 
 async function syncHomeMode() {
@@ -592,8 +815,11 @@ async function syncHomeMode() {
   activeSection.value = 'home'
   scrollProgress.value = 0
   deckPosition.value = 0
+  targetDeckPosition = 0
   activeCardIndex.value = 0
   if (hasHomeContent.value || compactHomeEnabled.value) {
+    sceneReady.value = false
+    ambientEnabled.value = false
     clearLoaderTimers()
     loaderVisible.value = false
     return
@@ -611,6 +837,10 @@ watch([hasHomeContent, compactHomeEnabled], () => {
   if (homeMounted) void syncHomeMode()
 })
 
+watch(activeCardIndex, (index, previousIndex) => {
+  if (index !== previousIndex) void animateActiveCard(index)
+})
+
 onMounted(() => {
   homeMounted = true
   isDark.value = document.documentElement.classList.contains('dark')
@@ -623,6 +853,7 @@ onBeforeUnmount(() => {
   homeMounted = false
   cleanupMotion()
   clearLoaderTimers()
+  ambientEnabled.value = false
 })
 </script>
 
@@ -649,30 +880,35 @@ onBeforeUnmount(() => {
 .home-overline { color: var(--mr-primary); font-size: 11px; font-weight: 700; letter-spacing: 0.14em; }
 
 .kinetic-home {
-  --kinetic-ink: #eef6f1;
-  --kinetic-muted: rgba(218, 232, 225, 0.67);
-  --kinetic-dim: rgba(196, 218, 209, 0.42);
-  --kinetic-line: rgba(215, 239, 229, 0.2);
-  --kinetic-line-strong: rgba(229, 248, 240, 0.42);
-  --kinetic-teal: #75e5d9;
-  --kinetic-violet: #9b8cff;
-  --pointer-shift-x: 0px;
-  --pointer-shift-y: 0px;
-  --pointer-tilt-x: 0deg;
-  --pointer-tilt-y: 0deg;
+  --kinetic-ink: #f5f7fb;
+  --kinetic-muted: rgba(226, 232, 240, 0.74);
+  --kinetic-dim: rgba(203, 213, 225, 0.48);
+  --kinetic-line: rgba(199, 210, 254, 0.2);
+  --kinetic-line-strong: rgba(165, 180, 252, 0.46);
+  --kinetic-teal: #22d3ee;
+  --kinetic-violet: #818cf8;
   position: relative;
   width: 100%;
   max-width: 100vw;
   min-height: 100vh;
   overflow: clip;
   color: var(--kinetic-ink);
-  background: #04090b;
+  background: #4a4d44;
+  color-scheme: dark;
   font-family: "Noto Sans SC", ui-sans-serif, system-ui, sans-serif;
+  isolation: isolate;
 }
 .kinetic-world {
   position: fixed;
   inset: 0;
   z-index: 0;
+  contain: layout paint;
+  pointer-events: none;
+}
+.kinetic-ambient {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
   pointer-events: none;
 }
 .kinetic-skip-link {
@@ -743,27 +979,20 @@ onBeforeUnmount(() => {
   box-shadow: inset 0 1px rgba(255, 255, 255, 0.05), 0 14px 34px rgba(0, 0, 0, 0.24);
   backdrop-filter: blur(18px) saturate(120%);
 }
-.kinetic-top-nav::after {
-  position: absolute;
-  right: 14%;
-  bottom: -11px;
-  left: 14%;
-  height: 20px;
-  border-radius: 50%;
-  background: rgba(101, 220, 190, 0.15);
-  filter: blur(10px);
-  content: '';
-  pointer-events: none;
-}
+.kinetic-top-nav a,
 .kinetic-top-nav button {
   position: relative;
   z-index: 1;
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
   color: var(--kinetic-muted);
   font: 560 9px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
   letter-spacing: 0.07em;
   text-transform: uppercase;
   transition: color var(--motion-fast) var(--ease-standard);
 }
+.kinetic-top-nav a:hover,
 .kinetic-top-nav button:hover,
 .kinetic-top-nav button.is-current { color: #fff; }
 .kinetic-nav-signal {
@@ -799,6 +1028,8 @@ onBeforeUnmount(() => {
   50% { transform: translateX(26px) scaleX(1); }
 }
 .kinetic-header button:focus-visible,
+.kinetic-header a:focus-visible,
+.kinetic-hero-actions a:focus-visible,
 .kinetic-card a:focus-visible,
 .kinetic-work-filter button:focus-visible,
 .kinetic-lab-shell a:focus-visible,
@@ -845,9 +1076,99 @@ onBeforeUnmount(() => {
 .kinetic-hero {
   min-height: 112svh;
 }
+.kinetic-hero-copy {
+  position: absolute;
+  top: 22vh;
+  left: max(24px, 6vw);
+  width: min(620px, calc(100% - 48px));
+}
+.kinetic-hero-eyebrow {
+  display: block;
+  margin-bottom: 20px;
+  color: var(--kinetic-teal);
+  font: 620 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+.kinetic-hero-copy h1 {
+  max-width: 100%;
+  margin: 0;
+  color: var(--kinetic-ink);
+  font-size: 108px;
+  font-weight: 620;
+  line-height: 0.92;
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+.kinetic-hero-tagline {
+  margin: 26px 0 0;
+  color: var(--kinetic-ink);
+  font-size: 32px;
+  font-weight: 440;
+  line-height: 1.2;
+}
+.kinetic-hero-description {
+  max-width: 560px;
+  margin: 16px 0 0;
+  color: var(--kinetic-muted);
+  font-size: 16px;
+  line-height: 1.7;
+}
+.kinetic-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 28px;
+}
+.kinetic-hero-primary,
+.kinetic-hero-secondary {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 18px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 650;
+  transition: color var(--motion-fast) var(--ease-standard), background-color var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard), transform var(--motion-fast) var(--ease-standard);
+}
+.kinetic-hero-primary {
+  color: #fff;
+  background: var(--color-primary, #6366f1);
+}
+.kinetic-hero-primary:hover {
+  background: var(--color-primary-hover, #818cf8);
+  transform: translateY(-1px);
+}
+.kinetic-hero-secondary {
+  border-color: var(--kinetic-line-strong);
+  color: var(--kinetic-ink);
+  background: rgba(19, 23, 32, 0.72);
+}
+.kinetic-hero-secondary:hover {
+  border-color: var(--kinetic-teal);
+  background: rgba(25, 30, 40, 0.9);
+  transform: translateY(-1px);
+}
+.kinetic-hero-endpoint {
+  display: flex;
+  width: fit-content;
+  max-width: 100%;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-top: 20px;
+  color: var(--kinetic-muted);
+  font: 520 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  overflow-wrap: anywhere;
+}
+.kinetic-hero-endpoint span {
+  color: var(--kinetic-dim);
+}
 .kinetic-hero-meta {
   position: absolute;
-  bottom: 8vh;
+  bottom: 6vh;
   left: clamp(24px, 6vw, 96px);
   width: min(300px, 30vw);
 }
@@ -866,33 +1187,6 @@ onBeforeUnmount(() => {
   font-size: 11px;
   line-height: 1.65;
 }
-.kinetic-hero-instruction {
-  position: absolute;
-  right: clamp(46px, 7vw, 110px);
-  bottom: 8vh;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  color: var(--kinetic-dim);
-  font: 560 7px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-.kinetic-hero-instruction i {
-  display: block;
-  width: 56px;
-  height: 1px;
-  background: var(--kinetic-line-strong);
-}
-.kinetic-hero-coordinate {
-  position: absolute;
-  top: 22%;
-  left: 50%;
-  color: rgba(213, 237, 226, 0.3);
-  font: 540 7px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
-  letter-spacing: 0.12em;
-  transform: translateX(-50%);
-}
 .kinetic-manifesto {
   min-height: 138svh;
 }
@@ -907,7 +1201,8 @@ onBeforeUnmount(() => {
 .kinetic-manifesto-wash {
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg, transparent 12%, rgba(6, 22, 23, 0.1) 38%, rgba(4, 10, 12, 0.76) 100%);
+  background: transparent;
+  box-shadow: none;
   pointer-events: none;
 }
 .kinetic-manifesto-layout {
@@ -916,41 +1211,33 @@ onBeforeUnmount(() => {
   bottom: clamp(54px, 8vh, 100px);
   left: clamp(38px, 8vw, 138px);
   display: grid;
-  grid-template-columns: minmax(0, 1.55fr) minmax(250px, 0.55fr);
+  grid-template-columns: minmax(0, 1.24fr) minmax(270px, 0.56fr);
   align-items: end;
-  gap: clamp(36px, 8vw, 140px);
+  gap: clamp(44px, 7vw, 112px);
 }
 .kinetic-manifesto-heading h1 {
   position: relative;
-  margin: 20px 0 0;
+  max-width: 820px;
+  margin: 24px 0 0;
   color: #eff6f1;
-  font: 480 clamp(58px, 7.6vw, 126px)/0.82 ui-monospace, SFMono-Regular, Menlo, monospace;
-  letter-spacing: -0.09em;
-  text-transform: uppercase;
-  text-shadow: -2px 0 rgba(108, 232, 220, 0.2), 2px 0 rgba(157, 129, 255, 0.18);
+  font-family: "Noto Sans SC", ui-sans-serif, system-ui, sans-serif;
+  font-size: 96px;
+  font-weight: 560;
+  line-height: 0.98;
+  letter-spacing: 0;
+  text-wrap: balance;
+  text-shadow: 0 14px 44px rgba(0, 0, 0, 0.24);
 }
-.kinetic-manifesto-heading h1 span { display: block; }
-.kinetic-manifesto-heading h1 span:first-child {
-  position: relative;
-  transform: translateX(var(--pointer-shift-x));
+.kinetic-manifesto-heading h1 span {
+  display: block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
-.kinetic-manifesto-heading h1 span:nth-child(2) { transform: translateX(8%); }
-.kinetic-manifesto-heading h1 span:last-child { transform: translateX(1.5%); }
-.kinetic-manifesto-heading h1::after {
-  position: absolute;
-  top: 30%;
-  right: 0;
-  left: 0;
-  height: 13%;
-  color: rgba(228, 248, 239, 0.52);
-  overflow: hidden;
-  content: attr(data-text);
-  filter: blur(0.4px);
-  transform: translateX(var(--pointer-shift-x)) skewX(-7deg);
-  white-space: nowrap;
-  mix-blend-mode: screen;
+.kinetic-manifesto-heading h1 span:nth-child(2) {
+  color: #b9f3da;
 }
 .kinetic-manifesto-copy {
+  max-width: 380px;
   padding-bottom: 2vh;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
@@ -984,7 +1271,7 @@ onBeforeUnmount(() => {
   margin: 9px 0 0;
   color: var(--kinetic-ink);
   font: 470 clamp(22px, 2.5vw, 40px)/1 ui-monospace, SFMono-Regular, Menlo, monospace;
-  letter-spacing: -0.06em;
+  letter-spacing: 0;
   text-transform: uppercase;
 }
 .kinetic-deck {
@@ -994,6 +1281,8 @@ onBeforeUnmount(() => {
   transform-style: preserve-3d;
 }
 .kinetic-card {
+  --card-accent: 129, 140, 248;
+  --card-secondary: 34, 211, 238;
   --deck-x: 0vw;
   --deck-y: 0vh;
   --deck-z: 0px;
@@ -1007,55 +1296,66 @@ onBeforeUnmount(() => {
   left: 50%;
   z-index: var(--deck-order);
   display: flex;
-  width: min(41vw, 610px);
-  height: min(49vh, 490px);
-  min-height: 330px;
+  width: min(46vw, 640px);
+  height: min(54vh, 530px);
+  min-height: 370px;
   flex-direction: column;
   justify-content: space-between;
   overflow: hidden;
   padding: clamp(20px, 2.4vw, 34px);
-  border: 1px solid rgba(232, 247, 240, 0.24);
-  border-radius: clamp(18px, 2.2vw, 32px);
+  border: 1px solid rgba(199, 210, 254, 0.28);
+  border-radius: 16px;
   color: #f5fbf8;
-  background: rgba(8, 14, 18, 0.62);
-  box-shadow: inset 0 1px rgba(255, 255, 255, 0.08), 0 38px 90px rgba(0, 0, 0, 0.34);
+  background: rgba(11, 13, 18, 0.9);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.08), 0 24px 58px rgba(0, 0, 0, 0.28);
   opacity: var(--deck-opacity);
-  backdrop-filter: blur(13px) saturate(134%);
   transform: translate3d(calc(-50% + var(--deck-x)), calc(-50% + var(--deck-y)), var(--deck-z)) rotateY(var(--deck-ry)) rotateZ(var(--deck-rz)) scale(var(--deck-scale));
   transform-style: preserve-3d;
+  transition: border-color var(--motion-base) var(--ease-standard), box-shadow var(--motion-base) var(--ease-standard);
   will-change: transform, opacity;
+}
+.kinetic-card::before {
+  position: absolute;
+  inset: 34% 0 0;
+  z-index: 1;
+  background: linear-gradient(180deg, transparent, rgba(7, 9, 13, 0.54) 34%, rgba(7, 9, 13, 0.96));
+  content: '';
+  pointer-events: none;
 }
 .kinetic-card::after {
   position: absolute;
-  inset: 0;
-  opacity: 0.11;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.76' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  inset: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.045);
+  border-radius: 10px;
   content: '';
-  mix-blend-mode: overlay;
   pointer-events: none;
 }
-.kinetic-card.is-active { border-color: rgba(231, 250, 241, 0.48); }
+.kinetic-card.is-active {
+  border-color: rgba(165, 180, 252, 0.62);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.12), 0 28px 70px rgba(0, 0, 0, 0.34);
+}
 .kinetic-card-visual {
   position: absolute;
   inset: 0;
   overflow: hidden;
   background:
-    radial-gradient(circle at 50% 42%, rgba(103, 225, 210, 0.32), transparent 23%),
-    radial-gradient(circle at 12% 88%, rgba(139, 113, 255, 0.36), transparent 34%),
-    #0a1417;
+    radial-gradient(circle at 53% 36%, rgba(var(--card-accent), 0.38), transparent 24%),
+    radial-gradient(circle at 16% 84%, rgba(var(--card-secondary), 0.3), transparent 38%),
+    radial-gradient(circle at 88% 72%, rgba(var(--card-accent), 0.14), transparent 30%),
+    #0b0d12;
 }
-.kinetic-card-routing .kinetic-card-visual { filter: hue-rotate(38deg); }
-.kinetic-card-signals .kinetic-card-visual { filter: hue-rotate(280deg) saturate(1.25); }
-.kinetic-card-learning .kinetic-card-visual { filter: hue-rotate(112deg) saturate(1.2); }
-.kinetic-card-control .kinetic-card-visual { filter: hue-rotate(210deg) saturate(0.82); }
+.kinetic-card-routing { --card-accent: 99, 102, 241; --card-secondary: 34, 211, 238; }
+.kinetic-card-signals { --card-accent: 34, 211, 238; --card-secondary: 129, 140, 248; }
+.kinetic-card-learning { --card-accent: 74, 222, 128; --card-secondary: 129, 140, 248; }
+.kinetic-card-control { --card-accent: 129, 140, 248; --card-secondary: 94, 234, 212; }
 .kinetic-card-plane {
   position: absolute;
   top: 50%;
   left: 50%;
   display: block;
   border: 1px solid rgba(220, 250, 240, 0.38);
-  background: rgba(116, 225, 210, 0.09);
-  box-shadow: inset 0 0 30px rgba(121, 255, 227, 0.08);
+  background: rgba(var(--card-accent), 0.07);
+  box-shadow: inset 0 0 24px rgba(var(--card-secondary), 0.06);
   transform-style: preserve-3d;
 }
 .kinetic-card-plane-one {
@@ -1096,6 +1396,25 @@ onBeforeUnmount(() => {
   box-shadow: 0 0 18px rgba(128, 255, 226, 0.46);
   transform: rotate(-9deg);
 }
+.kinetic-card-particles {
+  position: absolute;
+  inset: 0;
+  display: block;
+  pointer-events: none;
+}
+.kinetic-card-particle {
+  position: absolute;
+  top: var(--particle-top);
+  left: var(--particle-left);
+  display: block;
+  width: var(--particle-size);
+  height: var(--particle-size);
+  border-radius: 50%;
+  opacity: var(--particle-alpha);
+  background: rgb(var(--card-accent));
+  box-shadow: 0 0 8px rgba(var(--card-accent), 0.7);
+  will-change: transform, opacity;
+}
 .kinetic-card-topline,
 .kinetic-card-content {
   position: relative;
@@ -1110,24 +1429,22 @@ onBeforeUnmount(() => {
 }
 .kinetic-card-content {
   display: flex;
-  max-width: 78%;
+  max-width: 82%;
   flex-direction: column;
   align-items: flex-start;
-  padding: 18px;
-  background: rgba(2, 8, 10, 0.58);
-  backdrop-filter: blur(12px);
+  padding: 0;
 }
 .kinetic-card-content h3 {
   margin: 0;
-  font: 500 clamp(30px, 4vw, 58px)/0.9 ui-monospace, SFMono-Regular, Menlo, monospace;
-  letter-spacing: -0.075em;
+  font: 540 clamp(30px, 3.7vw, 54px)/0.96 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0;
   text-transform: uppercase;
 }
 .kinetic-card-content p {
   margin: 15px 0 0;
-  color: rgba(224, 239, 232, 0.7);
-  font-size: 11px;
-  line-height: 1.58;
+  color: rgba(226, 232, 240, 0.76);
+  font-size: 12px;
+  line-height: 1.62;
 }
 .kinetic-card-content a {
   display: inline-flex;
@@ -1172,7 +1489,7 @@ onBeforeUnmount(() => {
   background: currentColor;
 }
 .kinetic-work-filter button:hover,
-.kinetic-work-filter button.is-active { color: #f4fbf7; transform: translateX(5px); }
+.kinetic-work-filter button.is-active { color: #f4fbf7; transform: translateX(2px); }
 .kinetic-deck-progress {
   position: absolute;
   right: clamp(52px, 7vw, 110px);
@@ -1198,79 +1515,134 @@ onBeforeUnmount(() => {
   transform-origin: left;
 }
 .kinetic-lab {
-  min-height: 154svh;
+  min-height: 146svh;
 }
-.kinetic-lab-water {
+.kinetic-lab-sticky::before {
   position: absolute;
-  top: -9%;
-  right: -10%;
-  left: -10%;
-  height: 36%;
-  opacity: 0.38;
-  background:
-    repeating-radial-gradient(ellipse at 50% 0%, rgba(106, 237, 204, 0.17) 0 1px, transparent 2px 14px);
-  filter: blur(1px);
-  transform: perspective(600px) rotateX(62deg) translateY(var(--pointer-shift-y));
+  inset: 0;
+  background: transparent;
+  box-shadow: none;
+  content: '';
+  pointer-events: none;
 }
 .kinetic-lab-shell {
   position: absolute;
-  top: 50%;
-  left: 50%;
+  top: 51%;
+  right: 0;
+  left: 0;
   display: grid;
-  width: min(72vw, 1080px);
-  min-height: min(48vh, 500px);
-  grid-template-columns: 0.45fr 0.9fr auto 1fr;
+  width: 100%;
+  min-height: 430px;
+  grid-template-columns: minmax(0, 1.18fr) minmax(150px, 0.44fr) minmax(260px, 0.72fr);
   align-items: center;
-  gap: clamp(22px, 4vw, 66px);
-  padding: clamp(34px, 5vw, 76px);
-  border: 1px solid rgba(229, 246, 238, 0.24);
-  border-radius: 44% 38% 42% 46% / 46% 50% 42% 45%;
+  gap: clamp(32px, 5vw, 78px);
+  padding: clamp(42px, 5vw, 72px) max(56px, calc((100vw - 1180px) / 2 + 56px));
   color: #eff8f3;
-  background:
-    radial-gradient(circle, rgba(207, 239, 225, 0.26) 0 2px, transparent 2.7px) 0 0 / 13px 13px,
-    rgba(7, 15, 17, 0.68);
-  box-shadow: inset 0 0 90px rgba(75, 143, 126, 0.2), 0 44px 100px rgba(0, 0, 0, 0.28);
-  backdrop-filter: blur(11px) saturate(128%);
-  transform: translate(-50%, -50%) rotateX(var(--pointer-tilt-x)) rotateY(var(--pointer-tilt-y));
+  background: transparent;
+  transform: translateY(-50%);
+  isolation: isolate;
+}
+.kinetic-lab-heading {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 150px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0;
+}
+.kinetic-lab-heading > .kinetic-section-label {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+.kinetic-lab-title-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: clamp(18px, 2.6vw, 36px);
 }
 .kinetic-lab-mark {
   display: grid;
-  width: clamp(70px, 8vw, 114px);
+  width: 76px;
+  flex: 0 0 auto;
   aspect-ratio: 1;
   place-items: center;
   border: 1px solid rgba(239, 255, 247, 0.56);
   border-radius: 50%;
-  box-shadow: 0 0 0 11px rgba(151, 247, 222, 0.05);
-  font: 500 clamp(20px, 2vw, 32px)/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  box-shadow: 0 0 0 8px rgba(151, 247, 222, 0.04);
+  font: 560 24px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 .kinetic-lab-shell h2 {
+  min-width: 0;
   margin: 0;
-  font: 480 clamp(40px, 5vw, 76px)/0.9 ui-monospace, SFMono-Regular, Menlo, monospace;
-  letter-spacing: -0.08em;
-  text-transform: uppercase;
+  font-family: "Noto Sans SC", ui-sans-serif, system-ui, sans-serif;
+  font-size: 58px;
+  font-weight: 560;
+  line-height: 1;
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
 }
-.kinetic-lab-arrow {
+.kinetic-lab-route {
   position: relative;
-  width: 54px;
-  height: 1px;
-  background: rgba(239, 252, 246, 0.5);
+  width: 100%;
+  height: 150px;
 }
-.kinetic-lab-arrow::after {
+.kinetic-lab-route::before,
+.kinetic-lab-route::after {
   position: absolute;
-  top: -3px;
-  right: 0;
-  width: 7px;
-  height: 7px;
-  border-top: 1px solid currentColor;
-  border-right: 1px solid currentColor;
+  left: 50%;
+  width: 1px;
+  height: 34%;
+  background: rgba(197, 241, 224, 0.18);
   content: '';
-  transform: rotate(45deg);
+  transform: translateX(-50%);
 }
+.kinetic-lab-route::before { top: 0; }
+.kinetic-lab-route::after { bottom: 0; }
+.kinetic-lab-route-line {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  left: 0;
+  height: 1px;
+  background: rgba(209, 249, 233, 0.38);
+}
+.kinetic-lab-route-node {
+  position: absolute;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  border: 1px solid rgba(218, 255, 239, 0.68);
+  border-radius: 50%;
+  background: #12372d;
+  transform: translate(-50%, -50%);
+}
+.kinetic-lab-route-node-start { left: 0; }
+.kinetic-lab-route-node-middle { left: 28%; }
+.kinetic-lab-route-node-end { left: 100%; }
+.kinetic-lab-route strong {
+  position: absolute;
+  top: 50%;
+  left: 58%;
+  display: grid;
+  width: 58px;
+  aspect-ratio: 1;
+  place-items: center;
+  border: 1px solid rgba(229, 255, 242, 0.58);
+  border-radius: 50%;
+  color: #e9fff4;
+  background: rgba(16, 56, 45, 0.74);
+  box-shadow: 0 0 0 8px rgba(112, 230, 190, 0.05);
+  font: 600 17px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  transform: translate(-50%, -50%);
+}
+.kinetic-lab-copy { max-width: 340px; }
 .kinetic-lab-copy p {
   margin: 15px 0 0;
   color: var(--kinetic-muted);
-  font-size: 11px;
-  line-height: 1.62;
+  font-size: 13px;
+  line-height: 1.68;
 }
 .kinetic-lab-copy a {
   display: inline-flex;
@@ -1280,7 +1652,7 @@ onBeforeUnmount(() => {
   padding-bottom: 4px;
   border-bottom: 1px solid var(--kinetic-line-strong);
   color: var(--kinetic-ink);
-  font: 560 8px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  font: 560 9px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 .kinetic-contact {
   display: flex;
@@ -1292,7 +1664,7 @@ onBeforeUnmount(() => {
 .kinetic-contact::before {
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle at center, rgba(7, 13, 15, 0.1), rgba(3, 8, 10, 0.74) 84%);
+  background: transparent;
   content: '';
   pointer-events: none;
 }
@@ -1308,7 +1680,7 @@ onBeforeUnmount(() => {
 .kinetic-contact-content h2 {
   margin: 24px 0 0;
   font: 470 clamp(62px, 9.2vw, 152px)/0.78 ui-monospace, SFMono-Regular, Menlo, monospace;
-  letter-spacing: -0.095em;
+  letter-spacing: 0;
   text-transform: uppercase;
 }
 .kinetic-contact-content h2 span { display: block; }
@@ -1352,7 +1724,7 @@ onBeforeUnmount(() => {
   right: clamp(24px, 3.6vw, 58px);
   bottom: 28px;
   left: clamp(24px, 3.6vw, 58px);
-  z-index: 5;
+  z-index: 30;
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
@@ -1381,48 +1753,88 @@ onBeforeUnmount(() => {
   z-index: 100;
   display: grid;
   place-content: center;
-  color: #b8fff0;
-  background: #020607;
+  color: #eef7f2;
+  background: #26332d;
+  contain: layout paint style;
   pointer-events: none;
 }
 .kinetic-loader-shell {
-  position: relative;
   display: grid;
-  width: 118px;
-  height: 70px;
-  place-items: end center;
+  width: min(330px, calc(100vw - 48px));
+  grid-template-columns: 52px minmax(0, 1fr);
+  align-items: center;
+  gap: 17px;
 }
-.kinetic-loader-shell > span {
-  position: relative;
-  z-index: 2;
-  font: 560 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+.kinetic-loader-mark {
+  display: grid;
+  width: 52px;
+  height: 52px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid rgba(226, 232, 240, 0.36);
+  border-radius: 50%;
+  background: rgba(11, 13, 18, 0.62);
+  font: 650 15px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
 }
-.kinetic-loader-tick {
-  position: absolute;
-  bottom: 0;
-  left: 50%;
-  width: 1px;
-  height: 12px;
-  background: #68d9d0;
-  transform-origin: 0 42px;
-  transition: opacity 100ms linear;
+.kinetic-loader-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
-.kinetic-loader p {
-  margin: 18px 0 0;
-  color: rgba(187, 225, 215, 0.46);
-  font: 540 7px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
-  letter-spacing: 0.12em;
-  text-align: center;
+.kinetic-loader-status {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: rgba(226, 232, 240, 0.68);
+  font: 560 10px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
+.kinetic-loader-status > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kinetic-loader-status strong {
+  color: #f5f7fb;
+  font-size: 13px;
+  font-weight: 620;
+}
+.kinetic-loader-track {
+  position: relative;
+  display: block;
+  height: 3px;
+  grid-column: 2;
+  overflow: hidden;
+  background: rgba(226, 232, 240, 0.16);
+}
+.kinetic-loader-track b {
+  position: absolute;
+  inset: 0;
+  background: #a5b4fc;
+  transform-origin: left;
+  transition: transform 100ms linear;
+}
 .kinetic-loader-enter-active,
-.kinetic-loader-leave-active { transition: opacity 520ms var(--ease-standard), filter 520ms var(--ease-standard); }
+.kinetic-loader-leave-active { transition: opacity 280ms var(--ease-standard); }
 .kinetic-loader-enter-from,
-.kinetic-loader-leave-to { opacity: 0; filter: blur(12px); }
+.kinetic-loader-leave-to { opacity: 0; }
+
+@media (max-width: 1120px) {
+  .kinetic-lab-shell {
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 0.62fr);
+    padding-right: 34px;
+    padding-left: 34px;
+  }
+  .kinetic-lab-route { display: none; }
+}
 
 @media (max-width: 920px) {
   .kinetic-wordmark-copy { display: none; }
   .kinetic-section-index { display: none; }
+  .kinetic-hero-copy h1 { font-size: 82px; }
   .kinetic-manifesto-layout {
     right: 34px;
     bottom: 72px;
@@ -1432,8 +1844,10 @@ onBeforeUnmount(() => {
   }
   .kinetic-manifesto-copy { max-width: 440px; margin-left: auto; }
   .kinetic-card { width: min(64vw, 600px); }
-  .kinetic-lab-shell { width: 82vw; grid-template-columns: auto 1fr; border-radius: 80px; }
-  .kinetic-lab-arrow { display: none; }
+  .kinetic-lab-shell {
+    width: 100%;
+    grid-template-columns: minmax(0, 1fr) minmax(180px, 0.58fr);
+  }
 }
 
 @media (max-width: 640px) {
@@ -1441,14 +1855,18 @@ onBeforeUnmount(() => {
   .kinetic-top-nav { min-width: 164px; height: 36px; padding: 0 13px; }
   .kinetic-wordmark-mark { width: 34px; height: 34px; }
   .kinetic-hero { min-height: 104svh; }
-  .kinetic-hero-meta { bottom: 86px; left: 18px; width: min(260px, 70vw); }
-  .kinetic-hero-instruction { right: 18px; bottom: 32px; left: 18px; justify-content: flex-end; }
-  .kinetic-hero-instruction span:first-child { display: none; }
-  .kinetic-hero-coordinate { top: 18%; }
+  .kinetic-hero-copy { top: 112px; right: 18px; left: 18px; width: auto; }
+  .kinetic-hero-eyebrow { margin-bottom: 14px; font-size: 9px; }
+  .kinetic-hero-copy h1 { font-size: 50px; line-height: 0.96; }
+  .kinetic-hero-tagline { margin-top: 18px; font-size: 26px; }
+  .kinetic-hero-description { max-width: 430px; margin-top: 12px; font-size: 14px; line-height: 1.6; }
+  .kinetic-hero-actions { margin-top: 20px; }
+  .kinetic-hero-primary, .kinetic-hero-secondary { min-height: 42px; padding: 0 14px; }
+  .kinetic-hero-endpoint { margin-top: 16px; font-size: 9px; }
+  .kinetic-hero-meta { bottom: 34px; left: 18px; width: min(280px, 72vw); }
   .kinetic-manifesto { min-height: 128svh; }
   .kinetic-manifesto-layout { right: 18px; bottom: 72px; left: 18px; gap: 32px; }
-  .kinetic-manifesto-heading h1 { font-size: clamp(48px, 16vw, 72px); line-height: 0.84; }
-  .kinetic-manifesto-heading h1 span:nth-child(2) { transform: none; }
+  .kinetic-manifesto-heading h1 { max-width: 100%; font-size: 48px; line-height: 1; }
   .kinetic-manifesto-copy { margin: 0; }
   .kinetic-manifesto-copy p:nth-of-type(2) { display: none; }
   .kinetic-work { min-height: 410svh; }
@@ -1459,7 +1877,7 @@ onBeforeUnmount(() => {
     min-height: 390px;
     padding: 20px;
   }
-  .kinetic-card-content { max-width: 92%; padding: 15px; }
+  .kinetic-card-content { max-width: 92%; padding: 0; }
   .kinetic-card-content h3 { font-size: clamp(31px, 10vw, 48px); }
   .kinetic-work-filter {
     right: 18px;
@@ -1473,18 +1891,24 @@ onBeforeUnmount(() => {
   .kinetic-work-filter button { font-size: 7px; }
   .kinetic-deck-progress { display: none; }
   .kinetic-lab { min-height: 132svh; }
-  .kinetic-lab-water { height: 28%; }
   .kinetic-lab-shell {
-    width: 88vw;
-    min-height: 58vh;
+    width: 100%;
+    min-height: 0;
     grid-template-columns: 1fr;
     justify-items: start;
-    gap: 20px;
-    padding: 32px 26px;
-    border-radius: 44px;
+    gap: 32px;
+    padding: 38px 20px;
   }
-  .kinetic-lab-mark { width: 64px; }
-  .kinetic-lab-shell h2 { font-size: clamp(38px, 13vw, 58px); }
+  .kinetic-lab-heading {
+    min-height: 0;
+    justify-content: flex-start;
+    gap: 22px;
+  }
+  .kinetic-lab-heading > .kinetic-section-label { position: static; }
+  .kinetic-lab-title-row { gap: 18px; }
+  .kinetic-lab-mark { width: 56px; font-size: 18px; }
+  .kinetic-lab-shell h2 { font-size: 42px; }
+  .kinetic-lab-copy { max-width: 100%; }
   .kinetic-contact-content { padding-right: 18px; padding-left: 18px; }
   .kinetic-contact-content h2 { font-size: clamp(54px, 16vw, 76px); line-height: 0.82; }
   .kinetic-primary-cta { width: 108px; height: 108px; }
@@ -1505,9 +1929,9 @@ onBeforeUnmount(() => {
   .kinetic-footer a,
   .kinetic-footer button,
   .kinetic-loader,
-  .kinetic-loader-tick { transition-duration: 1ms !important; }
-  .kinetic-manifesto-heading h1::after { display: none; }
+  .kinetic-loader-track b { transition-duration: 1ms !important; }
   .kinetic-card { will-change: auto; }
+  .kinetic-card-particle { will-change: auto; }
   .kinetic-reveal { opacity: 1 !important; visibility: visible !important; transform: none !important; }
   .kinetic-loader { display: none; }
 }

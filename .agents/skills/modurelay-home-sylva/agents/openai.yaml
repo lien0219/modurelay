@@ -1,0 +1,4 @@
+interface:
+  display_name: "ModuRelay Home Sylva"
+  short_description: "Adapt the exact ThreeUI Sylva scene for /home"
+  default_prompt: "Use $modurelay-home-sylva to adapt the verified Sylva renderer for the official ModuRelay /home."
