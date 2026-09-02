@@ -950,6 +950,15 @@ defineExpose({
   flex: 1;
   min-height: 0;
   isolation: isolate;
+  color: var(--color-text-primary);
+  background-color: var(--color-surface);
+}
+
+.table-card-row {
+  border-color: var(--color-border);
+  color: var(--color-text-primary);
+  background-color: var(--color-surface);
+  box-shadow: var(--shadow-xs);
 }
 
 /* 表头容器，确保在滚动时覆盖表体内容；底部分界阴影强化层级 */
@@ -957,19 +966,29 @@ defineExpose({
   position: sticky;
   top: 0;
   z-index: 200;
-  background-color: rgb(249 250 251);
-  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.06), 0 4px 10px -6px rgba(15, 23, 42, 0.12);
+  color: var(--color-text-secondary);
+  background-color: var(--color-surface-soft);
+  box-shadow: 0 1px 0 var(--color-border), 0 6px 14px -10px rgba(15, 23, 42, 0.2);
 }
 
 .dark .table-wrapper .table-header {
-  background-color: rgb(31 41 55);
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.35), 0 4px 10px -6px rgba(0, 0, 0, 0.45);
+  background-color: var(--color-surface-soft);
+  box-shadow: 0 1px 0 var(--color-border), 0 6px 14px -10px rgba(0, 0, 0, 0.7);
 }
 
 /* 表体保持在表头下方 */
 .table-body {
   position: relative;
   z-index: 0;
+  background-color: var(--color-surface);
+}
+
+.table-body > tr {
+  border-color: var(--color-border-subtle);
+}
+
+.table-data-row:hover {
+  background-color: var(--color-bg-subtle);
 }
 
 /* 所有表头单元格固定在顶部 */
@@ -977,11 +996,12 @@ defineExpose({
   position: sticky;
   top: 0;
   z-index: 210; /* 必须高于所有表体内容 */
-  background-color: rgb(249 250 251);
+  color: var(--color-text-muted);
+  background-color: var(--color-surface-soft);
 }
 
 .dark .sticky-header-cell {
-  background-color: rgb(31 41 55);
+  background-color: var(--color-surface-soft);
 }
 
 /* Sticky 列基础样式 */
@@ -1017,47 +1037,47 @@ defineExpose({
 
 /* 表体 sticky 列背景 */
 tbody .sticky-col {
-  background-color: white;
+  background-color: var(--color-surface);
 }
 
 .dark tbody .sticky-col {
-  background-color: rgb(17 24 39);
+  background-color: var(--color-surface);
 }
 
 /* hover 状态保持 */
 tbody tr:hover .sticky-col {
-  background-color: rgb(249 250 251);
+  background-color: var(--color-bg-subtle);
 }
 
 .dark tbody tr:hover .sticky-col {
-  background-color: rgb(31 41 55);
+  background-color: var(--color-bg-subtle);
 }
 
 /* Selected row highlight (opt-in via selectedRowKeys) */
 .table-row-selected {
-  background-color: rgb(240 253 250) !important; /* primary-50 */
+  background-color: var(--color-primary-soft) !important;
 }
 
 .dark .table-row-selected {
-  background-color: rgba(19, 78, 74, 0.35) !important; /* primary-900/35 */
+  background-color: var(--color-primary-soft) !important;
 }
 
 .table-row-selected .sticky-col,
 tbody tr.table-row-selected:hover .sticky-col {
-  background-color: rgb(240 253 250) !important;
+  background-color: var(--color-primary-soft) !important;
 }
 
 .dark .table-row-selected .sticky-col,
 .dark tbody tr.table-row-selected:hover .sticky-col {
-  background-color: rgba(19, 78, 74, 0.35) !important;
+  background-color: var(--color-primary-soft) !important;
 }
 
 .table-card-row.table-row-selected {
-  border-color: rgb(153 246 228); /* primary-200 */
+  border-color: var(--color-primary-border);
 }
 
 .dark .table-card-row.table-row-selected {
-  border-color: rgba(45, 212, 191, 0.35);
+  border-color: var(--color-primary-border);
 }
 
 /* Skeleton: short pulse, not continuous shimmer */

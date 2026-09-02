@@ -126,4 +126,25 @@ describe('AnnouncementPopup', () => {
     expect(wrapper.emitted('close')).toBeUndefined()
     wrapper.unmount()
   })
+
+  it('mounts and removes the scrim and visible panel atomically', async () => {
+    const store = useAnnouncementStore()
+    store.currentPopup = announcement
+    const wrapper = mount(AnnouncementPopup)
+    await wrapper.vm.$nextTick()
+
+    const overlay = document.body.querySelector<HTMLElement>('[data-testid="announcement-popup-overlay"]')
+    const panel = document.body.querySelector<HTMLElement>('[data-testid="announcement-popup-panel"]')
+    expect(overlay).not.toBeNull()
+    expect(panel).not.toBeNull()
+    expect(overlay?.contains(panel ?? null)).toBe(true)
+    expect(panel?.classList.contains('popup-fade-enter-from')).toBe(false)
+
+    store.currentPopup = null
+    await wrapper.vm.$nextTick()
+
+    expect(document.body.querySelector('[data-testid="announcement-popup-overlay"]')).toBeNull()
+    expect(document.body.querySelector('[data-testid="announcement-popup-panel"]')).toBeNull()
+    wrapper.unmount()
+  })
 })

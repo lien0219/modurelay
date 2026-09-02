@@ -62,7 +62,7 @@
                 </span>
               </button>
               <!-- Children -->
-              <div v-if="!sidebarCollapsed && isGroupExpanded(item)" class="mb-1 ml-4 border-l border-gray-200 pl-2 dark:border-dark-600">
+              <div v-if="!sidebarCollapsed && isGroupExpanded(item)" class="mb-1 ml-4 border-l border-[color:var(--color-border)] pl-2">
                 <router-link
                   v-for="child in item.children"
                   :key="child.path"
@@ -148,19 +148,36 @@
     </nav>
 
     <!-- Bottom Section -->
-    <div class="mt-auto border-t border-gray-100 p-3 dark:border-dark-800">
+    <div class="sidebar-footer mt-auto p-3">
       <!-- Theme Toggle -->
       <button
+        type="button"
         @click="toggleTheme"
-        class="sidebar-link mb-2 w-full"
-        :class="{ 'sidebar-link-collapsed': sidebarCollapsed }"
-        :title="sidebarCollapsed ? (isDark ? t('nav.lightMode') : t('nav.darkMode')) : undefined"
+        class="sidebar-theme-control mb-2 w-full"
+        :class="{ 'sidebar-theme-control-collapsed': sidebarCollapsed }"
+        :title="sidebarCollapsed ? (isDark ? t('nav.darkMode') : t('nav.lightMode')) : undefined"
+        :aria-label="t('nav.darkMode')"
+        :aria-pressed="isDark"
       >
-        <SunIcon v-if="isDark" class="h-5 w-5 flex-shrink-0 text-amber-500" />
-        <MoonIcon v-else class="h-5 w-5 flex-shrink-0" />
-        <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">{{
-          isDark ? t('nav.lightMode') : t('nav.darkMode')
-        }}</span>
+        <span
+          class="sidebar-theme-label"
+          :class="{ 'sidebar-theme-label-collapsed': sidebarCollapsed }"
+          :aria-hidden="sidebarCollapsed ? 'true' : 'false'"
+        >
+          {{ isDark ? t('nav.darkMode') : t('nav.lightMode') }}
+        </span>
+        <span class="theme-switch-track" :class="{ 'theme-switch-track-dark': isDark }" aria-hidden="true">
+          <span class="theme-switch-thumb">
+            <SunIcon
+              class="theme-switch-thumb-icon h-3.5 w-3.5"
+              :class="{ 'theme-switch-thumb-icon-active': !isDark }"
+            />
+            <MoonIcon
+              class="theme-switch-thumb-icon h-3.5 w-3.5"
+              :class="{ 'theme-switch-thumb-icon-active': isDark }"
+            />
+          </span>
+        </span>
       </button>
 
       <!-- Collapse Button -->
@@ -1014,6 +1031,139 @@ onBeforeUnmount(() => {
   min-width: 2.25rem;
 }
 
+.sidebar-footer {
+  border-top: 1px solid var(--color-border);
+}
+
+.sidebar-theme-control {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 8px 10px 8px 12px;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  background-color: color-mix(in srgb, var(--glass-bg-strong) 76%, var(--color-surface));
+  box-shadow: var(--shadow-xs), inset 0 1px 0 var(--glass-highlight);
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  backdrop-filter: blur(var(--glass-blur));
+  transition:
+    color var(--motion-fast) var(--ease-standard),
+    background-color var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard);
+}
+
+.sidebar-theme-control:hover {
+  color: var(--color-text-primary);
+  border-color: var(--color-primary-border);
+  background-color: var(--color-surface-raised);
+  box-shadow: var(--shadow-sm), inset 0 1px 0 var(--glass-highlight);
+}
+
+.sidebar-theme-control-collapsed {
+  justify-content: center;
+  gap: 0;
+  border-color: transparent;
+  padding-inline: 0;
+  background-color: transparent;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.sidebar-theme-control-collapsed:hover {
+  border-color: var(--color-primary-border);
+  background-color: var(--color-primary-soft);
+  box-shadow: none;
+}
+
+.sidebar-theme-label {
+  min-width: 0;
+  max-width: 9rem;
+  overflow: hidden;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition:
+    max-width var(--motion-base) var(--ease-standard),
+    opacity var(--motion-fast) var(--ease-standard),
+    transform var(--motion-fast) var(--ease-standard);
+}
+
+.sidebar-theme-label-collapsed {
+  max-width: 0;
+  opacity: 0;
+  transform: translateX(-4px);
+  pointer-events: none;
+}
+
+.theme-switch-track {
+  position: relative;
+  display: block;
+  width: 44px;
+  height: 26px;
+  flex: 0 0 44px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 9999px;
+  background-color: var(--color-surface-soft);
+  box-shadow: inset 0 1px 2px color-mix(in srgb, var(--color-border-strong) 32%, transparent);
+  transition:
+    background-color var(--motion-base) var(--ease-standard),
+    border-color var(--motion-base) var(--ease-standard);
+}
+
+.theme-switch-track-dark {
+  border-color: var(--color-primary-border);
+  background-color: var(--color-primary-soft);
+}
+
+.theme-switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  display: flex;
+  width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-border);
+  border-radius: 9999px;
+  color: var(--color-primary);
+  background-color: var(--color-surface-raised);
+  box-shadow: var(--shadow-sm);
+  transition:
+    transform var(--motion-base) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard),
+    background-color var(--motion-fast) var(--ease-standard);
+}
+
+.theme-switch-track-dark .theme-switch-thumb {
+  border-color: var(--color-primary-border);
+  transform: translateX(18px);
+}
+
+.theme-switch-thumb-icon {
+  position: absolute;
+  opacity: 0;
+  transform: scale(0.72);
+  transition:
+    opacity var(--motion-fast) var(--ease-standard),
+    transform var(--motion-fast) var(--ease-standard);
+}
+
+.theme-switch-thumb-icon-active {
+  opacity: 1;
+  transform: scale(1);
+}
+
 .sidebar-header-collapsed {
   gap: 0;
   padding-left: 1.125rem;
@@ -1078,14 +1228,10 @@ onBeforeUnmount(() => {
   right: 0.75rem;
   top: 50%;
   height: 1px;
-  background: rgb(229 231 235);
+  background: var(--color-border);
   opacity: 0;
   transform: translateY(-50%);
   transition: opacity 0.18s ease;
-}
-
-.dark .sidebar-section-title::after {
-  background: rgb(55 65 81);
 }
 
 .sidebar-section-title-text-collapsed {
@@ -1134,5 +1280,13 @@ onBeforeUnmount(() => {
   display: block;
   width: 1.25rem;
   height: 1.25rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-switch-thumb,
+  .theme-switch-thumb-icon,
+  .sidebar-theme-label {
+    transition-duration: 1ms;
+  }
 }
 </style>

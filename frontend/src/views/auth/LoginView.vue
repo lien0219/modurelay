@@ -1,25 +1,25 @@
 <template>
   <AuthLayout>
-    <div class="space-y-6">
+    <div class="auth-page min-w-0 space-y-6">
       <!-- Title -->
-      <div class="text-center">
-        <h2 class="text-2xl font-bold text-gray-900 dark:text-white">
+      <div class="auth-page-heading">
+        <h2 class="auth-page-title">
           {{ t('auth.welcomeBack') }}
         </h2>
-        <p class="mt-2 text-sm text-gray-500 dark:text-dark-400">
+        <p class="auth-page-subtitle">
           {{ t('auth.signInToAccount') }}
         </p>
       </div>
       <!-- Login Form -->
-      <form @submit.prevent="handleLogin" class="space-y-5">
+      <form @submit.prevent="handleLogin" class="auth-form space-y-5">
         <!-- Email Input -->
         <div>
           <label for="email" class="input-label">
             {{ t('auth.emailLabel') }}
           </label>
-          <div class="relative">
+          <div class="auth-input-wrap">
             <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
-              <Icon name="mail" size="md" class="text-gray-400 dark:text-dark-500" />
+              <Icon name="mail" size="md" class="auth-input-icon" aria-hidden="true" />
             </div>
             <input
               id="email"
@@ -32,8 +32,18 @@
               class="input pl-11"
               :class="{ 'input-error': errors.email }"
               :placeholder="t('auth.emailPlaceholder')"
+              :aria-invalid="Boolean(errors.email)"
+              :aria-describedby="errors.email ? 'login-email-error' : undefined"
             />
           </div>
+          <p
+            v-if="errors.email"
+            id="login-email-error"
+            class="input-error-text"
+            role="alert"
+          >
+            {{ errors.email }}
+          </p>
         </div>
 
         <!-- Password Input -->
@@ -41,9 +51,9 @@
           <label for="password" class="input-label">
             {{ t('auth.passwordLabel') }}
           </label>
-          <div class="relative">
+          <div class="auth-input-wrap">
             <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
-              <Icon name="lock" size="md" class="text-gray-400 dark:text-dark-500" />
+              <Icon name="lock" size="md" class="auth-input-icon" aria-hidden="true" />
             </div>
             <input
               id="password"
@@ -55,23 +65,34 @@
               class="input pl-11 pr-11"
               :class="{ 'input-error': errors.password }"
               :placeholder="t('auth.passwordPlaceholder')"
+              :aria-invalid="Boolean(errors.password)"
+              :aria-describedby="errors.password ? 'login-password-error' : undefined"
             />
             <button
               type="button"
               @click="showPassword = !showPassword"
               :disabled="authActionDisabled"
-              class="absolute inset-y-0 right-0 flex items-center pr-3.5 text-gray-400 transition-colors hover:text-gray-600 dark:hover:text-dark-300"
+              class="auth-password-toggle absolute inset-y-0 right-0"
+              :aria-label="showPassword ? t('common.hidePassword') : t('common.showPassword')"
             >
               <Icon v-if="showPassword" name="eyeOff" size="md" />
               <Icon v-else name="eye" size="md" />
             </button>
           </div>
+          <p
+            v-if="errors.password"
+            id="login-password-error"
+            class="input-error-text"
+            role="alert"
+          >
+            {{ errors.password }}
+          </p>
           <div class="mt-1 flex items-center justify-between">
             <span></span>
             <router-link
               v-if="passwordResetEnabled && !backendModeEnabled"
               to="/forgot-password"
-              class="text-sm font-medium text-primary-600 transition-colors hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300"
+              class="auth-link text-sm"
             >
               {{ t('auth.forgotPassword') }}
             </router-link>
@@ -95,13 +116,16 @@
             @expire="onTurnstileExpire"
             @error="onTurnstileError"
           />
+          <p v-if="errors.turnstile" class="input-error-text" role="alert">
+            {{ errors.turnstile }}
+          </p>
         </div>
 
         <!-- Submit Button -->
         <button
           type="submit"
           :disabled="authActionDisabled || (turnstileEnabled && !turnstileToken)"
-          class="btn btn-primary w-full"
+          class="auth-submit btn btn-primary w-full"
         >
           <svg
             v-if="isLoading"
@@ -141,11 +165,11 @@
 
         <div v-if="showPasskeyLogin || showOAuthLogin" class="space-y-3 pt-1">
           <div class="flex items-center gap-3">
-            <div class="h-px flex-1 bg-gray-200 dark:bg-dark-700"></div>
-            <span class="text-xs text-gray-500 dark:text-dark-400">
+            <div class="auth-divider-line h-px flex-1"></div>
+            <span class="auth-divider-label text-xs">
               {{ t('auth.oauthOrContinue') }}
             </span>
-            <div class="h-px flex-1 bg-gray-200 dark:bg-dark-700"></div>
+            <div class="auth-divider-line h-px flex-1"></div>
           </div>
 
           <button
@@ -198,11 +222,11 @@
 
     <!-- Footer -->
     <template v-if="!backendModeEnabled" #footer>
-      <p class="text-gray-500 dark:text-dark-400">
+      <p class="text-[color:var(--color-text-muted)]">
         {{ t('auth.dontHaveAccount') }}
         <router-link
           to="/register"
-          class="font-medium text-primary-600 transition-colors hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300"
+          class="auth-link"
         >
           {{ t('auth.signUp') }}
         </router-link>

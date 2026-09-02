@@ -106,6 +106,72 @@ Provide a stable fallback background before `backdrop-filter`, keep blur around
 12-22px, and keep saturation restrained. Text and focus states must remain
 legible over both themes. Do not turn every card into transparent Glass.
 
+## Frosted Precision Console
+
+Official non-home product surfaces use **Frosted Precision**: restrained
+glassmorphism over a calm, dense enterprise workbench. This direction connects
+to the official `/home` through the same Indigo, Cyan, smoked material, fine
+borders, and technical typography, while deliberately reducing spectacle once
+the user enters a task-focused surface.
+
+Apply the material hierarchy consistently:
+
+1. Use a stable Mist or Obsidian canvas for the page.
+2. Use Glass for navigation, authentication focus panels, filter strips,
+   dropdowns, dialogs, popovers, and selected KPI accents.
+3. Use opaque surface tokens for tables, long forms, charts, and primary work
+   regions.
+4. Never nest Glass panels or make every business card transparent.
+
+The default material balance is approximately 20-30% Glass for user pages and
+less for dense Admin pages. Authentication may use one stronger Glass panel as
+the visual bridge from `/home`. Custom HTML, custom URL iframe, compact-home,
+portal, and Station information architecture remain isolated; apply this
+visual direction to Station only when the Station task explicitly includes it.
+
+### Console Typography And Density
+
+- Use `Noto Sans SC`, the existing system sans stack, and normal letter spacing
+  for headings, labels, forms, and body text.
+- Use the existing monospace stack only for API paths, keys, model IDs,
+  technical labels, and tabular values.
+- Keep page titles around 24px, section titles 16-18px, body and controls 14px,
+  and metadata no smaller than 12px.
+- Prefer 36px desktop controls, 40-44px touch controls, 44-48px table rows,
+  16-20px panel padding, and 16-24px page rhythm.
+- User surfaces use comfortable compact density. Admin and monitoring surfaces
+  may be denser when scanning and target sizes remain accessible.
+
+### Resilient Text And Compact Controls
+
+- Allow headings to wrap naturally. `text-wrap: balance` is an enhancement,
+  not a guarantee about the final line.
+- Give flex/grid text children `min-width: 0`; let long URLs, keys, and
+  identifiers use `overflow-wrap: anywhere`.
+- Keep compact badge and chip labels on one line when practical. Bound only
+  unpredictable values and provide an operable full-value disclosure when
+  truncation is unavoidable.
+- Wrap chip collections or provide a keyboard- and touch-operable `+n`
+  disclosure. Do not hide overflow values in a fixed-height row.
+- Preserve stable control dimensions during loading, validation, and async
+  updates. Badge meaning must include text, icon, or shape rather than color
+  alone.
+- Let wide data tables scroll inside their table container. Do not compress
+  identifiers and actions until they become unreadable.
+
+### Console Charts
+
+- Use Indigo for the primary series, Cyan for the secondary series, neutral
+  gray for context, and semantic colors only for semantic state.
+- Use line charts for time trends and horizontal or grouped bars for ranked
+  comparisons. Use doughnut charts only for a small number of categories.
+- Do not distinguish series by hue alone; add direct labels, line styles,
+  point shapes, or a readable legend.
+- Keep the plot on a stable surface. Glass is appropriate for chart tooltips
+  and controls, not behind dense plotting detail.
+- Provide an adjacent table, labels, or a concise text summary for important
+  values that cannot be recovered without pointer hover.
+
 ## Buttons And Forms
 
 Primary actions use Indigo. Secondary actions use a neutral surface and a

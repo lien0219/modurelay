@@ -6,15 +6,17 @@
 
     <!-- Main Content Area -->
     <div
-      class="relative min-h-screen transition-[margin] duration-300"
+      class="app-main-column relative min-h-screen transition-[margin] duration-300"
       :class="[sidebarCollapsed ? 'lg:ml-[72px]' : 'lg:ml-64']"
     >
       <!-- Header -->
       <AppHeader />
 
       <!-- Main Content -->
-      <main class="p-4 md:p-6 lg:p-8">
-        <slot />
+      <main class="app-main p-4 md:p-6 lg:p-8">
+        <div class="app-main-content">
+          <slot />
+        </div>
       </main>
     </div>
   </div>
@@ -31,6 +33,12 @@ import { useOnboardingStore } from '@/stores/onboarding'
 import { extractSemanticVersion } from '@/utils/version'
 import AppSidebar from './AppSidebar.vue'
 import AppHeader from './AppHeader.vue'
+
+const props = withDefaults(defineProps<{
+  enableOnboarding?: boolean
+}>(), {
+  enableOnboarding: true
+})
 
 const appStore = useAppStore()
 const authStore = useAuthStore()
@@ -50,13 +58,14 @@ watch(
 
 const { replayTour } = useOnboardingTour({
   storageKey: isAdmin.value ? 'admin_guide' : 'user_guide',
-  autoStart: true
+  autoStart: props.enableOnboarding,
+  enabled: props.enableOnboarding
 })
 
 const onboardingStore = useOnboardingStore()
 
 onMounted(() => {
-  onboardingStore.setReplayCallback(replayTour)
+  onboardingStore.setReplayCallback(props.enableOnboarding ? replayTour : null)
 })
 
 defineExpose({ replayTour })

@@ -1,6 +1,6 @@
 <template>
   <AppLayout>
-    <div class="relative min-h-[12rem] space-y-6">
+    <div class="relative min-h-[12rem] space-y-5">
       <AnimatePresence mode="wait">
         <motion.div
           v-if="loading && !stats"
@@ -17,7 +17,7 @@
         <motion.div
           v-else-if="stats"
           :key="'dashboard-content'"
-          class="space-y-6"
+          class="space-y-5"
           :initial="contentInitial"
           :animate="fadeAnimate"
           :exit="fadeExit"
@@ -25,7 +25,7 @@
         >
           <div
             ref="contentRoot"
-            class="space-y-6"
+            class="space-y-5"
             :class="{ 'dashboard-reveal-pending': revealPending }"
           >
             <UserDashboardStats
@@ -47,7 +47,7 @@
                 @refresh="refreshAll"
               />
             </div>
-            <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
+            <div class="grid grid-cols-1 gap-5 lg:grid-cols-3">
               <div data-reveal class="lg:col-span-2">
                 <UserDashboardRecentUsage :data="recentUsage" :loading="loadingUsage" />
               </div>

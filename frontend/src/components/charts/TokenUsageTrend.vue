@@ -60,9 +60,9 @@ const chartColors = computed(() => ({
   text: getChartThemeColors().text,
   grid: getChartThemeColors().grid,
   input: getChartThemeColors().primary,
-  output: getChartThemeColors().success,
-  cacheCreation: getChartThemeColors().warning,
-  cacheRead: getChartThemeColors().secondary,
+  output: getChartThemeColors().secondary,
+  cacheCreation: getChartThemeColors().info,
+  cacheRead: getChartThemeColors().primary,
   cacheHitRate: getChartThemeColors().neutral
 }))
 
@@ -78,7 +78,10 @@ const chartData = computed(() => {
         borderColor: chartColors.value.input,
         backgroundColor: `${chartColors.value.input}20`,
         fill: true,
-        tension: 0.3
+        tension: 0.3,
+        pointStyle: 'circle',
+        pointRadius: 2,
+        borderWidth: 2
       },
       {
         label: 'Output',
@@ -86,23 +89,34 @@ const chartData = computed(() => {
         borderColor: chartColors.value.output,
         backgroundColor: `${chartColors.value.output}20`,
         fill: true,
-        tension: 0.3
+        tension: 0.3,
+        pointStyle: 'triangle',
+        pointRadius: 2,
+        borderWidth: 2
       },
       {
         label: 'Cache Creation',
         data: props.trendData.map((d) => d.cache_creation_tokens),
         borderColor: chartColors.value.cacheCreation,
         backgroundColor: `${chartColors.value.cacheCreation}20`,
-        fill: true,
-        tension: 0.3
+        borderDash: [3, 3],
+        fill: false,
+        tension: 0.3,
+        pointStyle: 'rect',
+        pointRadius: 2,
+        borderWidth: 2
       },
       {
         label: 'Cache Read',
         data: props.trendData.map((d) => d.cache_read_tokens),
         borderColor: chartColors.value.cacheRead,
         backgroundColor: `${chartColors.value.cacheRead}20`,
-        fill: true,
-        tension: 0.3
+        borderDash: [7, 4],
+        fill: false,
+        tension: 0.3,
+        pointStyle: 'rectRot',
+        pointRadius: 2,
+        borderWidth: 2
       },
       {
         label: 'Cache Hit Rate',
@@ -112,9 +126,12 @@ const chartData = computed(() => {
         }),
         borderColor: chartColors.value.cacheHitRate,
         backgroundColor: `${chartColors.value.cacheHitRate}20`,
-        borderDash: [5, 5],
+        borderDash: [2, 3],
         fill: false,
         tension: 0.3,
+        pointStyle: 'crossRot',
+        pointRadius: 2,
+        borderWidth: 2,
         yAxisID: 'yPercent'
       }
     ]

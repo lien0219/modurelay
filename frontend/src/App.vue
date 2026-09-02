@@ -10,6 +10,7 @@ import AnnouncementPopup from '@/components/common/AnnouncementPopup.vue'
 import { useAppStore, useAuthStore, useSubscriptionStore, useAnnouncementStore, useAdminComplianceStore, useAdminSettingsStore, useOnboardingStore } from '@/stores'
 import { getSetupStatus } from '@/api/setup'
 import { updateFavicon } from '@/utils/branding'
+import { disposeOnboardingTour, removeOnboardingArtifacts } from '@/utils/onboardingCleanup'
 
 const router = useRouter()
 const route = useRoute()
@@ -21,7 +22,7 @@ const adminComplianceStore = useAdminComplianceStore()
 const adminSettingsStore = useAdminSettingsStore()
 const onboardingStore = useOnboardingStore()
 const HOME_ROUTE_PATH = '/home'
-const PUBLIC_ONBOARDING_SELECTORS = '.driver-overlay, .driver-popover, .driver-popover-container, .driver-popover-arrow'
+const ONBOARDING_DISABLED_PATHS = new Set([HOME_ROUTE_PATH, '/ai-learning'])
 let homeOverlayObserver: MutationObserver | null = null
 let homeOverlayCleanupFrame = 0
 
@@ -29,22 +30,8 @@ function isHomeRoute(path = router.currentRoute.value.path) {
   return path === HOME_ROUTE_PATH
 }
 
-function removePublicOnboardingNodes() {
-  document.querySelectorAll(PUBLIC_ONBOARDING_SELECTORS).forEach((element) => {
-    element.remove()
-  })
-}
-
 function disposePublicOnboardingOverlay() {
-  const driverInstance = onboardingStore.getDriverInstance()
-  if (driverInstance) {
-    driverInstance.destroy()
-    onboardingStore.setDriverInstance(null)
-  }
-
-  // Driver.js owns these nodes outside Vue's component tree. Remove any node
-  // left behind during a route transition so public pages never inherit a dimmer.
-  removePublicOnboardingNodes()
+  disposeOnboardingTour(onboardingStore)
 }
 
 function cleanupHomeOverlayState() {
@@ -54,7 +41,7 @@ function cleanupHomeOverlayState() {
   // tour or dialog before it can affect the next render.
   document.body.classList.remove('modal-open')
   document.body.style.removeProperty('overflow')
-  removePublicOnboardingNodes()
+  removeOnboardingArtifacts()
 }
 
 function scheduleHomeOverlayCleanup() {
@@ -189,16 +176,19 @@ watch(
 )
 
 // Route change trigger (throttled by store)
-const removeHomeBeforeEach = router.beforeEach((to) => {
+const removeOnboardingBeforeEach = router.beforeEach((to) => {
+  if (ONBOARDING_DISABLED_PATHS.has(to.path)) {
+    disposePublicOnboardingOverlay()
+  }
+
   if (to.path === HOME_ROUTE_PATH) {
     syncHomeRouteGuard(to.path)
-    disposePublicOnboardingOverlay()
     scheduleHomeOverlayCleanup()
   }
 })
 
 router.afterEach((to) => {
-  if (to.meta.requiresAuth === false) {
+  if (to.meta.requiresAuth === false || ONBOARDING_DISABLED_PATHS.has(to.path)) {
     disposePublicOnboardingOverlay()
   }
 
@@ -213,7 +203,7 @@ router.afterEach((to) => {
 onBeforeUnmount(() => {
   document.removeEventListener('visibilitychange', onVisibilityChange)
   window.removeEventListener('admin-compliance-required', onAdminComplianceRequired)
-  removeHomeBeforeEach()
+  removeOnboardingBeforeEach()
   stopHomeOverlayGuard()
   if (homeOverlayCleanupFrame) window.cancelAnimationFrame(homeOverlayCleanupFrame)
   document.body.classList.remove('modurelay-home-route')

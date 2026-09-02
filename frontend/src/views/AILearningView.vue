@@ -1,12 +1,10 @@
 <template>
-  <component :is="isAuthenticated ? AppLayout : 'div'" class="learning-layout">
+  <component
+    :is="isAuthenticated ? AppLayout : 'div'"
+    class="learning-layout"
+    v-bind="isAuthenticated ? { enableOnboarding: false } : {}"
+  >
     <div ref="pageRef" class="learning-page">
-      <div class="learning-background" aria-hidden="true">
-        <span class="learning-orb learning-orb-one"></span>
-        <span class="learning-orb learning-orb-two"></span>
-        <span class="learning-orb learning-orb-three"></span>
-      </div>
-
       <header v-if="!isAuthenticated" class="learning-header">
         <nav class="learning-navbar" aria-label="AI learning navigation">
           <router-link to="/home" class="learning-brand">
@@ -583,7 +581,6 @@ function initializeMotion() {
 }
 
 onMounted(() => {
-  authStore.checkAuth()
   void appStore.fetchPublicSettings()
   themeObserver = new MutationObserver(() => {
     isDark.value = document.documentElement.classList.contains('dark')
@@ -602,14 +599,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .learning-layout { min-height: 100vh; }
-.learning-page { --learning-border: color-mix(in srgb, var(--mr-border) 76%, transparent); --learning-border-strong: color-mix(in srgb, var(--mr-border-strong) 82%, transparent); position: relative; min-height: 100vh; overflow: clip; color: var(--mr-text); background: radial-gradient(circle at 78% 8%, color-mix(in srgb, var(--mr-primary) 10%, transparent), transparent 28rem), radial-gradient(circle at 12% 42%, color-mix(in srgb, var(--mr-secondary) 8%, transparent), transparent 32rem), var(--mr-canvas); font-family: "Noto Sans SC Variable", system-ui, sans-serif; }
-.learning-page::before { position: absolute; inset: 0; background-image: linear-gradient(color-mix(in srgb, var(--mr-border) 30%, transparent) 1px, transparent 1px), linear-gradient(90deg, color-mix(in srgb, var(--mr-border) 30%, transparent) 1px, transparent 1px); background-size: 32px 32px; content: ''; opacity: 0.27; pointer-events: none; mask-image: linear-gradient(to bottom, black, transparent 76%); }
-.learning-background { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
-.learning-orb { position: absolute; display: block; border-radius: 50%; filter: blur(2px); opacity: 0.7; mix-blend-mode: multiply; animation: learning-orb-float 12s ease-in-out infinite alternate; }
-:global(.dark) .learning-orb { mix-blend-mode: screen; opacity: 0.38; }
-.learning-orb-one { top: 9%; right: 8%; width: 260px; height: 260px; background: radial-gradient(circle at 32% 30%, rgba(129, 140, 248, 0.5), rgba(99, 102, 241, 0.07) 68%, transparent 70%); }
-.learning-orb-two { top: 38%; left: -90px; width: 250px; height: 250px; background: radial-gradient(circle at 60% 40%, rgba(34, 211, 238, 0.3), transparent 70%); animation-delay: -4s; }
-.learning-orb-three { right: 18%; bottom: 12%; width: 190px; height: 190px; background: radial-gradient(circle at 34% 34%, rgba(244, 114, 182, 0.22), transparent 70%); animation-delay: -8s; }
+.learning-page { --learning-border: color-mix(in srgb, var(--mr-border) 76%, transparent); --learning-border-strong: color-mix(in srgb, var(--mr-border-strong) 82%, transparent); position: relative; min-height: 100vh; overflow: clip; color: var(--mr-text); background-color: var(--mr-canvas); font-family: "Noto Sans SC Variable", system-ui, sans-serif; }
 .learning-header { position: sticky; top: 0; z-index: 20; border-bottom: 1px solid transparent; background: color-mix(in srgb, var(--mr-canvas) 76%, transparent); box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--mr-border) 34%, transparent); backdrop-filter: blur(20px) saturate(145%); -webkit-backdrop-filter: blur(20px) saturate(145%); }
 .learning-navbar { display: flex; min-height: 72px; align-items: center; gap: 26px; width: min(100% - 48px, 1180px); margin: 0 auto; }
 .learning-brand { display: inline-flex; min-width: max-content; align-items: center; gap: 10px; color: var(--mr-text); font-size: 15px; font-weight: 700; }
@@ -752,7 +742,6 @@ onBeforeUnmount(() => {
 .learning-contact-copy-button:hover { border-color: var(--mr-primary); color: var(--mr-primary); background: var(--mr-surface); }
 .learning-footer { position: relative; z-index: 1; display: flex; justify-content: space-between; gap: 20px; width: min(100% - 48px, 1180px); margin: 0 auto; padding: 20px 0 26px; border-top: 1px solid var(--learning-border); color: var(--mr-text-subtle); font-size: 10px; }
 
-@keyframes learning-orb-float { from { transform: translate3d(-12px, 6px, 0) scale(0.96); } to { transform: translate3d(12px, -10px, 0) scale(1.04); } }
 @keyframes learning-dash { to { stroke-dashoffset: -120; } }
 @keyframes learning-core-ring { to { transform: rotate(360deg); } }
 @keyframes learning-bubble-float { 0%, 100% { margin-top: 0; } 50% { margin-top: -9px; } }
