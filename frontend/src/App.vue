@@ -22,7 +22,7 @@ const adminComplianceStore = useAdminComplianceStore()
 const adminSettingsStore = useAdminSettingsStore()
 const onboardingStore = useOnboardingStore()
 const HOME_ROUTE_PATH = '/home'
-const ONBOARDING_DISABLED_PATHS = new Set([HOME_ROUTE_PATH, '/ai-learning'])
+const ONBOARDING_DISABLED_PATHS = new Set([HOME_ROUTE_PATH, '/ai-learning', '/activities'])
 let homeOverlayObserver: MutationObserver | null = null
 let homeOverlayCleanupFrame = 0
 

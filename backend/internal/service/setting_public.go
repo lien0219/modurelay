@@ -196,6 +196,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyCustomMenuItems,
 		SettingKeyCustomEndpoints,
 		SettingKeyResourceCenterEnabled,
+		SettingKeyActivityCenterEnabled,
 		SettingKeyLinuxDoConnectEnabled,
 		SettingKeyDingTalkConnectEnabled,
 		SettingKeyWeChatConnectEnabled,
@@ -341,6 +342,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		CustomMenuItems:                     settings[SettingKeyCustomMenuItems],
 		CustomEndpoints:                     settings[SettingKeyCustomEndpoints],
 		ResourceCenterEnabled:               settings[SettingKeyResourceCenterEnabled] != "false",
+		ActivityCenterEnabled:               settings[SettingKeyActivityCenterEnabled] == "true",
 		LinuxDoOAuthEnabled:                 linuxDoEnabled,
 		DingTalkOAuthEnabled:                dingTalkEnabled,
 		WeChatOAuthEnabled:                  weChatEnabled,
@@ -693,6 +695,7 @@ type PublicSettingsInjectionPayload struct {
 		CustomMenuItems                  json.RawMessage          `json:"custom_menu_items"`
 		CustomEndpoints                  json.RawMessage          `json:"custom_endpoints"`
 		ResourceCenterEnabled            bool                     `json:"resource_center_enabled"`
+		ActivityCenterEnabled            bool                     `json:"activity_center_enabled"`
 		LinuxDoOAuthEnabled              bool                     `json:"linuxdo_oauth_enabled"`
 		DingTalkOAuthEnabled             bool                     `json:"dingtalk_oauth_enabled"`
 		WeChatOAuthEnabled               bool                     `json:"wechat_oauth_enabled"`
@@ -797,6 +800,7 @@ type PublicSettingsInjectionPayload struct {
 	CustomMenuItems                     json.RawMessage          `json:"custom_menu_items"`
 	CustomEndpoints                     json.RawMessage          `json:"custom_endpoints"`
 	ResourceCenterEnabled               bool                     `json:"resource_center_enabled"`
+	ActivityCenterEnabled               bool                     `json:"activity_center_enabled"`
 	LinuxDoOAuthEnabled                 bool                     `json:"linuxdo_oauth_enabled"`
 	DingTalkOAuthEnabled                bool                     `json:"dingtalk_oauth_enabled"`
 	WeChatOAuthEnabled                  bool                     `json:"wechat_oauth_enabled"`
@@ -1021,6 +1025,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		CustomMenuItems:                     filterUserVisibleMenuItems(settings.CustomMenuItems),
 		CustomEndpoints:                     safeRawJSONArray(settings.CustomEndpoints),
 		ResourceCenterEnabled:               settings.ResourceCenterEnabled,
+		ActivityCenterEnabled:               settings.ActivityCenterEnabled,
 		LinuxDoOAuthEnabled:                 settings.LinuxDoOAuthEnabled,
 		DingTalkOAuthEnabled:                settings.DingTalkOAuthEnabled,
 		WeChatOAuthEnabled:                  settings.WeChatOAuthEnabled,

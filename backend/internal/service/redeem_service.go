@@ -6,10 +6,12 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/internal/payment"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -31,12 +33,19 @@ const (
 )
 
 type ctxKeySkipRedeemAffiliate struct{}
+type ctxKeySkipRedeemActivityQualification struct{}
 
 // ContextSkipRedeemAffiliate returns a context that suppresses the redeem-level
 // affiliate rebate. Used by payment fulfillment which handles rebate separately
 // via applyAffiliateRebateForOrder (with audit-log deduplication).
 func ContextSkipRedeemAffiliate(ctx context.Context) context.Context {
 	return context.WithValue(ctx, ctxKeySkipRedeemAffiliate{}, true)
+}
+
+// ContextSkipRedeemActivityQualification suppresses qualification for internal
+// payment redeem codes because payment completion records the source order.
+func ContextSkipRedeemActivityQualification(ctx context.Context) context.Context {
+	return context.WithValue(ctx, ctxKeySkipRedeemActivityQualification{}, true)
 }
 
 // RedeemCache defines cache operations for redeem service
@@ -142,6 +151,7 @@ type RedeemService struct {
 	entClient            *dbent.Client
 	authCacheInvalidator APIKeyAuthCacheInvalidator
 	affiliateService     *AffiliateService
+	activityQualifier    BalanceRedeemActivityQualifier
 }
 
 // NewRedeemService 创建兑换码服务实例
@@ -154,6 +164,7 @@ func NewRedeemService(
 	entClient *dbent.Client,
 	authCacheInvalidator APIKeyAuthCacheInvalidator,
 	affiliateService *AffiliateService,
+	activityQualifier BalanceRedeemActivityQualifier,
 ) *RedeemService {
 	redeemUserRepo, _ := userRepo.(RedeemUserAdjustmentRepository)
 	return &RedeemService{
@@ -166,6 +177,7 @@ func NewRedeemService(
 		entClient:            entClient,
 		authCacheInvalidator: authCacheInvalidator,
 		affiliateService:     affiliateService,
+		activityQualifier:    activityQualifier,
 	}
 }
 
@@ -466,6 +478,17 @@ func (s *RedeemService) Redeem(ctx context.Context, userID int64, code string) (
 			}
 		} else if err := s.userRepo.UpdateBalance(txCtx, userID, amount); err != nil {
 			return nil, fmt.Errorf("update user balance: %w", err)
+		}
+		if amount > 0 && s.activityQualifier != nil && ctx.Value(ctxKeySkipRedeemActivityQualification{}) == nil {
+			if _, err := s.activityQualifier.GrantBalanceRedeemQualificationTx(txCtx, tx.Client(), BalanceRedeemQualificationInput{
+				RedeemCodeID:   redeemCode.ID,
+				UserID:         userID,
+				RechargeAmount: strconv.FormatFloat(amount, 'f', -1, 64),
+				Currency:       payment.DefaultPaymentCurrency,
+				RedeemedAt:     time.Now().UTC(),
+			}); err != nil {
+				return nil, fmt.Errorf("grant lottery qualification: %w", err)
+			}
 		}
 
 	case RedeemTypeConcurrency:

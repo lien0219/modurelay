@@ -238,6 +238,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/activities',
+    name: 'ActivityCenter',
+    component: () => import('@/views/user/ActivityCenterView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Activity Center',
+      titleKey: 'activityCenter.title',
+      descriptionKey: 'activityCenter.description'
+    }
+  },
+  {
     path: '/keys',
     name: 'Keys',
     component: () => import('@/views/user/KeysView.vue'),
@@ -655,6 +667,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/activities',
+    name: 'AdminActivities',
+    component: () => import('@/views/admin/ActivityAdminView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Activity Management',
+      titleKey: 'admin.activities.title',
+      descriptionKey: 'admin.activities.description'
+    }
+  },
+  {
     path: '/admin/risk-control',
     name: 'AdminRiskControl',
     component: () => import('@/views/admin/RiskControlView.vue'),
@@ -956,6 +980,20 @@ router.beforeEach(async (to, _from, next) => {
       }
     }
     if (appStore.publicSettingsLoaded && appStore.cachedPublicSettings?.resource_center_enabled === false) {
+      next('/dashboard')
+      return
+    }
+  }
+
+  if (to.path === '/activities') {
+    if (!appStore.publicSettingsLoaded) {
+      try {
+        await appStore.fetchPublicSettings()
+      } catch (error) {
+        console.warn('Failed to load activity center setting in route guard', error)
+      }
+    }
+    if (appStore.cachedPublicSettings?.activity_center_enabled !== true) {
       next('/dashboard')
       return
     }

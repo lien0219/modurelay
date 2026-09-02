@@ -247,6 +247,7 @@ export interface PublicSettings {
   custom_menu_items: CustomMenuItem[]
   custom_endpoints: CustomEndpoint[]
   resource_center_enabled?: boolean
+  activity_center_enabled?: boolean
   linuxdo_oauth_enabled: boolean
   dingtalk_oauth_enabled?: boolean
   wechat_oauth_enabled: boolean
@@ -284,6 +285,119 @@ export interface PublicSettings {
   usage_detail_show_unit_prices?: boolean
   usage_detail_show_rate_multiplier?: boolean
   usage_detail_show_original_cost?: boolean
+}
+
+export type ActivityType = 'recharge_lottery' | 'limited_time_benefit'
+export type ActivityStatus = 'draft' | 'published' | 'archived'
+export type ActivityAvailability = 'active' | 'closed' | 'upcoming' | 'ended'
+
+export interface ActivityPrize {
+  id: number
+  name: string
+  amount: string
+  probability_ppm?: number
+  sort_order: number
+}
+
+export interface ActivityLotteryConfig {
+  id: number
+  version: number
+  currency: string
+  recharge_threshold: string
+  draws_per_threshold: number
+  max_chances_per_order: number
+  per_user_draw_limit: number
+  daily_draw_limit: number
+  daily_limit_timezone: string
+  starts_at: string | null
+  ends_at: string | null
+  prizes: ActivityPrize[]
+}
+
+export interface ActivityBenefitConfig {
+  id: number
+  version: number
+  currency: string
+  reward_amount: string
+  random_min_amount: string
+  random_max_amount: string
+  total_stock: number
+  per_user_limit: number
+  daily_claim_limit: number
+  daily_limit_timezone: string
+  starts_at: string | null
+  ends_at: string | null
+  claimed_count: number
+}
+
+export interface ActivityParticipation {
+  granted_draws?: number
+  used_draws?: number
+  available_draws?: number
+  drawn_today?: number
+  cumulative_recharge_amount?: string
+  recharge_progress_amount?: string
+  next_draw_recharge_amount?: string
+  reward_total?: string
+  benefit_claims?: number
+  benefit_claims_today?: number
+  remaining_stock?: number
+}
+
+export interface Activity {
+  id: number
+  slug: string
+  type: ActivityType
+  title: string
+  description: string
+  status: ActivityStatus
+  enabled: boolean
+  sort_order: number
+  current_config_version: number
+  availability: ActivityAvailability
+  closed_reason?: string
+  lottery?: ActivityLotteryConfig
+  benefit?: ActivityBenefitConfig
+  participation?: ActivityParticipation
+  created_at: string
+  updated_at: string
+}
+
+export interface ActivityCenterAdminView {
+  enabled: boolean
+  activities: Activity[]
+}
+
+export interface LotteryDrawResult {
+  draw_id: number
+  prize_id: number
+  prize_name: string
+  reward_amount: string
+  balance_after?: string
+  available_draws: number
+  created_at: string
+}
+
+export interface BenefitClaimResult {
+  claim_id: number
+  reward_amount: string
+  balance_after: string
+  remaining_stock: number
+  created_at: string
+}
+
+export interface ActivityReward {
+  id: number
+  user_id: number
+  activity_id: number
+  activity_title: string
+  activity_type: ActivityType
+  source_type: 'lottery_draw' | 'benefit_claim'
+  source_id: number
+  amount: string
+  balance_after: string
+  currency: string
+  created_at: string
 }
 
 export type ResourceAuthorRole = 'admin' | 'user'

@@ -153,39 +153,26 @@
       <button
         type="button"
         @click="toggleTheme"
-        class="sidebar-theme-control mb-2 w-full"
-        :class="{ 'sidebar-theme-control-collapsed': sidebarCollapsed }"
-        :title="sidebarCollapsed ? (isDark ? t('nav.darkMode') : t('nav.lightMode')) : undefined"
-        :aria-label="t('nav.darkMode')"
-        :aria-pressed="isDark"
+        class="sidebar-footer-action sidebar-link mb-1 w-full"
+        :class="{ 'sidebar-link-collapsed': sidebarCollapsed }"
+        :title="sidebarCollapsed ? (isDark ? t('nav.lightMode') : t('nav.darkMode')) : undefined"
+        :aria-label="isDark ? t('nav.lightMode') : t('nav.darkMode')"
       >
-        <span
-          class="sidebar-theme-label"
-          :class="{ 'sidebar-theme-label-collapsed': sidebarCollapsed }"
-          :aria-hidden="sidebarCollapsed ? 'true' : 'false'"
-        >
-          {{ isDark ? t('nav.darkMode') : t('nav.lightMode') }}
-        </span>
-        <span class="theme-switch-track" :class="{ 'theme-switch-track-dark': isDark }" aria-hidden="true">
-          <span class="theme-switch-thumb">
-            <SunIcon
-              class="theme-switch-thumb-icon h-3.5 w-3.5"
-              :class="{ 'theme-switch-thumb-icon-active': !isDark }"
-            />
-            <MoonIcon
-              class="theme-switch-thumb-icon h-3.5 w-3.5"
-              :class="{ 'theme-switch-thumb-icon-active': isDark }"
-            />
-          </span>
+        <SunIcon v-if="isDark" class="h-5 w-5 flex-shrink-0" aria-hidden="true" />
+        <MoonIcon v-else class="h-5 w-5 flex-shrink-0" aria-hidden="true" />
+        <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">
+          {{ isDark ? t('nav.lightMode') : t('nav.darkMode') }}
         </span>
       </button>
 
       <!-- Collapse Button -->
       <button
+        type="button"
         @click="toggleSidebar"
-        class="sidebar-link w-full"
+        class="sidebar-footer-action sidebar-link w-full"
         :class="{ 'sidebar-link-collapsed': sidebarCollapsed }"
         :title="sidebarCollapsed ? t('nav.expand') : t('nav.collapse')"
+        :aria-label="sidebarCollapsed ? t('nav.expand') : t('nav.collapse')"
       >
         <ChevronDoubleLeftIcon v-if="!sidebarCollapsed" class="h-5 w-5 flex-shrink-0" />
         <ChevronDoubleRightIcon v-else class="h-5 w-5 flex-shrink-0" />
@@ -755,6 +742,7 @@ const flagOpsMonitoring = () => adminSettingsStore.opsMonitoringEnabled
 const flagAdminPayment = () => adminSettingsStore.paymentEnabled
 const flagBatchImageAccess = () => canUseBatchImage.value
 const flagResourceCenter = makeSidebarFlag(FeatureFlags.resourceCenter)
+const flagActivityCenter = makeSidebarFlag(FeatureFlags.activityCenter)
 
 // buildSelfNavItems 构造用户自己的导航项（用户端主菜单和管理员的"我的账户"子菜单共享这组声明）。
 // withDashboard=true 时包含仪表盘（用户端），false 时不含（管理员的个人区已经有独立仪表盘入口）。
@@ -777,6 +765,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/purchase', label: t('nav.buySubscription'), icon: RechargeSubscriptionIcon, hideInSimpleMode: true, featureFlag: flagPayment },
     { path: '/recharge', label: t('nav.rechargeCenter'), icon: RechargeSubscriptionIcon, featureFlag: flagRechargeCenter },
     { path: '/orders', label: t('nav.myOrders'), icon: OrderListIcon, hideInSimpleMode: true, featureFlag: flagPayment },
+    { path: '/activities', label: t('nav.activityCenter'), icon: GiftIcon, featureFlag: flagActivityCenter },
     { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true },
     ...(withDashboard ? [{ path: '/resource-center', label: t('nav.resourceCenter'), icon: ResourceCenterIcon, featureFlag: flagResourceCenter }] : []),
     { path: '/affiliate', label: t('nav.affiliate'), icon: UsersIcon, hideInSimpleMode: true, featureFlag: flagAffiliate },
@@ -843,6 +832,7 @@ const adminNavItems = computed((): NavItem[] => {
     { path: '/admin/announcements', label: t('nav.announcements'), icon: BellIcon },
     { path: '/resource-center', label: t('nav.resourceCenter'), icon: ResourceCenterIcon },
     { path: '/admin/resource-center', label: t('nav.resourceCenterAdmin'), icon: ResourceCenterIcon },
+    { path: '/admin/activities', label: t('nav.activityManagement'), icon: GiftIcon },
     { path: '/admin/proxies', label: t('nav.proxies'), icon: ServerIcon },
     {
       path: '/admin/security-audit',
@@ -1035,133 +1025,8 @@ onBeforeUnmount(() => {
   border-top: 1px solid var(--color-border);
 }
 
-.sidebar-theme-control {
-  display: flex;
+.sidebar-footer-action {
   min-height: 44px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  overflow: hidden;
-  border: 1px solid var(--color-border);
-  border-radius: 10px;
-  padding: 8px 10px 8px 12px;
-  cursor: pointer;
-  color: var(--color-text-secondary);
-  background-color: color-mix(in srgb, var(--glass-bg-strong) 76%, var(--color-surface));
-  box-shadow: var(--shadow-xs), inset 0 1px 0 var(--glass-highlight);
-  -webkit-backdrop-filter: blur(var(--glass-blur));
-  backdrop-filter: blur(var(--glass-blur));
-  transition:
-    color var(--motion-fast) var(--ease-standard),
-    background-color var(--motion-fast) var(--ease-standard),
-    border-color var(--motion-fast) var(--ease-standard),
-    box-shadow var(--motion-fast) var(--ease-standard);
-}
-
-.sidebar-theme-control:hover {
-  color: var(--color-text-primary);
-  border-color: var(--color-primary-border);
-  background-color: var(--color-surface-raised);
-  box-shadow: var(--shadow-sm), inset 0 1px 0 var(--glass-highlight);
-}
-
-.sidebar-theme-control-collapsed {
-  justify-content: center;
-  gap: 0;
-  border-color: transparent;
-  padding-inline: 0;
-  background-color: transparent;
-  box-shadow: none;
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
-}
-
-.sidebar-theme-control-collapsed:hover {
-  border-color: var(--color-primary-border);
-  background-color: var(--color-primary-soft);
-  box-shadow: none;
-}
-
-.sidebar-theme-label {
-  min-width: 0;
-  max-width: 9rem;
-  overflow: hidden;
-  color: var(--color-text-secondary);
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1.25;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  transition:
-    max-width var(--motion-base) var(--ease-standard),
-    opacity var(--motion-fast) var(--ease-standard),
-    transform var(--motion-fast) var(--ease-standard);
-}
-
-.sidebar-theme-label-collapsed {
-  max-width: 0;
-  opacity: 0;
-  transform: translateX(-4px);
-  pointer-events: none;
-}
-
-.theme-switch-track {
-  position: relative;
-  display: block;
-  width: 44px;
-  height: 26px;
-  flex: 0 0 44px;
-  border: 1px solid var(--color-border-strong);
-  border-radius: 9999px;
-  background-color: var(--color-surface-soft);
-  box-shadow: inset 0 1px 2px color-mix(in srgb, var(--color-border-strong) 32%, transparent);
-  transition:
-    background-color var(--motion-base) var(--ease-standard),
-    border-color var(--motion-base) var(--ease-standard);
-}
-
-.theme-switch-track-dark {
-  border-color: var(--color-primary-border);
-  background-color: var(--color-primary-soft);
-}
-
-.theme-switch-thumb {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  display: flex;
-  width: 20px;
-  height: 20px;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--color-border);
-  border-radius: 9999px;
-  color: var(--color-primary);
-  background-color: var(--color-surface-raised);
-  box-shadow: var(--shadow-sm);
-  transition:
-    transform var(--motion-base) var(--ease-standard),
-    border-color var(--motion-fast) var(--ease-standard),
-    background-color var(--motion-fast) var(--ease-standard);
-}
-
-.theme-switch-track-dark .theme-switch-thumb {
-  border-color: var(--color-primary-border);
-  transform: translateX(18px);
-}
-
-.theme-switch-thumb-icon {
-  position: absolute;
-  opacity: 0;
-  transform: scale(0.72);
-  transition:
-    opacity var(--motion-fast) var(--ease-standard),
-    transform var(--motion-fast) var(--ease-standard);
-}
-
-.theme-switch-thumb-icon-active {
-  opacity: 1;
-  transform: scale(1);
 }
 
 .sidebar-header-collapsed {
@@ -1283,9 +1148,7 @@ onBeforeUnmount(() => {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .theme-switch-thumb,
-  .theme-switch-thumb-icon,
-  .sidebar-theme-label {
+  .sidebar-label {
     transition-duration: 1ms;
   }
 }

@@ -133,6 +133,19 @@ func RegisterAdminRoutes(
 
 		// 资源共享中心管理
 		registerResourceCenterRoutes(admin, h)
+
+		registerActivityRoutes(admin, h, stepUpAuth)
+	}
+}
+
+func registerActivityRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAuth middleware.StepUpAuthMiddleware) {
+	activities := admin.Group("/activities")
+	{
+		activities.GET("", h.Activity.AdminView)
+		activities.PUT("/settings", gin.HandlerFunc(stepUpAuth), h.Activity.UpdateAdminSettings)
+		activities.PATCH("/:slug", gin.HandlerFunc(stepUpAuth), h.Activity.UpdateActivity)
+		activities.POST("/:slug/lottery-config", gin.HandlerFunc(stepUpAuth), h.Activity.PublishLotteryConfig)
+		activities.POST("/:slug/benefit-config", gin.HandlerFunc(stepUpAuth), h.Activity.PublishBenefitConfig)
 	}
 }
 

@@ -198,6 +198,12 @@ type PaymentService struct {
 	resumeService            *PaymentResumeService
 	affiliateService         *AffiliateService
 	notificationEmailService *NotificationEmailService
+	activityService          paymentActivityService
+}
+
+type paymentActivityService interface {
+	CompleteBalancePayment(ctx context.Context, input CompleteActivityPaymentInput) (*ActivityPaymentCompletion, error)
+	RevokeRechargeQualificationTx(ctx context.Context, executor ActivityTxExecutor, orderID int64, refundAmount string, now time.Time) (int, error)
 }
 
 func NewPaymentService(entClient *dbent.Client, registry *payment.Registry, loadBalancer payment.LoadBalancer, redeemService *RedeemService, subscriptionSvc *SubscriptionService, configService *PaymentConfigService, userRepo UserRepository, groupRepo GroupRepository, affiliateService *AffiliateService) *PaymentService {
@@ -208,6 +214,10 @@ func NewPaymentService(entClient *dbent.Client, registry *payment.Registry, load
 
 func (s *PaymentService) SetNotificationEmailService(notificationEmailService *NotificationEmailService) {
 	s.notificationEmailService = notificationEmailService
+}
+
+func (s *PaymentService) SetActivityService(activityService paymentActivityService) {
+	s.activityService = activityService
 }
 
 // --- Provider Registry ---

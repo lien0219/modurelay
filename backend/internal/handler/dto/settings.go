@@ -392,6 +392,7 @@ TablePageSizeOptions             []int                    `json:"table_page_size
 CustomMenuItems                  []CustomMenuItem         `json:"custom_menu_items"`
 CustomEndpoints                  []CustomEndpoint         `json:"custom_endpoints"`
 ResourceCenterEnabled            bool                     `json:"resource_center_enabled"`
+ActivityCenterEnabled            bool                     `json:"activity_center_enabled"`
 DingTalkOAuthEnabled             bool                     `json:"dingtalk_oauth_enabled"`
 LinuxDoOAuthEnabled              bool                     `json:"linuxdo_oauth_enabled"`
 WeChatOAuthEnabled               bool                     `json:"wechat_oauth_enabled"`
@@ -500,6 +501,7 @@ type PublicSettings struct {
 	CustomMenuItems                      []CustomMenuItem         `json:"custom_menu_items"`
 	CustomEndpoints                      []CustomEndpoint         `json:"custom_endpoints"`
 	ResourceCenterEnabled                bool                     `json:"resource_center_enabled"`
+	ActivityCenterEnabled                bool                     `json:"activity_center_enabled"`
 	DingTalkOAuthEnabled                 bool                     `json:"dingtalk_oauth_enabled"`
 	LinuxDoOAuthEnabled                  bool                     `json:"linuxdo_oauth_enabled"`
 	WeChatOAuthEnabled                   bool                     `json:"wechat_oauth_enabled"`

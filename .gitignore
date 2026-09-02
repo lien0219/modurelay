@@ -163,6 +163,7 @@ docs/screenshots/*
 .codex/
 frontend/coverage/
 .tmp-ui/
+.tmp-activity-pg/
 aicodex
 output/
 .codegraph/

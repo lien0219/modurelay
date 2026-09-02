@@ -53,3 +53,24 @@ describe('AppSidebar header styles', () => {
     expect(sidebarBrandBlockMatch?.[0]).not.toContain('overflow: hidden;')
   })
 })
+
+describe('AppSidebar activity center navigation', () => {
+  it('uses the shared opt-in feature flag for the user route', () => {
+    expect(componentSource).toContain('const flagActivityCenter = makeSidebarFlag(FeatureFlags.activityCenter)')
+    expect(componentSource).toContain("{ path: '/activities', label: t('nav.activityCenter'), icon: GiftIcon, featureFlag: flagActivityCenter }")
+  })
+})
+
+describe('AppSidebar footer controls', () => {
+  it('uses the same compact button treatment for theme and sidebar actions', () => {
+    expect(componentSource.match(/class="sidebar-footer-action sidebar-link/g)).toHaveLength(2)
+    expect(componentSource).toContain('.sidebar-footer-action {')
+    expect(componentSource).toContain('min-height: 44px;')
+    expect(componentSource).not.toContain('theme-switch-track')
+  })
+
+  it('keeps collapsed icon actions accessible by name', () => {
+    expect(componentSource).toContain(`:aria-label="isDark ? t('nav.lightMode') : t('nav.darkMode')"`)
+    expect(componentSource).toContain(`:aria-label="sidebarCollapsed ? t('nav.expand') : t('nav.collapse')"`)
+  })
+})

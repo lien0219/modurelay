@@ -215,6 +215,8 @@ export default {
     contentModeration: 'Content Moderation',
     resourceCenter: 'Forum',
     resourceCenterAdmin: 'Forum Management',
+    activityCenter: 'Activity Center',
+    activityManagement: 'Activity Management',
     promptAudit: 'Prompt Audit',
     auditLogs: 'Audit Logs',
   },

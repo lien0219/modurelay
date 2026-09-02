@@ -137,6 +137,15 @@ func RegisterUserRoutes(
 			resources.POST("/notifications/:id/read", h.ResourceCenter.MarkNotificationRead)
 		}
 
+		activities := authenticated.Group("/activities")
+		{
+			activities.GET("", h.Activity.List)
+			activities.GET("/rewards", h.Activity.Rewards)
+			activities.GET("/:slug", h.Activity.Detail)
+			activities.POST("/:slug/draw", h.Activity.Draw)
+			activities.POST("/:slug/claim", h.Activity.Claim)
+		}
+
 		// 卡密兑换
 		redeem := authenticated.Group("/redeem")
 		{

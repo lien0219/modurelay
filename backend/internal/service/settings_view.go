@@ -165,6 +165,7 @@ type SystemSettings struct {
 	CustomMenuItems             string // JSON array of custom menu items
 	CustomEndpoints             string // JSON array of custom endpoints
 	ResourceCenterEnabled       bool
+	ActivityCenterEnabled       bool
 
 	DefaultConcurrency           int
 	DefaultBalance               float64
@@ -362,6 +363,7 @@ type PublicSettings struct {
 	CustomMenuItems             string // JSON array of custom menu items
 	CustomEndpoints             string // JSON array of custom endpoints
 	ResourceCenterEnabled       bool
+	ActivityCenterEnabled       bool
 
 	LinuxDoOAuthEnabled      bool
 	DingTalkOAuthEnabled     bool
