@@ -175,6 +175,8 @@ export default {
     affiliateInviteRecords: 'Invite Records',
     affiliateRebateRecords: 'Rebate Records',
     affiliateTransferRecords: 'Transfer Records',
+    distribution: 'Agent Distribution',
+    distributionManagement: 'Distribution Management',
     profile: 'Profile',
     users: 'Users',
     groups: 'Groups',

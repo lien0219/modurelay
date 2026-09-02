@@ -66,6 +66,13 @@ describe('AppSidebar activity center navigation', () => {
   })
 })
 
+describe('AppSidebar distribution placeholders', () => {
+  it('adds distinct user and administrator distribution entries', () => {
+    expect(componentSource).toContain("{ path: '/distribution', label: t('nav.distribution'), icon: DistributionIcon }")
+    expect(componentSource).toContain("{ path: '/admin/distribution', label: t('nav.distributionManagement'), icon: DistributionIcon }")
+  })
+})
+
 describe('AppSidebar footer controls', () => {
   it('uses the same compact button treatment for theme and sidebar actions', () => {
     expect(componentSource.match(/class="sidebar-footer-action sidebar-link/g)).toHaveLength(2)

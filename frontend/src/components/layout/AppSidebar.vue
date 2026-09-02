@@ -498,6 +498,10 @@ const PluginIcon = {
   render: () => h(Icon, { name: 'cube' })
 }
 
+const DistributionIcon = {
+  render: () => h(Icon, { name: 'userPlus' })
+}
+
 const BellIcon = {
   render: () =>
     h(
@@ -784,6 +788,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true },
     ...(withDashboard ? [{ path: '/resource-center', label: t('nav.resourceCenter'), icon: ResourceCenterIcon, featureFlag: flagResourceCenter }] : []),
     { path: '/affiliate', label: t('nav.affiliate'), icon: UsersIcon, hideInSimpleMode: true, featureFlag: flagAffiliate },
+    { path: '/distribution', label: t('nav.distribution'), icon: DistributionIcon },
     ...customMenuItemsForUser.value.map((item): NavItem => ({
       path: `/custom/${item.id}`,
       label: item.label,
@@ -862,6 +867,7 @@ const adminNavItems = computed((): NavItem[] => {
     },
     { path: '/admin/redeem', label: t('nav.redeemCodes'), icon: TicketIcon, hideInSimpleMode: true },
     { path: '/admin/promo-codes', label: t('nav.promoCodes'), icon: GiftIcon, hideInSimpleMode: true },
+    { path: '/admin/distribution', label: t('nav.distributionManagement'), icon: DistributionIcon },
     {
       path: '/admin/affiliates',
       label: t('nav.affiliateManagement'),

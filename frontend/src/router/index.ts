@@ -311,6 +311,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/distribution',
+    name: 'Distribution',
+    component: () => import('@/views/user/DistributionView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Agent Distribution',
+      titleKey: 'distribution.title',
+      descriptionKey: 'distribution.description'
+    }
+  },
+  {
     path: '/available-channels',
     name: 'UserAvailableChannels',
     component: () => import('@/views/user/AvailableChannelsView.vue'),
@@ -714,6 +726,18 @@ const routes: RouteRecordRaw[] = [
       title: 'Usage Records',
       titleKey: 'admin.usage.title',
       descriptionKey: 'admin.usage.description'
+    }
+  },
+  {
+    path: '/admin/distribution',
+    name: 'AdminDistribution',
+    component: () => import('@/views/admin/DistributionManagementView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Distribution Management',
+      titleKey: 'admin.distribution.title',
+      descriptionKey: 'admin.distribution.description'
     }
   },
   {
