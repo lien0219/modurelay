@@ -57,7 +57,12 @@ describe('AppSidebar header styles', () => {
 describe('AppSidebar activity center navigation', () => {
   it('uses the shared opt-in feature flag for the user route', () => {
     expect(componentSource).toContain('const flagActivityCenter = makeSidebarFlag(FeatureFlags.activityCenter)')
-    expect(componentSource).toContain("{ path: '/activities', label: t('nav.activityCenter'), icon: GiftIcon, featureFlag: flagActivityCenter }")
+    expect(componentSource).toContain("{ path: '/activities', label: t('nav.activityCenter'), icon: CalendarIcon, featureFlag: flagActivityCenter }")
+  })
+
+  it('uses a distinct activity icon while keeping the gift icon for redeem', () => {
+    expect(componentSource).toContain("{ path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true }")
+    expect(componentSource).toContain("{ path: '/admin/activities', label: t('nav.activityManagement'), icon: CalendarIcon }")
   })
 })
 
