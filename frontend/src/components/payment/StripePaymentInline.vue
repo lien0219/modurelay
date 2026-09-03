@@ -64,7 +64,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, nextTick } from 'vue'
+import { computed, ref, onMounted, nextTick, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { extractI18nErrorMessage } from '@/utils/apiError'
@@ -74,6 +74,7 @@ import { getPaymentPopupFeatures } from '@/components/payment/providerConfig'
 import { currencySymbol } from '@/components/payment/currency'
 import type { Stripe, StripeElements } from '@stripe/stripe-js'
 import Icon from '@/components/icons/Icon.vue'
+import { useThemeMode } from '@/composables/useThemeMode'
 
 // Stripe payment methods that open a popup (redirect or QR code)
 const POPUP_METHODS = new Set(['alipay', 'wechat_pay'])
@@ -108,6 +109,7 @@ const paymentAmountSymbol = computed(() => currencySymbol(props.currency))
 
 let stripeInstance: Stripe | null = null
 let elementsInstance: StripeElements | null = null
+const isDarkTheme = useThemeMode()
 
 onMounted(async () => {
   try {
@@ -120,10 +122,12 @@ onMounted(async () => {
     await nextTick()
     if (!stripeMount.value) return
 
-    const isDark = document.documentElement.classList.contains('dark')
     const elements = stripe.elements({
       clientSecret: props.clientSecret,
-      appearance: { theme: isDark ? 'night' : 'stripe', variables: { borderRadius: '8px' } },
+      appearance: {
+        theme: isDarkTheme.value ? 'night' : 'stripe',
+        variables: { borderRadius: '8px' }
+      },
     })
     elementsInstance = elements
     const paymentElement = elements.create('payment', {
@@ -140,6 +144,15 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
+})
+
+watch(isDarkTheme, (isDark) => {
+  void elementsInstance?.update({
+    appearance: {
+      theme: isDark ? 'night' : 'stripe',
+      variables: { borderRadius: '8px' }
+    }
+  })
 })
 
 async function handlePay() {

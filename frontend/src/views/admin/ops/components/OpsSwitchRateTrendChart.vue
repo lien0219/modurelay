@@ -18,7 +18,7 @@ import type { ChartState } from '../types'
 import { formatHistoryLabel, sumNumbers } from '../utils/opsFormatters'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
-import { getChartThemeColors } from '@/utils/chartColors'
+import { getChartSeriesStyle, useChartThemeColors, withChartAlpha } from '@/utils/chartColors'
 
 ChartJS.register(Title, Tooltip, Legend, LineElement, LinearScale, PointElement, CategoryScale, Filler)
 
@@ -32,11 +32,12 @@ interface Props {
 const props = defineProps<Props>()
 const { t } = useI18n()
 
+const chartTheme = useChartThemeColors()
 const colors = computed(() => {
-  const theme = getChartThemeColors()
+  const theme = chartTheme.value
   return {
     secondary: theme.secondary,
-    secondaryAlpha: `${theme.secondary}20`,
+    secondaryAlpha: withChartAlpha(theme.secondary, 0.12),
     grid: theme.grid,
     text: theme.text,
     surface: theme.surface,
@@ -63,6 +64,8 @@ const chartData = computed(() => {
         backgroundColor: colors.value.secondaryAlpha,
         fill: true,
         tension: 0.35,
+        ...getChartSeriesStyle(1),
+        borderWidth: 2.5,
         pointRadius: 0,
         pointHitRadius: 10
       }

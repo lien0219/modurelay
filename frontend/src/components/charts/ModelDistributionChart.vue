@@ -252,7 +252,11 @@ import UserBreakdownSubTable from './UserBreakdownSubTable.vue'
 import type { ModelStat, UserSpendingRankingItem, UserBreakdownItem } from '@/types'
 import { getUserBreakdown } from '@/api/admin/dashboard'
 import { getChartJsAnimation } from '@/utils/chartAnimation'
-import { getChartNeutral, getChartPalette } from '@/utils/chartColors'
+import {
+  expandChartPalette,
+  useChartPalette,
+  useChartThemeColors
+} from '@/utils/chartColors'
 
 ChartJS.register(ArcElement, Tooltip, Legend)
 
@@ -341,7 +345,8 @@ const showAccountCost = computed(() => props.showAccountCost)
 const distributionColspan = computed(() => showAccountCost.value ? 6 : 5)
 const activeView = ref<'model_distribution' | 'spending_ranking'>('model_distribution')
 
-const chartColors = getChartPalette()
+const chartColors = useChartPalette()
+const chartTheme = useChartThemeColors()
 
 const displayModelStats = computed(() => {
   const sourceStats = props.source === 'upstream'
@@ -363,8 +368,10 @@ const chartData = computed(() => {
     datasets: [
       {
         data: displayModelStats.value.map((m) => toFiniteNumber(props.metric === 'actual_cost' ? m.actual_cost : m.total_tokens)),
-        backgroundColor: chartColors.slice(0, displayModelStats.value.length),
-        borderWidth: 0
+        backgroundColor: expandChartPalette(chartColors.value, displayModelStats.value.length),
+        borderColor: chartTheme.value.surface,
+        borderWidth: 2,
+        spacing: 1
       }
     ]
   }
@@ -375,12 +382,12 @@ const rankingChartData = computed(() => {
 
   const labels = props.rankingItems.map((item, index) => `#${index + 1} ${getRankingUserLabel(item)}`)
   const data = props.rankingItems.map((item) => toFiniteNumber(item.actual_cost))
-  const backgroundColor = chartColors.slice(0, props.rankingItems.length)
+  const backgroundColor = expandChartPalette(chartColors.value, props.rankingItems.length)
 
   if (otherRankingItem.value) {
     labels.push(t('admin.dashboard.spendingRankingOther'))
     data.push(otherRankingItem.value.actual_cost)
-    backgroundColor.push(getChartNeutral())
+    backgroundColor.push(chartTheme.value.neutral)
   }
 
   return {
@@ -389,7 +396,9 @@ const rankingChartData = computed(() => {
       {
         data,
         backgroundColor,
-        borderWidth: 0
+        borderColor: chartTheme.value.surface,
+        borderWidth: 2,
+        spacing: 1
       }
     ]
   }
