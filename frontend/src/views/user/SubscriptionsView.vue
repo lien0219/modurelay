@@ -114,7 +114,7 @@
               </div>
               <div class="relative h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-dark-600">
                 <div
-                  class="absolute inset-y-0 left-0 rounded-full transition-all duration-300"
+                  class="absolute inset-y-0 left-0 rounded-full transition-[width] duration-300"
                   :class="
                     getProgressBarClass(
                       subscription.daily_usage_usd,
@@ -151,7 +151,7 @@
               </div>
               <div class="relative h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-dark-600">
                 <div
-                  class="absolute inset-y-0 left-0 rounded-full transition-all duration-300"
+                  class="absolute inset-y-0 left-0 rounded-full transition-[width] duration-300"
                   :class="
                     getProgressBarClass(
                       subscription.weekly_usage_usd,
@@ -192,7 +192,7 @@
               </div>
               <div class="relative h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-dark-600">
                 <div
-                  class="absolute inset-y-0 left-0 rounded-full transition-all duration-300"
+                  class="absolute inset-y-0 left-0 rounded-full transition-[width] duration-300"
                   :class="
                     getProgressBarClass(
                       subscription.monthly_usage_usd,

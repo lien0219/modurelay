@@ -24,7 +24,7 @@
         <label
           v-for="group in availableGroups"
           :key="group.id"
-          class="flex cursor-pointer items-center gap-3 rounded-lg border-2 p-3 transition-all"
+          class="flex cursor-pointer items-center gap-3 rounded-lg border-2 p-3 transition-ui"
           :class="selectedGroupId === group.id
             ? 'border-primary-400 bg-primary-50/50 dark:border-primary-500 dark:bg-primary-900/20'
             : 'border-gray-200 hover:border-gray-300 dark:border-dark-600 dark:hover:border-dark-500'"
@@ -36,7 +36,7 @@
             class="sr-only"
           />
           <div
-            class="flex h-5 w-5 items-center justify-center rounded-full border-2 transition-all"
+            class="flex h-5 w-5 items-center justify-center rounded-full border-2 transition-ui"
             :class="selectedGroupId === group.id
               ? 'border-primary-500 bg-primary-500'
               : 'border-gray-300 dark:border-dark-500'"

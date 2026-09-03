@@ -5,16 +5,19 @@ import { useAuthStore as useUserStore } from '@/stores/auth'
 import { useOnboardingStore } from '@/stores/onboarding'
 import { useI18n } from 'vue-i18n'
 import { getAdminSteps, getUserSteps } from '@/components/Guide/steps'
+import { disposeOnboardingTour } from '@/utils/onboardingCleanup'
 
 export interface OnboardingOptions {
   storageKey?: string
   autoStart?: boolean
+  enabled?: boolean
 }
 
 export function useOnboardingTour(options: OnboardingOptions) {
   const { t } = useI18n()
   const userStore = useUserStore()
   const onboardingStore = useOnboardingStore()
+  const enabled = options.enabled !== false
   const storageVersion = 'v4_interactive' // Bump version for new tour type
 
   // Timing constants for better maintainability
@@ -92,6 +95,8 @@ export function useOnboardingTour(options: OnboardingOptions) {
   }
 
   const startTour = async (startIndex = 0) => {
+    if (!enabled) return
+
     // 动态获取当前用户角色和步骤
     const isAdmin = userStore.user?.role === 'admin'
     const isSimpleMode = userStore.isSimpleMode
@@ -516,11 +521,18 @@ export function useOnboardingTour(options: OnboardingOptions) {
   }
 
   const replayTour = () => {
+    if (!enabled) return
     clearSeen()
     void startTour()
   }
 
   onMounted(async () => {
+    if (!enabled) {
+      disposeOnboardingTour(onboardingStore)
+      onboardingStore.clearControlMethods()
+      return
+    }
+
     onboardingStore.setControlMethods({
       nextStep,
       isCurrentStep

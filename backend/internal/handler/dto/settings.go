@@ -201,6 +201,7 @@ type SystemSettings struct {
 	BackendModeEnabled bool `json:"backend_mode_enabled"`
 
 	// Gateway forwarding behavior
+	OpenAITTFTMode                         string `json:"openai_ttft_mode"`
 	EnableFingerprintUnification           bool   `json:"enable_fingerprint_unification"`
 	EnableMetadataPassthrough              bool   `json:"enable_metadata_passthrough"`
 	EnableCCHSigning                       bool   `json:"enable_cch_signing"`
@@ -392,6 +393,7 @@ TablePageSizeOptions             []int                    `json:"table_page_size
 CustomMenuItems                  []CustomMenuItem         `json:"custom_menu_items"`
 CustomEndpoints                  []CustomEndpoint         `json:"custom_endpoints"`
 ResourceCenterEnabled            bool                     `json:"resource_center_enabled"`
+ActivityCenterEnabled            bool                     `json:"activity_center_enabled"`
 DingTalkOAuthEnabled             bool                     `json:"dingtalk_oauth_enabled"`
 LinuxDoOAuthEnabled              bool                     `json:"linuxdo_oauth_enabled"`
 WeChatOAuthEnabled               bool                     `json:"wechat_oauth_enabled"`
@@ -500,6 +502,7 @@ type PublicSettings struct {
 	CustomMenuItems                      []CustomMenuItem         `json:"custom_menu_items"`
 	CustomEndpoints                      []CustomEndpoint         `json:"custom_endpoints"`
 	ResourceCenterEnabled                bool                     `json:"resource_center_enabled"`
+	ActivityCenterEnabled                bool                     `json:"activity_center_enabled"`
 	DingTalkOAuthEnabled                 bool                     `json:"dingtalk_oauth_enabled"`
 	LinuxDoOAuthEnabled                  bool                     `json:"linuxdo_oauth_enabled"`
 	WeChatOAuthEnabled                   bool                     `json:"wechat_oauth_enabled"`
@@ -584,6 +587,10 @@ type OverloadCooldownSettings struct {
 type RateLimit429CooldownSettings struct {
 	Enabled         bool `json:"enabled"`
 	CooldownSeconds int  `json:"cooldown_seconds"`
+}
+
+type OpenAIImagesOAuthUnavailableCooldownSettings struct {
+	CooldownMinutes int `json:"cooldown_minutes"`
 }
 
 // PanelRateLimitSettings 面板 API 限流配置 DTO

@@ -1,7 +1,5 @@
 <template>
-  <!-- Custom Home Content: Full Page Mode -->
-  <div v-if="hasHomeContent" class="min-h-screen">
-    <!-- iframe mode -->
+  <div v-if="hasHomeContent" class="min-h-screen bg-gray-50 text-gray-900 dark:bg-dark-950 dark:text-white">
     <iframe
       v-if="isHomeContentUrl"
       :src="homeContent.trim()"
@@ -11,645 +9,437 @@
     <div v-else v-html="homeContent"></div>
   </div>
 
-  <!-- Compact Home Page -->
-  <div
-    v-else-if="compactHomeEnabled"
-    data-testid="compact-home"
-    class="flex min-h-screen flex-col bg-gray-50 text-gray-900 dark:bg-dark-950 dark:text-white"
-  >
-    <header class="border-b border-gray-200 px-4 py-4 sm:px-6 dark:border-dark-800">
-      <nav class="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 sm:gap-4">
-        <div class="flex min-w-0 flex-1 items-center gap-3">
-          <img
-            :src="siteLogo || brand.logo"
-            :alt="siteName"
-            class="h-9 w-9 shrink-0 rounded-lg object-contain"
-          />
-          <span class="min-w-0 truncate text-base font-semibold">{{ siteName }}</span>
-        </div>
-        <div class="flex max-w-full shrink-0 flex-wrap items-center justify-end gap-2">
-          <LocaleSwitcher />
-          <a
-            v-if="docUrl"
-            :href="docUrl"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 dark:text-dark-400 dark:hover:bg-dark-800"
-            :title="t('home.viewDocs')"
-          >
-            <Icon name="book" size="md" />
-          </a>
-          <router-link
-            v-if="showModelPlazaEntry"
-            to="/model-plaza"
-            class="flex h-10 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white"
-            :title="t('nav.modelPlaza')"
-          >
-            <Icon name="grid" size="md" />
-            <span class="hidden sm:inline">{{ t('nav.modelPlaza') }}</span>
-          </router-link>
-          <button
-            type="button"
-            class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 dark:text-dark-400 dark:hover:bg-dark-800"
-            :title="isDark ? t('home.switchToLight') : t('home.switchToDark')"
-            @click="toggleTheme"
-          >
-            <Icon v-if="isDark" name="sun" size="md" />
-            <Icon v-else name="moon" size="md" />
-          </button>
-          <router-link
-            :to="isAuthenticated ? dashboardPath : '/login'"
-            class="inline-flex min-h-10 shrink-0 items-center justify-center rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-200"
-          >
-            {{ isAuthenticated ? t('home.dashboard') : t('home.login') }}
-          </router-link>
-        </div>
-      </nav>
-    </header>
-
-    <main class="flex min-w-0 flex-1 items-center justify-center px-4 py-16 sm:px-6">
-      <div class="min-w-0 max-w-2xl text-center">
-        <img
-          :src="siteLogo || brand.logo"
-          :alt="siteName"
-          class="mx-auto mb-6 h-20 w-20 rounded-2xl object-contain"
-        />
-        <h1 class="[overflow-wrap:anywhere] text-3xl font-bold md:text-4xl">{{ siteName }}</h1>
-        <p class="mt-4 whitespace-pre-wrap [overflow-wrap:anywhere] text-base text-gray-600 dark:text-dark-300">{{ siteSubtitle }}</p>
-        <router-link
-          :to="isAuthenticated ? dashboardPath : '/login'"
-          class="mt-8 inline-flex min-h-10 items-center justify-center rounded-lg bg-primary-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-primary-700"
-        >
-          {{ isAuthenticated ? t('home.goToDashboard') : t('home.login') }}
+  <div v-else-if="compactHomeEnabled" data-testid="compact-home" class="compact-home flex min-h-screen flex-col">
+    <header class="compact-home-header">
+      <nav class="compact-home-nav" aria-label="Home navigation">
+        <router-link :to="isAuthenticated ? dashboardPath : '/login'" class="compact-home-brand">
+          <span class="brand-mark"><img :src="siteLogo || brand.logo" :alt="siteName" /></span>
+          <span>{{ siteName }}</span>
         </router-link>
-      </div>
-    </main>
-
-    <footer class="min-w-0 border-t border-gray-200 px-4 py-5 text-center text-sm text-gray-500 [overflow-wrap:anywhere] sm:px-6 dark:border-dark-800 dark:text-dark-400">
-      &copy; {{ currentYear }} {{ siteName }}
-    </footer>
-  </div>
-
-  <!-- ModuRelay Official Home Page -->
-  <div
-    v-else
-    ref="pageRef"
-    class="home-page"
-    :class="{ 'home-page-scrolled': isScrolled }"
-  >
-    <div class="home-background" aria-hidden="true">
-      <span class="home-glow home-glow-one"></span>
-      <span class="home-glow home-glow-two"></span>
-      <span class="home-glow home-glow-three"></span>
-      <span class="home-grid"></span>
-      <span class="home-noise"></span>
-    </div>
-
-    <!-- Sticky navigation linked with page sections -->
-    <header class="home-header">
-      <div class="home-scroll-progress" :style="{ width: `${scrollProgress}%` }"></div>
-      <nav class="home-navbar" aria-label="Home navigation">
-        <button class="home-brand" type="button" @click="scrollToSection('home')">
-          <span class="home-brand-logo">
-            <img :src="siteLogo || brand.logo" :alt="siteName" />
-          </span>
-          <span class="home-brand-name">{{ siteName }}</span>
-        </button>
-
-        <div class="home-nav-links" role="list">
-          <button
-            v-for="item in navigationItems"
-            :key="item.id"
-            type="button"
-            class="home-nav-link"
-            :class="{ 'is-active': activeSection === item.id }"
-            :aria-current="activeSection === item.id ? 'page' : undefined"
-            @click="scrollToSection(item.id)"
-          >
-            <span>{{ item.label }}</span>
-          </button>
-        </div>
-
-        <div class="home-nav-actions">
+        <div class="compact-home-actions">
           <LocaleSwitcher />
-
-          <a
-            v-if="docUrl"
-            :href="docUrl"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="home-icon-button home-doc-link"
-            :title="copy.nav.docs"
-          >
+          <a v-if="docUrl" :href="docUrl" target="_blank" rel="noopener noreferrer" class="home-icon-button" :title="copy.chrome.docs">
             <Icon name="book" size="sm" />
           </a>
-
-          <!-- Model Plaza Link -->
-          <router-link
-            v-if="showModelPlazaEntry"
-            to="/model-plaza"
-            class="inline-flex items-center gap-1.5 rounded-lg p-2 text-sm text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white"
-            :title="t('nav.modelPlaza')"
-          >
-            <Icon name="grid" size="md" />
+          <router-link v-if="showModelPlazaEntry" to="/model-plaza" class="home-quiet-link">
+            <Icon name="grid" size="sm" />
             <span class="hidden sm:inline">{{ t('nav.modelPlaza') }}</span>
           </router-link>
-
-          <!-- Theme Toggle -->
-          <button
-            type="button"
-            class="home-icon-button"
-            :title="isDark ? copy.nav.light : copy.nav.dark"
-            @click="toggleTheme"
-          >
+          <button type="button" class="home-icon-button" :title="isDark ? copy.chrome.light : copy.chrome.dark" @click="toggleTheme">
             <Icon v-if="isDark" name="sun" size="sm" />
             <Icon v-else name="moon" size="sm" />
           </button>
-
-          <router-link
-            v-if="isAuthenticated"
-            :to="dashboardPath"
-            class="home-login-button"
-          >
-            <span class="home-user-avatar">{{ userInitial }}</span>
-            <span>{{ copy.nav.dashboard }}</span>
-          </router-link>
-          <router-link v-else to="/login" class="home-login-button">
-            <span>{{ copy.nav.login }}</span>
-            <Icon name="arrowRight" size="xs" :stroke-width="2" />
+          <router-link :to="isAuthenticated ? dashboardPath : '/login'" class="home-solid-button">
+            {{ isAuthenticated ? copy.chrome.dashboard : copy.chrome.login }}
           </router-link>
         </div>
       </nav>
     </header>
+    <main class="compact-home-main">
+      <div class="compact-home-content">
+        <span class="home-overline">MODURELAY</span>
+        <div class="compact-home-logo brand-mark brand-mark-large">
+          <img :src="siteLogo || brand.logo" :alt="siteName" />
+        </div>
+        <h1>{{ siteName }}</h1>
+        <p>{{ siteSubtitle }}</p>
+        <router-link :to="isAuthenticated ? dashboardPath : '/login'" class="home-primary-button">
+          {{ isAuthenticated ? copy.contact.dashboardCta : copy.contact.primaryCta }}
+          <Icon name="arrowRight" size="sm" />
+        </router-link>
+      </div>
+    </main>
+    <footer class="compact-home-footer">&copy; {{ currentYear }} {{ siteName }}</footer>
+  </div>
 
-    <main>
-      <!-- Hero -->
-      <section id="home" data-home-section class="home-section hero-section">
-        <div class="home-container hero-layout">
-          <div class="hero-copy">
-            <div class="hero-eyebrow hero-enter hero-enter-one">
-              <span class="hero-eyebrow-dot"></span>
-              {{ copy.hero.eyebrow }}
-            </div>
+  <div
+    v-else
+    ref="pageRef"
+    class="home-page kinetic-home"
+    :class="{ 'kinetic-home-ready': !loaderVisible, 'kinetic-home-scrolled': scrollProgress > 2 }"
+  >
+    <a class="kinetic-skip-link" href="#kinetic-main">{{ copy.chrome.skip }}</a>
 
-            <h1 class="hero-title hero-enter hero-enter-two">
-              <span class="hero-title-gradient">ModuRelay</span>
-              <span>{{ copy.hero.titleSuffix }}</span>
-            </h1>
+    <div class="kinetic-world" aria-hidden="true">
+      <HomeHeroScene :progress="sceneProgress" @ready="handleSceneReady" />
+    </div>
+    <HomeAmbientEffects class="kinetic-ambient" :enabled="ambientEnabled" :progress="sceneProgress" />
 
-            <p class="hero-subtitle hero-enter hero-enter-three">
-              {{ copy.hero.subtitle }}
-            </p>
-            <p class="hero-description hero-enter hero-enter-four">
-              {{ copy.hero.description }}
-            </p>
-
-            <div class="hero-actions hero-enter hero-enter-five">
-              <router-link
-                :to="isAuthenticated ? dashboardPath : '/login'"
-                class="home-primary-button"
-              >
-                {{ isAuthenticated ? copy.hero.dashboardCta : copy.hero.primaryCta }}
-                <span class="button-arrow">
-                  <Icon name="arrowRight" size="sm" :stroke-width="2" />
-                </span>
-              </router-link>
-
-              <button class="home-secondary-button" type="button" @click="scrollToSection('contact')">
-                {{ copy.hero.secondaryCta }}
-                <Icon name="chat" size="sm" />
-              </button>
-
-              <router-link to="/key-usage" class="home-text-button">
-                {{ copy.hero.quotaCta }}
-                <Icon name="arrowRight" size="xs" />
-              </router-link>
-            </div>
-
-            <div class="hero-trust hero-enter hero-enter-six">
-              <span v-for="item in copy.hero.trust" :key="item">
-                <i></i>{{ item }}
-              </span>
-            </div>
+    <Transition name="kinetic-loader">
+      <div v-if="loaderVisible" class="kinetic-loader" role="status" :aria-label="copy.chrome.loading">
+        <div class="kinetic-loader-shell">
+          <span class="kinetic-loader-mark" aria-hidden="true">
+            <img v-if="siteLogo" :src="siteLogo" alt="" />
+            <span v-else>M</span>
+          </span>
+          <div class="kinetic-loader-status">
+            <span>{{ copy.chrome.loading }}</span>
+            <strong>{{ String(Math.round(loaderProgress)).padStart(2, '0') }}</strong>
           </div>
+          <i class="kinetic-loader-track" aria-hidden="true">
+            <b :style="{ transform: 'scaleX(' + loaderProgress / 100 + ')' }"></b>
+          </i>
+        </div>
+      </div>
+    </Transition>
 
-          <div class="hero-scene-wrap hero-enter hero-enter-scene">
-            <HomeHeroScene :services="heroSceneServices" />
+    <header class="kinetic-header">
+      <button type="button" class="kinetic-wordmark" :aria-label="copy.nav.home" @click="scrollToSection('home')">
+        <span class="kinetic-wordmark-mark">
+          <img v-if="siteLogo" :src="siteLogo" :alt="siteName" />
+          <span v-else>M</span>
+        </span>
+        <span class="kinetic-wordmark-copy">
+          <strong>{{ siteName }}</strong>
+          <small>RELAY SYSTEMS</small>
+        </span>
+      </button>
+
+      <nav class="kinetic-top-nav" :aria-label="copy.chrome.navigation">
+        <router-link :to="isAuthenticated ? dashboardPath : '/login'" class="kinetic-login-link">
+          {{ isAuthenticated ? copy.chrome.dashboard : copy.chrome.login }}
+        </router-link>
+        <span class="kinetic-nav-signal" aria-hidden="true"><i></i></span>
+        <button
+          type="button"
+          :class="{ 'is-current': activeSection === 'contact' }"
+          :aria-current="activeSection === 'contact' ? 'page' : undefined"
+          @click="scrollToSection('contact')"
+        >
+          {{ copy.chrome.contact }}
+        </button>
+      </nav>
+    </header>
+
+    <aside class="kinetic-section-index" aria-hidden="true">
+      <span>{{ String(activeSectionIndex + 1).padStart(2, '0') }}</span>
+      <i><b :style="{ transform: 'scaleY(' + sectionRailProgress + ')' }"></b></i>
+      <span>{{ String(navigationItems.length).padStart(2, '0') }}</span>
+    </aside>
+
+    <main id="kinetic-main">
+      <section id="home" data-home-section class="kinetic-section kinetic-hero" aria-label="ModuRelay">
+        <div class="kinetic-hero-copy kinetic-reveal">
+          <span class="kinetic-hero-eyebrow">{{ copy.hero.eyebrow }}</span>
+          <h1>{{ siteName }}</h1>
+          <p class="kinetic-hero-tagline">{{ copy.hero.tagline }}</p>
+          <p class="kinetic-hero-description">{{ copy.hero.description }}</p>
+          <div class="kinetic-hero-actions">
+            <router-link :to="isAuthenticated ? dashboardPath : '/login'" class="kinetic-hero-primary">
+              {{ isAuthenticated ? copy.contact.dashboardCta : copy.hero.primaryCta }}
+              <Icon name="arrowRight" size="sm" />
+            </router-link>
+            <router-link v-if="showModelPlazaEntry" to="/model-plaza" class="kinetic-hero-secondary">
+              {{ copy.hero.secondaryCta }}
+            </router-link>
+            <a v-else-if="docUrl" :href="docUrl" target="_blank" rel="noopener noreferrer" class="kinetic-hero-secondary">
+              {{ copy.chrome.docs }}
+            </a>
+          </div>
+          <code class="kinetic-hero-endpoint">
+            <span>{{ copy.hero.endpoint }}</span>
+            {{ apiBaseUrl }}/v1/chat/completions
+          </code>
+        </div>
+        <div class="kinetic-hero-meta kinetic-reveal">
+          <span>MODURELAY / SIGNAL 01</span>
+          <p>{{ copy.hero.signal }}</p>
+        </div>
+      </section>
+
+      <section id="manifesto" data-home-section class="kinetic-section kinetic-manifesto" aria-labelledby="kinetic-manifesto-title">
+        <div class="kinetic-manifesto-sticky">
+          <div class="kinetic-manifesto-wash" aria-hidden="true"></div>
+          <div class="kinetic-manifesto-layout">
+            <div class="kinetic-manifesto-heading kinetic-reveal">
+              <span class="kinetic-section-label">01 / {{ copy.nav.manifesto }}</span>
+              <h1 id="kinetic-manifesto-title">
+                <span>{{ copy.manifesto.lineOne }}</span>
+                <span>{{ copy.manifesto.lineTwo }}</span>
+                <span>{{ copy.manifesto.lineThree }}</span>
+              </h1>
+            </div>
+            <div class="kinetic-manifesto-copy kinetic-reveal">
+              <span>{{ copy.manifesto.eyebrow }}</span>
+              <p>{{ copy.manifesto.description }}</p>
+              <p>{{ copy.manifesto.detail }}</p>
+              <code>{{ apiBaseUrl }}/v1/chat/completions</code>
+            </div>
           </div>
         </div>
+      </section>
 
-        <div class="home-container quick-service-wrap hero-enter hero-enter-seven">
-          <div class="quick-service-bar">
-            <button
-              v-for="service in services"
-              :key="service.key"
-              type="button"
-              class="quick-service-item"
-              :data-tone="service.tone"
-              @click="scrollToSection('services')"
+      <section id="work" ref="workSectionRef" data-home-section class="kinetic-section kinetic-work" aria-labelledby="kinetic-work-title">
+        <div class="kinetic-work-sticky">
+          <div class="kinetic-work-heading kinetic-reveal">
+            <span class="kinetic-section-label">02 / {{ copy.nav.work }}</span>
+            <h2 id="kinetic-work-title">{{ copy.work.title }}</h2>
+          </div>
+
+          <div class="kinetic-deck" data-testid="kinetic-work-deck" :aria-label="copy.work.deckLabel">
+            <article
+              v-for="(card, index) in workCards"
+              :key="card.key"
+              class="kinetic-card"
+              :class="['kinetic-card-' + card.key, { 'is-active': index === activeCardIndex }]"
+              :data-card-index="index"
+              :style="cardStyle(index)"
+              :aria-hidden="Math.abs(index - deckPosition) > 1.45 ? 'true' : 'false'"
+              @pointerenter="animateCardParticles"
+              @pointerleave="settleCardParticles"
+              @focusin="animateCardParticles"
+              @focusout="settleCardParticles"
             >
-              <span><Icon :name="service.icon" size="sm" /></span>
-              {{ service.title }}
+              <div class="kinetic-card-visual" aria-hidden="true">
+                <span class="kinetic-card-plane kinetic-card-plane-one"></span>
+                <span class="kinetic-card-plane kinetic-card-plane-two"></span>
+                <span class="kinetic-card-plane kinetic-card-plane-three"></span>
+                <span class="kinetic-card-orbit"></span>
+                <span class="kinetic-card-scan"></span>
+                <span class="kinetic-card-particles">
+                  <i
+                    v-for="particleIndex in 12"
+                    :key="particleIndex"
+                    class="kinetic-card-particle"
+                    :style="cardParticleStyle(index, particleIndex - 1)"
+                  ></i>
+                </span>
+              </div>
+              <div class="kinetic-card-topline">
+                <span>{{ String(index + 1).padStart(2, '0') }}</span>
+                <span>{{ card.eyebrow }}</span>
+              </div>
+              <div class="kinetic-card-content">
+                <h3>{{ card.title }}</h3>
+                <p>{{ card.description }}</p>
+                <router-link :to="card.to" :tabindex="index === activeCardIndex ? 0 : -1">
+                  {{ card.action }}<Icon name="arrowRight" size="sm" />
+                </router-link>
+              </div>
+            </article>
+          </div>
+
+          <div class="kinetic-work-filter">
+            <span>{{ copy.work.question }}</span>
+            <button
+              v-for="(card, index) in workCards"
+              :key="card.key"
+              type="button"
+              :class="{ 'is-active': index === activeCardIndex }"
+              @click="selectCard(index)"
+            >
+              <i></i>{{ card.short }}
             </button>
           </div>
-        </div>
-      </section>
 
-      <!-- Core services -->
-      <section id="services" data-home-section class="home-section services-section">
-        <div class="home-container">
-          <div class="section-heading reveal-on-scroll">
-            <span class="section-kicker">01 / SERVICES</span>
-            <h2>{{ copy.services.title }}</h2>
-            <p>{{ copy.services.subtitle }}</p>
-          </div>
-
-          <div class="service-grid">
-            <article
-              v-for="(service, index) in services"
-              :key="service.key"
-              class="service-card reveal-on-scroll"
-              :data-tone="service.tone"
-              :style="{ '--reveal-delay': `${index * 70}ms` }"
-              tabindex="0"
-            >
-              <div class="service-card-topline"></div>
-              <div class="service-icon-wrap">
-                <span class="service-icon-orbit"></span>
-                <Icon :name="service.icon" size="lg" :stroke-width="1.7" />
-              </div>
-              <span class="service-number">0{{ index + 1 }}</span>
-              <h3>{{ service.title }}</h3>
-              <p>{{ service.description }}</p>
-              <button type="button" class="service-link" @click="scrollToSection('contact')">
-                {{ copy.services.learnMore }}
-                <Icon name="arrowRight" size="xs" />
-              </button>
-            </article>
+          <div class="kinetic-deck-progress" aria-hidden="true">
+            <span>{{ String(activeCardIndex + 1).padStart(2, '0') }}</span>
+            <i><b :style="{ transform: 'scaleX(' + deckRailProgress + ')' }"></b></i>
+            <span>{{ String(workCards.length).padStart(2, '0') }}</span>
           </div>
         </div>
       </section>
 
-      <!-- Advantages / solutions -->
-      <section id="solutions" data-home-section class="home-section solutions-section">
-        <div class="home-container solutions-layout">
-          <div class="solutions-copy reveal-on-scroll">
-            <span class="section-kicker">02 / ADVANTAGES</span>
-            <h2>{{ copy.solutions.title }}</h2>
-            <p>{{ copy.solutions.description }}</p>
-
-            <div class="solution-stats">
-              <div v-for="metric in copy.solutions.metrics" :key="metric.label" class="solution-stat">
-                <strong>{{ metric.value }}</strong>
-                <span>{{ metric.label }}</span>
+      <section id="lab" data-home-section class="kinetic-section kinetic-lab" aria-labelledby="kinetic-lab-title">
+        <div class="kinetic-lab-sticky">
+          <div class="kinetic-lab-shell">
+            <div class="kinetic-lab-heading kinetic-reveal">
+              <span class="kinetic-section-label">03 / {{ copy.nav.lab }}</span>
+              <div class="kinetic-lab-title-row">
+                <div class="kinetic-lab-mark" aria-hidden="true"><span>M</span></div>
+                <h2 id="kinetic-lab-title">{{ copy.lab.title }}</h2>
               </div>
             </div>
-          </div>
-
-          <div class="advantage-grid">
-            <article
-              v-for="(advantage, index) in advantages"
-              :key="advantage.title"
-              class="advantage-card reveal-on-scroll"
-              :style="{ '--reveal-delay': `${index * 80}ms` }"
-            >
-              <span class="advantage-icon"><Icon :name="advantage.icon" size="md" /></span>
-              <div>
-                <h3>{{ advantage.title }}</h3>
-                <p>{{ advantage.description }}</p>
-              </div>
-            </article>
+            <div class="kinetic-lab-route kinetic-reveal" aria-hidden="true">
+              <span class="kinetic-lab-route-line"></span>
+              <i class="kinetic-lab-route-node kinetic-lab-route-node-start"></i>
+              <i class="kinetic-lab-route-node kinetic-lab-route-node-middle"></i>
+              <i class="kinetic-lab-route-node kinetic-lab-route-node-end"></i>
+              <strong>M</strong>
+            </div>
+            <div class="kinetic-lab-copy kinetic-reveal">
+              <span>{{ copy.lab.eyebrow }}</span>
+              <p>{{ copy.lab.description }}</p>
+              <router-link :to="learningEntry">{{ copy.lab.action }}<Icon name="arrowRight" size="sm" /></router-link>
+            </div>
           </div>
         </div>
       </section>
 
-      <!-- Interactive capability rail -->
-      <section class="capability-rail-section" aria-label="ModuRelay capabilities">
-        <div class="capability-rail">
-          <div class="capability-track">
-            <template v-for="round in 2" :key="round">
-              <span v-for="item in copy.capabilities" :key="`${round}-${item}`">
-                <i></i>{{ item }}
-              </span>
-            </template>
-          </div>
+      <section id="contact" data-home-section class="kinetic-section kinetic-contact" aria-labelledby="kinetic-contact-title">
+        <div class="kinetic-contact-content kinetic-reveal">
+          <span class="kinetic-section-label">04 / {{ copy.nav.contact }}</span>
+          <h2 id="kinetic-contact-title">
+            <span>{{ copy.contact.lineOne }}</span>
+            <span>{{ copy.contact.lineTwo }}</span>
+          </h2>
+          <p>{{ copy.contact.description }}</p>
+          <router-link :to="isAuthenticated ? dashboardPath : '/login'" class="kinetic-primary-cta">
+            {{ isAuthenticated ? copy.contact.dashboardCta : copy.contact.primaryCta }}
+            <Icon name="arrowRight" size="sm" />
+          </router-link>
         </div>
-      </section>
 
-      <!-- Process -->
-      <section id="process" data-home-section class="home-section process-section">
-        <div class="home-container">
-          <div class="section-heading reveal-on-scroll">
-            <span class="section-kicker">03 / WORKFLOW</span>
-            <h2>{{ copy.process.title }}</h2>
-            <p>{{ copy.process.subtitle }}</p>
+        <footer class="kinetic-footer">
+          <span>&copy; {{ currentYear }} {{ siteName }}</span>
+          <div class="kinetic-footer-links">
+            <a v-if="docUrl" :href="docUrl" target="_blank" rel="noopener noreferrer">{{ copy.chrome.docs }}</a>
+            <router-link v-if="showModelPlazaEntry" to="/model-plaza">{{ t('nav.modelPlaza') }}</router-link>
+            <router-link to="/key-usage">{{ copy.chrome.usage }}</router-link>
+            <LocaleSwitcher placement="top-end" />
           </div>
-
-          <div class="process-grid">
-            <article
-              v-for="(step, index) in processSteps"
-              :key="step.title"
-              class="process-card reveal-on-scroll"
-              :style="{ '--reveal-delay': `${index * 100}ms` }"
-            >
-              <div class="process-line" aria-hidden="true"></div>
-              <div class="process-step-head">
-                <span class="process-step-number">{{ String(index + 1).padStart(2, '0') }}</span>
-                <span class="process-step-icon"><Icon :name="step.icon" size="md" /></span>
-              </div>
-              <h3>{{ step.title }}</h3>
-              <p>{{ step.description }}</p>
-            </article>
-          </div>
-        </div>
-      </section>
-
-      <!-- Advertising -->
-      <section id="advertising" data-home-section class="home-section advertising-section">
-        <div class="home-container">
-          <article class="advertising-panel reveal-on-scroll">
-            <div class="ad-grid" aria-hidden="true"></div>
-            <div class="ad-copy">
-              <span class="ad-badge">{{ copy.ad.badge }}</span>
-              <h2>{{ copy.ad.title }}</h2>
-              <p>{{ copy.ad.description }}</p>
-              <button type="button" class="home-primary-button" @click="scrollToSection('contact')">
-                {{ copy.ad.cta }}
-                <span class="button-arrow"><Icon name="arrowRight" size="sm" /></span>
-              </button>
-            </div>
-
-            <div class="ad-visual" aria-hidden="true">
-              <div class="ad-hologram">
-                <span>AD</span>
-                <i class="ad-ring ad-ring-one"></i>
-                <i class="ad-ring ad-ring-two"></i>
-                <i class="ad-beam"></i>
-              </div>
-            </div>
-
-            <div class="ad-metrics">
-              <div v-for="metric in copy.ad.metrics" :key="metric.label">
-                <strong>{{ metric.value }}</strong>
-                <span>{{ metric.label }}</span>
-              </div>
-            </div>
-          </article>
-        </div>
-      </section>
-
-      <!-- Contact CTA -->
-      <section id="contact" data-home-section class="home-section contact-section">
-        <div class="home-container">
-          <div class="contact-panel reveal-on-scroll">
-            <div>
-              <span class="section-kicker">04 / CONTACT</span>
-              <h2>{{ copy.contact.title }}</h2>
-              <p>{{ copy.contact.description }}</p>
-            </div>
-            <div class="contact-actions">
-              <router-link
-                :to="isAuthenticated ? dashboardPath : '/login'"
-                class="home-primary-button"
-              >
-                {{ isAuthenticated ? copy.hero.dashboardCta : copy.contact.primaryCta }}
-                <span class="button-arrow"><Icon name="arrowRight" size="sm" /></span>
-              </router-link>
-              <a
-                v-if="docUrl"
-                :href="docUrl"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="home-secondary-button"
-              >
-                {{ copy.contact.docsCta }}
-                <Icon name="book" size="sm" />
-              </a>
-            </div>
-          </div>
-        </div>
+          <span>MODURELAY / SYSTEM 01</span>
+        </footer>
       </section>
     </main>
-
-    <footer class="home-footer">
-      <div class="home-container footer-grid">
-        <div class="footer-brand-block">
-          <div class="footer-brand-line">
-            <span class="home-brand-logo"><img :src="siteLogo || brand.logo" :alt="siteName" /></span>
-            <strong>{{ siteName }}</strong>
-          </div>
-          <p>{{ copy.footer.description }}</p>
-        </div>
-
-        <div class="footer-link-group">
-          <strong>{{ copy.footer.services }}</strong>
-          <button v-for="service in services" :key="service.key" type="button" @click="scrollToSection('services')">
-            {{ service.title }}
-          </button>
-        </div>
-
-        <div class="footer-link-group">
-          <strong>{{ copy.footer.resources }}</strong>
-          <a v-if="docUrl" :href="docUrl" target="_blank" rel="noopener noreferrer">{{ copy.nav.docs }}</a>
-          <router-link to="/key-usage">{{ copy.hero.quotaCta }}</router-link>
-          <button type="button" @click="scrollToSection('process')">{{ copy.nav.process }}</button>
-        </div>
-
-        <div class="footer-link-group">
-          <strong>{{ copy.footer.cooperation }}</strong>
-          <button type="button" @click="scrollToSection('advertising')">{{ copy.nav.advertising }}</button>
-          <button type="button" @click="scrollToSection('contact')">{{ copy.nav.contact }}</button>
-          <router-link to="/login">{{ copy.nav.login }}</router-link>
-        </div>
-      </div>
-
-      <div class="home-container footer-bottom">
-        <span>&copy; {{ currentYear }} {{ siteName }}. {{ copy.footer.rights }}</span>
-        <span>{{ copy.footer.tagline }}</span>
-      </div>
-    </footer>
-
-    <button
-      v-show="isScrolled"
-      type="button"
-      class="back-to-top"
-      :title="copy.nav.backToTop"
-      @click="scrollToSection('home')"
-    >
-      <Icon name="arrowUp" size="sm" />
-    </button>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type CSSProperties } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { gsap } from 'gsap'
+import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import { brand } from '@/config/brand'
 import { useAuthStore, useAppStore } from '@/stores'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import Icon from '@/components/icons/Icon.vue'
 import HomeHeroScene from '@/components/home/HomeHeroScene.vue'
+import HomeAmbientEffects from '@/components/home/HomeAmbientEffects.vue'
 import { sanitizeUrl } from '@/utils/url'
 import { FeatureFlags, isFeatureFlagEnabled } from '@/utils/featureFlags'
+import { toggleThemeWithTransition } from '@/utils/themeTransition'
 
-type SectionId = 'home' | 'services' | 'solutions' | 'process' | 'advertising' | 'contact'
-type HomeIcon = 'link' | 'server' | 'shield' | 'chat' | 'chart' | 'sync' | 'play' | 'check'
-type ServiceTone = 'teal' | 'blue' | 'violet' | 'cyan' | 'amber'
-
-interface ServiceItem {
-  key: string
-  title: string
-  description: string
-  caption: string
-  icon: HomeIcon
-  tone: ServiceTone
-}
+type SectionId = 'home' | 'manifesto' | 'work' | 'lab' | 'contact'
 
 const zhCopy = {
-  nav: {
-    home: '首页', services: '产品服务', solutions: '解决方案', process: '服务流程',
-    advertising: '广告合作', contact: '联系我们', docs: '查看文档', light: '切换浅色模式',
-    dark: '切换深色模式', dashboard: '控制台', login: '登录', backToTop: '返回顶部'
+  chrome: {
+    loading: '正在加载中继生态场', navigation: '首页导航', work: '作品', contact: '联系',
+    docs: '文档', usage: '用量查询', dashboard: '控制台', login: '登录',
+    light: '浅色模式', dark: '深色模式', skip: '跳到主要内容'
   },
+  nav: { home: '首页', manifesto: '系统宣言', work: '核心能力', lab: '中继实验室', contact: '开始使用' },
   hero: {
-    eyebrow: '一站式数字服务与 AI 接入平台',
-    titleSuffix: '官方平台',
-    subtitle: '一站式 AI API 转换与数字服务解决方案',
-    description: '为开发者、企业与个人提供稳定、安全、高效的下游 API 对接、账号资源、网络代理、接码与商务推广服务。',
-    primaryCta: '立即接入', dashboardCta: '进入控制台', secondaryCta: '咨询合作', quotaCta: '额度查询',
-    trust: ['稳定可靠', '极速响应', '安全保障']
+    eyebrow: '企业级的 AI API 网关',
+    tagline: '一个入口，连接每个模型。',
+    description: '用兼容接口统一模型接入，把策略路由、故障切换与用量记录留在同一条可观测链路中。',
+    primaryCta: '开始使用',
+    secondaryCta: '查看模型',
+    endpoint: '兼容端点',
+    signal: '策略路由 / 故障切换 / 用量可见'
   },
-  services: {
-    title: '核心服务', subtitle: '从 API 接入到数字资源配套，为不同业务阶段提供可组合的服务能力。', learnMore: '咨询详情',
-    items: [
-      { title: '下游对接', description: '提供标准化 API 接口与完整对接支持，帮助平台和开发者快速完成模型能力集成。', caption: 'API 对接与集成' },
-      { title: '账号售卖', description: '多平台优质账号资源，按实际业务场景提供灵活选择与交付支持。', caption: '多平台账号资源' },
-      { title: 'VPN 代理服务', description: '覆盖多地区的稳定代理节点，满足跨区域访问、网络加速与业务连接需求。', caption: '全球节点稳定高速' },
-      { title: '接码服务', description: '覆盖多个国家和地区的验证码接收能力，流程清晰，响应高效。', caption: '多地区接码能力' },
-      { title: '广告位出租', description: '开放官网优质流量资源位，支持品牌展示、产品曝光与商务合作。', caption: '精准曝光高效转化' }
+  manifesto: {
+    ariaTitle: '可靠的 AI 接口体验',
+    lineOne: '可靠的',
+    lineTwo: 'AI 接口',
+    lineThree: '体验',
+    eyebrow: '一个入口 / 多条路径',
+    description: 'ModuRelay 把兼容接口、模型发现与供应商路由汇入同一条调用路径。',
+    detail: '策略、故障切换、用量和请求上下文保持可见，让应用不必感知底层线路变化。'
+  },
+  work: {
+    title: '运行中的系统', deckLabel: 'ModuRelay 核心能力空间卡片', question: '你要进入哪一层？',
+    cards: [
+      { title: '统一入口', short: 'API', eyebrow: 'OPENAI COMPATIBLE', description: '保留熟悉的 SDK 与请求结构，把模型接入集中到一个 base URL。', action: '开始接入' },
+      { title: '策略路由', short: 'ROUTING', eyebrow: 'POLICY ENGINE', description: '依据模型、分组和线路健康选择可用路径，并遵循已配置的故障切换。', action: '查看模型' },
+      { title: '请求信号', short: 'SIGNALS', eyebrow: 'USAGE + TRACE', description: '把密钥、模型、Token 用量与线路结果放回同一套查询上下文。', action: '查询用量' },
+      { title: 'AI 实践', short: 'LEARNING', eyebrow: 'AGENT + WORKFLOW', description: '围绕 Agent、工作流、记忆与具身智能整理案例、练习和学习路径。', action: '进入学习' },
+      { title: '运行控制', short: 'CONTROL', eyebrow: 'OPERATIONS', description: '在控制台维护账户池、策略与系统配置，让转发链路持续可控。', action: '打开控制台' }
     ]
   },
-  solutions: {
-    title: '为什么选择 ModuRelay',
-    description: '围绕稳定性、资源覆盖、交付效率与成本控制持续优化，让服务真正支撑业务长期增长。',
-    metrics: [
-      { value: '7×24', label: '持续服务' }, { value: '99.99%', label: '可用性目标' }, { value: 'Multi', label: '多资源组合' }
-    ],
-    items: [
-      { title: '稳定可靠', description: '多重容错、健康检查与自动切换机制，保障核心链路持续可用。' },
-      { title: '多线路资源', description: '整合多渠道与多线路资源，按业务需求灵活匹配。' },
-      { title: '高性价比', description: '透明定价与灵活配置，在稳定体验和成本之间取得平衡。' },
-      { title: '技术支持', description: '从咨询、测试到正式使用，提供完整的技术协助与问题跟进。' }
-    ]
-  },
-  capabilities: ['统一 API 网关', '多模型路由', '账号资源服务', '全球网络代理', '验证码接收', '商务广告合作', '实时用量计费', '智能健康检查'],
-  process: {
-    title: '清晰高效的服务流程', subtitle: '从需求确认到稳定运行，每一步都有明确交付与技术支持。',
-    items: [
-      { title: '咨询需求', description: '沟通使用场景、目标规模与资源要求，确认适合的解决方案。' },
-      { title: '开通服务', description: '根据方案完成账号、接口或资源配置，并提供必要的接入信息。' },
-      { title: '对接测试', description: '协助完成联调与验证，确保接口、网络和业务流程稳定兼容。' },
-      { title: '稳定使用', description: '正式投入使用，持续关注运行状态并提供后续服务支持。' }
-    ]
-  },
-  ad: {
-    badge: '合作共赢 · 流量变现', title: '广告位出租',
-    description: '开放 ModuRelay 官网优质展示资源，为品牌、工具与数字服务提供精准曝光机会。支持首页焦点位、服务区推荐位与专题合作。',
-    cta: '洽谈广告合作',
-    metrics: [
-      { value: '多场景', label: '展示资源位' }, { value: '精准', label: '目标用户触达' }, { value: '灵活', label: '合作周期' }, { value: '可追踪', label: '投放效果' }
-    ]
+  lab: {
+    title: '中继实验室', eyebrow: '从原型进入实践',
+    description: '探索 Agent、工作流和 AI 系统能力，并把实验带回可运行的应用链路。',
+    action: '进入 AI 学习'
   },
   contact: {
-    title: '准备好连接更多业务能力了吗？',
-    description: '告诉我们你的目标和使用场景，我们将协助匹配合适的产品服务与接入方案。',
-    primaryCta: '立即开始', docsCta: '查看接入文档'
-  },
-  footer: {
-    description: '一站式 AI API 转换与数字服务平台，让连接更简单，让服务更智能。',
-    services: '产品服务', resources: '资源中心', cooperation: '商务合作', rights: '保留所有权利。', tagline: '稳定连接 · 灵活服务 · 持续成长'
+    lineOne: '一个入口',
+    lineTwo: '连接每个模型',
+    description: '从兼容端点开始，把模型、路由、账户和用量带回同一条可靠链路。',
+    primaryCta: '开始使用',
+    dashboardCta: '进入控制台'
   }
 }
 
 const enCopy = {
-  nav: {
-    home: 'Home', services: 'Services', solutions: 'Solutions', process: 'Workflow',
-    advertising: 'Advertising', contact: 'Contact', docs: 'Documentation', light: 'Switch to light mode',
-    dark: 'Switch to dark mode', dashboard: 'Dashboard', login: 'Sign in', backToTop: 'Back to top'
+  chrome: {
+    loading: 'Loading the relay landscape', navigation: 'Homepage navigation', work: 'Work', contact: 'Contact',
+    docs: 'Docs', usage: 'Usage', dashboard: 'Dashboard', login: 'Sign in',
+    light: 'Light mode', dark: 'Dark mode', skip: 'Skip to main content'
   },
+  nav: { home: 'Home', manifesto: 'System manifesto', work: 'Core systems', lab: 'Relay lab', contact: 'Get started' },
   hero: {
-    eyebrow: 'One-stop digital services and AI access platform',
-    titleSuffix: 'Official Platform',
-    subtitle: 'AI API conversion and digital service solutions in one place',
-    description: 'Stable, secure and efficient downstream API integration, account resources, network proxy, verification and promotion services for developers, businesses and individuals.',
-    primaryCta: 'Get started', dashboardCta: 'Open dashboard', secondaryCta: 'Talk to us', quotaCta: 'Check quota',
-    trust: ['Reliable', 'Fast response', 'Secure']
+    eyebrow: 'An enterprise-grade AI API gateway',
+    tagline: 'One entry. Every model.',
+    description: 'Unify model access through a compatible API while policy routing, failover, and usage records stay on one observable path.',
+    primaryCta: 'Get started',
+    secondaryCta: 'Browse models',
+    endpoint: 'Compatible endpoint',
+    signal: 'Policy routing / failover / visible usage'
   },
-  services: {
-    title: 'Core services', subtitle: 'Composable capabilities from API integration to digital resources for every stage of your business.', learnMore: 'Learn more',
-    items: [
-      { title: 'Downstream integration', description: 'Standardized APIs and complete integration support for platforms and developers.', caption: 'API integration' },
-      { title: 'Account marketplace', description: 'Quality multi-platform account resources with flexible delivery options.', caption: 'Account resources' },
-      { title: 'VPN proxy service', description: 'Stable multi-region proxy nodes for cross-region access and business connectivity.', caption: 'Global stable nodes' },
-      { title: 'Verification service', description: 'Efficient verification-code receiving capabilities across multiple regions.', caption: 'Multi-region verification' },
-      { title: 'Advertising slots', description: 'Premium website placements for brand exposure, product promotion and partnerships.', caption: 'Targeted exposure' }
+  manifesto: {
+    ariaTitle: 'Reliable AI API experiences',
+    lineOne: 'Reliable',
+    lineTwo: 'AI API',
+    lineThree: 'Experiences',
+    eyebrow: 'One entry / many paths',
+    description: 'ModuRelay brings compatible APIs, model discovery and provider routing into one request path.',
+    detail: 'Policy, failover, usage and request context stay visible while applications remain independent from the underlying route.'
+  },
+  work: {
+    title: 'Systems in motion', deckLabel: 'ModuRelay core system cards', question: 'Which layer are you looking for?',
+    cards: [
+      { title: 'Unified entry', short: 'API', eyebrow: 'OPENAI COMPATIBLE', description: 'Keep familiar SDKs and request shapes while models converge on one base URL.', action: 'Start integrating' },
+      { title: 'Policy routing', short: 'ROUTING', eyebrow: 'POLICY ENGINE', description: 'Choose an available path from model, group and route health, then follow configured failover.', action: 'Browse models' },
+      { title: 'Request signals', short: 'SIGNALS', eyebrow: 'USAGE + TRACE', description: 'Keep key, model, token usage and route outcome in one queryable operating context.', action: 'Inspect usage' },
+      { title: 'AI practice', short: 'LEARNING', eyebrow: 'AGENT + WORKFLOW', description: 'Turn agents, workflows, memory and embodied AI into cases, exercises and learning paths.', action: 'Enter learning' },
+      { title: 'Operational control', short: 'CONTROL', eyebrow: 'OPERATIONS', description: 'Maintain account pools, policy and system settings from one operational surface.', action: 'Open dashboard' }
     ]
   },
-  solutions: {
-    title: 'Why choose ModuRelay',
-    description: 'We continuously improve reliability, coverage, delivery and cost efficiency to support long-term business growth.',
-    metrics: [
-      { value: '24/7', label: 'Service' }, { value: '99.99%', label: 'Availability goal' }, { value: 'Multi', label: 'Resource mix' }
-    ],
-    items: [
-      { title: 'Reliable', description: 'Health checks, failover and resilient architecture keep critical routes available.' },
-      { title: 'Multi-route resources', description: 'Flexible resources across providers and network routes.' },
-      { title: 'Cost efficient', description: 'Transparent pricing and flexible options balance experience and cost.' },
-      { title: 'Technical support', description: 'End-to-end assistance from consultation and testing to production use.' }
-    ]
-  },
-  capabilities: ['Unified API gateway', 'Multi-model routing', 'Account resources', 'Global network proxy', 'Verification service', 'Advertising partnership', 'Real-time billing', 'Health monitoring'],
-  process: {
-    title: 'A clear and efficient workflow', subtitle: 'Clear delivery and technical support from requirements to stable operation.',
-    items: [
-      { title: 'Discuss needs', description: 'Align on your scenarios, scale and resource requirements.' },
-      { title: 'Activate service', description: 'Configure accounts, APIs or resources and provide access details.' },
-      { title: 'Integration testing', description: 'Validate interfaces, networks and business flows for compatibility.' },
-      { title: 'Run with confidence', description: 'Go live with ongoing monitoring and service support.' }
-    ]
-  },
-  ad: {
-    badge: 'Grow together · Monetize traffic', title: 'Advertising placements',
-    description: 'Premium ModuRelay placements for brands, tools and digital services, including hero promotions, service recommendations and custom campaigns.',
-    cta: 'Discuss advertising',
-    metrics: [
-      { value: 'Multi', label: 'Placement types' }, { value: 'Targeted', label: 'Audience reach' }, { value: 'Flexible', label: 'Campaign period' }, { value: 'Trackable', label: 'Performance' }
-    ]
+  lab: {
+    title: 'The Relay Lab', eyebrow: 'From prototype to practice',
+    description: 'Explore agents, workflows and AI system capability, then bring experiments back to a runnable application path.',
+    action: 'Enter AI Learning'
   },
   contact: {
-    title: 'Ready to connect more capabilities?',
-    description: 'Tell us your goals and use cases. We will help match the right services and integration plan.',
-    primaryCta: 'Get started', docsCta: 'View integration docs'
-  },
-  footer: {
-    description: 'A one-stop AI API conversion and digital service platform. Connect simply and operate intelligently.',
-    services: 'Services', resources: 'Resources', cooperation: 'Partnerships', rights: 'All rights reserved.', tagline: 'Reliable connections · Flexible services · Sustainable growth'
+    lineOne: 'One entry',
+    lineTwo: 'Every model',
+    description: 'Start with a compatible endpoint and bring models, routing, accounts and usage into one reliable path.',
+    primaryCta: 'Get started',
+    dashboardCta: 'Open dashboard'
   }
 }
 
 const { t, locale } = useI18n()
 const authStore = useAuthStore()
 const appStore = useAppStore()
-
 const pageRef = ref<HTMLElement | null>(null)
+const workSectionRef = ref<HTMLElement | null>(null)
 const activeSection = ref<SectionId>('home')
-const isScrolled = ref(false)
 const scrollProgress = ref(0)
+const deckPosition = ref(0)
+const activeCardIndex = ref(0)
 const isDark = ref(document.documentElement.classList.contains('dark'))
+const loaderVisible = ref(true)
+const loaderProgress = ref(4)
+const sceneReady = ref(false)
+const ambientEnabled = ref(false)
 
 let sectionObserver: IntersectionObserver | null = null
-let revealObserver: IntersectionObserver | null = null
+let homeMatchMedia: ReturnType<typeof gsap.matchMedia> | null = null
+let heroIntroTimeline: gsap.core.Timeline | null = null
+let cardTransitionTimeline: gsap.core.Timeline | null = null
+let cardTransitionTarget: HTMLElement | null = null
+let cardTransitionToken = 0
 let scrollFrame = 0
+let deckAnimationFrame = 0
+let loaderTimer = 0
+let loaderSafetyTimer = 0
+let loaderHideTimer = 0
+let homeMounted = false
+let targetDeckPosition = 0
+const cardParticleTimelines = new Set<gsap.core.Timeline>()
+const cardParticleTimelineByCard = new WeakMap<HTMLElement, gsap.core.Timeline>()
 
 const copy = computed(() => locale.value === 'zh' ? zhCopy : enCopy)
 const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || brand.name)
@@ -659,78 +449,229 @@ const docUrl = computed(() => sanitizeUrl(appStore.cachedPublicSettings?.doc_url
 const homeContent = computed(() => appStore.cachedPublicSettings?.home_content || '')
 const hasHomeContent = computed(() => homeContent.value.trim().length > 0)
 const compactHomeEnabled = computed(() => appStore.cachedPublicSettings?.compact_home_enabled === true)
-const modelPlazaEnabled = computed(() => isFeatureFlagEnabled(FeatureFlags.modelPlaza))
-
-// Check if homeContent is a URL (for iframe display)
-const isHomeContentUrl = computed(() => {
-  const content = homeContent.value.trim()
-  return content.startsWith('http://') || content.startsWith('https://')
-})
-
+const isHomeContentUrl = computed(() => /^https?:\/\//.test(homeContent.value.trim()))
 const isAuthenticated = computed(() => authStore.isAuthenticated)
-const modelPlazaRequiresAuth = computed(
-  () => appStore.cachedPublicSettings?.model_plaza_require_auth === true,
-)
-const showModelPlazaEntry = computed(
-  () => modelPlazaEnabled.value && (isAuthenticated.value || !modelPlazaRequiresAuth.value),
-)
 const isAdmin = computed(() => authStore.isAdmin)
 const dashboardPath = computed(() => isAdmin.value ? '/admin/dashboard' : '/dashboard')
-const userInitial = computed(() => authStore.user?.email?.charAt(0).toUpperCase() || 'M')
 const currentYear = computed(() => new Date().getFullYear())
+const modelPlazaEnabled = computed(() => isFeatureFlagEnabled(FeatureFlags.modelPlaza))
+const modelPlazaRequiresAuth = computed(() => appStore.cachedPublicSettings?.model_plaza_require_auth === true)
+const showModelPlazaEntry = computed(() => modelPlazaEnabled.value && (isAuthenticated.value || !modelPlazaRequiresAuth.value))
+const learningEntry = computed(() => isAuthenticated.value ? '/ai-learning' : { path: '/login', query: { redirect: '/ai-learning' } })
+const apiBaseUrl = computed(() => {
+  const configured = appStore.cachedPublicSettings?.api_base_url
+  return typeof configured === 'string' && configured.trim() ? configured.trim().replace(/\/+$/, '') : window.location.origin
+})
+const navigationItems = computed(() => (Object.keys(copy.value.nav) as SectionId[]).map(id => ({ id, label: copy.value.nav[id] })))
+const activeSectionIndex = computed(() => Math.max(0, navigationItems.value.findIndex(item => item.id === activeSection.value)))
+const sceneProgress = computed(() => scrollProgress.value / 100)
+const sectionRailProgress = computed(() => Math.max(0.04, Math.min(1, scrollProgress.value / 100)))
+const workCards = computed(() => {
+  const definitions = copy.value.work.cards
+  const loginOrDashboard = isAuthenticated.value ? dashboardPath.value : '/login'
+  const modelDestination = showModelPlazaEntry.value ? '/model-plaza' : loginOrDashboard
+  return [
+    { key: 'gateway', ...definitions[0], to: loginOrDashboard },
+    { key: 'routing', ...definitions[1], to: modelDestination },
+    { key: 'signals', ...definitions[2], to: '/key-usage' },
+    { key: 'learning', ...definitions[3], to: learningEntry.value },
+    { key: 'control', ...definitions[4], to: loginOrDashboard }
+  ]
+})
+const deckRailProgress = computed(() => {
+  if (workCards.value.length <= 1) return 1
+  return Math.max(0.04, Math.min(1, deckPosition.value / (workCards.value.length - 1)))
+})
 
-const navigationItems = computed(() => [
-  { id: 'home' as const, label: copy.value.nav.home },
-  { id: 'services' as const, label: copy.value.nav.services },
-  { id: 'solutions' as const, label: copy.value.nav.solutions },
-  { id: 'process' as const, label: copy.value.nav.process },
-  { id: 'advertising' as const, label: copy.value.nav.advertising },
-  { id: 'contact' as const, label: copy.value.nav.contact }
-])
+function toggleTheme(event?: MouseEvent) {
+  isDark.value = toggleThemeWithTransition(isDark.value, event)
+}
 
-const serviceMeta: Array<{ key: string; icon: HomeIcon; tone: ServiceTone }> = [
-  { key: 'integration', icon: 'link', tone: 'teal' },
-  { key: 'accounts', icon: 'server', tone: 'blue' },
-  { key: 'vpn', icon: 'shield', tone: 'violet' },
-  { key: 'verification', icon: 'chat', tone: 'cyan' },
-  { key: 'advertising', icon: 'chart', tone: 'amber' }
-]
+function cardStyle(index: number): CSSProperties {
+  const delta = index - deckPosition.value
+  const distance = Math.abs(delta)
+  const isMobileViewport = window.innerWidth < 700
+  const x = delta * (isMobileViewport ? 78 : 34)
+  const y = distance * (isMobileViewport ? 1.2 : 1.8)
+  const z = -distance * 260
+  const rotateY = delta * -6
+  const rotateZ = delta * 0.45
+  const scale = Math.max(0.76, 1 - distance * 0.11)
+  const opacity = Math.max(0, 1 - Math.max(0, distance - 0.3) * 0.88)
+  return {
+    '--deck-x': x + 'vw',
+    '--deck-y': y + 'vh',
+    '--deck-z': z + 'px',
+    '--deck-ry': rotateY + 'deg',
+    '--deck-rz': rotateZ + 'deg',
+    '--deck-scale': String(scale),
+    '--deck-opacity': String(opacity),
+    '--deck-order': String(100 - Math.round(distance * 10))
+  } as CSSProperties
+}
 
-const services = computed<ServiceItem[]>(() => copy.value.services.items.map((item, index) => ({
-  ...item,
-  ...serviceMeta[index]
-})))
+function cardParticleStyle(cardIndex: number, particleIndex: number): CSSProperties {
+  const horizontal = ((cardIndex * 37 + particleIndex * 61) % 89) / 88
+  const vertical = ((cardIndex * 53 + particleIndex * 29) % 83) / 82
+  const size = 1.2 + ((cardIndex + particleIndex * 3) % 5) * 0.55
+  return {
+    '--particle-left': `${7 + horizontal * 86}%`,
+    '--particle-top': `${8 + vertical * 84}%`,
+    '--particle-size': `${size.toFixed(2)}px`,
+    '--particle-alpha': String(0.16 + ((particleIndex * 7) % 6) * 0.045),
+  } as CSSProperties
+}
 
-const heroSceneServices = computed(() => services.value.map(({ title, caption, icon, tone }) => ({
-  label: title,
-  caption,
-  icon: icon as 'link' | 'server' | 'shield' | 'chat' | 'chart',
-  tone
-})))
+function animateCardParticles(event: Event) {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+  const card = event.currentTarget as HTMLElement | null
+  if (!card) return
+  const particles = Array.from(card.querySelectorAll<HTMLElement>('.kinetic-card-particle'))
+  const planes = Array.from(card.querySelectorAll<HTMLElement>('.kinetic-card-plane'))
+  const orbit = card.querySelector<HTMLElement>('.kinetic-card-orbit')
+  if (!particles.length) return
 
-const advantageIcons: HomeIcon[] = ['shield', 'sync', 'chart', 'chat']
-const advantages = computed(() => copy.value.solutions.items.map((item, index) => ({
-  ...item,
-  icon: advantageIcons[index]
-})))
+  const previousTimeline = cardParticleTimelineByCard.get(card)
+  previousTimeline?.kill()
+  if (previousTimeline) cardParticleTimelines.delete(previousTimeline)
+  const timeline = gsap.timeline({
+    defaults: { overwrite: 'auto' },
+    onComplete: () => {
+      cardParticleTimelines.delete(timeline)
+      if (cardParticleTimelineByCard.get(card) === timeline) cardParticleTimelineByCard.delete(card)
+    },
+  })
+  cardParticleTimelines.add(timeline)
+  cardParticleTimelineByCard.set(card, timeline)
+  timeline
+    .to(particles, {
+      x: index => ((index * 47) % 58) - 29,
+      y: index => ((index * 31) % 44) - 22,
+      scale: index => 1.15 + (index % 4) * 0.18,
+      autoAlpha: 0.72,
+      duration: 0.28,
+      ease: 'power2.out',
+      stagger: { amount: 0.14, from: 'random' },
+    }, 0)
+    .to(planes, {
+      x: index => (index - 1) * 7,
+      y: index => (1 - index) * 5,
+      duration: 0.42,
+      ease: 'power2.out',
+    }, 0)
+    .to(orbit, { rotation: 18, duration: 0.48, ease: 'power2.out' }, 0)
+    .to(particles, {
+      x: 0,
+      y: 0,
+      scale: 1,
+      autoAlpha: index => 0.16 + ((index * 7) % 6) * 0.045,
+      duration: 0.58,
+      ease: 'elastic.out(1, 0.42)',
+      stagger: { amount: 0.18, from: 'random' },
+    }, '>-0.06')
+}
 
-const processIcons: HomeIcon[] = ['chat', 'play', 'sync', 'check']
-const processSteps = computed(() => copy.value.process.items.map((item, index) => ({
-  ...item,
-  icon: processIcons[index]
-})))
+function settleCardParticles(event: Event) {
+  const card = event.currentTarget as HTMLElement | null
+  const relatedTarget = 'relatedTarget' in event ? event.relatedTarget as Node | null : null
+  if (!card || (relatedTarget && card.contains(relatedTarget))) return
+  const particles = card.querySelectorAll<HTMLElement>('.kinetic-card-particle')
+  const planes = card.querySelectorAll<HTMLElement>('.kinetic-card-plane')
+  const orbit = card.querySelector<HTMLElement>('.kinetic-card-orbit')
+  const timeline = cardParticleTimelineByCard.get(card)
+  timeline?.kill()
+  if (timeline) cardParticleTimelines.delete(timeline)
+  cardParticleTimelineByCard.delete(card)
+  gsap.to(particles, {
+    x: 0,
+    y: 0,
+    scale: 1,
+    autoAlpha: index => 0.16 + ((index * 7) % 6) * 0.045,
+    duration: 0.34,
+    ease: 'power2.out',
+    overwrite: true,
+  })
+  gsap.to(planes, { x: 0, y: 0, duration: 0.34, ease: 'power2.out', overwrite: true })
+  gsap.to(orbit, { rotation: 0, duration: 0.34, ease: 'power2.out', overwrite: true })
+}
 
-function toggleTheme() {
-  isDark.value = !isDark.value
-  document.documentElement.classList.toggle('dark', isDark.value)
-  localStorage.setItem('theme', isDark.value ? 'dark' : 'light')
+async function animateActiveCard(index: number) {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+  const transitionToken = ++cardTransitionToken
+  await nextTick()
+  if (transitionToken !== cardTransitionToken) return
+  const card = pageRef.value?.querySelector<HTMLElement>(`.kinetic-card[data-card-index="${index}"]`)
+  if (!card) return
+  const topline = card.querySelector<HTMLElement>('.kinetic-card-topline')
+  const content = Array.from(card.querySelectorAll<HTMLElement>('.kinetic-card-content > *'))
+  const visual = card.querySelector<HTMLElement>('.kinetic-card-visual')
+
+  cardTransitionTimeline?.kill()
+  if (cardTransitionTarget) {
+    gsap.set(cardTransitionTarget.querySelectorAll('.kinetic-card-topline, .kinetic-card-content > *, .kinetic-card-visual'), {
+      clearProps: 'transform,opacity,visibility',
+    })
+  }
+  cardTransitionTarget = card
+  cardTransitionTimeline = gsap.timeline({ defaults: { ease: 'power3.out', overwrite: 'auto' } })
+    .fromTo(visual, { scale: 1.035, autoAlpha: 0.76 }, {
+      scale: 1,
+      autoAlpha: 1,
+      duration: 0.48,
+      clearProps: 'transform,opacity,visibility',
+    }, 0)
+    .fromTo(topline, { y: -4, autoAlpha: 0.45 }, {
+      y: 0,
+      autoAlpha: 1,
+      duration: 0.3,
+      clearProps: 'transform,opacity,visibility',
+    }, 0.06)
+    .fromTo(content, { y: 8, autoAlpha: 0.38 }, {
+      y: 0,
+      autoAlpha: 1,
+      duration: 0.34,
+      stagger: 0.04,
+      clearProps: 'transform,opacity,visibility',
+    }, 0.1)
 }
 
 function scrollToSection(id: SectionId) {
-  const target = document.getElementById(id)
-  if (!target) return
+  document.getElementById(id)?.scrollIntoView({
+    behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+    block: 'start'
+  })
+}
+
+function selectCard(index: number) {
+  const work = workSectionRef.value
+  activeCardIndex.value = index
+  deckPosition.value = index
+  targetDeckPosition = index
+  if (!work) return
+  const scrollSpan = Math.max(1, work.offsetHeight - window.innerHeight)
+  const destination = work.offsetTop + (index / Math.max(1, workCards.value.length - 1)) * scrollSpan
+  window.scrollTo({
+    top: destination,
+    behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
+  })
+}
+
+function scheduleDeckMotion() {
+  if (deckAnimationFrame) return
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  target.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' })
+  const update = () => {
+    const delta = targetDeckPosition - deckPosition.value
+    if (reduceMotion || Math.abs(delta) < 0.001) {
+      deckPosition.value = targetDeckPosition
+      activeCardIndex.value = Math.round(deckPosition.value)
+      deckAnimationFrame = 0
+      return
+    }
+    deckPosition.value += delta * 0.16
+    activeCardIndex.value = Math.round(deckPosition.value)
+    deckAnimationFrame = requestAnimationFrame(update)
+  }
+  deckAnimationFrame = requestAnimationFrame(update)
 }
 
 function updateScrollState() {
@@ -738,465 +679,1260 @@ function updateScrollState() {
   scrollFrame = requestAnimationFrame(() => {
     const scrollTop = window.scrollY || document.documentElement.scrollTop
     const scrollable = Math.max(document.documentElement.scrollHeight - window.innerHeight, 1)
-    isScrolled.value = scrollTop > 24
-    scrollProgress.value = Math.min(100, Math.max(0, (scrollTop / scrollable) * 100))
-    pageRef.value?.style.setProperty('--hero-parallax', `${Math.min(scrollTop * 0.045, 38)}px`)
+    scrollProgress.value = Math.min(100, Math.max(0, scrollTop / scrollable * 100))
+    const work = workSectionRef.value
+    if (work) {
+      const workSpan = Math.max(1, work.offsetHeight - window.innerHeight)
+      const local = Math.min(1, Math.max(0, (scrollTop - work.offsetTop) / workSpan))
+      targetDeckPosition = local * Math.max(0, workCards.value.length - 1)
+      scheduleDeckMotion()
+    }
   })
 }
 
-function initializeObservers() {
-  const sections = Array.from(document.querySelectorAll<HTMLElement>('[data-home-section]'))
-  sectionObserver = new IntersectionObserver((entries) => {
-    const visible = entries
-      .filter(entry => entry.isIntersecting)
-      .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0]
-    if (visible?.target.id) activeSection.value = visible.target.id as SectionId
-  }, {
-    rootMargin: '-22% 0px -58% 0px',
-    threshold: [0.05, 0.2, 0.45, 0.7]
-  })
-  sections.forEach(section => sectionObserver?.observe(section))
+function clearLoaderTimers() {
+  window.clearInterval(loaderTimer)
+  window.clearTimeout(loaderSafetyTimer)
+  window.clearTimeout(loaderHideTimer)
+  loaderTimer = 0
+  loaderSafetyTimer = 0
+  loaderHideTimer = 0
+}
 
-  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  const revealElements = Array.from(document.querySelectorAll<HTMLElement>('.reveal-on-scroll'))
-  if (reduceMotion) {
-    revealElements.forEach(element => element.classList.add('is-visible'))
+function beginLoader() {
+  clearLoaderTimers()
+  ambientEnabled.value = false
+  if (sceneReady.value) {
+    loaderProgress.value = 100
+    loaderVisible.value = false
+    ambientEnabled.value = true
     return
   }
-
-  revealObserver = new IntersectionObserver((entries, observer) => {
-    entries.forEach(entry => {
-      if (!entry.isIntersecting) return
-      entry.target.classList.add('is-visible')
-      observer.unobserve(entry.target)
-    })
-  }, { rootMargin: '0px 0px -12% 0px', threshold: 0.08 })
-  revealElements.forEach(element => revealObserver?.observe(element))
+  loaderVisible.value = true
+  loaderProgress.value = 4
+  loaderTimer = window.setInterval(() => {
+    loaderProgress.value = Math.min(94, loaderProgress.value + Math.max(1, (96 - loaderProgress.value) * 0.07))
+  }, 72)
+  loaderSafetyTimer = window.setTimeout(handleSceneReady, 17_500)
 }
 
-onMounted(() => {
-  isDark.value = document.documentElement.classList.contains('dark')
-  authStore.checkAuth()
-  if (!appStore.publicSettingsLoaded) appStore.fetchPublicSettings()
+function handleSceneReady() {
+  sceneReady.value = true
+  window.clearInterval(loaderTimer)
+  window.clearTimeout(loaderSafetyTimer)
+  loaderTimer = 0
+  loaderSafetyTimer = 0
+  loaderProgress.value = 100
+  loaderHideTimer = window.setTimeout(() => {
+    loaderVisible.value = false
+    ambientEnabled.value = true
+    heroIntroTimeline?.play(0)
+    if (homeMatchMedia) window.requestAnimationFrame(() => ScrollTrigger.refresh())
+    loaderHideTimer = 0
+  }, window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 280)
+}
 
-  if (!hasHomeContent.value && !compactHomeEnabled.value) {
-    initializeObservers()
-    updateScrollState()
-    window.addEventListener('scroll', updateScrollState, { passive: true })
-    window.addEventListener('resize', updateScrollState, { passive: true })
+function initializeMotion() {
+  const root = pageRef.value
+  if (!root) return
+  const sections = Array.from(root.querySelectorAll<HTMLElement>('[data-home-section]'))
+  if ('IntersectionObserver' in window) {
+    sectionObserver = new IntersectionObserver((entries) => {
+      const visible = entries.filter(entry => entry.isIntersecting).sort((a, b) => b.intersectionRatio - a.intersectionRatio)
+      if (visible[0]?.target.id) activeSection.value = visible[0].target.id as SectionId
+    }, { rootMargin: '-28% 0px -48% 0px', threshold: [0.05, 0.18, 0.42, 0.68] })
+    sections.forEach(section => sectionObserver?.observe(section))
   }
-})
 
-onBeforeUnmount(() => {
+  const reveals = Array.from(root.querySelectorAll<HTMLElement>('.kinetic-reveal'))
+  const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
+  if (motionQuery.matches || typeof motionQuery.addEventListener !== 'function') {
+    gsap.set(reveals, { autoAlpha: 1, y: 0 })
+    return
+  }
+  gsap.registerPlugin(ScrollTrigger)
+  homeMatchMedia = gsap.matchMedia()
+  homeMatchMedia.add('(prefers-reduced-motion: no-preference)', () => {
+    const hero = Array.from(root.querySelectorAll<HTMLElement>('.kinetic-hero .kinetic-reveal'))
+    heroIntroTimeline = gsap.timeline({ paused: true, defaults: { ease: 'power3.out' } })
+      .fromTo(hero, { autoAlpha: 0, y: 18 }, {
+        autoAlpha: 1,
+        y: 0,
+        duration: 0.72,
+        stagger: 0.075,
+      })
+    if (!loaderVisible.value) heroIntroTimeline.play(0)
+
+    sections.filter(section => section.id !== 'home').forEach((section) => {
+      const sectionReveals = Array.from(section.querySelectorAll<HTMLElement>('.kinetic-reveal'))
+      if (!sectionReveals.length) return
+      const timeline = gsap.timeline({ paused: true, defaults: { ease: 'power3.out' } })
+        .fromTo(sectionReveals, { autoAlpha: 0, y: 24 }, {
+          autoAlpha: 1,
+          y: 0,
+          duration: 0.58,
+          stagger: 0.07,
+        })
+      ScrollTrigger.create({
+        trigger: section,
+        start: 'top 82%',
+        end: 'bottom 16%',
+        animation: timeline,
+        toggleActions: 'play reverse play reverse',
+        fastScrollEnd: true,
+      })
+    })
+  }, root)
+}
+
+function cleanupMotion() {
   cancelAnimationFrame(scrollFrame)
+  cancelAnimationFrame(deckAnimationFrame)
+  deckAnimationFrame = 0
   window.removeEventListener('scroll', updateScrollState)
   window.removeEventListener('resize', updateScrollState)
   sectionObserver?.disconnect()
-  revealObserver?.disconnect()
+  sectionObserver = null
+  homeMatchMedia?.revert()
+  homeMatchMedia = null
+  heroIntroTimeline?.kill()
+  heroIntroTimeline = null
+  cardTransitionToken += 1
+  cardTransitionTimeline?.kill()
+  cardTransitionTimeline = null
+  if (cardTransitionTarget) {
+    gsap.set(cardTransitionTarget.querySelectorAll('.kinetic-card-topline, .kinetic-card-content > *, .kinetic-card-visual'), {
+      clearProps: 'transform,opacity,visibility',
+    })
+  }
+  cardTransitionTarget = null
+  cardParticleTimelines.forEach(timeline => timeline.kill())
+  cardParticleTimelines.clear()
+}
+
+async function syncHomeMode() {
+  cleanupMotion()
+  activeSection.value = 'home'
+  scrollProgress.value = 0
+  deckPosition.value = 0
+  targetDeckPosition = 0
+  activeCardIndex.value = 0
+  if (hasHomeContent.value || compactHomeEnabled.value) {
+    sceneReady.value = false
+    ambientEnabled.value = false
+    clearLoaderTimers()
+    loaderVisible.value = false
+    return
+  }
+  beginLoader()
+  await nextTick()
+  if (hasHomeContent.value || compactHomeEnabled.value) return
+  initializeMotion()
+  updateScrollState()
+  window.addEventListener('scroll', updateScrollState, { passive: true })
+  window.addEventListener('resize', updateScrollState, { passive: true })
+}
+
+watch([hasHomeContent, compactHomeEnabled], () => {
+  if (homeMounted) void syncHomeMode()
+})
+
+watch(activeCardIndex, (index, previousIndex) => {
+  if (index !== previousIndex) void animateActiveCard(index)
+})
+
+onMounted(() => {
+  homeMounted = true
+  isDark.value = document.documentElement.classList.contains('dark')
+  authStore.checkAuth()
+  if (!appStore.publicSettingsLoaded) appStore.fetchPublicSettings()
+  void syncHomeMode()
+})
+
+onBeforeUnmount(() => {
+  homeMounted = false
+  cleanupMotion()
+  clearLoaderTimers()
+  ambientEnabled.value = false
 })
 </script>
 
 <style scoped>
-.home-page {
-  --hero-parallax: 0px;
+.compact-home { background: var(--mr-canvas); color: var(--mr-text); }
+.compact-home-header { border-bottom: 1px solid var(--mr-border); background: color-mix(in srgb, var(--mr-surface) 78%, transparent); backdrop-filter: blur(18px) saturate(135%); }
+.compact-home-nav { display: flex; align-items: center; justify-content: space-between; gap: 16px; width: min(100% - 32px, 1180px); min-height: 64px; margin: 0 auto; }
+.compact-home-brand { display: inline-flex; min-width: 0; align-items: center; gap: 10px; color: var(--mr-text); font-size: 15px; font-weight: 650; }
+.compact-home-brand > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.compact-home-actions { display: flex; align-items: center; gap: 5px; }
+.compact-home-main { display: grid; min-height: min(70vh, 720px); place-items: center; padding: 64px 16px; }
+.compact-home-content { max-width: 580px; text-align: center; }
+.compact-home-content h1 { margin: 18px 0 10px; font-size: clamp(30px, 6vw, 48px); font-weight: 680; letter-spacing: -0.03em; }
+.compact-home-content p { margin: 0 auto 28px; max-width: 520px; color: var(--mr-text-muted); line-height: 1.7; white-space: pre-wrap; }
+.compact-home-logo { margin: 16px auto 0; }
+.compact-home-footer { padding: 20px 16px; border-top: 1px solid var(--mr-border); color: var(--mr-text-subtle); font-size: 12px; text-align: center; }
+.brand-mark { display: grid; width: 30px; height: 30px; flex: 0 0 auto; place-items: center; overflow: hidden; border: 1px solid var(--mr-primary-border); border-radius: 8px; background: var(--mr-primary); }
+.brand-mark-large { width: 64px; height: 64px; border-radius: 16px; }
+.brand-mark img { width: 100%; height: 100%; object-fit: contain; }
+.home-icon-button, .home-quiet-link { display: inline-flex; min-width: 36px; min-height: 36px; align-items: center; justify-content: center; gap: 6px; padding: 0 9px; border: 1px solid transparent; border-radius: 8px; color: var(--mr-text-muted); font-size: 12px; transition: color var(--motion-fast) var(--ease-standard), background-color var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard), transform var(--motion-fast) var(--ease-standard); }
+.home-icon-button:hover, .home-quiet-link:hover { border-color: var(--mr-border); color: var(--mr-text); background: var(--mr-surface-subtle); transform: translateY(-1px); }
+.home-solid-button, .home-primary-button { display: inline-flex; min-height: 38px; align-items: center; justify-content: center; gap: 7px; padding: 0 14px; border-radius: 8px; color: #fff; background: var(--mr-primary); font-size: 12px; font-weight: 650; transition: background-color var(--motion-fast) var(--ease-standard), transform var(--motion-fast) var(--ease-standard); }
+.home-solid-button:hover, .home-primary-button:hover { background: var(--mr-primary-strong); transform: translateY(-1px); }
+.home-overline { color: var(--mr-primary); font-size: 11px; font-weight: 700; letter-spacing: 0.14em; }
+
+.kinetic-home {
+  --kinetic-ink: #f5f7fb;
+  --kinetic-muted: rgba(226, 232, 240, 0.74);
+  --kinetic-dim: rgba(203, 213, 225, 0.48);
+  --kinetic-line: rgba(199, 210, 254, 0.2);
+  --kinetic-line-strong: rgba(165, 180, 252, 0.46);
+  --kinetic-teal: #22d3ee;
+  --kinetic-violet: #818cf8;
   position: relative;
+  width: 100%;
+  max-width: 100vw;
   min-height: 100vh;
   overflow: clip;
-  color: #0f172a;
-  background: #f7fafc;
-  font-family: "Noto Sans SC Variable", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  font-synthesis: none;
-  transition: color 300ms ease, background-color 300ms ease;
+  color: var(--kinetic-ink);
+  background: #4a4d44;
+  color-scheme: dark;
+  font-family: "Noto Sans SC", ui-sans-serif, system-ui, sans-serif;
+  isolation: isolate;
 }
-
-:global(.dark) .home-page {
-  color: #e2e8f0;
-  background: #030914;
-}
-
-.home-background {
-  position: absolute;
+.kinetic-world {
+  position: fixed;
   inset: 0;
   z-index: 0;
-  overflow: hidden;
+  contain: layout paint;
   pointer-events: none;
 }
-
-.home-grid {
-  position: absolute;
+.kinetic-ambient {
+  position: fixed;
   inset: 0;
-  background-image:
-    linear-gradient(rgba(15, 118, 110, 0.055) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(15, 118, 110, 0.055) 1px, transparent 1px);
-  background-size: 64px 64px;
-  mask-image: linear-gradient(to bottom, black 0%, rgba(0, 0, 0, 0.9) 48%, transparent 100%);
+  z-index: 2;
+  pointer-events: none;
 }
-
-:global(.dark) .home-grid {
-  background-image:
-    linear-gradient(rgba(45, 212, 191, 0.045) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(45, 212, 191, 0.045) 1px, transparent 1px);
+.kinetic-skip-link {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 120;
+  padding: 10px 14px;
+  color: #041012;
+  background: #eafff7;
+  font-size: 12px;
+  transform: translateY(-160%);
+  transition: transform var(--motion-fast) var(--ease-enter);
 }
-
-.home-glow {
-  position: absolute;
+.kinetic-skip-link:focus { transform: translateY(0); }
+.kinetic-header {
+  position: fixed;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 55;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: clamp(20px, 3vw, 42px) clamp(20px, 3.6vw, 58px);
+  pointer-events: none;
+}
+.kinetic-wordmark,
+.kinetic-top-nav {
+  pointer-events: auto;
+}
+.kinetic-wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--kinetic-ink);
+  opacity: 0.72;
+  text-align: left;
+  transition: opacity var(--motion-fast) var(--ease-standard), transform var(--motion-fast) var(--ease-standard);
+}
+.kinetic-wordmark:hover { opacity: 1; transform: translateY(-1px); }
+.kinetic-wordmark-mark {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--kinetic-line-strong);
+  border-radius: 50%;
+  font: 650 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.kinetic-wordmark-mark img { width: 100%; height: 100%; object-fit: contain; }
+.kinetic-wordmark-copy { display: flex; flex-direction: column; gap: 3px; }
+.kinetic-wordmark-copy strong { font: 620 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.08em; }
+.kinetic-wordmark-copy small { color: var(--kinetic-dim); font: 600 6px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.14em; }
+.kinetic-top-nav {
+  position: relative;
+  display: flex;
+  min-width: 194px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 0 17px;
+  border: 1px solid var(--kinetic-line);
   border-radius: 999px;
-  filter: blur(90px);
-  opacity: 0.38;
-  transform: translateY(var(--hero-parallax));
+  background: rgba(3, 9, 11, 0.7);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.05), 0 14px 34px rgba(0, 0, 0, 0.24);
+  backdrop-filter: blur(18px) saturate(120%);
 }
-.home-glow-one { right: -12%; top: -3%; width: 640px; height: 640px; background: rgba(14, 165, 233, 0.2); }
-.home-glow-two { left: -18%; top: 28%; width: 620px; height: 620px; background: rgba(20, 184, 166, 0.16); }
-.home-glow-three { right: 12%; top: 53%; width: 520px; height: 520px; background: rgba(139, 92, 246, 0.1); }
-:global(.dark) .home-glow-one { background: rgba(14, 165, 233, 0.15); opacity: 0.48; }
-:global(.dark) .home-glow-two { background: rgba(20, 184, 166, 0.13); opacity: 0.48; }
-:global(.dark) .home-glow-three { background: rgba(139, 92, 246, 0.1); opacity: 0.42; }
-
-.home-noise {
+.kinetic-top-nav a,
+.kinetic-top-nav button {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  color: var(--kinetic-muted);
+  font: 560 9px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  transition: color var(--motion-fast) var(--ease-standard);
+}
+.kinetic-top-nav a:hover,
+.kinetic-top-nav button:hover,
+.kinetic-top-nav button.is-current { color: #fff; }
+.kinetic-nav-signal {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 44px;
+  height: 10px;
+  overflow: hidden;
+}
+.kinetic-nav-signal::before {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  left: 0;
+  height: 1px;
+  background: var(--kinetic-line-strong);
+  content: '';
+}
+.kinetic-nav-signal i {
+  position: absolute;
+  top: 4px;
+  left: 0;
+  width: 18px;
+  height: 2px;
+  border-radius: 50%;
+  background: #dfffee;
+  filter: blur(0.2px) drop-shadow(0 0 4px rgba(159, 255, 223, 0.6));
+  animation: kinetic-signal 2.6s ease-in-out infinite;
+}
+@keyframes kinetic-signal {
+  0%, 100% { transform: translateX(0) scaleX(0.35); }
+  50% { transform: translateX(26px) scaleX(1); }
+}
+.kinetic-header button:focus-visible,
+.kinetic-header a:focus-visible,
+.kinetic-hero-actions a:focus-visible,
+.kinetic-card a:focus-visible,
+.kinetic-work-filter button:focus-visible,
+.kinetic-lab-shell a:focus-visible,
+.kinetic-contact a:focus-visible,
+.kinetic-footer a:focus-visible,
+.kinetic-footer button:focus-visible {
+  outline: 2px solid var(--kinetic-teal);
+  outline-offset: 4px;
+}
+.kinetic-section-index {
+  position: fixed;
+  top: 50%;
+  right: clamp(16px, 2.2vw, 36px);
+  z-index: 45;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  color: var(--kinetic-dim);
+  font: 560 7px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+.kinetic-section-index > i {
+  position: relative;
+  display: block;
+  width: 1px;
+  height: 62px;
+  background: var(--kinetic-line);
+}
+.kinetic-section-index b {
   position: absolute;
   inset: 0;
-  opacity: 0.018;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.7'/%3E%3C/svg%3E");
+  background: var(--kinetic-ink);
+  transform-origin: top;
 }
-
-.home-container { width: min(100% - 40px, 1280px); margin-inline: auto; }
-.home-section { position: relative; z-index: 1; scroll-margin-top: 104px; }
-
-.home-header {
+.kinetic-section {
+  position: relative;
+  z-index: 4;
+  min-height: 100svh;
+  pointer-events: none;
+}
+.kinetic-section > * { pointer-events: auto; }
+.kinetic-hero {
+  min-height: 112svh;
+}
+.kinetic-hero-copy {
+  position: absolute;
+  top: 22vh;
+  left: max(24px, 6vw);
+  width: min(620px, calc(100% - 48px));
+}
+.kinetic-hero-eyebrow {
+  display: block;
+  margin-bottom: 20px;
+  color: var(--kinetic-teal);
+  font: 620 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+.kinetic-hero-copy h1 {
+  max-width: 100%;
+  margin: 0;
+  color: var(--kinetic-ink);
+  font-size: 108px;
+  font-weight: 620;
+  line-height: 0.92;
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+.kinetic-hero-tagline {
+  margin: 26px 0 0;
+  color: var(--kinetic-ink);
+  font-size: 32px;
+  font-weight: 440;
+  line-height: 1.2;
+}
+.kinetic-hero-description {
+  max-width: 560px;
+  margin: 16px 0 0;
+  color: var(--kinetic-muted);
+  font-size: 16px;
+  line-height: 1.7;
+}
+.kinetic-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 28px;
+}
+.kinetic-hero-primary,
+.kinetic-hero-secondary {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 18px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 650;
+  transition: color var(--motion-fast) var(--ease-standard), background-color var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard), transform var(--motion-fast) var(--ease-standard);
+}
+.kinetic-hero-primary {
+  color: #fff;
+  background: var(--color-primary, #6366f1);
+}
+.kinetic-hero-primary:hover {
+  background: var(--color-primary-hover, #818cf8);
+  transform: translateY(-1px);
+}
+.kinetic-hero-secondary {
+  border-color: var(--kinetic-line-strong);
+  color: var(--kinetic-ink);
+  background: rgba(19, 23, 32, 0.72);
+}
+.kinetic-hero-secondary:hover {
+  border-color: var(--kinetic-teal);
+  background: rgba(25, 30, 40, 0.9);
+  transform: translateY(-1px);
+}
+.kinetic-hero-endpoint {
+  display: flex;
+  width: fit-content;
+  max-width: 100%;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-top: 20px;
+  color: var(--kinetic-muted);
+  font: 520 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  overflow-wrap: anywhere;
+}
+.kinetic-hero-endpoint span {
+  color: var(--kinetic-dim);
+}
+.kinetic-hero-meta {
+  position: absolute;
+  bottom: 6vh;
+  left: clamp(24px, 6vw, 96px);
+  width: min(300px, 30vw);
+}
+.kinetic-hero-meta > span,
+.kinetic-section-label,
+.kinetic-manifesto-copy > span,
+.kinetic-lab-copy > span {
+  color: var(--kinetic-dim);
+  font: 580 8px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.kinetic-hero-meta p {
+  margin: 10px 0 0;
+  color: var(--kinetic-muted);
+  font-size: 11px;
+  line-height: 1.65;
+}
+.kinetic-manifesto {
+  min-height: 138svh;
+}
+.kinetic-manifesto-sticky,
+.kinetic-work-sticky,
+.kinetic-lab-sticky {
   position: sticky;
   top: 0;
-  z-index: 50;
-  border-bottom: 1px solid transparent;
-  background: rgba(247, 250, 252, 0.7);
-  backdrop-filter: blur(18px) saturate(130%);
-  transition: border-color 220ms ease, background 220ms ease, box-shadow 220ms ease;
+  height: 100svh;
+  overflow: hidden;
 }
-
-:global(.dark) .home-header { background: rgba(3, 9, 20, 0.68); }
-.home-page-scrolled .home-header {
-  border-color: rgba(148, 163, 184, 0.2);
-  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.07);
-}
-:global(.dark) .home-page-scrolled .home-header {
-  border-color: rgba(51, 65, 85, 0.62);
-  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.32);
-}
-
-.home-scroll-progress {
+.kinetic-manifesto-wash {
   position: absolute;
-  left: 0;
-  bottom: -1px;
-  height: 2px;
-  background: linear-gradient(90deg, #14b8a6, #38bdf8, #8b5cf6);
-  box-shadow: 0 0 12px rgba(20, 184, 166, 0.65);
-  transition: width 70ms linear;
+  inset: 0;
+  background: transparent;
+  box-shadow: none;
+  pointer-events: none;
 }
-
-.home-navbar {
+.kinetic-manifesto-layout {
+  position: absolute;
+  right: clamp(48px, 8vw, 138px);
+  bottom: clamp(54px, 8vh, 100px);
+  left: clamp(38px, 8vw, 138px);
   display: grid;
-  grid-template-columns: minmax(170px, 1fr) auto minmax(220px, 1fr);
+  grid-template-columns: minmax(0, 1.24fr) minmax(270px, 0.56fr);
+  align-items: end;
+  gap: clamp(44px, 7vw, 112px);
+}
+.kinetic-manifesto-heading h1 {
+  position: relative;
+  max-width: 820px;
+  margin: 24px 0 0;
+  color: #eff6f1;
+  font-family: "Noto Sans SC", ui-sans-serif, system-ui, sans-serif;
+  font-size: 96px;
+  font-weight: 560;
+  line-height: 0.98;
+  letter-spacing: 0;
+  text-wrap: balance;
+  text-shadow: 0 14px 44px rgba(0, 0, 0, 0.24);
+}
+.kinetic-manifesto-heading h1 span {
+  display: block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.kinetic-manifesto-heading h1 span:nth-child(2) {
+  color: #b9f3da;
+}
+.kinetic-manifesto-copy {
+  max-width: 380px;
+  padding-bottom: 2vh;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.kinetic-manifesto-copy p {
+  margin: 18px 0 0;
+  color: var(--kinetic-muted);
+  font-size: clamp(10px, 0.9vw, 13px);
+  line-height: 1.62;
+}
+.kinetic-manifesto-copy code {
+  display: block;
+  overflow: hidden;
+  margin-top: 24px;
+  padding-top: 14px;
+  border-top: 1px solid var(--kinetic-line);
+  color: rgba(151, 235, 217, 0.62);
+  font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kinetic-work {
+  min-height: 460svh;
+}
+.kinetic-work-heading {
+  position: absolute;
+  top: clamp(88px, 12vh, 138px);
+  left: clamp(28px, 4.8vw, 78px);
+  z-index: 140;
+}
+.kinetic-work-heading h2 {
+  margin: 9px 0 0;
+  color: var(--kinetic-ink);
+  font: 470 clamp(22px, 2.5vw, 40px)/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+.kinetic-deck {
+  position: absolute;
+  inset: 0;
+  perspective: 1300px;
+  transform-style: preserve-3d;
+}
+.kinetic-card {
+  --card-accent: 129, 140, 248;
+  --card-secondary: 34, 211, 238;
+  --deck-x: 0vw;
+  --deck-y: 0vh;
+  --deck-z: 0px;
+  --deck-ry: 0deg;
+  --deck-rz: 0deg;
+  --deck-scale: 1;
+  --deck-opacity: 1;
+  --deck-order: 100;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: var(--deck-order);
+  display: flex;
+  width: min(46vw, 640px);
+  height: min(54vh, 530px);
+  min-height: 370px;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow: hidden;
+  padding: clamp(20px, 2.4vw, 34px);
+  border: 1px solid rgba(199, 210, 254, 0.28);
+  border-radius: 16px;
+  color: #f5fbf8;
+  background: rgba(11, 13, 18, 0.9);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.08), 0 24px 58px rgba(0, 0, 0, 0.28);
+  opacity: var(--deck-opacity);
+  transform: translate3d(calc(-50% + var(--deck-x)), calc(-50% + var(--deck-y)), var(--deck-z)) rotateY(var(--deck-ry)) rotateZ(var(--deck-rz)) scale(var(--deck-scale));
+  transform-style: preserve-3d;
+  transition: border-color var(--motion-base) var(--ease-standard), box-shadow var(--motion-base) var(--ease-standard);
+  will-change: transform, opacity;
+}
+.kinetic-card::before {
+  position: absolute;
+  inset: 34% 0 0;
+  z-index: 1;
+  background: linear-gradient(180deg, transparent, rgba(7, 9, 13, 0.54) 34%, rgba(7, 9, 13, 0.96));
+  content: '';
+  pointer-events: none;
+}
+.kinetic-card::after {
+  position: absolute;
+  inset: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.045);
+  border-radius: 10px;
+  content: '';
+  pointer-events: none;
+}
+.kinetic-card.is-active {
+  border-color: rgba(165, 180, 252, 0.62);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.12), 0 28px 70px rgba(0, 0, 0, 0.34);
+}
+.kinetic-card-visual {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 53% 36%, rgba(var(--card-accent), 0.38), transparent 24%),
+    radial-gradient(circle at 16% 84%, rgba(var(--card-secondary), 0.3), transparent 38%),
+    radial-gradient(circle at 88% 72%, rgba(var(--card-accent), 0.14), transparent 30%),
+    #0b0d12;
+}
+.kinetic-card-routing { --card-accent: 99, 102, 241; --card-secondary: 34, 211, 238; }
+.kinetic-card-signals { --card-accent: 34, 211, 238; --card-secondary: 129, 140, 248; }
+.kinetic-card-learning { --card-accent: 74, 222, 128; --card-secondary: 129, 140, 248; }
+.kinetic-card-control { --card-accent: 129, 140, 248; --card-secondary: 94, 234, 212; }
+.kinetic-card-plane {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: block;
+  border: 1px solid rgba(220, 250, 240, 0.38);
+  background: rgba(var(--card-accent), 0.07);
+  box-shadow: inset 0 0 24px rgba(var(--card-secondary), 0.06);
+  transform-style: preserve-3d;
+}
+.kinetic-card-plane-one {
+  width: 46%;
+  height: 62%;
+  transform: translate(-76%, -53%) rotate(-16deg) skewY(8deg);
+}
+.kinetic-card-plane-two {
+  width: 52%;
+  height: 52%;
+  transform: translate(-14%, -44%) rotate(19deg) skewX(-9deg);
+}
+.kinetic-card-plane-three {
+  width: 20%;
+  height: 86%;
+  background: rgba(161, 128, 255, 0.12);
+  transform: translate(-50%, -52%) rotate(42deg);
+}
+.kinetic-card-orbit {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: block;
+  width: 34%;
+  aspect-ratio: 1;
+  border: 2px solid rgba(239, 255, 247, 0.56);
+  border-radius: 50%;
+  box-shadow: 0 0 0 9px rgba(111, 222, 211, 0.06), 0 0 42px rgba(151, 255, 231, 0.18);
+  transform: translate(-50%, -50%);
+}
+.kinetic-card-scan {
+  position: absolute;
+  right: -20%;
+  bottom: 17%;
+  left: -20%;
+  height: 1px;
+  background: rgba(239, 255, 248, 0.68);
+  box-shadow: 0 0 18px rgba(128, 255, 226, 0.46);
+  transform: rotate(-9deg);
+}
+.kinetic-card-particles {
+  position: absolute;
+  inset: 0;
+  display: block;
+  pointer-events: none;
+}
+.kinetic-card-particle {
+  position: absolute;
+  top: var(--particle-top);
+  left: var(--particle-left);
+  display: block;
+  width: var(--particle-size);
+  height: var(--particle-size);
+  border-radius: 50%;
+  opacity: var(--particle-alpha);
+  background: rgb(var(--card-accent));
+  box-shadow: 0 0 8px rgba(var(--card-accent), 0.7);
+  will-change: transform, opacity;
+}
+.kinetic-card-topline,
+.kinetic-card-content {
+  position: relative;
+  z-index: 2;
+}
+.kinetic-card-topline {
+  display: flex;
+  justify-content: space-between;
+  color: rgba(235, 248, 242, 0.62);
+  font: 560 8px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.1em;
+}
+.kinetic-card-content {
+  display: flex;
+  max-width: 82%;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 0;
+}
+.kinetic-card-content h3 {
+  margin: 0;
+  font: 540 clamp(30px, 3.7vw, 54px)/0.96 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+.kinetic-card-content p {
+  margin: 15px 0 0;
+  color: rgba(226, 232, 240, 0.76);
+  font-size: 12px;
+  line-height: 1.62;
+}
+.kinetic-card-content a {
+  display: inline-flex;
   align-items: center;
-  gap: 24px;
-  width: min(100% - 40px, 1280px);
-  min-height: 72px;
-  margin-inline: auto;
+  gap: 8px;
+  margin-top: 18px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(235, 249, 242, 0.42);
+  color: #f4fbf7;
+  font: 560 8px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.07em;
+}
+.kinetic-work-filter {
+  position: absolute;
+  bottom: clamp(28px, 5vh, 64px);
+  left: clamp(28px, 4.8vw, 78px);
+  z-index: 145;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 9px;
+}
+.kinetic-work-filter > span {
+  margin-bottom: 4px;
+  color: var(--kinetic-dim);
+  font: 560 7px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+.kinetic-work-filter button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: rgba(213, 231, 222, 0.46);
+  font: 540 8px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  text-transform: uppercase;
+  transition: color var(--motion-fast) var(--ease-standard), transform var(--motion-fast) var(--ease-standard);
+}
+.kinetic-work-filter button i {
+  width: 10px;
+  height: 1px;
+  background: currentColor;
+}
+.kinetic-work-filter button:hover,
+.kinetic-work-filter button.is-active { color: #f4fbf7; transform: translateX(2px); }
+.kinetic-deck-progress {
+  position: absolute;
+  right: clamp(52px, 7vw, 110px);
+  bottom: clamp(30px, 5vh, 66px);
+  z-index: 145;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--kinetic-dim);
+  font: 560 7px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.kinetic-deck-progress > i {
+  position: relative;
+  display: block;
+  width: 86px;
+  height: 1px;
+  background: var(--kinetic-line);
+}
+.kinetic-deck-progress b {
+  position: absolute;
+  inset: 0;
+  background: #eefaf5;
+  transform-origin: left;
+}
+.kinetic-lab {
+  min-height: 146svh;
+}
+.kinetic-lab-sticky::before {
+  position: absolute;
+  inset: 0;
+  background: transparent;
+  box-shadow: none;
+  content: '';
+  pointer-events: none;
+}
+.kinetic-lab-shell {
+  position: absolute;
+  top: 51%;
+  right: 0;
+  left: 0;
+  display: grid;
+  width: 100%;
+  min-height: 430px;
+  grid-template-columns: minmax(0, 1.18fr) minmax(150px, 0.44fr) minmax(260px, 0.72fr);
+  align-items: center;
+  gap: clamp(32px, 5vw, 78px);
+  padding: clamp(42px, 5vw, 72px) max(56px, calc((100vw - 1180px) / 2 + 56px));
+  color: #eff8f3;
+  background: transparent;
+  transform: translateY(-50%);
+  isolation: isolate;
+}
+.kinetic-lab-heading {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 150px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0;
+}
+.kinetic-lab-heading > .kinetic-section-label {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+.kinetic-lab-title-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: clamp(18px, 2.6vw, 36px);
+}
+.kinetic-lab-mark {
+  display: grid;
+  width: 76px;
+  flex: 0 0 auto;
+  aspect-ratio: 1;
+  place-items: center;
+  border: 1px solid rgba(239, 255, 247, 0.56);
+  border-radius: 50%;
+  box-shadow: 0 0 0 8px rgba(151, 247, 222, 0.04);
+  font: 560 24px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.kinetic-lab-shell h2 {
+  min-width: 0;
+  margin: 0;
+  font-family: "Noto Sans SC", ui-sans-serif, system-ui, sans-serif;
+  font-size: 58px;
+  font-weight: 560;
+  line-height: 1;
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+}
+.kinetic-lab-route {
+  position: relative;
+  width: 100%;
+  height: 150px;
+}
+.kinetic-lab-route::before,
+.kinetic-lab-route::after {
+  position: absolute;
+  left: 50%;
+  width: 1px;
+  height: 34%;
+  background: rgba(197, 241, 224, 0.18);
+  content: '';
+  transform: translateX(-50%);
+}
+.kinetic-lab-route::before { top: 0; }
+.kinetic-lab-route::after { bottom: 0; }
+.kinetic-lab-route-line {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  left: 0;
+  height: 1px;
+  background: rgba(209, 249, 233, 0.38);
+}
+.kinetic-lab-route-node {
+  position: absolute;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  border: 1px solid rgba(218, 255, 239, 0.68);
+  border-radius: 50%;
+  background: #12372d;
+  transform: translate(-50%, -50%);
+}
+.kinetic-lab-route-node-start { left: 0; }
+.kinetic-lab-route-node-middle { left: 28%; }
+.kinetic-lab-route-node-end { left: 100%; }
+.kinetic-lab-route strong {
+  position: absolute;
+  top: 50%;
+  left: 58%;
+  display: grid;
+  width: 58px;
+  aspect-ratio: 1;
+  place-items: center;
+  border: 1px solid rgba(229, 255, 242, 0.58);
+  border-radius: 50%;
+  color: #e9fff4;
+  background: rgba(16, 56, 45, 0.74);
+  box-shadow: 0 0 0 8px rgba(112, 230, 190, 0.05);
+  font: 600 17px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  transform: translate(-50%, -50%);
+}
+.kinetic-lab-copy { max-width: 340px; }
+.kinetic-lab-copy p {
+  margin: 15px 0 0;
+  color: var(--kinetic-muted);
+  font-size: 13px;
+  line-height: 1.68;
+}
+.kinetic-lab-copy a {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 18px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--kinetic-line-strong);
+  color: var(--kinetic-ink);
+  font: 560 9px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.kinetic-contact {
+  display: flex;
+  min-height: 112svh;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+.kinetic-contact::before {
+  position: absolute;
+  inset: 0;
+  background: transparent;
+  content: '';
+  pointer-events: none;
+}
+.kinetic-contact-content {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  max-width: 1140px;
+  flex-direction: column;
+  align-items: center;
+  padding: 100px 28px;
+}
+.kinetic-contact-content h2 {
+  margin: 24px 0 0;
+  font: 470 clamp(62px, 9.2vw, 152px)/0.78 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+.kinetic-contact-content h2 span { display: block; }
+.kinetic-contact-content h2 span:last-child { color: transparent; -webkit-text-stroke: 1px rgba(235, 249, 242, 0.75); }
+.kinetic-contact-content p {
+  max-width: 520px;
+  margin: 32px 0 0;
+  color: var(--kinetic-muted);
+  font-size: 13px;
+  line-height: 1.65;
+}
+.kinetic-primary-cta {
+  position: relative;
+  display: inline-flex;
+  width: 132px;
+  height: 132px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 32px;
+  border: 1px solid var(--kinetic-line-strong);
+  border-radius: 50%;
+  color: #f3fbf7;
+  background: rgba(3, 10, 12, 0.54);
+  font: 570 9px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+  backdrop-filter: blur(15px);
+  transition: border-color var(--motion-base) var(--ease-standard), background-color var(--motion-base) var(--ease-standard), transform var(--motion-base) var(--ease-enter);
+}
+.kinetic-primary-cta::before {
+  position: absolute;
+  inset: 8px;
+  border: 1px solid rgba(119, 231, 215, 0.28);
+  border-radius: inherit;
+  content: '';
+  transition: transform var(--motion-slow) var(--ease-enter);
+}
+.kinetic-primary-cta:hover { border-color: var(--kinetic-teal); background: rgba(30, 94, 91, 0.56); transform: rotate(-4deg) scale(1.025); }
+.kinetic-primary-cta:hover::before { transform: rotate(24deg); }
+.kinetic-footer {
+  position: absolute;
+  right: clamp(24px, 3.6vw, 58px);
+  bottom: 28px;
+  left: clamp(24px, 3.6vw, 58px);
+  z-index: 30;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 28px;
+  padding-top: 15px;
+  border-top: 1px solid var(--kinetic-line);
+  color: var(--kinetic-dim);
+  font: 550 7px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.08em;
+  text-align: left;
+}
+.kinetic-footer > span:last-child { text-align: right; }
+.kinetic-footer-links {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+.kinetic-footer-links a,
+.kinetic-footer-links button { color: var(--kinetic-muted); transition: color var(--motion-fast) var(--ease-standard); }
+.kinetic-footer-links a:hover,
+.kinetic-footer-links button:hover { color: #fff; }
+.kinetic-loader {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-content: center;
+  color: #eef7f2;
+  background: #26332d;
+  contain: layout paint style;
+  pointer-events: none;
+}
+.kinetic-loader-shell {
+  display: grid;
+  width: min(330px, calc(100vw - 48px));
+  grid-template-columns: 52px minmax(0, 1fr);
+  align-items: center;
+  gap: 17px;
+}
+.kinetic-loader-mark {
+  display: grid;
+  width: 52px;
+  height: 52px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid rgba(226, 232, 240, 0.36);
+  border-radius: 50%;
+  background: rgba(11, 13, 18, 0.62);
+  font: 650 15px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.kinetic-loader-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.kinetic-loader-status {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: rgba(226, 232, 240, 0.68);
+  font: 560 10px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.kinetic-loader-status > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kinetic-loader-status strong {
+  color: #f5f7fb;
+  font-size: 13px;
+  font-weight: 620;
+}
+.kinetic-loader-track {
+  position: relative;
+  display: block;
+  height: 3px;
+  grid-column: 2;
+  overflow: hidden;
+  background: rgba(226, 232, 240, 0.16);
+}
+.kinetic-loader-track b {
+  position: absolute;
+  inset: 0;
+  background: #a5b4fc;
+  transform-origin: left;
+  transition: transform 100ms linear;
+}
+.kinetic-loader-enter-active,
+.kinetic-loader-leave-active { transition: opacity 280ms var(--ease-standard); }
+.kinetic-loader-enter-from,
+.kinetic-loader-leave-to { opacity: 0; }
+
+@media (max-width: 1120px) {
+  .kinetic-lab-shell {
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 0.62fr);
+    padding-right: 34px;
+    padding-left: 34px;
+  }
+  .kinetic-lab-route { display: none; }
 }
 
-.home-brand { display: inline-flex; width: fit-content; align-items: center; gap: 10px; text-align: left; }
-.home-brand-logo { display: grid; width: 38px; height: 38px; flex: 0 0 auto; place-items: center; overflow: hidden; border-radius: 12px; background: linear-gradient(145deg, #0f766e, #0369a1); box-shadow: 0 8px 22px rgba(13, 148, 136, 0.24); }
-.home-brand-logo img { width: 100%; height: 100%; object-fit: contain; }
-.home-brand-name { max-width: 180px; overflow: hidden; color: #0f172a; font-size: 17px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
-:global(.dark) .home-brand-name { color: #f8fafc; }
-
-.home-nav-links { display: flex; align-items: center; justify-content: center; gap: 2px; }
-.home-nav-link { position: relative; padding: 11px 13px; color: #64748b; font-size: 13px; font-weight: 600; transition: color 180ms ease; }
-.home-nav-link::after { content: ''; position: absolute; right: 14px; bottom: 2px; left: 14px; height: 2px; border-radius: 99px; background: linear-gradient(90deg, #14b8a6, #38bdf8); transform: scaleX(0); transition: transform 220ms ease; }
-.home-nav-link:hover, .home-nav-link.is-active { color: #0f766e; }
-.home-nav-link.is-active::after { transform: scaleX(1); }
-:global(.dark) .home-nav-link { color: #94a3b8; }
-:global(.dark) .home-nav-link:hover, :global(.dark) .home-nav-link.is-active { color: #5eead4; }
-
-.home-nav-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
-.home-icon-button { display: grid; width: 34px; height: 34px; place-items: center; border: 1px solid transparent; border-radius: 10px; color: #64748b; transition: all 180ms ease; }
-.home-icon-button:hover { border-color: rgba(13, 148, 136, 0.18); color: #0f766e; background: rgba(255, 255, 255, 0.7); }
-:global(.dark) .home-icon-button { color: #94a3b8; }
-:global(.dark) .home-icon-button:hover { border-color: rgba(45, 212, 191, 0.18); color: #5eead4; background: rgba(15, 23, 42, 0.72); }
-
-.home-login-button { display: inline-flex; min-height: 34px; align-items: center; gap: 7px; padding: 6px 12px; border: 1px solid rgba(13, 148, 136, 0.2); border-radius: 10px; color: white; background: linear-gradient(135deg, #0f766e, #0d9488); box-shadow: 0 7px 20px rgba(13, 148, 136, 0.2); font-size: 12px; font-weight: 600; transition: transform 180ms ease, box-shadow 180ms ease; }
-.home-login-button:hover { transform: translateY(-1px); box-shadow: 0 10px 26px rgba(13, 148, 136, 0.28); }
-.home-user-avatar { display: grid; width: 21px; height: 21px; place-items: center; border-radius: 7px; color: #0f766e; background: rgba(255, 255, 255, 0.9); font-size: 10px; }
-
-.hero-section { min-height: 920px; padding: 76px 0 56px; }
-.hero-layout { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(520px, 1.1fr); align-items: center; gap: 58px; }
-.hero-copy { position: relative; z-index: 3; }
-.hero-eyebrow { display: inline-flex; align-items: center; gap: 9px; margin-bottom: 22px; padding: 7px 12px; border: 1px solid rgba(13, 148, 136, 0.16); border-radius: 999px; color: #0f766e; background: rgba(255, 255, 255, 0.58); box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05); font-size: 12px; font-weight: 600; backdrop-filter: blur(10px); }
-:global(.dark) .hero-eyebrow { border-color: rgba(45, 212, 191, 0.18); color: #5eead4; background: rgba(15, 23, 42, 0.54); }
-.hero-eyebrow-dot { width: 7px; height: 7px; border-radius: 50%; background: #10b981; box-shadow: 0 0 10px #10b981; animation: home-pulse 1.8s ease-in-out infinite; }
-.hero-title { display: flex; flex-wrap: wrap; gap: 0 15px; margin: 0; color: #0f172a; font-size: clamp(48px, 5.4vw, 78px); font-weight: 800; letter-spacing: -0.035em; line-height: 1.08; }
-:global(.dark) .hero-title { color: #f8fafc; }
-.hero-title-gradient { color: transparent; background: linear-gradient(105deg, #0f766e 10%, #14b8a6 52%, #0284c7 96%); background-clip: text; -webkit-background-clip: text; }
-:global(.dark) .hero-title-gradient { background-image: linear-gradient(105deg, #2dd4bf 8%, #67e8f9 56%, #60a5fa 96%); }
-.hero-subtitle { max-width: 650px; margin: 23px 0 0; color: #334155; font-size: clamp(21px, 2vw, 29px); font-weight: 600; letter-spacing: -0.01em; line-height: 1.42; }
-:global(.dark) .hero-subtitle { color: #cbd5e1; }
-.hero-description { max-width: 620px; margin: 17px 0 0; color: #64748b; font-size: 15px; line-height: 1.9; }
-:global(.dark) .hero-description { color: #94a3b8; }
-
-.hero-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 32px; }
-.home-primary-button, .home-secondary-button, .home-text-button { display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-height: 48px; border-radius: 13px; font-size: 14px; font-weight: 700; transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease, background 180ms ease; }
-.home-primary-button { padding: 10px 17px 10px 21px; color: white; background: linear-gradient(135deg, #0f766e, #14b8a6); box-shadow: 0 12px 30px rgba(13, 148, 136, 0.28); }
-.home-primary-button:hover { transform: translateY(-2px); box-shadow: 0 16px 38px rgba(13, 148, 136, 0.36); }
-.button-arrow { display: grid; width: 29px; height: 29px; place-items: center; border-radius: 9px; background: rgba(255, 255, 255, 0.15); }
-.home-secondary-button { padding: 10px 20px; border: 1px solid rgba(13, 148, 136, 0.2); color: #0f766e; background: rgba(255, 255, 255, 0.62); backdrop-filter: blur(10px); }
-.home-secondary-button:hover { transform: translateY(-2px); border-color: rgba(13, 148, 136, 0.38); background: rgba(255, 255, 255, 0.9); }
-:global(.dark) .home-secondary-button { border-color: rgba(45, 212, 191, 0.2); color: #99f6e4; background: rgba(15, 23, 42, 0.62); }
-:global(.dark) .home-secondary-button:hover { border-color: rgba(45, 212, 191, 0.4); background: rgba(15, 23, 42, 0.86); }
-.home-text-button { min-height: 42px; padding: 8px 10px; color: #64748b; }
-.home-text-button:hover { color: #0f766e; }
-:global(.dark) .home-text-button { color: #94a3b8; }
-:global(.dark) .home-text-button:hover { color: #5eead4; }
-
-.hero-trust { display: flex; flex-wrap: wrap; gap: 20px; margin-top: 25px; color: #64748b; font-size: 12px; }
-.hero-trust span { display: inline-flex; align-items: center; gap: 7px; }
-.hero-trust i { width: 18px; height: 18px; border: 1px solid rgba(16, 185, 129, 0.24); border-radius: 50%; background: radial-gradient(circle, rgba(16, 185, 129, 0.24), transparent 68%); }
-.hero-trust i::after { content: '✓'; display: grid; place-items: center; color: #059669; font-size: 10px; }
-:global(.dark) .hero-trust { color: #94a3b8; }
-.hero-scene-wrap { min-width: 0; }
-
-.quick-service-wrap { margin-top: 38px; }
-.quick-service-bar { display: flex; width: fit-content; max-width: 100%; margin-inline: auto; overflow-x: auto; border: 1px solid rgba(148, 163, 184, 0.18); border-radius: 999px; background: rgba(255, 255, 255, 0.66); box-shadow: 0 14px 38px rgba(15, 23, 42, 0.08); backdrop-filter: blur(16px); scrollbar-width: none; }
-.quick-service-bar::-webkit-scrollbar { display: none; }
-:global(.dark) .quick-service-bar { border-color: rgba(51, 65, 85, 0.62); background: rgba(9, 18, 33, 0.72); box-shadow: 0 18px 44px rgba(0, 0, 0, 0.28); }
-.quick-service-item { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 9px; padding: 11px 20px; color: #475569; font-size: 12px; font-weight: 600; transition: color 180ms ease, background 180ms ease; }
-.quick-service-item + .quick-service-item { border-left: 1px solid rgba(148, 163, 184, 0.16); }
-.quick-service-item span { display: grid; width: 28px; height: 28px; place-items: center; border-radius: 9px; color: #0f766e; background: rgba(20, 184, 166, 0.12); }
-.quick-service-item[data-tone='blue'] span { color: #2563eb; background: rgba(59, 130, 246, 0.12); }
-.quick-service-item[data-tone='violet'] span { color: #7c3aed; background: rgba(139, 92, 246, 0.12); }
-.quick-service-item[data-tone='cyan'] span { color: #0891b2; background: rgba(6, 182, 212, 0.12); }
-.quick-service-item[data-tone='amber'] span { color: #d97706; background: rgba(245, 158, 11, 0.12); }
-.quick-service-item:hover { color: #0f766e; background: rgba(20, 184, 166, 0.06); }
-:global(.dark) .quick-service-item { color: #cbd5e1; }
-:global(.dark) .quick-service-item:hover { color: #5eead4; background: rgba(20, 184, 166, 0.07); }
-
-.services-section, .solutions-section, .process-section, .advertising-section, .contact-section { padding: 110px 0; }
-.section-heading { max-width: 720px; margin: 0 auto 54px; text-align: center; }
-.section-kicker { display: inline-block; margin-bottom: 12px; color: #0d9488; font-size: 11px; font-weight: 800; letter-spacing: 0.16em; }
-:global(.dark) .section-kicker { color: #5eead4; }
-.section-heading h2, .solutions-copy h2, .ad-copy h2, .contact-panel h2 { margin: 0; color: #0f172a; font-size: clamp(34px, 4vw, 52px); font-weight: 800; letter-spacing: -0.04em; line-height: 1.14; }
-:global(.dark) .section-heading h2, :global(.dark) .solutions-copy h2, :global(.dark) .ad-copy h2, :global(.dark) .contact-panel h2 { color: #f8fafc; }
-.section-heading p, .solutions-copy > p, .contact-panel p { margin: 17px 0 0; color: #64748b; font-size: 15px; line-height: 1.85; }
-:global(.dark) .section-heading p, :global(.dark) .solutions-copy > p, :global(.dark) .contact-panel p { color: #94a3b8; }
-
-.service-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; }
-.service-card { position: relative; min-height: 328px; overflow: hidden; padding: 28px 23px 24px; border: 1px solid rgba(148, 163, 184, 0.18); border-radius: 22px; background: linear-gradient(155deg, rgba(255, 255, 255, 0.78), rgba(248, 250, 252, 0.56)); box-shadow: 0 18px 50px rgba(15, 23, 42, 0.07); backdrop-filter: blur(14px); transition: transform 260ms ease, border-color 260ms ease, box-shadow 260ms ease; }
-.service-card:hover, .service-card:focus-visible { transform: translateY(-8px); border-color: rgba(20, 184, 166, 0.34); box-shadow: 0 24px 64px rgba(13, 148, 136, 0.14); outline: none; }
-:global(.dark) .service-card { border-color: rgba(51, 65, 85, 0.68); background: linear-gradient(155deg, rgba(13, 25, 43, 0.84), rgba(5, 14, 28, 0.72)); box-shadow: 0 20px 58px rgba(0, 0, 0, 0.25); }
-:global(.dark) .service-card:hover, :global(.dark) .service-card:focus-visible { border-color: rgba(45, 212, 191, 0.3); box-shadow: 0 28px 72px rgba(0, 0, 0, 0.34), 0 0 34px rgba(20, 184, 166, 0.08); }
-.service-card-topline { position: absolute; top: 0; right: 20%; left: 20%; height: 2px; background: linear-gradient(90deg, transparent, #14b8a6, transparent); opacity: 0.65; }
-.service-card[data-tone='blue'] .service-card-topline { background: linear-gradient(90deg, transparent, #3b82f6, transparent); }
-.service-card[data-tone='violet'] .service-card-topline { background: linear-gradient(90deg, transparent, #8b5cf6, transparent); }
-.service-card[data-tone='cyan'] .service-card-topline { background: linear-gradient(90deg, transparent, #06b6d4, transparent); }
-.service-card[data-tone='amber'] .service-card-topline { background: linear-gradient(90deg, transparent, #f59e0b, transparent); }
-.service-icon-wrap { position: relative; display: grid; width: 58px; height: 58px; place-items: center; margin-bottom: 28px; border-radius: 18px; color: #0f766e; background: linear-gradient(145deg, rgba(20, 184, 166, 0.18), rgba(13, 148, 136, 0.08)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), 0 12px 28px rgba(13, 148, 136, 0.14); }
-.service-card[data-tone='blue'] .service-icon-wrap { color: #2563eb; background: linear-gradient(145deg, rgba(59, 130, 246, 0.18), rgba(37, 99, 235, 0.08)); }
-.service-card[data-tone='violet'] .service-icon-wrap { color: #7c3aed; background: linear-gradient(145deg, rgba(139, 92, 246, 0.18), rgba(124, 58, 237, 0.08)); }
-.service-card[data-tone='cyan'] .service-icon-wrap { color: #0891b2; background: linear-gradient(145deg, rgba(6, 182, 212, 0.18), rgba(8, 145, 178, 0.08)); }
-.service-card[data-tone='amber'] .service-icon-wrap { color: #d97706; background: linear-gradient(145deg, rgba(245, 158, 11, 0.18), rgba(217, 119, 6, 0.08)); }
-.service-icon-orbit { position: absolute; inset: -8px; border: 1px dashed currentColor; border-radius: 20px; opacity: 0.18; transition: transform 700ms ease; }
-.service-card:hover .service-icon-orbit { transform: rotate(135deg); }
-.service-number { position: absolute; top: 28px; right: 22px; color: rgba(100, 116, 139, 0.45); font-size: 11px; font-weight: 800; letter-spacing: 0.12em; }
-.service-card h3 { margin: 0; color: #0f172a; font-size: 18px; font-weight: 700; }
-:global(.dark) .service-card h3 { color: #f8fafc; }
-.service-card p { margin: 13px 0 24px; color: #64748b; font-size: 13px; line-height: 1.78; }
-:global(.dark) .service-card p { color: #94a3b8; }
-.service-link { position: absolute; left: 23px; bottom: 22px; display: inline-flex; align-items: center; gap: 7px; color: #0f766e; font-size: 12px; font-weight: 700; }
-:global(.dark) .service-link { color: #5eead4; }
-.service-link:hover { gap: 10px; }
-
-.solutions-section { background: linear-gradient(180deg, transparent, rgba(20, 184, 166, 0.045), transparent); }
-:global(.dark) .solutions-section { background: linear-gradient(180deg, transparent, rgba(20, 184, 166, 0.035), transparent); }
-.solutions-layout { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); align-items: center; gap: 78px; }
-.solutions-copy { max-width: 520px; }
-.solution-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 35px; }
-.solution-stat { padding: 16px; border: 1px solid rgba(148, 163, 184, 0.16); border-radius: 15px; background: rgba(255, 255, 255, 0.5); }
-:global(.dark) .solution-stat { border-color: rgba(51, 65, 85, 0.6); background: rgba(15, 23, 42, 0.48); }
-.solution-stat strong, .solution-stat span { display: block; }
-.solution-stat strong { color: #0f766e; font-size: 22px; font-weight: 800; }
-:global(.dark) .solution-stat strong { color: #5eead4; }
-.solution-stat span { margin-top: 4px; color: #64748b; font-size: 10px; }
-:global(.dark) .solution-stat span { color: #94a3b8; }
-.advantage-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-.advantage-card { display: flex; min-height: 170px; gap: 18px; padding: 24px; border: 1px solid rgba(148, 163, 184, 0.17); border-radius: 20px; background: rgba(255, 255, 255, 0.64); box-shadow: 0 14px 42px rgba(15, 23, 42, 0.055); transition: transform 220ms ease, border-color 220ms ease; }
-.advantage-card:hover { transform: translateY(-4px); border-color: rgba(20, 184, 166, 0.28); }
-:global(.dark) .advantage-card { border-color: rgba(51, 65, 85, 0.66); background: rgba(10, 21, 37, 0.7); box-shadow: 0 18px 46px rgba(0, 0, 0, 0.2); }
-.advantage-icon { display: grid; width: 46px; height: 46px; flex: 0 0 auto; place-items: center; border: 1px solid rgba(20, 184, 166, 0.18); border-radius: 15px; color: #0f766e; background: rgba(20, 184, 166, 0.1); }
-:global(.dark) .advantage-icon { color: #5eead4; background: rgba(20, 184, 166, 0.08); }
-.advantage-card h3 { margin: 3px 0 9px; color: #0f172a; font-size: 16px; font-weight: 700; }
-:global(.dark) .advantage-card h3 { color: #f8fafc; }
-.advantage-card p { margin: 0; color: #64748b; font-size: 12px; line-height: 1.75; }
-:global(.dark) .advantage-card p { color: #94a3b8; }
-
-.capability-rail-section { position: relative; z-index: 1; padding: 22px 0; overflow: hidden; }
-.capability-rail { transform: rotate(-1.2deg) scale(1.02); border-block: 1px solid rgba(20, 184, 166, 0.16); background: rgba(20, 184, 166, 0.055); }
-:global(.dark) .capability-rail { border-color: rgba(45, 212, 191, 0.12); background: rgba(20, 184, 166, 0.045); }
-.capability-track { display: flex; width: max-content; animation: capability-marquee 34s linear infinite; }
-.capability-track span { display: inline-flex; align-items: center; gap: 11px; padding: 15px 26px; color: #475569; font-size: 12px; font-weight: 600; white-space: nowrap; }
-.capability-track i { width: 5px; height: 5px; border-radius: 50%; background: #14b8a6; box-shadow: 0 0 8px #14b8a6; }
-:global(.dark) .capability-track span { color: #94a3b8; }
-
-.process-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; }
-.process-card { position: relative; min-height: 250px; padding: 25px; border: 1px solid rgba(148, 163, 184, 0.17); border-radius: 22px; background: rgba(255, 255, 255, 0.66); box-shadow: 0 16px 48px rgba(15, 23, 42, 0.06); }
-:global(.dark) .process-card { border-color: rgba(51, 65, 85, 0.68); background: rgba(9, 20, 36, 0.72); box-shadow: 0 20px 50px rgba(0, 0, 0, 0.22); }
-.process-card:not(:last-child) .process-line { position: absolute; top: 48px; left: calc(100% + 1px); width: 18px; height: 1px; background: linear-gradient(90deg, #14b8a6, rgba(20, 184, 166, 0.1)); }
-.process-card:not(:last-child) .process-line::after { content: ''; position: absolute; right: 0; top: -3px; width: 7px; height: 7px; border-top: 1px solid #14b8a6; border-right: 1px solid #14b8a6; transform: rotate(45deg); }
-.process-step-head { display: flex; align-items: center; justify-content: space-between; }
-.process-step-number { color: #0d9488; font-size: 12px; font-weight: 800; letter-spacing: 0.14em; }
-.process-step-icon { display: grid; width: 45px; height: 45px; place-items: center; border-radius: 14px; color: #0f766e; background: rgba(20, 184, 166, 0.11); }
-:global(.dark) .process-step-number, :global(.dark) .process-step-icon { color: #5eead4; }
-.process-card h3 { margin: 45px 0 12px; color: #0f172a; font-size: 19px; font-weight: 700; }
-:global(.dark) .process-card h3 { color: #f8fafc; }
-.process-card p { margin: 0; color: #64748b; font-size: 12px; line-height: 1.78; }
-:global(.dark) .process-card p { color: #94a3b8; }
-
-.advertising-panel { position: relative; display: grid; grid-template-columns: 1fr 0.58fr; min-height: 480px; overflow: hidden; padding: 56px 60px 140px; border: 1px solid rgba(13, 148, 136, 0.24); border-radius: 30px; background: linear-gradient(125deg, rgba(236, 254, 255, 0.9), rgba(240, 253, 250, 0.72) 50%, rgba(239, 246, 255, 0.82)); box-shadow: 0 30px 90px rgba(13, 148, 136, 0.13); }
-:global(.dark) .advertising-panel { border-color: rgba(45, 212, 191, 0.2); background: linear-gradient(125deg, rgba(5, 35, 42, 0.9), rgba(4, 20, 33, 0.92) 52%, rgba(9, 18, 43, 0.94)); box-shadow: 0 38px 100px rgba(0, 0, 0, 0.34), 0 0 70px rgba(20, 184, 166, 0.08); }
-.ad-grid { position: absolute; inset: 0; opacity: 0.32; background-image: linear-gradient(rgba(20, 184, 166, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(20, 184, 166, 0.1) 1px, transparent 1px); background-size: 38px 38px; mask-image: radial-gradient(circle at 70% 42%, black, transparent 68%); }
-.ad-copy { position: relative; z-index: 2; max-width: 620px; }
-.ad-badge { display: inline-flex; margin-bottom: 18px; padding: 7px 11px; border: 1px solid rgba(13, 148, 136, 0.18); border-radius: 999px; color: #0f766e; background: rgba(255, 255, 255, 0.5); font-size: 11px; font-weight: 700; }
-:global(.dark) .ad-badge { color: #5eead4; background: rgba(15, 23, 42, 0.48); }
-.ad-copy p { max-width: 610px; margin: 19px 0 28px; color: #475569; font-size: 14px; line-height: 1.85; }
-:global(.dark) .ad-copy p { color: #94a3b8; }
-.ad-visual { position: relative; z-index: 1; display: grid; place-items: center; }
-.ad-hologram { position: relative; display: grid; width: 190px; height: 190px; place-items: center; border: 1px solid rgba(20, 184, 166, 0.34); border-radius: 34px; color: white; background: linear-gradient(145deg, rgba(13, 148, 136, 0.9), rgba(3, 105, 161, 0.84)); box-shadow: 0 0 70px rgba(20, 184, 166, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.28); transform: rotateX(58deg) rotateZ(-36deg); animation: ad-float 5s ease-in-out infinite; }
-.ad-hologram > span { font-size: 55px; font-weight: 800; transform: rotateZ(36deg) rotateX(-58deg); text-shadow: 0 0 22px rgba(255, 255, 255, 0.46); }
-.ad-ring { position: absolute; inset: -30px; border: 1px solid rgba(20, 184, 166, 0.35); border-radius: 50%; animation: ring-rotate 12s linear infinite; }
-.ad-ring-two { inset: -58px; border-style: dashed; border-color: rgba(56, 189, 248, 0.26); animation-direction: reverse; animation-duration: 18s; }
-.ad-beam { position: absolute; left: 50%; top: 90%; width: 180px; height: 140px; background: linear-gradient(to bottom, rgba(20, 184, 166, 0.22), transparent); clip-path: polygon(35% 0, 65% 0, 100% 100%, 0 100%); transform: translateX(-50%); filter: blur(5px); }
-.ad-metrics { position: absolute; right: 36px; bottom: 28px; left: 36px; z-index: 3; display: grid; grid-template-columns: repeat(4, 1fr); overflow: hidden; border: 1px solid rgba(13, 148, 136, 0.17); border-radius: 18px; background: rgba(255, 255, 255, 0.58); backdrop-filter: blur(14px); }
-:global(.dark) .ad-metrics { border-color: rgba(45, 212, 191, 0.14); background: rgba(4, 15, 29, 0.66); }
-.ad-metrics > div { padding: 17px 20px; text-align: center; }
-.ad-metrics > div + div { border-left: 1px solid rgba(148, 163, 184, 0.18); }
-.ad-metrics strong, .ad-metrics span { display: block; }
-.ad-metrics strong { color: #0f766e; font-size: 18px; font-weight: 800; }
-:global(.dark) .ad-metrics strong { color: #5eead4; }
-.ad-metrics span { margin-top: 4px; color: #64748b; font-size: 10px; }
-:global(.dark) .ad-metrics span { color: #94a3b8; }
-
-.contact-section { padding-bottom: 120px; }
-.contact-panel { display: flex; align-items: center; justify-content: space-between; gap: 50px; padding: 46px 52px; border: 1px solid rgba(148, 163, 184, 0.18); border-radius: 26px; background: rgba(255, 255, 255, 0.68); box-shadow: 0 22px 70px rgba(15, 23, 42, 0.08); backdrop-filter: blur(16px); }
-:global(.dark) .contact-panel { border-color: rgba(51, 65, 85, 0.68); background: rgba(8, 19, 35, 0.72); box-shadow: 0 26px 80px rgba(0, 0, 0, 0.28); }
-.contact-panel > div:first-child { max-width: 760px; }
-.contact-panel h2 { font-size: clamp(30px, 3.6vw, 46px); }
-.contact-actions { display: flex; flex: 0 0 auto; flex-direction: column; gap: 11px; }
-
-.home-footer { position: relative; z-index: 1; border-top: 1px solid rgba(148, 163, 184, 0.18); background: rgba(248, 250, 252, 0.62); }
-:global(.dark) .home-footer { border-color: rgba(51, 65, 85, 0.58); background: rgba(2, 7, 16, 0.7); }
-.footer-grid { display: grid; grid-template-columns: 1.45fr repeat(3, 0.7fr); gap: 60px; padding-block: 54px 44px; }
-.footer-brand-line { display: flex; align-items: center; gap: 11px; color: #0f172a; font-size: 17px; }
-:global(.dark) .footer-brand-line { color: #f8fafc; }
-.footer-brand-block p { max-width: 380px; margin: 17px 0 0; color: #64748b; font-size: 12px; line-height: 1.8; }
-:global(.dark) .footer-brand-block p { color: #94a3b8; }
-.footer-link-group { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
-.footer-link-group strong { margin-bottom: 6px; color: #0f172a; font-size: 13px; }
-:global(.dark) .footer-link-group strong { color: #e2e8f0; }
-.footer-link-group button, .footer-link-group a { color: #64748b; font-size: 11px; transition: color 180ms ease; }
-.footer-link-group button:hover, .footer-link-group a:hover { color: #0f766e; }
-:global(.dark) .footer-link-group button, :global(.dark) .footer-link-group a { color: #94a3b8; }
-:global(.dark) .footer-link-group button:hover, :global(.dark) .footer-link-group a:hover { color: #5eead4; }
-.footer-bottom { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding-block: 20px; border-top: 1px solid rgba(148, 163, 184, 0.15); color: #94a3b8; font-size: 10px; }
-:global(.dark) .footer-bottom { border-color: rgba(51, 65, 85, 0.48); color: #64748b; }
-
-.back-to-top { position: fixed; right: 24px; bottom: 24px; z-index: 40; display: grid; width: 42px; height: 42px; place-items: center; border: 1px solid rgba(20, 184, 166, 0.24); border-radius: 13px; color: #0f766e; background: rgba(255, 255, 255, 0.78); box-shadow: 0 12px 34px rgba(15, 23, 42, 0.12); backdrop-filter: blur(12px); transition: transform 180ms ease, background 180ms ease; }
-.back-to-top:hover { transform: translateY(-3px); background: white; }
-:global(.dark) .back-to-top { color: #5eead4; background: rgba(8, 20, 37, 0.8); box-shadow: 0 16px 40px rgba(0, 0, 0, 0.34); }
-
-.reveal-on-scroll { opacity: 0; transform: translateY(32px); transition: opacity 700ms ease var(--reveal-delay, 0ms), transform 700ms cubic-bezier(0.22, 1, 0.36, 1) var(--reveal-delay, 0ms); }
-.reveal-on-scroll.is-visible { opacity: 1; transform: translateY(0); }
-.hero-enter { opacity: 0; animation: hero-enter 720ms cubic-bezier(0.22, 1, 0.36, 1) forwards; }
-.hero-enter-one { animation-delay: 80ms; }
-.hero-enter-two { animation-delay: 150ms; }
-.hero-enter-three { animation-delay: 230ms; }
-.hero-enter-four { animation-delay: 300ms; }
-.hero-enter-five { animation-delay: 380ms; }
-.hero-enter-six { animation-delay: 450ms; }
-.hero-enter-scene { animation-delay: 210ms; }
-.hero-enter-seven { animation-delay: 520ms; }
-
-@keyframes hero-enter { from { opacity: 0; transform: translateY(26px); } to { opacity: 1; transform: translateY(0); } }
-@keyframes home-pulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
-@keyframes capability-marquee { to { transform: translateX(-50%); } }
-@keyframes ad-float { 0%, 100% { margin-top: 0; } 50% { margin-top: -15px; } }
-@keyframes ring-rotate { to { transform: rotate(360deg); } }
-
-@media (max-width: 1180px) {
-  .home-navbar { grid-template-columns: minmax(150px, 1fr) auto; }
-  .home-nav-links { grid-column: 1 / -1; grid-row: 2; order: 3; width: 100%; justify-content: flex-start; overflow-x: auto; padding-bottom: 7px; scrollbar-width: none; }
-  .home-nav-links::-webkit-scrollbar { display: none; }
-  .home-nav-actions { grid-column: 2; grid-row: 1; }
-  .home-header { padding-top: 4px; }
-  .hero-section { padding-top: 64px; }
-  .hero-layout { grid-template-columns: minmax(0, 0.9fr) minmax(470px, 1.1fr); gap: 34px; }
-  .service-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .service-card:nth-child(4), .service-card:nth-child(5) { min-height: 300px; }
+@media (max-width: 920px) {
+  .kinetic-wordmark-copy { display: none; }
+  .kinetic-section-index { display: none; }
+  .kinetic-hero-copy h1 { font-size: 82px; }
+  .kinetic-manifesto-layout {
+    right: 34px;
+    bottom: 72px;
+    left: 34px;
+    grid-template-columns: 1fr;
+    gap: 40px;
+  }
+  .kinetic-manifesto-copy { max-width: 440px; margin-left: auto; }
+  .kinetic-card { width: min(64vw, 600px); }
+  .kinetic-lab-shell {
+    width: 100%;
+    grid-template-columns: minmax(0, 1fr) minmax(180px, 0.58fr);
+  }
 }
 
-@media (max-width: 900px) {
-  .hero-section { min-height: auto; }
-  .hero-layout { grid-template-columns: 1fr; }
-  .hero-copy { max-width: 760px; text-align: center; margin-inline: auto; }
-  .hero-title, .hero-actions, .hero-trust { justify-content: center; }
-  .hero-subtitle, .hero-description { margin-inline: auto; }
-  .hero-scene-wrap { width: min(100%, 720px); margin-inline: auto; }
-  .quick-service-wrap { margin-top: 24px; }
-  .solutions-layout { grid-template-columns: 1fr; gap: 45px; }
-  .solutions-copy { max-width: 720px; text-align: center; margin-inline: auto; }
-  .process-grid { grid-template-columns: repeat(2, 1fr); }
-  .process-card:nth-child(2) .process-line { display: none; }
-  .advertising-panel { grid-template-columns: 1fr; padding: 48px 38px 150px; }
-  .ad-visual { position: absolute; right: 8%; top: 70px; opacity: 0.45; }
-  .ad-copy { max-width: 70%; }
-  .contact-panel { align-items: flex-start; flex-direction: column; }
-  .contact-actions { flex-direction: row; }
-  .footer-grid { grid-template-columns: 1.2fr repeat(3, 1fr); gap: 30px; }
-}
-
-@media (max-width: 680px) {
-  .home-container, .home-navbar { width: min(100% - 24px, 1280px); }
-  .home-navbar { min-height: 62px; gap: 10px; }
-  .home-brand-name, .home-doc-link { display: none; }
-  .home-nav-actions { gap: 4px; }
-  .home-login-button { padding-inline: 10px; }
-  .home-nav-link { padding: 9px 10px; font-size: 11px; }
-  .hero-section { padding: 42px 0 38px; }
-  .hero-title { justify-content: center; font-size: clamp(42px, 14vw, 64px); }
-  .hero-subtitle { font-size: 20px; }
-  .hero-description { font-size: 13px; }
-  .hero-actions { flex-direction: column; }
-  .home-primary-button, .home-secondary-button { width: min(100%, 310px); }
-  .hero-trust { gap: 12px; }
-  .quick-service-item { padding: 9px 14px; }
-  .services-section, .solutions-section, .process-section, .advertising-section, .contact-section { padding: 76px 0; }
-  .service-grid, .advantage-grid, .process-grid { grid-template-columns: 1fr; }
-  .service-card { min-height: 290px; }
-  .solution-stats { grid-template-columns: 1fr 1fr 1fr; }
-  .process-card { min-height: 215px; }
-  .process-card .process-line { display: none !important; }
-  .advertising-panel { min-height: 620px; padding: 38px 24px 230px; border-radius: 24px; }
-  .ad-copy { max-width: 100%; }
-  .ad-visual { right: 50%; top: auto; bottom: 120px; transform: translateX(50%) scale(0.72); }
-  .ad-metrics { right: 16px; bottom: 16px; left: 16px; grid-template-columns: repeat(2, 1fr); }
-  .ad-metrics > div:nth-child(3) { border-left: 0; border-top: 1px solid rgba(148, 163, 184, 0.18); }
-  .ad-metrics > div:nth-child(4) { border-top: 1px solid rgba(148, 163, 184, 0.18); }
-  .contact-panel { padding: 34px 24px; }
-  .contact-actions { width: 100%; flex-direction: column; }
-  .footer-grid { grid-template-columns: 1fr 1fr; gap: 34px 24px; }
-  .footer-brand-block { grid-column: 1 / -1; }
-  .footer-bottom { align-items: flex-start; flex-direction: column; }
-  .back-to-top { right: 14px; bottom: 14px; }
+@media (max-width: 640px) {
+  .kinetic-header { padding: 16px; }
+  .kinetic-top-nav { min-width: 164px; height: 36px; padding: 0 13px; }
+  .kinetic-wordmark-mark { width: 34px; height: 34px; }
+  .kinetic-hero { min-height: 104svh; }
+  .kinetic-hero-copy { top: 112px; right: 18px; left: 18px; width: auto; }
+  .kinetic-hero-eyebrow { margin-bottom: 14px; font-size: 9px; }
+  .kinetic-hero-copy h1 { font-size: 50px; line-height: 0.96; }
+  .kinetic-hero-tagline { margin-top: 18px; font-size: 26px; }
+  .kinetic-hero-description { max-width: 430px; margin-top: 12px; font-size: 14px; line-height: 1.6; }
+  .kinetic-hero-actions { margin-top: 20px; }
+  .kinetic-hero-primary, .kinetic-hero-secondary { min-height: 42px; padding: 0 14px; }
+  .kinetic-hero-endpoint { margin-top: 16px; font-size: 9px; }
+  .kinetic-hero-meta { bottom: 34px; left: 18px; width: min(280px, 72vw); }
+  .kinetic-manifesto { min-height: 128svh; }
+  .kinetic-manifesto-layout { right: 18px; bottom: 72px; left: 18px; gap: 32px; }
+  .kinetic-manifesto-heading h1 { max-width: 100%; font-size: 48px; line-height: 1; }
+  .kinetic-manifesto-copy { margin: 0; }
+  .kinetic-manifesto-copy p:nth-of-type(2) { display: none; }
+  .kinetic-work { min-height: 410svh; }
+  .kinetic-work-heading { top: 78px; left: 18px; }
+  .kinetic-card {
+    width: 82vw;
+    height: 54vh;
+    min-height: 390px;
+    padding: 20px;
+  }
+  .kinetic-card-content { max-width: 92%; padding: 0; }
+  .kinetic-card-content h3 { font-size: clamp(31px, 10vw, 48px); }
+  .kinetic-work-filter {
+    right: 18px;
+    bottom: 26px;
+    left: 18px;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+  }
+  .kinetic-work-filter > span { width: 100%; }
+  .kinetic-work-filter button { font-size: 7px; }
+  .kinetic-deck-progress { display: none; }
+  .kinetic-lab { min-height: 132svh; }
+  .kinetic-lab-shell {
+    width: 100%;
+    min-height: 0;
+    grid-template-columns: 1fr;
+    justify-items: start;
+    gap: 32px;
+    padding: 38px 20px;
+  }
+  .kinetic-lab-heading {
+    min-height: 0;
+    justify-content: flex-start;
+    gap: 22px;
+  }
+  .kinetic-lab-heading > .kinetic-section-label { position: static; }
+  .kinetic-lab-title-row { gap: 18px; }
+  .kinetic-lab-mark { width: 56px; font-size: 18px; }
+  .kinetic-lab-shell h2 { font-size: 42px; }
+  .kinetic-lab-copy { max-width: 100%; }
+  .kinetic-contact-content { padding-right: 18px; padding-left: 18px; }
+  .kinetic-contact-content h2 { font-size: clamp(54px, 16vw, 76px); line-height: 0.82; }
+  .kinetic-primary-cta { width: 108px; height: 108px; }
+  .kinetic-footer { right: 18px; bottom: 18px; left: 18px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+  .kinetic-footer-links { flex-wrap: wrap; justify-content: flex-start; }
+  .kinetic-footer > span:last-child { display: none; }
+  .compact-home-nav { width: min(100% - 20px, 1180px); }
+  .compact-home-actions :deep(.locale-switcher) { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .home-page *, .home-page *::before, .home-page *::after { scroll-behavior: auto !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
-  .reveal-on-scroll { opacity: 1; transform: none; }
-  .capability-track { animation: none; }
+  .kinetic-nav-signal i { animation: none; }
+  .kinetic-wordmark,
+  .kinetic-top-nav button,
+  .kinetic-work-filter button,
+  .kinetic-primary-cta,
+  .kinetic-primary-cta::before,
+  .kinetic-footer a,
+  .kinetic-footer button,
+  .kinetic-loader,
+  .kinetic-loader-track b { transition-duration: 1ms !important; }
+  .kinetic-card { will-change: auto; }
+  .kinetic-card-particle { will-change: auto; }
+  .kinetic-reveal { opacity: 1 !important; visibility: visible !important; transform: none !important; }
+  .kinetic-loader { display: none; }
 }
 </style>

@@ -391,6 +391,7 @@ import { useBatchImageAccess } from '@/composables/useBatchImageAccess'
 import { usePrefersReducedMotion } from '@/composables/usePrefersReducedMotion'
 import { useDashboardReveal } from '@/composables/useDashboardReveal'
 import { getChartJsAnimation } from '@/utils/chartAnimation'
+import { getChartPalette, getChartThemeColors } from '@/utils/chartColors'
 
 import {
   Chart as ChartJS,
@@ -482,15 +483,8 @@ const granularityOptions = computed(() => [
 ])
 
 // Dark mode detection
-const isDarkMode = computed(() => {
-  return document.documentElement.classList.contains('dark')
-})
-
-// Chart colors
-const chartColors = computed(() => ({
-  text: isDarkMode.value ? '#e5e7eb' : '#374151',
-  grid: isDarkMode.value ? '#374151' : '#e5e7eb'
-}))
+// Chart colors stay aligned with the shared Indigo/Cyan/Slate palette.
+const chartColors = computed(() => getChartThemeColors())
 
 // Line chart options (for user trend chart)
 const lineOptions = computed(() => ({
@@ -586,20 +580,7 @@ const userTrendChartData = computed(() => {
   })
 
   const sortedDates = Array.from(allDates).sort()
-  const colors = [
-    '#3b82f6',
-    '#10b981',
-    '#f59e0b',
-    '#ef4444',
-    '#8b5cf6',
-    '#ec4899',
-    '#14b8a6',
-    '#f97316',
-    '#6366f1',
-    '#84cc16',
-    '#06b6d4',
-    '#a855f7'
-  ]
+  const colors = getChartPalette()
 
   const datasets = Array.from(userGroups.values()).map((group, idx) => ({
     label: group.name,

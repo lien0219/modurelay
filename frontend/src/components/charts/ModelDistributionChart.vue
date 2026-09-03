@@ -252,6 +252,7 @@ import UserBreakdownSubTable from './UserBreakdownSubTable.vue'
 import type { ModelStat, UserSpendingRankingItem, UserBreakdownItem } from '@/types'
 import { getUserBreakdown } from '@/api/admin/dashboard'
 import { getChartJsAnimation } from '@/utils/chartAnimation'
+import { getChartNeutral, getChartPalette } from '@/utils/chartColors'
 
 ChartJS.register(ArcElement, Tooltip, Legend)
 
@@ -340,20 +341,7 @@ const showAccountCost = computed(() => props.showAccountCost)
 const distributionColspan = computed(() => showAccountCost.value ? 6 : 5)
 const activeView = ref<'model_distribution' | 'spending_ranking'>('model_distribution')
 
-const chartColors = [
-  '#3b82f6',
-  '#10b981',
-  '#f59e0b',
-  '#ef4444',
-  '#8b5cf6',
-  '#ec4899',
-  '#14b8a6',
-  '#f97316',
-  '#6366f1',
-  '#84cc16',
-  '#06b6d4',
-  '#a855f7'
-]
+const chartColors = getChartPalette()
 
 const displayModelStats = computed(() => {
   const sourceStats = props.source === 'upstream'
@@ -392,7 +380,7 @@ const rankingChartData = computed(() => {
   if (otherRankingItem.value) {
     labels.push(t('admin.dashboard.spendingRankingOther'))
     data.push(otherRankingItem.value.actual_cost)
-    backgroundColor.push('#94a3b8')
+    backgroundColor.push(getChartNeutral())
   }
 
   return {

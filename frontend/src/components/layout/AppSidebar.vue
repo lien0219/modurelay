@@ -11,7 +11,7 @@
       <!-- Custom Logo or Default Logo -->
       <router-link
         :to="homePath"
-        class="sidebar-logo flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl shadow-glow transition-opacity hover:opacity-80"
+        class="sidebar-logo flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg transition-opacity hover:opacity-80"
         @click="handleMenuItemClick(homePath)"
       >
         <img v-if="settingsLoaded" :src="siteLogo || brand.logo" :alt="brand.name" class="h-full w-full object-contain" />
@@ -62,7 +62,7 @@
                 </span>
               </button>
               <!-- Children -->
-              <div v-if="!sidebarCollapsed && isGroupExpanded(item)" class="mb-1 ml-4 border-l border-gray-200 pl-2 dark:border-dark-600">
+              <div v-if="!sidebarCollapsed && isGroupExpanded(item)" class="mb-1 ml-4 border-l border-[color:var(--color-border)] pl-2">
                 <router-link
                   v-for="child in item.children"
                   :key="child.path"
@@ -148,27 +148,31 @@
     </nav>
 
     <!-- Bottom Section -->
-    <div class="mt-auto border-t border-gray-100 p-3 dark:border-dark-800">
+    <div class="sidebar-footer mt-auto p-3">
       <!-- Theme Toggle -->
       <button
+        type="button"
         @click="toggleTheme"
-        class="sidebar-link mb-2 w-full"
+        class="sidebar-footer-action sidebar-link mb-1 w-full"
         :class="{ 'sidebar-link-collapsed': sidebarCollapsed }"
         :title="sidebarCollapsed ? (isDark ? t('nav.lightMode') : t('nav.darkMode')) : undefined"
+        :aria-label="isDark ? t('nav.lightMode') : t('nav.darkMode')"
       >
-        <SunIcon v-if="isDark" class="h-5 w-5 flex-shrink-0 text-amber-500" />
-        <MoonIcon v-else class="h-5 w-5 flex-shrink-0" />
-        <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">{{
-          isDark ? t('nav.lightMode') : t('nav.darkMode')
-        }}</span>
+        <SunIcon v-if="isDark" class="h-5 w-5 flex-shrink-0" aria-hidden="true" />
+        <MoonIcon v-else class="h-5 w-5 flex-shrink-0" aria-hidden="true" />
+        <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">
+          {{ isDark ? t('nav.lightMode') : t('nav.darkMode') }}
+        </span>
       </button>
 
       <!-- Collapse Button -->
       <button
+        type="button"
         @click="toggleSidebar"
-        class="sidebar-link w-full"
+        class="sidebar-footer-action sidebar-link w-full"
         :class="{ 'sidebar-link-collapsed': sidebarCollapsed }"
         :title="sidebarCollapsed ? t('nav.expand') : t('nav.collapse')"
+        :aria-label="sidebarCollapsed ? t('nav.expand') : t('nav.collapse')"
       >
         <ChevronDoubleLeftIcon v-if="!sidebarCollapsed" class="h-5 w-5 flex-shrink-0" />
         <ChevronDoubleRightIcon v-else class="h-5 w-5 flex-shrink-0" />
@@ -199,6 +203,7 @@ import { sanitizeSvg } from '@/utils/sanitize'
 import { sanitizeUrl } from '@/utils/url'
 import { FeatureFlags, makeSidebarFlag } from '@/utils/featureFlags'
 import { useBatchImageAccess } from '@/composables/useBatchImageAccess'
+import { toggleThemeWithTransition } from '@/utils/themeTransition'
 
 interface NavItem {
   path: string
@@ -344,6 +349,21 @@ const GiftIcon = {
     )
 }
 
+const CalendarIcon = {
+  render: () =>
+    h(
+      'svg',
+      { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' },
+      [
+        h('path', {
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          d: 'M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5'
+        })
+      ]
+    )
+}
+
 const UserIcon = {
   render: () =>
     h(
@@ -476,6 +496,10 @@ const ServerIcon = {
 
 const PluginIcon = {
   render: () => h(Icon, { name: 'cube' })
+}
+
+const DistributionIcon = {
+  render: () => h(Icon, { name: 'userPlus' })
 }
 
 const BellIcon = {
@@ -688,6 +712,26 @@ const ResourceCenterIcon = {
     ),
 }
 
+const AILearningIcon = {
+  render: () =>
+    h(
+      'svg',
+      { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' },
+      [
+        h('path', {
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          d: 'M8.25 5.25A3.75 3.75 0 0112 3a3.75 3.75 0 013.75 2.25A3.75 3.75 0 0119.5 9a3.75 3.75 0 01-1.25 2.792A3.75 3.75 0 0119.5 15a3.75 3.75 0 01-3.75 3.75A3.75 3.75 0 0112 21a3.75 3.75 0 01-3.75-2.25A3.75 3.75 0 014.5 15a3.75 3.75 0 011.25-3.208A3.75 3.75 0 014.5 9a3.75 3.75 0 013.75-3.75z',
+        }),
+        h('path', {
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          d: 'M12 7.5v9m-3-6h6m-3-3h.008v.008H12V7.5zm0 9h.008v.008H12V16.5z',
+        }),
+      ],
+    ),
+}
+
 const ChevronDownIcon = {
   render: () =>
     h(
@@ -717,6 +761,7 @@ const flagOpsMonitoring = () => adminSettingsStore.opsMonitoringEnabled
 const flagAdminPayment = () => adminSettingsStore.paymentEnabled
 const flagBatchImageAccess = () => canUseBatchImage.value
 const flagResourceCenter = makeSidebarFlag(FeatureFlags.resourceCenter)
+const flagActivityCenter = makeSidebarFlag(FeatureFlags.activityCenter)
 
 // buildSelfNavItems 构造用户自己的导航项（用户端主菜单和管理员的"我的账户"子菜单共享这组声明）。
 // withDashboard=true 时包含仪表盘（用户端），false 时不含（管理员的个人区已经有独立仪表盘入口）。
@@ -729,6 +774,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     items.push({ path: '/dashboard', label: t('nav.dashboard'), icon: DashboardIcon })
   }
   items.push(
+    { path: '/ai-learning', label: t('nav.aiLearning'), icon: AILearningIcon },
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
     { path: '/batch-image', label: t('nav.batchImage'), icon: BatchImageIcon, hideInSimpleMode: true, featureFlag: flagBatchImageAccess },
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
@@ -738,9 +784,11 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/purchase', label: t('nav.buySubscription'), icon: RechargeSubscriptionIcon, hideInSimpleMode: true, featureFlag: flagPayment },
     { path: '/recharge', label: t('nav.rechargeCenter'), icon: RechargeSubscriptionIcon, featureFlag: flagRechargeCenter },
     { path: '/orders', label: t('nav.myOrders'), icon: OrderListIcon, hideInSimpleMode: true, featureFlag: flagPayment },
+    { path: '/activities', label: t('nav.activityCenter'), icon: CalendarIcon, featureFlag: flagActivityCenter },
     { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true },
     ...(withDashboard ? [{ path: '/resource-center', label: t('nav.resourceCenter'), icon: ResourceCenterIcon, featureFlag: flagResourceCenter }] : []),
     { path: '/affiliate', label: t('nav.affiliate'), icon: UsersIcon, hideInSimpleMode: true, featureFlag: flagAffiliate },
+    { path: '/distribution', label: t('nav.distribution'), icon: DistributionIcon },
     ...customMenuItemsForUser.value.map((item): NavItem => ({
       path: `/custom/${item.id}`,
       label: item.label,
@@ -804,6 +852,7 @@ const adminNavItems = computed((): NavItem[] => {
     { path: '/admin/announcements', label: t('nav.announcements'), icon: BellIcon },
     { path: '/resource-center', label: t('nav.resourceCenter'), icon: ResourceCenterIcon },
     { path: '/admin/resource-center', label: t('nav.resourceCenterAdmin'), icon: ResourceCenterIcon },
+    { path: '/admin/activities', label: t('nav.activityManagement'), icon: CalendarIcon },
     { path: '/admin/proxies', label: t('nav.proxies'), icon: ServerIcon },
     {
       path: '/admin/security-audit',
@@ -818,6 +867,7 @@ const adminNavItems = computed((): NavItem[] => {
     },
     { path: '/admin/redeem', label: t('nav.redeemCodes'), icon: TicketIcon, hideInSimpleMode: true },
     { path: '/admin/promo-codes', label: t('nav.promoCodes'), icon: GiftIcon, hideInSimpleMode: true },
+    { path: '/admin/distribution', label: t('nav.distributionManagement'), icon: DistributionIcon },
     {
       path: '/admin/affiliates',
       label: t('nav.affiliateManagement'),
@@ -872,10 +922,8 @@ function toggleSidebar() {
   appStore.toggleSidebar()
 }
 
-function toggleTheme() {
-  isDark.value = !isDark.value
-  document.documentElement.classList.toggle('dark', isDark.value)
-  localStorage.setItem('theme', isDark.value ? 'dark' : 'light')
+function toggleTheme(event?: MouseEvent) {
+  isDark.value = toggleThemeWithTransition(isDark.value, event)
 }
 
 function closeMobile() {
@@ -994,6 +1042,14 @@ onBeforeUnmount(() => {
   min-width: 2.25rem;
 }
 
+.sidebar-footer {
+  border-top: 1px solid var(--color-border);
+}
+
+.sidebar-footer-action {
+  min-height: 44px;
+}
+
 .sidebar-header-collapsed {
   gap: 0;
   padding-left: 1.125rem;
@@ -1058,14 +1114,10 @@ onBeforeUnmount(() => {
   right: 0.75rem;
   top: 50%;
   height: 1px;
-  background: rgb(229 231 235);
+  background: var(--color-border);
   opacity: 0;
   transform: translateY(-50%);
   transition: opacity 0.18s ease;
-}
-
-.dark .sidebar-section-title::after {
-  background: rgb(55 65 81);
 }
 
 .sidebar-section-title-text-collapsed {
@@ -1114,5 +1166,11 @@ onBeforeUnmount(() => {
   display: block;
   width: 1.25rem;
   height: 1.25rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-label {
+    transition-duration: 1ms;
+  }
 }
 </style>

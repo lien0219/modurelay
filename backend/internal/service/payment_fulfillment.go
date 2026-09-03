@@ -347,7 +347,8 @@ func (s *PaymentService) doBalance(ctx context.Context, o *dbent.PaymentOrder, l
 	case redeemActionRedeem:
 		// Code exists but unused — skip creation, proceed to redeem
 	}
-	if _, err := s.redeemService.Redeem(ContextSkipRedeemAffiliate(ctx), o.UserID, o.RechargeCode); err != nil {
+	redeemCtx := ContextSkipRedeemActivityQualification(ContextSkipRedeemAffiliate(ctx))
+	if _, err := s.redeemService.Redeem(redeemCtx, o.UserID, o.RechargeCode); err != nil {
 		return fmt.Errorf("redeem balance: %w", err)
 	}
 	if err := s.applyAffiliateRebateForOrder(ctx, o); err != nil {
@@ -361,13 +362,34 @@ func (s *PaymentService) markCompleted(ctx context.Context, o *dbent.PaymentOrde
 		return errors.New("missing payment fulfillment lease")
 	}
 	now := time.Now()
-	updated, err := s.entClient.PaymentOrder.Update().Where(
-		paymentorder.IDEQ(o.ID),
-		paymentorder.StatusEQ(OrderStatusRecharging),
-		paymentorder.UpdatedAtEQ(lease.version),
-	).SetStatus(OrderStatusCompleted).SetCompletedAt(now).Save(ctx)
-	if err != nil {
-		return fmt.Errorf("mark completed: %w", err)
+	updated := 0
+	grantedDraws := 0
+	if auditAction == "RECHARGE_SUCCESS" && s.activityService != nil {
+		completion, err := s.activityService.CompleteBalancePayment(ctx, CompleteActivityPaymentInput{
+			OrderID:        o.ID,
+			UserID:         o.UserID,
+			RechargeAmount: strconv.FormatFloat(o.Amount, 'f', -1, 64),
+			Currency:       PaymentOrderCurrency(o),
+			LeaseVersion:   lease.version,
+			CompletedAt:    now,
+		})
+		if err != nil {
+			return fmt.Errorf("mark completed with activity qualification: %w", err)
+		}
+		if completion.Completed {
+			updated = 1
+		}
+		grantedDraws = completion.GrantedDraws
+	} else {
+		count, err := s.entClient.PaymentOrder.Update().Where(
+			paymentorder.IDEQ(o.ID),
+			paymentorder.StatusEQ(OrderStatusRecharging),
+			paymentorder.UpdatedAtEQ(lease.version),
+		).SetStatus(OrderStatusCompleted).SetCompletedAt(now).Save(ctx)
+		if err != nil {
+			return fmt.Errorf("mark completed: %w", err)
+		}
+		updated = count
 	}
 	if updated == 0 {
 		current, getErr := s.entClient.PaymentOrder.Get(ctx, o.ID)
@@ -381,6 +403,7 @@ func (s *PaymentService) markCompleted(ctx context.Context, o *dbent.PaymentOrde
 			"rechargeCode":   o.RechargeCode,
 			"creditedAmount": o.Amount,
 			"payAmount":      o.PayAmount,
+			"lotteryChances": grantedDraws,
 		})
 		s.dispatchPaymentFulfillmentNotification(o, auditAction)
 	}

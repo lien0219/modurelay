@@ -69,6 +69,7 @@ type Handlers struct {
 	AsyncImage       *AsyncImageHandler
 	BatchImage       *BatchImageHandler
 	ResourceCenter   *ResourceCenterHandler
+	Activity         *ActivityHandler
 }
 
 // BuildInfo contains build-time information

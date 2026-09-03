@@ -40,6 +40,16 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/ai-learning',
+    name: 'AILearning',
+    component: () => import('@/views/AILearningView.vue'),
+    meta: {
+      requiresAuth: true,
+      title: 'AI Learning',
+      titleKey: 'nav.aiLearning'
+    }
+  },
+  {
     path: '/login',
     name: 'Login',
     component: () => import('@/views/auth/LoginView.vue'),
@@ -228,6 +238,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/activities',
+    name: 'ActivityCenter',
+    component: () => import('@/views/user/ActivityCenterView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Activity Center',
+      titleKey: 'activityCenter.title',
+      descriptionKey: 'activityCenter.description'
+    }
+  },
+  {
     path: '/keys',
     name: 'Keys',
     component: () => import('@/views/user/KeysView.vue'),
@@ -286,6 +308,18 @@ const routes: RouteRecordRaw[] = [
       title: 'Affiliate',
       titleKey: 'affiliate.title',
       descriptionKey: 'affiliate.description'
+    }
+  },
+  {
+    path: '/distribution',
+    name: 'Distribution',
+    component: () => import('@/views/user/DistributionView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Agent Distribution',
+      titleKey: 'distribution.title',
+      descriptionKey: 'distribution.description'
     }
   },
   {
@@ -645,6 +679,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/activities',
+    name: 'AdminActivities',
+    component: () => import('@/views/admin/ActivityAdminView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Activity Management',
+      titleKey: 'admin.activities.title',
+      descriptionKey: 'admin.activities.description'
+    }
+  },
+  {
     path: '/admin/risk-control',
     name: 'AdminRiskControl',
     component: () => import('@/views/admin/RiskControlView.vue'),
@@ -680,6 +726,18 @@ const routes: RouteRecordRaw[] = [
       title: 'Usage Records',
       titleKey: 'admin.usage.title',
       descriptionKey: 'admin.usage.description'
+    }
+  },
+  {
+    path: '/admin/distribution',
+    name: 'AdminDistribution',
+    component: () => import('@/views/admin/DistributionManagementView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Distribution Management',
+      titleKey: 'admin.distribution.title',
+      descriptionKey: 'admin.distribution.description'
     }
   },
   {
@@ -798,7 +856,7 @@ let authInitialized = false
 const navigationLoading = useNavigationLoadingState()
 // 延迟初始化预加载，传入 router 实例
 let routePrefetch: ReturnType<typeof useRoutePrefetch> | null = null
-const BACKEND_MODE_ALLOWED_PATHS = ['/login', '/key-usage', '/setup', '/payment/result', '/payment/airwallex', '/legal']
+const BACKEND_MODE_ALLOWED_PATHS = ['/login', '/key-usage', '/setup', '/payment/result', '/payment/airwallex', '/legal', '/ai-learning']
 const BACKEND_MODE_CALLBACK_PATHS = [
   '/auth/callback',
   '/auth/linuxdo/callback',
@@ -946,6 +1004,20 @@ router.beforeEach(async (to, _from, next) => {
       }
     }
     if (appStore.publicSettingsLoaded && appStore.cachedPublicSettings?.resource_center_enabled === false) {
+      next('/dashboard')
+      return
+    }
+  }
+
+  if (to.path === '/activities') {
+    if (!appStore.publicSettingsLoaded) {
+      try {
+        await appStore.fetchPublicSettings()
+      } catch (error) {
+        console.warn('Failed to load activity center setting in route guard', error)
+      }
+    }
+    if (appStore.cachedPublicSettings?.activity_center_enabled !== true) {
       next('/dashboard')
       return
     }

@@ -139,6 +139,11 @@ export const FeatureFlags = {
     mode: 'opt-out',
     label: 'Resource Center',
   }),
+  activityCenter: defineFlag({
+    key: 'activity_center_enabled',
+    mode: 'opt-in',
+    label: 'Activity Center',
+  }),
 } as const
 
 export type RegisteredFeatureFlag = keyof typeof FeatureFlags

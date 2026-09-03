@@ -6,7 +6,7 @@
     </div>
 
     <!-- 固定区域：搜索和过滤器 -->
-    <div v-if="$slots.filters" class="layout-section-fixed">
+    <div v-if="$slots.filters" class="layout-section-fixed layout-section-filters">
       <slot name="filters" />
     </div>
 
@@ -54,13 +54,26 @@ onUnmounted(() => {
   @apply flex-shrink-0;
 }
 
+.layout-section-filters {
+  padding: 12px;
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  background-color: var(--glass-bg-strong);
+  box-shadow: var(--shadow-sm), inset 0 1px 0 var(--glass-highlight);
+  -webkit-backdrop-filter: blur(var(--glass-blur-strong)) saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-blur-strong)) saturate(var(--glass-saturate));
+}
+
 .layout-section-scrollable {
   @apply flex-1 min-h-0 flex flex-col;
 }
 
 /* 表格滚动容器 - 增强版表体滚动方案 */
 .table-scroll-container {
-  @apply flex flex-col overflow-hidden h-full bg-white dark:bg-dark-800 rounded-2xl border border-gray-200 dark:border-dark-700 shadow-sm;
+  @apply flex h-full flex-col overflow-hidden rounded-2xl;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-surface);
+  box-shadow: var(--shadow-sm);
 }
 
 .table-scroll-container :deep(.table-wrapper) {
@@ -76,7 +89,9 @@ onUnmounted(() => {
 }
 
 .table-scroll-container :deep(thead) {
-  @apply bg-gray-50/80 dark:bg-dark-800/80 backdrop-blur-sm;
+  background-color: var(--color-surface-overlay);
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  backdrop-filter: blur(var(--glass-blur));
 }
 
 .table-scroll-container :deep(tbody) {
@@ -84,16 +99,16 @@ onUnmounted(() => {
 }
 
 .table-scroll-container :deep(th) {
-  @apply px-5 py-4 text-left text-sm font-medium text-gray-600 dark:text-dark-300 border-b border-gray-200 dark:border-dark-700;
+  @apply border-b border-gray-200 px-5 py-3 text-left text-sm font-medium text-gray-600 dark:border-dark-700 dark:text-dark-300;
 }
 
 .table-scroll-container :deep(td) {
-  @apply px-5 py-4 text-sm text-gray-700 dark:text-gray-300 border-b border-gray-100 dark:border-dark-800;
+  @apply border-b border-gray-100 px-5 py-3 text-sm text-gray-700 dark:border-dark-800 dark:text-gray-300;
 }
 
 /* 移动端：恢复正常滚动 */
 .table-page-layout.mobile-mode .table-scroll-container {
-  @apply h-auto overflow-visible border-none shadow-none bg-transparent;
+  @apply h-auto overflow-visible;
 }
 
 .table-page-layout.mobile-mode .layout-section-scrollable {
@@ -104,5 +119,22 @@ onUnmounted(() => {
   @apply flex-none;
   display: table;
   min-width: 100%;
+}
+
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .layout-section-filters {
+    background-color: var(--glass-fallback-strong);
+  }
+}
+
+@media (max-width: 1023px) {
+  .table-page-layout {
+    gap: 16px;
+    height: auto;
+  }
+
+  .layout-section-filters {
+    padding: 10px;
+  }
 }
 </style>

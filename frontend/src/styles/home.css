@@ -1,0 +1,25 @@
+/* Shared structural rules for the official home. Visual details stay page-local. */
+.home-page {
+  isolation: isolate;
+}
+
+.home-page > main,
+.home-page > .home-footer {
+  position: relative;
+  z-index: 1;
+}
+
+.home-background {
+  z-index: 0;
+}
+
+@supports not ((backdrop-filter: blur(1px))) {
+  .home-header,
+  .compact-home-header,
+  .home-hero-stage-frame,
+  .home-code-panel,
+  .home-product-preview,
+  .home-final-panel {
+    background: var(--mr-canvas);
+  }
+}

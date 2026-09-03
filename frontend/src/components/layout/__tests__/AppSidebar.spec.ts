@@ -53,3 +53,36 @@ describe('AppSidebar header styles', () => {
     expect(sidebarBrandBlockMatch?.[0]).not.toContain('overflow: hidden;')
   })
 })
+
+describe('AppSidebar activity center navigation', () => {
+  it('uses the shared opt-in feature flag for the user route', () => {
+    expect(componentSource).toContain('const flagActivityCenter = makeSidebarFlag(FeatureFlags.activityCenter)')
+    expect(componentSource).toContain("{ path: '/activities', label: t('nav.activityCenter'), icon: CalendarIcon, featureFlag: flagActivityCenter }")
+  })
+
+  it('uses a distinct activity icon while keeping the gift icon for redeem', () => {
+    expect(componentSource).toContain("{ path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true }")
+    expect(componentSource).toContain("{ path: '/admin/activities', label: t('nav.activityManagement'), icon: CalendarIcon }")
+  })
+})
+
+describe('AppSidebar distribution placeholders', () => {
+  it('adds distinct user and administrator distribution entries', () => {
+    expect(componentSource).toContain("{ path: '/distribution', label: t('nav.distribution'), icon: DistributionIcon }")
+    expect(componentSource).toContain("{ path: '/admin/distribution', label: t('nav.distributionManagement'), icon: DistributionIcon }")
+  })
+})
+
+describe('AppSidebar footer controls', () => {
+  it('uses the same compact button treatment for theme and sidebar actions', () => {
+    expect(componentSource.match(/class="sidebar-footer-action sidebar-link/g)).toHaveLength(2)
+    expect(componentSource).toContain('.sidebar-footer-action {')
+    expect(componentSource).toContain('min-height: 44px;')
+    expect(componentSource).not.toContain('theme-switch-track')
+  })
+
+  it('keeps collapsed icon actions accessible by name', () => {
+    expect(componentSource).toContain(`:aria-label="isDark ? t('nav.lightMode') : t('nav.darkMode')"`)
+    expect(componentSource).toContain(`:aria-label="sidebarCollapsed ? t('nav.expand') : t('nav.collapse')"`)
+  })
+})

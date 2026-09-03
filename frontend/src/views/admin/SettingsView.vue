@@ -5268,6 +5268,32 @@
                   </p>
                 </div>
 
+              <!-- OpenAI Responses 首 token 统计 -->
+              <div class="border-b border-gray-100 pb-5 dark:border-dark-700 md:col-span-2">
+                <label
+                  for="openai-ttft-mode"
+                  class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  {{ t("admin.settings.gatewayForwarding.openaiTTFTMode") }}
+                </label>
+                <select
+                  id="openai-ttft-mode"
+                  v-model="form.openai_ttft_mode"
+                  class="input mt-2 w-full"
+                  data-testid="openai-ttft-mode"
+                >
+                  <option value="semantic">
+                    {{ t("admin.settings.gatewayForwarding.openaiTTFTModeSemantic") }}
+                  </option>
+                  <option value="visible">
+                    {{ t("admin.settings.gatewayForwarding.openaiTTFTModeVisible") }}
+                  </option>
+                </select>
+                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.gatewayForwarding.openaiTTFTModeHint") }}
+                </p>
+              </div>
+
               <!-- Fingerprint Unification -->
               <div class="flex items-center justify-between">
                 <div>
@@ -6047,7 +6073,7 @@
                         style="height: 6px"
                       >
                         <div
-                          class="h-full rounded-full transition-all"
+                          class="h-full rounded-full transition-[width]"
                           :class="
                             quotaPercentage(provider) > 90
                               ? 'bg-red-500'
@@ -8245,7 +8271,7 @@
                       type="button"
                       @click="togglePaymentType(pt.value)"
                       :class="[
-                        'rounded-lg border px-3 py-1.5 text-sm font-medium transition-all',
+                        'rounded-lg border px-3 py-1.5 text-sm font-medium transition-ui',
                         isPaymentTypeEnabled(pt.value)
                           ? 'border-primary-500 bg-primary-500 text-white shadow-sm'
                           : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400 hover:bg-gray-50 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300 dark:hover:border-dark-500',
@@ -8716,7 +8742,7 @@
                         class="sr-only peer"
                       />
                       <div
-                        class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-600 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:after:border-gray-500 peer-checked:bg-primary-600"
+                        class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-600 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-transform dark:after:border-gray-500 peer-checked:bg-primary-600"
                       ></div>
                     </label>
                     <input
@@ -9831,6 +9857,7 @@ const form = reactive<SettingsForm>({
   openai_advanced_scheduler_weight_previous_response: "",
   openai_advanced_scheduler_weight_session_sticky: "",
   // Gateway forwarding behavior
+  openai_ttft_mode: "semantic",
   enable_fingerprint_unification: true,
   enable_metadata_passthrough: false,
   enable_cch_signing: false,
@@ -11410,6 +11437,8 @@ async function saveSettings() {
       min_claude_code_version: form.min_claude_code_version,
       max_claude_code_version: form.max_claude_code_version,
       allow_ungrouped_key_scheduling: form.allow_ungrouped_key_scheduling,
+      openai_ttft_mode:
+        form.openai_ttft_mode === "visible" ? "visible" : "semantic",
       enable_fingerprint_unification: form.enable_fingerprint_unification,
       enable_metadata_passthrough: form.enable_metadata_passthrough,
       enable_cch_signing: form.enable_cch_signing,

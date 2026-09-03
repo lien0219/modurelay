@@ -107,6 +107,9 @@ export interface AdminUser extends User {
   last_used_at?: string | null
   // 用户专属分组倍率配置 (group_id -> rate_multiplier)
   group_rates?: Record<number, number>
+  // 为 true 时该用户仅可使用 allowed_groups 中列出的公开分组。
+  // 管理侧权限开关，普通用户接口不返回。
+  restrict_public_groups?: boolean
   // 当前并发数（仅管理员列表接口返回）
   current_concurrency?: number
 }
@@ -247,6 +250,7 @@ export interface PublicSettings {
   custom_menu_items: CustomMenuItem[]
   custom_endpoints: CustomEndpoint[]
   resource_center_enabled?: boolean
+  activity_center_enabled?: boolean
   linuxdo_oauth_enabled: boolean
   dingtalk_oauth_enabled?: boolean
   wechat_oauth_enabled: boolean
@@ -284,6 +288,119 @@ export interface PublicSettings {
   usage_detail_show_unit_prices?: boolean
   usage_detail_show_rate_multiplier?: boolean
   usage_detail_show_original_cost?: boolean
+}
+
+export type ActivityType = 'recharge_lottery' | 'limited_time_benefit'
+export type ActivityStatus = 'draft' | 'published' | 'archived'
+export type ActivityAvailability = 'active' | 'closed' | 'upcoming' | 'ended'
+
+export interface ActivityPrize {
+  id: number
+  name: string
+  amount: string
+  probability_ppm?: number
+  sort_order: number
+}
+
+export interface ActivityLotteryConfig {
+  id: number
+  version: number
+  currency: string
+  recharge_threshold: string
+  draws_per_threshold: number
+  max_chances_per_order: number
+  per_user_draw_limit: number
+  daily_draw_limit: number
+  daily_limit_timezone: string
+  starts_at: string | null
+  ends_at: string | null
+  prizes: ActivityPrize[]
+}
+
+export interface ActivityBenefitConfig {
+  id: number
+  version: number
+  currency: string
+  reward_amount: string
+  random_min_amount: string
+  random_max_amount: string
+  total_stock: number
+  per_user_limit: number
+  daily_claim_limit: number
+  daily_limit_timezone: string
+  starts_at: string | null
+  ends_at: string | null
+  claimed_count: number
+}
+
+export interface ActivityParticipation {
+  granted_draws?: number
+  used_draws?: number
+  available_draws?: number
+  drawn_today?: number
+  cumulative_recharge_amount?: string
+  recharge_progress_amount?: string
+  next_draw_recharge_amount?: string
+  reward_total?: string
+  benefit_claims?: number
+  benefit_claims_today?: number
+  remaining_stock?: number
+}
+
+export interface Activity {
+  id: number
+  slug: string
+  type: ActivityType
+  title: string
+  description: string
+  status: ActivityStatus
+  enabled: boolean
+  sort_order: number
+  current_config_version: number
+  availability: ActivityAvailability
+  closed_reason?: string
+  lottery?: ActivityLotteryConfig
+  benefit?: ActivityBenefitConfig
+  participation?: ActivityParticipation
+  created_at: string
+  updated_at: string
+}
+
+export interface ActivityCenterAdminView {
+  enabled: boolean
+  activities: Activity[]
+}
+
+export interface LotteryDrawResult {
+  draw_id: number
+  prize_id: number
+  prize_name: string
+  reward_amount: string
+  balance_after?: string
+  available_draws: number
+  created_at: string
+}
+
+export interface BenefitClaimResult {
+  claim_id: number
+  reward_amount: string
+  balance_after: string
+  remaining_stock: number
+  created_at: string
+}
+
+export interface ActivityReward {
+  id: number
+  user_id: number
+  activity_id: number
+  activity_title: string
+  activity_type: ActivityType
+  source_type: 'lottery_draw' | 'benefit_claim'
+  source_id: number
+  amount: string
+  balance_after: string
+  currency: string
+  created_at: string
 }
 
 export type ResourceAuthorRole = 'admin' | 'user'
@@ -629,9 +746,13 @@ export interface OpenAIMessagesDispatchModelConfig {
   exact_model_mappings?: Record<string, string>
 }
 
+export type ReasoningEffortMatchType = 'exact' | 'prefix' | 'suffix'
+
 export interface ReasoningEffortMapping {
   from: string
   to: string
+  match_type?: ReasoningEffortMatchType
+  model?: string
 }
 
 export interface Group {
@@ -642,6 +763,7 @@ export interface Group {
   rate_multiplier: number
   rpm_limit?: number // Group-level RPM cap (0 = unlimited); overrides user-level rpm_limit when set
   max_reasoning_effort?: string // OpenAI/Codex reasoning ceiling; empty means unlimited
+  max_reasoning_effort_over_limit?: string // downgrade (default) or deny when over the ceiling
   reasoning_effort_mappings?: ReasoningEffortMapping[]
   is_exclusive: boolean
   status: 'active' | 'inactive'
@@ -696,6 +818,8 @@ export interface Group {
 }
 
 export interface AdminGroup extends Group {
+  force_openai_fast: boolean
+  free_openai_fast: boolean
   model_pricing: import('@/api/admin/channels').ChannelModelPricing[]
   // 分组利润控制（openai/anthropic/gemini/grok/antigravity 分组可启用；margin/buffer 为小数存储）。
   // 仅管理员可见：与 rate_multiplier 相乘即可反推上游成本上限，不得下放到 Group。
@@ -860,6 +984,8 @@ export interface CreateGroupRequest {
   weekly_limit_usd?: number | null
   monthly_limit_usd?: number | null
   long_context_pricing_enabled?: boolean
+  force_openai_fast?: boolean
+  free_openai_fast?: boolean
   model_pricing?: import('@/api/admin/channels').ChannelModelPricing[]
   allow_image_generation?: boolean
   allow_batch_image_generation?: boolean
@@ -903,6 +1029,7 @@ export interface CreateGroupRequest {
   model_routing_enabled?: boolean
   rpm_limit?: number
   max_reasoning_effort?: string
+  max_reasoning_effort_over_limit?: string
   reasoning_effort_mappings?: ReasoningEffortMapping[]
   require_oauth_only?: boolean
   require_privacy_set?: boolean
@@ -922,6 +1049,8 @@ export interface UpdateGroupRequest {
   weekly_limit_usd?: number | null
   monthly_limit_usd?: number | null
   long_context_pricing_enabled?: boolean
+  force_openai_fast?: boolean
+  free_openai_fast?: boolean
   model_pricing?: import('@/api/admin/channels').ChannelModelPricing[]
   allow_image_generation?: boolean
   allow_batch_image_generation?: boolean
@@ -965,6 +1094,7 @@ export interface UpdateGroupRequest {
   model_routing_enabled?: boolean
   rpm_limit?: number
   max_reasoning_effort?: string
+  max_reasoning_effort_over_limit?: string
   reasoning_effort_mappings?: ReasoningEffortMapping[]
   require_oauth_only?: boolean
   require_privacy_set?: boolean
@@ -1146,6 +1276,18 @@ export interface UpstreamBillingProbeResult {
   account_id: number
   snapshot?: UpstreamBillingProbeSnapshot
   error?: string
+}
+
+export interface UpstreamBillingRateSnapshotItem {
+  account_id: number
+  snapshot?: UpstreamBillingProbeSnapshot | null
+}
+
+export interface UpstreamBillingRatesResponse {
+  items: UpstreamBillingRateSnapshotItem[]
+  total: number
+  page: number
+  page_size: number
 }
 
 export type OllamaCloudUsageStatus = 'ok' | 'unauthorized' | 'failed'
@@ -1753,6 +1895,7 @@ export interface UsageLog {
   request_type?: UsageRequestType
   stream: boolean
   openai_ws_mode?: boolean
+  native_compaction_v2: boolean
   duration_ms: number | null
   first_token_ms: number | null
 
@@ -1793,6 +1936,7 @@ export interface UsageLogAccountSummary {
 
 export interface AdminUsageLog extends UsageLog {
   upstream_model?: string | null
+  upstream_reasoning_effort?: string | null
   upstream_response_model?: string | null
   upstream_model_mismatch?: boolean | null
   model_mapping_chain?: string | null
@@ -2061,6 +2205,7 @@ export interface UpdateUserRequest {
   rpm_limit?: number
   status?: 'active' | 'disabled'
   allowed_groups?: number[] | null
+  restrict_public_groups?: boolean
   // 用户专属分组倍率配置 (group_id -> rate_multiplier | null)
   // null 表示删除该分组的专属倍率
   group_rates?: Record<number, number | null>
@@ -2183,6 +2328,7 @@ export interface UsageQueryParams {
   model?: string
   request_type?: UsageRequestType
   stream?: boolean
+  native_compaction_v2?: boolean | null
   billing_type?: number | null
   billing_mode?: string | null
   start_date?: string

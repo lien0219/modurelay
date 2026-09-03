@@ -1,0 +1,4 @@
+interface:
+  display_name: "ModuRelay Frosted Console"
+  short_description: "Build restrained glass console UI"
+  default_prompt: "Use $modurelay-console-frosted to build or refine a non-home ModuRelay page."

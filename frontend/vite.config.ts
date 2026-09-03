@@ -86,9 +86,16 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [
       vue(),
-      checker({
-        vueTsc: true
-      }),
+      // Type checking is covered by `pnpm build` (`vue-tsc -b`). The checker
+      // is opt-in because its browser runtime is large and is not application
+      // code. Set VITE_ENABLE_CHECKER=true when starting `pnpm dev` if needed.
+      ...(mode === 'development' && env.VITE_ENABLE_CHECKER === 'true'
+        ? [
+            checker({
+              vueTsc: true
+            })
+          ]
+        : []),
       injectPublicSettings(backendUrl)
     ],
   resolve: {
@@ -126,7 +133,7 @@ export default defineConfig(({ mode }) => {
             }
 
             // UI 工具库（较大，单独分离）
-            if (id.includes('/@vueuse/') || id.includes('/xlsx/')) {
+            if (id.includes('/@vueuse/')) {
               return 'vendor-ui'
             }
 
@@ -138,6 +145,39 @@ export default defineConfig(({ mode }) => {
             // 国际化
             if (id.includes('/vue-i18n/') || id.includes('/@intlify/')) {
               return 'vendor-i18n'
+            }
+
+            // Keep animation and rendering engines out of the shared runtime.
+            // They are only needed by specific views/components.
+            if (id.includes('/motion-v/')) {
+              return 'vendor-motion'
+            }
+            if (id.includes('/gsap/')) {
+              return 'vendor-gsap'
+            }
+            if (id.includes('/three/')) {
+              return 'vendor-three'
+            }
+
+            // Feature-specific utilities should not inflate every route's
+            // common chunk (exports, rich text, QR/payment flows, etc.).
+            if (id.includes('/xlsx/')) {
+              return 'vendor-xlsx'
+            }
+            if (id.includes('/marked/') || id.includes('/dompurify/')) {
+              return 'vendor-content'
+            }
+            if (id.includes('/qrcode/')) {
+              return 'vendor-qrcode'
+            }
+            if (id.includes('/file-saver/')) {
+              return 'vendor-file'
+            }
+            if (id.includes('/driver.js/')) {
+              return 'vendor-tour'
+            }
+            if (id.includes('/@airwallex/')) {
+              return 'vendor-airwallex'
             }
 
             // Stripe 仅在支付流程中按需加载，避免进入首页公共依赖。

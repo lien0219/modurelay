@@ -1,7 +1,7 @@
 <template>
   <div
     :class="[
-      'group relative rounded-lg border transition-all',
+      'group relative rounded-lg border transition-ui',
       enabled ? 'border-gray-200 dark:border-dark-600' : 'border-gray-200 bg-gray-50 opacity-50 dark:border-dark-700 dark:bg-dark-800/50',
     ]"
     :title="!enabled ? t('admin.settings.payment.typeDisabled') + ' — ' + t('admin.settings.payment.enableTypesFirst') : undefined"
@@ -33,7 +33,7 @@
             type="button"
             @click="emit('toggleType', pt.value)"
             :class="[
-              'rounded px-2 py-0.5 text-xs font-medium transition-all',
+              'rounded px-2 py-0.5 text-xs font-medium transition-ui',
               isSelected(pt.value)
                 ? 'bg-primary-500 text-white'
                 : 'bg-gray-100 text-gray-400 dark:bg-dark-700 dark:text-gray-500',

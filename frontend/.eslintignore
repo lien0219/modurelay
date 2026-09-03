@@ -12,3 +12,6 @@ dist/
 # 忽略缓存
 .cache/
 .vite/
+
+# Byte-exact vendored ThreeUI runtime and assets
+public/threeui/

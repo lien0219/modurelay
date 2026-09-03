@@ -124,7 +124,7 @@
         <button
           v-if="outputLines.length > 0"
           @click="copyOutput"
-          class="absolute right-2 top-2 rounded-lg bg-gray-800/80 p-1.5 text-gray-400 opacity-0 transition-all hover:bg-gray-700 hover:text-white group-hover:opacity-100"
+          class="absolute right-2 top-2 rounded-lg bg-gray-800/80 p-1.5 text-gray-400 opacity-0 transition-ui hover:bg-gray-700 hover:text-white group-hover:opacity-100"
           :title="t('admin.accounts.copyOutput')"
         >
           <Icon name="link" size="sm" :stroke-width="2" />
@@ -207,7 +207,7 @@
           @click="startTest"
           :disabled="status === 'connecting' || !selectedModelId"
           :class="[
-            'flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+            'flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-ui',
             status === 'connecting' || !selectedModelId
               ? 'cursor-not-allowed bg-primary-400 text-white'
               : status === 'success'

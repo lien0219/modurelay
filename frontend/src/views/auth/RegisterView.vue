@@ -1,12 +1,12 @@
 <template>
   <AuthLayout>
-    <div class="space-y-6">
+    <div class="auth-page min-w-0 space-y-6">
       <!-- Title -->
-      <div class="text-center">
-        <h2 class="text-2xl font-bold text-gray-900 dark:text-white">
+      <div class="auth-page-heading">
+        <h2 class="auth-page-title">
           {{ t('auth.createAccount') }}
         </h2>
-        <p class="mt-2 text-sm text-gray-500 dark:text-dark-400">
+        <p class="auth-page-subtitle">
           {{ t('auth.signUpToStart', { siteName }) }}
         </p>
       </div>
@@ -27,15 +27,15 @@
       </div>
 
       <!-- Registration Form -->
-      <form v-else @submit.prevent="handleRegister" class="space-y-5">
+      <form v-else @submit.prevent="handleRegister" class="auth-form space-y-5">
         <!-- Email Input -->
         <div>
           <label for="email" class="input-label">
             {{ t('auth.emailLabel') }}
           </label>
-          <div class="relative">
+          <div class="auth-input-wrap">
             <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
-              <Icon name="mail" size="md" class="text-gray-400 dark:text-dark-500" />
+              <Icon name="mail" size="md" class="auth-input-icon" aria-hidden="true" />
             </div>
             <input
               id="email"
@@ -48,8 +48,13 @@
               class="input pl-11"
               :class="{ 'input-error': errors.email }"
               :placeholder="t('auth.emailPlaceholder')"
+              :aria-invalid="Boolean(errors.email)"
+              :aria-describedby="errors.email ? 'register-email-error' : undefined"
             />
           </div>
+          <p v-if="errors.email" id="register-email-error" class="input-error-text" role="alert">
+            {{ errors.email }}
+          </p>
         </div>
 
         <!-- Password Input -->
@@ -57,9 +62,9 @@
           <label for="password" class="input-label">
             {{ t('auth.passwordLabel') }}
           </label>
-          <div class="relative">
+          <div class="auth-input-wrap">
             <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
-              <Icon name="lock" size="md" class="text-gray-400 dark:text-dark-500" />
+              <Icon name="lock" size="md" class="auth-input-icon" aria-hidden="true" />
             </div>
             <input
               id="password"
@@ -71,19 +76,25 @@
               class="input pl-11 pr-11"
               :class="{ 'input-error': errors.password }"
               :placeholder="t('auth.createPasswordPlaceholder')"
+              :aria-invalid="Boolean(errors.password)"
+              :aria-describedby="errors.password ? 'register-password-error' : 'register-password-hint'"
             />
             <button
               type="button"
               :disabled="registrationActionDisabled"
               @click="showPassword = !showPassword"
-              class="absolute inset-y-0 right-0 flex items-center pr-3.5 text-gray-400 transition-colors hover:text-gray-600 dark:hover:text-dark-300"
+              class="auth-password-toggle absolute inset-y-0 right-0"
+              :aria-label="showPassword ? t('common.hidePassword') : t('common.showPassword')"
             >
               <Icon v-if="showPassword" name="eyeOff" size="md" />
               <Icon v-else name="eye" size="md" />
             </button>
           </div>
-          <p class="input-hint">
+          <p id="register-password-hint" class="input-hint">
             {{ t('auth.passwordHint') }}
+          </p>
+          <p v-if="errors.password" id="register-password-error" class="input-error-text" role="alert">
+            {{ errors.password }}
           </p>
         </div>
 
@@ -92,9 +103,9 @@
           <label for="invitation_code" class="input-label">
             {{ t('auth.invitationCodeLabel') }}
           </label>
-          <div class="relative">
+          <div class="auth-input-wrap">
             <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
-              <Icon name="key" size="md" :class="invitationValidation.valid ? 'text-green-500' : 'text-gray-400 dark:text-dark-500'" />
+              <Icon name="key" size="md" :class="invitationValidation.valid ? 'text-green-500' : 'auth-input-icon'" />
             </div>
             <input
               id="invitation_code"
@@ -107,6 +118,8 @@
                 'border-red-500 focus:border-red-500 focus:ring-red-500': invitationValidation.invalid || errors.invitation_code
               }"
               :placeholder="t('auth.invitationCodePlaceholder')"
+              :aria-invalid="Boolean(invitationValidation.invalid || errors.invitation_code)"
+              :aria-describedby="errors.invitation_code ? 'register-invitation-error' : undefined"
               @input="handleInvitationCodeInput"
             />
             <!-- Validation indicator -->
@@ -132,17 +145,25 @@
               </span>
             </div>
           </transition>
+          <p
+            v-if="errors.invitation_code"
+            id="register-invitation-error"
+            class="input-error-text"
+            role="alert"
+          >
+            {{ errors.invitation_code }}
+          </p>
         </div>
 
         <!-- Affiliate Invitation Code Input (Optional) -->
         <div v-else-if="affiliateEnabled" data-testid="affiliate-invitation-field">
           <label for="affiliate_code" class="input-label">
             {{ t('auth.invitationCodeLabel') }}
-            <span class="ml-1 text-xs font-normal text-gray-400 dark:text-dark-500">({{ t('common.optional') }})</span>
+            <span class="ml-1 text-xs font-normal text-[color:var(--color-text-muted)]">({{ t('common.optional') }})</span>
           </label>
-          <div class="relative">
+          <div class="auth-input-wrap">
             <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
-              <Icon name="key" size="md" class="text-gray-400 dark:text-dark-500" />
+              <Icon name="key" size="md" class="auth-input-icon" aria-hidden="true" />
             </div>
             <input
               id="affiliate_code"
@@ -159,11 +180,11 @@
         <div v-if="promoCodeEnabled">
           <label for="promo_code" class="input-label">
             {{ t('auth.promoCodeLabel') }}
-            <span class="ml-1 text-xs font-normal text-gray-400 dark:text-dark-500">({{ t('common.optional') }})</span>
+            <span class="ml-1 text-xs font-normal text-[color:var(--color-text-muted)]">({{ t('common.optional') }})</span>
           </label>
-          <div class="relative">
+          <div class="auth-input-wrap">
             <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
-              <Icon name="gift" size="md" :class="promoValidation.valid ? 'text-green-500' : 'text-gray-400 dark:text-dark-500'" />
+              <Icon name="gift" size="md" :class="promoValidation.valid ? 'text-green-500' : 'auth-input-icon'" />
             </div>
             <input
               id="promo_code"
@@ -238,7 +259,7 @@
         <button
           type="submit"
           :disabled="registrationActionDisabled || (turnstileEnabled && !turnstileToken)"
-          class="btn btn-primary w-full"
+          class="auth-submit btn btn-primary w-full"
         >
           <svg
             v-if="isLoading"
@@ -274,16 +295,17 @@
 
       <div v-if="showOAuthLogin" class="space-y-3 pt-1">
         <div class="flex items-center gap-3">
-          <div class="h-px flex-1 bg-gray-200 dark:bg-dark-700"></div>
-          <span class="text-xs text-gray-500 dark:text-dark-400">
+          <div class="auth-divider-line h-px flex-1"></div>
+          <span class="auth-divider-label text-xs">
             {{ t('auth.oauthOrContinue') }}
           </span>
-          <div class="h-px flex-1 bg-gray-200 dark:bg-dark-700"></div>
+          <div class="auth-divider-line h-px flex-1"></div>
         </div>
 
         <EmailOAuthButtons
           :disabled="registrationActionDisabled"
           :aff-code="formData.aff_code"
+          :promo-code="formData.promo_code"
           :github-enabled="githubOAuthEnabled"
           :google-enabled="googleOAuthEnabled"
           :show-divider="false"
@@ -294,6 +316,7 @@
           v-if="linuxdoOAuthEnabled"
           :disabled="registrationActionDisabled"
           :aff-code="formData.aff_code"
+          :promo-code="formData.promo_code"
           :show-divider="false"
           @start="handleOAuthStart"
         />
@@ -317,11 +340,11 @@
 
     <!-- Footer -->
     <template #footer>
-      <p class="text-gray-500 dark:text-dark-400">
+      <p class="text-[color:var(--color-text-muted)]">
         {{ t('auth.alreadyHaveAccount') }}
         <router-link
           to="/login"
-          class="font-medium text-primary-600 transition-colors hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300"
+          class="auth-link"
         >
           {{ t('auth.signIn') }}
         </router-link>
@@ -1066,7 +1089,7 @@ function buildRegistrationErrorMessage(error: unknown, fallback: string): string
 <style scoped>
 .fade-enter-active,
 .fade-leave-active {
-  transition: all 0.3s ease;
+  transition: opacity 180ms var(--ease-standard), transform 180ms var(--ease-standard);
 }
 
 .fade-enter-from,

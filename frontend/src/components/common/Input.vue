@@ -7,7 +7,7 @@
     <div class="relative">
       <div
         v-if="$slots.prefix"
-        class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-gray-400 dark:text-dark-400"
+        class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-[color:var(--color-text-muted)]"
       >
         <slot name="prefix"></slot>
       </div>
@@ -27,12 +27,12 @@
         :aria-describedby="describedBy"
         :aria-busy="validating || undefined"
         :class="[
-          'input w-full transition-all duration-200',
+          'input w-full',
           $slots.prefix ? 'pl-11' : '',
           hasSuffix ? 'pr-11' : '',
           error ? 'input-error' : '',
           showSuccess && !error ? 'input-success' : '',
-          disabled ? 'cursor-not-allowed bg-gray-100 opacity-60 dark:bg-dark-900' : ''
+          disabled ? 'cursor-not-allowed opacity-60' : ''
         ]"
         @input="onInput"
         @change="$emit('change', ($event.target as HTMLInputElement).value)"
@@ -43,7 +43,7 @@
 
       <div
         v-if="hasSuffix"
-        class="absolute inset-y-0 right-0 flex items-center pr-2.5 text-gray-400 dark:text-dark-400"
+        class="absolute inset-y-0 right-0 flex items-center pr-2.5 text-[color:var(--color-text-muted)]"
       >
         <slot name="suffix">
           <span
@@ -210,10 +210,23 @@ defineExpose({
 <style scoped>
 .password-toggle {
   @apply inline-flex h-8 w-8 items-center justify-center rounded-lg;
-  @apply text-gray-400 transition-transform duration-150;
-  @apply hover:text-gray-600 dark:hover:text-dark-300;
-  @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/40;
-  @apply disabled:cursor-not-allowed disabled:opacity-50;
+  color: var(--color-text-muted);
+  transition: color 150ms ease, background-color 150ms ease, transform 150ms ease;
+}
+
+.password-toggle:hover {
+  color: var(--color-text-secondary);
+  background-color: var(--color-bg-subtle);
+}
+
+.password-toggle:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-primary-ring);
+}
+
+.password-toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .password-toggle--pressed:not(:disabled) {

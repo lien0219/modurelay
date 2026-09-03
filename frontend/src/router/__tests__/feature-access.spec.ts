@@ -25,6 +25,7 @@ const appStore = vi.hoisted(() => ({
   cachedPublicSettings: null as null | {
     payment_enabled?: boolean
     risk_control_enabled?: boolean
+    activity_center_enabled?: boolean
     custom_menu_items?: []
   },
   fetchPublicSettings: vi.fn(),
@@ -173,5 +174,21 @@ describe('feature route guard', () => {
     expect(appStore.fetchPublicSettings).not.toHaveBeenCalled()
     expect(next).toHaveBeenCalledOnce()
     expect(next).toHaveBeenCalledWith(target)
+  })
+
+  it('allows the activity center only when the opt-in setting is enabled', async () => {
+    appStore.cachedPublicSettings = { activity_center_enabled: true }
+    appStore.publicSettingsLoaded = true
+
+    const enabled = runGuard({}, '/activities')
+    await enabled.navigation
+    expect(enabled.next).toHaveBeenCalledOnce()
+    expect(enabled.next).toHaveBeenCalledWith()
+
+    appStore.cachedPublicSettings = { activity_center_enabled: false }
+    const disabled = runGuard({}, '/activities')
+    await disabled.navigation
+    expect(disabled.next).toHaveBeenCalledOnce()
+    expect(disabled.next).toHaveBeenCalledWith('/dashboard')
   })
 })

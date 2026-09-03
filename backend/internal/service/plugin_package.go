@@ -107,7 +107,12 @@ func (i *PluginPackageInstaller) Install(ctx context.Context, reader io.Reader, 
 	if err != nil {
 		return nil, fmt.Errorf("插件包不是有效的 ZIP: %w", err)
 	}
-	defer func() { _ = archive.Close() }()
+	archiveOpen := true
+	defer func() {
+		if archiveOpen {
+			_ = archive.Close()
+		}
+	}()
 	manifest, _, signatureStatus, err := i.inspectArchive(&archive.Reader)
 	if err != nil {
 		return nil, err
@@ -137,6 +142,13 @@ func (i *PluginPackageInstaller) Install(ctx context.Context, reader io.Reader, 
 	if err := i.extractArchive(ctx, &archive.Reader, manifest, extractPath); err != nil {
 		return nil, err
 	}
+	// Windows does not allow moving the uploaded archive while zip.OpenReader
+	// still holds its file handle. Extraction is complete, so release it before
+	// committing either the install directory or the package artifact.
+	if err := archive.Close(); err != nil {
+		return nil, fmt.Errorf("关闭插件包归档: %w", err)
+	}
+	archiveOpen = false
 	if err := os.Rename(extractPath, installPath); err != nil {
 		return nil, fmt.Errorf("提交插件安装目录: %w", err)
 	}

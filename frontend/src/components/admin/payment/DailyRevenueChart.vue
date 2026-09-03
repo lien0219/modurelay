@@ -34,6 +34,7 @@ import {
 import { Line } from 'vue-chartjs'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import type { DailyPaymentStats } from '@/types/payment'
+import { getChartPalette, getChartThemeColors } from '@/utils/chartColors'
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, Filler)
 
@@ -44,12 +45,7 @@ const props = defineProps<{
   loading?: boolean
 }>()
 
-const colors = [
-  ['rgb(59, 130, 246)', 'rgba(59, 130, 246, 0.1)'],
-  ['rgb(168, 85, 247)', 'rgba(168, 85, 247, 0.1)'],
-  ['rgb(245, 158, 11)', 'rgba(245, 158, 11, 0.1)'],
-  ['rgb(239, 68, 68)', 'rgba(239, 68, 68, 0.1)'],
-]
+const colors = getChartPalette().map((color) => [color, `${color}20`])
 
 const chartData = computed(() => {
   if (!props.data || props.data.length === 0) return null
@@ -73,8 +69,8 @@ const chartData = computed(() => {
       {
         label: t('payment.admin.orderCount'),
         data: props.data.map(d => d.count),
-        borderColor: 'rgb(16, 185, 129)',
-        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+        borderColor: getChartThemeColors().success,
+        backgroundColor: `${getChartThemeColors().success}20`,
         fill: false,
         tension: 0.3,
         pointRadius: 3,

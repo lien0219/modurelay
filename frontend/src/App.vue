@@ -1,15 +1,20 @@
 <script setup lang="ts">
 import { RouterView, useRouter, useRoute } from 'vue-router'
-import { onMounted, onBeforeUnmount, watch } from 'vue'
-import Toast from '@/components/common/Toast.vue'
+import { defineAsyncComponent, onMounted, onBeforeUnmount, watch } from 'vue'
 import NavigationProgress from '@/components/common/NavigationProgress.vue'
-import AdminComplianceDialog from '@/components/admin/AdminComplianceDialog.vue'
 import { resolveRouteDocumentTitle } from '@/router/title'
 import { brand } from '@/config/brand'
-import AnnouncementPopup from '@/components/common/AnnouncementPopup.vue'
-import { useAppStore, useAuthStore, useSubscriptionStore, useAnnouncementStore, useAdminComplianceStore, useAdminSettingsStore } from '@/stores'
+import { useAppStore, useAuthStore, useSubscriptionStore, useAnnouncementStore, useAdminComplianceStore, useAdminSettingsStore, useOnboardingStore } from '@/stores'
 import { getSetupStatus } from '@/api/setup'
 import { updateFavicon } from '@/utils/branding'
+import { disposeOnboardingTour, removeOnboardingArtifacts } from '@/utils/onboardingCleanup'
+
+// These overlays are not needed to render the current route. Loading them
+// asynchronously keeps their animation/Markdown dependencies out of the
+// application entry while preserving store-driven state and behavior.
+const Toast = defineAsyncComponent(() => import('@/components/common/Toast.vue'))
+const AnnouncementPopup = defineAsyncComponent(() => import('@/components/common/AnnouncementPopup.vue'))
+const AdminComplianceDialog = defineAsyncComponent(() => import('@/components/admin/AdminComplianceDialog.vue'))
 
 const router = useRouter()
 const route = useRoute()
@@ -19,6 +24,69 @@ const subscriptionStore = useSubscriptionStore()
 const announcementStore = useAnnouncementStore()
 const adminComplianceStore = useAdminComplianceStore()
 const adminSettingsStore = useAdminSettingsStore()
+const onboardingStore = useOnboardingStore()
+const HOME_ROUTE_PATH = '/home'
+const ONBOARDING_DISABLED_PATHS = new Set([HOME_ROUTE_PATH, '/ai-learning', '/activities'])
+let homeOverlayObserver: MutationObserver | null = null
+let homeOverlayCleanupFrame = 0
+
+function isHomeRoute(path = router.currentRoute.value.path) {
+  return path === HOME_ROUTE_PATH
+}
+
+function disposePublicOnboardingOverlay() {
+  disposeOnboardingTour(onboardingStore)
+}
+
+function cleanupHomeOverlayState() {
+  if (!isHomeRoute()) return
+
+  // The public home has no modal state. Clear the body lock left behind by a
+  // tour or dialog before it can affect the next render.
+  document.body.classList.remove('modal-open')
+  document.body.style.removeProperty('overflow')
+  removeOnboardingArtifacts()
+}
+
+function scheduleHomeOverlayCleanup() {
+  if (!isHomeRoute()) return
+  if (homeOverlayCleanupFrame) window.cancelAnimationFrame(homeOverlayCleanupFrame)
+
+  homeOverlayCleanupFrame = window.requestAnimationFrame(() => {
+    homeOverlayCleanupFrame = window.requestAnimationFrame(() => {
+      homeOverlayCleanupFrame = 0
+      cleanupHomeOverlayState()
+    })
+  })
+}
+
+function stopHomeOverlayGuard() {
+  homeOverlayObserver?.disconnect()
+  homeOverlayObserver = null
+}
+
+function startHomeOverlayGuard() {
+  stopHomeOverlayGuard()
+  if (!isHomeRoute() || !document.body) return
+
+  homeOverlayObserver = new MutationObserver(() => {
+    cleanupHomeOverlayState()
+  })
+  homeOverlayObserver.observe(document.body, { childList: true, subtree: true })
+  cleanupHomeOverlayState()
+}
+
+function syncHomeRouteGuard(path: string) {
+  const isHome = path === HOME_ROUTE_PATH
+  document.body.classList.toggle('modurelay-home-route', isHome)
+
+  if (isHome) {
+    startHomeOverlayGuard()
+    scheduleHomeOverlayCleanup()
+  } else {
+    stopHomeOverlayGuard()
+  }
+}
 
 function updateDocumentTitle() {
   const customMenuItems = [
@@ -36,6 +104,12 @@ watch(
       updateFavicon(newLogo)
     }
   },
+  { immediate: true }
+)
+
+watch(
+  () => route.path,
+  (path) => syncHomeRouteGuard(path),
   { immediate: true }
 )
 
@@ -106,7 +180,25 @@ watch(
 )
 
 // Route change trigger (throttled by store)
-router.afterEach(() => {
+const removeOnboardingBeforeEach = router.beforeEach((to) => {
+  if (ONBOARDING_DISABLED_PATHS.has(to.path)) {
+    disposePublicOnboardingOverlay()
+  }
+
+  if (to.path === HOME_ROUTE_PATH) {
+    syncHomeRouteGuard(to.path)
+    scheduleHomeOverlayCleanup()
+  }
+})
+
+router.afterEach((to) => {
+  if (to.meta.requiresAuth === false || ONBOARDING_DISABLED_PATHS.has(to.path)) {
+    disposePublicOnboardingOverlay()
+  }
+
+  syncHomeRouteGuard(to.path)
+  if (to.path === HOME_ROUTE_PATH) scheduleHomeOverlayCleanup()
+
   if (authStore.isAuthenticated) {
     announcementStore.fetchAnnouncements()
   }
@@ -115,10 +207,15 @@ router.afterEach(() => {
 onBeforeUnmount(() => {
   document.removeEventListener('visibilitychange', onVisibilityChange)
   window.removeEventListener('admin-compliance-required', onAdminComplianceRequired)
+  removeOnboardingBeforeEach()
+  stopHomeOverlayGuard()
+  if (homeOverlayCleanupFrame) window.cancelAnimationFrame(homeOverlayCleanupFrame)
+  document.body.classList.remove('modurelay-home-route')
 })
 
 onMounted(async () => {
   window.addEventListener('admin-compliance-required', onAdminComplianceRequired)
+  syncHomeRouteGuard(route.path)
 
   // Check if setup is needed
   try {

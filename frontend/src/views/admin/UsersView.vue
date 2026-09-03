@@ -133,6 +133,7 @@
                 :disabled="loading"
                 class="btn btn-secondary px-2 md:px-3"
                 :title="t('common.refresh')"
+                :aria-label="t('common.refresh')"
               >
                 <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
               </button>
@@ -142,6 +143,8 @@
                   @click="showFilterDropdown = !showFilterDropdown"
                   class="btn btn-secondary px-2 md:px-3"
                   :title="t('admin.users.filterSettings')"
+                  :aria-label="t('admin.users.filterSettings')"
+                  :aria-expanded="showFilterDropdown"
                 >
                   <Icon name="filter" size="sm" class="md:mr-1.5" />
                   <span class="hidden md:inline">{{ t('admin.users.filterSettings') }}</span>
@@ -149,7 +152,7 @@
                 <!-- Dropdown menu -->
                 <div
                   v-if="showFilterDropdown"
-                  class="absolute right-0 top-full z-50 mt-1 w-48 rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-dark-600 dark:bg-dark-800"
+                  class="glass-popover absolute right-0 top-full z-50 mt-1 w-48"
                 >
                   <!-- Built-in filters -->
                   <button
@@ -196,6 +199,8 @@
                   @click="showColumnDropdown = !showColumnDropdown"
                   class="btn btn-secondary px-2 md:px-3"
                   :title="t('admin.users.columnSettings')"
+                  :aria-label="t('admin.users.columnSettings')"
+                  :aria-expanded="showColumnDropdown"
                 >
                   <svg class="h-4 w-4 md:mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125z" />
@@ -205,7 +210,7 @@
                 <!-- Dropdown menu -->
                 <div
                   v-if="showColumnDropdown"
-                  class="absolute right-0 top-full z-50 mt-1 max-h-80 w-48 overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-dark-600 dark:bg-dark-800"
+                  class="glass-popover absolute right-0 top-full z-50 mt-1 max-h-80 w-48 overflow-y-auto"
                 >
                   <button
                     v-for="col in toggleableColumns"
@@ -236,6 +241,7 @@
                 @click="showAttributesModal = true"
                 class="btn btn-secondary px-2 md:px-3"
                 :title="t('admin.users.attributes.configButton')"
+                :aria-label="t('admin.users.attributes.configButton')"
               >
                 <Icon name="cog" size="sm" class="md:mr-1.5" />
                 <span class="hidden md:inline">{{ t('admin.users.attributes.configButton') }}</span>
@@ -666,7 +672,7 @@
     <Teleport to="body">
       <div
         v-if="activeMenuId !== null && menuPosition"
-        class="action-menu-content fixed z-[9999] w-48 overflow-hidden rounded-xl bg-white shadow-lg ring-1 ring-black/5 dark:bg-dark-800 dark:ring-white/10"
+        class="action-menu-content glass-popover fixed z-[9999] w-48 overflow-hidden"
         :style="{ top: menuPosition.top + 'px', left: menuPosition.left + 'px' }"
       >
         <div class="py-1">

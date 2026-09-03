@@ -3,10 +3,10 @@
     <!-- Mini Progress Display -->
     <button
       @click="toggleTooltip"
-      class="flex cursor-pointer items-center gap-2 rounded-xl bg-purple-50 px-3 py-1.5 transition-colors hover:bg-purple-100 dark:bg-purple-900/20 dark:hover:bg-purple-900/30"
+      class="subscription-progress-trigger flex cursor-pointer items-center gap-2 rounded-lg px-3 py-1.5"
       :title="t('subscriptionProgress.viewDetails')"
     >
-      <Icon name="creditCard" size="sm" class="text-purple-600 dark:text-purple-400" />
+      <Icon name="creditCard" size="sm" class="subscription-progress-icon" />
       <div class="flex items-center gap-1.5">
         <!-- Combined progress indicator -->
         <div class="flex items-center gap-0.5">
@@ -17,7 +17,7 @@
             :class="getProgressDotClass(sub)"
           ></div>
         </div>
-        <span class="text-xs font-medium text-purple-700 dark:text-purple-300">
+        <span class="subscription-progress-count text-xs font-medium">
           {{ activeSubscriptions.length }}
         </span>
       </div>
@@ -27,13 +27,13 @@
     <transition name="dropdown">
       <div
         v-if="tooltipOpen"
-        class="absolute right-0 z-50 mt-2 w-[340px] overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl dark:border-dark-700 dark:bg-dark-800"
+        class="subscription-progress-popover absolute right-0 z-50 mt-2 w-[340px] overflow-hidden rounded-xl"
       >
-        <div class="border-b border-gray-100 p-3 dark:border-dark-700">
-          <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+        <div class="subscription-progress-header border-b p-3">
+          <h3 class="subscription-progress-title text-sm font-semibold">
             {{ t('subscriptionProgress.title') }}
           </h3>
-          <p class="mt-0.5 text-xs text-gray-500 dark:text-dark-400">
+          <p class="subscription-progress-meta mt-0.5 text-xs">
             {{ t('subscriptionProgress.activeCount', { count: activeSubscriptions.length }) }}
           </p>
         </div>
@@ -62,10 +62,10 @@
               <!-- Unlimited subscription badge -->
               <div
                 v-if="isUnlimited(subscription)"
-                class="flex items-center gap-2 rounded-lg bg-gradient-to-r from-emerald-50 to-teal-50 px-2.5 py-1.5 dark:from-emerald-900/20 dark:to-teal-900/20"
+                class="subscription-progress-unlimited flex items-center gap-2 rounded-lg px-2.5 py-1.5"
               >
-                <span class="text-lg text-emerald-600 dark:text-emerald-400">∞</span>
-                <span class="text-xs font-medium text-emerald-700 dark:text-emerald-300">
+                <span class="text-lg">∞</span>
+                <span class="text-xs font-medium">
                   {{ t('subscriptionProgress.unlimited') }}
                 </span>
               </div>
@@ -76,9 +76,9 @@
                   <span class="w-8 flex-shrink-0 text-[10px] text-gray-500">{{
                     t('subscriptionProgress.daily')
                   }}</span>
-                  <div class="h-1.5 min-w-0 flex-1 rounded-full bg-gray-200 dark:bg-dark-600">
+                  <div class="subscription-progress-track h-1.5 min-w-0 flex-1 rounded-full">
                     <div
-                      class="h-1.5 rounded-full transition-all"
+                      class="subscription-progress-bar h-1.5 rounded-full"
                       :class="
                         getProgressBarClass(
                           subscription.daily_usage_usd,
@@ -104,9 +104,9 @@
                   <span class="w-8 flex-shrink-0 text-[10px] text-gray-500">{{
                     t('subscriptionProgress.weekly')
                   }}</span>
-                  <div class="h-1.5 min-w-0 flex-1 rounded-full bg-gray-200 dark:bg-dark-600">
+                  <div class="subscription-progress-track h-1.5 min-w-0 flex-1 rounded-full">
                     <div
-                      class="h-1.5 rounded-full transition-all"
+                      class="subscription-progress-bar h-1.5 rounded-full"
                       :class="
                         getProgressBarClass(
                           subscription.weekly_usage_usd,
@@ -132,9 +132,9 @@
                   <span class="w-8 flex-shrink-0 text-[10px] text-gray-500">{{
                     t('subscriptionProgress.monthly')
                   }}</span>
-                  <div class="h-1.5 min-w-0 flex-1 rounded-full bg-gray-200 dark:bg-dark-600">
+                  <div class="subscription-progress-track h-1.5 min-w-0 flex-1 rounded-full">
                     <div
-                      class="h-1.5 rounded-full transition-all"
+                      class="subscription-progress-bar h-1.5 rounded-full"
                       :class="
                         getProgressBarClass(
                           subscription.monthly_usage_usd,
@@ -163,11 +163,11 @@
           </div>
         </div>
 
-        <div class="border-t border-gray-100 p-2 dark:border-dark-700">
+        <div class="subscription-progress-footer border-t p-2">
           <router-link
             to="/subscriptions"
             @click="closeTooltip"
-            class="block w-full py-1 text-center text-xs text-primary-600 hover:underline dark:text-primary-400"
+            class="subscription-progress-link block w-full py-1 text-center text-xs hover:underline"
           >
             {{ t('subscriptionProgress.viewAll') }}
           </router-link>
@@ -229,20 +229,20 @@ function isUnlimited(sub: UserSubscription): boolean {
 function getProgressDotClass(sub: UserSubscription): string {
   // Unlimited subscriptions get a special color
   if (isUnlimited(sub)) {
-    return 'bg-emerald-500'
+    return 'subscription-progress-dot-success'
   }
   const maxPercentage = getMaxUsagePercentage(sub)
-  if (maxPercentage >= 90) return 'bg-red-500'
-  if (maxPercentage >= 70) return 'bg-orange-500'
-  return 'bg-green-500'
+  if (maxPercentage >= 90) return 'subscription-progress-dot-danger'
+  if (maxPercentage >= 70) return 'subscription-progress-dot-warning'
+  return 'subscription-progress-dot-success'
 }
 
 function getProgressBarClass(used: number | undefined, limit: number | null | undefined): string {
-  if (!limit || limit === 0) return 'bg-gray-400'
+  if (!limit || limit === 0) return 'subscription-progress-bar-neutral'
   const percentage = ((used || 0) / limit) * 100
-  if (percentage >= 90) return 'bg-red-500'
-  if (percentage >= 70) return 'bg-orange-500'
-  return 'bg-green-500'
+  if (percentage >= 90) return 'subscription-progress-bar-danger'
+  if (percentage >= 70) return 'subscription-progress-bar-warning'
+  return 'subscription-progress-bar-success'
 }
 
 function getProgressWidth(used: number | undefined, limit: number | null | undefined): string {
@@ -273,9 +273,9 @@ function getDaysRemainingClass(expiresAt: string): string {
   const expires = new Date(expiresAt)
   const diff = expires.getTime() - now.getTime()
   const days = Math.ceil(diff / (1000 * 60 * 60 * 24))
-  if (days <= 3) return 'text-red-600 dark:text-red-400'
-  if (days <= 7) return 'text-orange-600 dark:text-orange-400'
-  return 'text-gray-500 dark:text-dark-400'
+  if (days <= 3) return 'subscription-progress-expiry-danger'
+  if (days <= 7) return 'subscription-progress-expiry-warning'
+  return 'subscription-progress-expiry-neutral'
 }
 
 function toggleTooltip() {
@@ -307,9 +307,88 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.subscription-progress-trigger {
+  color: var(--color-primary);
+  background-color: var(--color-primary-soft);
+  border: 1px solid transparent;
+  transition: color 160ms ease, background-color 160ms ease, border-color 160ms ease;
+}
+
+.subscription-progress-trigger:hover {
+  background-color: var(--color-surface-soft);
+  border-color: var(--color-primary-border);
+}
+
+.subscription-progress-icon,
+.subscription-progress-count,
+.subscription-progress-link {
+  color: var(--color-primary);
+}
+
+.subscription-progress-popover {
+  background-color: var(--color-surface-overlay);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-overlay);
+}
+
+.subscription-progress-header,
+.subscription-progress-footer {
+  border-color: var(--color-border-subtle);
+}
+
+.subscription-progress-title {
+  color: var(--color-text-primary);
+}
+
+.subscription-progress-meta,
+.subscription-progress-expiry-neutral {
+  color: var(--color-text-muted);
+}
+
+.subscription-progress-unlimited {
+  color: var(--color-success);
+  background-color: var(--color-accent-soft);
+}
+
+.subscription-progress-track {
+  background-color: var(--color-bg-subtle);
+}
+
+.subscription-progress-bar {
+  transition: width 300ms ease, background-color 180ms ease;
+}
+
+.subscription-progress-bar-neutral,
+.subscription-progress-dot-neutral {
+  background-color: var(--color-text-disabled);
+}
+
+.subscription-progress-bar-success,
+.subscription-progress-dot-success {
+  background-color: var(--color-success);
+}
+
+.subscription-progress-bar-warning,
+.subscription-progress-dot-warning {
+  background-color: var(--color-warning);
+}
+
+.subscription-progress-bar-danger,
+.subscription-progress-dot-danger {
+  background-color: var(--color-danger);
+}
+
+.subscription-progress-expiry-warning {
+  color: var(--color-warning);
+}
+
+.subscription-progress-expiry-danger {
+  color: var(--color-danger);
+}
+
 .dropdown-enter-active,
 .dropdown-leave-active {
-  transition: all 0.2s ease;
+  transition: opacity 180ms var(--ease-standard), transform 180ms var(--ease-standard);
 }
 
 .dropdown-enter-from,
