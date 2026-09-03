@@ -199,6 +199,10 @@ describe('ActivityCenterView', () => {
     expect(appSource).toContain("const ONBOARDING_DISABLED_PATHS = new Set([HOME_ROUTE_PATH, '/ai-learning', '/activities'])")
   })
 
+  it('reconciles embedded feature flags with the public settings API on startup', () => {
+    expect(appSource).toContain('await appStore.fetchPublicSettings(true)')
+  })
+
   it('limits the dark marketing-image filter to the activity image', () => {
     expect(viewSource).toContain(':global(html.dark .activity-page .benefit-image)')
     expect(viewSource).not.toContain(':global(.dark) .benefit-image')

@@ -1,12 +1,69 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 )
+
+type activitySettingRepoStub struct {
+	setMultipleErr error
+	updates        map[string]string
+}
+
+func (s *activitySettingRepoStub) Get(context.Context, string) (*Setting, error) {
+	panic("unexpected Get call")
+}
+
+func (s *activitySettingRepoStub) GetValue(context.Context, string) (string, error) {
+	panic("unexpected GetValue call")
+}
+
+func (s *activitySettingRepoStub) Set(context.Context, string, string) error {
+	panic("unexpected Set call")
+}
+
+func (s *activitySettingRepoStub) GetMultiple(context.Context, []string) (map[string]string, error) {
+	panic("unexpected GetMultiple call")
+}
+
+func (s *activitySettingRepoStub) SetMultiple(_ context.Context, settings map[string]string) error {
+	s.updates = settings
+	return s.setMultipleErr
+}
+
+func (s *activitySettingRepoStub) GetAll(context.Context) (map[string]string, error) {
+	panic("unexpected GetAll call")
+}
+
+func (s *activitySettingRepoStub) Delete(context.Context, string) error {
+	panic("unexpected Delete call")
+}
+
+func TestActivityServiceSetEnabledNotifiesAfterPersistence(t *testing.T) {
+	repo := &activitySettingRepoStub{}
+	service := &ActivityService{settingRepo: repo}
+	notifications := 0
+	service.SetOnUpdateCallback(func() { notifications++ })
+
+	require.NoError(t, service.SetEnabled(context.Background(), true))
+	require.Equal(t, map[string]string{SettingKeyActivityCenterEnabled: "true"}, repo.updates)
+	require.Equal(t, 1, notifications)
+}
+
+func TestActivityServiceSetEnabledDoesNotNotifyWhenPersistenceFails(t *testing.T) {
+	repo := &activitySettingRepoStub{setMultipleErr: errors.New("settings unavailable")}
+	service := &ActivityService{settingRepo: repo}
+	notifications := 0
+	service.SetOnUpdateCallback(func() { notifications++ })
+
+	require.Error(t, service.SetEnabled(context.Background(), false))
+	require.Equal(t, 0, notifications)
+}
 
 func validLotteryConfigInput() LotteryConfigInput {
 	return LotteryConfigInput{

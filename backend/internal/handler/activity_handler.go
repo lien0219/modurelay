@@ -16,6 +16,15 @@ func NewActivityHandler(activityService *service.ActivityService) *ActivityHandl
 	return &ActivityHandler{service: activityService}
 }
 
+// SetOnUpdateCallback forwards activity-setting updates to the server's
+// shared settings cache invalidation callback.
+func (h *ActivityHandler) SetOnUpdateCallback(callback func()) {
+	if h == nil || h.service == nil {
+		return
+	}
+	h.service.SetOnUpdateCallback(callback)
+}
+
 type activityActionRequest struct {
 	RequestID string `json:"request_id" binding:"required"`
 }

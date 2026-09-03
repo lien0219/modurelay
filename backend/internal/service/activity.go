@@ -248,6 +248,7 @@ type ActivityService struct {
 	settingRepo          SettingRepository
 	authCacheInvalidator APIKeyAuthCacheInvalidator
 	billingCacheService  *BillingCacheService
+	onUpdate             func() // Callback when the activity-center setting changes
 }
 
 func NewActivityService(repo ActivityRepository, settingRepo SettingRepository, authCacheInvalidator APIKeyAuthCacheInvalidator, billingCacheService *BillingCacheService) *ActivityService {
@@ -267,11 +268,27 @@ func (s *ActivityService) IsEnabled(ctx context.Context) bool {
 	return err == nil && value == "true"
 }
 
+// SetOnUpdateCallback sets a callback invoked after the activity-center setting
+// is persisted. The embedded frontend uses this to invalidate its injected
+// public-settings HTML cache.
+func (s *ActivityService) SetOnUpdateCallback(callback func()) {
+	if s == nil {
+		return
+	}
+	s.onUpdate = callback
+}
+
 func (s *ActivityService) SetEnabled(ctx context.Context, enabled bool) error {
 	if s == nil || s.settingRepo == nil {
 		return errors.New("activity setting repository is unavailable")
 	}
-	return s.settingRepo.SetMultiple(ctx, map[string]string{SettingKeyActivityCenterEnabled: fmt.Sprintf("%t", enabled)})
+	if err := s.settingRepo.SetMultiple(ctx, map[string]string{SettingKeyActivityCenterEnabled: fmt.Sprintf("%t", enabled)}); err != nil {
+		return err
+	}
+	if s.onUpdate != nil {
+		s.onUpdate()
+	}
+	return nil
 }
 
 func (s *ActivityService) ListUserActivities(ctx context.Context, userID int64) ([]Activity, error) {

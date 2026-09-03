@@ -72,3 +72,10 @@ type RefreshTokenCache interface {
 	// 用于验证Token家族关系
 	IsTokenInFamily(ctx context.Context, familyID string, tokenHash string) (bool, error)
 }
+
+// RefreshTokenConsumer atomically invalidates a refresh token and reports
+// whether this caller consumed it. Implementations must return false when the
+// token no longer exists so concurrent refresh attempts cannot both succeed.
+type RefreshTokenConsumer interface {
+	ConsumeRefreshToken(ctx context.Context, tokenHash string) (bool, error)
+}

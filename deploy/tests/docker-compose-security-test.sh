@@ -6,9 +6,10 @@ cd "$repo_root"
 
 check_application_security_opt() {
   file=$1
+  service=$2
   count=$(
-    awk '
-      $0 == "  sub2api:" {
+    awk -v service="$service" '
+      $0 == "  " service ":" {
         in_application = 1
         next
       }
@@ -27,7 +28,7 @@ check_application_security_opt() {
   )
 
   if [ "$count" -ne 1 ]; then
-    printf '%s must enable no-new-privileges exactly once for the sub2api service\n' "$file" >&2
+    printf '%s must enable no-new-privileges exactly once for the %s service\n' "$file" "$service" >&2
     exit 1
   fi
 }
@@ -38,7 +39,16 @@ for compose_file in \
   deploy/docker-compose.standalone.yml \
   deploy/docker-compose.dev.yml
 do
-  check_application_security_opt "$compose_file"
+  check_application_security_opt "$compose_file" sub2api
 done
+
+check_application_security_opt deploy/docker-compose.prod.yml modurelay
+
+prod_policy_count=$(grep -Fxc '      REDIS_MAXMEMORY_POLICY: "${REDIS_MAXMEMORY_POLICY:-noeviction}"' deploy/docker-compose.prod.yml || true)
+prod_command_count=$(grep -Fxc '        --maxmemory-policy "$${REDIS_MAXMEMORY_POLICY:-noeviction}" \' deploy/docker-compose.prod.yml || true)
+if [ "$prod_policy_count" -ne 1 ] || [ "$prod_command_count" -ne 1 ]; then
+  printf '%s\n' 'deploy/docker-compose.prod.yml must default Redis to noeviction in both the container environment and command' >&2
+  exit 1
+fi
 
 printf 'docker compose security test passed\n'

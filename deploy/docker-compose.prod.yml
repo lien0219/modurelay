@@ -7,6 +7,9 @@ services:
     restart: unless-stopped
     stop_grace_period: 30s
 
+    security_opt:
+      - no-new-privileges:true
+
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
@@ -174,14 +177,14 @@ services:
         --appendonly yes \
         --appendfsync everysec \
         --maxmemory "$${REDIS_MAXMEMORY:-384mb}" \
-        --maxmemory-policy "$${REDIS_MAXMEMORY_POLICY:-allkeys-lru}" \
+        --maxmemory-policy "$${REDIS_MAXMEMORY_POLICY:-noeviction}" \
         $${REDIS_PASSWORD:+--requirepass "$$REDIS_PASSWORD"}'
 
     environment:
       REDIS_PASSWORD: "${REDIS_PASSWORD:-}"
       REDISCLI_AUTH: "${REDIS_PASSWORD:-}"
       REDIS_MAXMEMORY: "${REDIS_MAXMEMORY:-384mb}"
-      REDIS_MAXMEMORY_POLICY: "${REDIS_MAXMEMORY_POLICY:-allkeys-lru}"
+      REDIS_MAXMEMORY_POLICY: "${REDIS_MAXMEMORY_POLICY:-noeviction}"
       TZ: "${TZ:-Asia/Shanghai}"
 
     healthcheck:

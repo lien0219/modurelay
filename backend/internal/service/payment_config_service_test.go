@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -406,8 +407,9 @@ func newPaymentConfigServiceTestClient(t *testing.T) *dbent.Client {
 }
 
 type paymentConfigSettingRepoStub struct {
-	values  map[string]string
-	updates map[string]string
+	values         map[string]string
+	updates        map[string]string
+	setMultipleErr error
 }
 
 func (s *paymentConfigSettingRepoStub) Get(context.Context, string) (*Setting, error) {
@@ -433,7 +435,7 @@ func (s *paymentConfigSettingRepoStub) SetMultiple(_ context.Context, values map
 		}
 		s.values[key] = value
 	}
-	return nil
+	return s.setMultipleErr
 }
 func (s *paymentConfigSettingRepoStub) GetAll(context.Context) (map[string]string, error) {
 	return s.values, nil
@@ -472,6 +474,39 @@ func TestUpdatePaymentConfig_PersistsVisibleMethodRouting(t *testing.T) {
 	}
 	if repo.values[SettingPaymentVisibleMethodWxpaySource] != VisibleMethodSourceOfficialWechat {
 		t.Fatalf("wxpay source = %q, want %q", repo.values[SettingPaymentVisibleMethodWxpaySource], VisibleMethodSourceOfficialWechat)
+	}
+}
+
+func TestPaymentConfigServiceUpdateNotifiesAfterPersistence(t *testing.T) {
+	repo := &paymentConfigSettingRepoStub{values: map[string]string{}}
+	service := &PaymentConfigService{settingRepo: repo}
+	notifications := 0
+	service.SetOnUpdateCallback(func() { notifications++ })
+	enabled := true
+
+	if err := service.UpdatePaymentConfig(context.Background(), UpdatePaymentConfigRequest{Enabled: &enabled}); err != nil {
+		t.Fatalf("UpdatePaymentConfig returned error: %v", err)
+	}
+	if repo.updates[SettingPaymentEnabled] != "true" {
+		t.Fatalf("payment enabled update = %q, want true", repo.updates[SettingPaymentEnabled])
+	}
+	if notifications != 1 {
+		t.Fatalf("notifications = %d, want 1", notifications)
+	}
+}
+
+func TestPaymentConfigServiceUpdateDoesNotNotifyWhenPersistenceFails(t *testing.T) {
+	repo := &paymentConfigSettingRepoStub{setMultipleErr: errors.New("settings unavailable")}
+	service := &PaymentConfigService{settingRepo: repo}
+	notifications := 0
+	service.SetOnUpdateCallback(func() { notifications++ })
+	enabled := false
+
+	if err := service.UpdatePaymentConfig(context.Background(), UpdatePaymentConfigRequest{Enabled: &enabled}); err == nil {
+		t.Fatal("UpdatePaymentConfig returned nil error")
+	}
+	if notifications != 0 {
+		t.Fatalf("notifications = %d, want 0", notifications)
 	}
 }
 
