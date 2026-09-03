@@ -1,16 +1,20 @@
 <script setup lang="ts">
 import { RouterView, useRouter, useRoute } from 'vue-router'
-import { onMounted, onBeforeUnmount, watch } from 'vue'
-import Toast from '@/components/common/Toast.vue'
+import { defineAsyncComponent, onMounted, onBeforeUnmount, watch } from 'vue'
 import NavigationProgress from '@/components/common/NavigationProgress.vue'
-import AdminComplianceDialog from '@/components/admin/AdminComplianceDialog.vue'
 import { resolveRouteDocumentTitle } from '@/router/title'
 import { brand } from '@/config/brand'
-import AnnouncementPopup from '@/components/common/AnnouncementPopup.vue'
 import { useAppStore, useAuthStore, useSubscriptionStore, useAnnouncementStore, useAdminComplianceStore, useAdminSettingsStore, useOnboardingStore } from '@/stores'
 import { getSetupStatus } from '@/api/setup'
 import { updateFavicon } from '@/utils/branding'
 import { disposeOnboardingTour, removeOnboardingArtifacts } from '@/utils/onboardingCleanup'
+
+// These overlays are not needed to render the current route. Loading them
+// asynchronously keeps their animation/Markdown dependencies out of the
+// application entry while preserving store-driven state and behavior.
+const Toast = defineAsyncComponent(() => import('@/components/common/Toast.vue'))
+const AnnouncementPopup = defineAsyncComponent(() => import('@/components/common/AnnouncementPopup.vue'))
+const AdminComplianceDialog = defineAsyncComponent(() => import('@/components/admin/AdminComplianceDialog.vue'))
 
 const router = useRouter()
 const route = useRoute()
