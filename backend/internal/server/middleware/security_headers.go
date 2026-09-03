@@ -47,6 +47,9 @@ const (
 	AirwallexDemoStaticDomain = "https://static-demo.airwallex.com"
 	// AirwallexDemoCheckoutDomain 是 Airwallex 沙箱环境收银台元素和 iframe 域名。
 	AirwallexDemoCheckoutDomain = "https://checkout-demo.airwallex.com"
+	// SylvaScenePath is the canonical same-origin ThreeUI document embedded by
+	// the official homepage.
+	SylvaScenePath = "/threeui/sylva/inner-green-3d.html"
 )
 
 var requiredCSPDirectiveValues = []struct {
@@ -130,6 +133,12 @@ func SecurityHeaders(cfg config.CSPConfig, getFrameSrcOrigins func() []string) g
 		c.Header("X-Content-Type-Options", "nosniff")
 		c.Header("X-Frame-Options", "DENY")
 		c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
+		isSylvaScene := isSylvaScenePath(c)
+		if isSylvaScene {
+			// Keep the global DENY default while allowing the exact trusted
+			// document used by the official homepage's same-origin iframe.
+			c.Header("X-Frame-Options", "SAMEORIGIN")
+		}
 		if isAPIRoutePath(c) {
 			c.Next()
 			return
@@ -141,14 +150,73 @@ func SecurityHeaders(cfg config.CSPConfig, getFrameSrcOrigins func() []string) g
 			if err != nil {
 				// crypto/rand 失败时降级为无 nonce 的 CSP 策略
 				log.Printf("[SecurityHeaders] %v — 降级为无 nonce 的 CSP", err)
-				c.Header("Content-Security-Policy", strings.ReplaceAll(finalPolicy, NonceTemplate, "'unsafe-inline'"))
+				resolvedPolicy := strings.ReplaceAll(finalPolicy, NonceTemplate, "'unsafe-inline'")
+				if isSylvaScene {
+					resolvedPolicy = relaxSylvaCSPPolicy(resolvedPolicy)
+				}
+				c.Header("Content-Security-Policy", resolvedPolicy)
 			} else {
 				c.Set(CSPNonceKey, nonce)
-				c.Header("Content-Security-Policy", strings.ReplaceAll(finalPolicy, NonceTemplate, "'nonce-"+nonce+"'"))
+				resolvedPolicy := strings.ReplaceAll(finalPolicy, NonceTemplate, "'nonce-"+nonce+"'")
+				if isSylvaScene {
+					resolvedPolicy = relaxSylvaCSPPolicy(resolvedPolicy)
+				}
+				c.Header("Content-Security-Policy", resolvedPolicy)
 			}
 		}
 		c.Next()
 	}
+}
+
+func isSylvaScenePath(c *gin.Context) bool {
+	return c != nil && c.Request != nil && c.Request.URL != nil && c.Request.URL.Path == SylvaScenePath
+}
+
+// relaxSylvaCSPPolicy adapts the normal page policy for the byte-exact Sylva
+// document. Its inline scripts cannot carry the parent page nonce, and the
+// document must be frameable by the same-origin /home host.
+func relaxSylvaCSPPolicy(policy string) string {
+	directives := make([]string, 0, len(strings.Split(policy, ";"))+1)
+	frameAncestorsFound := false
+	for _, rawDirective := range strings.Split(policy, ";") {
+		fields := strings.Fields(rawDirective)
+		if len(fields) == 0 {
+			continue
+		}
+
+		switch fields[0] {
+		case "frame-ancestors":
+			if frameAncestorsFound {
+				continue
+			}
+			directives = append(directives, "frame-ancestors 'self'")
+			frameAncestorsFound = true
+		case "script-src", "script-src-elem":
+			values := []string{fields[0]}
+			hasUnsafeInline := false
+			for _, value := range fields[1:] {
+				if strings.HasPrefix(value, "'nonce-") || value == NonceTemplate {
+					continue
+				}
+				if value == "'unsafe-inline'" {
+					hasUnsafeInline = true
+				}
+				values = append(values, value)
+			}
+			if !hasUnsafeInline {
+				values = append(values, "'unsafe-inline'")
+			}
+			directives = append(directives, strings.Join(values, " "))
+		default:
+			directives = append(directives, strings.Join(fields, " "))
+		}
+	}
+
+	if !frameAncestorsFound {
+		directives = append(directives, "frame-ancestors 'self'")
+	}
+
+	return strings.TrimSpace(strings.Join(directives, "; "))
 }
 
 func isAPIRoutePath(c *gin.Context) bool {
