@@ -151,6 +151,41 @@ func TestSecurityHeaders(t *testing.T) {
 		assert.Equal(t, "DENY", w.Header().Get("X-Frame-Options"))
 	})
 
+	t.Run("allows_only_same_origin_sylva_scene_embedding", func(t *testing.T) {
+		cfg := config.CSPConfig{
+			Enabled: true,
+			Policy:  "default-src 'self'; script-src 'self' __CSP_NONCE__; frame-ancestors 'none'",
+		}
+		middleware := SecurityHeaders(cfg, nil)
+
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodGet, SylvaScenePath, nil)
+
+		middleware(c)
+
+		assert.Equal(t, "SAMEORIGIN", w.Header().Get("X-Frame-Options"))
+		csp := w.Header().Get("Content-Security-Policy")
+		assert.Contains(t, csp, "frame-ancestors 'self'")
+		assert.NotContains(t, csp, "frame-ancestors 'none'")
+		assert.Equal(t, 1, countDirectiveValue(csp, "script-src", "'unsafe-inline'"))
+		assert.NotContains(t, csp, "'nonce-")
+	})
+
+	t.Run("keeps_sylva_exception_exactly_scoped", func(t *testing.T) {
+		cfg := config.CSPConfig{Enabled: true, Policy: "default-src 'self'"}
+		middleware := SecurityHeaders(cfg, nil)
+
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodGet, "/threeui/sylva/inner-green-3d.html/", nil)
+
+		middleware(c)
+
+		assert.Equal(t, "DENY", w.Header().Get("X-Frame-Options"))
+		assert.NotContains(t, w.Header().Get("Content-Security-Policy"), "frame-ancestors 'self'")
+	})
+
 	t.Run("api_route_skips_csp_nonce_generation", func(t *testing.T) {
 		cfg := config.CSPConfig{
 			Enabled: true,
@@ -434,6 +469,16 @@ func TestEnhanceCSPPolicy(t *testing.T) {
 		assert.Equal(t, 1, countDirectiveValue(enhanced, "style-src", AirwallexDemoCheckoutDomain))
 		assert.Equal(t, 1, countDirectiveValue(enhanced, "frame-src", AirwallexDemoCheckoutDomain))
 	})
+}
+
+func TestRelaxSylvaCSPPolicy(t *testing.T) {
+	policy := "default-src 'self'; script-src 'self' 'nonce-abc' https://example.com; frame-ancestors 'none'"
+	result := relaxSylvaCSPPolicy(policy)
+
+	assert.Contains(t, result, "script-src 'self' https://example.com 'unsafe-inline'")
+	assert.NotContains(t, result, "'nonce-abc'")
+	assert.Contains(t, result, "frame-ancestors 'self'")
+	assert.NotContains(t, result, "frame-ancestors 'none'")
 }
 
 func countDirectiveValue(policy, directive, value string) int {

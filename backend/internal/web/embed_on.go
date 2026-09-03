@@ -99,8 +99,19 @@ func (s *FrontendServer) Middleware() gin.HandlerFunc {
 			cleanPath = "index.html"
 		}
 
-		// For index.html or SPA routes, serve with injected settings
-		if cleanPath == "index.html" || !s.fileExists(cleanPath) {
+		// For index.html or SPA routes, serve with injected settings. Static
+		// namespaces must fail closed so a missing vendor asset is not mistaken
+		// for the application shell.
+		if cleanPath == "index.html" {
+			s.serveIndexHTML(c)
+			return
+		}
+		if !s.fileExists(cleanPath) {
+			if isEmbeddedStaticNamespacePath(cleanPath) {
+				c.Status(http.StatusNotFound)
+				c.Abort()
+				return
+			}
 			s.serveIndexHTML(c)
 			return
 		}
@@ -333,6 +344,12 @@ func ServeEmbeddedFrontend() gin.HandlerFunc {
 			return
 		}
 
+		if isEmbeddedStaticNamespacePath(cleanPath) {
+			c.Status(http.StatusNotFound)
+			c.Abort()
+			return
+		}
+
 		serveIndexHTML(c, distFS)
 	}
 }
@@ -367,6 +384,10 @@ func shouldBypassEmbeddedFrontend(path string) bool {
 		trimmed == "/alpha/search" ||
 		strings.HasPrefix(trimmed, "/images/") ||
 		strings.HasPrefix(trimmed, "/videos/")
+}
+
+func isEmbeddedStaticNamespacePath(cleanPath string) bool {
+	return strings.HasPrefix(strings.TrimPrefix(cleanPath, "/"), "threeui/")
 }
 
 func serveIndexHTML(c *gin.Context, fsys fs.FS) {
