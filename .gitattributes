@@ -20,3 +20,7 @@ backend/migrations/*.sql text eol=lf
 
 # Dockerfile
 Dockerfile text eol=lf
+
+# Byte-exact vendored Sylva source and runtime assets
+frontend/public/threeui/sylva/inner-green-3d.html -text
+frontend/public/threeui/sylva/inner-green-assets/** -text
