@@ -145,7 +145,7 @@
                 <div class="text-sm font-medium text-[color:var(--color-text-primary)]">
                   {{ displayName }}
                 </div>
-                <div class="app-menu-meta text-xs">{{ user.email }}</div>
+                <div class="app-menu-meta user-menu-email text-xs">{{ user.email }}</div>
               </div>
 
               <!-- Balance (mobile only) -->
