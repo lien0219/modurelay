@@ -186,6 +186,7 @@ func TestListDueUpstreamBillingProbeAccountsIncludesAllAPIKeyPlatforms(t *testin
 	openaiDue := insert("probe-openai-due", "openai", service.AccountTypeAPIKey, "2026-07-26T02:57:00Z")
 	anthropicDue := insert("probe-anthropic-due", "anthropic", service.AccountTypeAPIKey, "2026-07-26T02:58:00Z")
 	grokDue := insert("probe-grok-due", "grok", service.AccountTypeAPIKey, "2026-07-26T02:59:00Z")
+	antigravityUpstreamDue := insert("probe-antigravity-upstream-due", "antigravity", service.AccountTypeUpstream, "2026-07-26T02:59:30Z")
 	// OAuth 账号即便误持有启用标记也不得入选。
 	_ = insert("probe-grok-oauth-excluded", "grok", service.AccountTypeOAuth, "2026-07-26T02:59:00Z")
 	// 未启用探测的 API-key 账号不入选。
@@ -199,8 +200,9 @@ func TestListDueUpstreamBillingProbeAccountsIncludesAllAPIKeyPlatforms(t *testin
 
 	accounts, err := repo.ListDueUpstreamBillingProbeAccounts(ctx, now, 20)
 	require.NoError(t, err)
-	require.Len(t, accounts, 3)
+	require.Len(t, accounts, 4)
 	require.Equal(t, openaiDue, accounts[0].ID)
 	require.Equal(t, anthropicDue, accounts[1].ID)
 	require.Equal(t, grokDue, accounts[2].ID)
+	require.Equal(t, antigravityUpstreamDue, accounts[3].ID)
 }

@@ -7,6 +7,7 @@ import (
 	"compress/gzip"
 	"context"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -243,7 +244,10 @@ func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID i
 // profile 为 nil 时不启用 TLS 指纹，行为与 Do 方法相同。
 // profile 非 nil 时使用指定的 Profile 进行 TLS 指纹伪装。
 func (s *httpUpstreamService) DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile) (*http.Response, error) {
-	if profile == nil {
+	// Resolved-IP pinning is a security property, so it takes precedence over a
+	// cosmetic TLS fingerprint. The standard transport supports pinned direct,
+	// SOCKS, and HTTP(S)-proxy dialing without changing the TLS server name.
+	if profile == nil || (req != nil && service.HTTPUpstreamResolvedIPPinningRequired(req.Context())) {
 		return s.Do(req, proxyURL, accountID, accountConcurrency)
 	}
 	// Plain HTTP has no TLS handshake to fingerprint. Reuse the normal transport
@@ -298,14 +302,57 @@ func (s *httpUpstreamService) DoWithTLS(req *http.Request, proxyURL string, acco
 }
 
 func httpClientForUpstreamRequest(client *http.Client, req *http.Request) *http.Client {
-	if client == nil || req == nil || !service.HTTPUpstreamRedirectsDisabled(req.Context()) {
+	if client == nil || req == nil {
+		return client
+	}
+	redirectsDisabled := service.HTTPUpstreamRedirectsDisabled(req.Context())
+	resolvedIPPinned := service.HTTPUpstreamResolvedIPPinningRequired(req.Context())
+	if !redirectsDisabled && !resolvedIPPinned {
 		return client
 	}
 	clone := *client
-	clone.CheckRedirect = func(*http.Request, []*http.Request) error {
-		return http.ErrUseLastResponse
+	if redirectsDisabled {
+		clone.CheckRedirect = func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		}
+	}
+	if resolvedIPPinned {
+		// The validated IP is a request-scoped security property. A cached
+		// transport may otherwise reuse an idle HTTP/1.1 connection or an
+		// active HTTP/2 connection established before this pin was resolved,
+		// bypassing the current request's DialContext entirely.
+		clone.Transport = cloneTransportForResolvedIPPinnedRequest(client.Transport)
 	}
 	return &clone
+}
+
+func cloneTransportForResolvedIPPinnedRequest(roundTripper http.RoundTripper) http.RoundTripper {
+	if roundTripper == nil {
+		roundTripper = http.DefaultTransport
+	}
+	transport, ok := roundTripper.(*http.Transport)
+	if !ok {
+		// All transports created by httpUpstreamService are *http.Transport.
+		// Preserve an injected custom RoundTripper for tests and extensions
+		// rather than replacing it with the global default transport.
+		return roundTripper
+	}
+	clone := transport.Clone()
+	clone.CloseIdleConnections()
+	clone.DisableKeepAlives = true
+	if transport.ForceAttemptHTTP2 {
+		// Transport.Clone copies TLSNextProto callbacks. For x/net/http2 those
+		// callbacks close over the original HTTP/2 pool, which could reuse a
+		// connection that predates this request's validated IP pin. Clear the
+		// copied handlers so net/http configures a fresh HTTP/2 pool for the
+		// cloned transport. Keeping ForceAttemptHTTP2 also keeps ALPN and the
+		// selected wire protocol consistent; advertising h2 while parsing the
+		// response as HTTP/1.x corrupts the response stream.
+		clone.TLSNextProto = nil
+		clone.Protocols = nil
+		clone.ForceAttemptHTTP2 = true
+	}
+	return clone
 }
 
 // grokAccessDeniedFallbackTransport preserves the subscription CLI proxy as
@@ -597,6 +644,14 @@ func (s *httpUpstreamService) validateRequestHost(req *http.Request) error {
 	host := strings.TrimSpace(req.URL.Hostname())
 	if host == "" {
 		return errors.New("request host is empty")
+	}
+	if service.HTTPUpstreamResolvedIPPinningRequired(req.Context()) {
+		pinnedCtx, err := urlvalidator.ResolveAndPinHost(req.Context(), host)
+		if err != nil {
+			return err
+		}
+		*req = *req.WithContext(pinnedCtx)
+		return nil
 	}
 	if err := urlvalidator.ValidateResolvedIP(host); err != nil {
 		return err
@@ -1335,7 +1390,184 @@ func buildUpstreamTransport(settings poolSettings, proxyURL *url.URL, protocolMo
 	if err := proxyutil.ConfigureTransportProxy(transport, proxyURL); err != nil {
 		return nil, err
 	}
+	configureResolvedIPPinnedTransport(transport, proxyURL)
 	return transport, nil
+}
+
+// configureResolvedIPPinnedTransport is inert for ordinary requests. When a
+// request context contains a validated host pin, direct and SOCKS connections
+// dial only those IPs. HTTP requests sent through a forward proxy use a pinned
+// absolute target, while HTTPS requests use a CONNECT tunnel to the pinned IP
+// and retain the original hostname for TLS SNI and certificate verification.
+func configureResolvedIPPinnedTransport(transport *http.Transport, proxyURL *url.URL) {
+	if transport == nil || transport.DialContext == nil {
+		return
+	}
+	baseDial := transport.DialContext
+	if proxyURL == nil || !isHTTPProxyURL(proxyURL) {
+		transport.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
+			return urlvalidator.DialContextWithPinnedIPs(ctx, network, address, baseDial)
+		}
+		return
+	}
+
+	standardProxy := http.ProxyURL(proxyURL)
+	transport.Proxy = func(req *http.Request) (*url.URL, error) {
+		if req == nil || req.URL == nil {
+			return standardProxy(req)
+		}
+		targetAddress := req.URL.Host
+		if req.URL.Port() == "" {
+			port := "80"
+			if strings.EqualFold(req.URL.Scheme, "https") {
+				port = "443"
+			}
+			targetAddress = net.JoinHostPort(req.URL.Hostname(), port)
+		}
+		addresses, pinned, err := urlvalidator.PinnedDialAddresses(req.Context(), targetAddress)
+		if err != nil {
+			return nil, err
+		}
+		if !pinned {
+			return standardProxy(req)
+		}
+		if strings.EqualFold(req.URL.Scheme, "https") {
+			// DialContext establishes the validated proxy tunnel. Returning nil
+			// keeps net/http's target TLS handshake bound to the original host.
+			return nil, nil
+		}
+		if len(addresses) == 0 {
+			return nil, errors.New("validated upstream address is unavailable")
+		}
+		if req.Host == "" {
+			req.Host = req.URL.Host
+		}
+		req.URL.Host = addresses[0]
+		return standardProxy(req)
+	}
+	transport.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
+		_, pinned, err := urlvalidator.PinnedDialAddresses(ctx, address)
+		if err != nil {
+			return nil, err
+		}
+		if !pinned {
+			return baseDial(ctx, network, address)
+		}
+		return dialPinnedHTTPProxyTunnel(ctx, network, proxyURL, address)
+	}
+}
+
+func isHTTPProxyURL(proxyURL *url.URL) bool {
+	if proxyURL == nil {
+		return false
+	}
+	switch strings.ToLower(proxyURL.Scheme) {
+	case "http", "https":
+		return true
+	default:
+		return false
+	}
+}
+
+func dialPinnedHTTPProxyTunnel(ctx context.Context, network string, proxyURL *url.URL, targetAddress string) (net.Conn, error) {
+	conn, err := urlvalidator.DialContextWithPinnedIPs(
+		ctx,
+		network,
+		targetAddress,
+		func(dialCtx context.Context, dialNetwork, pinnedTarget string) (net.Conn, error) {
+			return dialHTTPProxyTunnel(dialCtx, dialNetwork, proxyURL, pinnedTarget)
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("connect proxy to validated upstream: %w", err)
+	}
+	return conn, nil
+}
+
+func dialHTTPProxyTunnel(ctx context.Context, network string, proxyURL *url.URL, target string) (net.Conn, error) {
+	if proxyURL == nil {
+		return nil, errors.New("proxy url is nil")
+	}
+	proxyAddress := proxyURL.Host
+	if proxyURL.Port() == "" {
+		port := "80"
+		if strings.EqualFold(proxyURL.Scheme, "https") {
+			port = "443"
+		}
+		proxyAddress = net.JoinHostPort(proxyURL.Hostname(), port)
+	}
+
+	conn, err := newUpstreamDialer().DialContext(ctx, network, proxyAddress)
+	if err != nil {
+		return nil, fmt.Errorf("connect to proxy: %w", err)
+	}
+	closeOnError := true
+	defer func() {
+		if closeOnError {
+			_ = conn.Close()
+		}
+	}()
+
+	if strings.EqualFold(proxyURL.Scheme, "https") {
+		tlsConn := tls.Client(conn, &tls.Config{
+			MinVersion: tls.VersionTLS12,
+			ServerName: proxyURL.Hostname(),
+		})
+		if err := tlsConn.HandshakeContext(ctx); err != nil {
+			return nil, fmt.Errorf("TLS handshake with proxy: %w", err)
+		}
+		conn = tlsConn
+	}
+
+	if deadline, ok := ctx.Deadline(); ok {
+		if err := conn.SetDeadline(deadline); err != nil {
+			return nil, fmt.Errorf("set proxy tunnel deadline: %w", err)
+		}
+	}
+	connectReq := &http.Request{
+		Method: http.MethodConnect,
+		URL:    &url.URL{Opaque: target},
+		Host:   target,
+		Header: make(http.Header),
+	}
+	if proxyURL.User != nil {
+		username := proxyURL.User.Username()
+		password, _ := proxyURL.User.Password()
+		token := base64.StdEncoding.EncodeToString([]byte(username + ":" + password))
+		connectReq.Header.Set("Proxy-Authorization", "Basic "+token)
+	}
+	if err := connectReq.Write(conn); err != nil {
+		return nil, fmt.Errorf("write proxy CONNECT request: %w", err)
+	}
+
+	reader := bufio.NewReader(conn)
+	resp, err := http.ReadResponse(reader, connectReq)
+	if err != nil {
+		return nil, fmt.Errorf("read proxy CONNECT response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		if resp.Body != nil {
+			_ = resp.Body.Close()
+		}
+		return nil, fmt.Errorf("proxy CONNECT failed: %s", resp.Status)
+	}
+	if err := conn.SetDeadline(time.Time{}); err != nil {
+		return nil, fmt.Errorf("clear proxy tunnel deadline: %w", err)
+	}
+	closeOnError = false
+	if reader.Buffered() > 0 {
+		return &bufferedReadConn{Conn: conn, reader: reader}, nil
+	}
+	return conn, nil
+}
+
+type bufferedReadConn struct {
+	net.Conn
+	reader *bufio.Reader
+}
+
+func (c *bufferedReadConn) Read(p []byte) (int, error) {
+	return c.reader.Read(p)
 }
 
 // enableOpenAIHTTP2KeepAlive 在 http.Transport 上显式配置 HTTP/2 并启用连接健康探测。

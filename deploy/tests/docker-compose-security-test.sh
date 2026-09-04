@@ -51,4 +51,18 @@ if [ "$prod_policy_count" -ne 1 ] || [ "$prod_command_count" -ne 1 ]; then
   exit 1
 fi
 
+for required_line in \
+  '      SERVER_FRONTEND_URL: "${SERVER_FRONTEND_URL:?SERVER_FRONTEND_URL is required}"' \
+  '      SECURITY_URL_ALLOWLIST_ENABLED: "${SECURITY_URL_ALLOWLIST_ENABLED:-true}"' \
+  '      SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP: "${SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP:-false}"' \
+  '      SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS: "${SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS:-false}"' \
+  '      SECURITY_URL_ALLOWLIST_UPSTREAM_HOSTS: "${SECURITY_URL_ALLOWLIST_UPSTREAM_HOSTS:?SECURITY_URL_ALLOWLIST_UPSTREAM_HOSTS is required}"'
+do
+  required_count=$(grep -Fxc "$required_line" deploy/docker-compose.prod.yml || true)
+  if [ "$required_count" -ne 1 ]; then
+    printf '%s must contain exactly once: %s\n' deploy/docker-compose.prod.yml "$required_line" >&2
+    exit 1
+  fi
+done
+
 printf 'docker compose security test passed\n'

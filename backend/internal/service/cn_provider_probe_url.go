@@ -34,6 +34,9 @@ func cnValidateProbeURL(cfg *config.Config, raw string) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("probe target rejected by URL security policy: %w", err)
 		}
+		if err := urlvalidator.RejectSameHTTPOrigin(normalized, cfg.Server.FrontendURL); err != nil {
+			return "", fmt.Errorf("probe target rejected by URL security policy: %w", err)
+		}
 		return normalized, nil
 	}
 	var allowInsecureHTTP bool
@@ -43,6 +46,11 @@ func cnValidateProbeURL(cfg *config.Config, raw string) (string, error) {
 	normalized, err := urlvalidator.ValidateURLFormat(trimmed, allowInsecureHTTP)
 	if err != nil {
 		return "", fmt.Errorf("probe target rejected by URL security policy: %w", err)
+	}
+	if cfg != nil {
+		if err := urlvalidator.RejectSameHTTPOrigin(normalized, cfg.Server.FrontendURL); err != nil {
+			return "", fmt.Errorf("probe target rejected by URL security policy: %w", err)
+		}
 	}
 	return normalized, nil
 }

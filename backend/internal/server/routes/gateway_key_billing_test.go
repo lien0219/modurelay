@@ -30,6 +30,14 @@ func (r *keyBillingRouteAPIKeyRepo) GetByKeyForAuth(_ context.Context, key strin
 	return &clone, nil
 }
 
+func (r *keyBillingRouteAPIKeyRepo) GetByID(_ context.Context, id int64) (*service.APIKey, error) {
+	if r.apiKey == nil || id != r.apiKey.ID {
+		return nil, service.ErrAPIKeyNotFound
+	}
+	clone := *r.apiKey
+	return &clone, nil
+}
+
 type keyBillingRouteRateRepo struct {
 	service.UserGroupRateRepository
 	lookupCalls int

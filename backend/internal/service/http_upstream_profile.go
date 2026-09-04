@@ -14,6 +14,7 @@ const (
 
 type httpUpstreamProfileContextKey struct{}
 type httpUpstreamDisableRedirectsContextKey struct{}
+type httpUpstreamPinResolvedIPContextKey struct{}
 
 // WithHTTPUpstreamProfile injects an upstream transport profile into ctx.
 func WithHTTPUpstreamProfile(ctx context.Context, profile HTTPUpstreamProfile) context.Context {
@@ -54,4 +55,19 @@ func WithHTTPUpstreamRedirectsDisabled(ctx context.Context) context.Context {
 
 func HTTPUpstreamRedirectsDisabled(ctx context.Context) bool {
 	return ctx != nil && ctx.Value(httpUpstreamDisableRedirectsContextKey{}) == true
+}
+
+// WithHTTPUpstreamResolvedIPPinning requires the transport to connect to the
+// public IP addresses validated for this request instead of resolving the
+// hostname again during dial. Credential-bearing metadata probes use this to
+// close the DNS validation-to-dial race.
+func WithHTTPUpstreamResolvedIPPinning(ctx context.Context) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, httpUpstreamPinResolvedIPContextKey{}, true)
+}
+
+func HTTPUpstreamResolvedIPPinningRequired(ctx context.Context) bool {
+	return ctx != nil && ctx.Value(httpUpstreamPinResolvedIPContextKey{}) == true
 }

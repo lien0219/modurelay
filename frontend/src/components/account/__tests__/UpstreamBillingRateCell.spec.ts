@@ -140,8 +140,8 @@ describe('UpstreamBillingRateCell', () => {
     expect(wrapper.text()).not.toContain('admin.accounts.upstreamBilling.stale')
 
     await wrapper.setProps({ now: Date.parse('2026-07-13T01:00:00.001Z') })
-    expect(wrapper.get('[data-testid="upstream-billing-rate"]').text()).toBe('admin.accounts.upstreamBilling.stale')
-    expect(wrapper.text()).toContain('admin.accounts.upstreamBilling.stale')
+    expect(wrapper.get('[data-testid="upstream-billing-rate"]').text()).toBe('admin.accounts.upstreamBilling.failed')
+    expect(wrapper.text()).toContain('admin.accounts.upstreamBilling.failed')
 
     await wrapper.setProps({
       now: Date.now(),
@@ -159,8 +159,8 @@ describe('UpstreamBillingRateCell', () => {
         }
       })
     })
-    expect(wrapper.get('[data-testid="upstream-billing-rate"]').text()).toBe('admin.accounts.upstreamBilling.stale')
-    expect(wrapper.text()).toContain('admin.accounts.upstreamBilling.stale')
+    expect(wrapper.get('[data-testid="upstream-billing-rate"]').text()).toBe('admin.accounts.upstreamBilling.failed')
+    expect(wrapper.text()).toContain('admin.accounts.upstreamBilling.failed')
   })
 
   it('shows stale snapshot details, local next probe time, and the account probe state', async () => {
@@ -273,6 +273,10 @@ describe('UpstreamBillingRateCell', () => {
     await wrapper.get('[data-testid="upstream-billing-probe"]').trigger('click')
     expect(wrapper.emitted('probe')).toHaveLength(2)
 
+    await wrapper.setProps({ account: makeAccount({ platform: 'antigravity', type: 'upstream' }) })
+    await wrapper.get('[data-testid="upstream-billing-probe"]').trigger('click')
+    expect(wrapper.emitted('probe')).toHaveLength(3)
+
     await wrapper.setProps({ account: makeAccount({ type: 'oauth' }) })
     expect(wrapper.findAll('button')).toHaveLength(0)
     expect(wrapper.text()).toBe('-')
@@ -356,5 +360,17 @@ describe('UpstreamBillingRateCell', () => {
       'admin.accounts.upstreamBilling.unsupported'
     )
     expect(wrapper.text()).not.toContain('-admin.accounts.upstreamBilling.unsupported')
+  })
+
+  it('does not expose probe actions for an unknown runtime platform', () => {
+    const wrapper = mount(UpstreamBillingRateCell, {
+      props: {
+        account: makeAccount({ platform: 'future-platform' as any, type: 'apikey' }),
+        now: Date.now()
+      }
+    })
+
+    expect(wrapper.find('[data-testid="upstream-billing-probe"]').exists()).toBe(false)
+    expect(wrapper.text()).toBe('-')
   })
 })

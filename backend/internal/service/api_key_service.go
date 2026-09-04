@@ -121,6 +121,16 @@ type APIKeyRepository interface {
 	GetRateLimitData(ctx context.Context, id int64) (*APIKeyRateLimitData, error)
 }
 
+// APIKeyFundingState is the database-authoritative quota boundary used by
+// callers whose decisions must not rely on the API-key authentication cache.
+type APIKeyFundingState struct {
+	Quota         float64
+	QuotaUsed     float64
+	WalletBalance *float64
+	Group         *Group
+	Subscription  *UserSubscription
+}
+
 type apiKeyAllByUserIDLister interface {
 	ListAllByUserID(ctx context.Context, userID int64, filters APIKeyListFilters) ([]APIKey, error)
 }
@@ -698,6 +708,55 @@ func (s *APIKeyService) GetByID(ctx context.Context, id int64) (*APIKey, error) 
 		apiKey.CurrentConcurrency = s.currentConcurrencyForAPIKey(ctx, apiKey.ID)
 	}
 	return apiKey, nil
+}
+
+// GetAuthoritativeFundingState reads only through the repository path. The
+// authentication cache intentionally favors request throughput and may lag a
+// just-recorded quota charge, so it cannot be used for automatic scheduling.
+func (s *APIKeyService) GetAuthoritativeFundingState(ctx context.Context, id int64) (*APIKeyFundingState, error) {
+	if s == nil || s.apiKeyRepo == nil {
+		return nil, fmt.Errorf("api key repository is unavailable")
+	}
+	apiKey, err := s.apiKeyRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("get api key funding state: %w", err)
+	}
+	if apiKey == nil {
+		return nil, ErrAPIKeyNotFound
+	}
+	state := &APIKeyFundingState{
+		Quota:     apiKey.Quota,
+		QuotaUsed: apiKey.QuotaUsed,
+		Group:     apiKey.Group,
+	}
+	if apiKey.Quota > 0 {
+		return state, nil
+	}
+	if apiKey.Group != nil && apiKey.Group.IsSubscriptionType() {
+		if s.userSubRepo == nil {
+			return nil, fmt.Errorf("user subscription repository is unavailable")
+		}
+		subscription, subErr := s.userSubRepo.GetActiveByUserIDAndGroupID(ctx, apiKey.UserID, apiKey.Group.ID)
+		if subErr != nil {
+			return nil, fmt.Errorf("get api key subscription funding state: %w", subErr)
+		}
+		if subscription == nil {
+			return nil, ErrSubscriptionNotFound
+		}
+		// Expired usage windows are no longer spendable state. Normalize the
+		// authoritative database snapshot in memory so a delayed maintenance
+		// write cannot falsely report an exhausted current window.
+		subscriptions := []UserSubscription{*subscription}
+		normalizeExpiredWindows(subscriptions)
+		state.Subscription = &subscriptions[0]
+		return state, nil
+	}
+	if apiKey.User == nil {
+		return nil, fmt.Errorf("api key user funding state is unavailable")
+	}
+	balance := apiKey.User.Balance
+	state.WalletBalance = &balance
+	return state, nil
 }
 
 // GetByKey 根据Key字符串获取API Key（用于认证）

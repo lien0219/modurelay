@@ -1588,7 +1588,7 @@
             }}
           </p>
           <div
-            v-if="account?.type === 'apikey'"
+            v-if="isUpstreamBillingProbeAccount"
             class="mt-3 flex items-center justify-between gap-3"
           >
             <div class="min-w-0">
@@ -1816,7 +1816,7 @@
       </div>
 
       <div
-        v-if="account?.type === 'apikey'"
+        v-if="isUpstreamBillingProbeAccount"
         class="flex items-center justify-between gap-4 border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <div>
@@ -3016,6 +3016,14 @@ const isCNApiKeyAccount = computed(
       props.account.platform === 'zhipu' ||
       props.account.platform === 'deepseek')
 )
+const isUpstreamBillingProbeAccount = computed(() => {
+  const account = props.account
+  return Boolean(
+    account &&
+    (account.type === 'apikey' ||
+      (account.type === 'upstream' && account.platform === 'antigravity'))
+  )
+})
 // CnBaseUrlPresets 的 platform prop 是平台字面量联合类型，模板里不能写
 // `as` 断言（其中的 `|` 会被 eslint 误判为 Vue2 filter 语法），经此 computed 传递。
 const cnPresetPlatform = computed<'kimi' | 'zhipu' | 'deepseek'>(() => {
@@ -3737,7 +3745,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
 		typeof extra?.auto_reset_credit_5h_threshold === 'number' ? extra.auto_reset_credit_5h_threshold * 100 : 100
 	autoResetCredit7dThreshold.value =
 		typeof extra?.auto_reset_credit_7d_threshold === 'number' ? extra.auto_reset_credit_7d_threshold * 100 : 100
-	upstreamBillingAutoProbeEnabled.value = extra?.upstream_billing_probe_enabled === true
+	upstreamBillingAutoProbeEnabled.value = extra?.upstream_billing_probe_enabled !== false
   upstreamBillingRateSyncEnabled.value =
     upstreamBillingAutoProbeEnabled.value && extra?.upstream_billing_rate_sync_enabled === true
 
@@ -4661,7 +4669,7 @@ const handleSubmit = async () => {
       updatePayload.load_factor = 0
     }
     updatePayload.auto_pause_on_expired = autoPauseOnExpired.value
-    if (props.account.type === 'apikey') {
+    if (isUpstreamBillingProbeAccount.value) {
       updatePayload.upstream_billing_probe_enabled = upstreamBillingAutoProbeEnabled.value
       updatePayload.upstream_billing_rate_sync_enabled = upstreamBillingRateSyncEnabled.value
       if (upstreamBillingRateSyncEnabled.value) {

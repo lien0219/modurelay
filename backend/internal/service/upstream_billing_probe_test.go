@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"reflect"
 	"strings"
@@ -184,7 +185,8 @@ func (u *upstreamBillingProbeHTTPStub) Do(req *http.Request, proxyURL string, ac
 			"resolved_rate_multiplier":0.8,
 			"peak_rate_enabled":false,
 			"effective_rate_multiplier":0.8,
-			"observed_at":"2026-07-13T01:00:00Z"
+			"observed_at":"2026-07-13T01:00:00Z",
+			"funding":{"mode":"wallet","unit":"USD","balance":12.5,"remaining":12.5}
 		}`)),
 	}, nil
 }
@@ -306,6 +308,7 @@ func TestUpstreamBillingProbeSuccessPersistsSanitizedSnapshot(t *testing.T) {
 			"effective_rate_multiplier":0.9,
 			"timezone":"Asia/Shanghai",
 			"observed_at":"2026-07-13T01:00:00Z",
+			"funding":{"mode":"wallet","unit":"USD","balance":23.5,"remaining":23.5,"secret":"discard"},
 			"unexpected_secret":"must-not-persist"
 		}`)),
 	}}
@@ -318,6 +321,11 @@ func TestUpstreamBillingProbeSuccessPersistsSanitizedSnapshot(t *testing.T) {
 	require.Equal(t, UpstreamBillingProbeStatusOK, snapshot.Status)
 	require.Equal(t, 0.9, snapshot.Data["effective_rate_multiplier"])
 	require.NotContains(t, snapshot.Data, "unexpected_secret")
+	require.NotNil(t, snapshot.Balance)
+	require.Equal(t, UpstreamBillingProbeStatusOK, snapshot.Balance.Status)
+	require.Equal(t, "billing", snapshot.Balance.Source)
+	require.Equal(t, 23.5, snapshot.Balance.Data["balance"])
+	require.NotContains(t, snapshot.Balance.Data, "secret")
 	require.NotNil(t, snapshot.ReceivedAt)
 	require.Equal(t, fixedNow, *snapshot.ReceivedAt)
 	require.NotNil(t, snapshot.FreshUntil)
@@ -333,11 +341,427 @@ func TestUpstreamBillingProbeSuccessPersistsSanitizedSnapshot(t *testing.T) {
 	require.Equal(t, "https://upstream.example/v1/sub2api/billing", upstream.lastReq.URL.String())
 	require.Equal(t, http.MethodGet, upstream.lastReq.Method)
 	require.Equal(t, "Bearer sk-sensitive", upstream.lastReq.Header.Get("Authorization"))
+	require.Equal(t, "no-cache", upstream.lastReq.Header.Get("Cache-Control"))
+	require.Equal(t, "no-cache", upstream.lastReq.Header.Get("Pragma"))
 	require.True(t, HTTPUpstreamRedirectsDisabled(upstream.lastReq.Context()))
+	require.True(t, HTTPUpstreamResolvedIPPinningRequired(upstream.lastReq.Context()))
 
 	persisted := decodeUpstreamBillingProbeSnapshot(account.Extra)
 	require.NotNil(t, persisted)
 	require.Equal(t, snapshot.Status, persisted.Status)
+}
+
+func TestUpstreamBillingProbeRejectsStaleOrFutureObservationWithoutControlPlaneWrites(t *testing.T) {
+	fixedNow := time.Date(2026, time.July, 13, 2, 0, 0, 0, time.UTC)
+	for _, tt := range []struct {
+		name       string
+		observedAt time.Time
+	}{
+		{name: "older than maximum age", observedAt: fixedNow.Add(-upstreamBillingProbeObservationMaxAge - time.Second)},
+		{name: "beyond future clock skew", observedAt: fixedNow.Add(upstreamBillingProbeObservationFutureSkew + time.Second)},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			initialRate := 0.25
+			account := &Account{
+				ID:             170,
+				Platform:       PlatformOpenAI,
+				Type:           AccountTypeAPIKey,
+				Status:         StatusActive,
+				Schedulable:    true,
+				Concurrency:    1,
+				RateMultiplier: &initialRate,
+				Credentials: map[string]any{
+					"api_key":  "sk-sensitive",
+					"base_url": "https://upstream.example/v1",
+				},
+				Extra: map[string]any{
+					UpstreamBillingProbeEnabledExtraKey:    true,
+					UpstreamBillingRateSyncEnabledExtraKey: true,
+				},
+			}
+			repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: account}}
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body: io.NopCloser(strings.NewReader(fmt.Sprintf(`{
+					"object":"sub2api.key_billing",
+					"schema_version":1,
+					"billing_scope":"token",
+					"group_rate_multiplier":0.8,
+					"resolved_rate_multiplier":0.8,
+					"peak_rate_enabled":false,
+					"effective_rate_multiplier":0.8,
+					"observed_at":%q,
+					"funding":{"mode":"wallet","unit":"USD","balance":0,"remaining":0}
+				}`, tt.observedAt.Format(time.RFC3339Nano)))),
+			}}
+			svc := newUpstreamBillingProbeTestService(repo, upstream, &upstreamBillingProbeSettingRepo{})
+			svc.now = func() time.Time { return fixedNow }
+
+			snapshot, err := svc.ProbeAccount(context.Background(), account.ID)
+
+			require.NoError(t, err)
+			require.Equal(t, UpstreamBillingProbeStatusFailed, snapshot.Status)
+			require.Equal(t, "stale_response", snapshot.LastError)
+			require.Nil(t, snapshot.Balance)
+			require.False(t, snapshot.AutoUnschedulable)
+			require.True(t, account.Schedulable)
+			require.NotNil(t, account.RateMultiplier)
+			require.Equal(t, initialRate, *account.RateMultiplier)
+			require.NotContains(t, account.Extra, UpstreamBillingAutoUnschedulableExtraKey)
+		})
+	}
+}
+
+func TestUpstreamBillingProbeFallsBackToUsageForBalance(t *testing.T) {
+	for _, tt := range []struct {
+		name              string
+		billingStatus     int
+		billingBody       string
+		wantBillingStatus string
+	}{
+		{
+			name:              "billing response predates funding field",
+			billingStatus:     http.StatusOK,
+			billingBody:       `{"object":"sub2api.key_billing","schema_version":1,"billing_scope":"token","group_rate_multiplier":0.8,"resolved_rate_multiplier":0.8,"peak_rate_enabled":false,"effective_rate_multiplier":0.8,"observed_at":"2026-07-13T01:00:00Z"}`,
+			wantBillingStatus: UpstreamBillingProbeStatusOK,
+		},
+		{
+			name:              "legacy upstream has usage only",
+			billingStatus:     http.StatusNotFound,
+			billingBody:       `{"error":"not found"}`,
+			wantBillingStatus: UpstreamBillingProbeStatusUnsupported,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			account := &Account{
+				ID:          71,
+				Platform:    PlatformOpenAI,
+				Type:        AccountTypeAPIKey,
+				Status:      StatusActive,
+				Concurrency: 1,
+				Credentials: map[string]any{"api_key": "sk-sensitive", "base_url": "https://legacy.example/v1"},
+			}
+			repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: account}}
+			upstream := &httpUpstreamRecorder{responses: []*http.Response{
+				{
+					StatusCode: tt.billingStatus,
+					Header:     http.Header{"Content-Type": []string{"application/json"}},
+					Body:       io.NopCloser(strings.NewReader(tt.billingBody)),
+				},
+				{
+					StatusCode: http.StatusOK,
+					Header:     http.Header{"Content-Type": []string{"application/json"}},
+					Body: io.NopCloser(strings.NewReader(`{
+						"mode":"unrestricted","isValid":true,"unit":"USD",
+						"balance":17.25,"remaining":17.25,
+						"usage":{"must_not_persist":"private"}
+					}`)),
+				},
+			}}
+			svc := newUpstreamBillingProbeTestService(repo, upstream, &upstreamBillingProbeSettingRepo{})
+			fixedNow := time.Date(2026, time.July, 13, 2, 0, 0, 0, time.UTC)
+			svc.now = func() time.Time { return fixedNow }
+
+			snapshot, err := svc.ProbeAccount(context.Background(), account.ID)
+
+			require.NoError(t, err)
+			require.Equal(t, tt.wantBillingStatus, snapshot.Status)
+			require.NotNil(t, snapshot.Balance)
+			require.Equal(t, UpstreamBillingProbeStatusOK, snapshot.Balance.Status)
+			require.Equal(t, "usage", snapshot.Balance.Source)
+			require.Equal(t, 17.25, snapshot.Balance.Data["balance"])
+			require.NotContains(t, snapshot.Balance.Data, "usage")
+			require.Len(t, upstream.requests, 2)
+			require.Equal(t, "https://legacy.example/v1/sub2api/billing", upstream.requests[0].URL.String())
+			require.Equal(t, "/v1/usage", upstream.requests[1].URL.Path)
+			require.Equal(t, "1", upstream.requests[1].URL.Query().Get("days"))
+			require.Equal(t, "Bearer sk-sensitive", upstream.requests[1].Header.Get("Authorization"))
+			require.True(t, HTTPUpstreamRedirectsDisabled(upstream.requests[1].Context()))
+		})
+	}
+}
+
+func TestUpstreamBillingProbeRejectsInvalidDeclaredFundingWithoutUsageFallback(t *testing.T) {
+	account := &Account{
+		ID:          72,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Concurrency: 1,
+		Schedulable: true,
+		Credentials: map[string]any{"api_key": "sk-sensitive", "base_url": "https://upstream.example/v1"},
+	}
+	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: account}}
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body: io.NopCloser(strings.NewReader(`{
+				"object":"sub2api.key_billing","schema_version":1,"billing_scope":"token",
+				"group_rate_multiplier":0.8,"resolved_rate_multiplier":0.8,
+				"peak_rate_enabled":false,"effective_rate_multiplier":0.8,
+				"observed_at":"2026-07-13T01:00:00Z",
+				"funding":{"mode":"wallet","unit":"USD"}
+			}`)),
+		},
+		{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"mode":"unrestricted","unit":"USD","balance":0}`)),
+		},
+	}}
+	svc := newUpstreamBillingProbeTestService(repo, upstream, &upstreamBillingProbeSettingRepo{})
+
+	snapshot, err := svc.ProbeAccount(context.Background(), account.ID)
+
+	require.NoError(t, err)
+	require.Equal(t, UpstreamBillingProbeStatusFailed, snapshot.Status)
+	require.Equal(t, "invalid_response", snapshot.LastError)
+	require.Nil(t, snapshot.Balance)
+	require.Len(t, upstream.requests, 1)
+	require.True(t, account.Schedulable)
+}
+
+func TestParseUpstreamBillingProbeResponseRejectsNullFunding(t *testing.T) {
+	_, err := parseUpstreamBillingProbeResponse([]byte(`{
+		"object":"sub2api.key_billing","schema_version":1,"billing_scope":"token",
+		"group_rate_multiplier":0.8,"resolved_rate_multiplier":0.8,
+		"peak_rate_enabled":false,"effective_rate_multiplier":0.8,
+		"observed_at":"2026-07-13T01:00:00Z","funding":null
+	}`))
+
+	require.ErrorContains(t, err, "invalid funding response")
+}
+
+func TestParseUpstreamUsageBalanceResponse(t *testing.T) {
+	tests := []struct {
+		name      string
+		body      string
+		wantMode  string
+		wantValue any
+		wantErr   error
+	}{
+		{
+			name:      "zero wallet balance",
+			body:      `{"mode":"unrestricted","isValid":true,"unit":"usd","balance":0,"remaining":0,"private":"discard"}`,
+			wantMode:  "wallet",
+			wantValue: float64(0),
+		},
+		{
+			name:      "key quota",
+			body:      `{"mode":"quota_limited","isValid":true,"quota":{"limit":100,"used":35,"remaining":65,"unit":"USD"}}`,
+			wantMode:  "key_quota",
+			wantValue: float64(65),
+		},
+		{
+			name:      "negative key quota remains observable",
+			body:      `{"mode":"quota_limited","isValid":true,"remaining":-0.01,"unit":"USD"}`,
+			wantMode:  "key_quota",
+			wantValue: float64(-0.01),
+		},
+		{
+			name:      "unlimited subscription",
+			body:      `{"mode":"unrestricted","isValid":true,"unit":"USD","remaining":-1,"subscription":{}}`,
+			wantMode:  "subscription",
+			wantValue: true,
+		},
+		{
+			name:    "unknown schema",
+			body:    `{"mode":"other","balance":10,"unit":"USD"}`,
+			wantErr: errUpstreamBalanceUnsupported,
+		},
+		{
+			name:    "rate limits without monetary quota",
+			body:    `{"mode":"quota_limited","isValid":true,"rate_limits":[{"window":"1d","limit":100}]}`,
+			wantErr: errUpstreamBalanceUnsupported,
+		},
+		{
+			name:    "unsafe unit",
+			body:    `{"mode":"unrestricted","balance":10,"unit":"<USD>"}`,
+			wantErr: errors.New("invalid"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data, err := parseUpstreamUsageBalanceResponse([]byte(tt.body))
+			if tt.wantErr != nil {
+				require.Error(t, err)
+				if errors.Is(tt.wantErr, errUpstreamBalanceUnsupported) {
+					require.ErrorIs(t, err, errUpstreamBalanceUnsupported)
+				}
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.wantMode, data["mode"])
+			if tt.wantMode == "subscription" {
+				require.Equal(t, tt.wantValue, data["unlimited"])
+			} else {
+				require.Equal(t, tt.wantValue, data["remaining"])
+			}
+			require.NotContains(t, data, "private")
+		})
+	}
+}
+
+func TestUpstreamBillingBalanceExhausted(t *testing.T) {
+	now := time.Date(2026, time.July, 13, 2, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name     string
+		snapshot *UpstreamBillingProbeSnapshot
+		want     bool
+	}{
+		{name: "nil snapshot", snapshot: nil, want: false},
+		{
+			name: "wallet zero",
+			snapshot: &UpstreamBillingProbeSnapshot{LastAttemptAt: now, Balance: &UpstreamBalanceProbeSnapshot{
+				Status:        UpstreamBillingProbeStatusOK,
+				LastAttemptAt: now,
+				Data:          map[string]any{"mode": "wallet", "balance": float64(0), "unit": "USD"},
+			}},
+			want: true,
+		},
+		{
+			name: "wallet negative",
+			snapshot: &UpstreamBillingProbeSnapshot{LastAttemptAt: now, Balance: &UpstreamBalanceProbeSnapshot{
+				Status:        UpstreamBillingProbeStatusOK,
+				LastAttemptAt: now,
+				Data:          map[string]any{"mode": "wallet", "balance": float64(-0.01), "unit": "USD"},
+			}},
+			want: true,
+		},
+		{
+			name: "key quota exhausted",
+			snapshot: &UpstreamBillingProbeSnapshot{LastAttemptAt: now, Balance: &UpstreamBalanceProbeSnapshot{
+				Status:        UpstreamBillingProbeStatusOK,
+				LastAttemptAt: now,
+				Data:          map[string]any{"mode": "key_quota", "remaining": float64(0), "unit": "USD"},
+			}},
+			want: true,
+		},
+		{
+			name: "positive balance",
+			snapshot: &UpstreamBillingProbeSnapshot{LastAttemptAt: now, Balance: &UpstreamBalanceProbeSnapshot{
+				Status:        UpstreamBillingProbeStatusOK,
+				LastAttemptAt: now,
+				Data:          map[string]any{"mode": "wallet", "balance": float64(1), "unit": "USD"},
+			}},
+			want: false,
+		},
+		{
+			name: "unlimited subscription",
+			snapshot: &UpstreamBillingProbeSnapshot{LastAttemptAt: now, Balance: &UpstreamBalanceProbeSnapshot{
+				Status:        UpstreamBillingProbeStatusOK,
+				LastAttemptAt: now,
+				Data:          map[string]any{"mode": "subscription", "unlimited": true, "unit": "USD"},
+			}},
+			want: false,
+		},
+		{
+			name: "invalid observation",
+			snapshot: &UpstreamBillingProbeSnapshot{LastAttemptAt: now, Balance: &UpstreamBalanceProbeSnapshot{
+				Status:        UpstreamBillingProbeStatusOK,
+				LastAttemptAt: now,
+				Data:          map[string]any{"mode": "wallet", "balance": float64(0), "is_valid": false},
+			}},
+			want: false,
+		},
+		{
+			name: "failed observation",
+			snapshot: &UpstreamBillingProbeSnapshot{LastAttemptAt: now, Balance: &UpstreamBalanceProbeSnapshot{
+				Status:        UpstreamBillingProbeStatusFailed,
+				LastAttemptAt: now,
+				Data:          map[string]any{"mode": "wallet", "balance": float64(0)},
+			}},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, UpstreamBillingBalanceExhausted(tt.snapshot))
+		})
+	}
+}
+
+func TestUpstreamBillingProbeDoesNotClaimAutoPauseForManuallyPausedAccount(t *testing.T) {
+	now := time.Date(2026, time.July, 13, 2, 0, 0, 0, time.UTC)
+	account := &Account{
+		ID: 91, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Schedulable: false,
+		Credentials: map[string]any{"api_key": "sk-test"},
+	}
+	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: account}}
+	svc := newUpstreamBillingProbeTestService(repo, nil, nil)
+	snapshot := &UpstreamBillingProbeSnapshot{
+		Status:        UpstreamBillingProbeStatusOK,
+		LastAttemptAt: now,
+		Balance: &UpstreamBalanceProbeSnapshot{
+			Status:        UpstreamBillingProbeStatusOK,
+			LastAttemptAt: now,
+			Data:          map[string]any{"mode": "wallet", "unit": "USD", "balance": float64(0)},
+		},
+	}
+
+	err := svc.updateSnapshot(context.Background(), account, snapshot, nil)
+
+	require.NoError(t, err)
+	require.False(t, snapshot.AutoUnschedulable)
+}
+
+func TestUpstreamBillingProbeSnapshotKeepsDurableAutoPauseUntilManualResume(t *testing.T) {
+	now := time.Date(2026, time.July, 13, 2, 0, 0, 0, time.UTC)
+	account := &Account{
+		ID:          92,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Schedulable: false,
+		Credentials: map[string]any{"api_key": "sk-test"},
+		Extra: map[string]any{
+			UpstreamBillingAutoUnschedulableExtraKey: true,
+		},
+	}
+	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: account}}
+	svc := NewUpstreamBillingProbeService(repo, nil, nil)
+	positiveSnapshot := func() *UpstreamBillingProbeSnapshot {
+		return &UpstreamBillingProbeSnapshot{
+			Status:        UpstreamBillingProbeStatusOK,
+			LastAttemptAt: now,
+			Balance: &UpstreamBalanceProbeSnapshot{
+				Status:        UpstreamBillingProbeStatusOK,
+				LastAttemptAt: now,
+				Data:          map[string]any{"mode": "wallet", "unit": "USD", "balance": float64(12)},
+			},
+		}
+	}
+
+	stillPaused := positiveSnapshot()
+	require.NoError(t, svc.updateSnapshot(context.Background(), account, stillPaused, nil))
+	require.True(t, stillPaused.AutoUnschedulable)
+
+	delete(account.Extra, UpstreamBillingAutoUnschedulableExtraKey)
+	account.Schedulable = true
+	afterManualResume := positiveSnapshot()
+	require.NoError(t, svc.updateSnapshot(context.Background(), account, afterManualResume, nil))
+	require.False(t, afterManualResume.AutoUnschedulable)
+}
+
+func TestUpstreamBalanceFailurePreservesLastKnownValueSource(t *testing.T) {
+	now := time.Date(2026, time.July, 13, 2, 0, 0, 0, time.UTC)
+	receivedAt := now.Add(-time.Minute)
+	previous := &UpstreamBalanceProbeSnapshot{
+		Status:     UpstreamBillingProbeStatusOK,
+		Source:     "billing",
+		Data:       map[string]any{"mode": "wallet", "unit": "USD", "balance": 12.5},
+		ReceivedAt: &receivedAt,
+	}
+
+	snapshot := newUpstreamBalanceProbeFailure(previous, 30, now, http.StatusBadGateway, "http_error", 0)
+
+	require.Equal(t, UpstreamBillingProbeStatusFailed, snapshot.Status)
+	require.Equal(t, "billing", snapshot.Source)
+	require.Equal(t, previous.Data, snapshot.Data)
+	require.Equal(t, previous.ReceivedAt, snapshot.ReceivedAt)
 }
 
 func TestUpstreamBillingProbeAdaptiveCNUsesChatProtocolBaseURL(t *testing.T) {
@@ -364,6 +788,7 @@ func TestUpstreamBillingProbeAdaptiveCNUsesChatProtocolBaseURL(t *testing.T) {
 		Body:       upstreamBillingProbeValidBody(),
 	}}
 	svc := newUpstreamBillingProbeTestService(repo, upstream, &upstreamBillingProbeSettingRepo{})
+	svc.now = func() time.Time { return time.Date(2026, time.July, 26, 2, 0, 0, 0, time.UTC) }
 
 	snapshot, err := svc.ProbeAccount(context.Background(), account.ID)
 
@@ -400,6 +825,7 @@ func TestUpstreamBillingProbeSyncsResolvedRateForAllAPIKeyPlatforms(t *testing.T
 			}
 			repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: account}}
 			svc := newUpstreamBillingProbeTestService(repo, &upstreamBillingProbeHTTPStub{}, &upstreamBillingProbeSettingRepo{})
+			svc.now = func() time.Time { return time.Date(2026, time.July, 13, 2, 0, 0, 0, time.UTC) }
 
 			snapshot, err := svc.ProbeAccount(context.Background(), account.ID)
 
@@ -428,6 +854,7 @@ func TestUpstreamBillingProbeOnlyDoesNotChangeAccountRate(t *testing.T) {
 	}
 	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: account}}
 	svc := newUpstreamBillingProbeTestService(repo, &upstreamBillingProbeHTTPStub{}, &upstreamBillingProbeSettingRepo{})
+	svc.now = func() time.Time { return time.Date(2026, time.July, 13, 2, 0, 0, 0, time.UTC) }
 
 	snapshot, err := svc.ProbeAccount(context.Background(), account.ID)
 
@@ -525,6 +952,7 @@ func TestUpstreamBillingProbeKeepsRateWhenDeclarationOutOfSyncRange(t *testing.T
 				}`, tt.declared))),
 			}}
 			svc := newUpstreamBillingProbeTestService(repo, upstream, &upstreamBillingProbeSettingRepo{})
+			svc.now = func() time.Time { return time.Date(2026, time.July, 13, 2, 0, 0, 0, time.UTC) }
 
 			snapshot, err := svc.ProbeAccount(context.Background(), account.ID)
 
@@ -571,6 +999,7 @@ func TestUpstreamBillingProbeWithoutSyncIgnoresUnusableDeclaredRate(t *testing.T
 		}`)),
 	}}
 	svc := newUpstreamBillingProbeTestService(repo, upstream, &upstreamBillingProbeSettingRepo{})
+	svc.now = func() time.Time { return time.Date(2026, time.July, 13, 2, 0, 0, 0, time.UTC) }
 
 	snapshot, err := svc.ProbeAccount(context.Background(), account.ID)
 
@@ -909,8 +1338,9 @@ func TestUpstreamBillingProbeUnsupportedAndAccountToggle(t *testing.T) {
 }
 
 func TestUpstreamBillingProbeRunnerIsBoundedAndManualProbeIgnoresSwitches(t *testing.T) {
-	accounts := make(map[int64]*Account, 25)
-	for id := int64(1); id <= 25; id++ {
+	accountCount := int64(upstreamBillingProbeScheduledMaxPerCycle + 5)
+	accounts := make(map[int64]*Account, accountCount)
+	for id := int64(1); id <= accountCount; id++ {
 		accounts[id] = &Account{
 			ID:          id,
 			Platform:    PlatformOpenAI,
@@ -930,23 +1360,24 @@ func TestUpstreamBillingProbeRunnerIsBoundedAndManualProbeIgnoresSwitches(t *tes
 	svc.now = func() time.Time { return time.Date(2026, time.July, 13, 2, 0, 0, 0, time.UTC) }
 
 	require.NoError(t, svc.RunDue(context.Background()))
-	require.Equal(t, int64(20), upstream.calls.Load())
+	require.Equal(t, int64(upstreamBillingProbeScheduledMaxPerCycle), upstream.calls.Load())
 
 	settingsRepo.mu.Lock()
 	settingsRepo.values[SettingKeyUpstreamBillingProbeSettings] = `{"enabled":false,"interval_minutes":30}`
 	settingsRepo.mu.Unlock()
 	require.NoError(t, svc.RunDue(context.Background()))
-	require.Equal(t, int64(20), upstream.calls.Load())
+	require.Equal(t, int64(upstreamBillingProbeScheduledMaxPerCycle), upstream.calls.Load())
 
-	accounts[25].Extra[UpstreamBillingProbeEnabledExtraKey] = false
+	manualAccountID := accountCount
+	accounts[manualAccountID].Extra[UpstreamBillingProbeEnabledExtraKey] = false
 	manualRate := 0.25
-	accounts[25].RateMultiplier = &manualRate
-	snapshot, err := svc.ProbeAccount(context.Background(), 25)
+	accounts[manualAccountID].RateMultiplier = &manualRate
+	snapshot, err := svc.ProbeAccount(context.Background(), manualAccountID)
 	require.NoError(t, err)
 	require.Equal(t, UpstreamBillingProbeStatusOK, snapshot.Status)
-	require.Equal(t, int64(21), upstream.calls.Load())
-	require.NotNil(t, accounts[25].RateMultiplier)
-	require.Equal(t, manualRate, *accounts[25].RateMultiplier)
+	require.Equal(t, int64(upstreamBillingProbeScheduledMaxPerCycle+1), upstream.calls.Load())
+	require.NotNil(t, accounts[manualAccountID].RateMultiplier)
+	require.Equal(t, manualRate, *accounts[manualAccountID].RateMultiplier)
 }
 
 func TestUpstreamBillingProbeRunnerRechecksEnabledAfterDueSelection(t *testing.T) {
@@ -1194,7 +1625,7 @@ func TestUpstreamBillingProbeManualBatchesShareConcurrencyLimit(t *testing.T) {
 	require.Equal(t, int64(upstreamBillingProbeConcurrency), upstream.maxActive.Load())
 }
 
-func TestUpstreamBillingProbeManualAndScheduledRequestsShareOneNetworkProbe(t *testing.T) {
+func TestUpstreamBillingProbeManualRefreshRetriesAfterJoiningScheduledProbe(t *testing.T) {
 	account := &Account{
 		ID:          46,
 		Platform:    PlatformOpenAI,
@@ -1214,9 +1645,12 @@ func TestUpstreamBillingProbeManualAndScheduledRequestsShareOneNetworkProbe(t *t
 	}}
 	svc := newUpstreamBillingProbeTestService(repo, upstream, &upstreamBillingProbeSettingRepo{})
 
+	scheduledResult := make(chan *UpstreamBillingProbeSnapshot, 1)
+	manualResult := make(chan *UpstreamBillingProbeSnapshot, 1)
 	errs := make(chan error, 2)
 	go func() {
-		_, err := svc.probeScheduledAccount(context.Background(), account.ID, 30)
+		snapshot, err := svc.probeScheduledAccount(context.Background(), account.ID, 30)
+		scheduledResult <- snapshot
 		errs <- err
 	}()
 	select {
@@ -1227,7 +1661,8 @@ func TestUpstreamBillingProbeManualAndScheduledRequestsShareOneNetworkProbe(t *t
 	manualStarted := make(chan struct{})
 	go func() {
 		close(manualStarted)
-		_, err := svc.ProbeAccount(context.Background(), account.ID)
+		snapshot, err := svc.ProbeAccount(context.Background(), account.ID)
+		manualResult <- snapshot
 		errs <- err
 	}()
 	<-manualStarted
@@ -1235,7 +1670,9 @@ func TestUpstreamBillingProbeManualAndScheduledRequestsShareOneNetworkProbe(t *t
 	close(unblock)
 	require.NoError(t, <-errs)
 	require.NoError(t, <-errs)
-	require.Equal(t, int64(1), upstream.calls.Load())
+	require.NotNil(t, <-scheduledResult)
+	require.NotNil(t, <-manualResult)
+	require.Equal(t, int64(2), upstream.calls.Load())
 }
 
 func TestUpstreamBillingProbeScheduledRechecksAfterWaitingForSlot(t *testing.T) {
@@ -1301,4 +1738,27 @@ func TestUpstreamBillingProbeLeaderLockCoversStaggeredInstancesInCadenceWindow(t
 	staggered.SetLeaderLock(cache, nil)
 	require.NoError(t, staggered.RunDue(context.Background()))
 	require.Equal(t, int64(1), upstream.calls.Load(), "a staggered instance must not start a second batch inside the cadence window")
+}
+
+func TestUpstreamBillingProbeRequestFailureReason(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{name: "deadline", err: context.DeadlineExceeded, want: "request_timeout"},
+		{name: "DNS", err: &net.DNSError{Err: "no such host", Name: "relay.example"}, want: "dns_failed"},
+		{name: "blocked address", err: errors.New("resolved ip 127.0.0.1 is not allowed"), want: "resolved_address_blocked"},
+		{name: "proxy", err: errors.New("connect proxy to validated upstream: refused"), want: "proxy_failed"},
+		{name: "protocol", err: errors.New("net/http: HTTP/1.x transport connection broken: malformed HTTP response"), want: "protocol_failed"},
+		{name: "TLS", err: errors.New("tls: failed to verify certificate: x509: unknown authority"), want: "tls_failed"},
+		{name: "connection", err: &net.OpError{Op: "dial", Net: "tcp", Err: errors.New("connection refused")}, want: "connection_failed"},
+		{name: "unknown", err: errors.New("unexpected transport error"), want: "request_failed"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, upstreamBillingProbeRequestFailureReason(tt.err))
+		})
+	}
 }

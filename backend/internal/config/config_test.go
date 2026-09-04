@@ -95,6 +95,23 @@ func TestLoadRedisUsernameFromEnvironment(t *testing.T) {
 	require.Equal(t, "app-user", cfg.Redis.Username)
 }
 
+func TestLoadProductionURLAllowlistFromEnvironment(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("SERVER_FRONTEND_URL", "https://modurelay.example.com")
+	t.Setenv("SECURITY_URL_ALLOWLIST_ENABLED", "true")
+	t.Setenv("SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP", "false")
+	t.Setenv("SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS", "false")
+	t.Setenv("SECURITY_URL_ALLOWLIST_UPSTREAM_HOSTS", "api.openai.com, relay.example.com,*.openai.azure.com")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, "https://modurelay.example.com", cfg.Server.FrontendURL)
+	require.True(t, cfg.Security.URLAllowlist.Enabled)
+	require.False(t, cfg.Security.URLAllowlist.AllowInsecureHTTP)
+	require.False(t, cfg.Security.URLAllowlist.AllowPrivateHosts)
+	require.Equal(t, []string{"api.openai.com", "relay.example.com", "*.openai.azure.com"}, cfg.Security.URLAllowlist.UpstreamHosts)
+}
+
 func TestLoadHTTPIngressSafetyDefaults(t *testing.T) {
 	resetViperWithJWTSecret(t)
 	cfg, err := Load()
@@ -831,6 +848,10 @@ func TestLoadDefaultSecurityToggles(t *testing.T) {
 		"api.kimi.com",
 		"api.moonshot.ai",
 		"api.moonshot.cn",
+		"api.z.ai",
+		"api.deepseek.com",
+		"api.x.ai",
+		"*.api.x.ai",
 	}
 	hostSet := make(map[string]struct{}, len(cfg.Security.URLAllowlist.UpstreamHosts))
 	for _, h := range cfg.Security.URLAllowlist.UpstreamHosts {

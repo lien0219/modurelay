@@ -121,10 +121,10 @@ func TestReconcileCRSUpstreamBillingProbeExtra(t *testing.T) {
 		UpstreamBillingProbeExtraKey:           map[string]any{"status": "remote"},
 	}
 
-	t.Run("create drops remote managed fields", func(t *testing.T) {
+	t.Run("create defaults probe on and drops remote managed state", func(t *testing.T) {
 		extra := mergeMap(nil, remote)
 		reconcileCRSUpstreamBillingProbeExtra(nil, PlatformOpenAI, AccountTypeAPIKey, map[string]any{"api_key": "new"}, extra)
-		require.NotContains(t, extra, UpstreamBillingProbeEnabledExtraKey)
+		require.Equal(t, true, extra[UpstreamBillingProbeEnabledExtraKey])
 		require.NotContains(t, extra, UpstreamBillingRateSyncEnabledExtraKey)
 		require.NotContains(t, extra, UpstreamBillingProbeExtraKey)
 	})
@@ -134,9 +134,10 @@ func TestReconcileCRSUpstreamBillingProbeExtra(t *testing.T) {
 		Type:        AccountTypeAPIKey,
 		Credentials: map[string]any{"api_key": "local", "base_url": "http://127.0.0.1:8080"},
 		Extra: map[string]any{
-			UpstreamBillingProbeEnabledExtraKey:    false,
-			UpstreamBillingRateSyncEnabledExtraKey: false,
-			UpstreamBillingProbeExtraKey:           map[string]any{"status": "local"},
+			UpstreamBillingProbeEnabledExtraKey:      false,
+			UpstreamBillingRateSyncEnabledExtraKey:   false,
+			UpstreamBillingProbeExtraKey:             map[string]any{"status": "local"},
+			UpstreamBillingAutoUnschedulableExtraKey: true,
 		},
 	}
 
@@ -146,6 +147,7 @@ func TestReconcileCRSUpstreamBillingProbeExtra(t *testing.T) {
 		require.Equal(t, false, extra[UpstreamBillingProbeEnabledExtraKey])
 		require.Equal(t, false, extra[UpstreamBillingRateSyncEnabledExtraKey])
 		require.Equal(t, map[string]any{"status": "local"}, extra[UpstreamBillingProbeExtraKey])
+		require.Equal(t, true, extra[UpstreamBillingAutoUnschedulableExtraKey])
 	})
 
 	t.Run("same identity preserves enabled rate sync", func(t *testing.T) {
@@ -166,6 +168,7 @@ func TestReconcileCRSUpstreamBillingProbeExtra(t *testing.T) {
 		require.Equal(t, false, extra[UpstreamBillingProbeEnabledExtraKey])
 		require.Equal(t, false, extra[UpstreamBillingRateSyncEnabledExtraKey])
 		require.NotContains(t, extra, UpstreamBillingProbeExtraKey)
+		require.NotContains(t, extra, UpstreamBillingAutoUnschedulableExtraKey)
 	})
 
 	// API-key 平台间切换：探测资格保留（放宽后不再限 OpenAI），开关沿用本地值，

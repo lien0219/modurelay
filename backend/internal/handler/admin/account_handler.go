@@ -1914,6 +1914,7 @@ func (h *AccountHandler) BatchCreate(c *gin.Context) {
 				GroupIDs:              item.GroupIDs,
 				ExpiresAt:             item.ExpiresAt,
 				AutoPauseOnExpired:    item.AutoPauseOnExpired,
+				ProbeEnabled:          item.ProbeEnabled,
 				SkipMixedChannelCheck: skipCheck,
 			})
 			if err != nil {

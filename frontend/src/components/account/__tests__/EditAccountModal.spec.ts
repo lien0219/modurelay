@@ -856,7 +856,7 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_responses_supported).toBe(false)
   })
 
-  it('submits the account upstream billing auto-probe setting', async () => {
+  it('defaults eligible legacy accounts to probing and submits an explicit opt-out', async () => {
     const account = buildAccount()
     updateAccountMock.mockReset()
     checkMixedChannelRiskMock.mockReset()
@@ -865,13 +865,13 @@ describe('EditAccountModal', () => {
 
     const wrapper = mountModal(account)
     const toggle = wrapper.get('[data-testid="upstream-billing-auto-probe"]')
-    expect(toggle.attributes('aria-checked')).toBe('false')
+    expect(toggle.attributes('aria-checked')).toBe('true')
 
     await toggle.trigger('click')
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
 
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
-    expect(updateAccountMock.mock.calls[0]?.[1]?.upstream_billing_probe_enabled).toBe(true)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.upstream_billing_probe_enabled).toBe(false)
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty(
       'upstream_billing_probe_enabled'
     )
@@ -890,13 +890,32 @@ describe('EditAccountModal', () => {
 
     const wrapper = mountModal(account)
     const toggle = wrapper.get('[data-testid="upstream-billing-auto-probe"]')
-    expect(toggle.attributes('aria-checked')).toBe('false')
+    expect(toggle.attributes('aria-checked')).toBe('true')
 
     await toggle.trigger('click')
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
 
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
-    expect(updateAccountMock.mock.calls[0]?.[1]?.upstream_billing_probe_enabled).toBe(true)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.upstream_billing_probe_enabled).toBe(false)
+  })
+
+  it('preserves an explicit upstream billing probe opt-out', async () => {
+    const account = buildAccount()
+    account.extra = { upstream_billing_probe_enabled: false }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    expect(wrapper.get('[data-testid="upstream-billing-auto-probe"]').attributes('aria-checked')).toBe(
+      'false'
+    )
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.upstream_billing_probe_enabled).toBe(false)
   })
 
   it('enabling rate sync also enables probing and stops submitting a manual rate', async () => {
@@ -911,7 +930,7 @@ describe('EditAccountModal', () => {
     const probeToggle = wrapper.get('[data-testid="upstream-billing-auto-probe"]')
     const rateInput = wrapper.get<HTMLInputElement>('[data-testid="account-rate-multiplier"]')
     expect(syncToggle.attributes('aria-checked')).toBe('false')
-    expect(probeToggle.attributes('aria-checked')).toBe('false')
+    expect(probeToggle.attributes('aria-checked')).toBe('true')
     expect(rateInput.element.disabled).toBe(false)
     expect(wrapper.text()).toContain('admin.accounts.billingRateMultiplierHint')
     expect(wrapper.text()).not.toContain('admin.accounts.upstreamBilling.syncRateManagedHint')

@@ -438,14 +438,14 @@ export default {
         accountSchedulingThresholdsRangeHint: 'Integer 1–100 (percent). OpenAI/Anthropic/Grok only.'
       },
       upstreamBillingProbe: {
-        title: 'Upstream Rate Auto Detection',
-        description: 'Periodically retrieve rates declared by upstream Sub2API sites. Account rates change only when the separate sync switch is enabled.',
+        title: 'Upstream Information Auto Detection',
+        description: 'Periodically retrieve declared rates and available balances from upstream sites. Account rates change only when the separate sync switch is enabled; a successful, valid zero-or-negative balance pauses scheduling until an administrator re-enables it.',
         enabled: 'Enable global auto detection',
         enabledHint: 'When enabled, scheduled detection runs only for accounts that also enable automatic detection. Disabling stops all scheduled detection; manual detection remains available.',
         intervalMinutes: 'Detection interval (minutes)',
         intervalHint: 'Range: 5–1440 minutes. A successful result remains valid for two detection intervals.',
-        saved: 'Upstream rate auto detection settings saved',
-        saveFailed: 'Failed to save upstream rate auto detection settings'
+        saved: 'Upstream information auto detection settings saved',
+        saveFailed: 'Failed to save upstream information auto detection settings'
       },
       downstreamBillingProbe: {
         title: 'Downstream Rate Detection',

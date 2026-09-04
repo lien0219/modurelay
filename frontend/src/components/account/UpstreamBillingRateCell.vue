@@ -1,5 +1,5 @@
 <template>
-  <div v-if="eligible" class="flex h-6 min-w-[7rem] items-center gap-1">
+  <div v-if="eligible" class="flex min-h-10 min-w-[7rem] items-center gap-1 sm:min-h-9">
     <HelpTooltip class="-ml-1" width-class="w-max max-w-[calc(100vw-2rem)]" data-testid="upstream-billing-details">
       <template #trigger>
         <span
@@ -43,6 +43,9 @@
           </p>
         </template>
         <p v-else>{{ statusLabel || '-' }}</p>
+        <p v-if="failureDetail" class="text-red-300" data-testid="upstream-billing-error">
+          {{ failureDetail }}
+        </p>
         <p
           v-if="probeEnabled && globalProbeEnabled !== false && nextProbeAt"
           data-testid="upstream-billing-next-probe"
@@ -70,14 +73,15 @@
     </span>
     <button
       type="button"
-      class="inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded text-blue-600 transition-colors hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-blue-400 dark:hover:bg-blue-900/30"
+      class="inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded text-blue-600 transition-colors hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 disabled:cursor-not-allowed disabled:opacity-50 sm:h-9 sm:w-9 dark:text-blue-400 dark:hover:bg-blue-900/30"
       :disabled="probing"
-      :aria-label="t('admin.accounts.upstreamBilling.manualProbe')"
-      :title="t('admin.accounts.upstreamBilling.manualProbe')"
+      :aria-busy="probing"
+      :aria-label="probing ? t('admin.accounts.upstreamBalance.refreshing') : t('admin.accounts.upstreamBilling.manualProbe')"
+      :title="probing ? t('admin.accounts.upstreamBalance.refreshing') : t('admin.accounts.upstreamBilling.manualProbe')"
       data-testid="upstream-billing-probe"
       @click="$emit('probe')"
     >
-      <Icon name="refresh" size="xs" :class="{ 'animate-spin': probing }" />
+      <Icon name="refresh" size="xs" :class="{ 'animate-spin': probing }" aria-hidden="true" />
     </button>
   </div>
   <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
@@ -89,6 +93,7 @@ import { useI18n } from 'vue-i18n'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { formatMultiplier } from '@/utils/formatters'
+import { isUpstreamBillingProbeAccount } from '@/utils/upstreamBilling'
 import type { Account, UpstreamBillingProbeSnapshot } from '@/types'
 
 const props = withDefaults(defineProps<{
@@ -104,13 +109,12 @@ defineEmits<{
   (event: 'probe'): void
 }>()
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const CLOCK_SKEW_TOLERANCE_MS = 5 * 60 * 1000
-// 探测资格已放宽到全部 API-key 平台（上游是 sub2api 即可应答）。
-const eligible = computed(() => props.account.type === 'apikey')
+const eligible = computed(() => isUpstreamBillingProbeAccount(props.account))
 const snapshot = computed<UpstreamBillingProbeSnapshot | undefined>(() => props.account.extra?.upstream_billing_probe)
 const data = computed(() => snapshot.value?.data)
-const probeEnabled = computed(() => props.account.extra?.upstream_billing_probe_enabled === true)
+const probeEnabled = computed(() => props.account.extra?.upstream_billing_probe_enabled !== false)
 const nextProbeAt = computed(() => {
   const value = snapshot.value?.next_probe_at
   return typeof value === 'string' && Number.isFinite(Date.parse(value)) ? value : ''
@@ -197,19 +201,26 @@ const effectiveRate = computed(() => {
 const statusLabel = computed(() => {
   if (!snapshot.value) return t('admin.accounts.upstreamBilling.notProbed')
   if (snapshot.value.status === 'unsupported') return t('admin.accounts.upstreamBilling.unsupported')
-  if (stale.value) return t('admin.accounts.upstreamBilling.stale')
   if (snapshot.value.status === 'failed') return t('admin.accounts.upstreamBilling.failed')
+  if (stale.value) return t('admin.accounts.upstreamBilling.stale')
   return ''
 })
 const statusClass = computed(() => {
   if (!snapshot.value) return 'text-gray-400 dark:text-gray-500'
   if (snapshot.value.status === 'unsupported') return 'text-gray-500 dark:text-gray-400'
-  if (stale.value) return 'text-amber-600 dark:text-amber-400'
   if (snapshot.value.status === 'failed') return 'text-red-600 dark:text-red-400'
+  if (stale.value) return 'text-amber-600 dark:text-amber-400'
   return ''
 })
 const hasEffectiveRate = computed(() => effectiveRate.value !== '-')
 const primaryValue = computed(() => hasEffectiveRate.value ? effectiveRate.value : statusLabel.value || '-')
+const failureDetail = computed(() => {
+  const current = snapshot.value
+  if (!current || current.status !== 'failed') return ''
+  const key = `admin.accounts.upstreamBalance.errors.${current.last_error || ''}`
+  const message = typeof te === 'function' && te(key) ? t(key) : t('admin.accounts.upstreamBilling.probeFailed')
+  return current.http_status ? `${message} (HTTP ${current.http_status})` : message
+})
 const formatDate = (value?: string) => value
   ? new Date(value).toLocaleString(undefined, {
       month: '2-digit',

@@ -14,7 +14,8 @@ const {
   probeUpstreamBilling,
   probeUpstreamBillingBatch,
   showError,
-  showSuccess
+  showSuccess,
+  showWarning
 } = vi.hoisted(() => ({
   listAccounts: vi.fn(),
   listWithEtag: vi.fn(),
@@ -26,7 +27,8 @@ const {
   probeUpstreamBilling: vi.fn(),
   probeUpstreamBillingBatch: vi.fn(),
   showError: vi.fn(),
-  showSuccess: vi.fn()
+  showSuccess: vi.fn(),
+  showWarning: vi.fn()
 }))
 
 vi.mock('@/api/admin', () => ({
@@ -57,6 +59,7 @@ vi.mock('@/stores/app', () => ({
   useAppStore: () => ({
     showError,
     showSuccess,
+    showWarning,
     showInfo: vi.fn()
   })
 }))
@@ -98,9 +101,15 @@ const ProbeDataTableStub = {
       <div v-for="row in data" :key="row.id">
         <div data-test="account-rate"><slot name="cell-rate_multiplier" :row="row" /></div>
         <slot name="cell-upstream_billing_rate" :row="row" />
+        <slot name="cell-upstream_balance" :row="row" />
       </div>
     </div>
   `
+}
+
+const UpstreamBalanceCellStateStub = {
+  props: ['account'],
+  template: '<span data-test="auto-paused-state" :data-schedulable="String(account.schedulable)">{{ String(account.extra?.upstream_billing_auto_unschedulable === true) }}</span>'
 }
 
 const AccountBulkActionsBarStub = {
@@ -139,6 +148,7 @@ describe('admin AccountsView bulk edit scope', () => {
     probeUpstreamBillingBatch.mockReset()
     showError.mockReset()
     showSuccess.mockReset()
+    showWarning.mockReset()
 
     listAccounts.mockResolvedValue({
       items: [],
@@ -202,7 +212,6 @@ describe('admin AccountsView bulk edit scope', () => {
         }
       }
     })
-
     await flushPromises()
     await wrapper.get('[data-test="edit-filtered"]').trigger('click')
     await flushPromises()
@@ -306,12 +315,16 @@ describe('admin AccountsView bulk edit scope', () => {
           AppLayout: { template: '<div><slot /></div>' },
           TablePageLayout: { template: '<div><slot name="table" /></div>' },
           DataTable: {
-            props: ['data'],
-            template: '<div><div v-for="row in data" :key="row.id"><slot name="cell-upstream_billing_rate" :row="row" /></div></div>'
+            props: ['data', 'columns'],
+            template: '<div :data-has-upstream-balance="String(columns.some(column => column.key === \'upstream_balance\'))"><div v-for="row in data" :key="row.id"><slot name="cell-upstream_billing_rate" :row="row" /><slot name="cell-upstream_balance" :row="row" /></div></div>'
           },
           UpstreamBillingRateCell: {
             props: ['globalProbeEnabled'],
             template: '<span data-test="upstream-billing-cell" :data-global-enabled="String(globalProbeEnabled)"></span>'
+          },
+          UpstreamBalanceCell: {
+            props: ['globalProbeEnabled'],
+            template: '<span data-test="upstream-balance-cell" :data-global-enabled="String(globalProbeEnabled)"></span>'
           },
           Pagination: true,
           ConfirmDialog: true,
@@ -346,6 +359,8 @@ describe('admin AccountsView bulk edit scope', () => {
 
     expect(getUpstreamBillingProbeSettings).toHaveBeenCalledTimes(1)
     expect(wrapper.get('[data-test="upstream-billing-cell"]').attributes('data-global-enabled')).toBe('false')
+    expect(wrapper.get('[data-test="upstream-balance-cell"]').attributes('data-global-enabled')).toBe('false')
+    expect(wrapper.get('[data-has-upstream-balance]').attributes('data-has-upstream-balance')).toBe('true')
   })
 
   it('submits selected account IDs from every page for backend eligibility checks', async () => {
@@ -557,16 +572,19 @@ describe('admin AccountsView bulk edit scope', () => {
     consoleError.mockRestore()
   })
 
-  it('updates the account row after a successful single-account probe', async () => {
+  it('reconciles a concurrent manual scheduling resume after a successful single-account probe', async () => {
     const account = (rateMultiplier: number) => ({
       id: 7,
       name: 'account-7',
       platform: 'openai',
       type: 'apikey',
       status: 'active',
-      schedulable: true,
+      schedulable: false,
       rate_multiplier: rateMultiplier,
-      extra: { upstream_billing_probe_enabled: true },
+      extra: {
+        upstream_billing_probe_enabled: true,
+        upstream_billing_auto_unschedulable: true
+      },
       created_at: '2026-07-13T00:00:00Z',
       updated_at: '2026-07-13T00:00:00Z'
     })
@@ -578,9 +596,125 @@ describe('admin AccountsView bulk edit scope', () => {
       snapshot: {
         status: 'ok',
         data: { effective_rate_multiplier: 0.065 },
+        auto_unschedulable: true,
         synced_rate_multiplier: 0.065,
         last_attempt_at: '2026-07-13T00:00:00Z',
         next_probe_at: '2026-07-13T00:30:00Z'
+      }
+    })
+    getUpstreamBillingRatesWithEtag.mockResolvedValue({
+      notModified: false,
+      etag: '"resumed"',
+      data: {
+        items: [{
+          account_id: 7,
+          schedulable: true,
+          rate_multiplier: 0.08,
+          auto_unschedulable: false,
+          snapshot: {
+            status: 'ok',
+            data: { effective_rate_multiplier: 0.065 },
+            synced_rate_multiplier: 0.065,
+            last_attempt_at: '2026-07-13T00:00:00Z',
+            next_probe_at: '2026-07-13T00:30:00Z'
+          }
+        }],
+        total: 1,
+        page: 1,
+        page_size: 20
+      }
+    })
+    const wrapper = mount(AccountsView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          TablePageLayout: { template: '<div><slot name="table" /></div>' },
+          DataTable: ProbeDataTableStub,
+          AccountBulkActionsBar: true,
+          AccountTableActions: true,
+          AccountTableFilters: true,
+          AccountActionMenu: true,
+          Pagination: true,
+          ConfirmDialog: true,
+          ImportDataModal: true,
+          ReAuthAccountModal: true,
+          AccountTestModal: true,
+          AccountStatsModal: true,
+          ScheduledTestsPanel: true,
+          SyncFromCrsModal: true,
+          TempUnschedStatusModal: true,
+          ErrorPassthroughRulesModal: true,
+          TLSFingerprintProfilesModal: true,
+          CreateAccountModal: true,
+          EditAccountModal: true,
+          BulkEditAccountModal: true,
+          PlatformTypeBadge: true,
+          AccountCapacityCell: true,
+          AccountStatusIndicator: true,
+          AccountTodayStatsCell: true,
+          AccountGroupsCell: true,
+          AccountUsageCell: true,
+          UpstreamBalanceCell: UpstreamBalanceCellStateStub,
+          Icon: true
+        }
+      }
+    })
+
+    await flushPromises()
+    await wrapper.get('[data-testid="upstream-billing-probe"]').trigger('click')
+    await flushPromises()
+
+    expect(probeUpstreamBilling).toHaveBeenCalledWith(7)
+    expect(getUpstreamBillingRatesWithEtag).toHaveBeenCalledTimes(1)
+    expect(listAccounts).toHaveBeenCalledTimes(1)
+    expect(wrapper.get('[data-test="account-rate"]').text()).toBe('0.08x')
+    expect(wrapper.get('[data-test="auto-paused-state"]').text()).toBe('false')
+    expect(wrapper.get('[data-test="auto-paused-state"]').attributes('data-schedulable')).toBe('true')
+    expect(showSuccess).toHaveBeenCalledWith('admin.accounts.upstreamBilling.probeCompleted')
+  })
+
+  it('preserves an authoritative auto-pause marker when the compact snapshot is unavailable', async () => {
+    listAccounts.mockResolvedValueOnce({
+      items: [{
+        id: 7,
+        name: 'account-7',
+        platform: 'openai',
+        type: 'apikey',
+        status: 'active',
+        schedulable: false,
+        rate_multiplier: 0.25,
+        extra: { upstream_billing_probe_enabled: true },
+        created_at: '2026-07-13T00:00:00Z',
+        updated_at: '2026-07-13T00:00:00Z'
+      }],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1
+    })
+    probeUpstreamBilling.mockResolvedValue({
+      account_id: 7,
+      snapshot: {
+        status: 'ok',
+        auto_unschedulable: true,
+        last_attempt_at: '2026-07-13T00:00:00Z',
+        next_probe_at: '2026-07-13T00:30:00Z'
+      }
+    })
+    getUpstreamBillingRatesWithEtag.mockResolvedValue({
+      notModified: false,
+      etag: '"orphaned-marker"',
+      data: {
+        items: [{
+          account_id: 7,
+          schedulable: false,
+          rate_multiplier: 0.25,
+          auto_unschedulable: true,
+          snapshot: null
+        }],
+        total: 1,
+        page: 1,
+        page_size: 20
       }
     })
 
@@ -614,6 +748,7 @@ describe('admin AccountsView bulk edit scope', () => {
           AccountTodayStatsCell: true,
           AccountGroupsCell: true,
           AccountUsageCell: true,
+          UpstreamBalanceCell: UpstreamBalanceCellStateStub,
           Icon: true
         }
       }
@@ -623,8 +758,97 @@ describe('admin AccountsView bulk edit scope', () => {
     await wrapper.get('[data-testid="upstream-billing-probe"]').trigger('click')
     await flushPromises()
 
-    expect(probeUpstreamBilling).toHaveBeenCalledWith(7)
-    expect(listAccounts).toHaveBeenCalledTimes(1)
+    expect(wrapper.get('[data-test="auto-paused-state"]').text()).toBe('true')
+    expect(wrapper.get('[data-test="auto-paused-state"]').attributes('data-schedulable')).toBe('false')
+  })
+
+  it('keeps snapshot rate compatibility when the compact response comes from an older backend', async () => {
+    listAccounts.mockResolvedValueOnce({
+      items: [{
+        id: 7,
+        name: 'account-7',
+        platform: 'openai',
+        type: 'apikey',
+        status: 'active',
+        schedulable: true,
+        rate_multiplier: 0.25,
+        created_at: '2026-07-13T00:00:00Z',
+        updated_at: '2026-07-13T00:00:00Z'
+      }],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1
+    })
+    getUpstreamBillingRatesWithEtag.mockResolvedValue({
+      notModified: false,
+      etag: '"legacy-backend"',
+      data: {
+        items: [{
+          account_id: 7,
+          snapshot: {
+            status: 'ok',
+            synced_rate_multiplier: 0.065,
+            last_attempt_at: '2026-07-13T00:00:00Z',
+            next_probe_at: '2026-07-13T00:30:00Z'
+          }
+        }],
+        total: 1,
+        page: 1,
+        page_size: 20
+      }
+    })
+    probeUpstreamBilling.mockResolvedValue({
+      account_id: 7,
+      snapshot: {
+        status: 'ok',
+        synced_rate_multiplier: 0.04,
+        last_attempt_at: '2026-07-12T23:30:00Z',
+        next_probe_at: '2026-07-13T00:00:00Z'
+      }
+    })
+
+    const wrapper = mount(AccountsView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          TablePageLayout: { template: '<div><slot name="table" /></div>' },
+          DataTable: ProbeDataTableStub,
+          Pagination: true,
+          ConfirmDialog: true,
+          TotpStepUpDialog: true,
+          AccountTableActions: true,
+          AccountTableFilters: true,
+          AccountBulkActionsBar: true,
+          AccountActionMenu: true,
+          ImportDataModal: true,
+          ReAuthAccountModal: true,
+          AccountTestModal: true,
+          AccountStatsModal: true,
+          ScheduledTestsPanel: true,
+          SyncFromCrsModal: true,
+          TempUnschedStatusModal: true,
+          ErrorPassthroughRulesModal: true,
+          TLSFingerprintProfilesModal: true,
+          CreateAccountModal: true,
+          EditAccountModal: true,
+          BulkEditAccountModal: true,
+          PlatformTypeBadge: true,
+          AccountCapacityCell: true,
+          AccountStatusIndicator: true,
+          AccountTodayStatsCell: true,
+          AccountGroupsCell: true,
+          AccountUsageCell: true,
+          UpstreamBalanceCell: UpstreamBalanceCellStateStub,
+          Icon: true
+        }
+      }
+    })
+
+    await flushPromises()
+    await wrapper.get('[data-testid="upstream-billing-probe"]').trigger('click')
+    await flushPromises()
+
     expect(wrapper.get('[data-test="account-rate"]').text()).toBe('0.065x')
   })
 })

@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -901,9 +902,15 @@ func (s *GatewayService) buildCustomRelayURL(baseURL, path string, account *Acco
 }
 
 func (s *GatewayService) validateUpstreamBaseURL(raw string) (string, error) {
+	if s.cfg == nil {
+		return "", errors.New("config is not available")
+	}
 	if s.cfg != nil && !s.cfg.Security.URLAllowlist.Enabled {
 		normalized, err := urlvalidator.ValidateURLFormat(raw, s.cfg.Security.URLAllowlist.AllowInsecureHTTP)
 		if err != nil {
+			return "", fmt.Errorf("invalid base_url: %w", err)
+		}
+		if err := urlvalidator.RejectSameHTTPOrigin(normalized, s.cfg.Server.FrontendURL); err != nil {
 			return "", fmt.Errorf("invalid base_url: %w", err)
 		}
 		return normalized, nil
@@ -914,6 +921,9 @@ func (s *GatewayService) validateUpstreamBaseURL(raw string) (string, error) {
 		AllowPrivate:     s.cfg.Security.URLAllowlist.AllowPrivateHosts,
 	})
 	if err != nil {
+		return "", fmt.Errorf("invalid base_url: %w", err)
+	}
+	if err := urlvalidator.RejectSameHTTPOrigin(normalized, s.cfg.Server.FrontendURL); err != nil {
 		return "", fmt.Errorf("invalid base_url: %w", err)
 	}
 	return normalized, nil

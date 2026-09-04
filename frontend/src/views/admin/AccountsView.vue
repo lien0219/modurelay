@@ -369,12 +369,29 @@
             <div class="flex items-center gap-1">
               <span>{{ column.label }}</span>
               <span @click.stop>
-                <HelpTooltip :content="t('admin.accounts.upstreamBilling.trustWarning')" width-class="w-80" />
+                <HelpTooltip :content="t('admin.accounts.upstreamBilling.trustWarning')" trigger="click" width-class="w-80" />
               </span>
             </div>
           </template>
           <template #cell-upstream_billing_rate="{ row }">
             <UpstreamBillingRateCell
+              :account="row"
+              :global-probe-enabled="upstreamBillingProbeGloballyEnabled"
+              :now="upstreamBillingNow"
+              :probing="probingUpstreamBilling.has(row.id)"
+              @probe="handleProbeUpstreamBilling(row)"
+            />
+          </template>
+          <template #header-upstream_balance="{ column }">
+            <div class="flex items-center gap-1">
+              <span>{{ column.label }}</span>
+              <span @click.stop>
+                <HelpTooltip :content="t('admin.accounts.upstreamBalance.trustWarning')" trigger="click" width-class="w-80" />
+              </span>
+            </div>
+          </template>
+          <template #cell-upstream_balance="{ row }">
+            <UpstreamBalanceCell
               :account="row"
               :global-probe-enabled="upstreamBillingProbeGloballyEnabled"
               :now="upstreamBillingNow"
@@ -525,6 +542,7 @@ import AccountTodayStatsCell from '@/components/account/AccountTodayStatsCell.vu
 import AccountGroupsCell from '@/components/account/AccountGroupsCell.vue'
 import AccountCapacityCell from '@/components/account/AccountCapacityCell.vue'
 import UpstreamBillingRateCell from '@/components/account/UpstreamBillingRateCell.vue'
+import UpstreamBalanceCell from '@/components/account/UpstreamBalanceCell.vue'
 import PlatformTypeBadge from '@/components/common/PlatformTypeBadge.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ErrorPassthroughRulesModal from '@/components/admin/ErrorPassthroughRulesModal.vue'
@@ -1225,16 +1243,40 @@ const applyUpstreamBillingRateSnapshots = async (
     if (!item) return account
     const nextSnapshot = item.snapshot ?? null
     const previousSnapshot = account.extra?.upstream_billing_probe ?? null
-    if (JSON.stringify(previousSnapshot) === JSON.stringify(nextSnapshot)) return account
+    const nextAutoPaused = typeof item.auto_unschedulable === 'boolean'
+      ? item.auto_unschedulable
+      : nextSnapshot?.auto_unschedulable === true
+    const previousAutoPaused = account.extra?.upstream_billing_auto_unschedulable === true
+    const nextSchedulable = typeof item.schedulable === 'boolean' ? item.schedulable : account.schedulable
+    const snapshotRateMultiplier = typeof nextSnapshot?.synced_rate_multiplier === 'number' &&
+      Number.isFinite(nextSnapshot.synced_rate_multiplier)
+      ? nextSnapshot.synced_rate_multiplier
+      : account.rate_multiplier
+    const nextRateMultiplier = typeof item.rate_multiplier === 'number' && Number.isFinite(item.rate_multiplier)
+      ? item.rate_multiplier
+      : snapshotRateMultiplier
+    if (
+      JSON.stringify(previousSnapshot) === JSON.stringify(nextSnapshot) &&
+      previousAutoPaused === nextAutoPaused &&
+      account.schedulable === nextSchedulable &&
+      account.rate_multiplier === nextRateMultiplier
+    ) return account
 
     const nextExtra = { ...(account.extra ?? {}) }
-    if (nextSnapshot) nextExtra.upstream_billing_probe = nextSnapshot
-    else delete nextExtra.upstream_billing_probe
+    if (nextSnapshot) {
+      nextExtra.upstream_billing_probe = nextSnapshot
+    } else {
+      delete nextExtra.upstream_billing_probe
+    }
+    if (nextAutoPaused) {
+      nextExtra.upstream_billing_auto_unschedulable = true
+    } else {
+      delete nextExtra.upstream_billing_auto_unschedulable
+    }
     const nextAccount = {
       ...account,
-      ...(typeof nextSnapshot?.synced_rate_multiplier === 'number'
-        ? { rate_multiplier: nextSnapshot.synced_rate_multiplier }
-        : {}),
+      schedulable: nextSchedulable,
+      rate_multiplier: nextRateMultiplier,
       extra: nextExtra
     }
     syncAccountRefs(nextAccount)
@@ -1805,6 +1847,7 @@ const allColumns = computed(() => {
     { key: 'scheduler_score', label: t('admin.accounts.columns.schedulerScore'), sortable: false },
     { key: 'rate_multiplier', label: t('admin.accounts.columns.billingRateMultiplier'), sortable: true },
     { key: 'upstream_billing_rate', label: t('admin.accounts.columns.upstreamBillingRate'), sortable: true },
+    { key: 'upstream_balance', label: t('admin.accounts.columns.upstreamBalance'), sortable: false },
     { key: 'last_used_at', label: t('admin.accounts.columns.lastUsed'), sortable: true },
     { key: 'created_at', label: t('admin.accounts.columns.createdAt'), sortable: true },
     { key: 'expires_at', label: t('admin.accounts.columns.expiresAt'), sortable: true },
@@ -1952,7 +1995,9 @@ const handleBulkProbeUpstreamBilling = async () => {
       }
     })
     if (patched) await refreshAccountsAfterUpstreamBillingProbe()
-    const failed = results.filter(result => result.error).length
+    const failed = results.filter(result => (
+      Boolean(result.error) || !result.snapshot || !isProbeSnapshotSuccessful(result.snapshot)
+    )).length
     if (failed > 0) {
       appStore.showError(t('admin.accounts.upstreamBilling.batchPartial', { success: results.length - failed, failed }))
     } else {
@@ -1968,7 +2013,12 @@ const handleBulkProbeUpstreamBilling = async () => {
 const updateSchedulableInList = (accountIds: number[], schedulable: boolean) => {
   if (accountIds.length === 0) return
   const idSet = new Set(accountIds)
-  accounts.value = accounts.value.map((account) => (idSet.has(account.id) ? { ...account, schedulable } : account))
+  accounts.value = accounts.value.map((account) => {
+    if (!idSet.has(account.id)) return account
+    const extra = account.extra ? { ...account.extra } : account.extra
+    if (extra) delete extra.upstream_billing_auto_unschedulable
+    return { ...account, schedulable, extra }
+  })
 }
 const normalizeBulkSchedulableResult = (
   result: {
@@ -2244,13 +2294,37 @@ const patchUpstreamBillingSnapshot = (accountID: number, snapshot: UpstreamBilli
   const account = accounts.value.find(item => item.id === accountID)
   if (!account) return
   upstreamBillingNow.value = Date.now()
+  const nextExtra = {
+    ...account.extra,
+    upstream_billing_probe: snapshot
+  }
+  if (snapshot.auto_unschedulable === true) {
+    nextExtra.upstream_billing_auto_unschedulable = true
+  } else {
+    delete nextExtra.upstream_billing_auto_unschedulable
+  }
   patchAccountInList({
     ...account,
+    ...(snapshot.auto_unschedulable === true ? { schedulable: false } : {}),
     ...(typeof snapshot.synced_rate_multiplier === 'number'
       ? { rate_multiplier: snapshot.synced_rate_multiplier }
       : {}),
-    extra: { ...account.extra, upstream_billing_probe: snapshot }
+    extra: nextExtra
   })
+}
+const isProbeSnapshotSuccessful = (snapshot: UpstreamBillingProbeSnapshot) => (
+  snapshot.status === 'ok' && (!snapshot.balance || snapshot.balance.status === 'ok')
+)
+const reportProbeSnapshotResult = (snapshot: UpstreamBillingProbeSnapshot) => {
+  if (isProbeSnapshotSuccessful(snapshot)) {
+    appStore.showSuccess(t('admin.accounts.upstreamBilling.probeCompleted'))
+    return
+  }
+  if (snapshot.status === 'unsupported' || snapshot.balance?.status === 'unsupported') {
+    appStore.showWarning(t('admin.accounts.upstreamBilling.probeUnsupported'))
+    return
+  }
+  appStore.showError(t('admin.accounts.upstreamBilling.probeFailed'))
 }
 const refreshAccountsAfterUpstreamBillingProbe = async () => {
   await refreshUpstreamBillingSortedList(true)
@@ -2263,6 +2337,7 @@ const handleProbeUpstreamBilling = async (account: Account) => {
     if (result.snapshot) {
       patchUpstreamBillingSnapshot(account.id, result.snapshot)
       await refreshAccountsAfterUpstreamBillingProbe()
+      reportProbeSnapshotResult(result.snapshot)
     }
   } catch (error) {
     console.error('Failed to probe upstream billing:', error)

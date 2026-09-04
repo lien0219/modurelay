@@ -1250,11 +1250,23 @@ export interface UpstreamBillingData {
   observed_at: string
 }
 
-export type UpstreamBillingProbeStatus = 'ok' | 'unsupported' | 'failed'
+export type UpstreamBalanceMode = 'wallet' | 'key_quota' | 'subscription'
 
-export interface UpstreamBillingProbeSnapshot {
+export interface UpstreamBalanceData {
+  mode: UpstreamBalanceMode
+  unit: string
+  balance?: number
+  remaining?: number
+  limit?: number
+  used?: number
+  unlimited?: boolean
+  is_valid?: boolean
+}
+
+export interface UpstreamBalanceProbeSnapshot {
   status: UpstreamBillingProbeStatus
-  data?: UpstreamBillingData
+  data?: UpstreamBalanceData
+  source?: 'billing' | 'usage'
   received_at?: string
   fresh_until?: string
   last_attempt_at: string
@@ -1262,6 +1274,24 @@ export interface UpstreamBillingProbeSnapshot {
   failure_count?: number
   http_status?: number
   last_error?: string
+}
+
+export type UpstreamBillingProbeStatus = 'ok' | 'unsupported' | 'failed'
+
+export interface UpstreamBillingProbeSnapshot {
+  status: UpstreamBillingProbeStatus
+  data?: UpstreamBillingData
+  balance?: UpstreamBalanceProbeSnapshot
+  received_at?: string
+  fresh_until?: string
+  last_attempt_at: string
+  next_probe_at: string
+  failure_count?: number
+  http_status?: number
+  last_error?: string
+  // Set when this fresh observation exhausted the upstream balance and the
+  // backend automatically disabled scheduling for the account.
+  auto_unschedulable?: boolean
   // Value this probe wrote into the account rate multiplier; absent when the
   // probe did not sync a rate.
   synced_rate_multiplier?: number
@@ -1280,6 +1310,10 @@ export interface UpstreamBillingProbeResult {
 
 export interface UpstreamBillingRateSnapshotItem {
   account_id: number
+  // Optional during rolling upgrades against an older backend.
+  schedulable?: boolean
+  rate_multiplier?: number
+  auto_unschedulable?: boolean
   snapshot?: UpstreamBillingProbeSnapshot | null
 }
 
@@ -1359,6 +1393,7 @@ export interface Account {
     antigravity_credits_overages?: Record<string, { activated_at: string; active_until: string }>
     upstream_billing_probe_enabled?: boolean
     upstream_billing_rate_sync_enabled?: boolean
+    upstream_billing_auto_unschedulable?: boolean
     upstream_billing_probe?: UpstreamBillingProbeSnapshot
     codex_reset_credit_snapshot?: {
       available_count?: number

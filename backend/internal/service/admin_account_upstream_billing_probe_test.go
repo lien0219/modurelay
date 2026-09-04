@@ -112,7 +112,7 @@ func TestUpdateAccountRoutesRateIntentThroughAtomicBillingUpdater(t *testing.T) 
 	require.Zero(t, *updated.RateMultiplier)
 }
 
-func TestCreateAccountDropsManagedUpstreamBillingProbeState(t *testing.T) {
+func TestCreateAccountDefaultsProbeOnAndDropsInjectedManagedState(t *testing.T) {
 	repo := &upstreamBillingProbeAccountRepo{}
 	svc := &adminServiceImpl{accountRepo: repo}
 
@@ -123,16 +123,34 @@ func TestCreateAccountDropsManagedUpstreamBillingProbeState(t *testing.T) {
 		Credentials:          map[string]any{"api_key": "sk-test"},
 		SkipDefaultGroupBind: true,
 		Extra: map[string]any{
-			UpstreamBillingProbeEnabledExtraKey:    true,
-			UpstreamBillingRateSyncEnabledExtraKey: true,
-			UpstreamBillingProbeExtraKey:           map[string]any{"status": "ok"},
+			UpstreamBillingProbeEnabledExtraKey:      true,
+			UpstreamBillingRateSyncEnabledExtraKey:   true,
+			UpstreamBillingProbeExtraKey:             map[string]any{"status": "ok"},
+			UpstreamBillingAutoUnschedulableExtraKey: true,
 		},
 	})
 
 	require.NoError(t, err)
-	require.NotContains(t, created.Extra, UpstreamBillingProbeEnabledExtraKey)
+	require.Equal(t, true, created.Extra[UpstreamBillingProbeEnabledExtraKey])
 	require.NotContains(t, created.Extra, UpstreamBillingRateSyncEnabledExtraKey)
 	require.NotContains(t, created.Extra, UpstreamBillingProbeExtraKey)
+	require.NotContains(t, created.Extra, UpstreamBillingAutoUnschedulableExtraKey)
+}
+
+func TestCreateAccountPreservesExplicitProbeOptOut(t *testing.T) {
+	disabled := false
+	repo := &upstreamBillingProbeAccountRepo{}
+	created, err := (&adminServiceImpl{accountRepo: repo}).CreateAccount(context.Background(), &CreateAccountInput{
+		Name:                 "upstream",
+		Platform:             PlatformOpenAI,
+		Type:                 AccountTypeAPIKey,
+		Credentials:          map[string]any{"api_key": "sk-test"},
+		ProbeEnabled:         &disabled,
+		SkipDefaultGroupBind: true,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, false, created.Extra[UpstreamBillingProbeEnabledExtraKey])
 }
 
 func TestCreateAccountAcceptsDedicatedUpstreamBillingProbeSetting(t *testing.T) {
@@ -205,7 +223,7 @@ func TestUpdateAccountPreservesGrokBillingSnapshotForUnrelatedEdit(t *testing.T)
 		},
 	}}
 
-	updated, err := (&adminServiceImpl{accountRepo: repo}).UpdateAccount(context.Background(), accountID, &UpdateAccountInput{
+	updated, err := (&adminServiceImpl{accountRepo: &upstreamBillingProbeAdminRepo{repo}}).UpdateAccount(context.Background(), accountID, &UpdateAccountInput{
 		Extra: map[string]any{"custom": "value"},
 	})
 
@@ -248,6 +266,50 @@ func TestUpdateAccountPreservesProbeSnapshotWhenIdentityValuesAreUnchanged(t *te
 
 	require.NoError(t, err)
 	require.Contains(t, updated.Extra, UpstreamBillingProbeExtraKey)
+}
+
+func TestUpdateAccountEnrollsConvertedEligibleIdentityByDefault(t *testing.T) {
+	accountID := int64(118)
+	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{
+		accountID: {
+			ID:          accountID,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeOAuth,
+			Status:      StatusActive,
+			Credentials: map[string]any{"access_token": "oauth-token"},
+		},
+	}}
+
+	updated, err := (&adminServiceImpl{accountRepo: &upstreamBillingProbeAdminRepo{repo}}).UpdateAccount(context.Background(), accountID, &UpdateAccountInput{
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "sk-converted", "base_url": "https://relay.example"},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, true, updated.Extra[UpstreamBillingProbeEnabledExtraKey])
+}
+
+func TestUpdateAccountPreservesConvertedIdentityProbeOptOut(t *testing.T) {
+	accountID := int64(117)
+	falseValue := false
+	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{
+		accountID: {
+			ID:          accountID,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeOAuth,
+			Status:      StatusActive,
+			Credentials: map[string]any{"access_token": "oauth-token"},
+			Extra:       map[string]any{UpstreamBillingProbeEnabledExtraKey: falseValue},
+		},
+	}}
+
+	updated, err := (&adminServiceImpl{accountRepo: &upstreamBillingProbeAdminRepo{repo}}).UpdateAccount(context.Background(), accountID, &UpdateAccountInput{
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "sk-converted", "base_url": "https://relay.example"},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, false, updated.Extra[UpstreamBillingProbeEnabledExtraKey])
 }
 
 func TestUpdateAccountInvalidatesProbeSnapshotWhenUpstreamIdentityChanges(t *testing.T) {

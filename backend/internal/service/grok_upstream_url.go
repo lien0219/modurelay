@@ -28,10 +28,22 @@ func grokBaseURLValidator(account *Account, cfg *config.Config) (xai.BaseURLVali
 		// OAuth bearer token reach an arbitrary custom host.
 		policyValidator := grokOperatorPolicyValidator(cfg)
 		return redactedGrokBaseURLValidator(func(raw string) (string, error) {
+			var normalized string
+			var err error
 			if xai.IsOfficialBaseURL(raw) {
-				return xai.ValidateTrustedBaseURL(raw)
+				normalized, err = xai.ValidateTrustedBaseURL(raw)
+			} else {
+				normalized, err = policyValidator(raw)
 			}
-			return policyValidator(raw)
+			if err != nil {
+				return "", err
+			}
+			if cfg != nil {
+				if err := urlvalidator.RejectSameHTTPOrigin(normalized, cfg.Server.FrontendURL); err != nil {
+					return "", err
+				}
+			}
+			return normalized, nil
 		}), nil
 	case AccountTypeAPIKey:
 		return redactedGrokBaseURLValidator(grokOperatorPolicyValidator(cfg)), nil
@@ -48,15 +60,29 @@ func grokOperatorPolicyValidator(cfg *config.Config) xai.BaseURLValidator {
 	}
 	if !cfg.Security.URLAllowlist.Enabled {
 		return func(raw string) (string, error) {
-			return urlvalidator.ValidateURLFormat(raw, cfg.Security.URLAllowlist.AllowInsecureHTTP)
+			normalized, err := urlvalidator.ValidateURLFormat(raw, cfg.Security.URLAllowlist.AllowInsecureHTTP)
+			if err != nil {
+				return "", err
+			}
+			if err := urlvalidator.RejectSameHTTPOrigin(normalized, cfg.Server.FrontendURL); err != nil {
+				return "", err
+			}
+			return normalized, nil
 		}
 	}
 	return func(raw string) (string, error) {
-		return urlvalidator.ValidateHTTPSURL(raw, urlvalidator.ValidationOptions{
+		normalized, err := urlvalidator.ValidateHTTPSURL(raw, urlvalidator.ValidationOptions{
 			AllowedHosts:     cfg.Security.URLAllowlist.UpstreamHosts,
 			RequireAllowlist: true,
 			AllowPrivate:     cfg.Security.URLAllowlist.AllowPrivateHosts,
 		})
+		if err != nil {
+			return "", err
+		}
+		if err := urlvalidator.RejectSameHTTPOrigin(normalized, cfg.Server.FrontendURL); err != nil {
+			return "", err
+		}
+		return normalized, nil
 	}
 }
 
