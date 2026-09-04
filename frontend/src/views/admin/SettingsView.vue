@@ -4825,6 +4825,65 @@
             </div>
           </div>
 
+          <!-- Downstream Billing Probe Settings -->
+          <div class="card" data-testid="downstream-billing-probe-settings">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.downstreamBillingProbe.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.downstreamBillingProbe.description") }}
+              </p>
+            </div>
+            <div class="p-6">
+              <div
+                v-if="downstreamBillingProbeLoading"
+                class="flex items-center gap-2 text-gray-500"
+              >
+                <div
+                  class="h-4 w-4 animate-spin rounded-full border-b-2 border-primary-600"
+                ></div>
+                {{ t("common.loading") }}
+              </div>
+              <template v-else>
+                <div class="flex items-center justify-between gap-4">
+                  <div class="min-w-0">
+                    <label class="font-medium text-gray-900 dark:text-white">
+                      {{ t("admin.settings.downstreamBillingProbe.enabled") }}
+                    </label>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.downstreamBillingProbe.enabledHint") }}
+                    </p>
+                  </div>
+                  <Toggle
+                    v-model="downstreamBillingProbeForm.enabled"
+                    :aria-label="t('admin.settings.downstreamBillingProbe.enabled')"
+                    data-testid="downstream-billing-probe-enabled"
+                  />
+                </div>
+                <div
+                  class="mt-5 flex justify-end border-t border-gray-100 pt-4 dark:border-dark-700"
+                >
+                  <button
+                    type="button"
+                    class="btn btn-primary btn-sm"
+                    :disabled="downstreamBillingProbeSaving"
+                    data-testid="downstream-billing-probe-save"
+                    @click="saveDownstreamBillingProbeSettings"
+                  >
+                    {{
+                      downstreamBillingProbeSaving
+                        ? t("common.saving")
+                        : t("common.save")
+                    }}
+                  </button>
+                </div>
+              </template>
+            </div>
+          </div>
+
           <!-- Ollama Cloud Usage Settings -->
           <div class="card" data-testid="ollama-cloud-usage-global-settings">
             <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
@@ -9059,6 +9118,13 @@ const upstreamBillingProbeForm = reactive({
   interval_minutes: 30,
 });
 
+// Downstream billing probe disclosure state
+const downstreamBillingProbeLoading = ref(true);
+const downstreamBillingProbeSaving = ref(false);
+const downstreamBillingProbeForm = reactive({
+  enabled: true,
+});
+
 const ollamaCloudUsageLoading = ref(true);
 const ollamaCloudUsageSaving = ref(false);
 const ollamaCloudUsageForm = reactive({
@@ -11877,6 +11943,40 @@ async function saveUpstreamBillingProbeSettings() {
   }
 }
 
+async function loadDownstreamBillingProbeSettings() {
+  downstreamBillingProbeLoading.value = true;
+  try {
+    Object.assign(
+      downstreamBillingProbeForm,
+      await adminAPI.settings.getDownstreamBillingProbeSettings(),
+    );
+  } catch (_error: unknown) {
+    // Keep the backward-compatible enabled default when this optional setting cannot be loaded.
+  } finally {
+    downstreamBillingProbeLoading.value = false;
+  }
+}
+
+async function saveDownstreamBillingProbeSettings() {
+  downstreamBillingProbeSaving.value = true;
+  try {
+    const updated = await adminAPI.settings.updateDownstreamBillingProbeSettings({
+      ...downstreamBillingProbeForm,
+    });
+    Object.assign(downstreamBillingProbeForm, updated);
+    appStore.showSuccess(t("admin.settings.downstreamBillingProbe.saved"));
+  } catch (error: unknown) {
+    appStore.showError(
+      extractApiErrorMessage(
+        error,
+        t("admin.settings.downstreamBillingProbe.saveFailed"),
+      ),
+    );
+  } finally {
+    downstreamBillingProbeSaving.value = false;
+  }
+}
+
 async function loadOllamaCloudUsageSettings() {
   ollamaCloudUsageLoading.value = true;
   try {
@@ -12652,6 +12752,7 @@ onMounted(() => {
   loadSubscriptionGroups();
   loadAdminApiKey();
   loadUpstreamBillingProbeSettings();
+  loadDownstreamBillingProbeSettings();
   loadOllamaCloudUsageSettings();
   loadOverloadCooldownSettings();
   loadRateLimit429CooldownSettings();

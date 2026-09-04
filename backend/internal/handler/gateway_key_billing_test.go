@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -25,6 +26,19 @@ type keyBillingUserGroupRateRepo struct {
 	lookupCalls int
 }
 
+type keyBillingSettingRepo struct {
+	service.SettingRepository
+	values map[string]string
+}
+
+func (r *keyBillingSettingRepo) GetValue(_ context.Context, key string) (string, error) {
+	value, ok := r.values[key]
+	if !ok {
+		return "", service.ErrSettingNotFound
+	}
+	return value, nil
+}
+
 func (r *keyBillingUserGroupRateRepo) GetByUserAndGroup(_ context.Context, userID, groupID int64) (*float64, error) {
 	r.gotUserID = userID
 	r.gotGroupID = groupID
@@ -36,7 +50,21 @@ func newKeyBillingHandler(repo service.UserGroupRateRepository) *GatewayHandler 
 	return &GatewayHandler{
 		gatewayService:       newKeyBillingGatewayService(repo),
 		openAIGatewayService: newKeyBillingOpenAIGatewayService(repo),
+		settingService: service.NewSettingService(
+			&keyBillingSettingRepo{},
+			&config.Config{},
+		),
 	}
+}
+
+func newKeyBillingSettingService(enabled bool) *service.SettingService {
+	value := "false"
+	if enabled {
+		value = "true"
+	}
+	return service.NewSettingService(&keyBillingSettingRepo{values: map[string]string{
+		service.SettingKeyDownstreamBillingProbeEnabled: value,
+	}}, &config.Config{})
 }
 
 func newKeyBillingGatewayService(repo service.UserGroupRateRepository) *service.GatewayService {
@@ -231,7 +259,7 @@ func TestGatewayHandlerKeyBillingInfoErrorsAreSafe(t *testing.T) {
 			GroupID: &groupID,
 			Group:   &service.Group{ID: groupID, RateMultiplier: 1},
 		})
-		(&GatewayHandler{}).KeyBillingInfo(c)
+		(&GatewayHandler{settingService: newKeyBillingSettingService(true)}).KeyBillingInfo(c)
 		require.Equal(t, http.StatusInternalServerError, w.Code)
 	})
 
@@ -249,6 +277,30 @@ func TestGatewayHandlerKeyBillingInfoErrorsAreSafe(t *testing.T) {
 		require.Equal(t, 1.0, got.ResolvedRateMultiplier)
 		require.NotContains(t, w.Body.String(), "database password leaked")
 	})
+}
+
+func TestGatewayHandlerKeyBillingInfoHonorsDownstreamProbeSwitch(t *testing.T) {
+	groupID := int64(7)
+	rateRepo := &keyBillingUserGroupRateRepo{}
+	handler := newKeyBillingHandler(rateRepo)
+	handler.settingService = newKeyBillingSettingService(false)
+	c, w := newKeyBillingContext(&service.APIKey{
+		UserID:  11,
+		GroupID: &groupID,
+		Group:   &service.Group{ID: groupID, RateMultiplier: 1},
+	})
+
+	handler.KeyBillingInfo(c)
+
+	require.Equal(t, http.StatusNotFound, w.Code)
+	require.JSONEq(t, `{
+		"type": "error",
+		"error": {
+			"type": "not_found_error",
+			"message": "Billing information is not supported"
+		}
+	}`, w.Body.String())
+	require.Zero(t, rateRepo.lookupCalls)
 }
 
 func TestGatewayHandlerKeyBillingInfoSharesBillingResolverCacheByPlatform(t *testing.T) {
@@ -270,6 +322,7 @@ func TestGatewayHandlerKeyBillingInfoSharesBillingResolverCacheByPlatform(t *tes
 			h := &GatewayHandler{
 				gatewayService:       gatewayService,
 				openAIGatewayService: openAIGatewayService,
+				settingService:       newKeyBillingSettingService(true),
 			}
 			apiKey := &service.APIKey{
 				UserID:  11,

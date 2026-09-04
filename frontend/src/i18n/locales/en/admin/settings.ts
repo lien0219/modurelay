@@ -447,6 +447,14 @@ export default {
         saved: 'Upstream rate auto detection settings saved',
         saveFailed: 'Failed to save upstream rate auto detection settings'
       },
+      downstreamBillingProbe: {
+        title: 'Downstream Rate Detection',
+        description: 'Control whether downstream clients holding this site\'s API keys can read their current billing rate.',
+        enabled: 'Allow downstream clients to detect this site\'s rates',
+        enabledHint: 'When disabled, the rate detection endpoint reports unsupported. Model forwarding, billing, and this site\'s upstream detection remain unchanged.',
+        saved: 'Downstream rate detection settings saved',
+        saveFailed: 'Failed to save downstream rate detection settings'
+      },
       ollamaCloudUsage: {
         title: 'Ollama Cloud Usage Refresh',
         description: 'Refresh official Ollama settings-page usage driven by model requests for individually opted-in accounts. Disabled by default. Idle accounts are not polled.',

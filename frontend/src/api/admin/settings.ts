@@ -1354,6 +1354,29 @@ export async function updatePanelRateLimitSettings(
   return data;
 }
 
+// ==================== Downstream Billing Probe Settings ====================
+
+export interface DownstreamBillingProbeSettings {
+  enabled: boolean;
+}
+
+export async function getDownstreamBillingProbeSettings(): Promise<DownstreamBillingProbeSettings> {
+  const { data } = await apiClient.get<DownstreamBillingProbeSettings>(
+    "/admin/settings/downstream-billing-probe",
+  );
+  return data;
+}
+
+export async function updateDownstreamBillingProbeSettings(
+  settings: DownstreamBillingProbeSettings,
+): Promise<DownstreamBillingProbeSettings> {
+  const { data } = await apiClient.put<DownstreamBillingProbeSettings>(
+    "/admin/settings/downstream-billing-probe",
+    settings,
+  );
+  return data;
+}
+
 // ==================== Stream Timeout Settings ====================
 
 /**
@@ -1583,6 +1606,8 @@ export const settingsAPI = {
   updateRateLimit429CooldownSettings,
   getPanelRateLimitSettings,
   updatePanelRateLimitSettings,
+  getDownstreamBillingProbeSettings,
+  updateDownstreamBillingProbeSettings,
   getStreamTimeoutSettings,
   updateStreamTimeoutSettings,
   getRectifierSettings,

@@ -24,6 +24,8 @@ const {
   getBetaPolicySettings,
   getUpstreamBillingProbeSettings,
   updateUpstreamBillingProbeSettings,
+  getDownstreamBillingProbeSettings,
+  updateDownstreamBillingProbeSettings,
   getOllamaCloudUsageSettings,
   updateOllamaCloudUsageSettings,
   getGroups,
@@ -61,6 +63,10 @@ const {
     interval_minutes: 30,
   }),
   updateUpstreamBillingProbeSettings: vi.fn().mockImplementation(async (payload) => payload),
+  getDownstreamBillingProbeSettings: vi.fn().mockResolvedValue({
+    enabled: true,
+  }),
+  updateDownstreamBillingProbeSettings: vi.fn().mockImplementation(async (payload) => payload),
   getOllamaCloudUsageSettings: vi.fn().mockResolvedValue({
     enabled: false,
     interval_minutes: 60,
@@ -94,6 +100,8 @@ vi.mock("@/api", () => ({
       updateRateLimit429CooldownSettings,
       getPanelRateLimitSettings,
       updatePanelRateLimitSettings,
+      getDownstreamBillingProbeSettings,
+      updateDownstreamBillingProbeSettings,
       getStreamTimeoutSettings,
       getRectifierSettings,
       getBetaPolicySettings,
@@ -229,6 +237,12 @@ vi.mock("vue-i18n", async () => {
     "admin.settings.upstreamBillingProbe.intervalHint": "范围 5–1440 分钟。",
     "admin.settings.upstreamBillingProbe.saved": "上游倍率自动探测设置已保存",
     "admin.settings.upstreamBillingProbe.saveFailed": "保存上游倍率自动探测设置失败",
+    "admin.settings.downstreamBillingProbe.title": "下游倍率探测",
+    "admin.settings.downstreamBillingProbe.description": "控制持有本站 API Key 的下游是否可以读取其当前计费倍率。",
+    "admin.settings.downstreamBillingProbe.enabled": "允许下游探测本站倍率",
+    "admin.settings.downstreamBillingProbe.enabledHint": "关闭后倍率探测接口返回“不支持”，不影响模型请求转发、计费或本站探测上游。",
+    "admin.settings.downstreamBillingProbe.saved": "下游倍率探测设置已保存",
+    "admin.settings.downstreamBillingProbe.saveFailed": "保存下游倍率探测设置失败",
     "admin.settings.openaiFastPolicy.summaryTargetModels": "目标模型",
     "admin.settings.openaiFastPolicy.summaryAllModels": "全部模型",
     "admin.settings.openaiFastPolicy.summaryOtherModels": "其他模型",
@@ -641,6 +655,8 @@ describe("admin SettingsView payment visible method controls", () => {
     getBetaPolicySettings.mockReset();
     getUpstreamBillingProbeSettings.mockReset();
     updateUpstreamBillingProbeSettings.mockReset();
+    getDownstreamBillingProbeSettings.mockReset();
+    updateDownstreamBillingProbeSettings.mockReset();
     getOllamaCloudUsageSettings.mockReset();
     updateOllamaCloudUsageSettings.mockReset();
     getGroups.mockReset();
@@ -703,6 +719,10 @@ describe("admin SettingsView payment visible method controls", () => {
       interval_minutes: 30,
     });
     updateUpstreamBillingProbeSettings.mockImplementation(async (payload) => payload);
+    getDownstreamBillingProbeSettings.mockResolvedValue({
+      enabled: true,
+    });
+    updateDownstreamBillingProbeSettings.mockImplementation(async (payload) => payload);
     getOllamaCloudUsageSettings.mockResolvedValue({
       enabled: false,
       interval_minutes: 60,
@@ -1336,6 +1356,33 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(showSuccess).toHaveBeenCalledWith("上游倍率自动探测设置已保存");
   });
 
+  it("loads and saves downstream billing probe settings from the gateway tab", async () => {
+    getDownstreamBillingProbeSettings.mockResolvedValueOnce({
+      enabled: false,
+    });
+
+    const wrapper = mountView();
+
+    await flushPromises();
+    await openGatewayTab(wrapper);
+
+    const card = wrapper.get('[data-testid="downstream-billing-probe-settings"]');
+    expect(card.isVisible()).toBe(true);
+    expect(card.text()).toContain("下游倍率探测");
+
+    const toggle = card.get('[data-testid="downstream-billing-probe-enabled"]');
+    expect((toggle.element as HTMLInputElement).checked).toBe(false);
+
+    await toggle.setValue(true);
+    await card.get('[data-testid="downstream-billing-probe-save"]').trigger("click");
+    await flushPromises();
+
+    expect(updateDownstreamBillingProbeSettings).toHaveBeenCalledWith({
+      enabled: true,
+    });
+    expect(showSuccess).toHaveBeenCalledWith("下游倍率探测设置已保存");
+  });
+
   it("loads and saves configurable Grok cross-client model mapping", async () => {
     getSettings.mockResolvedValueOnce({
       ...baseSettingsResponse,
@@ -1568,6 +1615,8 @@ describe("admin SettingsView wechat connect controls", () => {
     getStreamTimeoutSettings.mockReset();
     getRectifierSettings.mockReset();
     getBetaPolicySettings.mockReset();
+    getDownstreamBillingProbeSettings.mockReset();
+    updateDownstreamBillingProbeSettings.mockReset();
     getGroups.mockReset();
     listProxies.mockReset();
     getProviders.mockReset();
@@ -1626,6 +1675,8 @@ describe("admin SettingsView wechat connect controls", () => {
     getBetaPolicySettings.mockResolvedValue({
       rules: [],
     });
+    getDownstreamBillingProbeSettings.mockResolvedValue({ enabled: true });
+    updateDownstreamBillingProbeSettings.mockImplementation(async (payload) => payload);
     getGroups.mockResolvedValue([]);
     listProxies.mockResolvedValue({
       items: [],
@@ -1814,6 +1865,8 @@ describe("admin SettingsView platform quota matrix", () => {
     getStreamTimeoutSettings.mockReset();
     getRectifierSettings.mockReset();
     getBetaPolicySettings.mockReset();
+    getDownstreamBillingProbeSettings.mockReset();
+    updateDownstreamBillingProbeSettings.mockReset();
     getGroups.mockReset();
     listProxies.mockReset();
     getProviders.mockReset();
@@ -1840,6 +1893,8 @@ describe("admin SettingsView platform quota matrix", () => {
     getStreamTimeoutSettings.mockResolvedValue({});
     getRectifierSettings.mockResolvedValue({});
     getBetaPolicySettings.mockResolvedValue({});
+    getDownstreamBillingProbeSettings.mockResolvedValue({ enabled: true });
+    updateDownstreamBillingProbeSettings.mockImplementation(async (payload) => payload);
     getGroups.mockResolvedValue([]);
     listProxies.mockResolvedValue({ items: [] });
     getProviders.mockResolvedValue({ data: [] });

@@ -440,6 +440,14 @@ export default {
         saved: '上游倍率自动探测设置已保存',
         saveFailed: '保存上游倍率自动探测设置失败'
       },
+      downstreamBillingProbe: {
+        title: '下游倍率探测',
+        description: '控制持有本站 API Key 的下游是否可以读取其当前计费倍率。',
+        enabled: '允许下游探测本站倍率',
+        enabledHint: '关闭后倍率探测接口返回“不支持”，不影响模型请求转发、计费或本站探测上游。',
+        saved: '下游倍率探测设置已保存',
+        saveFailed: '保存下游倍率探测设置失败'
+      },
       ollamaCloudUsage: {
         title: 'Ollama Cloud 用量刷新',
         description: '在模型请求驱动下刷新账号在 Ollama 官方设置页展示的用量；默认关闭。无新请求时不会自动抓取。',

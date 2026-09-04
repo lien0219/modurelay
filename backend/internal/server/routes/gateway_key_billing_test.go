@@ -35,6 +35,19 @@ type keyBillingRouteRateRepo struct {
 	lookupCalls int
 }
 
+type keyBillingRouteSettingRepo struct {
+	service.SettingRepository
+	values map[string]string
+}
+
+func (r *keyBillingRouteSettingRepo) GetValue(_ context.Context, key string) (string, error) {
+	value, ok := r.values[key]
+	if !ok {
+		return "", service.ErrSettingNotFound
+	}
+	return value, nil
+}
+
 func (r *keyBillingRouteRateRepo) GetByUserAndGroup(context.Context, int64, int64) (*float64, error) {
 	r.lookupCalls++
 	return nil, nil
@@ -44,7 +57,7 @@ func (r *keyBillingRouteRateRepo) GetRPMOverrideByUserAndGroup(context.Context, 
 	return nil, nil
 }
 
-func newKeyBillingRouteTestRouter(runMode string) (*gin.Engine, *keyBillingRouteRateRepo, string) {
+func newKeyBillingRouteTestRouter(runMode string, downstreamProbeEnabled ...bool) (*gin.Engine, *keyBillingRouteRateRepo, string) {
 	gin.SetMode(gin.TestMode)
 	group := &service.Group{
 		ID:               42,
@@ -83,9 +96,18 @@ func newKeyBillingRouteTestRouter(runMode string) (*gin.Engine, *keyBillingRoute
 		nil, nil, nil, nil, nil, rateRepo, nil, cfg, nil, nil, nil,
 		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 	)
+	settingRepo := &keyBillingRouteSettingRepo{}
+	if len(downstreamProbeEnabled) > 0 {
+		value := "false"
+		if downstreamProbeEnabled[0] {
+			value = "true"
+		}
+		settingRepo.values = map[string]string{service.SettingKeyDownstreamBillingProbeEnabled: value}
+	}
+	settingService := service.NewSettingService(settingRepo, cfg)
 	gatewayHandler := handler.NewGatewayHandler(
 		gatewayService, openAIGatewayService, nil, nil, nil, nil, nil, nil,
-		apiKeyService, nil, nil, nil, nil, cfg, nil,
+		apiKeyService, nil, nil, nil, nil, cfg, settingService,
 	)
 
 	router := gin.New()
@@ -168,6 +190,18 @@ func TestGatewayRoutesKeyBillingInfoEndToEnd(t *testing.T) {
 				"message": "Billing information is not supported in simple mode"
 			}
 		}`, w.Body.String())
+		require.Zero(t, rateRepo.lookupCalls)
+	})
+
+	t.Run("downstream probe disabled", func(t *testing.T) {
+		router, rateRepo, key := newKeyBillingRouteTestRouter(config.RunModeStandard, false)
+		req := httptest.NewRequest(http.MethodGet, "/v1/sub2api/billing", nil)
+		req.Header.Set("Authorization", "Bearer "+key)
+		w := httptest.NewRecorder()
+
+		router.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusNotFound, w.Code)
 		require.Zero(t, rateRepo.lookupCalls)
 	})
 }
