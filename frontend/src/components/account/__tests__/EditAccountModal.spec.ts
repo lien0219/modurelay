@@ -166,6 +166,39 @@ function buildAccount() {
   } as any
 }
 
+function buildNewAPIAccount(group?: string, groupsStatus: 'ok' | 'failed' = 'ok') {
+  const account = buildAccount()
+  account.credentials = {
+    ...account.credentials,
+    ...(group ? { upstream_billing_new_api_group: group } : {})
+  }
+  account.extra = {
+    upstream_billing_probe_enabled: true,
+    upstream_billing_probe: {
+      status: 'ok',
+      data: {
+        object: 'new_api.group_billing',
+        schema_version: 1,
+        billing_scope: 'token',
+        provider: 'new_api',
+        observed_at: '2026-09-05T08:00:00Z',
+        groups_status: groupsStatus,
+        ...(groupsStatus === 'ok'
+          ? {
+              available_groups: [
+                { name: 'default', rate_multiplier: 1 },
+                { name: 'vip', rate_multiplier: 0.8 }
+              ]
+            }
+          : { groups_error: 'unauthorized' })
+      },
+      last_attempt_at: '2026-09-05T08:00:00Z',
+      next_probe_at: '2026-09-05T08:30:00Z'
+    }
+  }
+  return account
+}
+
 function buildOpenAISparkShadowAccount() {
   const account = buildAccount()
   return {
@@ -1003,6 +1036,175 @@ describe('EditAccountModal', () => {
     expect(payload?.rate_multiplier).toBe(1)
   })
 
+  it('shows the upstream group selector only for a confirmed New API upstream', () => {
+    const regular = mountModal(buildAccount())
+    expect(regular.find('[data-testid="new-api-upstream-group-field"]').exists()).toBe(false)
+    expect(regular.find('[data-testid="new-api-wallet-probe-field"]').exists()).toBe(false)
+    regular.unmount()
+
+    const newAPI = mountModal(buildNewAPIAccount())
+    expect(newAPI.find('[data-testid="new-api-upstream-group-field"]').exists()).toBe(true)
+    expect(newAPI.find('[data-testid="new-api-wallet-probe-field"]').exists()).toBe(true)
+    const select = newAPI.get('[data-testid="new-api-upstream-group-select"]')
+    expect(select.text()).toContain('default (1x)')
+    expect(select.text()).toContain('vip (0.8x)')
+    expect(newAPI.text()).toContain('admin.accounts.upstreamBilling.newAPIGroupHint')
+    newAPI.unmount()
+  })
+
+  it('requires and submits a New API user PAT outside generic credentials', async () => {
+    const account = buildNewAPIAccount()
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    const wrapper = mountModal(account)
+    const toggle = wrapper.get('[data-testid="new-api-wallet-probe-toggle"]')
+
+    expect(toggle.attributes('aria-checked')).toBe('false')
+    expect(wrapper.find('[data-testid="new-api-user-access-token-input"]').exists()).toBe(false)
+
+    await toggle.trigger('click')
+    const input = wrapper.get('[data-testid="new-api-user-access-token-input"]')
+    expect(input.attributes('aria-invalid')).toBe('true')
+    expect(wrapper.text()).toContain('admin.accounts.upstreamBilling.newAPIUserAccessTokenRequired')
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock).not.toHaveBeenCalled()
+
+    await input.setValue('persistent-new-api-pat')
+    expect(input.attributes('aria-invalid')).toBe('false')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    const payload = updateAccountMock.mock.calls[0]?.[1]
+    expect(payload?.upstream_billing_new_api_user_access_token).toBe('persistent-new-api-pat')
+    expect(payload?.credentials).not.toHaveProperty('upstream_billing_new_api_user_access_token')
+  })
+
+  it('preserves or explicitly clears an existing New API user PAT', async () => {
+    const account = buildNewAPIAccount()
+    account.credentials_status = { has_upstream_billing_new_api_user_access_token: true }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    const wrapper = mountModal(account)
+    const toggle = wrapper.get('[data-testid="new-api-wallet-probe-toggle"]')
+
+    expect(toggle.attributes('aria-checked')).toBe('true')
+    expect(wrapper.get('[data-testid="new-api-user-access-token-input"]').attributes('aria-invalid')).toBe('false')
+    expect(wrapper.text()).toContain('admin.accounts.upstreamBilling.newAPIUserAccessTokenConfiguredHint')
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.calls[0]?.[1]).not.toHaveProperty(
+      'upstream_billing_new_api_user_access_token'
+    )
+
+    updateAccountMock.mockClear()
+    await toggle.trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.upstream_billing_new_api_user_access_token).toBe('')
+  })
+
+  it('preserves, updates, and clears the optional legacy New API user ID', async () => {
+    const account = buildNewAPIAccount()
+    account.credentials_status = { has_upstream_billing_new_api_user_access_token: true }
+    account.credentials = {
+      ...account.credentials,
+      upstream_billing_new_api_user_id: 77
+    }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    const wrapper = mountModal(account)
+    const input = wrapper.get<HTMLInputElement>('[data-testid="new-api-user-id-input"]')
+
+    expect(input.element.value).toBe('77')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.calls[0]?.[1]).not.toHaveProperty('upstream_billing_new_api_user_id')
+
+    updateAccountMock.mockClear()
+    await input.setValue('88')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.upstream_billing_new_api_user_id).toBe(88)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).not.toHaveProperty(
+      'upstream_billing_new_api_user_id'
+    )
+
+    updateAccountMock.mockClear()
+    await wrapper.get('[data-testid="new-api-wallet-probe-toggle"]').trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.upstream_billing_new_api_user_id).toBe(0)
+  })
+
+  it('rejects an invalid legacy New API user ID inline', async () => {
+    const account = buildNewAPIAccount()
+    account.credentials_status = { has_upstream_billing_new_api_user_access_token: true }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    const wrapper = mountModal(account)
+    const input = wrapper.get('[data-testid="new-api-user-id-input"]')
+
+    await input.setValue('1.5')
+    expect(input.attributes('aria-invalid')).toBe('true')
+    expect(wrapper.text()).toContain('admin.accounts.upstreamBilling.newAPIUserIDInvalid')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).not.toHaveBeenCalled()
+  })
+
+  it('submits a selected New API group outside the generic credentials payload', async () => {
+    const account = buildNewAPIAccount()
+    updateAccountMock.mockReset().mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    await wrapper.get('[data-testid="new-api-upstream-group-select"]').setValue('vip')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    const payload = updateAccountMock.mock.calls[0]?.[1]
+    expect(payload?.upstream_billing_new_api_group).toBe('vip')
+    expect(payload?.credentials).not.toHaveProperty('upstream_billing_new_api_group')
+  })
+
+  it('submits an explicit clear for an existing New API group', async () => {
+    const account = buildNewAPIAccount('vip')
+    updateAccountMock.mockReset().mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    await wrapper.get('[data-testid="new-api-upstream-group-select"]').setValue('')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.upstream_billing_new_api_group).toBe('')
+  })
+
+  it('disables a failed empty group list but still lets an existing selection be cleared', async () => {
+    const emptyAccount = buildNewAPIAccount(undefined, 'failed')
+    const emptyWrapper = mountModal(emptyAccount)
+    expect(emptyWrapper.get('[data-testid="new-api-upstream-group-select"]').attributes('disabled')).toBeDefined()
+    expect(emptyWrapper.text()).toContain('admin.accounts.upstreamBilling.newAPIGroupsProbeFailed')
+    emptyWrapper.unmount()
+
+    const selectedAccount = buildNewAPIAccount('vip', 'failed')
+    updateAccountMock.mockReset().mockResolvedValue(selectedAccount)
+    const selectedWrapper = mountModal(selectedAccount)
+    const select = selectedWrapper.get('[data-testid="new-api-upstream-group-select"]')
+    expect(select.attributes('disabled')).toBeUndefined()
+    await select.setValue('')
+    await selectedWrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.upstream_billing_new_api_group).toBe('')
+  })
+
+  it('blocks a changed New API group that is absent from the latest probe', async () => {
+    const account = buildNewAPIAccount('removed')
+    updateAccountMock.mockReset().mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    expect(wrapper.text()).toContain('admin.accounts.upstreamBilling.newAPIGroupUnavailable')
+    const select = wrapper
+      .findAllComponents(SelectStub)
+      .find((component) => component.attributes('data-testid') === 'new-api-upstream-group-select')
+    expect(select).toBeDefined()
+    select!.vm.$emit('update:modelValue', 'unknown')
+    await wrapper.vm.$nextTick()
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).not.toHaveBeenCalled()
+  })
+
   it('clears OpenAI APIKey Responses override when set back to auto', async () => {
     const account = buildAccount()
     account.extra = {
@@ -1256,6 +1458,19 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_oauth_responses_websockets_v2_mode).toBe('http_bridge')
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_oauth_responses_websockets_v2_enabled).toBe(true)
+  })
+
+  it('keeps the OpenAI WS mode row within the mobile dialog width', () => {
+    const wrapper = mountModal(buildAccount())
+    const select = wrapper.get('[data-testid="edit-openai-ws-mode-select"]')
+    const selectContainer = select.element.parentElement
+    const row = selectContainer?.parentElement
+
+    expect(selectContainer?.classList.contains('w-full')).toBe(true)
+    expect(selectContainer?.classList.contains('sm:w-52')).toBe(true)
+    expect(row?.classList.contains('flex-col')).toBe(true)
+    expect(row?.classList.contains('sm:flex-row')).toBe(true)
+    expect(row?.firstElementChild?.classList.contains('min-w-0')).toBe(true)
   })
 
   it('allows saving apikey account when backend redacted api_key but credentials_status reports it exists', async () => {

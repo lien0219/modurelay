@@ -1234,20 +1234,32 @@ export interface TempUnschedulableStatus {
 }
 
 export interface UpstreamBillingData {
-  object: 'sub2api.key_billing'
+  object: 'sub2api.key_billing' | 'new_api.group_billing'
   schema_version: 1
   billing_scope: 'token'
-  group_rate_multiplier: number
+  provider?: 'new_api'
+  group_rate_multiplier?: number
   user_rate_multiplier?: number
-  resolved_rate_multiplier: number
-  peak_rate_enabled: boolean
+  resolved_rate_multiplier?: number
+  peak_rate_enabled?: boolean
   peak_start?: string
   peak_end?: string
   peak_rate_multiplier?: number
   applied_peak_multiplier?: number
-  effective_rate_multiplier: number
+  effective_rate_multiplier?: number
   timezone?: string
   observed_at: string
+  groups_status?: UpstreamBillingProbeStatus
+  groups_error?: string
+  available_groups?: NewAPIUpstreamGroup[]
+  selected_group?: string
+  group_selection_required?: boolean
+  group_selection_valid?: boolean
+}
+
+export interface NewAPIUpstreamGroup {
+  name: string
+  rate_multiplier: number
 }
 
 export type UpstreamBalanceMode = 'wallet' | 'key_quota' | 'subscription'
@@ -1261,12 +1273,16 @@ export interface UpstreamBalanceData {
   used?: number
   unlimited?: boolean
   is_valid?: boolean
+  ownership_verified?: boolean
+  wallet_probe_status?: 'not_configured' | 'failed'
+  wallet_probe_error?: string
+  wallet_probe_http_status?: number
 }
 
 export interface UpstreamBalanceProbeSnapshot {
   status: UpstreamBillingProbeStatus
   data?: UpstreamBalanceData
-  source?: 'billing' | 'usage'
+  source?: 'billing' | 'usage' | 'new_api_token' | 'new_api_wallet'
   received_at?: string
   fresh_until?: string
   last_attempt_at: string
@@ -1723,6 +1739,9 @@ export interface UpdateAccountRequest {
   auto_pause_on_expired?: boolean
   upstream_billing_probe_enabled?: boolean
   upstream_billing_rate_sync_enabled?: boolean
+  upstream_billing_new_api_group?: string
+  upstream_billing_new_api_user_access_token?: string
+  upstream_billing_new_api_user_id?: number
   confirm_mixed_channel_risk?: boolean
 }
 

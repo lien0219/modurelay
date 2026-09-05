@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
@@ -117,10 +118,15 @@ func TestCreateAccountDefaultsProbeOnAndDropsInjectedManagedState(t *testing.T) 
 	svc := &adminServiceImpl{accountRepo: repo}
 
 	created, err := svc.CreateAccount(context.Background(), &CreateAccountInput{
-		Name:                 "upstream",
-		Platform:             PlatformOpenAI,
-		Type:                 AccountTypeAPIKey,
-		Credentials:          map[string]any{"api_key": "sk-test"},
+		Name:     "upstream",
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":                          "sk-test",
+			NewAPIUpstreamGroupCredentialKey:   "injected",
+			NewAPIUserAccessTokenCredentialKey: "injected-pat",
+			NewAPIUserIDCredentialKey:          int64(999),
+		},
 		SkipDefaultGroupBind: true,
 		Extra: map[string]any{
 			UpstreamBillingProbeEnabledExtraKey:      true,
@@ -135,6 +141,9 @@ func TestCreateAccountDefaultsProbeOnAndDropsInjectedManagedState(t *testing.T) 
 	require.NotContains(t, created.Extra, UpstreamBillingRateSyncEnabledExtraKey)
 	require.NotContains(t, created.Extra, UpstreamBillingProbeExtraKey)
 	require.NotContains(t, created.Extra, UpstreamBillingAutoUnschedulableExtraKey)
+	require.NotContains(t, created.Credentials, NewAPIUpstreamGroupCredentialKey)
+	require.NotContains(t, created.Credentials, NewAPIUserAccessTokenCredentialKey)
+	require.NotContains(t, created.Credentials, NewAPIUserIDCredentialKey)
 }
 
 func TestCreateAccountPreservesExplicitProbeOptOut(t *testing.T) {
@@ -810,4 +819,394 @@ func TestBulkUpdateAccountsKeepsProbeSnapshotForUnrelatedCredentials(t *testing.
 	require.NoError(t, err)
 	require.Len(t, repo.bulkUpdates, 1)
 	require.NotContains(t, repo.bulkUpdates[0].Extra, UpstreamBillingProbeExtraKey)
+}
+
+func TestUpdateAccountAcceptsOnlyConfirmedNewAPIGroup(t *testing.T) {
+	newAccount := func(id int64, data map[string]any) *Account {
+		return &Account{
+			ID:       id,
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeAPIKey,
+			Status:   StatusActive,
+			Credentials: map[string]any{
+				"api_key":  "sk-test",
+				"base_url": "https://new-api.example/v1",
+			},
+			Extra: map[string]any{
+				UpstreamBillingProbeEnabledExtraKey: true,
+				UpstreamBillingProbeExtraKey: &UpstreamBillingProbeSnapshot{
+					Status: UpstreamBillingProbeStatusOK,
+					Data:   data,
+				},
+			},
+		}
+	}
+
+	t.Run("confirmed group is persisted and invalidates the old snapshot", func(t *testing.T) {
+		account := newAccount(201, map[string]any{
+			"provider":      newAPIProviderName,
+			"groups_status": UpstreamBillingProbeStatusOK,
+			"available_groups": []NewAPIUpstreamGroup{
+				{Name: "default", RateMultiplier: 1},
+				{Name: "vip", RateMultiplier: 0.8},
+			},
+		})
+		repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: account}}
+		group := "vip"
+
+		updated, err := (&adminServiceImpl{accountRepo: repo}).UpdateAccount(context.Background(), account.ID, &UpdateAccountInput{
+			NewAPIUpstreamGroup: &group,
+		})
+
+		require.NoError(t, err)
+		require.Equal(t, "vip", updated.Credentials[NewAPIUpstreamGroupCredentialKey])
+		require.NotContains(t, updated.Extra, UpstreamBillingProbeExtraKey)
+	})
+
+	tests := []struct {
+		name    string
+		data    map[string]any
+		wantErr error
+	}{
+		{
+			name:    "non New API snapshot",
+			data:    map[string]any{"provider": "sub2api", "available_groups": []NewAPIUpstreamGroup{{Name: "vip", RateMultiplier: 0.8}}},
+			wantErr: ErrNewAPIUpstreamGroupRequiresProbe,
+		},
+		{
+			name:    "missing group list",
+			data:    map[string]any{"provider": newAPIProviderName, "groups_status": UpstreamBillingProbeStatusOK},
+			wantErr: ErrNewAPIUpstreamGroupRequiresProbe,
+		},
+		{
+			name:    "group is unavailable",
+			data:    map[string]any{"provider": newAPIProviderName, "groups_status": UpstreamBillingProbeStatusOK, "available_groups": []NewAPIUpstreamGroup{{Name: "default", RateMultiplier: 1}}},
+			wantErr: ErrNewAPIUpstreamGroupUnavailable,
+		},
+	}
+	for index, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			account := newAccount(int64(210+index), tt.data)
+			repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: account}}
+			group := "vip"
+
+			_, err := (&adminServiceImpl{accountRepo: repo}).UpdateAccount(context.Background(), account.ID, &UpdateAccountInput{
+				NewAPIUpstreamGroup: &group,
+			})
+
+			require.ErrorIs(t, err, tt.wantErr)
+			require.NotContains(t, repo.accounts[account.ID].Credentials, NewAPIUpstreamGroupCredentialKey)
+		})
+	}
+}
+
+func TestUpdateAccountNewAPIGroupTracksExactUpstreamIdentity(t *testing.T) {
+	newAccount := func(id int64) *Account {
+		return &Account{
+			ID:       id,
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeAPIKey,
+			Status:   StatusActive,
+			Credentials: map[string]any{
+				"api_key":                        "sk-existing",
+				"base_url":                       "https://old.example/v1",
+				NewAPIUpstreamGroupCredentialKey: "vip",
+			},
+			Extra: map[string]any{
+				UpstreamBillingProbeEnabledExtraKey: true,
+				UpstreamBillingProbeExtraKey: &UpstreamBillingProbeSnapshot{
+					Status: UpstreamBillingProbeStatusOK,
+					Data: map[string]any{
+						"provider":         newAPIProviderName,
+						"groups_status":    UpstreamBillingProbeStatusOK,
+						"available_groups": []NewAPIUpstreamGroup{{Name: "vip", RateMultiplier: 0.8}},
+					},
+				},
+			},
+		}
+	}
+
+	t.Run("base URL change clears selection and snapshot", func(t *testing.T) {
+		account := newAccount(220)
+		repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: account}}
+
+		updated, err := (&adminServiceImpl{accountRepo: repo}).UpdateAccount(context.Background(), account.ID, &UpdateAccountInput{
+			Credentials: map[string]any{"base_url": "https://new.example/v1"},
+		})
+
+		require.NoError(t, err)
+		require.NotContains(t, updated.Credentials, NewAPIUpstreamGroupCredentialKey)
+		require.NotContains(t, updated.Extra, UpstreamBillingProbeExtraKey)
+	})
+
+	t.Run("new identity and non-empty group require a new probe", func(t *testing.T) {
+		account := newAccount(221)
+		repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: account}}
+		group := "vip"
+
+		_, err := (&adminServiceImpl{accountRepo: repo}).UpdateAccount(context.Background(), account.ID, &UpdateAccountInput{
+			Credentials:         map[string]any{"base_url": "https://new.example/v1"},
+			NewAPIUpstreamGroup: &group,
+		})
+
+		require.ErrorIs(t, err, ErrNewAPIUpstreamGroupReprobeRequired)
+		require.Equal(t, "https://old.example/v1", repo.accounts[account.ID].Credentials["base_url"])
+		require.Equal(t, "vip", repo.accounts[account.ID].Credentials[NewAPIUpstreamGroupCredentialKey])
+	})
+
+	t.Run("explicit clear does not require a current snapshot", func(t *testing.T) {
+		account := newAccount(222)
+		delete(account.Extra, UpstreamBillingProbeExtraKey)
+		repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: account}}
+		empty := ""
+
+		updated, err := (&adminServiceImpl{accountRepo: repo}).UpdateAccount(context.Background(), account.ID, &UpdateAccountInput{
+			NewAPIUpstreamGroup: &empty,
+		})
+
+		require.NoError(t, err)
+		require.NotContains(t, updated.Credentials, NewAPIUpstreamGroupCredentialKey)
+	})
+}
+
+func TestManagedNewAPIFieldsCannotBeInjectedThroughGenericCredentials(t *testing.T) {
+	account := &Account{
+		ID:       230,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Status:   StatusActive,
+		Credentials: map[string]any{
+			"api_key":                          "sk-existing",
+			"base_url":                         "https://new-api.example/v1",
+			NewAPIUpstreamGroupCredentialKey:   "vip",
+			NewAPIUserAccessTokenCredentialKey: "existing-pat",
+			NewAPIUserIDCredentialKey:          int64(77),
+		},
+		Extra: map[string]any{
+			UpstreamBillingProbeEnabledExtraKey: true,
+			UpstreamBillingProbeExtraKey:        map[string]any{"status": "ok"},
+		},
+	}
+	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: account}}
+
+	updated, err := (&adminServiceImpl{accountRepo: repo}).UpdateAccount(context.Background(), account.ID, &UpdateAccountInput{
+		Credentials: map[string]any{
+			"base_url":                         "https://new-api.example/v1",
+			NewAPIUpstreamGroupCredentialKey:   "attacker-selected",
+			NewAPIUserAccessTokenCredentialKey: "attacker-pat",
+			NewAPIUserIDCredentialKey:          int64(999),
+		},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, "vip", updated.Credentials[NewAPIUpstreamGroupCredentialKey])
+	require.Equal(t, "existing-pat", updated.Credentials[NewAPIUserAccessTokenCredentialKey])
+	require.Equal(t, int64(77), updated.Credentials[NewAPIUserIDCredentialKey])
+	require.Contains(t, updated.Extra, UpstreamBillingProbeExtraKey)
+
+	bulkInput := &BulkUpdateAccountsInput{
+		AccountIDs: []int64{account.ID},
+		Credentials: map[string]any{
+			"model_mapping":                    map[string]any{"gpt-old": "gpt-new"},
+			NewAPIUpstreamGroupCredentialKey:   "attacker-selected",
+			NewAPIUserAccessTokenCredentialKey: "attacker-pat",
+			NewAPIUserIDCredentialKey:          int64(999),
+		},
+	}
+	result, err := (&adminServiceImpl{accountRepo: repo}).BulkUpdateAccounts(context.Background(), bulkInput)
+
+	require.NoError(t, err)
+	require.Equal(t, 1, result.Success)
+	require.NotContains(t, repo.bulkUpdates[0].Credentials, NewAPIUpstreamGroupCredentialKey)
+	require.NotContains(t, repo.bulkUpdates[0].Credentials, NewAPIUserAccessTokenCredentialKey)
+	require.NotContains(t, repo.bulkUpdates[0].Credentials, NewAPIUserIDCredentialKey)
+}
+
+func TestUpdateAccountManagesNewAPIUserAccessToken(t *testing.T) {
+	newAccount := func(id int64, provider string) *Account {
+		return &Account{
+			ID: id, Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
+			Status: StatusActive, Schedulable: true,
+			Credentials: map[string]any{
+				"api_key":  "sk-existing",
+				"base_url": "https://new-api.example/v1",
+			},
+			Extra: map[string]any{
+				UpstreamBillingProbeEnabledExtraKey: true,
+				UpstreamBillingProbeExtraKey: &UpstreamBillingProbeSnapshot{
+					Status: UpstreamBillingProbeStatusOK,
+					Data:   map[string]any{"provider": provider},
+				},
+			},
+		}
+	}
+
+	t.Run("sets a normalized PAT only after New API confirmation", func(t *testing.T) {
+		account := newAccount(240, newAPIProviderName)
+		repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: account}}
+		pat := "  persistent-new-api-pat  "
+		svc := &adminServiceImpl{
+			accountRepo:         repo,
+			secretEncryptor:     newAPITestEncryptor{},
+			secretKeyConfigured: true,
+		}
+
+		updated, err := svc.UpdateAccount(context.Background(), account.ID, &UpdateAccountInput{
+			NewAPIUserAccessToken: &pat,
+		})
+
+		require.NoError(t, err)
+		stored, ok := updated.Credentials[NewAPIUserAccessTokenCredentialKey].(string)
+		require.True(t, ok)
+		require.True(t, strings.HasPrefix(stored, newAPIUserAccessTokenCiphertextPrefix))
+		require.NotContains(t, stored, "persistent-new-api-pat")
+		decrypted, decryptErr := svc.secretEncryptor.Decrypt(strings.TrimPrefix(stored, newAPIUserAccessTokenCiphertextPrefix))
+		require.NoError(t, decryptErr)
+		require.Equal(t, "persistent-new-api-pat", decrypted)
+		require.NotContains(t, updated.Extra, UpstreamBillingProbeExtraKey)
+	})
+
+	t.Run("requires a fixed encryption key before storing a PAT", func(t *testing.T) {
+		account := newAccount(246, newAPIProviderName)
+		repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: account}}
+		pat := "persistent-new-api-pat"
+
+		_, err := (&adminServiceImpl{
+			accountRepo:     repo,
+			secretEncryptor: newAPITestEncryptor{},
+		}).UpdateAccount(context.Background(), account.ID, &UpdateAccountInput{
+			NewAPIUserAccessToken: &pat,
+		})
+
+		require.ErrorIs(t, err, ErrNewAPIUserAccessTokenEncryptionKey)
+		require.NotContains(t, account.Credentials, NewAPIUserAccessTokenCredentialKey)
+	})
+
+	t.Run("rejects a PAT before New API confirmation", func(t *testing.T) {
+		account := newAccount(241, "sub2api")
+		repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: account}}
+		pat := "persistent-new-api-pat"
+
+		_, err := (&adminServiceImpl{accountRepo: repo}).UpdateAccount(context.Background(), account.ID, &UpdateAccountInput{
+			NewAPIUserAccessToken: &pat,
+		})
+
+		require.ErrorIs(t, err, ErrNewAPIUserAccessTokenRequiresProbe)
+		require.NotContains(t, account.Credentials, NewAPIUserAccessTokenCredentialKey)
+	})
+
+	t.Run("rejects a header-injection token", func(t *testing.T) {
+		account := newAccount(242, newAPIProviderName)
+		repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: account}}
+		pat := "valid-prefix\r\nX-Injected: true"
+
+		_, err := (&adminServiceImpl{accountRepo: repo}).UpdateAccount(context.Background(), account.ID, &UpdateAccountInput{
+			NewAPIUserAccessToken: &pat,
+		})
+
+		require.ErrorIs(t, err, ErrNewAPIUserAccessTokenInvalid)
+		require.NotContains(t, account.Credentials, NewAPIUserAccessTokenCredentialKey)
+	})
+
+	t.Run("clears a PAT without requiring a current probe", func(t *testing.T) {
+		account := newAccount(243, newAPIProviderName)
+		account.Credentials[NewAPIUserAccessTokenCredentialKey] = "old-pat"
+		delete(account.Extra, UpstreamBillingProbeExtraKey)
+		repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: account}}
+		empty := ""
+
+		updated, err := (&adminServiceImpl{accountRepo: repo}).UpdateAccount(context.Background(), account.ID, &UpdateAccountInput{
+			NewAPIUserAccessToken: &empty,
+		})
+
+		require.NoError(t, err)
+		require.NotContains(t, updated.Credentials, NewAPIUserAccessTokenCredentialKey)
+	})
+
+	t.Run("base identity change drops an old PAT", func(t *testing.T) {
+		account := newAccount(244, newAPIProviderName)
+		account.Credentials[NewAPIUserAccessTokenCredentialKey] = "old-pat"
+		repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: account}}
+
+		updated, err := (&adminServiceImpl{accountRepo: repo}).UpdateAccount(context.Background(), account.ID, &UpdateAccountInput{
+			Credentials: map[string]any{"base_url": "https://other-new-api.example/v1"},
+		})
+
+		require.NoError(t, err)
+		require.NotContains(t, updated.Credentials, NewAPIUserAccessTokenCredentialKey)
+	})
+
+	t.Run("new identity and PAT require a fresh probe", func(t *testing.T) {
+		account := newAccount(245, newAPIProviderName)
+		repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: account}}
+		pat := "new-pat"
+
+		_, err := (&adminServiceImpl{accountRepo: repo}).UpdateAccount(context.Background(), account.ID, &UpdateAccountInput{
+			Credentials:           map[string]any{"base_url": "https://other-new-api.example/v1"},
+			NewAPIUserAccessToken: &pat,
+		})
+
+		require.ErrorIs(t, err, ErrNewAPIUserAccessTokenReprobeRequired)
+		require.NotContains(t, account.Credentials, NewAPIUserAccessTokenCredentialKey)
+	})
+}
+
+func TestUpdateAccountManagesLegacyNewAPIUserID(t *testing.T) {
+	newAccount := func(id int64) *Account {
+		return &Account{
+			ID: id, Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
+			Status: StatusActive, Schedulable: true,
+			Credentials: map[string]any{
+				"api_key":                          "sk-existing",
+				"base_url":                         "https://new-api.example/v1",
+				NewAPIUserAccessTokenCredentialKey: newAPIUserAccessTokenCiphertextPrefix + "ciphertext",
+			},
+			Extra: map[string]any{
+				UpstreamBillingProbeEnabledExtraKey: true,
+				UpstreamBillingProbeExtraKey: &UpstreamBillingProbeSnapshot{
+					Status: UpstreamBillingProbeStatusOK,
+					Data:   map[string]any{"provider": newAPIProviderName},
+				},
+			},
+		}
+	}
+
+	t.Run("stores and clears a valid user ID", func(t *testing.T) {
+		account := newAccount(250)
+		repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: account}}
+		userID := int64(77)
+
+		updated, err := (&adminServiceImpl{accountRepo: repo}).UpdateAccount(
+			context.Background(), account.ID, &UpdateAccountInput{NewAPIUserID: &userID},
+		)
+
+		require.NoError(t, err)
+		require.Equal(t, int64(77), updated.Credentials[NewAPIUserIDCredentialKey])
+		require.NotContains(t, updated.Extra, UpstreamBillingProbeExtraKey)
+
+		clear := int64(0)
+		updated, err = (&adminServiceImpl{accountRepo: repo}).UpdateAccount(
+			context.Background(), account.ID, &UpdateAccountInput{NewAPIUserID: &clear},
+		)
+		require.NoError(t, err)
+		require.NotContains(t, updated.Credentials, NewAPIUserIDCredentialKey)
+	})
+
+	t.Run("rejects out of range and missing PAT", func(t *testing.T) {
+		account := newAccount(251)
+		repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: account}}
+		tooLarge := newAPIUserIDMax + 1
+
+		_, err := (&adminServiceImpl{accountRepo: repo}).UpdateAccount(
+			context.Background(), account.ID, &UpdateAccountInput{NewAPIUserID: &tooLarge},
+		)
+		require.ErrorIs(t, err, ErrNewAPIUserIDInvalid)
+
+		delete(account.Credentials, NewAPIUserAccessTokenCredentialKey)
+		valid := int64(77)
+		_, err = (&adminServiceImpl{accountRepo: repo}).UpdateAccount(
+			context.Background(), account.ID, &UpdateAccountInput{NewAPIUserID: &valid},
+		)
+		require.ErrorIs(t, err, ErrNewAPIUserIDRequiresAccessToken)
+	})
 }

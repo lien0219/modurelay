@@ -203,6 +203,17 @@ const statusLabel = computed(() => {
   if (snapshot.value.status === 'unsupported') return t('admin.accounts.upstreamBilling.unsupported')
   if (snapshot.value.status === 'failed') return t('admin.accounts.upstreamBilling.failed')
   if (stale.value) return t('admin.accounts.upstreamBilling.stale')
+  if (data.value?.provider === 'new_api') {
+    if (data.value.groups_status === 'failed') {
+      return t('admin.accounts.upstreamBilling.newAPIGroupProbeFailed')
+    }
+    if (data.value.selected_group && data.value.group_selection_valid === false) {
+      return t('admin.accounts.upstreamBilling.newAPIGroupUnavailable')
+    }
+    if (!data.value.selected_group) {
+      return t('admin.accounts.upstreamBilling.newAPIGroupNotSelected')
+    }
+  }
   return ''
 })
 const statusClass = computed(() => {
@@ -210,6 +221,12 @@ const statusClass = computed(() => {
   if (snapshot.value.status === 'unsupported') return 'text-gray-500 dark:text-gray-400'
   if (snapshot.value.status === 'failed') return 'text-red-600 dark:text-red-400'
   if (stale.value) return 'text-amber-600 dark:text-amber-400'
+  if (data.value?.provider === 'new_api' && (
+    data.value.groups_status === 'failed' || data.value.group_selection_valid === false
+  )) return 'text-red-600 dark:text-red-400'
+  if (data.value?.provider === 'new_api' && !data.value.selected_group) {
+    return 'text-amber-600 dark:text-amber-400'
+  }
   return ''
 })
 const hasEffectiveRate = computed(() => effectiveRate.value !== '-')

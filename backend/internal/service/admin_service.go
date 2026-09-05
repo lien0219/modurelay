@@ -6,6 +6,7 @@ import (
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
@@ -401,22 +402,31 @@ type ShadowOptions struct {
 }
 
 type UpdateAccountInput struct {
-	Name                  string
-	Notes                 *string
-	Type                  string // Account type: oauth, setup-token, apikey
-	Credentials           map[string]any
-	Extra                 map[string]any
-	ProxyID               *int64
-	Concurrency           *int     // 使用指针区分"未提供"和"设置为0"
-	Priority              *int     // 使用指针区分"未提供"和"设置为0"
-	RateMultiplier        *float64 // 账号计费倍率（>=0，允许 0）
-	LoadFactor            *int
-	Status                string
-	GroupIDs              *[]int64
-	ExpiresAt             *int64
-	AutoPauseOnExpired    *bool
-	ProbeEnabled          *bool
-	RateSyncEnabled       *bool
+	Name               string
+	Notes              *string
+	Type               string // Account type: oauth, setup-token, apikey
+	Credentials        map[string]any
+	Extra              map[string]any
+	ProxyID            *int64
+	Concurrency        *int     // 使用指针区分"未提供"和"设置为0"
+	Priority           *int     // 使用指针区分"未提供"和"设置为0"
+	RateMultiplier     *float64 // 账号计费倍率（>=0，允许 0）
+	LoadFactor         *int
+	Status             string
+	GroupIDs           *[]int64
+	ExpiresAt          *int64
+	AutoPauseOnExpired *bool
+	ProbeEnabled       *bool
+	RateSyncEnabled    *bool
+	// NewAPIUpstreamGroup is a managed non-secret selection. Empty clears it;
+	// non-empty values must exist in the latest confirmed New API probe.
+	NewAPIUpstreamGroup *string
+	// NewAPIUserAccessToken is a managed sensitive PAT used only for
+	// /api/user/self wallet reads. Empty clears it; nil preserves it.
+	NewAPIUserAccessToken *string
+	// NewAPIUserID enables compatibility with older New API releases that
+	// require the New-Api-User header. Zero clears it; nil preserves it.
+	NewAPIUserID          *int64
 	SkipMixedChannelCheck bool // 跳过混合渠道检查（用户已确认风险）
 }
 
@@ -678,6 +688,8 @@ type adminServiceImpl struct {
 	affiliateService     adminRechargeAffiliateAccruer
 	compositeRouteRepo   CompositeModelRouteRepository
 	compositeResolver    *CompositeRouteResolver
+	secretEncryptor      SecretEncryptor
+	secretKeyConfigured  bool
 	// 分组平台变更后用来失效渠道缓存；可为 nil（缓存会在 TTL 到期后自然重建）
 	channelCacheInvalidator ChannelCacheInvalidator
 }
@@ -720,7 +732,10 @@ func NewAdminService(
 	compositeRouteRepo CompositeModelRouteRepository,
 	compositeResolver *CompositeRouteResolver,
 	channelCacheInvalidator ChannelCacheInvalidator,
+	secretEncryptor SecretEncryptor,
+	cfg *config.Config,
 ) AdminService {
+	secretKeyConfigured := cfg != nil && cfg.Totp.EncryptionKeyConfigured
 	return &adminServiceImpl{
 		userRepo:             userRepo,
 		groupRepo:            groupRepo,
@@ -746,6 +761,8 @@ func NewAdminService(
 		affiliateService:     affiliateService,
 		compositeRouteRepo:   compositeRouteRepo,
 		compositeResolver:    compositeResolver,
+		secretEncryptor:      secretEncryptor,
+		secretKeyConfigured:  secretKeyConfigured,
 
 		channelCacheInvalidator: channelCacheInvalidator,
 	}

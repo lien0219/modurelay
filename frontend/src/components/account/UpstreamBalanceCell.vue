@@ -35,6 +35,13 @@
           </p>
           <p>{{ t('admin.accounts.upstreamBalance.updatedAt', { value: formatDate(balanceSnapshot?.received_at) }) }}</p>
           <p>{{ t('admin.accounts.upstreamBalance.source', { value: sourceLabel }) }}</p>
+          <p
+            v-if="walletProbeDetail"
+            :class="walletProbeStatus === 'failed' ? 'text-amber-300' : ''"
+            data-testid="upstream-wallet-probe-detail"
+          >
+            {{ walletProbeDetail }}
+          </p>
         </template>
         <p v-else>{{ statusLabel || '-' }}</p>
         <p v-if="failureDetail" class="text-red-300" data-testid="upstream-balance-error">
@@ -104,6 +111,7 @@ const eligible = computed(() => isUpstreamBillingProbeAccount(props.account))
 const billingSnapshot = computed(() => props.account.extra?.upstream_billing_probe)
 const balanceSnapshot = computed<UpstreamBalanceProbeSnapshot | undefined>(() => billingSnapshot.value?.balance)
 const data = computed<UpstreamBalanceData | undefined>(() => balanceSnapshot.value?.data)
+const walletProbeStatus = computed(() => data.value?.wallet_probe_status)
 const probeEnabled = computed(() => props.account.extra?.upstream_billing_probe_enabled !== false)
 const autoUnschedulable = computed(() => props.account.extra?.upstream_billing_auto_unschedulable === true)
 const nextProbeAt = computed(() => {
@@ -156,7 +164,11 @@ const formatAmount = (value: number, unit: string) => {
 const formattedAmount = computed(() => {
   const value = data.value
   if (!value || typeof value.unit !== 'string' || value.unit === '') return ''
-  if (value.unlimited) return t('admin.accounts.upstreamBalance.unlimited')
+  if (value.unlimited) {
+    return balanceSnapshot.value?.source === 'new_api_token'
+      ? t('admin.accounts.upstreamBalance.tokenUnlimited')
+      : t('admin.accounts.upstreamBalance.unlimited')
+  }
   return effectiveAmount.value == null ? '' : formatAmount(effectiveAmount.value, value.unit)
 })
 const lastKnownValue = computed(() => formattedAmount.value || '')
@@ -183,6 +195,8 @@ const modeLabel = computed(() => {
 const sourceLabel = computed(() => {
   if (balanceSnapshot.value?.source === 'billing') return t('admin.accounts.upstreamBalance.sources.billing')
   if (balanceSnapshot.value?.source === 'usage') return t('admin.accounts.upstreamBalance.sources.usage')
+  if (balanceSnapshot.value?.source === 'new_api_token') return t('admin.accounts.upstreamBalance.sources.newAPIToken')
+  if (balanceSnapshot.value?.source === 'new_api_wallet') return t('admin.accounts.upstreamBalance.sources.newAPIWallet')
   return '-'
 })
 const limitUsageLabel = computed(() => {
@@ -211,6 +225,8 @@ const statusLabel = computed(() => {
   if (stale.value) return t('admin.accounts.upstreamBalance.stale')
   if (data.value?.is_valid === false) return t('admin.accounts.upstreamBalance.invalid')
   if (exhausted.value) return t('admin.accounts.upstreamBalance.exhausted')
+  if (walletProbeStatus.value === 'failed') return t('admin.accounts.upstreamBalance.walletProbeFailed')
+  if (walletProbeStatus.value === 'not_configured') return t('admin.accounts.upstreamBalance.walletNotConfigured')
   return ''
 })
 const statusClass = computed(() => {
@@ -224,6 +240,7 @@ const statusClass = computed(() => {
     return 'text-red-600 dark:text-red-400'
   }
   if (stale.value) return 'text-amber-600 dark:text-amber-400'
+  if (walletProbeStatus.value === 'failed') return 'text-amber-600 dark:text-amber-400'
   return 'text-gray-500 dark:text-gray-400'
 })
 const primaryValue = computed(() => hasCurrentValue.value ? lastKnownValue.value : statusLabel.value || '-')
@@ -235,6 +252,20 @@ const failureDetail = computed(() => {
   const key = `admin.accounts.upstreamBalance.errors.${failure.last_error || ''}`
   const message = te(key) ? t(key) : t('admin.accounts.upstreamBalance.failed')
   return failure.http_status ? `${message} (HTTP ${failure.http_status})` : message
+})
+const walletProbeDetail = computed(() => {
+  if (walletProbeStatus.value === 'not_configured') {
+    return t('admin.accounts.upstreamBalance.walletNotConfiguredDetail')
+  }
+  if (walletProbeStatus.value !== 'failed') return ''
+  const reason = data.value?.wallet_probe_error || ''
+  const key = `admin.accounts.upstreamBalance.errors.${reason}`
+  const message = te(key) ? t(key) : t('admin.accounts.upstreamBalance.failed')
+  const status = data.value?.wallet_probe_http_status
+  const detail = typeof status === 'number' && Number.isFinite(status)
+    ? `${message} (HTTP ${status})`
+    : message
+  return t('admin.accounts.upstreamBalance.walletProbeError', { value: detail })
 })
 const formatDate = (value?: string) => {
   if (!value || !Number.isFinite(Date.parse(value))) return '-'

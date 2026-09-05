@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import UpstreamBalanceCell from '../UpstreamBalanceCell.vue'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import type { Account, UpstreamBalanceData } from '@/types'
@@ -171,6 +171,93 @@ describe('UpstreamBalanceCell', () => {
     expect(wrapper.get('[data-testid="upstream-balance-value"]').text()).toBe(
       'admin.accounts.upstreamBalance.unlimited'
     )
+  })
+
+  it('labels New API token and wallet balance sources', async () => {
+    const tokenAccount = makeAccount({ mode: 'key_quota', unit: 'USD', unlimited: true })
+    tokenAccount.extra!.upstream_billing_probe!.balance!.source = 'new_api_token'
+    const wrapper = mount(UpstreamBalanceCell, {
+      attachTo: document.body,
+      props: { account: tokenAccount, now: Date.now() }
+    })
+
+    await wrapper.get('[data-testid="upstream-balance-value"]').trigger('click')
+    await flushPromises()
+    let tooltips = document.body.querySelectorAll('[role="tooltip"]')
+    expect(tooltips[tooltips.length - 1]?.textContent).toContain(
+      'admin.accounts.upstreamBalance.sources.newAPIToken'
+    )
+    wrapper.unmount()
+
+    const walletAccount = makeAccount({ mode: 'wallet', unit: 'USD', balance: 12, remaining: 12 })
+    walletAccount.extra!.upstream_billing_probe!.balance!.source = 'new_api_wallet'
+    const walletWrapper = mount(UpstreamBalanceCell, {
+      attachTo: document.body,
+      props: { account: walletAccount, now: Date.now() }
+    })
+    await walletWrapper.get('[data-testid="upstream-balance-value"]').trigger('click')
+    await flushPromises()
+    tooltips = document.body.querySelectorAll('[role="tooltip"]')
+    expect(tooltips[tooltips.length - 1]?.textContent).toContain(
+      'admin.accounts.upstreamBalance.sources.newAPIWallet'
+    )
+    walletWrapper.unmount()
+  })
+
+  it('distinguishes an unlimited New API token from an unconfigured wallet probe', async () => {
+    const account = makeAccount({
+      mode: 'key_quota',
+      unit: 'CNY',
+      unlimited: true,
+      wallet_probe_status: 'not_configured'
+    })
+    account.extra!.upstream_billing_probe!.balance!.source = 'new_api_token'
+    const wrapper = mount(UpstreamBalanceCell, {
+      attachTo: document.body,
+      props: { account, now: Date.now() }
+    })
+
+    expect(wrapper.get('[data-testid="upstream-balance-value"]').text()).toBe(
+      'admin.accounts.upstreamBalance.tokenUnlimited'
+    )
+    expect(wrapper.get('[data-testid="upstream-balance-status"]').text()).toBe(
+      'admin.accounts.upstreamBalance.walletNotConfigured'
+    )
+    await wrapper.get('[data-testid="upstream-balance-value"]').trigger('click')
+    await flushPromises()
+    const tooltips = document.body.querySelectorAll('[role="tooltip"]')
+    expect(tooltips[tooltips.length - 1]?.textContent).toContain(
+      'admin.accounts.upstreamBalance.walletNotConfiguredDetail'
+    )
+    wrapper.unmount()
+  })
+
+  it('shows a PAT wallet query warning without treating the relay token as failed', async () => {
+    const account = makeAccount({
+      mode: 'key_quota',
+      unit: 'CNY',
+      unlimited: true,
+      wallet_probe_status: 'failed',
+      wallet_probe_error: 'http_error',
+      wallet_probe_http_status: 502
+    })
+    account.extra!.upstream_billing_probe!.balance!.source = 'new_api_token'
+    const wrapper = mount(UpstreamBalanceCell, {
+      attachTo: document.body,
+      props: { account, now: Date.now() }
+    })
+
+    expect(wrapper.get('[data-testid="upstream-balance-status"]').text()).toBe(
+      'admin.accounts.upstreamBalance.walletProbeFailed'
+    )
+    expect(wrapper.get('[data-testid="upstream-balance-status"]').classes()).toContain('text-amber-600')
+    await wrapper.get('[data-testid="upstream-balance-value"]').trigger('click')
+    await flushPromises()
+    const tooltips = document.body.querySelectorAll('[role="tooltip"]')
+    expect(tooltips[tooltips.length - 1]?.textContent).toContain(
+      'admin.accounts.upstreamBalance.walletProbeError:admin.accounts.upstreamBalance.errors.http_error (HTTP 502)'
+    )
+    wrapper.unmount()
   })
 
   it('distinguishes stale, failed and unsupported snapshots', async () => {

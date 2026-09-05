@@ -443,22 +443,28 @@ func TestUpstreamBillingProbeFallsBackToUsageForBalance(t *testing.T) {
 				Credentials: map[string]any{"api_key": "sk-sensitive", "base_url": "https://legacy.example/v1"},
 			}
 			repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: account}}
-			upstream := &httpUpstreamRecorder{responses: []*http.Response{
-				{
-					StatusCode: tt.billingStatus,
+			responses := []*http.Response{{
+				StatusCode: tt.billingStatus,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(tt.billingBody)),
+			}}
+			if tt.billingStatus == http.StatusNotFound || tt.billingStatus == http.StatusMethodNotAllowed {
+				responses = append(responses, &http.Response{
+					StatusCode: http.StatusNotFound,
 					Header:     http.Header{"Content-Type": []string{"application/json"}},
-					Body:       io.NopCloser(strings.NewReader(tt.billingBody)),
-				},
-				{
-					StatusCode: http.StatusOK,
-					Header:     http.Header{"Content-Type": []string{"application/json"}},
-					Body: io.NopCloser(strings.NewReader(`{
+					Body:       io.NopCloser(strings.NewReader(`{"error":"not found"}`)),
+				})
+			}
+			responses = append(responses, &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body: io.NopCloser(strings.NewReader(`{
 						"mode":"unrestricted","isValid":true,"unit":"USD",
 						"balance":17.25,"remaining":17.25,
 						"usage":{"must_not_persist":"private"}
 					}`)),
-				},
-			}}
+			})
+			upstream := &httpUpstreamRecorder{responses: responses}
 			svc := newUpstreamBillingProbeTestService(repo, upstream, &upstreamBillingProbeSettingRepo{})
 			fixedNow := time.Date(2026, time.July, 13, 2, 0, 0, 0, time.UTC)
 			svc.now = func() time.Time { return fixedNow }
@@ -472,12 +478,17 @@ func TestUpstreamBillingProbeFallsBackToUsageForBalance(t *testing.T) {
 			require.Equal(t, "usage", snapshot.Balance.Source)
 			require.Equal(t, 17.25, snapshot.Balance.Data["balance"])
 			require.NotContains(t, snapshot.Balance.Data, "usage")
-			require.Len(t, upstream.requests, 2)
+			usageRequestIndex := 1
+			if tt.billingStatus == http.StatusNotFound || tt.billingStatus == http.StatusMethodNotAllowed {
+				usageRequestIndex = 2
+				require.Equal(t, "/api/status", upstream.requests[1].URL.Path)
+			}
+			require.Len(t, upstream.requests, usageRequestIndex+1)
 			require.Equal(t, "https://legacy.example/v1/sub2api/billing", upstream.requests[0].URL.String())
-			require.Equal(t, "/v1/usage", upstream.requests[1].URL.Path)
-			require.Equal(t, "1", upstream.requests[1].URL.Query().Get("days"))
-			require.Equal(t, "Bearer sk-sensitive", upstream.requests[1].Header.Get("Authorization"))
-			require.True(t, HTTPUpstreamRedirectsDisabled(upstream.requests[1].Context()))
+			require.Equal(t, "/v1/usage", upstream.requests[usageRequestIndex].URL.Path)
+			require.Equal(t, "1", upstream.requests[usageRequestIndex].URL.Query().Get("days"))
+			require.Equal(t, "Bearer sk-sensitive", upstream.requests[usageRequestIndex].Header.Get("Authorization"))
+			require.True(t, HTTPUpstreamRedirectsDisabled(upstream.requests[usageRequestIndex].Context()))
 		})
 	}
 }

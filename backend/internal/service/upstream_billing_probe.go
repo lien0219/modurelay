@@ -22,6 +22,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
@@ -136,6 +137,14 @@ type UpstreamBillingProbeSnapshot struct {
 	// stored snapshot always answers "did this probe move the account rate, and
 	// to what" without a separate history table.
 	SyncedRateMultiplier *float64 `json:"synced_rate_multiplier,omitempty"`
+}
+
+// NewAPIUpstreamGroup is a sanitized New API group option discovered from
+// /api/pricing. The group controls billing rate only; it never represents a
+// separate balance.
+type NewAPIUpstreamGroup struct {
+	Name           string  `json:"name"`
+	RateMultiplier float64 `json:"rate_multiplier"`
 }
 
 // UpstreamBalanceProbeSnapshot is independent from the declared-rate status:
@@ -370,9 +379,11 @@ func normalizeUpstreamBillingProbeSettings(settings *UpstreamBillingProbeSetting
 
 // UpstreamBillingProbeService discovers a remote Sub2API billing snapshot.
 type UpstreamBillingProbeService struct {
-	accountRepo        AccountRepository
-	accountTestService *AccountTestService
-	settingService     *SettingService
+	accountRepo         AccountRepository
+	accountTestService  *AccountTestService
+	settingService      *SettingService
+	secretEncryptor     SecretEncryptor
+	secretKeyConfigured bool
 
 	parentCtx    context.Context
 	parentCancel context.CancelFunc
@@ -433,10 +444,14 @@ func ProvideUpstreamBillingProbeService(
 	accountRepo AccountRepository,
 	accountTestService *AccountTestService,
 	settingService *SettingService,
+	secretEncryptor SecretEncryptor,
+	cfg *config.Config,
 	lockCache LeaderLockCache,
 	db *sql.DB,
 ) *UpstreamBillingProbeService {
 	svc := NewUpstreamBillingProbeService(accountRepo, accountTestService, settingService)
+	svc.secretEncryptor = secretEncryptor
+	svc.secretKeyConfigured = cfg != nil && cfg.Totp.EncryptionKeyConfigured
 	svc.SetLeaderLock(lockCache, db)
 	svc.Start()
 	return svc
@@ -861,6 +876,12 @@ func (s *UpstreamBillingProbeService) probeLoadedAccount(ctx context.Context, ac
 	}
 	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusMethodNotAllowed {
 		_ = resp.Body.Close()
+		if newAPISnapshot, identified := s.probeNewAPIUpstream(
+			ctx, account, normalizedBaseURL, apiKey, proxyURL, profile, tlsProfile,
+			intervalMinutes, now, forceBalance,
+		); identified {
+			return s.persistSuccessfulUpstreamBillingProbe(ctx, account, newAPISnapshot)
+		}
 		balanceSnapshot := s.probeUpstreamUsageBalance(
 			ctx, account, normalizedBaseURL, apiKey, proxyURL, profile, tlsProfile,
 			intervalMinutes, now, forceBalance,
@@ -899,17 +920,25 @@ func (s *UpstreamBillingProbeService) probeLoadedAccount(ctx context.Context, ac
 		NextProbeAt:   now.Add(nextProbeDelay(intervalMinutes, 0)),
 		HTTPStatus:    resp.StatusCode,
 	}
+	return s.persistSuccessfulUpstreamBillingProbe(ctx, account, snapshot)
+}
+
+func (s *UpstreamBillingProbeService) persistSuccessfulUpstreamBillingProbe(
+	ctx context.Context,
+	account *Account,
+	snapshot *UpstreamBillingProbeSnapshot,
+) (*UpstreamBillingProbeSnapshot, error) {
 	// 账号级值域与精度只在真要写回时才有影响：只观察上游声明、未开启同步的
 	// 账号不因声明值不适配 accounts.rate_multiplier 而被记成探测失败并进入
 	// 指数退避——探测本身成功了，原始声明照常存进快照供展示。
 	var syncRate *float64
 	previousRate := account.BillingRateMultiplier()
 	if upstreamBillingRateSyncEnabled(account) {
-		if value, valid := upstreamBillingProbeSyncRate(data); valid {
+		if value, valid := upstreamBillingProbeSyncRate(snapshot.Data); valid {
 			syncRate = &value
 			snapshot.SyncedRateMultiplier = &value
 		} else {
-			declared, _ := resolveAccountExtraNumber(data, "resolved_rate_multiplier")
+			declared, _ := resolveAccountExtraNumber(snapshot.Data, "resolved_rate_multiplier")
 			slog.Warn("upstream_billing_rate_sync_rejected",
 				"source", "upstream_billing_probe",
 				"account_id", account.ID,

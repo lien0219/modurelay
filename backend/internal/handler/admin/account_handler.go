@@ -149,6 +149,9 @@ type UpdateAccountRequest struct {
 	AutoPauseOnExpired      *bool          `json:"auto_pause_on_expired"`
 	ProbeEnabled            *bool          `json:"upstream_billing_probe_enabled"`
 	RateSyncEnabled         *bool          `json:"upstream_billing_rate_sync_enabled"`
+	NewAPIUpstreamGroup     *string        `json:"upstream_billing_new_api_group"`
+	NewAPIUserAccessToken   *string        `json:"upstream_billing_new_api_user_access_token"`
+	NewAPIUserID            *int64         `json:"upstream_billing_new_api_user_id"`
 	ConfirmMixedChannelRisk *bool          `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
 }
 
@@ -991,6 +994,9 @@ func (h *AccountHandler) Update(c *gin.Context) {
 		AutoPauseOnExpired:    req.AutoPauseOnExpired,
 		ProbeEnabled:          req.ProbeEnabled,
 		RateSyncEnabled:       req.RateSyncEnabled,
+		NewAPIUpstreamGroup:   req.NewAPIUpstreamGroup,
+		NewAPIUserAccessToken: req.NewAPIUserAccessToken,
+		NewAPIUserID:          req.NewAPIUserID,
 		SkipMixedChannelCheck: skipCheck,
 	})
 	if err != nil {
@@ -1014,8 +1020,32 @@ func (h *AccountHandler) Update(c *gin.Context) {
 	if len(req.Credentials) > 0 {
 		h.scheduleOpenAIResponsesProbe(account)
 	}
+	if req.NewAPIUpstreamGroup != nil || req.NewAPIUserAccessToken != nil || req.NewAPIUserID != nil {
+		h.scheduleUpstreamBillingProbe(account)
+	}
 
 	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
+}
+
+func (h *AccountHandler) scheduleUpstreamBillingProbe(account *service.Account) {
+	if account == nil || h.upstreamBillingProbe == nil ||
+		!service.IsUpstreamBillingProbeIdentity(account.Platform, account.Type) ||
+		account.Extra == nil || account.Extra[service.UpstreamBillingProbeEnabledExtraKey] != true {
+		return
+	}
+	accountID := account.ID
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("upstream_billing_probe_after_new_api_config_update_panic", "account_id", accountID, "recover", r)
+			}
+		}()
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if _, err := h.upstreamBillingProbe.ProbeAccount(ctx, accountID); err != nil {
+			slog.Warn("upstream_billing_probe_after_new_api_config_update_failed", "account_id", accountID, "error", err)
+		}
+	}()
 }
 
 // scheduleOpenAIResponsesProbe 异步触发 OpenAI APIKey 账号的 Responses API 能力探测。

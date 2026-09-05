@@ -511,6 +511,11 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	}
 	// Never persist ephemeral SSO/password secrets after OAuth conversion.
 	input.Credentials = SanitizeStoredCredentials(input.Platform, input.Credentials)
+	// New API group selection is available only after a successful probe and is
+	// therefore never accepted through the generic create credentials payload.
+	delete(input.Credentials, NewAPIUpstreamGroupCredentialKey)
+	delete(input.Credentials, NewAPIUserAccessTokenCredentialKey)
+	delete(input.Credentials, NewAPIUserIDCredentialKey)
 
 	account, err := buildAccountForCreate(input, accountExtra)
 	if err != nil {
@@ -580,6 +585,10 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		}
 	}
 	previousProbeIdentity := upstreamBillingProbeIdentity(account)
+	previousProbeBaseIdentity := upstreamBillingProbeBaseIdentity(account)
+	previousProbeSnapshot := decodeUpstreamBillingProbeSnapshot(account.Extra)
+	previousNewAPIGroup := NewAPIUpstreamGroupFromAccount(account)
+	previousNewAPIUserID := NewAPIUserIDFromAccount(account)
 	previousOllamaUsageIdentity := ollamaCloudUsageIdentity(account)
 	// 安全/身份不变量(影子账号):通用更新路径被 edit/re-auth/refresh/batch 共用,
 	// 必须在此守住,否则仅在创建时的保证可被这些路径绕过。
@@ -624,7 +633,23 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	} else if len(input.Credentials) > 0 {
 		// 敏感子键采用"incoming 没提供就保留"的合并语义：前端响应已脱敏，
 		// 全对象 PUT 编辑时不会再带回 token，避免覆盖时清空已有凭证。
-		account.Credentials = MergePreservingSensitiveCreds(account.Credentials, input.Credentials)
+		incomingCredentials := maps.Clone(input.Credentials)
+		// This managed field has its own top-level request field and validation;
+		// silently ignore copies embedded in the generic credentials object.
+		delete(incomingCredentials, NewAPIUpstreamGroupCredentialKey)
+		delete(incomingCredentials, NewAPIUserAccessTokenCredentialKey)
+		delete(incomingCredentials, NewAPIUserIDCredentialKey)
+		account.Credentials = MergePreservingSensitiveCreds(account.Credentials, incomingCredentials)
+		if previousNewAPIGroup != "" {
+			account.Credentials[NewAPIUpstreamGroupCredentialKey] = previousNewAPIGroup
+		} else {
+			delete(account.Credentials, NewAPIUpstreamGroupCredentialKey)
+		}
+		if previousNewAPIUserID > 0 {
+			account.Credentials[NewAPIUserIDCredentialKey] = previousNewAPIUserID
+		} else {
+			delete(account.Credentials, NewAPIUserIDCredentialKey)
+		}
 		// 校验并规范化请求头覆写配置（header 名小写化、格式检查）
 		if err := NormalizeHeaderOverrideCredentials(account.Credentials); err != nil {
 			return nil, err
@@ -750,6 +775,97 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 			account.ProxyID = input.ProxyID
 		}
 		account.Proxy = nil // 清除关联对象，防止 GORM Save 时根据 Proxy.ID 覆盖 ProxyID
+	}
+	probeBaseIdentityChanged := !reflect.DeepEqual(previousProbeBaseIdentity, upstreamBillingProbeBaseIdentity(account))
+	if probeBaseIdentityChanged && input.NewAPIUpstreamGroup == nil && account.Credentials != nil {
+		// A group selection belongs to the exact upstream URL, key, headers and
+		// proxy that produced it. Do not carry it across an identity change.
+		delete(account.Credentials, NewAPIUpstreamGroupCredentialKey)
+	}
+	if probeBaseIdentityChanged && input.NewAPIUserAccessToken == nil && account.Credentials != nil {
+		// A dashboard PAT is scoped to the exact New API origin and relay key
+		// selected by the administrator. Never carry it to a new upstream.
+		delete(account.Credentials, NewAPIUserAccessTokenCredentialKey)
+	}
+	if probeBaseIdentityChanged && input.NewAPIUserID == nil && account.Credentials != nil {
+		delete(account.Credentials, NewAPIUserIDCredentialKey)
+	}
+	if input.NewAPIUpstreamGroup != nil {
+		requestedGroup := strings.TrimSpace(*input.NewAPIUpstreamGroup)
+		if requestedGroup != "" {
+			normalizedGroup, ok := normalizeNewAPIUpstreamGroupName(requestedGroup)
+			if !ok || normalizedGroup != requestedGroup {
+				return nil, ErrNewAPIUpstreamGroupUnavailable
+			}
+			if probeBaseIdentityChanged {
+				return nil, ErrNewAPIUpstreamGroupReprobeRequired
+			}
+			if err := validateNewAPIUpstreamGroupSelection(previousProbeSnapshot, requestedGroup); err != nil {
+				return nil, err
+			}
+		}
+		if account.Credentials == nil {
+			account.Credentials = make(map[string]any)
+		}
+		if requestedGroup == "" {
+			delete(account.Credentials, NewAPIUpstreamGroupCredentialKey)
+		} else {
+			account.Credentials[NewAPIUpstreamGroupCredentialKey] = requestedGroup
+		}
+	}
+	if input.NewAPIUserAccessToken != nil {
+		userAccessToken, tokenErr := normalizeNewAPIUserAccessToken(*input.NewAPIUserAccessToken)
+		if tokenErr != nil {
+			return nil, tokenErr
+		}
+		if userAccessToken != "" {
+			if probeBaseIdentityChanged {
+				return nil, ErrNewAPIUserAccessTokenReprobeRequired
+			}
+			if !isConfirmedNewAPIProbe(previousProbeSnapshot) {
+				return nil, ErrNewAPIUserAccessTokenRequiresProbe
+			}
+		}
+		if account.Credentials == nil {
+			account.Credentials = make(map[string]any)
+		}
+		if userAccessToken == "" {
+			delete(account.Credentials, NewAPIUserAccessTokenCredentialKey)
+			delete(account.Credentials, NewAPIUserIDCredentialKey)
+		} else {
+			encryptedToken, encryptErr := encryptNewAPIUserAccessToken(
+				s.secretEncryptor, s.secretKeyConfigured, userAccessToken,
+			)
+			if encryptErr != nil {
+				return nil, encryptErr
+			}
+			account.Credentials[NewAPIUserAccessTokenCredentialKey] = encryptedToken
+		}
+	}
+	if input.NewAPIUserID != nil {
+		userID := *input.NewAPIUserID
+		if userID < 0 || userID > newAPIUserIDMax {
+			return nil, ErrNewAPIUserIDInvalid
+		}
+		if userID > 0 {
+			if probeBaseIdentityChanged {
+				return nil, ErrNewAPIUserAccessTokenReprobeRequired
+			}
+			if !isConfirmedNewAPIProbe(previousProbeSnapshot) {
+				return nil, ErrNewAPIUserAccessTokenRequiresProbe
+			}
+			if !NewAPIUserAccessTokenConfigured(account) {
+				return nil, ErrNewAPIUserIDRequiresAccessToken
+			}
+		}
+		if account.Credentials == nil {
+			account.Credentials = make(map[string]any)
+		}
+		if userID == 0 {
+			delete(account.Credentials, NewAPIUserIDCredentialKey)
+		} else {
+			account.Credentials[NewAPIUserIDCredentialKey] = userID
+		}
 	}
 	if !reflect.DeepEqual(previousProbeIdentity, upstreamBillingProbeIdentity(account)) && account.Extra != nil {
 		delete(account.Extra, UpstreamBillingProbeExtraKey)
@@ -1069,6 +1185,9 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	// only when platform is known Grok — empty platform still strips password/*).
 	if input.Credentials != nil {
 		input.Credentials = SanitizeStoredCredentials("", input.Credentials)
+		delete(input.Credentials, NewAPIUpstreamGroupCredentialKey)
+		delete(input.Credentials, NewAPIUserAccessTokenCredentialKey)
+		delete(input.Credentials, NewAPIUserIDCredentialKey)
 	}
 
 	// Prepare bulk updates for columns and JSONB fields.
@@ -1169,7 +1288,10 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 }
 
 func updatesUpstreamBillingProbeIdentity(credentials map[string]any) bool {
-	for _, key := range []string{"api_key", "base_url", credKeyHeaderOverrideEnabled, credKeyHeaderOverrides} {
+	for _, key := range []string{
+		"api_key", "base_url", credKeyHeaderOverrideEnabled, credKeyHeaderOverrides,
+		NewAPIUpstreamGroupCredentialKey, NewAPIUserAccessTokenCredentialKey, NewAPIUserIDCredentialKey,
+	} {
 		if _, ok := credentials[key]; ok {
 			return true
 		}
@@ -1178,6 +1300,23 @@ func updatesUpstreamBillingProbeIdentity(credentials map[string]any) bool {
 }
 
 func upstreamBillingProbeIdentity(account *Account) map[string]any {
+	identity := upstreamBillingProbeBaseIdentity(account)
+	if identity == nil {
+		return nil
+	}
+	if value, ok := account.Credentials[NewAPIUpstreamGroupCredentialKey]; ok {
+		identity[NewAPIUpstreamGroupCredentialKey] = value
+	}
+	if value, ok := account.Credentials[NewAPIUserAccessTokenCredentialKey]; ok {
+		identity[NewAPIUserAccessTokenCredentialKey] = value
+	}
+	if value, ok := account.Credentials[NewAPIUserIDCredentialKey]; ok {
+		identity[NewAPIUserIDCredentialKey] = value
+	}
+	return identity
+}
+
+func upstreamBillingProbeBaseIdentity(account *Account) map[string]any {
 	if account == nil {
 		return nil
 	}
