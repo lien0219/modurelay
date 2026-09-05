@@ -214,6 +214,19 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/quick-start',
+    name: 'QuickStart',
+    alias: '/docs/quick-start',
+    component: () => import('@/views/user/QuickStartView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Quick start',
+      titleKey: 'nav.quickStart',
+      descriptionKey: 'quickStart.description'
+    }
+  },
+  {
     path: '/resource-center',
     name: 'ResourceCenter',
     component: () => import('@/views/user/ResourceCenterView.vue'),

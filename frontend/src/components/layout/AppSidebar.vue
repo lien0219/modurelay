@@ -502,6 +502,10 @@ const DistributionIcon = {
   render: () => h(Icon, { name: 'userPlus' })
 }
 
+const QuickStartIcon = {
+  render: () => h(Icon, { name: 'terminal' })
+}
+
 const BellIcon = {
   render: () =>
     h(
@@ -774,6 +778,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     items.push({ path: '/dashboard', label: t('nav.dashboard'), icon: DashboardIcon })
   }
   items.push(
+    { path: '/quick-start', label: t('nav.quickStart'), icon: QuickStartIcon },
     { path: '/ai-learning', label: t('nav.aiLearning'), icon: AILearningIcon },
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
     { path: '/batch-image', label: t('nav.batchImage'), icon: BatchImageIcon, hideInSimpleMode: true, featureFlag: flagBatchImageAccess },

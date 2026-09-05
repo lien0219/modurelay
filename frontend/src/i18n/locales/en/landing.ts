@@ -3,6 +3,137 @@ export default {
     title: 'Batch Image Generation',
     description: 'Submit multiple prompts in one job and download the generated images when complete'
   },
+  quickStart: {
+    eyebrow: 'QUICK START GUIDE',
+    title: 'Quick start',
+    description: 'Create one API key, copy this instance URL, and connect the clients you already use. You do not need access to the administrator channel list.',
+    openKeys: 'Create API key',
+    noticeTitle: 'Your API key is shown only once',
+    noticeDescription: 'After creating a key, keep the key and the API URL together. The client examples below use the same OpenAI-compatible /v1 endpoint.',
+    stepsTitle: 'Connect in four steps',
+    stepsDescription: 'The model list is checked with your own URL and key at the end of this page.',
+    timeEstimate: 'About 3 minutes',
+    steps: {
+      apiKey: {
+        title: 'Create an API key',
+        description: 'Open API Keys and create a key for your local machine or project. Copy it immediately and keep it out of repositories and screenshots.',
+        action: 'Open API Keys'
+      },
+      connection: {
+        title: 'Keep the URL and key together',
+        description: 'Use the instance URL with the /v1 suffix and the API key from step 1. Do not look for a user-facing channel list.',
+        action: 'Jump to model query'
+      },
+      codex: {
+        title: 'Configure Codex',
+        description: 'Add the OpenAI-compatible Responses provider to Codex, then start Codex with the key in an environment variable.',
+        action: 'Read Codex guide'
+      },
+      ccswitch: {
+        title: 'Import into CC Switch',
+        description: 'Use the Import to CC Switch action beside your key, or create an OpenAI-compatible provider manually.',
+        action: 'Read CC Switch guide'
+      }
+    },
+    guides: {
+      title: 'Client tutorials',
+      description: 'Follow the file names, configuration locations, and fields below. Example URLs automatically use this instance API address.',
+      openKeyConfig: 'Open API Keys and client config',
+      openCcSwitchImport: 'Open API Keys and import to CC Switch',
+      codex: {
+        title: 'Codex CLI / Desktop',
+        description: 'Add a Responses provider to the Codex configuration file and supply the API key through an environment variable so it is not written to disk.',
+        configFile: 'Configuration file',
+        configPathUnix: 'macOS / Linux: ~/.codex/config.toml',
+        configPathWindows: 'Windows: %USERPROFILE%\\.codex\\config.toml',
+        secretSource: 'Secret variable',
+        secretSourceValue: 'MODURELAY_API_KEY (store only the variable name in config.toml, not the real key)',
+        configExample: 'config.toml example (replace your-model-id with a model returned by the query)',
+        envExample: 'Set the API key environment variable for the current terminal session',
+        steps: {
+          1: 'Create a key in API Keys, then use the model query at the bottom of this page to verify the URL, key, and an available model ID.',
+          2: 'Open the config.toml path for your system. If it does not exist, create the .codex directory and config.toml; if it exists, merge the block below without replacing unrelated settings.',
+          3: 'Paste the provider configuration and replace your-model-id with a query result. The base_url already uses this instance, and wire_api must remain "responses".',
+          4: 'Set MODURELAY_API_KEY in the terminal that launches Codex. For Codex Desktop, set a user environment variable, fully quit the app, and reopen it. Never commit the real key.'
+        }
+      },
+      ccswitch: {
+        title: 'CC Switch',
+        description: 'Import the provider directly from API Keys when possible. Use the manual fields below only when the protocol link does not open.',
+        configLocation: 'Configuration location',
+        configLocationValue: 'ModuRelay API Keys → find the new key → Import to CC Switch',
+        configFile: 'Configuration file',
+        configFileValue: 'No file needs manual editing. CC Switch manages the provider inside the application.',
+        manualFields: 'Fields for adding a provider manually',
+        fields: {
+          name: 'Provider name',
+          client: 'Client type',
+          endpoint: 'API URL',
+          key: 'API key',
+          model: 'Model ID'
+        },
+        fieldValues: {
+          client: 'Match the key group: Codex / Claude / Gemini / Grok Build',
+          key: 'Paste the API key you just created',
+          model: 'Use a model ID returned by the query on this page'
+        },
+        steps: {
+          1: 'Install and open CC Switch, then create a key on the ModuRelay API Keys page.',
+          2: 'Click Import to CC Switch beside that key. Confirm the browser prompt to open the ccswitch:// protocol link.',
+          3: 'The import selects a client type for the key group and fills the provider name, endpoint, key, and usage query. Review the values and save.',
+          4: 'If CC Switch does not open, add the provider with the fields below, then use the model query result from this page and test the connection.'
+        }
+      }
+    },
+    code: {
+      eyebrow: 'FIRST REQUEST',
+      title: 'Send your first request',
+      description: 'Use the model ID returned by the query tool. The request goes directly from your client to this API URL.',
+      endpoint: 'API endpoint for this instance',
+      copy: 'Copy code',
+      copied: 'Code copied',
+      tabs: { curl: 'cURL', javascript: 'JavaScript', python: 'Python' }
+    },
+    lookup: {
+      eyebrow: 'CONNECTION CHECK',
+      title: 'Query available models with your URL and key',
+      description: 'Enter the same API URL and key you will put into Codex or CC Switch. The browser calls /models directly and never stores the key.',
+      urlLabel: 'API URL',
+      urlHint: 'The /v1 suffix is added when it is missing.',
+      keyLabel: 'API key',
+      keyPlaceholder: 'Paste the key created above',
+      keyHint: 'Used only for this request and cleared when you leave the page.',
+      endpointLabel: 'Request endpoint',
+      submit: 'Query models',
+      loading: 'Querying...',
+      success: '{count} models returned',
+      keyNotStored: 'Key is not saved',
+      copyModel: 'Copy model ID',
+      modelCopied: 'Model ID copied',
+      errors: {
+        keyRequired: 'Enter an API key first.',
+        unauthorized: 'The URL or API key was rejected. Check both values and try again.',
+        http: 'The model request failed with HTTP {status}.',
+        empty: 'The request succeeded but no model IDs were returned.',
+        network: 'The browser could not reach this URL. Check the URL, HTTPS, and whether the gateway allows browser CORS requests.'
+      }
+    },
+    links: {
+      title: 'Common destinations',
+      apiKeys: { title: 'API Keys', description: 'Create, inspect, or revoke keys' },
+      learning: { title: 'AI Learning', description: 'Read platform and model basics' },
+      usage: { title: 'Usage records', description: 'Check requests, tokens, and cost' },
+      lookup: { title: 'Model query', description: 'Test URL and key together' }
+    },
+    faq: {
+      title: 'Common questions',
+      items: {
+        key: { question: 'Where should I store an API key?', answer: 'Inject it through a local environment variable or a client secret store. Do not put it in frontend code, logs, screenshots, or public repositories.' },
+        endpoint: { question: 'Which API endpoint should I use?', answer: 'Use the instance address shown on this page and keep the /v1 path. Users do not need access to administrator channel pages.' },
+        lookup: { question: 'Why did the model query fail in the browser?', answer: 'The gateway must allow browser CORS requests from the current site. A command-line client can still work when the endpoint blocks browser origins; the API key is never sent to ModuRelay frontend storage.' }
+      }
+    }
+  },
   // Home Page
   home: {
     viewOnGithub: 'View on GitHub',
