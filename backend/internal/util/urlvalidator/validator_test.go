@@ -227,3 +227,20 @@ func TestDialContextWithPinnedIPsFallsBackBeforeFirstDialTimesOut(t *testing.T) 
 	require.Equal(t, int32(2), dialed.Load())
 	require.Less(t, time.Since(started), time.Second)
 }
+
+func TestIsBlockedHost(t *testing.T) {
+	for _, host := range []string{
+		"localhost", "LOCALHOST", "foo.localhost", " 127.0.0.1 ",
+		"127.0.0.1", "::1", "10.0.0.5", "172.16.0.1", "192.168.1.1",
+		"169.254.169.254", "0.0.0.0", "::", "fe80::1", "fc00::1", "::ffff:127.0.0.1",
+	} {
+		if !IsBlockedHost(host) {
+			t.Fatalf("expected %q to be blocked", host)
+		}
+	}
+	for _, host := range []string{"example.com", "cdn.example.com", "93.184.216.34", "8.8.8.8", "2606:4700:4700::1111", ""} {
+		if IsBlockedHost(host) {
+			t.Fatalf("expected %q to be allowed", host)
+		}
+	}
+}

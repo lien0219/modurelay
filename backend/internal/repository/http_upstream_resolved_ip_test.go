@@ -155,7 +155,7 @@ func TestResolvedIPPinnedRequestUsesFreshTransportConnection(t *testing.T) {
 	secondCtx := service.WithHTTPUpstreamResolvedIPPinning(pinnedUpstreamContext(t))
 	secondReq, err := http.NewRequestWithContext(secondCtx, http.MethodGet, targetURL, nil)
 	require.NoError(t, err)
-	pinnedClient := httpClientForUpstreamRequest(client, secondReq)
+	pinnedClient := (&httpUpstreamService{}).httpClientForUpstreamRequest(client, secondReq)
 	pinnedTransport, ok := pinnedClient.Transport.(*http.Transport)
 	require.True(t, ok)
 	require.True(t, pinnedTransport.DisableKeepAlives)
@@ -206,7 +206,7 @@ func TestResolvedIPPinnedRequestNegotiatesFreshHTTP2(t *testing.T) {
 		nil,
 	)
 	require.NoError(t, err)
-	client := httpClientForUpstreamRequest(&http.Client{Transport: transport}, req)
+	client := (&httpUpstreamService{}).httpClientForUpstreamRequest(&http.Client{Transport: transport}, req)
 
 	resp, err := client.Do(req)
 	require.NoError(t, err)
