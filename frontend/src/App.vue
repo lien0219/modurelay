@@ -228,8 +228,10 @@ onMounted(async () => {
     // If setup endpoint fails, assume normal mode and continue
   }
 
-  // Load public settings into appStore (will be cached for other components)
-  await appStore.fetchPublicSettings()
+  // Reconcile the embedded snapshot with the API. This keeps an already-open
+  // process or intermediary HTML cache from pinning stale feature flags for
+  // the whole browser session; a failed refresh retains the injected fallback.
+  await appStore.fetchPublicSettings(true)
 
   // Re-resolve document title now that site settings are available
   updateDocumentTitle()

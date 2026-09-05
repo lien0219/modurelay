@@ -762,7 +762,7 @@ export interface Group {
   platform: GroupPlatform
   rate_multiplier: number
   rpm_limit?: number // Group-level RPM cap (0 = unlimited); overrides user-level rpm_limit when set
-  max_reasoning_effort?: string // OpenAI/Codex reasoning ceiling; empty means unlimited
+  max_reasoning_effort?: string // Anthropic/OpenAI reasoning ceiling; empty means unlimited
   max_reasoning_effort_over_limit?: string // downgrade (default) or deny when over the ceiling
   reasoning_effort_mappings?: ReasoningEffortMapping[]
   is_exclusive: boolean
@@ -846,6 +846,7 @@ export interface AdminGroup extends Group {
   default_mapped_model?: string
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
   models_list_config?: ModelsListConfig
+  codex_models_manifest_config?: CodexModelsManifestConfig
 
   // 分组排序
   sort_order: number
@@ -854,6 +855,13 @@ export interface AdminGroup extends Group {
 export interface ModelsListConfig {
   enabled: boolean
   models: string[]
+}
+
+// 固定账号获取 Codex Model Manifest 配置（仅 openai 分组）
+export interface CodexModelsManifestConfig {
+  enabled: boolean
+  account_ids: number[]
+  fallback_to_scheduler: boolean
 }
 
 export type CompositeRouteMatchType = 'exact' | 'prefix'
@@ -1021,6 +1029,7 @@ export interface CreateGroupRequest {
   mcp_xml_inject?: boolean
   supported_model_scopes?: string[]
   models_list_config?: ModelsListConfig
+  codex_models_manifest_config?: CodexModelsManifestConfig
   allow_messages_dispatch?: boolean
   allow_live?: boolean
   default_mapped_model?: string
@@ -1086,6 +1095,7 @@ export interface UpdateGroupRequest {
   mcp_xml_inject?: boolean
   supported_model_scopes?: string[]
   models_list_config?: ModelsListConfig
+  codex_models_manifest_config?: CodexModelsManifestConfig
   allow_messages_dispatch?: boolean
   allow_live?: boolean
   default_mapped_model?: string
@@ -1234,27 +1244,55 @@ export interface TempUnschedulableStatus {
 }
 
 export interface UpstreamBillingData {
-  object: 'sub2api.key_billing'
+  object: 'sub2api.key_billing' | 'new_api.group_billing'
   schema_version: 1
   billing_scope: 'token'
-  group_rate_multiplier: number
+  provider?: 'new_api'
+  group_rate_multiplier?: number
   user_rate_multiplier?: number
-  resolved_rate_multiplier: number
-  peak_rate_enabled: boolean
+  resolved_rate_multiplier?: number
+  peak_rate_enabled?: boolean
   peak_start?: string
   peak_end?: string
   peak_rate_multiplier?: number
   applied_peak_multiplier?: number
-  effective_rate_multiplier: number
+  effective_rate_multiplier?: number
   timezone?: string
   observed_at: string
+  groups_status?: UpstreamBillingProbeStatus
+  groups_error?: string
+  available_groups?: NewAPIUpstreamGroup[]
+  selected_group?: string
+  group_selection_required?: boolean
+  group_selection_valid?: boolean
 }
 
-export type UpstreamBillingProbeStatus = 'ok' | 'unsupported' | 'failed'
+export interface NewAPIUpstreamGroup {
+  name: string
+  rate_multiplier: number
+}
 
-export interface UpstreamBillingProbeSnapshot {
+export type UpstreamBalanceMode = 'wallet' | 'key_quota' | 'subscription'
+
+export interface UpstreamBalanceData {
+  mode: UpstreamBalanceMode
+  unit: string
+  balance?: number
+  remaining?: number
+  limit?: number
+  used?: number
+  unlimited?: boolean
+  is_valid?: boolean
+  ownership_verified?: boolean
+  wallet_probe_status?: 'not_configured' | 'failed'
+  wallet_probe_error?: string
+  wallet_probe_http_status?: number
+}
+
+export interface UpstreamBalanceProbeSnapshot {
   status: UpstreamBillingProbeStatus
-  data?: UpstreamBillingData
+  data?: UpstreamBalanceData
+  source?: 'billing' | 'usage' | 'new_api_token' | 'new_api_wallet'
   received_at?: string
   fresh_until?: string
   last_attempt_at: string
@@ -1262,6 +1300,24 @@ export interface UpstreamBillingProbeSnapshot {
   failure_count?: number
   http_status?: number
   last_error?: string
+}
+
+export type UpstreamBillingProbeStatus = 'ok' | 'unsupported' | 'failed'
+
+export interface UpstreamBillingProbeSnapshot {
+  status: UpstreamBillingProbeStatus
+  data?: UpstreamBillingData
+  balance?: UpstreamBalanceProbeSnapshot
+  received_at?: string
+  fresh_until?: string
+  last_attempt_at: string
+  next_probe_at: string
+  failure_count?: number
+  http_status?: number
+  last_error?: string
+  // Set when this fresh observation exhausted the upstream balance and the
+  // backend automatically disabled scheduling for the account.
+  auto_unschedulable?: boolean
   // Value this probe wrote into the account rate multiplier; absent when the
   // probe did not sync a rate.
   synced_rate_multiplier?: number
@@ -1280,6 +1336,10 @@ export interface UpstreamBillingProbeResult {
 
 export interface UpstreamBillingRateSnapshotItem {
   account_id: number
+  // Optional during rolling upgrades against an older backend.
+  schedulable?: boolean
+  rate_multiplier?: number
+  auto_unschedulable?: boolean
   snapshot?: UpstreamBillingProbeSnapshot | null
 }
 
@@ -1359,6 +1419,7 @@ export interface Account {
     antigravity_credits_overages?: Record<string, { activated_at: string; active_until: string }>
     upstream_billing_probe_enabled?: boolean
     upstream_billing_rate_sync_enabled?: boolean
+    upstream_billing_auto_unschedulable?: boolean
     upstream_billing_probe?: UpstreamBillingProbeSnapshot
     codex_reset_credit_snapshot?: {
       available_count?: number
@@ -1478,6 +1539,10 @@ export interface Account {
   parent_subscription_expires_at?: string
   parent_chatgpt_account_id?: string
 }
+
+// The admin account list may return this compact shape when lite=1. Detail
+// operations still use Account from /admin/accounts/:id.
+export type AccountListItem = Omit<Account, 'groups'>
 
 export interface AccountSchedulerGroupScore {
   group_id?: number | null
@@ -1688,6 +1753,9 @@ export interface UpdateAccountRequest {
   auto_pause_on_expired?: boolean
   upstream_billing_probe_enabled?: boolean
   upstream_billing_rate_sync_enabled?: boolean
+  upstream_billing_new_api_group?: string
+  upstream_billing_new_api_user_access_token?: string
+  upstream_billing_new_api_user_id?: number
   confirm_mixed_channel_risk?: boolean
 }
 
@@ -1940,6 +2008,7 @@ export interface AdminUsageLog extends UsageLog {
   upstream_response_model?: string | null
   upstream_model_mismatch?: boolean | null
   model_mapping_chain?: string | null
+  upstream_request_id?: string | null
 
   // 账号计费倍率（仅管理员可见）
   account_rate_multiplier?: number | null

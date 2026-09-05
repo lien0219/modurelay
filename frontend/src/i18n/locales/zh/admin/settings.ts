@@ -431,14 +431,22 @@ export default {
         accountSchedulingThresholdsRangeHint: '整数 1–100（百分比）。仅 OpenAI / Anthropic / Grok。'
       },
       upstreamBillingProbe: {
-        title: '上游倍率自动探测',
-        description: '定期获取 API Key 账号所连接上游 Sub2API 站点声明的计费倍率；只有另行开启“同步上游声明倍率”的账号才会更新账号倍率。',
+        title: '上游信息自动探测',
+        description: '定期获取 API Key 账号所连接上游的计费倍率与可用余额；只有另行开启“同步上游声明倍率”的账号才会更新账号倍率；余额明确为 0 或负数时会自动停止调度，管理员可在余额恢复后手动重新开启。',
         enabled: '启用全局自动探测',
-        enabledHint: '开启后，仅对账号自身已启用自动检测的账号执行定时探测；关闭后停止所有定时探测，手动探测不受影响。',
+        enabledHint: '开启后，仅对账号自身已启用自动检测的账号执行定时探测；关闭后停止所有定时探测，手动探测不受影响。余额耗尽自动停调仅基于成功且有效的余额响应。',
         intervalMinutes: '探测周期（分钟）',
         intervalHint: '范围 5–1440 分钟。成功探测结果的有效期为两个探测周期。',
-        saved: '上游倍率自动探测设置已保存',
-        saveFailed: '保存上游倍率自动探测设置失败'
+        saved: '上游信息自动探测设置已保存',
+        saveFailed: '保存上游信息自动探测设置失败'
+      },
+      downstreamBillingProbe: {
+        title: '下游倍率探测',
+        description: '控制持有本站 API Key 的下游是否可以读取其当前计费倍率。',
+        enabled: '允许下游探测本站倍率',
+        enabledHint: '关闭后倍率探测接口返回“不支持”，不影响模型请求转发、计费或本站探测上游。',
+        saved: '下游倍率探测设置已保存',
+        saveFailed: '保存下游倍率探测设置失败'
       },
       ollamaCloudUsage: {
         title: 'Ollama Cloud 用量刷新',
@@ -1075,7 +1083,7 @@ export default {
       },
       openaiFastPolicy: {
         title: 'OpenAI Fast/Flex 策略',
-        description: '基于请求体 service_tier 字段拦截/过滤/透传 OpenAI fast(priority) 与 flex 请求；仅作用于 OpenAI 网关。',
+        description: '基于请求体 service_tier 字段拦截/过滤/透传 OpenAI fast(priority)、ultrafast 与 flex 请求；仅作用于 OpenAI 网关。',
         empty: '尚未配置任何规则。点击下方按钮新增。',
         ruleHeader: '规则 #{index}',
         removeRule: '删除规则',
@@ -1084,6 +1092,7 @@ export default {
         serviceTier: 'service_tier 匹配',
         tierAll: '全部 tier 值',
         tierPriority: 'priority（fast）',
+        tierUltrafast: 'ultrafast',
         tierFlex: 'flex',
         action: '处理方式',
         actionPass: '透传（保留 service_tier）',

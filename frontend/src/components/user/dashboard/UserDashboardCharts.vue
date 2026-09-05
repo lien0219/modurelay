@@ -74,33 +74,43 @@ import TokenUsageTrend from '@/components/charts/TokenUsageTrend.vue'
 import type { TrendDataPoint, ModelStat } from '@/types'
 import { formatCostFixed as formatCost, formatNumberLocaleString as formatNumber, formatTokensK as formatTokens } from '@/utils/format'
 import { getChartJsAnimation } from '@/utils/chartAnimation'
-import { getChartPalette } from '@/utils/chartColors'
+import { expandChartPalette, useChartPalette, useChartThemeColors } from '@/utils/chartColors'
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, ArcElement, Title, Tooltip, Legend, Filler } from 'chart.js'
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, ArcElement, Title, Tooltip, Legend, Filler)
 
 const props = defineProps<{ loading: boolean, startDate: string, endDate: string, granularity: string, trend: TrendDataPoint[], models: ModelStat[] }>()
 defineEmits(['update:startDate', 'update:endDate', 'update:granularity', 'dateRangeChange', 'granularityChange', 'refresh'])
 const { t } = useI18n()
+const chartPalette = useChartPalette()
+const chartTheme = useChartThemeColors()
 
 const modelData = computed(() => !props.models?.length ? null : {
   labels: props.models.map((m: ModelStat) => m.model),
   datasets: [{
     data: props.models.map((m: ModelStat) => m.total_tokens),
-    backgroundColor: getChartPalette().slice(0, props.models.length)
+    backgroundColor: expandChartPalette(chartPalette.value, props.models.length),
+    borderColor: chartTheme.value.surface,
+    borderWidth: 2,
+    spacing: 1
   }]
 })
 
-const doughnutOptions = {
+const doughnutOptions = computed(() => ({
   responsive: true,
   maintainAspectRatio: false,
   animation: getChartJsAnimation(),
   plugins: {
     legend: { display: false },
     tooltip: {
+      backgroundColor: chartTheme.value.surfaceRaised,
+      titleColor: chartTheme.value.text,
+      bodyColor: chartTheme.value.text,
+      borderColor: chartTheme.value.grid,
+      borderWidth: 1,
       callbacks: {
         label: (context: any) => `${context.label}: ${formatTokens(context.parsed)} tokens`
       }
     }
   }
-}
+}))
 </script>

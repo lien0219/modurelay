@@ -3,6 +3,137 @@ export default {
     title: '图片批量生成',
     description: '一次提交多条提示词，任务完成后可统一下载图片结果'
   },
+  quickStart: {
+    eyebrow: '快速接入指南',
+    title: '快速启动',
+    description: '创建一个 API Key，复制当前实例 URL，然后连接你正在使用的客户端。用户不需要查看管理员渠道列表。',
+    openKeys: '创建 API Key',
+    noticeTitle: 'API Key 只会完整显示一次',
+    noticeDescription: '创建 Key 后请同时保存 Key 和 API URL。下面的客户端示例都使用同一个 OpenAI 兼容的 /v1 地址。',
+    stepsTitle: '四步完成接入',
+    stepsDescription: '页面末尾可以用你自己的 URL 和 Key 查询模型列表。',
+    timeEstimate: '预计 3 分钟',
+    steps: {
+      apiKey: {
+        title: '创建 API Key',
+        description: '打开 API 密钥页面，为本地电脑或项目创建一个 Key。创建后立即复制，不要放进代码仓库或截图。',
+        action: '打开 API 密钥'
+      },
+      connection: {
+        title: '保存 URL 和 Key',
+        description: '使用带 /v1 后缀的实例 URL，以及第 1 步创建的 API Key。不需要查找用户侧渠道列表。',
+        action: '跳转到模型查询'
+      },
+      codex: {
+        title: '配置 Codex',
+        description: '在 Codex 中添加 OpenAI 兼容的 Responses Provider，并通过环境变量提供 Key。',
+        action: '查看 Codex 教程'
+      },
+      ccswitch: {
+        title: '导入 CC Switch',
+        description: '在 Key 列表中点击“导入 CC Switch”，也可以手动创建 OpenAI 兼容 Provider。',
+        action: '查看 CC Switch 教程'
+      }
+    },
+    guides: {
+      title: '客户端使用教程',
+      description: '按下面标明的文件名、配置位置和字段操作。示例地址会自动使用当前实例的 API 地址。',
+      openKeyConfig: '打开 API 密钥和客户端配置',
+      openCcSwitchImport: '打开 API 密钥并导入 CC Switch',
+      codex: {
+        title: 'Codex CLI / Desktop',
+        description: '在 Codex 配置文件中添加 Responses Provider，并通过环境变量提供 API Key，避免把密钥写入文件。',
+        configFile: '配置文件',
+        configPathUnix: 'macOS / Linux：~/.codex/config.toml',
+        configPathWindows: 'Windows：%USERPROFILE%\\.codex\\config.toml',
+        secretSource: '密钥变量',
+        secretSourceValue: 'MODURELAY_API_KEY（只保存变量名，不在 config.toml 中填写真实 Key）',
+        configExample: 'config.toml 示例（将 your-model-id 替换为查询到的模型 ID）',
+        envExample: '设置 API Key 环境变量（当前终端会话）',
+        steps: {
+          1: '在 API 密钥页面创建 Key，再用本页底部的模型查询确认 URL、Key 和可用模型 ID。',
+          2: '打开上方对应系统的 config.toml。文件不存在时先创建 .codex 目录和 config.toml；文件已存在时合并下面配置，不要覆盖原有设置。',
+          3: '粘贴下面的 Provider 配置，把 your-model-id 换成查询结果。base_url 已使用当前实例地址，wire_api 必须保留为 "responses"。',
+          4: '在启动 Codex 的同一终端设置 MODURELAY_API_KEY；Codex Desktop 应在设置用户环境变量后完全退出并重新启动。不要把真实 Key 提交到仓库。'
+        }
+      },
+      ccswitch: {
+        title: 'CC Switch',
+        description: '推荐从 API 密钥列表一键导入 Provider；协议唤起失败时，再按下面字段手动添加。',
+        configLocation: '配置位置',
+        configLocationValue: 'ModuRelay「API 密钥」→ 找到刚创建的 Key →「导入 CC Switch」',
+        configFile: '配置文件',
+        configFileValue: '无需手动编辑文件；Provider 由 CC Switch 在应用内管理。',
+        manualFields: '手动添加 Provider 时填写',
+        fields: {
+          name: 'Provider 名称',
+          client: '客户端类型',
+          endpoint: 'API URL',
+          key: 'API Key',
+          model: '模型 ID'
+        },
+        fieldValues: {
+          client: '与 Key 所属分组匹配：Codex / Claude / Gemini / Grok Build',
+          key: '粘贴刚创建的 API Key',
+          model: '填写本页模型查询返回的模型 ID'
+        },
+        steps: {
+          1: '安装并打开 CC Switch，然后在 ModuRelay 的 API 密钥页面创建 Key。',
+          2: '点击该 Key 旁边的“导入 CC Switch”，浏览器出现 ccswitch:// 协议提示时确认打开 CC Switch。',
+          3: '导入会按 Key 所属分组选择客户端类型，并填写 Provider 名称、API 地址、Key 和用量查询配置；确认内容后保存。',
+          4: '如果没有唤起 CC Switch，按下方字段手动添加 Provider，再用本页底部的模型查询结果填写模型 ID 并测试连接。'
+        }
+      }
+    },
+    code: {
+      eyebrow: '首次请求',
+      title: '发送第一条请求',
+      description: '使用模型查询工具返回的模型 ID，请求会从客户端直接发送到当前 API 地址。',
+      endpoint: '当前实例 API 地址',
+      copy: '复制代码',
+      copied: '代码已复制',
+      tabs: { curl: 'cURL', javascript: 'JavaScript', python: 'Python' }
+    },
+    lookup: {
+      eyebrow: '连接检查',
+      title: '用你的 URL 和 Key 一键查询可用模型',
+      description: '填写将要配置到 Codex 或 CC Switch 中的同一个 URL 和 Key。浏览器会直接调用 /models，Key 不会被保存。',
+      urlLabel: 'API URL',
+      urlHint: '缺少 /v1 后缀时会自动补上。',
+      keyLabel: 'API Key',
+      keyPlaceholder: '粘贴上面创建的 Key',
+      keyHint: '只用于本次请求，离开页面后会从页面状态中清除。',
+      endpointLabel: '请求地址',
+      submit: '查询模型',
+      loading: '查询中…',
+      success: '已返回 {count} 个模型',
+      keyNotStored: 'Key 未保存',
+      copyModel: '复制模型 ID',
+      modelCopied: '模型 ID 已复制',
+      errors: {
+        keyRequired: '请先输入 API Key。',
+        unauthorized: 'URL 或 API Key 未通过验证，请检查后重试。',
+        http: '模型请求失败，HTTP 状态码：{status}。',
+        empty: '请求成功，但没有返回模型 ID。',
+        network: '浏览器无法访问该地址。请检查 URL、HTTPS，以及网关是否允许浏览器跨域请求。'
+      }
+    },
+    links: {
+      title: '常用入口',
+      apiKeys: { title: 'API 密钥', description: '创建、查看和撤销密钥' },
+      learning: { title: 'AI 学习', description: '阅读平台与模型基础说明' },
+      usage: { title: '使用记录', description: '核对请求、Token 与费用' },
+      lookup: { title: '模型查询', description: '同时测试 URL 和 Key' }
+    },
+    faq: {
+      title: '常见问题',
+      items: {
+        key: { question: 'API Key 应该放在哪里？', answer: '建议通过本地环境变量或客户端的密钥存储注入，不要写入前端代码、日志、截图或公开仓库。' },
+        endpoint: { question: 'API 地址需要怎么填写？', answer: '使用本页显示的当前实例地址，并保留 /v1 路径。用户不需要访问管理员渠道页面。' },
+        lookup: { question: '为什么浏览器查询模型失败？', answer: '网关需要允许当前站点发起浏览器 CORS 请求。如果网关禁止浏览器来源，命令行客户端仍可能正常工作；API Key 不会保存到 ModuRelay 前端。' }
+      }
+    }
+  },
   // Home Page
   home: {
     viewOnGithub: '在 GitHub 上查看',

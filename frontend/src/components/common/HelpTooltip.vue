@@ -29,7 +29,29 @@ function onEnter() {
   openTooltip()
 }
 
-function onLeave() {
+function isInside(container: HTMLElement | null, target: EventTarget | null): boolean {
+  return target instanceof Node && !!container?.contains(target)
+}
+
+// 悬停模式下指针在触发图标与提示框之间往返时保持打开，便于选中提示里的文字。
+function onLeave(event: MouseEvent) {
+  if (props.trigger !== 'hover') return
+  if (isInside(tooltipRef.value, event.relatedTarget)) return
+  closeTooltip()
+}
+
+function onTooltipLeave(event: MouseEvent) {
+  if (props.trigger !== 'hover') return
+  if (isInside(triggerRef.value, event.relatedTarget)) return
+  closeTooltip()
+}
+
+function onFocusIn() {
+  if (props.trigger !== 'hover') return
+  openTooltip()
+}
+
+function onFocusOut() {
   if (props.trigger !== 'hover') return
   closeTooltip()
 }
@@ -69,8 +91,8 @@ function updatePosition() {
   if (!el) return
   const rect = el.getBoundingClientRect()
   tooltipStyle.value = {
-    top: `${rect.top + window.scrollY}px`,
-    left: `${rect.left + rect.width / 2 + window.scrollX}px`,
+    top: `${rect.top}px`,
+    left: `${rect.left + rect.width / 2}px`,
   }
 }
 
@@ -95,36 +117,47 @@ onBeforeUnmount(() => {
     class="group relative ml-1 inline-flex items-center align-middle"
     @mouseenter="onEnter"
     @mouseleave="onLeave"
+    @focusin="onFocusIn"
+    @focusout="onFocusOut"
     @click="onClick"
   >
     <!-- Trigger Icon -->
     <slot name="trigger">
-      <svg
-        class="h-4 w-4 cursor-help text-gray-400 transition-colors hover:text-primary-600 dark:text-gray-500 dark:hover:text-primary-400"
-        fill="none"
-        viewBox="0 0 24 24"
-        stroke="currentColor"
-        stroke-width="2"
+      <button
+        type="button"
+        class="inline-flex h-4 w-4 cursor-help items-center justify-center rounded-sm text-gray-400 transition-colors hover:text-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/40 dark:text-gray-500 dark:hover:text-primary-400"
+        :aria-label="content || undefined"
       >
-        <path
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-        />
-      </svg>
+        <svg
+          class="h-4 w-4"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          stroke-width="2"
+          aria-hidden="true"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+          />
+        </svg>
+      </button>
     </slot>
 
     <!-- Teleport to body to escape modal overflow clipping -->
     <Teleport to="body">
+      <!-- before: 伪元素向下延伸一段透明区域，盖住提示框与触发图标之间的空隙，让指针能连续移入提示框。 -->
       <div
         ref="tooltip"
         v-show="show"
         role="tooltip"
         :class="[
-          'fixed z-[99999] -translate-x-1/2 -translate-y-full rounded-lg bg-gray-900 p-3 text-xs leading-relaxed text-white shadow-xl ring-1 ring-white/10 dark:bg-gray-800',
+          'fixed z-[99999] -translate-x-1/2 -translate-y-full rounded-lg bg-gray-900 p-3 text-xs leading-relaxed text-white shadow-xl ring-1 ring-white/10 selection:bg-primary-200 selection:text-gray-900 before:absolute before:inset-x-0 before:top-full before:h-3 dark:bg-gray-800 dark:selection:bg-primary-200 dark:selection:text-gray-900',
           props.widthClass,
         ]"
         :style="{ top: `calc(${tooltipStyle.top} - 8px)`, left: tooltipStyle.left }"
+        @mouseleave="onTooltipLeave"
       >
         <button
           v-if="props.trigger === 'click'"

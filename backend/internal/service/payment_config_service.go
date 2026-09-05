@@ -198,11 +198,22 @@ type PaymentConfigService struct {
 	entClient     *dbent.Client
 	settingRepo   SettingRepository
 	encryptionKey []byte
+	onUpdate      func() // Callback when public payment settings change
 }
 
 // NewPaymentConfigService creates a new PaymentConfigService.
 func NewPaymentConfigService(entClient *dbent.Client, settingRepo SettingRepository, encryptionKey []byte) *PaymentConfigService {
 	return &PaymentConfigService{entClient: entClient, settingRepo: settingRepo, encryptionKey: encryptionKey}
+}
+
+// SetOnUpdateCallback sets a callback invoked after payment settings are
+// persisted. The embedded frontend uses this to invalidate injected
+// public-settings HTML.
+func (s *PaymentConfigService) SetOnUpdateCallback(callback func()) {
+	if s == nil {
+		return
+	}
+	s.onUpdate = callback
 }
 
 // IsPaymentEnabled returns whether the payment system is enabled.
@@ -425,7 +436,13 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 	if req.VisibleMethodWxpayEnabled != nil {
 		m[SettingPaymentVisibleMethodWxpayEnabled] = formatBoolOrEmpty(req.VisibleMethodWxpayEnabled)
 	}
-	return s.settingRepo.SetMultiple(ctx, m)
+	if err := s.settingRepo.SetMultiple(ctx, m); err != nil {
+		return err
+	}
+	if s.onUpdate != nil {
+		s.onUpdate()
+	}
+	return nil
 }
 
 func formatBoolOrEmpty(v *bool) string {

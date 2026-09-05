@@ -8,6 +8,7 @@ import { useAppStore } from '@/stores/app'
 import { updateFavicon } from '@/utils/branding'
 import { isIOSDevice } from '@/utils/device'
 import { installHomeRouteGuard } from '@/utils/homeRouteGuard'
+import { syncThemeMode } from '@/composables/useThemeMode'
 import '@fontsource-variable/noto-sans-sc/wght.css'
 import './style.css'
 import './styles/home-route-guard.css'
@@ -33,6 +34,7 @@ function initThemeClass() {
     savedTheme === 'dark' ||
     (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)
   document.documentElement.classList.toggle('dark', shouldUseDark)
+  syncThemeMode(shouldUseDark)
 }
 
 async function bootstrap() {

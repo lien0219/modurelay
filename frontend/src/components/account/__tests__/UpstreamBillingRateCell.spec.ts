@@ -140,8 +140,8 @@ describe('UpstreamBillingRateCell', () => {
     expect(wrapper.text()).not.toContain('admin.accounts.upstreamBilling.stale')
 
     await wrapper.setProps({ now: Date.parse('2026-07-13T01:00:00.001Z') })
-    expect(wrapper.get('[data-testid="upstream-billing-rate"]').text()).toBe('admin.accounts.upstreamBilling.stale')
-    expect(wrapper.text()).toContain('admin.accounts.upstreamBilling.stale')
+    expect(wrapper.get('[data-testid="upstream-billing-rate"]').text()).toBe('admin.accounts.upstreamBilling.failed')
+    expect(wrapper.text()).toContain('admin.accounts.upstreamBilling.failed')
 
     await wrapper.setProps({
       now: Date.now(),
@@ -159,8 +159,8 @@ describe('UpstreamBillingRateCell', () => {
         }
       })
     })
-    expect(wrapper.get('[data-testid="upstream-billing-rate"]').text()).toBe('admin.accounts.upstreamBilling.stale')
-    expect(wrapper.text()).toContain('admin.accounts.upstreamBilling.stale')
+    expect(wrapper.get('[data-testid="upstream-billing-rate"]').text()).toBe('admin.accounts.upstreamBilling.failed')
+    expect(wrapper.text()).toContain('admin.accounts.upstreamBilling.failed')
   })
 
   it('shows stale snapshot details, local next probe time, and the account probe state', async () => {
@@ -261,6 +261,74 @@ describe('UpstreamBillingRateCell', () => {
     wrapper.unmount()
   })
 
+  it('renders New API group rates and distinguishes missing or failed group discovery', async () => {
+    const newAPIData = {
+      object: 'new_api.group_billing' as const,
+      schema_version: 1 as const,
+      billing_scope: 'token' as const,
+      provider: 'new_api' as const,
+      observed_at: '2026-07-13T00:00:00Z',
+      groups_status: 'ok' as const,
+      selected_group: 'vip',
+      group_selection_valid: true,
+      group_rate_multiplier: 0.8,
+      resolved_rate_multiplier: 0.8,
+      effective_rate_multiplier: 0.8,
+      peak_rate_enabled: false
+    }
+    const snapshot = (data: typeof newAPIData | Record<string, unknown>) => ({
+      status: 'ok' as const,
+      data,
+      received_at: '2026-07-13T00:00:00Z',
+      fresh_until: '2026-07-13T01:00:00Z',
+      last_attempt_at: '2026-07-13T00:00:00Z',
+      next_probe_at: '2026-07-13T00:30:00Z'
+    })
+    const wrapper = mount(UpstreamBillingRateCell, {
+      props: {
+        account: makeAccount({ extra: { upstream_billing_probe: snapshot(newAPIData) } }),
+        now: Date.now()
+      }
+    })
+
+    expect(wrapper.get('[data-testid="upstream-billing-rate"]').text()).toBe('0.80x')
+
+    await wrapper.setProps({
+      account: makeAccount({
+        extra: {
+          upstream_billing_probe: snapshot({
+            ...newAPIData,
+            selected_group: undefined,
+            group_selection_valid: undefined,
+            group_rate_multiplier: undefined,
+            resolved_rate_multiplier: undefined,
+            effective_rate_multiplier: undefined
+          })
+        }
+      })
+    })
+    expect(wrapper.get('[data-testid="upstream-billing-rate"]').text()).toBe(
+      'admin.accounts.upstreamBilling.newAPIGroupNotSelected'
+    )
+
+    await wrapper.setProps({
+      account: makeAccount({
+        extra: {
+          upstream_billing_probe: snapshot({
+            ...newAPIData,
+            groups_status: 'failed',
+            group_selection_valid: false,
+            resolved_rate_multiplier: undefined,
+            effective_rate_multiplier: undefined
+          })
+        }
+      })
+    })
+    expect(wrapper.get('[data-testid="upstream-billing-rate"]').text()).toBe(
+      'admin.accounts.upstreamBilling.newAPIGroupProbeFailed'
+    )
+  })
+
   it('emits manual probe commands only for eligible accounts', async () => {
     const wrapper = mount(UpstreamBillingRateCell, {
       props: { account: makeAccount(), now: Date.now() }
@@ -272,6 +340,10 @@ describe('UpstreamBillingRateCell', () => {
     await wrapper.setProps({ account: makeAccount({ platform: 'grok' }) })
     await wrapper.get('[data-testid="upstream-billing-probe"]').trigger('click')
     expect(wrapper.emitted('probe')).toHaveLength(2)
+
+    await wrapper.setProps({ account: makeAccount({ platform: 'antigravity', type: 'upstream' }) })
+    await wrapper.get('[data-testid="upstream-billing-probe"]').trigger('click')
+    expect(wrapper.emitted('probe')).toHaveLength(3)
 
     await wrapper.setProps({ account: makeAccount({ type: 'oauth' }) })
     expect(wrapper.findAll('button')).toHaveLength(0)
@@ -356,5 +428,17 @@ describe('UpstreamBillingRateCell', () => {
       'admin.accounts.upstreamBilling.unsupported'
     )
     expect(wrapper.text()).not.toContain('-admin.accounts.upstreamBilling.unsupported')
+  })
+
+  it('does not expose probe actions for an unknown runtime platform', () => {
+    const wrapper = mount(UpstreamBillingRateCell, {
+      props: {
+        account: makeAccount({ platform: 'future-platform' as any, type: 'apikey' }),
+        now: Date.now()
+      }
+    })
+
+    expect(wrapper.find('[data-testid="upstream-billing-probe"]').exists()).toBe(false)
+    expect(wrapper.text()).toBe('-')
   })
 })

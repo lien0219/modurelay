@@ -71,6 +71,8 @@ var schedulerNeutralExtraKeys = map[string]struct{}{
 
 const postgresParameterBatchSize = 50000
 
+const upstreamBillingProbePlatformsSQL = "'openai', 'anthropic', 'gemini', 'antigravity', 'grok', 'kimi', 'zhipu', 'deepseek'"
+
 const codexFingerprintSeedCanonicalPattern = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
 const codexFingerprintNilSeed = "00000000-0000-0000-0000-000000000000"
 
@@ -636,9 +638,11 @@ func lockAndMergeAccountProbeExtra(
 				false
 			),
 			proxy_id IS NOT DISTINCT FROM $5,
+			schedulable,
 			extra -> 'upstream_billing_probe_enabled',
 			extra -> 'upstream_billing_rate_sync_enabled',
 			extra -> 'upstream_billing_probe',
+			extra -> 'upstream_billing_auto_unschedulable',
 			extra -> 'ollama_cloud_usage_session',
 			extra -> 'ollama_cloud_usage_auto_refresh',
 			extra -> 'ollama_cloud_usage_snapshot'
@@ -661,9 +665,11 @@ func lockAndMergeAccountProbeExtra(
 		identityUnchanged            bool
 		ollamaGroupIdentityUnchanged bool
 		ollamaProxyIdentityUnchanged bool
+		currentSchedulable           bool
 		currentEnabled               []byte
 		currentRateSyncEnabled       []byte
 		currentSnapshot              []byte
+		currentAutoUnschedulable     []byte
 		currentOllamaSession         []byte
 		currentOllamaAutoRefresh     []byte
 		currentOllamaSnapshot        []byte
@@ -672,9 +678,11 @@ func lockAndMergeAccountProbeExtra(
 		&identityUnchanged,
 		&ollamaGroupIdentityUnchanged,
 		&ollamaProxyIdentityUnchanged,
+		&currentSchedulable,
 		&currentEnabled,
 		&currentRateSyncEnabled,
 		&currentSnapshot,
+		&currentAutoUnschedulable,
 		&currentOllamaSession,
 		&currentOllamaAutoRefresh,
 		&currentOllamaSnapshot,
@@ -684,12 +692,17 @@ func lockAndMergeAccountProbeExtra(
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	// The account was loaded before this transaction started. Always carry the
+	// scheduling state observed under the row lock so an ordinary edit cannot
+	// reopen an account paused by a concurrent balance probe.
+	account.Schedulable = currentSchedulable
 
 	extra := copyJSONMap(normalizeJSONMap(account.Extra))
 	for _, key := range []string{
 		service.UpstreamBillingProbeEnabledExtraKey,
 		service.UpstreamBillingRateSyncEnabledExtraKey,
 		service.UpstreamBillingProbeExtraKey,
+		service.UpstreamBillingAutoUnschedulableExtraKey,
 		service.OllamaCloudUsageSessionExtraKey,
 		service.OllamaCloudUsageAutoRefreshExtraKey,
 		service.OllamaCloudUsageSnapshotExtraKey,
@@ -748,6 +761,13 @@ func lockAndMergeAccountProbeExtra(
 			return nil, err
 		} else if ok {
 			extra[service.UpstreamBillingProbeExtraKey] = snapshot
+		}
+	}
+	if probeAccount && identityUnchanged {
+		if marker, ok, err := decodeAccountExtraJSON(currentAutoUnschedulable); err != nil {
+			return nil, err
+		} else if marked, isBool := marker.(bool); ok && isBool && marked {
+			extra[service.UpstreamBillingAutoUnschedulableExtraKey] = true
 		}
 	}
 
@@ -826,14 +846,17 @@ func (r *accountRepository) UpdateCredentials(ctx context.Context, id int64, cre
 					)
 				THEN COALESCE(extra, '{}'::jsonb)
 					- 'upstream_billing_probe'
+					- 'upstream_billing_auto_unschedulable'
 					- 'ollama_cloud_usage_session'
 					- 'ollama_cloud_usage_auto_refresh'
 					- 'ollama_cloud_usage_snapshot'
 				-- 上游倍率探测已放宽到全部 API-key 平台：凭证变化即视为探测
 				-- 身份变化，丢弃 stale 快照。
-				WHEN type = 'apikey'
+				WHEN ((type = 'apikey' AND platform IN (`+upstreamBillingProbePlatformsSQL+`)) OR (type = 'upstream' AND platform = 'antigravity'))
 					AND credentials IS DISTINCT FROM $1::jsonb
-				THEN COALESCE(extra, '{}'::jsonb) - 'upstream_billing_probe'
+				THEN COALESCE(extra, '{}'::jsonb)
+					- 'upstream_billing_probe'
+					- 'upstream_billing_auto_unschedulable'
 				ELSE extra
 			END,
 			updated_at = NOW()
@@ -2495,18 +2518,51 @@ func (r *accountRepository) UpdateSessionWindowEnd(ctx context.Context, id int64
 }
 
 func (r *accountRepository) SetSchedulable(ctx context.Context, id int64, schedulable bool) error {
-	_, err := r.client.Account.Update().
-		Where(dbaccount.IDEQ(id)).
-		SetSchedulable(schedulable).
-		Save(ctx)
+	baseCtx := ctx
+	contextTx := dbent.TxFromContext(ctx)
+	client := r.client
+	var tx *dbent.Tx
+	if contextTx != nil {
+		client = contextTx.Client()
+	} else {
+		var err error
+		tx, err = r.client.Tx(ctx)
+		if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
+			return err
+		}
+		if tx != nil {
+			defer func() { _ = tx.Rollback() }()
+			ctx = dbent.NewTxContext(ctx, tx)
+			client = tx.Client()
+		}
+	}
+	result, err := client.ExecContext(ctx, `
+		UPDATE accounts
+		SET schedulable = $1,
+			extra = (COALESCE(extra, '{}'::jsonb) #- '{upstream_billing_probe,auto_unschedulable}') - $3,
+			updated_at = NOW()
+		WHERE id = $2 AND deleted_at IS NULL
+	`, schedulable, id, service.UpstreamBillingAutoUnschedulableExtraKey)
 	if err != nil {
 		return err
 	}
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
-		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue schedulable change failed: account=%d err=%v", id, err)
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
 	}
-	if !schedulable {
-		r.syncSchedulerAccountSnapshot(ctx, id)
+	if affected == 0 {
+		return service.ErrAccountNotFound
+	}
+	if err := enqueueSchedulerOutbox(ctx, client, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
+		return err
+	}
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+	}
+	if contextTx == nil {
+		r.syncSchedulerAccountSnapshot(baseCtx, id)
 	}
 	return nil
 }
@@ -2630,7 +2686,8 @@ func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates m
 }
 
 // UpdateUpstreamBillingProbeSnapshot stores a probe result only while the
-// network identity used by that probe is still current.
+// network identity used by that probe is still current. A fresh, valid
+// zero-or-negative balance is persisted atomically with a scheduling pause.
 func (r *accountRepository) UpdateUpstreamBillingProbeSnapshot(
 	ctx context.Context,
 	account *service.Account,
@@ -2705,6 +2762,15 @@ func (r *accountRepository) updateUpstreamBillingProbeSnapshotInTx(
 	if err != nil {
 		return err
 	}
+	var expectedAutoUnschedulable any
+	if account.Extra != nil {
+		expectedAutoUnschedulable = account.Extra[service.UpstreamBillingAutoUnschedulableExtraKey]
+	}
+	expectedAutoUnschedulableJSON, err := json.Marshal(expectedAutoUnschedulable)
+	if err != nil {
+		return err
+	}
+	autoUnschedule := service.UpstreamBillingBalanceExhausted(snapshot)
 	client := clientFromContext(ctx, r.client)
 	proxyMatches, err := lockAndMatchProbeProxyIdentity(ctx, client, account)
 	if err != nil {
@@ -2720,7 +2786,18 @@ func (r *accountRepository) updateUpstreamBillingProbeSnapshotInTx(
 	result, err := client.ExecContext(ctx, `
 		UPDATE accounts
 		SET
-			extra = COALESCE(extra, '{}'::jsonb) || $1::jsonb,
+			extra = CASE
+				WHEN $11::boolean AND (
+					schedulable IS TRUE OR
+					COALESCE(extra ->> 'upstream_billing_auto_unschedulable', 'false') = 'true'
+				) THEN (COALESCE(extra, '{}'::jsonb) || $1::jsonb) ||
+					jsonb_build_object('upstream_billing_auto_unschedulable', true)
+				ELSE COALESCE(extra, '{}'::jsonb) || $1::jsonb
+			END,
+			schedulable = CASE
+				WHEN $11::boolean THEN false
+				ELSE schedulable
+			END,
 			rate_multiplier = CASE
 				WHEN $10::numeric IS NOT NULL
 					AND extra @> '{"upstream_billing_probe_enabled": true}'::jsonb
@@ -2737,8 +2814,10 @@ func (r *accountRepository) updateUpstreamBillingProbeSnapshotInTx(
 			AND COALESCE(extra -> 'upstream_billing_probe', 'null'::jsonb) = $7::jsonb
 			AND COALESCE(extra -> 'upstream_billing_probe_enabled', 'null'::jsonb) = $8::jsonb
 			AND COALESCE(extra -> 'upstream_billing_rate_sync_enabled', 'null'::jsonb) = $9::jsonb
+			AND COALESCE(extra -> 'upstream_billing_auto_unschedulable', 'null'::jsonb) = $12::jsonb
+			AND schedulable = $13
 			AND deleted_at IS NULL
-	`, string(payload), account.ID, account.Platform, account.Type, string(credentials), proxyID, string(expectedSnapshotJSON), string(expectedEnabledJSON), string(expectedRateSyncEnabledJSON), rateMultiplier)
+	`, string(payload), account.ID, account.Platform, account.Type, string(credentials), proxyID, string(expectedSnapshotJSON), string(expectedEnabledJSON), string(expectedRateSyncEnabledJSON), rateMultiplier, autoUnschedule, string(expectedAutoUnschedulableJSON), account.Schedulable)
 	if err != nil {
 		return err
 	}
@@ -2918,7 +2997,7 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 				" AND "+ollamaCloudBaseURLMatchesSQL(credentialPlaceholder+"::jsonb ->> 'base_url'")+")")
 	}
 
-	if len(updates.Extra) > 0 || len(ollamaGroupIdentityChanges) > 0 || ollamaProxyIdentityChanged != "" || updates.EnsureCodexFingerprintSeed {
+	if len(updates.Extra) > 0 || len(ollamaGroupIdentityChanges) > 0 || ollamaProxyIdentityChanged != "" || updates.EnsureCodexFingerprintSeed || updates.Schedulable != nil {
 		extraExpression := "COALESCE(extra, '{}'::jsonb)"
 		if len(updates.Extra) > 0 {
 			payload, err := json.Marshal(updates.Extra)
@@ -2936,26 +3015,46 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 			}
 		}
 		eligibleAccount := "platform IN (" + ollamaCloudUsagePlatformsSQL + ") AND type = 'apikey'"
+		probeEligibleAccount := "((type = 'apikey' AND platform IN (" + upstreamBillingProbePlatformsSQL + ")) OR (type = 'upstream' AND platform = 'antigravity'))"
 		groupIdentityChanged := ""
 		if len(ollamaGroupIdentityChanges) > 0 {
 			groupIdentityChanged = "(" + eligibleAccount + " AND (" + joinClauses(ollamaGroupIdentityChanges, " OR ") + "))"
 		}
-		snapshotIdentityChanged := groupIdentityChanged
+		ollamaSnapshotIdentityChanged := groupIdentityChanged
 		if ollamaProxyIdentityChanged != "" {
 			proxyChanged := "(" + eligibleAccount + " AND " + ollamaProxyIdentityChanged + ")"
-			if snapshotIdentityChanged == "" {
-				snapshotIdentityChanged = proxyChanged
+			if ollamaSnapshotIdentityChanged == "" {
+				ollamaSnapshotIdentityChanged = proxyChanged
 			} else {
-				snapshotIdentityChanged = "(" + snapshotIdentityChanged + " OR " + proxyChanged + ")"
+				ollamaSnapshotIdentityChanged = "(" + ollamaSnapshotIdentityChanged + " OR " + proxyChanged + ")"
 			}
 		}
 		if groupIdentityChanged != "" {
 			extraExpression = "CASE" +
 				" WHEN " + groupIdentityChanged + " THEN (" + extraExpression + ") - 'ollama_cloud_usage_session' - 'ollama_cloud_usage_auto_refresh' - 'ollama_cloud_usage_snapshot'" +
-				" WHEN " + snapshotIdentityChanged + " THEN (" + extraExpression + ") - 'ollama_cloud_usage_snapshot'" +
+				" WHEN " + ollamaSnapshotIdentityChanged + " THEN (" + extraExpression + ") - 'ollama_cloud_usage_snapshot'" +
 				" ELSE " + extraExpression + " END"
-		} else if snapshotIdentityChanged != "" {
-			extraExpression = "CASE WHEN " + snapshotIdentityChanged + " THEN (" + extraExpression + ") - 'ollama_cloud_usage_snapshot' ELSE " + extraExpression + " END"
+		} else if ollamaSnapshotIdentityChanged != "" {
+			extraExpression = "CASE WHEN " + ollamaSnapshotIdentityChanged + " THEN (" + extraExpression + ") - 'ollama_cloud_usage_snapshot' ELSE " + extraExpression + " END"
+		}
+
+		probeIdentityChanges := make([]string, 0, 2)
+		if credentialPlaceholder != "" {
+			probeIdentityChanges = append(probeIdentityChanges,
+				"credentials IS DISTINCT FROM COALESCE(credentials, '{}'::jsonb) || "+credentialPlaceholder+"::jsonb")
+		}
+		if ollamaProxyIdentityChanged != "" {
+			probeIdentityChanges = append(probeIdentityChanges, ollamaProxyIdentityChanged)
+		}
+		if len(probeIdentityChanges) > 0 {
+			probeIdentityChanged := "(" + probeEligibleAccount + " AND (" + joinClauses(probeIdentityChanges, " OR ") + "))"
+			extraExpression = "CASE WHEN " + probeIdentityChanged + " THEN (" + extraExpression + ") - 'upstream_billing_probe' - 'upstream_billing_auto_unschedulable' ELSE " + extraExpression + " END"
+		}
+		// An explicit administrator scheduling edit, including a bulk edit,
+		// clears the upstream-balance auto-pause marker. A later probe may set it
+		// again only after observing another exhausted balance.
+		if updates.Schedulable != nil {
+			extraExpression = "((" + extraExpression + ") #- '{upstream_billing_probe,auto_unschedulable}') - '" + service.UpstreamBillingAutoUnschedulableExtraKey + "'"
 		}
 		if updates.EnsureCodexFingerprintSeed {
 			extraExpression = ensureCodexFingerprintSeedSQL(extraExpression)
@@ -2971,10 +3070,11 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 
 	whereClause := " WHERE id = ANY($" + itoa(idx) + ") AND deleted_at IS NULL"
 	args = append(args, pq.Array(ids))
-	idx++
 	if updates.ProbeEnabled != nil {
-		whereClause += " AND type = $" + itoa(idx)
-		args = append(args, service.AccountTypeAPIKey)
+		// Keep the SQL eligibility guard identical to the service-level identity
+		// check. This closes the race where an account changes platform between
+		// the preflight read and this bulk write.
+		whereClause += " AND ((type = 'apikey' AND platform IN (" + upstreamBillingProbePlatformsSQL + ")) OR (type = 'upstream' AND platform = 'antigravity'))"
 	}
 	query := "UPDATE accounts SET " + joinClauses(setClauses, ", ") + whereClause
 
@@ -3516,7 +3616,10 @@ func (r *accountRepository) ListDueUpstreamBillingProbeAccounts(ctx context.Cont
 			FROM accounts
 			WHERE deleted_at IS NULL
 				AND status = 'active'
-				AND type = 'apikey'
+				AND (
+					(type = 'apikey' AND platform IN (`+upstreamBillingProbePlatformsSQL+`))
+					OR (type = 'upstream' AND platform = 'antigravity')
+				)
 				AND extra @> '{"upstream_billing_probe_enabled": true}'::jsonb
 		), parsed AS MATERIALIZED (
 			SELECT

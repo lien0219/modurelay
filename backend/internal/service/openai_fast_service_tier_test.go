@@ -43,7 +43,7 @@ func TestValidateOpenAIServiceTierField(t *testing.T) {
 	})
 
 	t.Run("official tiers pass through", func(t *testing.T) {
-		for _, tier := range []string{"flex", "auto", "default", "scale"} {
+		for _, tier := range []string{"flex", "auto", "default", "scale", "ultrafast"} {
 			norm, err := ValidateOpenAIServiceTierField([]byte(`{"model":"gpt-5.5","service_tier":"` + tier + `"}`))
 			require.NoError(t, err, "tier %q must be accepted", tier)
 			require.Equal(t, tier, norm)
@@ -336,7 +336,6 @@ func TestOpenAIFastBilling_FastMultiplierOverridesEnforcedRatio(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestForwardAsChatCompletions_ServiceTierFastNormalizedToPriorityUpstream(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
@@ -373,7 +372,6 @@ func TestForwardAsChatCompletions_ServiceTierFastNormalizedToPriorityUpstream(t 
 }
 
 func TestForwardAsChatCompletions_ServiceTierPriorityPreservedUpstream(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
@@ -409,7 +407,6 @@ func TestForwardAsChatCompletions_ServiceTierPriorityPreservedUpstream(t *testin
 }
 
 func TestForward_ResponsesServiceTierFastNormalizedToPriorityUpstream(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
@@ -454,7 +451,6 @@ func TestForward_ResponsesServiceTierFastNormalizedToPriorityUpstream(t *testing
 }
 
 func TestForward_ResponsesServiceTierOmittedStaysOmitted(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
@@ -501,7 +497,6 @@ func TestForward_ResponsesServiceTierOmittedStaysOmitted(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestForwardStreaming_ServiceTierPropagatedToResult(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
@@ -553,7 +548,6 @@ func TestForwardStreaming_ServiceTierPropagatedToResult(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestForward_ResponsesKeepsOutboundAndObservedServiceTiersSeparate(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
@@ -599,7 +593,6 @@ func TestForward_ResponsesKeepsOutboundAndObservedServiceTiersSeparate(t *testin
 }
 
 func TestForwardStreaming_KeepsOutboundAndObservedServiceTiersSeparate(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
@@ -645,7 +638,6 @@ func TestForwardStreaming_KeepsOutboundAndObservedServiceTiersSeparate(t *testin
 }
 
 func TestForwardAsChatCompletions_KeepsOutboundAndObservedServiceTiersSeparate(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
@@ -697,7 +689,6 @@ func TestForwardAsChatCompletions_KeepsOutboundAndObservedServiceTiersSeparate(t
 // ---------------------------------------------------------------------------
 
 func TestForward_ServiceTierFilteredByPolicyBillsStandard(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
@@ -783,7 +774,6 @@ func TestResolvedOpenAIUpstreamServiceTier(t *testing.T) {
 	priority := func() *string { v := "priority"; return &v }()
 
 	t.Run("upstream echo stays separate from outbound tier", func(t *testing.T) {
-		gin.SetMode(gin.TestMode)
 		c, _ := gin.CreateTestContext(nil)
 		observer := beginUpstreamResponseModelObservation(c)
 		observer.ObserveOpenAI([]byte(`{"type":"response.completed","response":{"model":"gpt-5.5","service_tier":"default"}}`), "response.completed")
@@ -795,7 +785,6 @@ func TestResolvedOpenAIUpstreamServiceTier(t *testing.T) {
 	})
 
 	t.Run("no upstream echo falls back to outbound tier", func(t *testing.T) {
-		gin.SetMode(gin.TestMode)
 		c, _ := gin.CreateTestContext(nil)
 		beginUpstreamResponseModelObservation(c)
 
@@ -805,7 +794,6 @@ func TestResolvedOpenAIUpstreamServiceTier(t *testing.T) {
 	})
 
 	t.Run("observed tier never promotes an untiered request", func(t *testing.T) {
-		gin.SetMode(gin.TestMode)
 		c, _ := gin.CreateTestContext(nil)
 		observer := beginUpstreamResponseModelObservation(c)
 		observer.ObserveOpenAI([]byte(`{"type":"response.completed","response":{"model":"gpt-5.5","service_tier":"fast"}}`), "response.completed")

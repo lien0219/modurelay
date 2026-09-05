@@ -438,14 +438,22 @@ export default {
         accountSchedulingThresholdsRangeHint: 'Integer 1–100 (percent). OpenAI/Anthropic/Grok only.'
       },
       upstreamBillingProbe: {
-        title: 'Upstream Rate Auto Detection',
-        description: 'Periodically retrieve rates declared by upstream Sub2API sites. Account rates change only when the separate sync switch is enabled.',
+        title: 'Upstream Information Auto Detection',
+        description: 'Periodically retrieve declared rates and available balances from upstream sites. Account rates change only when the separate sync switch is enabled; a successful, valid zero-or-negative balance pauses scheduling until an administrator re-enables it.',
         enabled: 'Enable global auto detection',
         enabledHint: 'When enabled, scheduled detection runs only for accounts that also enable automatic detection. Disabling stops all scheduled detection; manual detection remains available.',
         intervalMinutes: 'Detection interval (minutes)',
         intervalHint: 'Range: 5–1440 minutes. A successful result remains valid for two detection intervals.',
-        saved: 'Upstream rate auto detection settings saved',
-        saveFailed: 'Failed to save upstream rate auto detection settings'
+        saved: 'Upstream information auto detection settings saved',
+        saveFailed: 'Failed to save upstream information auto detection settings'
+      },
+      downstreamBillingProbe: {
+        title: 'Downstream Rate Detection',
+        description: 'Control whether downstream clients holding this site\'s API keys can read their current billing rate.',
+        enabled: 'Allow downstream clients to detect this site\'s rates',
+        enabledHint: 'When disabled, the rate detection endpoint reports unsupported. Model forwarding, billing, and this site\'s upstream detection remain unchanged.',
+        saved: 'Downstream rate detection settings saved',
+        saveFailed: 'Failed to save downstream rate detection settings'
       },
       ollamaCloudUsage: {
         title: 'Ollama Cloud Usage Refresh',
@@ -1081,7 +1089,7 @@ export default {
       },
       openaiFastPolicy: {
         title: 'OpenAI Fast/Flex Policy',
-        description: 'Intercept, filter, or pass OpenAI fast(priority) / flex requests based on the request body service_tier field. Applies to the OpenAI gateway only.',
+        description: 'Intercept, filter, or pass OpenAI fast(priority), ultrafast, or flex requests based on the request body service_tier field. Applies to the OpenAI gateway only.',
         empty: 'No rules configured. Click the button below to add one.',
         ruleHeader: 'Rule #{index}',
         removeRule: 'Remove rule',
@@ -1090,6 +1098,7 @@ export default {
         serviceTier: 'service_tier match',
         tierAll: 'All tier values',
         tierPriority: 'priority (fast)',
+        tierUltrafast: 'ultrafast',
         tierFlex: 'flex',
         action: 'Action',
         actionPass: 'Pass (keep service_tier)',

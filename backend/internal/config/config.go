@@ -1877,6 +1877,9 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	cfg.OIDC.ValidateIDTokenExplicit = hasExplicitConfigOrEnv("oidc_connect.validate_id_token", "OIDC_CONNECT_VALIDATE_ID_TOKEN")
 	cfg.Dashboard.KeyPrefix = strings.TrimSpace(cfg.Dashboard.KeyPrefix)
 	cfg.CORS.AllowedOrigins = normalizeStringSlice(cfg.CORS.AllowedOrigins)
+	cfg.Security.URLAllowlist.UpstreamHosts = normalizeStringSlice(cfg.Security.URLAllowlist.UpstreamHosts)
+	cfg.Security.URLAllowlist.PricingHosts = normalizeStringSlice(cfg.Security.URLAllowlist.PricingHosts)
+	cfg.Security.URLAllowlist.CRSHosts = normalizeStringSlice(cfg.Security.URLAllowlist.CRSHosts)
 	cfg.Security.ResponseHeaders.AdditionalAllowed = normalizeStringSlice(cfg.Security.ResponseHeaders.AdditionalAllowed)
 	cfg.Security.ResponseHeaders.ForceRemove = normalizeStringSlice(cfg.Security.ResponseHeaders.ForceRemove)
 	cfg.Security.CSP.Policy = strings.TrimSpace(cfg.Security.CSP.Policy)
@@ -2046,7 +2049,11 @@ func setDefaults() {
 		"api.moonshot.ai",
 		"api.moonshot.cn",
 		"open.bigmodel.cn",
+		"api.z.ai",
+		"api.deepseek.com",
 		"api.minimaxi.com",
+		"api.x.ai",
+		"*.api.x.ai",
 		"generativelanguage.googleapis.com",
 		"cloudcode-pa.googleapis.com",
 		"*.openai.azure.com",

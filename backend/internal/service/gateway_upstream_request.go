@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -84,9 +85,9 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 		}
 	}
 
-	// 同步 billing header cc_version 与实际发送的 User-Agent 版本
-	if fingerprint != nil {
-		body = syncBillingHeaderVersion(body, fingerprint.UserAgent)
+	// Mimicry may override the cached User-Agent later, even without a fingerprint.
+	if billingUA := effectiveBillingUserAgent(tokenType, mimicClaudeCode, fingerprint); billingUA != "" {
+		body = syncBillingHeaderVersion(body, billingUA)
 	}
 
 	// === 计算最终 anthropic-beta header（先于 body sanitize 与 CCH 签名）===
@@ -901,9 +902,15 @@ func (s *GatewayService) buildCustomRelayURL(baseURL, path string, account *Acco
 }
 
 func (s *GatewayService) validateUpstreamBaseURL(raw string) (string, error) {
+	if s.cfg == nil {
+		return "", errors.New("config is not available")
+	}
 	if s.cfg != nil && !s.cfg.Security.URLAllowlist.Enabled {
 		normalized, err := urlvalidator.ValidateURLFormat(raw, s.cfg.Security.URLAllowlist.AllowInsecureHTTP)
 		if err != nil {
+			return "", fmt.Errorf("invalid base_url: %w", err)
+		}
+		if err := urlvalidator.RejectSameHTTPOrigin(normalized, s.cfg.Server.FrontendURL); err != nil {
 			return "", fmt.Errorf("invalid base_url: %w", err)
 		}
 		return normalized, nil
@@ -914,6 +921,9 @@ func (s *GatewayService) validateUpstreamBaseURL(raw string) (string, error) {
 		AllowPrivate:     s.cfg.Security.URLAllowlist.AllowPrivateHosts,
 	})
 	if err != nil {
+		return "", fmt.Errorf("invalid base_url: %w", err)
+	}
+	if err := urlvalidator.RejectSameHTTPOrigin(normalized, s.cfg.Server.FrontendURL); err != nil {
 		return "", fmt.Errorf("invalid base_url: %w", err)
 	}
 	return normalized, nil

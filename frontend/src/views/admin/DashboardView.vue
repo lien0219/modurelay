@@ -391,7 +391,12 @@ import { useBatchImageAccess } from '@/composables/useBatchImageAccess'
 import { usePrefersReducedMotion } from '@/composables/usePrefersReducedMotion'
 import { useDashboardReveal } from '@/composables/useDashboardReveal'
 import { getChartJsAnimation } from '@/utils/chartAnimation'
-import { getChartPalette, getChartThemeColors } from '@/utils/chartColors'
+import {
+  getChartSeriesStyle,
+  useChartPalette,
+  useChartThemeColors,
+  withChartAlpha
+} from '@/utils/chartColors'
 
 import {
   Chart as ChartJS,
@@ -482,9 +487,9 @@ const granularityOptions = computed(() => [
   { value: 'hour', label: t('admin.dashboard.hour') }
 ])
 
-// Dark mode detection
 // Chart colors stay aligned with the shared Indigo/Cyan/Slate palette.
-const chartColors = computed(() => getChartThemeColors())
+const chartColors = useChartThemeColors()
+const chartPalette = useChartPalette()
 
 // Line chart options (for user trend chart)
 const lineOptions = computed(() => ({
@@ -501,7 +506,6 @@ const lineOptions = computed(() => ({
       labels: {
         color: chartColors.value.text,
         usePointStyle: true,
-        pointStyle: 'circle',
         padding: 15,
         font: {
           size: 11
@@ -580,16 +584,23 @@ const userTrendChartData = computed(() => {
   })
 
   const sortedDates = Array.from(allDates).sort()
-  const colors = getChartPalette()
+  const colors = chartPalette.value
 
-  const datasets = Array.from(userGroups.values()).map((group, idx) => ({
-    label: group.name,
-    data: sortedDates.map((date) => group.data.get(date) || 0),
-    borderColor: colors[idx % colors.length],
-    backgroundColor: `${colors[idx % colors.length]}20`,
-    fill: false,
-    tension: 0.3
-  }))
+  const datasets = Array.from(userGroups.values()).map((group, idx) => {
+    const color = colors[idx % colors.length]
+    return {
+      label: group.name,
+      data: sortedDates.map((date) => group.data.get(date) || 0),
+      borderColor: color,
+      backgroundColor: withChartAlpha(color, 0.12),
+      fill: false,
+      tension: 0.3,
+      ...getChartSeriesStyle(idx),
+      pointRadius: 2.5,
+      pointHoverRadius: 5,
+      borderWidth: 2.5
+    }
+  })
 
   return {
     labels: sortedDates,

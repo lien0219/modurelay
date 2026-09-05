@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
@@ -14,20 +15,34 @@ import (
 const keyBillingInfoSchemaVersion = 1
 
 type keyBillingInfoResponse struct {
-	Object                  string    `json:"object"`
-	SchemaVersion           int       `json:"schema_version"`
-	BillingScope            string    `json:"billing_scope"`
-	GroupRateMultiplier     float64   `json:"group_rate_multiplier"`
-	UserRateMultiplier      *float64  `json:"user_rate_multiplier,omitempty"`
-	ResolvedRateMultiplier  float64   `json:"resolved_rate_multiplier"`
-	PeakRateEnabled         bool      `json:"peak_rate_enabled"`
-	PeakStart               *string   `json:"peak_start,omitempty"`
-	PeakEnd                 *string   `json:"peak_end,omitempty"`
-	PeakRateMultiplier      *float64  `json:"peak_rate_multiplier,omitempty"`
-	AppliedPeakMultiplier   *float64  `json:"applied_peak_multiplier,omitempty"`
-	EffectiveRateMultiplier float64   `json:"effective_rate_multiplier"`
-	Timezone                *string   `json:"timezone,omitempty"`
-	ObservedAt              time.Time `json:"observed_at"`
+	Object                  string                 `json:"object"`
+	SchemaVersion           int                    `json:"schema_version"`
+	BillingScope            string                 `json:"billing_scope"`
+	GroupRateMultiplier     float64                `json:"group_rate_multiplier"`
+	UserRateMultiplier      *float64               `json:"user_rate_multiplier,omitempty"`
+	ResolvedRateMultiplier  float64                `json:"resolved_rate_multiplier"`
+	PeakRateEnabled         bool                   `json:"peak_rate_enabled"`
+	PeakStart               *string                `json:"peak_start,omitempty"`
+	PeakEnd                 *string                `json:"peak_end,omitempty"`
+	PeakRateMultiplier      *float64               `json:"peak_rate_multiplier,omitempty"`
+	AppliedPeakMultiplier   *float64               `json:"applied_peak_multiplier,omitempty"`
+	EffectiveRateMultiplier float64                `json:"effective_rate_multiplier"`
+	Timezone                *string                `json:"timezone,omitempty"`
+	ObservedAt              time.Time              `json:"observed_at"`
+	Funding                 *keyBillingFundingInfo `json:"funding,omitempty"`
+}
+
+// keyBillingFundingInfo exposes only the effective monetary boundary for the
+// authenticated key. It intentionally excludes user, group, subscription and
+// credential identifiers.
+type keyBillingFundingInfo struct {
+	Mode      string   `json:"mode"`
+	Unit      string   `json:"unit"`
+	Balance   *float64 `json:"balance,omitempty"`
+	Remaining *float64 `json:"remaining,omitempty"`
+	Limit     *float64 `json:"limit,omitempty"`
+	Used      *float64 `json:"used,omitempty"`
+	Unlimited bool     `json:"unlimited,omitempty"`
 }
 
 // KeyBillingInfo returns the token billing multiplier effective for the authenticated API key.
@@ -40,6 +55,10 @@ func (h *GatewayHandler) KeyBillingInfo(c *gin.Context) {
 	}
 	if h.cfg != nil && h.cfg.RunMode == config.RunModeSimple {
 		h.errorResponse(c, http.StatusNotFound, "not_found_error", "Billing information is not supported in simple mode")
+		return
+	}
+	if h.settingService == nil || !h.settingService.IsDownstreamBillingProbeEnabled(c.Request.Context()) {
+		h.errorResponse(c, http.StatusNotFound, "not_found_error", "Billing information is not supported")
 		return
 	}
 	if apiKey.GroupID == nil {
@@ -57,8 +76,16 @@ func (h *GatewayHandler) KeyBillingInfo(c *gin.Context) {
 		return
 	}
 
+	now := timezone.Now()
+	billingInfo := buildKeyBillingInfo(apiKey, resolvedRate, now)
+	funding, err := h.buildKeyBillingFundingInfo(c, apiKey)
+	if err != nil {
+		h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "Billing information is temporarily unavailable")
+		return
+	}
+	billingInfo.Funding = funding
 	c.Header("Cache-Control", "no-store")
-	c.JSON(http.StatusOK, buildKeyBillingInfo(apiKey, resolvedRate, timezone.Now()))
+	c.JSON(http.StatusOK, billingInfo)
 }
 
 func (h *GatewayHandler) resolveKeyBillingRate(c *gin.Context, apiKey *service.APIKey) (float64, bool) {
@@ -105,4 +132,54 @@ func buildKeyBillingInfo(apiKey *service.APIKey, resolvedRate float64, now time.
 		response.Timezone = &tz
 	}
 	return response
+}
+
+func (h *GatewayHandler) buildKeyBillingFundingInfo(c *gin.Context, apiKey *service.APIKey) (*keyBillingFundingInfo, error) {
+	if apiKey == nil || h == nil || h.apiKeyService == nil {
+		return nil, nil
+	}
+	keyFunding, err := h.apiKeyService.GetAuthoritativeFundingState(c.Request.Context(), apiKey.ID)
+	if err != nil {
+		return nil, err
+	}
+	if keyFunding == nil {
+		return nil, service.ErrAPIKeyNotFound
+	}
+	if keyFunding.Quota > 0 {
+		remaining := max(0, keyFunding.Quota-keyFunding.QuotaUsed)
+		limit := keyFunding.Quota
+		used := keyFunding.QuotaUsed
+		return &keyBillingFundingInfo{
+			Mode:      "key_quota",
+			Unit:      "USD",
+			Remaining: &remaining,
+			Limit:     &limit,
+			Used:      &used,
+		}, nil
+	}
+
+	if keyFunding.Group != nil && keyFunding.Group.IsSubscriptionType() {
+		if keyFunding.Subscription == nil {
+			return nil, service.ErrSubscriptionNotFound
+		}
+		remaining := h.calculateSubscriptionRemaining(keyFunding.Group, keyFunding.Subscription)
+		funding := &keyBillingFundingInfo{Mode: "subscription", Unit: "USD"}
+		if remaining < 0 {
+			funding.Unlimited = true
+		} else {
+			funding.Remaining = &remaining
+		}
+		return funding, nil
+	}
+
+	if keyFunding.WalletBalance == nil {
+		return nil, errors.New("authoritative wallet balance is unavailable")
+	}
+	balance := *keyFunding.WalletBalance
+	return &keyBillingFundingInfo{
+		Mode:      "wallet",
+		Unit:      "USD",
+		Balance:   &balance,
+		Remaining: &balance,
+	}, nil
 }

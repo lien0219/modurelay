@@ -18,7 +18,11 @@ import type { ChartState } from '../types'
 import { formatHistoryLabel, sumNumbers } from '../utils/opsFormatters'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
-import { getChartThemeColors } from '@/utils/chartColors'
+import {
+  getChartSeriesStyle,
+  useChartThemeColors,
+  withChartAlpha
+} from '@/utils/chartColors'
 
 ChartJS.register(Title, Tooltip, Legend, LineElement, LinearScale, PointElement, CategoryScale, Filler)
 
@@ -35,13 +39,14 @@ const emit = defineEmits<{
 }>()
 const { t } = useI18n()
 
+const chartTheme = useChartThemeColors()
 const colors = computed(() => {
-  const theme = getChartThemeColors()
+  const theme = chartTheme.value
   return {
     danger: theme.danger,
-    dangerAlpha: `${theme.danger}20`,
+    dangerAlpha: withChartAlpha(theme.danger, 0.12),
     secondary: theme.secondary,
-    secondaryAlpha: `${theme.secondary}20`,
+    secondaryAlpha: withChartAlpha(theme.secondary, 0.12),
     neutral: theme.neutral,
     grid: theme.grid,
     text: theme.text,
@@ -77,6 +82,8 @@ const chartData = computed(() => {
         backgroundColor: colors.value.dangerAlpha,
         fill: true,
         tension: 0.35,
+        ...getChartSeriesStyle(0),
+        borderWidth: 2.5,
         pointRadius: 0,
         pointHitRadius: 10
       },
@@ -87,6 +94,8 @@ const chartData = computed(() => {
         backgroundColor: colors.value.secondaryAlpha,
         fill: true,
         tension: 0.35,
+        ...getChartSeriesStyle(1),
+        borderWidth: 2.5,
         pointRadius: 0,
         pointHitRadius: 10
       },
@@ -95,9 +104,10 @@ const chartData = computed(() => {
         data: props.points.map((p) => p.business_limited_count ?? 0),
         borderColor: colors.value.neutral,
         backgroundColor: 'transparent',
-        borderDash: [6, 6],
         fill: false,
         tension: 0.35,
+        ...getChartSeriesStyle(2),
+        borderWidth: 2.5,
         pointRadius: 0,
         pointHitRadius: 10
       }

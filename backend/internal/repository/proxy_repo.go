@@ -226,13 +226,15 @@ func invalidateProxyProbeSnapshots(ctx context.Context, exec sqlExecutor, proxyI
 		UPDATE accounts
 		SET extra = COALESCE(extra, '{}'::jsonb)
 				- 'upstream_billing_probe'
+				- 'upstream_billing_auto_unschedulable'
 				- 'ollama_cloud_usage_snapshot',
 			updated_at = NOW()
 		WHERE proxy_id = $1
-			AND type = 'apikey'
+			AND ((type = 'apikey' AND platform IN (`+upstreamBillingProbePlatformsSQL+`)) OR (type = 'upstream' AND platform = 'antigravity'))
 			AND (
 				(extra ? 'upstream_billing_probe'
 					AND extra -> 'upstream_billing_probe' <> 'null'::jsonb)
+				OR COALESCE(extra ->> 'upstream_billing_auto_unschedulable', 'false') = 'true'
 				OR (platform IN (`+ollamaCloudUsagePlatformsSQL+`)
 					AND extra ? 'ollama_cloud_usage_snapshot'
 					AND extra -> 'ollama_cloud_usage_snapshot' <> 'null'::jsonb)
@@ -746,8 +748,9 @@ func (r *proxyRepository) sweepOneExpiredProxyOnExec(ctx context.Context, exec s
 		rows, err = exec.QueryContext(ctx, `
 			UPDATE accounts SET proxy_id=NULL, proxy_fallback_origin_id=$1,
 				extra=CASE
-					WHEN type='apikey' AND extra ? 'upstream_billing_probe'
-					THEN extra - 'upstream_billing_probe'
+					WHEN ((type='apikey' AND platform IN (`+upstreamBillingProbePlatformsSQL+`)) OR (type='upstream' AND platform='antigravity'))
+						AND (extra ? 'upstream_billing_probe' OR COALESCE(extra ->> 'upstream_billing_auto_unschedulable', 'false') = 'true')
+					THEN extra - 'upstream_billing_probe' - 'upstream_billing_auto_unschedulable'
 					ELSE extra
 				END,
 				updated_at=NOW()
@@ -757,8 +760,9 @@ func (r *proxyRepository) sweepOneExpiredProxyOnExec(ctx context.Context, exec s
 		rows, err = exec.QueryContext(ctx, `
 			UPDATE accounts SET proxy_id=$2, proxy_fallback_origin_id=$1,
 				extra=CASE
-					WHEN type='apikey' AND extra ? 'upstream_billing_probe'
-					THEN extra - 'upstream_billing_probe'
+					WHEN ((type='apikey' AND platform IN (`+upstreamBillingProbePlatformsSQL+`)) OR (type='upstream' AND platform='antigravity'))
+						AND (extra ? 'upstream_billing_probe' OR COALESCE(extra ->> 'upstream_billing_auto_unschedulable', 'false') = 'true')
+					THEN extra - 'upstream_billing_probe' - 'upstream_billing_auto_unschedulable'
 					ELSE extra
 				END,
 				updated_at=NOW()

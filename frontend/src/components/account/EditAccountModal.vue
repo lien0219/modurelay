@@ -1543,6 +1543,12 @@
         <ProxySelector v-model="form.proxy_id" :proxies="proxies" />
       </div>
 
+      <UpstreamRequestIdHeaderField
+        v-model="upstreamRequestIdHeader"
+        :platform="account.platform"
+        :type="account.type"
+      />
+
       <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <div>
           <label class="input-label">{{ t('admin.accounts.concurrency') }}</label>
@@ -1588,7 +1594,7 @@
             }}
           </p>
           <div
-            v-if="account?.type === 'apikey'"
+            v-if="isUpstreamBillingProbeAccount"
             class="mt-3 flex items-center justify-between gap-3"
           >
             <div class="min-w-0">
@@ -1606,6 +1612,110 @@
               @update:model-value="handleUpstreamBillingRateSyncChange"
             />
           </div>
+        </div>
+      </div>
+      <div
+        v-if="isConfirmedNewAPIUpstream"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+        data-testid="new-api-upstream-group-field"
+      >
+        <Select
+          id="new-api-upstream-group"
+          v-model="editNewAPIUpstreamGroup"
+          :label="t('admin.accounts.upstreamBilling.newAPIGroup')"
+          :options="newAPIUpstreamGroupOptions"
+          :placeholder="t('admin.accounts.upstreamBilling.newAPIGroupPlaceholder')"
+          :empty-text="t('admin.accounts.upstreamBilling.newAPIGroupEmpty')"
+          :disabled="newAPIGroupsProbeFailed && !editNewAPIUpstreamGroup"
+          :error="newAPIGroupSelectionInvalid"
+          described-by="new-api-upstream-group-hint"
+          clearable
+          data-testid="new-api-upstream-group-select"
+        />
+        <p
+          id="new-api-upstream-group-hint"
+          class="input-hint"
+          :class="newAPIGroupSelectionInvalid || newAPIGroupsProbeFailed ? 'text-red-600 dark:text-red-400' : ''"
+          aria-live="polite"
+        >
+          {{ t(newAPIUpstreamGroupHintKey) }}
+        </p>
+      </div>
+      <div
+        v-if="isConfirmedNewAPIUpstream"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+        data-testid="new-api-wallet-probe-field"
+      >
+        <div class="flex items-center justify-between gap-3">
+          <div class="min-w-0">
+            <label class="input-label mb-0" for="new-api-user-access-token">
+              {{ t('admin.accounts.upstreamBilling.newAPIWalletProbe') }}
+            </label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.upstreamBilling.newAPIWalletProbeHint') }}
+            </p>
+          </div>
+          <Toggle
+            :model-value="newAPIWalletProbeEnabled"
+            :aria-label="t('admin.accounts.upstreamBilling.newAPIWalletProbe')"
+            data-testid="new-api-wallet-probe-toggle"
+            @update:model-value="newAPIWalletProbeEnabled = $event"
+          />
+        </div>
+        <div v-if="newAPIWalletProbeEnabled" class="mt-4">
+          <label class="input-label" for="new-api-user-access-token">
+            {{ t('admin.accounts.upstreamBilling.newAPIUserAccessToken') }}
+          </label>
+          <input
+            id="new-api-user-access-token"
+            v-model="editNewAPIUserAccessToken"
+            type="password"
+            class="input font-mono"
+            :class="newAPIUserAccessTokenMissing ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20' : ''"
+            autocomplete="new-password"
+            data-1p-ignore
+            data-lpignore="true"
+            data-bwignore="true"
+            :aria-invalid="newAPIUserAccessTokenMissing"
+            aria-describedby="new-api-user-access-token-hint"
+            :placeholder="t('admin.accounts.upstreamBilling.newAPIUserAccessTokenPlaceholder')"
+            data-testid="new-api-user-access-token-input"
+          />
+          <p
+            id="new-api-user-access-token-hint"
+            class="input-hint"
+            :class="newAPIUserAccessTokenMissing ? 'text-red-600 dark:text-red-400' : ''"
+            aria-live="polite"
+          >
+            {{ t(newAPIUserAccessTokenHintKey) }}
+          </p>
+          <label class="input-label mt-4" for="new-api-user-id">
+            {{ t('admin.accounts.upstreamBilling.newAPIUserID') }}
+          </label>
+          <input
+            id="new-api-user-id"
+            v-model.trim="editNewAPIUserID"
+            type="text"
+            inputmode="numeric"
+            pattern="[0-9]*"
+            autocomplete="off"
+            class="input font-mono"
+            :class="newAPIUserIDInvalid ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20' : ''"
+            :aria-invalid="newAPIUserIDInvalid"
+            aria-describedby="new-api-user-id-hint"
+            :placeholder="t('admin.accounts.upstreamBilling.newAPIUserIDPlaceholder')"
+            data-testid="new-api-user-id-input"
+          />
+          <p
+            id="new-api-user-id-hint"
+            class="input-hint"
+            :class="newAPIUserIDInvalid ? 'text-red-600 dark:text-red-400' : ''"
+            aria-live="polite"
+          >
+            {{ t(newAPIUserIDInvalid
+              ? 'admin.accounts.upstreamBilling.newAPIUserIDInvalid'
+              : 'admin.accounts.upstreamBilling.newAPIUserIDHint') }}
+          </p>
         </div>
       </div>
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
@@ -1743,8 +1853,8 @@
         v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token' || account?.type === 'apikey')"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
-        <div class="flex items-center justify-between">
-          <div>
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div class="min-w-0">
             <label class="input-label mb-0">{{ t('admin.accounts.openai.wsMode') }}</label>
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
               {{ t('admin.accounts.openai.wsModeDesc') }}
@@ -1753,7 +1863,7 @@
               {{ t(openAIWSModeConcurrencyHintKey) }}
             </p>
           </div>
-          <div class="w-52">
+          <div class="w-full sm:w-52 sm:flex-shrink-0">
             <Select v-model="openaiResponsesWebSocketV2Mode" data-testid="edit-openai-ws-mode-select" :options="openAIWSModeOptions" />
           </div>
         </div>
@@ -1815,8 +1925,39 @@
         </div>
       </div>
 
+      <!-- OpenAI APIKey images: backfill b64_json from url -->
       <div
-        v-if="account?.type === 'apikey'"
+        v-if="account?.platform === 'openai' && account?.type === 'apikey'"
+        class="flex items-center justify-between gap-4 border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div>
+          <label class="input-label mb-0">{{ t('admin.accounts.openai.imagesUrlToB64Json') }}</label>
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            {{ t('admin.accounts.openai.imagesUrlToB64JsonDesc') }}
+          </p>
+        </div>
+        <button
+          type="button"
+          data-testid="openai-images-url-to-b64-json-toggle"
+          role="switch"
+          :aria-checked="openAIImagesUrlToB64JsonEnabled"
+          @click="openAIImagesUrlToB64JsonEnabled = !openAIImagesUrlToB64JsonEnabled"
+          :class="[
+            'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+            openAIImagesUrlToB64JsonEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+          ]"
+        >
+          <span
+            :class="[
+              'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+              openAIImagesUrlToB64JsonEnabled ? 'translate-x-5' : 'translate-x-0'
+            ]"
+          />
+        </button>
+      </div>
+
+      <div
+        v-if="isUpstreamBillingProbeAccount"
         class="flex items-center justify-between gap-4 border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <div>
@@ -2887,6 +3028,7 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
+import UpstreamRequestIdHeaderField from '@/components/account/UpstreamRequestIdHeaderField.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
@@ -3005,6 +3147,13 @@ interface TempUnschedRuleForm {
 const submitting = ref(false)
 const editBaseUrl = ref('https://api.anthropic.com')
 const editApiKey = ref('')
+const editNewAPIUpstreamGroup = ref<string | null>(null)
+const initialNewAPIUpstreamGroup = ref<string | null>(null)
+const editNewAPIUserAccessToken = ref('')
+const editNewAPIUserID = ref('')
+const initialNewAPIUserID = ref('')
+const newAPIWalletProbeEnabled = ref(false)
+const initialNewAPIWalletProbeEnabled = ref(false)
 
 // ── 国产供应商（Kimi / Zhipu / DeepSeek）account_mode / api_protocol 编辑 ──
 // account_mode 决定额度/余额监控路径，api_protocol 决定转发端点与格式；
@@ -3016,6 +3165,74 @@ const isCNApiKeyAccount = computed(
       props.account.platform === 'zhipu' ||
       props.account.platform === 'deepseek')
 )
+const isUpstreamBillingProbeAccount = computed(() => {
+  const account = props.account
+  return Boolean(
+    account &&
+    (account.type === 'apikey' ||
+      (account.type === 'upstream' && account.platform === 'antigravity'))
+  )
+})
+const newAPIProbeData = computed(() => props.account?.extra?.upstream_billing_probe?.data)
+const isConfirmedNewAPIUpstream = computed(() => newAPIProbeData.value?.provider === 'new_api')
+const newAPIAvailableGroups = computed(() => {
+  const groups = newAPIProbeData.value?.available_groups
+  if (!Array.isArray(groups)) return []
+  return groups.filter(group => (
+    group &&
+    typeof group.name === 'string' &&
+    group.name.length > 0 &&
+    typeof group.rate_multiplier === 'number' &&
+    Number.isFinite(group.rate_multiplier) &&
+    group.rate_multiplier >= 0
+  ))
+})
+const newAPIGroupSelectionInvalid = computed(() => (
+  Boolean(editNewAPIUpstreamGroup.value) &&
+  !newAPIAvailableGroups.value.some(group => group.name === editNewAPIUpstreamGroup.value)
+))
+const newAPIGroupsProbeFailed = computed(() => newAPIProbeData.value?.groups_status === 'failed')
+const newAPIUpstreamGroupOptions = computed<Array<{ value: string; label: string; disabled?: boolean }>>(() => {
+  const options: Array<{ value: string; label: string; disabled?: boolean }> = newAPIAvailableGroups.value.map(group => ({
+    value: group.name,
+    label: `${group.name} (${group.rate_multiplier.toLocaleString(undefined, { maximumFractionDigits: 4 })}x)`
+  }))
+  if (editNewAPIUpstreamGroup.value && newAPIGroupSelectionInvalid.value) {
+    options.unshift({
+      value: editNewAPIUpstreamGroup.value,
+      label: t('admin.accounts.upstreamBilling.newAPIGroupUnavailableOption', {
+        name: editNewAPIUpstreamGroup.value
+      }),
+      disabled: true
+    })
+  }
+  return options
+})
+const newAPIUpstreamGroupHintKey = computed(() => {
+  if (newAPIGroupsProbeFailed.value) return 'admin.accounts.upstreamBilling.newAPIGroupsProbeFailed'
+  if (newAPIGroupSelectionInvalid.value) return 'admin.accounts.upstreamBilling.newAPIGroupUnavailable'
+  return 'admin.accounts.upstreamBilling.newAPIGroupHint'
+})
+const newAPIUserAccessTokenMissing = computed(() => (
+  newAPIWalletProbeEnabled.value &&
+  !initialNewAPIWalletProbeEnabled.value &&
+  editNewAPIUserAccessToken.value.trim() === ''
+))
+const newAPIUserAccessTokenHintKey = computed(() => {
+  if (newAPIUserAccessTokenMissing.value) {
+    return 'admin.accounts.upstreamBilling.newAPIUserAccessTokenRequired'
+  }
+  if (initialNewAPIWalletProbeEnabled.value) {
+    return 'admin.accounts.upstreamBilling.newAPIUserAccessTokenConfiguredHint'
+  }
+  return 'admin.accounts.upstreamBilling.newAPIUserAccessTokenHint'
+})
+const newAPIUserIDInvalid = computed(() => {
+  const value = editNewAPIUserID.value.trim()
+  if (value === '') return false
+  const parsed = Number(value)
+  return !Number.isSafeInteger(parsed) || parsed <= 0 || parsed > 2147483647
+})
 // CnBaseUrlPresets 的 platform prop 是平台字面量联合类型，模板里不能写
 // `as` 断言（其中的 `|` 会被 eslint 误判为 Vue2 filter 语法），经此 computed 传递。
 const cnPresetPlatform = computed<'kimi' | 'zhipu' | 'deepseek'>(() => {
@@ -3207,6 +3424,12 @@ const autoResetCredit7dThreshold = ref(100)
 const upstreamBillingAutoProbeEnabled = ref(false)
 const upstreamBillingRateSyncEnabled = ref(false)
 const mixedScheduling = ref(false) // For antigravity accounts: enable mixed scheduling
+// 上游ID：直接上游声明请求标识的响应头名，留空不记录。
+const upstreamRequestIdHeader = ref('')
+const readUpstreamRequestIdHeader = (extra: unknown): string => {
+  const value = (extra as Record<string, unknown> | undefined)?.upstream_request_id_header
+  return typeof value === 'string' ? value : ''
+}
 const allowOverages = ref(false) // For antigravity accounts: enable AI Credits overages
 const antigravityProjectId = ref('')
 const antigravityModelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
@@ -3269,6 +3492,8 @@ const openAILongContextBillingEnabled = ref(false)
 const editPlanType = ref<string>('')
 const openAICompactMode = ref<OpenAICompactMode>('auto')
 const openAIResponsesMode = ref<OpenAIResponsesMode>('auto')
+// Images 非流式响应缺 b64_json 时由网关下载 url 回填（仅 OpenAI API Key）。
+const openAIImagesUrlToB64JsonEnabled = ref(false)
 const openAIEndpointCapabilities = ref<OpenAIEndpointCapability[]>(['chat_completions', 'embeddings'])
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
@@ -3728,6 +3953,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
 	const extra = newAccount.extra as Record<string, unknown> | undefined
 	mixedScheduling.value = extra?.mixed_scheduling === true
 	allowOverages.value = extra?.allow_overages === true
+	upstreamRequestIdHeader.value = readUpstreamRequestIdHeader(extra)
+	openAIImagesUrlToB64JsonEnabled.value = extra?.images_url_to_b64_json === true
 	autoPause5hThreshold.value = typeof extra?.auto_pause_5h_threshold === 'number' ? extra.auto_pause_5h_threshold * 100 : null
 	autoPause7dThreshold.value = typeof extra?.auto_pause_7d_threshold === 'number' ? extra.auto_pause_7d_threshold * 100 : null
 	autoPause5hDisabled.value = extra?.auto_pause_5h_disabled === true
@@ -3737,9 +3964,28 @@ const syncFormFromAccount = (newAccount: Account | null) => {
 		typeof extra?.auto_reset_credit_5h_threshold === 'number' ? extra.auto_reset_credit_5h_threshold * 100 : 100
 	autoResetCredit7dThreshold.value =
 		typeof extra?.auto_reset_credit_7d_threshold === 'number' ? extra.auto_reset_credit_7d_threshold * 100 : 100
-	upstreamBillingAutoProbeEnabled.value = extra?.upstream_billing_probe_enabled === true
+	upstreamBillingAutoProbeEnabled.value = extra?.upstream_billing_probe_enabled !== false
   upstreamBillingRateSyncEnabled.value =
     upstreamBillingAutoProbeEnabled.value && extra?.upstream_billing_rate_sync_enabled === true
+	const configuredNewAPIGroup = newAccount.credentials?.upstream_billing_new_api_group
+	editNewAPIUpstreamGroup.value = typeof configuredNewAPIGroup === 'string' && configuredNewAPIGroup
+		? configuredNewAPIGroup
+		: null
+	initialNewAPIUpstreamGroup.value = editNewAPIUpstreamGroup.value
+	editNewAPIUserAccessToken.value = ''
+	const hasNewAPIUserAccessToken =
+		newAccount.credentials_status?.has_upstream_billing_new_api_user_access_token ??
+		Boolean(newAccount.credentials?.upstream_billing_new_api_user_access_token)
+	newAPIWalletProbeEnabled.value = hasNewAPIUserAccessToken
+	initialNewAPIWalletProbeEnabled.value = hasNewAPIUserAccessToken
+	const configuredNewAPIUserID = newAccount.credentials?.upstream_billing_new_api_user_id
+	const normalizedNewAPIUserID = typeof configuredNewAPIUserID === 'number'
+		? configuredNewAPIUserID
+		: Number(configuredNewAPIUserID)
+	editNewAPIUserID.value = Number.isSafeInteger(normalizedNewAPIUserID) && normalizedNewAPIUserID > 0
+		? String(normalizedNewAPIUserID)
+		: ''
+	initialNewAPIUserID.value = editNewAPIUserID.value
 
   // Load OpenAI passthrough toggle (OpenAI OAuth/SetupToken/API Key)
   openaiPassthroughEnabled.value = false
@@ -4180,7 +4426,14 @@ const syncAntigravityUpstreamModels = async () => {
       }
     }
 
-    if (result.warnings?.some((warning) => warning.code === 'upstream_model_metadata_incomplete')) {
+    const warnings = result.warnings ?? []
+    const hasPartialMetadata = warnings.some(
+      (warning) => warning.code === 'upstream_model_metadata_partial'
+    )
+    const hasIncompleteMetadata = warnings.some(
+      (warning) => warning.code === 'upstream_model_metadata_incomplete'
+    )
+    if (hasIncompleteMetadata) {
       appStore.showWarning(t('admin.accounts.syncUpstreamModelsMetadataIncomplete'))
       return
     }
@@ -4188,6 +4441,9 @@ const syncAntigravityUpstreamModels = async () => {
       appStore.showSuccess(t('admin.accounts.syncUpstreamModelsSuccess', { count: addedCount, total: upstreamModels.length }))
     } else {
       appStore.showInfo(t('admin.accounts.syncUpstreamModelsNoChanges', { count: upstreamModels.length }))
+    }
+    if (hasPartialMetadata) {
+      appStore.showWarning(t('admin.accounts.syncUpstreamModelsMetadataPartial'))
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : t('admin.accounts.syncUpstreamModelsFailed')
@@ -4638,6 +4894,22 @@ const handleSubmit = async () => {
     appStore.showError(t('admin.accounts.pleaseSelectStatus'))
     return
   }
+	if (isConfirmedNewAPIUpstream.value && newAPIUserAccessTokenMissing.value) {
+		appStore.showError(t('admin.accounts.upstreamBilling.newAPIUserAccessTokenRequired'))
+		return
+	}
+	if (isConfirmedNewAPIUpstream.value && newAPIWalletProbeEnabled.value && newAPIUserIDInvalid.value) {
+		appStore.showError(t('admin.accounts.upstreamBilling.newAPIUserIDInvalid'))
+		return
+	}
+	if (
+		isConfirmedNewAPIUpstream.value &&
+		editNewAPIUpstreamGroup.value !== initialNewAPIUpstreamGroup.value &&
+		newAPIGroupSelectionInvalid.value
+	) {
+		appStore.showError(t('admin.accounts.upstreamBilling.newAPIGroupUnavailable'))
+		return
+	}
 	if (autoResetCreditEnabled.value) {
 		const thresholds = [autoResetCredit5hThreshold.value, autoResetCredit7dThreshold.value]
 		if (thresholds.some((value) => !Number.isFinite(value) || value < 0.1 || value > 100)) {
@@ -4661,13 +4933,37 @@ const handleSubmit = async () => {
       updatePayload.load_factor = 0
     }
     updatePayload.auto_pause_on_expired = autoPauseOnExpired.value
-    if (props.account.type === 'apikey') {
+    if (isUpstreamBillingProbeAccount.value) {
       updatePayload.upstream_billing_probe_enabled = upstreamBillingAutoProbeEnabled.value
       updatePayload.upstream_billing_rate_sync_enabled = upstreamBillingRateSyncEnabled.value
       if (upstreamBillingRateSyncEnabled.value) {
         delete updatePayload.rate_multiplier
       }
     }
+		if (
+			isConfirmedNewAPIUpstream.value &&
+			editNewAPIUpstreamGroup.value !== initialNewAPIUpstreamGroup.value
+		) {
+			updatePayload.upstream_billing_new_api_group = editNewAPIUpstreamGroup.value || ''
+		}
+		if (isConfirmedNewAPIUpstream.value) {
+			const newAPIUserAccessToken = editNewAPIUserAccessToken.value.trim()
+			if (newAPIWalletProbeEnabled.value && newAPIUserAccessToken) {
+				updatePayload.upstream_billing_new_api_user_access_token = newAPIUserAccessToken
+			} else if (!newAPIWalletProbeEnabled.value && initialNewAPIWalletProbeEnabled.value) {
+				updatePayload.upstream_billing_new_api_user_access_token = ''
+			}
+			if (!newAPIWalletProbeEnabled.value && initialNewAPIUserID.value) {
+				updatePayload.upstream_billing_new_api_user_id = 0
+			} else if (
+				newAPIWalletProbeEnabled.value &&
+				editNewAPIUserID.value.trim() !== initialNewAPIUserID.value
+			) {
+				updatePayload.upstream_billing_new_api_user_id = editNewAPIUserID.value.trim() === ''
+					? 0
+					: Number(editNewAPIUserID.value)
+			}
+		}
 
     // For apikey type, handle credentials update
     if (props.account.type === 'apikey') {
@@ -4680,6 +4976,9 @@ const handleSubmit = async () => {
         ...currentCredentials,
         base_url: newBaseUrl
       }
+		delete newCredentials.upstream_billing_new_api_group
+		delete newCredentials.upstream_billing_new_api_user_access_token
+		delete newCredentials.upstream_billing_new_api_user_id
 
       // 国产供应商：模式与协议写入凭据（决定额度/余额探测与转发端点/格式）。
       if (isCNApiKeyAccount.value) {
@@ -5201,6 +5500,11 @@ const handleSubmit = async () => {
         } else {
           newExtra.openai_responses_mode = openAIResponsesMode.value
         }
+        if (openAIImagesUrlToB64JsonEnabled.value) {
+          newExtra.images_url_to_b64_json = true
+        } else {
+          delete newExtra.images_url_to_b64_json
+        }
 		}
 		if (autoPause5hThreshold.value != null && autoPause5hThreshold.value > 0) {
 			newExtra.auto_pause_5h_threshold = autoPause5hThreshold.value / 100
@@ -5334,6 +5638,19 @@ const handleSubmit = async () => {
       }
       // Quota notify config
       writeQuotaNotifyToExtra(newExtra, 'update')
+      updatePayload.extra = newExtra
+    }
+
+    // 上游ID头名只在改动时写回 extra，避免用弹窗打开时的快照覆盖运行态键。
+    const nextUpstreamRequestIdHeader = upstreamRequestIdHeader.value.trim()
+    if (nextUpstreamRequestIdHeader !== readUpstreamRequestIdHeader(props.account.extra)) {
+      const currentExtra = (updatePayload.extra as Record<string, unknown>) || (props.account.extra as Record<string, unknown>) || {}
+      const newExtra: Record<string, unknown> = { ...currentExtra }
+      if (nextUpstreamRequestIdHeader) {
+        newExtra.upstream_request_id_header = nextUpstreamRequestIdHeader
+      } else {
+        delete newExtra.upstream_request_id_header
+      }
       updatePayload.extra = newExtra
     }
 

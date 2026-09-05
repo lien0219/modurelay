@@ -155,6 +155,52 @@ func TestProbeSnapshotSyncsRateOnlyForSuccessfulEnabledAccount(t *testing.T) {
 	require.Equal(t, syncedRate, *got.RateMultiplier)
 }
 
+func TestProbeSnapshotAtomicallyAutoPausesExhaustedBalance(t *testing.T) {
+	ctx := context.Background()
+	tx := testEntTx(t)
+	repo := newAccountRepositoryWithSQL(tx.Client(), tx, nil)
+	account := mustCreateAccount(t, tx.Client(), &service.Account{
+		Name:        "probe-zero-balance-auto-pause",
+		Platform:    service.PlatformOpenAI,
+		Type:        service.AccountTypeAPIKey,
+		Status:      service.StatusActive,
+		Schedulable: true,
+		Credentials: map[string]any{"api_key": "sk-test"},
+		Extra:       map[string]any{service.UpstreamBillingProbeEnabledExtraKey: true},
+	})
+	loaded, err := repo.GetByID(ctx, account.ID)
+	require.NoError(t, err)
+	now := time.Now().UTC()
+	snapshot := &service.UpstreamBillingProbeSnapshot{
+		Status:            service.UpstreamBillingProbeStatusOK,
+		LastAttemptAt:     now,
+		AutoUnschedulable: true,
+		Balance: &service.UpstreamBalanceProbeSnapshot{
+			Status:        service.UpstreamBillingProbeStatusOK,
+			LastAttemptAt: now,
+			Data:          map[string]any{"mode": "wallet", "unit": "USD", "balance": float64(0)},
+		},
+	}
+
+	require.NoError(t, repo.UpdateUpstreamBillingProbeSnapshot(ctx, loaded, snapshot, nil))
+	paused, err := repo.GetByID(ctx, account.ID)
+	require.NoError(t, err)
+	require.False(t, paused.Schedulable)
+	require.Equal(t, true, paused.Extra[service.UpstreamBillingAutoUnschedulableExtraKey])
+	persisted, ok := paused.Extra[service.UpstreamBillingProbeExtraKey].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, true, persisted["auto_unschedulable"])
+
+	require.NoError(t, repo.SetSchedulable(ctx, account.ID, true))
+	resumed, err := repo.GetByID(ctx, account.ID)
+	require.NoError(t, err)
+	require.True(t, resumed.Schedulable)
+	require.NotContains(t, resumed.Extra, service.UpstreamBillingAutoUnschedulableExtraKey)
+	persisted, ok = resumed.Extra[service.UpstreamBillingProbeExtraKey].(map[string]any)
+	require.True(t, ok)
+	require.NotContains(t, persisted, "auto_unschedulable")
+}
+
 func TestAccountUpdatePreservesConcurrentProbeEnableFlag(t *testing.T) {
 	ctx := context.Background()
 	tx := testEntTx(t)

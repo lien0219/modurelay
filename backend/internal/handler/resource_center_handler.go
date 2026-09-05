@@ -18,6 +18,15 @@ func NewResourceCenterHandler(svc *service.ResourceCenterService) *ResourceCente
 	return &ResourceCenterHandler{service: svc}
 }
 
+// SetOnUpdateCallback forwards public resource-center setting updates to the
+// server's shared settings cache invalidation callback.
+func (h *ResourceCenterHandler) SetOnUpdateCallback(callback func()) {
+	if h == nil || h.service == nil {
+		return
+	}
+	h.service.SetOnUpdateCallback(callback)
+}
+
 type resourcePostRequest struct {
 	CategoryID int64  `json:"category_id" binding:"required"`
 	Title      string `json:"title"`

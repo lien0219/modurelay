@@ -151,7 +151,8 @@ func TestUpdateAccount_EmptyExtraPayloadCanClearQuotaLimits(t *testing.T) {
 	require.NotContains(t, repo.account.Extra, "quota_limit")
 	require.NotContains(t, repo.account.Extra, "quota_daily_limit")
 	require.NotContains(t, repo.account.Extra, "quota_weekly_limit")
-	require.Len(t, repo.account.Extra, 0)
+	require.Equal(t, true, repo.account.Extra[UpstreamBillingProbeEnabledExtraKey])
+	require.Len(t, repo.account.Extra, 1, "managed probe enrollment remains while configurable quota keys are cleared")
 }
 
 func TestUpdateAccount_FixedWeeklyResetClearsLegacyRollingUsage(t *testing.T) {

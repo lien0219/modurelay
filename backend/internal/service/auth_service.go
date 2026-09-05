@@ -1844,10 +1844,20 @@ func (s *AuthService) RefreshTokenPair(ctx context.Context, refreshToken string)
 		}
 	}
 
-	// Token轮转：立即使旧Token失效
-	if err := s.refreshTokenCache.DeleteRefreshToken(ctx, tokenHash); err != nil {
-		logger.LegacyPrintf("service.auth", "[Auth] Failed to delete old refresh token: %v", err)
-		// 继续处理，不影响主流程
+	// Token rotation must be single-use even when refresh requests overlap.
+	consumer, ok := s.refreshTokenCache.(RefreshTokenConsumer)
+	if !ok {
+		logger.LegacyPrintf("service.auth", "[Auth] Refresh token cache does not support atomic consumption")
+		return nil, ErrServiceUnavailable
+	}
+	consumed, err := consumer.ConsumeRefreshToken(ctx, tokenHash)
+	if err != nil {
+		logger.LegacyPrintf("service.auth", "[Auth] Failed to consume old refresh token: %v", err)
+		return nil, ErrServiceUnavailable
+	}
+	if !consumed {
+		logger.LegacyPrintf("service.auth", "[Auth] Refresh token was already consumed, possible reuse attack")
+		return nil, ErrRefreshTokenReused
 	}
 
 	// 生成新的Token对，保持同一个家族ID

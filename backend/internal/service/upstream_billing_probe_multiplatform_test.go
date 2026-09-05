@@ -21,15 +21,18 @@ func TestUpstreamBillingProbeIdentityCoversAllAPIKeyPlatforms(t *testing.T) {
 		require.True(t, IsUpstreamBillingProbeIdentity(platform, AccountTypeAPIKey), platform)
 		require.True(t, isUpstreamBillingProbeAccount(&Account{Platform: platform, Type: AccountTypeAPIKey}), platform)
 	}
+	require.True(t, IsUpstreamBillingProbeIdentity(PlatformAntigravity, AccountTypeUpstream))
+	require.True(t, isUpstreamBillingProbeAccount(&Account{Platform: PlatformAntigravity, Type: AccountTypeUpstream}))
 	require.False(t, IsUpstreamBillingProbeIdentity(PlatformOpenAI, AccountTypeOAuth))
 	require.False(t, IsUpstreamBillingProbeIdentity(PlatformGrok, AccountTypeOAuth))
 	require.False(t, IsUpstreamBillingProbeIdentity(PlatformAnthropic, AccountTypeBedrock))
+	require.False(t, IsUpstreamBillingProbeIdentity(PlatformOpenAI, AccountTypeUpstream))
 	require.False(t, IsUpstreamBillingProbeIdentity("", AccountTypeAPIKey))
 	require.False(t, IsUpstreamBillingProbeIdentity("future-platform", AccountTypeAPIKey))
 	require.False(t, isUpstreamBillingProbeAccount(nil))
 }
 
-func TestBuildUpstreamBillingRateSnapshotItemsPreservesAllAPIKeyPlatforms(t *testing.T) {
+func TestBuildUpstreamBillingRateSnapshotItemsPreservesAllEligiblePlatforms(t *testing.T) {
 	makeAccount := func(id int64, platform, accountType string, snapshot any) Account {
 		return Account{
 			ID:       id,
@@ -54,11 +57,19 @@ func TestBuildUpstreamBillingRateSnapshotItemsPreservesAllAPIKeyPlatforms(t *tes
 		makeAccount(4, PlatformOpenAI, AccountTypeOAuth, map[string]any{
 			"status": "ok",
 		}),
+		makeAccount(5, PlatformAntigravity, AccountTypeUpstream, map[string]any{
+			"status": "ok",
+		}),
 	}
+	rate := 0.75
+	accounts[0].RateMultiplier = &rate
 
 	items := BuildUpstreamBillingRateSnapshotItems(accounts)
 	require.Len(t, items, len(accounts))
 	require.Equal(t, int64(1), items[0].AccountID)
+	require.False(t, items[0].Schedulable)
+	require.Equal(t, 0.75, items[0].RateMultiplier)
+	require.Equal(t, 1.0, items[1].RateMultiplier)
 	require.NotNil(t, items[0].Snapshot)
 	require.NotNil(t, items[1].Snapshot)
 	require.NotNil(t, items[2].Snapshot)
@@ -66,6 +77,53 @@ func TestBuildUpstreamBillingRateSnapshotItemsPreservesAllAPIKeyPlatforms(t *tes
 	require.Equal(t, 0.047, items[1].Snapshot.Data["effective_rate_multiplier"])
 	require.Equal(t, UpstreamBillingProbeStatusFailed, items[2].Snapshot.Status)
 	require.Nil(t, items[3].Snapshot)
+	require.NotNil(t, items[4].Snapshot)
+}
+
+func TestBuildUpstreamBillingRateSnapshotItemsNormalizesAutoPauseFromDurableMarker(t *testing.T) {
+	accounts := []Account{
+		{
+			ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Schedulable: true,
+			Extra: map[string]any{
+				UpstreamBillingProbeExtraKey: map[string]any{
+					"status": UpstreamBillingProbeStatusOK, "auto_unschedulable": true,
+				},
+			},
+		},
+		{
+			ID: 2, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Schedulable: false,
+			Extra: map[string]any{
+				UpstreamBillingProbeExtraKey: map[string]any{
+					"status": UpstreamBillingProbeStatusOK, "auto_unschedulable": false,
+				},
+				UpstreamBillingAutoUnschedulableExtraKey: true,
+			},
+		},
+	}
+
+	items := BuildUpstreamBillingRateSnapshotItems(accounts)
+
+	require.Len(t, items, 2)
+	require.True(t, items[0].Schedulable)
+	require.False(t, items[0].AutoUnschedulable)
+	require.False(t, items[0].Snapshot.AutoUnschedulable)
+	require.False(t, items[1].Schedulable)
+	require.True(t, items[1].AutoUnschedulable)
+	require.True(t, items[1].Snapshot.AutoUnschedulable)
+}
+
+func TestBuildUpstreamBillingRateSnapshotItemsPreservesAutoPauseWithoutValidSnapshot(t *testing.T) {
+	items := BuildUpstreamBillingRateSnapshotItems([]Account{{
+		ID: 9, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Schedulable: false,
+		Extra: map[string]any{
+			UpstreamBillingProbeExtraKey:             map[string]any{"status": "malformed"},
+			UpstreamBillingAutoUnschedulableExtraKey: true,
+		},
+	}})
+
+	require.Len(t, items, 1)
+	require.Nil(t, items[0].Snapshot)
+	require.True(t, items[0].AutoUnschedulable)
 }
 
 func upstreamBillingProbeValidBody() io.ReadCloser {
@@ -77,7 +135,8 @@ func upstreamBillingProbeValidBody() io.ReadCloser {
 		"resolved_rate_multiplier":0.02,
 		"peak_rate_enabled":false,
 		"effective_rate_multiplier":0.02,
-		"observed_at":"2026-07-26T01:00:00Z"
+		"observed_at":"2026-07-26T01:00:00Z",
+		"funding":{"mode":"wallet","unit":"USD","balance":8.25,"remaining":8.25}
 	}`))
 }
 
@@ -147,6 +206,8 @@ func TestUpstreamBillingProbeOfficialAPIBaseURLIsUnsupportedWithoutRequest(t *te
 		baseURL  string
 	}{
 		{PlatformAnthropic, "https://api.anthropic.com"},
+		{PlatformOpenAI, "https://api.openai.com"},
+		{PlatformOpenAI, "https://tenant.openai.azure.com/openai/v1"},
 		{PlatformAnthropic, "https://api.anthropic.com:443"},
 		{PlatformAnthropic, "https://api.anthropic.com./"},
 		{PlatformAnthropic, "HTTPS://API.ANTHROPIC.COM/"},
@@ -166,9 +227,11 @@ func TestUpstreamBillingProbeOfficialAPIBaseURLIsUnsupportedWithoutRequest(t *te
 		{PlatformAnthropic, "https://www.ollama.com/v1"},
 		// 国产供应商官方域（含各协议端点）同样是官方 API，创建即开探测也不发请求。
 		{PlatformKimi, "https://api.moonshot.cn/v1"},
+		{PlatformKimi, "https://api.moonshot.ai/v1"},
 		{PlatformKimi, "https://api.moonshot.cn/anthropic"},
 		{PlatformKimi, "https://api.kimi.com/coding"},
 		{PlatformZhipu, "https://open.bigmodel.cn/api/paas/v4"},
+		{PlatformZhipu, "https://api.z.ai/api/paas/v4"},
 		{PlatformZhipu, "https://open.bigmodel.cn/api/anthropic"},
 		{PlatformDeepseek, "https://api.deepseek.com"},
 		{PlatformDeepseek, "https://api.deepseek.com/anthropic"},
@@ -201,8 +264,9 @@ func TestUpstreamBillingProbeOfficialAPIHostMatchingIsNormalized(t *testing.T) {
 	require.True(t, upstreamBillingProbeTargetIsOfficialAPI("https://us-west-2.api.x.ai/v1"))
 	require.True(t, upstreamBillingProbeTargetIsOfficialAPI("https://generativelanguage.googleapis.com."))
 	require.True(t, upstreamBillingProbeTargetIsOfficialAPI("https://x.ai"))
-	// openai 官方域在全集内；openai 平台账号不经过本判定（行为级测试钉死照探）。
+	// OpenAI 官方域也直接短路，避免自动探测向不存在的官方路径持续外呼。
 	require.True(t, upstreamBillingProbeTargetIsOfficialAPI("https://api.openai.com"))
+	require.True(t, upstreamBillingProbeTargetIsOfficialAPI("https://tenant.openai.azure.com/openai/v1"))
 	// Ollama Cloud 官方域及其子域（Ollama Cloud 账号的 base_url 允许带 www.）。
 	require.True(t, upstreamBillingProbeTargetIsOfficialAPI("https://ollama.com/v1"))
 	require.True(t, upstreamBillingProbeTargetIsOfficialAPI("https://ollama.com:443/v1"))
@@ -210,8 +274,10 @@ func TestUpstreamBillingProbeOfficialAPIHostMatchingIsNormalized(t *testing.T) {
 	require.True(t, upstreamBillingProbeTargetIsOfficialAPI("HTTPS://OLLAMA.COM./v1"))
 	// 国产供应商官方域及子域。
 	require.True(t, upstreamBillingProbeTargetIsOfficialAPI("https://api.moonshot.cn/v1"))
+	require.True(t, upstreamBillingProbeTargetIsOfficialAPI("https://api.moonshot.ai/v1"))
 	require.True(t, upstreamBillingProbeTargetIsOfficialAPI("https://api.kimi.com/coding/v1"))
 	require.True(t, upstreamBillingProbeTargetIsOfficialAPI("https://open.bigmodel.cn/api/anthropic"))
+	require.True(t, upstreamBillingProbeTargetIsOfficialAPI("https://api.z.ai/api/paas/v4"))
 	require.True(t, upstreamBillingProbeTargetIsOfficialAPI("https://api.deepseek.com/anthropic"))
 	// 相似但不同的注册域不拦：中转完全可能叫 *-x.ai 之外的任何名字。
 	require.False(t, upstreamBillingProbeTargetIsOfficialAPI("https://relay.example/v1"))
@@ -228,8 +294,7 @@ func TestUpstreamBillingProbeOfficialAPIHostMatchingIsNormalized(t *testing.T) {
 	require.False(t, upstreamBillingProbeTargetIsOfficialAPI("https://deepseek.example.com"))
 }
 
-// OpenAI 语义保持不变：无自定义 base 时仍探官方域，且沿用 openai 传输画像。
-func TestUpstreamBillingProbeOpenAIDefaultBaseURLPreserved(t *testing.T) {
+func TestUpstreamBillingProbeOpenAIDefaultBaseURLIsUnsupportedWithoutRequest(t *testing.T) {
 	account := &Account{
 		ID:          17,
 		Platform:    PlatformOpenAI,
@@ -238,17 +303,41 @@ func TestUpstreamBillingProbeOpenAIDefaultBaseURLPreserved(t *testing.T) {
 		Credentials: map[string]any{"api_key": "sk-openai"},
 	}
 	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: account}}
+	upstream := &httpUpstreamRecorder{}
+	svc := newUpstreamBillingProbeTestService(repo, upstream, &upstreamBillingProbeSettingRepo{})
+
+	snapshot, err := svc.ProbeAccount(context.Background(), account.ID)
+	require.NoError(t, err)
+	require.Equal(t, UpstreamBillingProbeStatusUnsupported, snapshot.Status)
+	require.Nil(t, upstream.lastReq)
+}
+
+func TestUpstreamBillingProbeLegacyAntigravityUpstreamUsesBaseURLAndAPIKey(t *testing.T) {
+	account := &Account{
+		ID:          153,
+		Platform:    PlatformAntigravity,
+		Type:        AccountTypeUpstream,
+		Status:      StatusActive,
+		Concurrency: 1,
+		Credentials: map[string]any{"api_key": "sk-antigravity-upstream", "base_url": "https://relay.example/v1"},
+	}
+	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: account}}
 	upstream := &httpUpstreamRecorder{resp: &http.Response{
 		StatusCode: http.StatusOK,
 		Header:     http.Header{"Content-Type": []string{"application/json"}},
 		Body:       upstreamBillingProbeValidBody(),
 	}}
 	svc := newUpstreamBillingProbeTestService(repo, upstream, &upstreamBillingProbeSettingRepo{})
+	svc.now = func() time.Time { return time.Date(2026, time.July, 26, 2, 0, 0, 0, time.UTC) }
 
-	_, err := svc.ProbeAccount(context.Background(), account.ID)
+	snapshot, err := svc.ProbeAccount(context.Background(), account.ID)
+
 	require.NoError(t, err)
-	require.Equal(t, "https://api.openai.com/v1/sub2api/billing", upstream.lastReq.URL.String())
-	require.Equal(t, HTTPUpstreamProfileOpenAI, HTTPUpstreamProfileFromContext(upstream.lastReq.Context()))
+	require.NotNil(t, snapshot)
+	require.Equal(t, "https://relay.example/v1/sub2api/billing", upstream.lastReq.URL.String())
+	require.Equal(t, "Bearer sk-antigravity-upstream", upstream.lastReq.Header.Get("Authorization"))
+	require.Equal(t, UpstreamBillingProbeStatusOK, snapshot.Status)
+	require.NotNil(t, snapshot.Balance)
 }
 
 func TestUpstreamBillingProbeSetAccountEnabledAcceptsGrokAPIKey(t *testing.T) {

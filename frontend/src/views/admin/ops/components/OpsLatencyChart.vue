@@ -7,7 +7,7 @@ import type { OpsLatencyHistogramResponse } from '@/api/admin/ops'
 import type { ChartState } from '../types'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
-import { getChartThemeColors } from '@/utils/chartColors'
+import { useChartThemeColors } from '@/utils/chartColors'
 
 ChartJS.register(BarElement, CategoryScale, LinearScale, Tooltip, Legend)
 
@@ -19,10 +19,7 @@ interface Props {
 const props = defineProps<Props>()
 const { t } = useI18n()
 
-const colors = computed(() => {
-  const theme = getChartThemeColors()
-  return { primary: theme.primary, grid: theme.grid, text: theme.text }
-})
+const colors = useChartThemeColors()
 
 const hasData = computed(() => (props.latencyData?.total_requests ?? 0) > 0)
 

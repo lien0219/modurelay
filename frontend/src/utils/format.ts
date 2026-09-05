@@ -64,7 +64,8 @@ export function formatCurrency(amount: number | null | undefined, currency: stri
   const locale = getLocale()
 
   // For very small amounts, show more decimals
-  const fractionDigits = amount > 0 && amount < 0.01 ? 6 : 2
+  const absoluteAmount = Math.abs(amount)
+  const fractionDigits = absoluteAmount > 0 && absoluteAmount < 0.01 ? 6 : 2
 
   return new Intl.NumberFormat(locale, {
     style: 'currency',

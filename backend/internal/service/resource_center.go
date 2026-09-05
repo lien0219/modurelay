@@ -136,10 +136,21 @@ type ResourceCenterService struct {
 	client      *dbent.Client
 	userRepo    UserRepository
 	settingRepo SettingRepository
+	onUpdate    func() // Callback when public resource-center settings change
 }
 
 func NewResourceCenterService(client *dbent.Client, userRepo UserRepository, settingRepo SettingRepository) *ResourceCenterService {
 	return &ResourceCenterService{client: client, userRepo: userRepo, settingRepo: settingRepo}
+}
+
+// SetOnUpdateCallback sets a callback invoked after resource-center settings
+// are persisted. The embedded frontend uses this to invalidate injected
+// public-settings HTML.
+func (s *ResourceCenterService) SetOnUpdateCallback(callback func()) {
+	if s == nil {
+		return
+	}
+	s.onUpdate = callback
 }
 
 func (s *ResourceCenterService) Config(ctx context.Context) (ResourceCenterConfig, error) {
@@ -170,11 +181,17 @@ func (s *ResourceCenterService) UpdateConfig(ctx context.Context, cfg ResourceCe
 	if err != nil {
 		return err
 	}
-	return s.settingRepo.SetMultiple(ctx, map[string]string{
+	if err := s.settingRepo.SetMultiple(ctx, map[string]string{
 		SettingKeyResourceCenterEnabled:     fmt.Sprintf("%t", cfg.Enabled),
 		SettingKeyResourceCenterForbidURLs:  fmt.Sprintf("%t", cfg.ForbidURLs),
 		SettingKeyResourceCenterBannedWords: string(words),
-	})
+	}); err != nil {
+		return err
+	}
+	if s.onUpdate != nil {
+		s.onUpdate()
+	}
+	return nil
 }
 
 func (s *ResourceCenterService) ensureEnabled(ctx context.Context) error {

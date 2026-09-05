@@ -1,9 +1,10 @@
 /* Keep the fixed-width account dropdown readable for long email addresses. */
-header.glass .dropdown.glass-popover.w-56 {
+.app-header .dropdown.glass-popover.w-56 {
   width: min(16rem, calc(100vw - 1rem));
 }
 
-header.glass .dropdown.glass-popover.w-56 > .border-b:first-child > div:last-child {
+.app-header .dropdown.glass-popover.w-56 .user-menu-email {
+  min-width: 0;
   max-width: 100%;
   overflow-wrap: anywhere;
 }

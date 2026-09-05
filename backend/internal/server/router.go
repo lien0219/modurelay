@@ -70,23 +70,41 @@ func SetupRouter(
 	}))
 	r.Use(middleware2.ServerTiming(cfg.Server.EnableServerTiming))
 
+	bindPublicSettingsUpdate := func(callback func()) {
+		if handlers != nil && handlers.Activity != nil {
+			handlers.Activity.SetOnUpdateCallback(callback)
+		}
+		if handlers != nil && handlers.ResourceCenter != nil {
+			handlers.ResourceCenter.SetOnUpdateCallback(callback)
+		}
+		if handlers != nil && handlers.Admin != nil && handlers.Admin.Payment != nil {
+			handlers.Admin.Payment.SetOnUpdateCallback(callback)
+		}
+	}
+
 	// Serve embedded frontend with settings injection if available
 	if web.HasEmbeddedFrontend() {
 		frontendServer, err := web.NewFrontendServer(settingService) //nolint:staticcheck // SA4023: the !embed stub always errors; embed builds can return nil
 		if err != nil {                                              //nolint:staticcheck // SA4023: see above
 			log.Printf("Warning: Failed to create frontend server with settings injection: %v, using legacy mode", err)
+			onSettingsUpdate := refreshFrameOrigins
+			settingService.SetOnUpdateCallback(onSettingsUpdate)
+			bindPublicSettingsUpdate(onSettingsUpdate)
 			r.Use(web.ServeEmbeddedFrontend())
-			settingService.SetOnUpdateCallback(refreshFrameOrigins)
 		} else {
 			// Register combined callback: invalidate HTML cache + refresh frame origins
-			settingService.SetOnUpdateCallback(func() {
+			onSettingsUpdate := func() {
 				frontendServer.InvalidateCache()
 				refreshFrameOrigins()
-			})
+			}
+			settingService.SetOnUpdateCallback(onSettingsUpdate)
+			bindPublicSettingsUpdate(onSettingsUpdate)
 			r.Use(frontendServer.Middleware())
 		}
 	} else {
-		settingService.SetOnUpdateCallback(refreshFrameOrigins)
+		onSettingsUpdate := refreshFrameOrigins
+		settingService.SetOnUpdateCallback(onSettingsUpdate)
+		bindPublicSettingsUpdate(onSettingsUpdate)
 	}
 
 	// 注册路由

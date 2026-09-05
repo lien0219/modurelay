@@ -527,6 +527,10 @@ const (
 	// for probing remote Sub2API API-key billing metadata.
 	SettingKeyUpstreamBillingProbeSettings = "upstream_billing_probe_settings"
 
+	// SettingKeyDownstreamBillingProbeEnabled controls whether authenticated downstream
+	// API keys may read their effective billing multiplier from /v1/sub2api/billing.
+	SettingKeyDownstreamBillingProbeEnabled = "downstream_billing_probe_enabled"
+
 	// SettingKeyOllamaCloudUsageSettings stores the opt-in global runner switch and interval.
 	SettingKeyOllamaCloudUsageSettings = "ollama_cloud_usage_settings"
 

@@ -158,10 +158,11 @@ func TestDuplicateAccountCopiesConfigurationAndResetsRuntimeState(t *testing.T) 
 	require.Equal(t, source.GroupIDs, duplicate.GroupIDs)
 	require.Equal(t, source.Credentials, duplicate.Credentials)
 	require.Equal(t, map[string]any{
-		"config":         map[string]any{"region": "us-east-1"},
-		"items":          []any{map[string]any{"enabled": true}},
-		"quota_limit":    float64(1000),
-		"codex_cli_only": true,
+		"config":                            map[string]any{"region": "us-east-1"},
+		"items":                             []any{map[string]any{"enabled": true}},
+		"quota_limit":                       float64(1000),
+		"codex_cli_only":                    true,
+		UpstreamBillingProbeEnabledExtraKey: true,
 	}, duplicate.Extra)
 	require.NotContains(t, duplicate.Extra, UpstreamBillingRateSyncEnabledExtraKey)
 	require.NotNil(t, duplicate.ExpiresAt)

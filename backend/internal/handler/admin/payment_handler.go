@@ -25,6 +25,15 @@ func NewPaymentHandler(paymentService *service.PaymentService, configService *se
 	}
 }
 
+// SetOnUpdateCallback forwards public payment setting updates to the server's
+// shared settings cache invalidation callback.
+func (h *PaymentHandler) SetOnUpdateCallback(callback func()) {
+	if h == nil || h.configService == nil {
+		return
+	}
+	h.configService.SetOnUpdateCallback(callback)
+}
+
 // --- Dashboard ---
 
 // GetDashboard returns payment dashboard statistics.

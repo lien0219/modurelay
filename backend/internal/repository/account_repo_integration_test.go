@@ -804,7 +804,11 @@ func (s *AccountRepoSuite) TestListSchedulableByGroupIDAndPlatform() {
 }
 
 func (s *AccountRepoSuite) TestSetSchedulable() {
-	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-sched", Schedulable: true})
+	account := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:        "acc-sched",
+		Schedulable: true,
+		Extra:       map[string]any{service.UpstreamBillingAutoUnschedulableExtraKey: true},
+	})
 	cacheRecorder := &schedulerCacheRecorder{}
 	s.repo.schedulerCache = cacheRecorder
 
@@ -813,8 +817,28 @@ func (s *AccountRepoSuite) TestSetSchedulable() {
 	got, err := s.repo.GetByID(s.ctx, account.ID)
 	s.Require().NoError(err)
 	s.Require().False(got.Schedulable)
+	s.Require().NotContains(got.Extra, service.UpstreamBillingAutoUnschedulableExtraKey)
 	s.Require().Len(cacheRecorder.setAccounts, 1)
 	s.Require().Equal(account.ID, cacheRecorder.setAccounts[0].ID)
+}
+
+func (s *AccountRepoSuite) TestBulkUpdateSchedulableClearsUpstreamBillingAutoPause() {
+	account := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:        "acc-bulk-sched",
+		Schedulable: false,
+		Extra:       map[string]any{service.UpstreamBillingAutoUnschedulableExtraKey: true},
+	})
+	enabled := true
+	rows, err := s.repo.BulkUpdate(s.ctx, []int64{account.ID}, service.AccountBulkUpdate{
+		Schedulable: &enabled,
+	})
+	s.Require().NoError(err)
+	s.Require().Equal(int64(1), rows)
+
+	got, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	s.Require().True(got.Schedulable)
+	s.Require().NotContains(got.Extra, service.UpstreamBillingAutoUnschedulableExtraKey)
 }
 
 func (s *AccountRepoSuite) TestBulkUpdate_SyncSchedulerSnapshotOnDisabled() {

@@ -34,7 +34,13 @@ import {
 import { Line } from 'vue-chartjs'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import type { DailyPaymentStats } from '@/types/payment'
-import { getChartPalette, getChartThemeColors } from '@/utils/chartColors'
+import { getChartJsAnimation } from '@/utils/chartAnimation'
+import {
+  getChartSeriesStyle,
+  useChartPalette,
+  useChartThemeColors,
+  withChartAlpha
+} from '@/utils/chartColors'
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, Filler)
 
@@ -45,7 +51,8 @@ const props = defineProps<{
   loading?: boolean
 }>()
 
-const colors = getChartPalette().map((color) => [color, `${color}20`])
+const chartPalette = useChartPalette()
+const chartTheme = useChartThemeColors()
 
 const chartData = computed(() => {
   if (!props.data || props.data.length === 0) return null
@@ -54,14 +61,16 @@ const chartData = computed(() => {
     labels: props.data.map(d => d.date),
     datasets: [
       ...currencies.map((currency, index) => {
-        const [borderColor, backgroundColor] = colors[index % colors.length]
+        const borderColor = chartPalette.value[index % chartPalette.value.length]
         return {
           label: `${currency} ${t('payment.admin.revenue')}`,
           data: props.data.map(day => day.amount[currency] || 0),
           borderColor,
-          backgroundColor,
+          backgroundColor: withChartAlpha(borderColor, 0.12),
           fill: true,
           tension: 0.3,
+          ...getChartSeriesStyle(index),
+          borderWidth: 2.5,
           pointRadius: 3,
           pointHoverRadius: 5,
         }
@@ -69,10 +78,15 @@ const chartData = computed(() => {
       {
         label: t('payment.admin.orderCount'),
         data: props.data.map(d => d.count),
-        borderColor: getChartThemeColors().success,
-        backgroundColor: `${getChartThemeColors().success}20`,
+        borderColor: chartPalette.value[currencies.length % chartPalette.value.length],
+        backgroundColor: withChartAlpha(
+          chartPalette.value[currencies.length % chartPalette.value.length],
+          0.12
+        ),
         fill: false,
         tension: 0.3,
+        ...getChartSeriesStyle(currencies.length),
+        borderWidth: 2.5,
         pointRadius: 3,
         pointHoverRadius: 5,
         yAxisID: 'y1',
@@ -81,27 +95,41 @@ const chartData = computed(() => {
   }
 })
 
-const chartOptions = {
+const chartOptions = computed(() => ({
   responsive: true,
   maintainAspectRatio: false,
+  animation: getChartJsAnimation(),
   interaction: { mode: 'index' as const, intersect: false },
   scales: {
     y: {
       type: 'linear' as const,
       display: true,
       position: 'left' as const,
-      title: { display: true, text: t('payment.admin.revenue') },
+      grid: { color: chartTheme.value.grid },
+      ticks: { color: chartTheme.value.text },
+      title: { display: true, text: t('payment.admin.revenue'), color: chartTheme.value.text },
     },
     y1: {
       type: 'linear' as const,
       display: true,
       position: 'right' as const,
-      title: { display: true, text: t('payment.admin.orderCount') },
+      ticks: { color: chartTheme.value.text },
+      title: { display: true, text: t('payment.admin.orderCount'), color: chartTheme.value.text },
       grid: { drawOnChartArea: false },
     }
   },
   plugins: {
-    legend: { position: 'top' as const },
+    legend: {
+      position: 'top' as const,
+      labels: { color: chartTheme.value.text, usePointStyle: true }
+    },
+    tooltip: {
+      backgroundColor: chartTheme.value.surfaceRaised,
+      titleColor: chartTheme.value.text,
+      bodyColor: chartTheme.value.text,
+      borderColor: chartTheme.value.grid,
+      borderWidth: 1
+    }
   }
-}
+}))
 </script>

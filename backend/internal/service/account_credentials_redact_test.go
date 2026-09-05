@@ -10,10 +10,11 @@ import (
 
 func TestMergePreservingSensitiveCreds_PreservesSensitiveWhenIncomingMissing(t *testing.T) {
 	existing := map[string]any{
-		"refresh_token": "rt-old",
-		"access_token":  "at-old",
-		"api_key":       "sk-old",
-		"base_url":      "https://old.example.com",
+		"refresh_token":                    "rt-old",
+		"access_token":                     "at-old",
+		"api_key":                          "sk-old",
+		NewAPIUserAccessTokenCredentialKey: "new-api-pat-old",
+		"base_url":                         "https://old.example.com",
 	}
 	incoming := map[string]any{
 		"base_url":      "https://new.example.com",
@@ -25,6 +26,7 @@ func TestMergePreservingSensitiveCreds_PreservesSensitiveWhenIncomingMissing(t *
 	require.Equal(t, "rt-old", out["refresh_token"], "incoming 没传 refresh_token，应保留 existing")
 	require.Equal(t, "at-old", out["access_token"])
 	require.Equal(t, "sk-old", out["api_key"])
+	require.Equal(t, "new-api-pat-old", out[NewAPIUserAccessTokenCredentialKey])
 	require.Equal(t, "https://new.example.com", out["base_url"], "非敏感键由 incoming 决定")
 	require.Equal(t, map[string]any{"foo": "bar"}, out["model_mapping"])
 }
@@ -84,6 +86,7 @@ func TestIsSensitiveCredentialKey(t *testing.T) {
 	require.True(t, IsSensitiveCredentialKey("refresh_token"))
 	require.True(t, IsSensitiveCredentialKey("api_key"))
 	require.True(t, IsSensitiveCredentialKey("private_key"))
+	require.True(t, IsSensitiveCredentialKey(NewAPIUserAccessTokenCredentialKey))
 	require.False(t, IsSensitiveCredentialKey("base_url"))
 	require.False(t, IsSensitiveCredentialKey(""))
 	require.False(t, IsSensitiveCredentialKey("model_mapping"))

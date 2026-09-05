@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -25,6 +26,39 @@ type keyBillingUserGroupRateRepo struct {
 	lookupCalls int
 }
 
+type keyBillingSettingRepo struct {
+	service.SettingRepository
+	values map[string]string
+}
+
+type keyBillingAPIKeyRepo struct {
+	service.APIKeyRepository
+	apiKey *service.APIKey
+	err    error
+}
+
+type keyBillingSubscriptionRepo struct {
+	service.UserSubscriptionRepository
+	subscription *service.UserSubscription
+	err          error
+}
+
+func (r *keyBillingAPIKeyRepo) GetByID(_ context.Context, _ int64) (*service.APIKey, error) {
+	return r.apiKey, r.err
+}
+
+func (r *keyBillingSubscriptionRepo) GetActiveByUserIDAndGroupID(_ context.Context, _, _ int64) (*service.UserSubscription, error) {
+	return r.subscription, r.err
+}
+
+func (r *keyBillingSettingRepo) GetValue(_ context.Context, key string) (string, error) {
+	value, ok := r.values[key]
+	if !ok {
+		return "", service.ErrSettingNotFound
+	}
+	return value, nil
+}
+
 func (r *keyBillingUserGroupRateRepo) GetByUserAndGroup(_ context.Context, userID, groupID int64) (*float64, error) {
 	r.gotUserID = userID
 	r.gotGroupID = groupID
@@ -36,7 +70,32 @@ func newKeyBillingHandler(repo service.UserGroupRateRepository) *GatewayHandler 
 	return &GatewayHandler{
 		gatewayService:       newKeyBillingGatewayService(repo),
 		openAIGatewayService: newKeyBillingOpenAIGatewayService(repo),
+		settingService: service.NewSettingService(
+			&keyBillingSettingRepo{},
+			&config.Config{},
+		),
 	}
+}
+
+func setAuthoritativeKeyFunding(
+	handler *GatewayHandler,
+	apiKey *service.APIKey,
+	subscriptionRepo service.UserSubscriptionRepository,
+) {
+	handler.apiKeyService = service.NewAPIKeyService(
+		&keyBillingAPIKeyRepo{apiKey: apiKey},
+		nil, nil, subscriptionRepo, nil, nil, nil,
+	)
+}
+
+func newKeyBillingSettingService(enabled bool) *service.SettingService {
+	value := "false"
+	if enabled {
+		value = "true"
+	}
+	return service.NewSettingService(&keyBillingSettingRepo{values: map[string]string{
+		service.SettingKeyDownstreamBillingProbeEnabled: value,
+	}}, &config.Config{})
 }
 
 func newKeyBillingGatewayService(repo service.UserGroupRateRepository) *service.GatewayService {
@@ -108,6 +167,137 @@ func TestGatewayHandlerKeyBillingInfoUsesGroupRate(t *testing.T) {
 	require.NotContains(t, fields, "timezone")
 	require.NotContains(t, w.Body.String(), apiKey.Key)
 	require.NotContains(t, w.Body.String(), apiKey.Group.Name)
+}
+
+func TestGatewayHandlerKeyBillingInfoReturnsSanitizedFunding(t *testing.T) {
+	groupID := int64(7)
+
+	t.Run("wallet", func(t *testing.T) {
+		apiKey := &service.APIKey{
+			UserID:  11,
+			GroupID: &groupID,
+			Group:   &service.Group{ID: groupID, RateMultiplier: 1},
+			User:    &service.User{ID: 11, Balance: 42.25},
+			Key:     "sk-sensitive-wallet",
+		}
+		c, w := newKeyBillingContext(apiKey)
+		handler := newKeyBillingHandler(nil)
+		setAuthoritativeKeyFunding(handler, apiKey, nil)
+
+		handler.KeyBillingInfo(c)
+
+		require.Equal(t, http.StatusOK, w.Code)
+		var got keyBillingInfoResponse
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
+		require.NotNil(t, got.Funding)
+		require.Equal(t, "wallet", got.Funding.Mode)
+		require.Equal(t, "USD", got.Funding.Unit)
+		require.Equal(t, 42.25, *got.Funding.Balance)
+		require.Equal(t, 42.25, *got.Funding.Remaining)
+		require.NotContains(t, w.Body.String(), apiKey.Key)
+	})
+
+	t.Run("wallet rejects stale cached balance when authoritative read fails", func(t *testing.T) {
+		apiKey := &service.APIKey{
+			UserID:  11,
+			GroupID: &groupID,
+			Group:   &service.Group{ID: groupID, RateMultiplier: 1},
+			User:    &service.User{ID: 11, Balance: 0},
+		}
+		c, w := newKeyBillingContext(apiKey)
+		handler := newKeyBillingHandler(nil)
+		handler.apiKeyService = service.NewAPIKeyService(
+			&keyBillingAPIKeyRepo{err: errors.New("database unavailable")},
+			nil, nil, nil, nil, nil, nil,
+		)
+
+		handler.KeyBillingInfo(c)
+
+		require.Equal(t, http.StatusServiceUnavailable, w.Code)
+		require.Contains(t, w.Body.String(), "Billing information is temporarily unavailable")
+		require.NotContains(t, w.Body.String(), "database unavailable")
+	})
+
+	t.Run("key quota takes precedence", func(t *testing.T) {
+		apiKey := &service.APIKey{
+			UserID:    11,
+			GroupID:   &groupID,
+			Group:     &service.Group{ID: groupID, RateMultiplier: 1},
+			User:      &service.User{ID: 11, Balance: 999},
+			Quota:     100,
+			QuotaUsed: 25,
+		}
+		c, w := newKeyBillingContext(apiKey)
+
+		handler := newKeyBillingHandler(nil)
+		setAuthoritativeKeyFunding(handler, &service.APIKey{Quota: 100, QuotaUsed: 100}, nil)
+		handler.KeyBillingInfo(c)
+
+		require.Equal(t, http.StatusOK, w.Code)
+		var got keyBillingInfoResponse
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
+		require.NotNil(t, got.Funding)
+		require.Equal(t, "key_quota", got.Funding.Mode)
+		require.Nil(t, got.Funding.Balance)
+		require.Equal(t, 0.0, *got.Funding.Remaining)
+		require.Equal(t, 100.0, *got.Funding.Limit)
+		require.Equal(t, 100.0, *got.Funding.Used)
+	})
+
+	t.Run("key quota rejects stale cached values when authoritative read fails", func(t *testing.T) {
+		apiKey := &service.APIKey{
+			ID:        17,
+			UserID:    11,
+			GroupID:   &groupID,
+			Group:     &service.Group{ID: groupID, RateMultiplier: 1},
+			Quota:     100,
+			QuotaUsed: 0,
+		}
+		c, w := newKeyBillingContext(apiKey)
+		handler := newKeyBillingHandler(nil)
+		handler.apiKeyService = service.NewAPIKeyService(
+			&keyBillingAPIKeyRepo{err: errors.New("database unavailable")},
+			nil, nil, nil, nil, nil, nil,
+		)
+
+		handler.KeyBillingInfo(c)
+
+		require.Equal(t, http.StatusServiceUnavailable, w.Code)
+		require.Contains(t, w.Body.String(), "Billing information is temporarily unavailable")
+		require.NotContains(t, w.Body.String(), "database unavailable")
+	})
+
+	t.Run("subscription", func(t *testing.T) {
+		dailyLimit := 20.0
+		cachedAPIKey := &service.APIKey{
+			UserID:  11,
+			GroupID: &groupID,
+			Group:   &service.Group{ID: groupID, RateMultiplier: 1},
+		}
+		authoritativeAPIKey := &service.APIKey{
+			UserID:  11,
+			GroupID: &groupID,
+			Group: &service.Group{
+				ID:               groupID,
+				RateMultiplier:   1,
+				SubscriptionType: service.SubscriptionTypeSubscription,
+				DailyLimitUSD:    &dailyLimit,
+			},
+		}
+		c, w := newKeyBillingContext(cachedAPIKey)
+		handler := newKeyBillingHandler(nil)
+		setAuthoritativeKeyFunding(handler, authoritativeAPIKey, &keyBillingSubscriptionRepo{
+			subscription: &service.UserSubscription{DailyUsageUSD: 7.5},
+		})
+		handler.KeyBillingInfo(c)
+
+		require.Equal(t, http.StatusOK, w.Code)
+		var got keyBillingInfoResponse
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
+		require.NotNil(t, got.Funding)
+		require.Equal(t, "subscription", got.Funding.Mode)
+		require.Equal(t, 12.5, *got.Funding.Remaining)
+	})
 }
 
 func TestGatewayHandlerKeyBillingInfoUsesUserOverride(t *testing.T) {
@@ -231,7 +421,7 @@ func TestGatewayHandlerKeyBillingInfoErrorsAreSafe(t *testing.T) {
 			GroupID: &groupID,
 			Group:   &service.Group{ID: groupID, RateMultiplier: 1},
 		})
-		(&GatewayHandler{}).KeyBillingInfo(c)
+		(&GatewayHandler{settingService: newKeyBillingSettingService(true)}).KeyBillingInfo(c)
 		require.Equal(t, http.StatusInternalServerError, w.Code)
 	})
 
@@ -249,6 +439,30 @@ func TestGatewayHandlerKeyBillingInfoErrorsAreSafe(t *testing.T) {
 		require.Equal(t, 1.0, got.ResolvedRateMultiplier)
 		require.NotContains(t, w.Body.String(), "database password leaked")
 	})
+}
+
+func TestGatewayHandlerKeyBillingInfoHonorsDownstreamProbeSwitch(t *testing.T) {
+	groupID := int64(7)
+	rateRepo := &keyBillingUserGroupRateRepo{}
+	handler := newKeyBillingHandler(rateRepo)
+	handler.settingService = newKeyBillingSettingService(false)
+	c, w := newKeyBillingContext(&service.APIKey{
+		UserID:  11,
+		GroupID: &groupID,
+		Group:   &service.Group{ID: groupID, RateMultiplier: 1},
+	})
+
+	handler.KeyBillingInfo(c)
+
+	require.Equal(t, http.StatusNotFound, w.Code)
+	require.JSONEq(t, `{
+		"type": "error",
+		"error": {
+			"type": "not_found_error",
+			"message": "Billing information is not supported"
+		}
+	}`, w.Body.String())
+	require.Zero(t, rateRepo.lookupCalls)
 }
 
 func TestGatewayHandlerKeyBillingInfoSharesBillingResolverCacheByPlatform(t *testing.T) {
@@ -270,6 +484,7 @@ func TestGatewayHandlerKeyBillingInfoSharesBillingResolverCacheByPlatform(t *tes
 			h := &GatewayHandler{
 				gatewayService:       gatewayService,
 				openAIGatewayService: openAIGatewayService,
+				settingService:       newKeyBillingSettingService(true),
 			}
 			apiKey := &service.APIKey{
 				UserID:  11,

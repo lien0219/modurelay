@@ -7,6 +7,9 @@ services:
     restart: unless-stopped
     stop_grace_period: 30s
 
+    security_opt:
+      - no-new-privileges:true
+
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
@@ -27,6 +30,7 @@ services:
       SERVER_HOST: "0.0.0.0"
       SERVER_PORT: "8080"
       SERVER_MODE: "release"
+      SERVER_FRONTEND_URL: "${SERVER_FRONTEND_URL:?SERVER_FRONTEND_URL is required}"
       RUN_MODE: "${RUN_MODE:-standard}"
       ENABLE_SERVER_TIMING: "${ENABLE_SERVER_TIMING:-false}"
       TZ: "${TZ:-Asia/Shanghai}"
@@ -62,10 +66,15 @@ services:
       JWT_SECRET: "${JWT_SECRET:?JWT_SECRET is required}"
       JWT_EXPIRE_HOUR: "${JWT_EXPIRE_HOUR:-24}"
       TOTP_ENCRYPTION_KEY: "${TOTP_ENCRYPTION_KEY:?TOTP_ENCRYPTION_KEY is required}"
-      SETUP_MIGRATION_TIMEOUT_SECONDS: "${SETUP_MIGRATION_TIMEOUT_SECONDS:-60}"
+      SETUP_MIGRATION_TIMEOUT_SECONDS: "${SETUP_MIGRATION_TIMEOUT_SECONDS:-300}"
 
       SERVER_MAX_REQUEST_BODY_SIZE: "${SERVER_MAX_REQUEST_BODY_SIZE:-268435456}"
       GATEWAY_MAX_BODY_SIZE: "${GATEWAY_MAX_BODY_SIZE:-268435456}"
+
+      SECURITY_URL_ALLOWLIST_ENABLED: "${SECURITY_URL_ALLOWLIST_ENABLED:-true}"
+      SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP: "${SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP:-false}"
+      SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS: "${SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS:-false}"
+      SECURITY_URL_ALLOWLIST_UPSTREAM_HOSTS: "${SECURITY_URL_ALLOWLIST_UPSTREAM_HOSTS:?SECURITY_URL_ALLOWLIST_UPSTREAM_HOSTS is required}"
 
       HTTP_PROXY: "${HTTP_PROXY:-}"
       HTTPS_PROXY: "${HTTPS_PROXY:-}"
@@ -174,14 +183,14 @@ services:
         --appendonly yes \
         --appendfsync everysec \
         --maxmemory "$${REDIS_MAXMEMORY:-384mb}" \
-        --maxmemory-policy "$${REDIS_MAXMEMORY_POLICY:-allkeys-lru}" \
+        --maxmemory-policy "$${REDIS_MAXMEMORY_POLICY:-noeviction}" \
         $${REDIS_PASSWORD:+--requirepass "$$REDIS_PASSWORD"}'
 
     environment:
       REDIS_PASSWORD: "${REDIS_PASSWORD:-}"
       REDISCLI_AUTH: "${REDIS_PASSWORD:-}"
       REDIS_MAXMEMORY: "${REDIS_MAXMEMORY:-384mb}"
-      REDIS_MAXMEMORY_POLICY: "${REDIS_MAXMEMORY_POLICY:-allkeys-lru}"
+      REDIS_MAXMEMORY_POLICY: "${REDIS_MAXMEMORY_POLICY:-noeviction}"
       TZ: "${TZ:-Asia/Shanghai}"
 
     healthcheck:

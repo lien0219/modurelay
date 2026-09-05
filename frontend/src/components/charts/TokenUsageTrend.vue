@@ -36,7 +36,12 @@ import { Line } from 'vue-chartjs'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import type { TrendDataPoint } from '@/types'
 import { getChartJsAnimation } from '@/utils/chartAnimation'
-import { getChartThemeColors } from '@/utils/chartColors'
+import {
+  getChartSeriesStyle,
+  useChartPalette,
+  useChartThemeColors,
+  withChartAlpha
+} from '@/utils/chartColors'
 
 ChartJS.register(
   CategoryScale,
@@ -56,14 +61,16 @@ const props = defineProps<{
   loading?: boolean
 }>()
 
+const themeColors = useChartThemeColors()
+const chartPalette = useChartPalette()
 const chartColors = computed(() => ({
-  text: getChartThemeColors().text,
-  grid: getChartThemeColors().grid,
-  input: getChartThemeColors().primary,
-  output: getChartThemeColors().secondary,
-  cacheCreation: getChartThemeColors().info,
-  cacheRead: getChartThemeColors().primary,
-  cacheHitRate: getChartThemeColors().neutral
+  text: themeColors.value.text,
+  grid: themeColors.value.grid,
+  input: chartPalette.value[0],
+  output: chartPalette.value[1],
+  cacheCreation: chartPalette.value[2],
+  cacheRead: chartPalette.value[3],
+  cacheHitRate: chartPalette.value[9]
 }))
 
 const chartData = computed(() => {
@@ -76,47 +83,45 @@ const chartData = computed(() => {
         label: 'Input',
         data: props.trendData.map((d) => d.input_tokens),
         borderColor: chartColors.value.input,
-        backgroundColor: `${chartColors.value.input}20`,
+        backgroundColor: withChartAlpha(chartColors.value.input, 0.12),
         fill: true,
         tension: 0.3,
-        pointStyle: 'circle',
-        pointRadius: 2,
-        borderWidth: 2
+        ...getChartSeriesStyle(0),
+        pointRadius: 2.5,
+        borderWidth: 2.5
       },
       {
         label: 'Output',
         data: props.trendData.map((d) => d.output_tokens),
         borderColor: chartColors.value.output,
-        backgroundColor: `${chartColors.value.output}20`,
+        backgroundColor: withChartAlpha(chartColors.value.output, 0.12),
         fill: true,
         tension: 0.3,
-        pointStyle: 'triangle',
-        pointRadius: 2,
-        borderWidth: 2
+        ...getChartSeriesStyle(1),
+        pointRadius: 2.5,
+        borderWidth: 2.5
       },
       {
         label: 'Cache Creation',
         data: props.trendData.map((d) => d.cache_creation_tokens),
         borderColor: chartColors.value.cacheCreation,
-        backgroundColor: `${chartColors.value.cacheCreation}20`,
-        borderDash: [3, 3],
+        backgroundColor: withChartAlpha(chartColors.value.cacheCreation, 0.12),
         fill: false,
         tension: 0.3,
-        pointStyle: 'rect',
-        pointRadius: 2,
-        borderWidth: 2
+        ...getChartSeriesStyle(2),
+        pointRadius: 2.5,
+        borderWidth: 2.5
       },
       {
         label: 'Cache Read',
         data: props.trendData.map((d) => d.cache_read_tokens),
         borderColor: chartColors.value.cacheRead,
-        backgroundColor: `${chartColors.value.cacheRead}20`,
-        borderDash: [7, 4],
+        backgroundColor: withChartAlpha(chartColors.value.cacheRead, 0.12),
         fill: false,
         tension: 0.3,
-        pointStyle: 'rectRot',
-        pointRadius: 2,
-        borderWidth: 2
+        ...getChartSeriesStyle(3),
+        pointRadius: 2.5,
+        borderWidth: 2.5
       },
       {
         label: 'Cache Hit Rate',
@@ -125,13 +130,12 @@ const chartData = computed(() => {
           return totalPromptTokens > 0 ? (d.cache_read_tokens / totalPromptTokens) * 100 : 0
         }),
         borderColor: chartColors.value.cacheHitRate,
-        backgroundColor: `${chartColors.value.cacheHitRate}20`,
-        borderDash: [2, 3],
+        backgroundColor: withChartAlpha(chartColors.value.cacheHitRate, 0.12),
         fill: false,
         tension: 0.3,
-        pointStyle: 'crossRot',
-        pointRadius: 2,
-        borderWidth: 2,
+        ...getChartSeriesStyle(4),
+        pointRadius: 2.5,
+        borderWidth: 2.5,
         yAxisID: 'yPercent'
       }
     ]
@@ -152,7 +156,6 @@ const lineOptions = computed(() => ({
       labels: {
         color: chartColors.value.text,
         usePointStyle: true,
-        pointStyle: 'circle',
         padding: 15,
         font: {
           size: 11

@@ -94,7 +94,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { usePaymentStore } from '@/stores/payment'
@@ -107,6 +107,7 @@ import type { PaymentOrder } from '@/types/payment'
 import type { Stripe, StripeElements } from '@stripe/stripe-js'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
+import { useThemeMode } from '@/composables/useThemeMode'
 
 const i18n = useI18n()
 const { t } = i18n
@@ -132,6 +133,12 @@ const showPaymentElement = ref(false)
 let stripeInstance: Stripe | null = null
 let elementsInstance: StripeElements | null = null
 let redirectTimer: ReturnType<typeof setTimeout> | null = null
+const isDarkTheme = useThemeMode()
+
+const stripeAppearance = () => ({
+  theme: isDarkTheme.value ? 'night' as const : 'stripe' as const,
+  variables: { borderRadius: '8px' }
+})
 
 onMounted(async () => {
   const orderId = Number(route.query.order_id)
@@ -241,10 +248,9 @@ async function confirmWechatPay(stripe: Stripe, clientSecret: string) {
 }
 
 function mountPaymentElement(stripe: Stripe, clientSecret: string) {
-  const isDark = document.documentElement.classList.contains('dark')
   const elements = stripe.elements({
     clientSecret,
-    appearance: { theme: isDark ? 'night' : 'stripe', variables: { borderRadius: '8px' } },
+    appearance: stripeAppearance(),
   })
   elementsInstance = elements
   const paymentElement = elements.create('payment', {
@@ -254,6 +260,15 @@ function mountPaymentElement(stripe: Stripe, clientSecret: string) {
   paymentElement.mount('#stripe-payment-element')
   paymentElement.on('ready', () => { stripeReady.value = true })
 }
+
+watch(isDarkTheme, (isDark) => {
+  void elementsInstance?.update({
+    appearance: {
+      theme: isDark ? 'night' : 'stripe',
+      variables: { borderRadius: '8px' }
+    }
+  })
+})
 
 async function handleGenericPay() {
   if (!stripeInstance || !elementsInstance || stripeSubmitting.value) return

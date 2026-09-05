@@ -30,3 +30,28 @@ func TestWithHTTPUpstreamRedirectsDisabled(t *testing.T) {
 		t.Fatal("redirects should remain enabled by default")
 	}
 }
+
+func TestWithHTTPUpstreamResolvedIPPinning(t *testing.T) {
+	//nolint:staticcheck // Exercises the defensive nil-context fallback.
+	ctx := WithHTTPUpstreamResolvedIPPinning(nil)
+	if !HTTPUpstreamResolvedIPPinningRequired(ctx) {
+		t.Fatal("expected resolved-IP pinning marker to be set")
+	}
+	if HTTPUpstreamResolvedIPPinningRequired(context.Background()) {
+		t.Fatal("marker must be absent by default")
+	}
+}
+
+func TestWithHTTPUpstreamPublicHostsOnly(t *testing.T) {
+	//nolint:staticcheck // Exercises the defensive nil-context fallback.
+	ctx := WithHTTPUpstreamPublicHostsOnly(nil)
+	if !HTTPUpstreamPublicHostsOnly(ctx) {
+		t.Fatal("expected public-hosts-only marker to be set")
+	}
+	if HTTPUpstreamPublicHostsOnly(context.Background()) {
+		t.Fatal("marker must be absent by default")
+	}
+	if HTTPUpstreamRedirectsDisabled(ctx) {
+		t.Fatal("public-hosts-only must not disable redirects")
+	}
+}

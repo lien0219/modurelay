@@ -10,7 +10,11 @@ import { formatHistoryLabel, sumNumbers } from '../utils/opsFormatters'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import { formatNumber } from '@/utils/format'
-import { getChartThemeColors } from '@/utils/chartColors'
+import {
+  getChartSeriesStyle,
+  useChartThemeColors,
+  withChartAlpha
+} from '@/utils/chartColors'
 
 ChartJS.register(Title, Tooltip, Legend, LineElement, LinearScale, PointElement, CategoryScale, Filler)
 
@@ -44,13 +48,14 @@ watch(
   }
 )
 
+const chartTheme = useChartThemeColors()
 const colors = computed(() => {
-  const theme = getChartThemeColors()
+  const theme = chartTheme.value
   return {
     primary: theme.primary,
-    primaryAlpha: `${theme.primary}20`,
+    primaryAlpha: withChartAlpha(theme.primary, 0.12),
     secondary: theme.secondary,
-    secondaryAlpha: `${theme.secondary}20`,
+    secondaryAlpha: withChartAlpha(theme.secondary, 0.12),
     grid: theme.grid,
     text: theme.text,
     surface: theme.surface,
@@ -72,6 +77,8 @@ const chartData = computed(() => {
         backgroundColor: colors.value.primaryAlpha,
         fill: true,
         tension: 0.4,
+        ...getChartSeriesStyle(0),
+        borderWidth: 2.5,
         pointRadius: 0,
         pointHitRadius: 10
       },
@@ -82,6 +89,8 @@ const chartData = computed(() => {
         backgroundColor: colors.value.secondaryAlpha,
         fill: true,
         tension: 0.4,
+        ...getChartSeriesStyle(1),
+        borderWidth: 2.5,
         pointRadius: 0,
         pointHitRadius: 10,
         yAxisID: 'y1'
