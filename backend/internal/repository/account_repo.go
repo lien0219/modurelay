@@ -3070,7 +3070,6 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 
 	whereClause := " WHERE id = ANY($" + itoa(idx) + ") AND deleted_at IS NULL"
 	args = append(args, pq.Array(ids))
-	idx++
 	if updates.ProbeEnabled != nil {
 		// Keep the SQL eligibility guard identical to the service-level identity
 		// check. This closes the race where an account changes platform between

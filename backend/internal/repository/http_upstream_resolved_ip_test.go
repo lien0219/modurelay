@@ -186,7 +186,9 @@ func TestResolvedIPPinnedRequestNegotiatesFreshHTTP2(t *testing.T) {
 	var dialCount atomic.Int32
 	transport := &http.Transport{
 		ForceAttemptHTTP2: true,
-		TLSClientConfig:   &tls.Config{InsecureSkipVerify: true}, // Test server certificate.
+		// The test server uses a self-signed httptest certificate; production
+		// transports never use this test-only TLS configuration.
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // Test server certificate.
 		DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
 			dialCount.Add(1)
 			return newUpstreamDialer().DialContext(ctx, network, server.Listener.Addr().String())
