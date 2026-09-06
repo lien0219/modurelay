@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -25,6 +26,8 @@ type githubReleaseClient struct {
 type githubReleaseClientError struct {
 	err error
 }
+
+var ghcrRepositoryPattern = regexp.MustCompile(`^[a-z0-9]+(?:[._-][a-z0-9]+)*/[a-z0-9]+(?:[._-][a-z0-9]+)*$`)
 
 // NewGitHubReleaseClient 创建 GitHub Release 客户端
 // proxyURL 为空时直连 GitHub，支持 http/https/socks5/socks5h 协议
@@ -61,6 +64,7 @@ func NewGitHubReleaseClient(proxyURL string, allowDirectOnProxyError bool) servi
 		downloadClient = &http.Client{Timeout: 10 * time.Minute}
 	}
 	downloadClient = cloneHTTPClient(downloadClient)
+	downloadClient.CheckRedirect = githubAPICheckRedirect(downloadClient.CheckRedirect)
 
 	return &githubReleaseClient{
 		httpClient:         apiClient,
@@ -104,11 +108,30 @@ func (c *githubReleaseClient) newAPIRequest(ctx context.Context, url string) (*h
 	return req, nil
 }
 
+func (c *githubReleaseClient) newAssetRequest(ctx context.Context, rawURL string) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "ModuRelay-Updater")
+	if isGitHubAPIURL(req.URL) {
+		req.Header.Set("Accept", "application/octet-stream")
+		if c.updateGitHubToken != "" {
+			req.Header.Set("Authorization", "Bearer "+c.updateGitHubToken)
+		}
+	}
+	return req, nil
+}
+
 func (c *githubReleaseClientError) FetchLatestRelease(ctx context.Context, repo string) (*service.GitHubRelease, error) {
 	return nil, c.err
 }
 
 func (c *githubReleaseClientError) FetchRecentReleases(ctx context.Context, repo string, perPage int) ([]*service.GitHubRelease, error) {
+	return nil, c.err
+}
+
+func (c *githubReleaseClientError) FetchContainerTags(ctx context.Context, repository string) ([]string, error) {
 	return nil, c.err
 }
 
@@ -178,8 +201,70 @@ func (c *githubReleaseClient) FetchRecentReleases(ctx context.Context, repo stri
 	return releases, nil
 }
 
+func (c *githubReleaseClient) FetchContainerTags(ctx context.Context, repository string) ([]string, error) {
+	repository = strings.ToLower(strings.TrimSpace(repository))
+	if !ghcrRepositoryPattern.MatchString(repository) {
+		return nil, fmt.Errorf("invalid GHCR repository %q", repository)
+	}
+
+	tokenURL := "https://ghcr.io/token?service=ghcr.io&scope=" +
+		url.QueryEscape("repository:"+repository+":pull")
+	tokenReq, err := http.NewRequestWithContext(ctx, http.MethodGet, tokenURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	tokenReq.Header.Set("Accept", "application/json")
+	tokenReq.Header.Set("User-Agent", "ModuRelay-Updater")
+	tokenResp, err := c.httpClient.Do(tokenReq)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tokenResp.Body.Close() }()
+	if tokenResp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("GHCR token endpoint returned %d", tokenResp.StatusCode)
+	}
+	var tokenPayload struct {
+		Token       string `json:"token"`
+		AccessToken string `json:"access_token"`
+	}
+	if err := json.NewDecoder(tokenResp.Body).Decode(&tokenPayload); err != nil {
+		return nil, err
+	}
+	token := tokenPayload.Token
+	if token == "" {
+		token = tokenPayload.AccessToken
+	}
+	if token == "" {
+		return nil, fmt.Errorf("GHCR token endpoint returned an empty token")
+	}
+
+	tagsURL := fmt.Sprintf("https://ghcr.io/v2/%s/tags/list?n=1000", repository)
+	tagsReq, err := http.NewRequestWithContext(ctx, http.MethodGet, tagsURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	tagsReq.Header.Set("Accept", "application/json")
+	tagsReq.Header.Set("Authorization", "Bearer "+token)
+	tagsReq.Header.Set("User-Agent", "ModuRelay-Updater")
+	tagsResp, err := c.httpClient.Do(tagsReq)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tagsResp.Body.Close() }()
+	if tagsResp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("GHCR tags endpoint returned %d", tagsResp.StatusCode)
+	}
+	var tagsPayload struct {
+		Tags []string `json:"tags"`
+	}
+	if err := json.NewDecoder(tagsResp.Body).Decode(&tagsPayload); err != nil {
+		return nil, err
+	}
+	return tagsPayload.Tags, nil
+}
+
 func (c *githubReleaseClient) DownloadFile(ctx context.Context, url, dest string, maxSize int64) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := c.newAssetRequest(ctx, url)
 	if err != nil {
 		return err
 	}
@@ -227,12 +312,12 @@ func (c *githubReleaseClient) DownloadFile(ctx context.Context, url, dest string
 }
 
 func (c *githubReleaseClient) FetchChecksumFile(ctx context.Context, url string) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := c.newAssetRequest(ctx, url)
 	if err != nil {
 		return nil, err
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.downloadHTTPClient.Do(req)
 	if err != nil {
 		return nil, err
 	}

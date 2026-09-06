@@ -12,10 +12,16 @@ vi.mock('../client', () => ({
   },
 }))
 
-import { getRollbackVersions, rollback, type RollbackVersionInfo } from '@/api/admin/system'
+import {
+  createSystemOperationKey,
+  getRollbackVersions,
+  rollback,
+  type RollbackVersionInfo
+} from '@/api/admin/system'
 
 describe('admin system rollback API', () => {
   beforeEach(() => {
+    vi.restoreAllMocks()
     get.mockReset()
     post.mockReset()
   })
@@ -25,7 +31,8 @@ describe('admin system rollback API', () => {
       {
         version: '0.1.146',
         published_at: '2026-07-07T00:00:00Z',
-        html_url: 'https://github.com/Wei-Shaw/sub2api/releases/tag/v0.1.146'
+        html_url: 'https://github.com/lien0219/modurelay/releases/tag/v0.1.146',
+        method: 'binary'
       }
     ]
     get.mockResolvedValue({ data: { versions } })
@@ -44,7 +51,7 @@ describe('admin system rollback API', () => {
     expect(post).toHaveBeenCalledWith(
       '/admin/system/rollback',
       { version: '0.1.146' },
-      { timeout: 15 * 60 * 1000 }
+      { timeout: 15 * 60 * 1000, headers: undefined }
     )
     expect(result.need_restart).toBe(true)
   })
@@ -57,7 +64,32 @@ describe('admin system rollback API', () => {
     expect(post).toHaveBeenCalledWith(
       '/admin/system/rollback',
       undefined,
-      { timeout: 15 * 60 * 1000 }
+      { timeout: 15 * 60 * 1000, headers: undefined }
+    )
+  })
+
+  it('reuses an explicit idempotency key in a rollback request', async () => {
+    post.mockResolvedValue({ data: { message: 'ok', need_restart: true } })
+
+    await rollback('0.3.0', 'system-rollback-0.3.0-operation-id')
+
+    expect(post).toHaveBeenCalledWith(
+      '/admin/system/rollback',
+      { version: '0.3.0' },
+      {
+        timeout: 15 * 60 * 1000,
+        headers: { 'Idempotency-Key': 'system-rollback-0.3.0-operation-id' }
+      }
+    )
+  })
+
+  it('creates scoped system operation keys', () => {
+    vi.spyOn(globalThis.crypto, 'randomUUID').mockReturnValue(
+      '11111111-1111-4111-8111-111111111111'
+    )
+
+    expect(createSystemOperationKey('rollback', '0.3.0')).toBe(
+      'system-rollback-0.3.0-11111111-1111-4111-8111-111111111111'
     )
   })
 })

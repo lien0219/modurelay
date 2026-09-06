@@ -35,15 +35,24 @@ export default {
     updating: 'Updating...',
     updateComplete: 'Update Complete',
     updateFailed: 'Update Failed',
+    checkFailed: 'Version check failed',
     restartRequired: 'Please restart the service to apply the update',
     restartNow: 'Restart Now',
     restarting: 'Restarting...',
+    restartFailed: 'Restart failed',
     retry: 'Retry',
     rollback: 'Version Rollback',
     rollbackSelectVersion: 'Select a version to roll back to (last 3 versions)',
     rollbackConfirm: 'Roll back to {version}',
+    rollbackConfirmTitle: 'Confirm version rollback',
+    rollbackConfirmMessage:
+      'The standalone binary will be rolled back to {version}. This replaces the current executable.',
     rollbackWarning:
       'Rollback downloads the selected version and replaces the current binary. A service restart is required afterwards.',
+    dockerRollbackWarning:
+      'Run this command from the deploy directory on the production host. The script health-checks the target and automatically restores the previous image on failure.',
+    databaseRollbackNotice:
+      'Image or binary rollback does not restore the database. Migrations are forward-only; verify compatibility and keep a recoverable backup before proceeding.',
     rollingBack: 'Rolling back...',
     rollbackComplete: 'Rollback Complete',
     rollbackFailed: 'Rollback Failed',
@@ -53,6 +62,10 @@ export default {
     noRollbackVersions: 'No versions available for rollback',
     loadVersionsFailed: 'Failed to load versions',
     rollbackSourceHint: 'Online rollback is not available for source builds',
+    dockerUpdateAvailable: 'Production image {version} is available',
+    dockerHostRequired:
+      'Docker deployments must be changed on the host; the application container does not control Docker.',
+    hostDeployCommand: 'Host deployment command',
     deployScript: 'Script',
     deployDocker: 'Docker',
     dockerEditCompose: 'Edit the image tag in docker-compose.yml',

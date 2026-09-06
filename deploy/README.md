@@ -173,6 +173,7 @@ database recovery period is not treated as a permanent process failure.
 - Migrations are applied in lexicographic order (e.g. `001_...sql`, `002_...sql`).
 - `schema_migrations` tracks applied migrations (filename + checksum).
 - Migrations are forward-only; rollback requires a DB backup restore or a manual compensating SQL script.
+- Rolling back an application image or binary does not roll back PostgreSQL. Verify the target version against the current schema and keep a recoverable backup before changing production.
 
 **Verify `users.allowed_groups` → `user_allowed_groups` backfill**
 
@@ -201,6 +202,19 @@ SELECT
 - 详细步骤见：`deploy/DATAMANAGEMENTD_CN.md`
 
 ### Commands
+
+For the production Compose deployment, pin an immutable ModuRelay image and
+run the host deployment script from the `deploy` directory:
+
+```bash
+./deploy-main.sh ghcr.io/lien0219/modurelay:main-v0.3.0
+```
+
+The script pulls the target, recreates only the `modurelay` application
+service, waits for its health check, and restores the previous image when the
+target does not become healthy. It does not recreate PostgreSQL or Redis. Do
+not run the Admin binary rollback action inside a Docker container; container
+images are changed only from the host.
 
 For **local directory version** (docker-compose.local.yml):
 
@@ -260,7 +274,7 @@ docker compose down -v
 | `ADMIN_EMAIL` | No | `admin@sub2api.local` | Admin email |
 | `ADMIN_PASSWORD` | No | *(auto-generated)* | Admin password |
 | `TZ` | No | `Asia/Shanghai` | Timezone |
-| `UPDATE_GITHUB_TOKEN` | No | *(empty)* | Token for `api.github.com` release checks only; asset downloads remain anonymous. |
+| `UPDATE_GITHUB_TOKEN` | For private binary releases | *(empty)* | GitHub token used for private Release metadata and Asset API downloads. Not needed for public GHCR Docker rollback discovery. |
 | `GEMINI_OAUTH_CLIENT_ID` | No | *(builtin)* | Google OAuth client ID (Gemini OAuth). Leave empty to use the built-in Gemini CLI client. |
 | `GEMINI_OAUTH_CLIENT_SECRET` | No | *(builtin)* | Google OAuth client secret (Gemini OAuth). Leave empty to use the built-in Gemini CLI client. |
 | `GEMINI_OAUTH_SCOPES` | No | *(default)* | OAuth scopes (Gemini OAuth) |

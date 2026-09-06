@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strconv"
@@ -24,13 +25,19 @@ import (
 
 var (
 	ErrNoUpdateAvailable         = infraerrors.Conflict("ALREADY_UP_TO_DATE", "no update available; current version is latest")
+	ErrUpdateCheckUnavailable    = infraerrors.ServiceUnavailable("UPDATE_CHECK_UNAVAILABLE", "version source could not be verified; update was not started")
 	ErrRollbackVersionNotAllowed = infraerrors.BadRequest("ROLLBACK_VERSION_NOT_ALLOWED", "version is not in the allowed rollback list")
+	ErrHostDeploymentRequired    = infraerrors.Conflict("HOST_DEPLOYMENT_REQUIRED", "Docker deployments must be changed on the host with deploy-main.sh")
+	ErrInPlaceUpdateUnavailable  = infraerrors.Conflict("IN_PLACE_UPDATE_UNAVAILABLE", "in-place update and rollback are available only for standalone release binaries")
 )
 
 const (
 	updateCacheKey = "update_check_cache"
 	updateCacheTTL = 1200 // 20 minutes
 	githubRepo     = "lien0219/modurelay"
+	ghcrRepository = "lien0219/modurelay"
+	ghcrImage      = "ghcr.io/" + ghcrRepository
+	ghcrPackageURL = "https://github.com/lien0219/modurelay/pkgs/container/modurelay"
 
 	// Security: allowed download domains for updates
 	allowedDownloadHost = "github.com"
@@ -43,6 +50,19 @@ const (
 	maxRollbackVersions = 3
 	// Fetch a few extra releases so filtering (current/newer/prerelease) still leaves enough candidates
 	rollbackFetchPageSize = 15
+
+	DeploymentModeSource = "source"
+	DeploymentModeBinary = "binary"
+	DeploymentModeDocker = "docker"
+
+	RollbackMethodBinary      = "binary"
+	RollbackMethodHostCommand = "host_command"
+)
+
+var (
+	semanticVersionPattern = regexp.MustCompile(`(?i)v?([0-9]+\.[0-9]+\.[0-9]+)`)
+	releaseVersionPattern  = regexp.MustCompile(`^v?((0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*))$`)
+	ghcrVersionTagPattern  = regexp.MustCompile(`^main-v((0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*))$`)
 )
 
 // UpdateCache defines cache operations for update service
@@ -55,6 +75,7 @@ type UpdateCache interface {
 type GitHubReleaseClient interface {
 	FetchLatestRelease(ctx context.Context, repo string) (*GitHubRelease, error)
 	FetchRecentReleases(ctx context.Context, repo string, perPage int) ([]*GitHubRelease, error)
+	FetchContainerTags(ctx context.Context, repository string) ([]string, error)
 	DownloadFile(ctx context.Context, url, dest string, maxSize int64) error
 	FetchChecksumFile(ctx context.Context, url string) ([]byte, error)
 }
@@ -65,15 +86,17 @@ type UpdateService struct {
 	githubClient   GitHubReleaseClient
 	currentVersion string
 	buildType      string // "source" for manual builds, "release" for CI builds
+	deploymentMode string // "source", "binary", or "docker"
 }
 
 // NewUpdateService creates a new UpdateService
-func NewUpdateService(cache UpdateCache, githubClient GitHubReleaseClient, version, buildType string) *UpdateService {
+func NewUpdateService(cache UpdateCache, githubClient GitHubReleaseClient, version, buildType, deploymentMode string) *UpdateService {
 	return &UpdateService{
 		cache:          cache,
 		githubClient:   githubClient,
 		currentVersion: version,
 		buildType:      buildType,
+		deploymentMode: normalizeDeploymentMode(deploymentMode, buildType),
 	}
 }
 
@@ -86,6 +109,9 @@ type UpdateInfo struct {
 	Cached         bool         `json:"cached"`
 	Warning        string       `json:"warning,omitempty"`
 	BuildType      string       `json:"build_type"` // "source" or "release"
+	DeploymentMode string       `json:"deployment_mode"`
+	TargetImage    string       `json:"target_image,omitempty"`
+	DeployCommand  string       `json:"deploy_command,omitempty"`
 }
 
 // ReleaseInfo contains GitHub release details
@@ -118,13 +144,17 @@ type GitHubRelease struct {
 
 // RollbackVersion describes a release version the system can roll back to
 type RollbackVersion struct {
-	Version     string `json:"version"` // without "v" prefix, e.g. "0.1.146"
-	PublishedAt string `json:"published_at"`
-	HTMLURL     string `json:"html_url"`
+	Version       string `json:"version"` // without "v" prefix, e.g. "0.1.146"
+	PublishedAt   string `json:"published_at,omitempty"`
+	HTMLURL       string `json:"html_url,omitempty"`
+	Image         string `json:"image,omitempty"`
+	DeployCommand string `json:"deploy_command,omitempty"`
+	Method        string `json:"method"`
 }
 
 type GitHubAsset struct {
 	Name               string `json:"name"`
+	APIURL             string `json:"url"`
 	BrowserDownloadURL string `json:"browser_download_url"`
 	Size               int64  `json:"size"`
 }
@@ -138,8 +168,13 @@ func (s *UpdateService) CheckUpdate(ctx context.Context, force bool) (*UpdateInf
 		}
 	}
 
-	// Fetch from GitHub
-	info, err := s.fetchLatestRelease(ctx)
+	var info *UpdateInfo
+	var err error
+	if s.deploymentMode == DeploymentModeDocker {
+		info, err = s.fetchLatestContainerImage(ctx)
+	} else {
+		info, err = s.fetchLatestRelease(ctx)
+	}
 	if err != nil {
 		// Return cached on error
 		if cached, cacheErr := s.getFromCache(ctx); cacheErr == nil && cached != nil {
@@ -152,6 +187,7 @@ func (s *UpdateService) CheckUpdate(ctx context.Context, force bool) (*UpdateInf
 			HasUpdate:      false,
 			Warning:        err.Error(),
 			BuildType:      s.buildType,
+			DeploymentMode: s.deploymentMode,
 		}, nil
 	}
 
@@ -163,9 +199,19 @@ func (s *UpdateService) CheckUpdate(ctx context.Context, force bool) (*UpdateInf
 // PerformUpdate downloads and applies the update
 // Uses atomic file replacement pattern for safe in-place updates
 func (s *UpdateService) PerformUpdate(ctx context.Context) error {
+	if s.deploymentMode == DeploymentModeDocker {
+		return ErrHostDeploymentRequired
+	}
+	if s.deploymentMode != DeploymentModeBinary {
+		return ErrInPlaceUpdateUnavailable
+	}
+
 	info, err := s.CheckUpdate(ctx, true)
 	if err != nil {
 		return err
+	}
+	if info.Warning != "" {
+		return ErrUpdateCheckUnavailable
 	}
 
 	if !info.HasUpdate {
@@ -179,22 +225,9 @@ func (s *UpdateService) PerformUpdate(ctx context.Context) error {
 // verifies its checksum, and atomically swaps the running binary.
 // Shared by PerformUpdate (latest) and RollbackToVersion (specific older version).
 func (s *UpdateService) applyReleaseAssets(ctx context.Context, releaseAssets []Asset) error {
-	// Find matching archive and checksum for current platform
-	archiveName := s.getArchiveName()
-	var downloadURL string
-	var checksumURL string
-
-	for _, asset := range releaseAssets {
-		if strings.Contains(asset.Name, archiveName) && !strings.HasSuffix(asset.Name, ".txt") {
-			downloadURL = asset.DownloadURL
-		}
-		if asset.Name == "checksums.txt" {
-			checksumURL = asset.DownloadURL
-		}
-	}
-
-	if downloadURL == "" {
-		return fmt.Errorf("no compatible release found for %s/%s", runtime.GOOS, runtime.GOARCH)
+	archiveAssetName, downloadURL, checksumURL, err := s.selectReleaseAssets(releaseAssets)
+	if err != nil {
+		return err
 	}
 
 	// SECURITY: Validate download URL is from trusted domain
@@ -228,7 +261,7 @@ func (s *UpdateService) applyReleaseAssets(ctx context.Context, releaseAssets []
 	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	// Download archive
-	archivePath := filepath.Join(tempDir, filepath.Base(downloadURL))
+	archivePath := filepath.Join(tempDir, filepath.Base(archiveAssetName))
 	if err := s.downloadFile(ctx, downloadURL, archivePath); err != nil {
 		return fmt.Errorf("download failed: %w", err)
 	}
@@ -279,8 +312,35 @@ func (s *UpdateService) applyReleaseAssets(ctx context.Context, releaseAssets []
 	return nil
 }
 
+func (s *UpdateService) selectReleaseAssets(releaseAssets []Asset) (archiveName, downloadURL, checksumURL string, err error) {
+	platformName := s.getArchiveName()
+	for _, asset := range releaseAssets {
+		if strings.Contains(asset.Name, platformName) && !strings.HasSuffix(asset.Name, ".txt") {
+			archiveName = asset.Name
+			downloadURL = asset.DownloadURL
+		}
+		if asset.Name == "checksums.txt" {
+			checksumURL = asset.DownloadURL
+		}
+	}
+	if downloadURL == "" {
+		return "", "", "", fmt.Errorf("no compatible release found for %s/%s", runtime.GOOS, runtime.GOARCH)
+	}
+	if checksumURL == "" {
+		return "", "", "", fmt.Errorf("checksums.txt is required for in-place update and rollback")
+	}
+	return archiveName, downloadURL, checksumURL, nil
+}
+
 // Rollback restores the previous version
 func (s *UpdateService) Rollback() error {
+	if s.deploymentMode == DeploymentModeDocker {
+		return ErrHostDeploymentRequired
+	}
+	if s.deploymentMode != DeploymentModeBinary {
+		return ErrInPlaceUpdateUnavailable
+	}
+
 	exePath, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("failed to get executable path: %w", err)
@@ -307,6 +367,13 @@ func (s *UpdateService) Rollback() error {
 // strictly older than the current version (the current version itself is excluded),
 // newest first. Draft and prerelease entries are skipped.
 func (s *UpdateService) ListRollbackVersions(ctx context.Context) ([]RollbackVersion, error) {
+	if s.deploymentMode == DeploymentModeDocker {
+		return s.listDockerRollbackVersions(ctx)
+	}
+	if s.deploymentMode != DeploymentModeBinary {
+		return []RollbackVersion{}, nil
+	}
+
 	releases, err := s.fetchRollbackCandidates(ctx)
 	if err != nil {
 		return nil, err
@@ -318,6 +385,7 @@ func (s *UpdateService) ListRollbackVersions(ctx context.Context) ([]RollbackVer
 			Version:     strings.TrimPrefix(r.TagName, "v"),
 			PublishedAt: r.PublishedAt,
 			HTMLURL:     r.HTMLURL,
+			Method:      RollbackMethodBinary,
 		})
 	}
 	return versions, nil
@@ -330,6 +398,12 @@ func (s *UpdateService) RollbackToVersion(ctx context.Context, version string) e
 	target := strings.TrimPrefix(strings.TrimSpace(version), "v")
 	if target == "" {
 		return ErrRollbackVersionNotAllowed
+	}
+	if s.deploymentMode == DeploymentModeDocker {
+		return ErrHostDeploymentRequired
+	}
+	if s.deploymentMode != DeploymentModeBinary {
+		return ErrInPlaceUpdateUnavailable
 	}
 
 	releases, err := s.fetchRollbackCandidates(ctx)
@@ -350,9 +424,13 @@ func (s *UpdateService) RollbackToVersion(ctx context.Context, version string) e
 
 	assets := make([]Asset, len(match.Assets))
 	for i, a := range match.Assets {
+		downloadURL := a.APIURL
+		if downloadURL == "" {
+			downloadURL = a.BrowserDownloadURL
+		}
 		assets[i] = Asset{
 			Name:        a.Name,
-			DownloadURL: a.BrowserDownloadURL,
+			DownloadURL: downloadURL,
 			Size:        a.Size,
 		}
 	}
@@ -374,8 +452,12 @@ func (s *UpdateService) fetchRollbackCandidates(ctx context.Context) ([]*GitHubR
 		if r == nil || r.Draft || r.Prerelease {
 			continue
 		}
-		v := strings.TrimPrefix(r.TagName, "v")
-		if v == "" || seen[v] {
+		match := releaseVersionPattern.FindStringSubmatch(strings.TrimSpace(r.TagName))
+		if len(match) < 2 {
+			continue
+		}
+		v := match[1]
+		if seen[v] {
 			continue
 		}
 		// Only versions strictly older than current (also excludes current itself)
@@ -399,19 +481,115 @@ func (s *UpdateService) fetchRollbackCandidates(ctx context.Context) ([]*GitHubR
 	return candidates, nil
 }
 
+func (s *UpdateService) listDockerRollbackVersions(ctx context.Context) ([]RollbackVersion, error) {
+	versions, err := s.fetchContainerVersions(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	current := normalizeSemanticVersion(s.currentVersion)
+	if current == "" {
+		return nil, fmt.Errorf("current Docker image version %q is not semantic", s.currentVersion)
+	}
+
+	result := make([]RollbackVersion, 0, maxRollbackVersions)
+	for _, version := range versions {
+		if compareVersions(version, current) >= 0 {
+			continue
+		}
+		image := ghcrImage + ":main-v" + version
+		result = append(result, RollbackVersion{
+			Version:       version,
+			HTMLURL:       ghcrPackageURL,
+			Image:         image,
+			DeployCommand: "./deploy-main.sh " + image,
+			Method:        RollbackMethodHostCommand,
+		})
+		if len(result) == maxRollbackVersions {
+			break
+		}
+	}
+	return result, nil
+}
+
+func (s *UpdateService) fetchContainerVersions(ctx context.Context) ([]string, error) {
+	tags, err := s.githubClient.FetchContainerTags(ctx, ghcrRepository)
+	if err != nil {
+		return nil, err
+	}
+
+	seen := make(map[string]struct{}, len(tags))
+	versions := make([]string, 0, len(tags))
+	for _, tag := range tags {
+		match := ghcrVersionTagPattern.FindStringSubmatch(strings.TrimSpace(tag))
+		if len(match) < 2 {
+			continue
+		}
+		version := match[1]
+		if _, exists := seen[version]; exists {
+			continue
+		}
+		seen[version] = struct{}{}
+		versions = append(versions, version)
+	}
+	if len(versions) == 0 {
+		return nil, fmt.Errorf("no production image tags matching main-vX.Y.Z were found in %s", ghcrImage)
+	}
+
+	sort.Slice(versions, func(i, j int) bool {
+		return compareVersions(versions[i], versions[j]) > 0
+	})
+	return versions, nil
+}
+
+func (s *UpdateService) fetchLatestContainerImage(ctx context.Context) (*UpdateInfo, error) {
+	versions, err := s.fetchContainerVersions(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	latestVersion := versions[0]
+	targetImage := ghcrImage + ":main-v" + latestVersion
+	return &UpdateInfo{
+		CurrentVersion: s.currentVersion,
+		LatestVersion:  latestVersion,
+		HasUpdate:      compareVersions(s.currentVersion, latestVersion) < 0,
+		ReleaseInfo: &ReleaseInfo{
+			Name:    "ModuRelay main-v" + latestVersion,
+			HTMLURL: ghcrPackageURL,
+		},
+		Cached:         false,
+		BuildType:      s.buildType,
+		DeploymentMode: s.deploymentMode,
+		TargetImage:    targetImage,
+		DeployCommand:  "./deploy-main.sh " + targetImage,
+	}, nil
+}
+
 func (s *UpdateService) fetchLatestRelease(ctx context.Context) (*UpdateInfo, error) {
 	release, err := s.githubClient.FetchLatestRelease(ctx, githubRepo)
 	if err != nil {
 		return nil, err
 	}
+	if release == nil {
+		return nil, fmt.Errorf("GitHub release response was empty")
+	}
 
-	latestVersion := strings.TrimPrefix(release.TagName, "v")
+	match := releaseVersionPattern.FindStringSubmatch(strings.TrimSpace(release.TagName))
+	if len(match) < 2 {
+		return nil, fmt.Errorf("latest GitHub release tag %q is not a stable semantic version", release.TagName)
+	}
+	latestVersion := match[1]
 
 	assets := make([]Asset, len(release.Assets))
 	for i, a := range release.Assets {
+		downloadURL := a.APIURL
+		if downloadURL == "" {
+			downloadURL = a.BrowserDownloadURL
+		}
 		assets[i] = Asset{
 			Name:        a.Name,
-			DownloadURL: a.BrowserDownloadURL,
+			DownloadURL: downloadURL,
 			Size:        a.Size,
 		}
 	}
@@ -427,8 +605,9 @@ func (s *UpdateService) fetchLatestRelease(ctx context.Context) (*UpdateInfo, er
 			HTMLURL:     release.HTMLURL,
 			Assets:      assets,
 		},
-		Cached:    false,
-		BuildType: s.buildType,
+		Cached:         false,
+		BuildType:      s.buildType,
+		DeploymentMode: s.deploymentMode,
 	}, nil
 }
 
@@ -600,9 +779,12 @@ func (s *UpdateService) getFromCache(ctx context.Context) (*UpdateInfo, error) {
 	}
 
 	var cached struct {
-		Latest      string       `json:"latest"`
-		ReleaseInfo *ReleaseInfo `json:"release_info"`
-		Timestamp   int64        `json:"timestamp"`
+		Latest         string       `json:"latest"`
+		ReleaseInfo    *ReleaseInfo `json:"release_info"`
+		DeploymentMode string       `json:"deployment_mode"`
+		TargetImage    string       `json:"target_image"`
+		DeployCommand  string       `json:"deploy_command"`
+		Timestamp      int64        `json:"timestamp"`
 	}
 	if err := json.Unmarshal([]byte(data), &cached); err != nil {
 		return nil, err
@@ -610,6 +792,9 @@ func (s *UpdateService) getFromCache(ctx context.Context) (*UpdateInfo, error) {
 
 	if time.Now().Unix()-cached.Timestamp > updateCacheTTL {
 		return nil, fmt.Errorf("cache expired")
+	}
+	if cached.DeploymentMode != s.deploymentMode {
+		return nil, fmt.Errorf("cache deployment mode mismatch")
 	}
 
 	return &UpdateInfo{
@@ -619,18 +804,27 @@ func (s *UpdateService) getFromCache(ctx context.Context) (*UpdateInfo, error) {
 		ReleaseInfo:    cached.ReleaseInfo,
 		Cached:         true,
 		BuildType:      s.buildType,
+		DeploymentMode: s.deploymentMode,
+		TargetImage:    cached.TargetImage,
+		DeployCommand:  cached.DeployCommand,
 	}, nil
 }
 
 func (s *UpdateService) saveToCache(ctx context.Context, info *UpdateInfo) {
 	cacheData := struct {
-		Latest      string       `json:"latest"`
-		ReleaseInfo *ReleaseInfo `json:"release_info"`
-		Timestamp   int64        `json:"timestamp"`
+		Latest         string       `json:"latest"`
+		ReleaseInfo    *ReleaseInfo `json:"release_info"`
+		DeploymentMode string       `json:"deployment_mode"`
+		TargetImage    string       `json:"target_image"`
+		DeployCommand  string       `json:"deploy_command"`
+		Timestamp      int64        `json:"timestamp"`
 	}{
-		Latest:      info.LatestVersion,
-		ReleaseInfo: info.ReleaseInfo,
-		Timestamp:   time.Now().Unix(),
+		Latest:         info.LatestVersion,
+		ReleaseInfo:    info.ReleaseInfo,
+		DeploymentMode: info.DeploymentMode,
+		TargetImage:    info.TargetImage,
+		DeployCommand:  info.DeployCommand,
+		Timestamp:      time.Now().Unix(),
 	}
 
 	data, _ := json.Marshal(cacheData)
@@ -654,10 +848,7 @@ func compareVersions(current, latest string) int {
 }
 
 func parseVersion(v string) [3]int {
-	v = strings.TrimPrefix(v, "v")
-	if idx := strings.IndexByte(v, '-'); idx != -1 {
-		v = v[:idx]
-	}
+	v = normalizeSemanticVersion(v)
 	parts := strings.Split(v, ".")
 	result := [3]int{0, 0, 0}
 	for i := 0; i < len(parts) && i < 3; i++ {
@@ -666,4 +857,23 @@ func parseVersion(v string) [3]int {
 		}
 	}
 	return result
+}
+
+func normalizeSemanticVersion(v string) string {
+	match := semanticVersionPattern.FindStringSubmatch(strings.TrimSpace(v))
+	if len(match) != 2 {
+		return ""
+	}
+	return match[1]
+}
+
+func normalizeDeploymentMode(mode, buildType string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case DeploymentModeSource, DeploymentModeBinary, DeploymentModeDocker:
+		return strings.ToLower(strings.TrimSpace(mode))
+	}
+	if strings.EqualFold(strings.TrimSpace(buildType), "release") {
+		return DeploymentModeBinary
+	}
+	return DeploymentModeSource
 }

@@ -8,11 +8,11 @@ on:
 
 permissions:
   contents: read
-  packages: write
+  packages: read
 
 concurrency:
   group: modurelay-main-image
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 env:
   REGISTRY: ghcr.io
@@ -22,6 +22,12 @@ jobs:
   publish:
     name: Build and publish GHCR image
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      version: ${{ steps.image_version.outputs.version }}
+      publish_version: ${{ steps.image_version.outputs.publish_version }}
 
     steps:
       - name: Checkout
@@ -35,8 +41,13 @@ jobs:
         run: |
           set -Eeuo pipefail
 
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.ref }}" != "refs/heads/main" ]; then
+            echo "::error::Manual production image publishing is allowed only from main"
+            exit 1
+          fi
+
           version="$(tr -d '[:space:]' < deploy/IMAGE_VERSION)"
-          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+          if [[ ! "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
             echo "::error::deploy/IMAGE_VERSION must be a semantic version such as 0.0.1"
             exit 1
           fi
@@ -73,6 +84,36 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Protect immutable release coordinates
+        if: ${{ steps.image_version.outputs.publish_version == 'true' }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          image="${REGISTRY}/${IMAGE_NAME}:main-v${{ steps.image_version.outputs.version }}"
+          release_tag="v${{ steps.image_version.outputs.version }}"
+
+          if ! tag_refs="$(git ls-remote --tags origin "refs/tags/$release_tag" "refs/tags/$release_tag^{}")"; then
+            echo "::error::Could not verify whether release tag exists: $release_tag"
+            exit 1
+          fi
+          if [ -n "$tag_refs" ]; then
+            echo "::error::Immutable release tag already exists: $release_tag"
+            echo "::error::Increment deploy/IMAGE_VERSION instead of reusing an existing release."
+            exit 1
+          fi
+
+          if inspect_output="$(docker manifest inspect "$image" 2>&1)"; then
+            echo "::error::Immutable production tag already exists: $image"
+            echo "::error::Increment deploy/IMAGE_VERSION instead of overwriting an existing rollback target."
+            exit 1
+          fi
+          if ! grep -Eiq 'manifest unknown|no such manifest' <<<"$inspect_output"; then
+            echo "::error::Could not verify whether immutable tag exists: $image"
+            echo "$inspect_output"
+            exit 1
+          fi
+          echo "Confirmed version tag is unused: $image"
+
       - name: Generate image metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -100,3 +141,16 @@ jobs:
             COMMIT=${{ github.sha }}
             DATE=${{ steps.build_info.outputs.date }}
             NPM_CONFIG_REGISTRY=${{ vars.NPM_CONFIG_REGISTRY || 'https://registry.npmmirror.com' }}
+
+  automatic-release:
+    name: Create Git tag and GitHub Release
+    needs: publish
+    if: ${{ needs.publish.outputs.publish_version == 'true' }}
+    permissions:
+      contents: write
+      packages: read
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: v${{ needs.publish.outputs.version }}
+      commit_sha: ${{ github.sha }}
+      create_tag: true
