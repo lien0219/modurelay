@@ -46,7 +46,7 @@
 - Ent 迁移历史、数据库表名、字段名、默认数据库名、缓存键和浏览器本地存储键。
 - `/v1/*` 等既有 API 路径、WebSocket 子协议、Provider/模型名称和外部协议字段。
 - 既有 Docker 服务、容器、镜像、systemd、安装目录、配置目录、数据目录、日志目录和部署脚本中的 `sub2api` 标识，直至提供兼容迁移。
-- Docker 镜像名 `weishaw/sub2api`（VersionBadge 回滚提示仍引用，待 ModuRelay 镜像发布后迁移）。
+- 兼容部署模板中的 Docker 镜像名 `weishaw/sub2api`；正式生产发布和 VersionBadge 回退候选固定使用 `ghcr.io/lien0219/modurelay:main-v*`。
 - TOTP issuer `Sub2API`（变更会导致已绑定验证器失效）。
 - Setup 向导默认数据库名 `sub2api` 及导入数据格式标识 `sub2api-data` / `sub2api-bundle`。
 - `LICENSE`、版权声明、上游仓库链接和上游同步文档中的 Sub2API 信息。

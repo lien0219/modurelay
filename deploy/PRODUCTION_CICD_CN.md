@@ -41,7 +41,7 @@ ghcr.io/lien0219/modurelay:main
 ghcr.io/lien0219/modurelay:sha-<完整提交 SHA>
 ```
 
-只有 `deploy/IMAGE_VERSION` 发生变化，或者手动执行工作流时，才额外发布版本标签：
+只有 `deploy/IMAGE_VERSION` 发生变化时，才额外发布版本标签：
 
 ```text
 ghcr.io/lien0219/modurelay:main-v<IMAGE_VERSION>
@@ -53,25 +53,25 @@ ghcr.io/lien0219/modurelay:main-v<IMAGE_VERSION>
 deploy/IMAGE_VERSION
 ```
 
-当前内容：
-
-```text
-0.0.1
-```
-
-发布下一版时，把它改为：
+发布下一版时，把它改为新的 SemVer，例如：
 
 ```text
 0.0.2
 ```
 
-然后按正常流程合并到 `main`，工作流就会额外生成：
+然后按正常流程合并到 `main`。生产镜像成功后，工作流会串行生成：
 
 ```text
 ghcr.io/lien0219/modurelay:main-v0.0.2
+Git Tag v0.0.2
+GitHub Release ModuRelay 0.0.2
 ```
 
-这样普通代码提交不会覆盖已有的版本标签。
+普通代码提交不会覆盖已有的版本标签。工作流会在推送前检查
+`main-v<IMAGE_VERSION>` 是否已存在；已存在时直接失败，禁止覆盖生产回退点。
+手动执行镜像工作流只允许选择 `main`，用于补跑尚未生成版本标签的构建，不能从
+其他分支发布生产镜像，也不能重发已有版本。生产镜像成功后才会自动创建同提交的
+Git Tag 和 GitHub Release，避免镜像与 Release 并发发布产生竞态。
 
 标签用途：
 
@@ -85,12 +85,19 @@ ghcr.io/lien0219/modurelay:main-v0.0.2
 
 ```text
 .github/workflows/publish-main-image.yml
+.github/workflows/release.yml
 ```
 
 触发方式：
 
 - 推送到 `main`；
-- 在 Actions 页面手动执行 `workflow_dispatch`。
+- 在 Actions 页面选择 `main` 后手动执行 `workflow_dispatch`。
+
+普通提交只构建 `main` 和 `sha-*` 镜像。检测到 `deploy/IMAGE_VERSION` 变化时，
+`publish-main-image.yml` 先发布不可变 `main-v*` 镜像，然后调用可复用的
+`release.yml` 创建同提交 `v*` Tag、GitHub Release、独立二进制和
+`checksums.txt`。直接推送已有 `v*` Tag 或手动运行 Release 工作流仍作为故障
+恢复入口。
 
 构建平台：
 
@@ -115,6 +122,11 @@ Settings -> Secrets and variables -> Actions
 ### Secrets
 
 本工作流不需要配置腾讯云相关 Secret，也不需要手动创建 `GITHUB_TOKEN`。
+镜像任务仅申请 `packages: write`，自动 Tag/Release 任务仅申请
+`contents: write` 和 `packages: read`，均使用 GitHub 自动签发的短期 Token。
+如果组织策略限制 Actions 写入仓库内容，或仓库对 `v*` 配置了 Tag ruleset，需在
+GitHub 设置中允许本工作流创建 Tag 和 Release，否则镜像成功后自动发布会在创建
+Tag 时失败。
 
 以下项目均不需要：
 
@@ -226,6 +238,47 @@ chmod 700 deploy-main.sh
 5. 失败时尝试回滚；
 6. 不重新创建 PostgreSQL 和 Redis。
 
+### 生产版本回退
+
+管理后台仅从公开 GHCR Package 读取严格匹配 `main-vX.Y.Z` 的标签，并展示
+最近三个低于当前版本的候选项。选择候选版本后，在生产宿主机的 `deploy`
+目录执行后台给出的完整命令，例如：
+
+```bash
+./deploy-main.sh ghcr.io/lien0219/modurelay:main-v0.2.9
+```
+
+应用容器不会挂载 Docker Socket，也不会在容器内替换自身二进制。脚本会先
+记录当前镜像，拉取目标镜像并只重建应用服务；目标健康检查失败时自动恢复
+原镜像。镜像回退不会回退数据库，且数据库迁移仅向前执行，因此执行前必须：
+
+1. 确认目标版本兼容当前数据库结构；
+2. 保留已验证可恢复的数据库备份；
+3. 记录操作者、目标镜像、开始时间和健康检查结果；
+4. 不执行 `docker compose down -v`。
+
+### GitHub Release 与生产镜像的边界
+
+`.github/workflows/release.yml` 只发布 ModuRelay 的独立二进制压缩包和校验文件，
+不再构建 DockerHub/GHCR 镜像，因此不会继续创建
+`ghcr.io/lien0219/sub2api`。生产镜像只由
+`.github/workflows/publish-main-image.yml` 发布到：
+
+```text
+ghcr.io/lien0219/modurelay
+```
+
+历史上已经创建的 `sub2api` Package 不会被工作流自动删除；确认没有服务器继续
+引用后，需在 GitHub Package settings 中单独人工删除。删除不属于发布或回退流程。
+
+Release 工作流会校验：Tag 必须是 `vMAJOR.MINOR.PATCH`、版本必须与
+`deploy/IMAGE_VERSION` 一致、发布提交必须属于 `main`，并且对应的
+`main-v<version>` 生产镜像已经存在，且生产镜像的 OCI revision 必须与
+发布提交完全一致。自动流程随后在该提交创建 Tag 并生成 Release；同版本 Tag 或
+镜像已指向其他提交时直接失败。仓库为私有时，独立二进制部署若要使用
+后台在线更新/回退，运行环境必须配置可读取该私有仓库 Release 的
+`UPDATE_GITHUB_TOKEN`；Docker 回退候选来自公开 GHCR，不依赖源码仓库公开性。
+
 也可以完全不用这些部署文件，只把 GHCR 当作镜像制品仓库。
 
 ## 九、版本发布建议
@@ -243,6 +296,9 @@ feature/fix 分支 -> develop -> PR -> main
 ```text
 0.0.1 -> 0.0.2
 ```
+
+合并到 `main` 后无需再手工创建 Tag：等待 `Publish Main Image` 完成，即可同时
+得到 `main-v0.0.2` Package、`v0.0.2` Tag 和 `ModuRelay 0.0.2` Release。
 
 生产环境推荐优先使用：
 

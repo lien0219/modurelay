@@ -46,7 +46,7 @@ wait_for_health() {
 require_command docker
 docker compose version >/dev/null 2>&1 || fail "Docker Compose v2 is required"
 
-[ -n "$TARGET_IMAGE" ] || fail "usage: $0 ghcr.io/lien0219/modurelay:sha-<commit>"
+[ -n "$TARGET_IMAGE" ] || fail "usage: $0 ghcr.io/lien0219/modurelay:main-vX.Y.Z|sha-<commit>"
 [[ "$TARGET_IMAGE" == ghcr.io/lien0219/modurelay:* ]] || fail "unexpected image repository: $TARGET_IMAGE"
 [ -f "$COMPOSE_FILE" ] || fail "missing $COMPOSE_FILE"
 [ -f .env ] || fail "missing server-side .env"

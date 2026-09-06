@@ -133,6 +133,33 @@ func TestGitHubReleaseClientDoesNotAuthorizeDownloads(t *testing.T) {
 	}
 }
 
+func TestGitHubReleaseClientAuthorizesPrivateAssetAPI(t *testing.T) {
+	client := newTestGitHubReleaseClient()
+	client.updateGitHubToken = "update-secret"
+
+	var headers []http.Header
+	transport := githubReleaseRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		headers = append(headers, req.Header.Clone())
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader("asset")),
+			Request:    req,
+		}, nil
+	})
+	client.downloadHTTPClient.Transport = transport
+
+	dest := filepath.Join(t.TempDir(), "asset")
+	require.NoError(t, client.DownloadFile(context.Background(), "https://api.github.com/repos/test/repo/releases/assets/1", dest, 100))
+	_, err := client.FetchChecksumFile(context.Background(), "https://api.github.com/repos/test/repo/releases/assets/2")
+	require.NoError(t, err)
+	require.Len(t, headers, 2)
+	for _, header := range headers {
+		require.Equal(t, "Bearer update-secret", header.Get("Authorization"))
+		require.Equal(t, "application/octet-stream", header.Get("Accept"))
+	}
+}
+
 type githubReleaseRoundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f githubReleaseRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -408,6 +435,40 @@ func (s *GitHubReleaseServiceSuite) TestFetchRecentReleases_Non200() {
 	_, err := s.client.FetchRecentReleases(context.Background(), "test/repo", 15)
 	require.Error(s.T(), err)
 	require.Contains(s.T(), err.Error(), "403")
+}
+
+func (s *GitHubReleaseServiceSuite) TestFetchContainerTags_Success() {
+	s.srv = newLocalTestServer(s.T(), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/token":
+			require.Equal(s.T(), "ghcr.io", r.URL.Query().Get("service"))
+			require.Equal(s.T(), "repository:lien0219/modurelay:pull", r.URL.Query().Get("scope"))
+			_, _ = w.Write([]byte(`{"token":"registry-token"}`))
+		case "/v2/lien0219/modurelay/tags/list":
+			require.Equal(s.T(), "1000", r.URL.Query().Get("n"))
+			require.Equal(s.T(), "Bearer registry-token", r.Header.Get("Authorization"))
+			_, _ = w.Write([]byte(`{"name":"lien0219/modurelay","tags":["main","main-v0.3.0"]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+
+	s.client = &githubReleaseClient{
+		httpClient:         &http.Client{Transport: &testTransport{testServerURL: s.srv.URL}},
+		downloadHTTPClient: &http.Client{},
+	}
+
+	tags, err := s.client.FetchContainerTags(context.Background(), "lien0219/modurelay")
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), []string{"main", "main-v0.3.0"}, tags)
+}
+
+func (s *GitHubReleaseServiceSuite) TestFetchContainerTags_RejectsInvalidRepository() {
+	s.client = newTestGitHubReleaseClient()
+
+	_, err := s.client.FetchContainerTags(context.Background(), "../unexpected")
+
+	require.Error(s.T(), err)
 }
 
 func (s *GitHubReleaseServiceSuite) TestFetchLatestRelease_Non200() {

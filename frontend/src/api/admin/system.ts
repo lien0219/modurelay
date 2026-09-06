@@ -20,6 +20,9 @@ export interface VersionInfo {
   cached: boolean
   warning?: string
   build_type: string // "source" for manual builds, "release" for CI builds
+  deployment_mode?: 'source' | 'binary' | 'docker'
+  target_image?: string
+  deploy_command?: string
 }
 
 /**
@@ -55,8 +58,11 @@ export interface UpdateResult {
 
 export interface RollbackVersionInfo {
   version: string
-  published_at: string
-  html_url: string
+  published_at?: string
+  html_url?: string
+  image?: string
+  deploy_command?: string
+  method?: 'binary' | 'host_command'
 }
 
 /**
@@ -77,13 +83,24 @@ export async function getRollbackVersions(): Promise<{ versions: RollbackVersion
  */
 const UPDATE_REQUEST_TIMEOUT_MS = 15 * 60 * 1000
 
+export function createSystemOperationKey(
+  operation: 'update' | 'rollback' | 'restart',
+  target?: string
+): string {
+  const requestID =
+    globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
+  const targetPart = target ? `-${target.replace(/[^0-9A-Za-z._-]/g, '')}` : ''
+  return `system-${operation}${targetPart}-${requestID}`
+}
+
 /**
  * Perform system update
  * Downloads and applies the latest version
  */
-export async function performUpdate(): Promise<UpdateResult> {
+export async function performUpdate(idempotencyKey?: string): Promise<UpdateResult> {
   const { data } = await apiClient.post<UpdateResult>('/admin/system/update', undefined, {
-    timeout: UPDATE_REQUEST_TIMEOUT_MS
+    timeout: UPDATE_REQUEST_TIMEOUT_MS,
+    headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined
   })
   return data
 }
@@ -92,11 +109,14 @@ export async function performUpdate(): Promise<UpdateResult> {
  * Rollback to a previous version
  * @param version - Target version (e.g. "0.1.146"); omit to restore the local backup binary
  */
-export async function rollback(version?: string): Promise<UpdateResult> {
+export async function rollback(version?: string, idempotencyKey?: string): Promise<UpdateResult> {
   const { data } = await apiClient.post<UpdateResult>(
     '/admin/system/rollback',
     version ? { version } : undefined,
-    { timeout: UPDATE_REQUEST_TIMEOUT_MS }
+    {
+      timeout: UPDATE_REQUEST_TIMEOUT_MS,
+      headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined
+    }
   )
   return data
 }
@@ -104,14 +124,17 @@ export async function rollback(version?: string): Promise<UpdateResult> {
 /**
  * Restart the service
  */
-export async function restartService(): Promise<{ message: string }> {
-  const { data } = await apiClient.post<{ message: string }>('/admin/system/restart')
+export async function restartService(idempotencyKey?: string): Promise<{ message: string }> {
+  const { data } = await apiClient.post<{ message: string }>('/admin/system/restart', undefined, {
+    headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined
+  })
   return data
 }
 
 export const systemAPI = {
   getVersion,
   checkUpdates,
+  createSystemOperationKey,
   performUpdate,
   getRollbackVersions,
   rollback,

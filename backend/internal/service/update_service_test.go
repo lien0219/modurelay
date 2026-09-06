@@ -5,6 +5,7 @@ package service
 import (
 	"context"
 	"errors"
+	"runtime"
 	"testing"
 	"time"
 
@@ -31,6 +32,9 @@ type updateServiceGitHubClientStub struct {
 	release        *GitHubRelease
 	recentReleases []*GitHubRelease
 	recentErr      error
+	containerTags  []string
+	containerErr   error
+	downloadErr    error
 }
 
 func (s *updateServiceGitHubClientStub) FetchLatestRelease(context.Context, string) (*GitHubRelease, error) {
@@ -41,8 +45,12 @@ func (s *updateServiceGitHubClientStub) FetchRecentReleases(context.Context, str
 	return s.recentReleases, s.recentErr
 }
 
-func (s *updateServiceGitHubClientStub) DownloadFile(context.Context, string, string, int64) error {
-	panic("DownloadFile should not be called when no update is available")
+func (s *updateServiceGitHubClientStub) FetchContainerTags(context.Context, string) ([]string, error) {
+	return s.containerTags, s.containerErr
+}
+
+func (s *updateServiceGitHubClientStub) DownloadFile(_ context.Context, _ string, dest string, _ int64) error {
+	return s.downloadErr
 }
 
 func (s *updateServiceGitHubClientStub) FetchChecksumFile(context.Context, string) ([]byte, error) {
@@ -60,6 +68,7 @@ func TestUpdateServicePerformUpdateNoUpdateReturnsSentinel(t *testing.T) {
 		},
 		"0.1.132",
 		"release",
+		"binary",
 	)
 
 	err := svc.PerformUpdate(context.Background())
@@ -69,12 +78,27 @@ func TestUpdateServicePerformUpdateNoUpdateReturnsSentinel(t *testing.T) {
 	require.ErrorIs(t, err, ErrNoUpdateAvailable)
 }
 
+func TestUpdateServicePerformUpdateDoesNotReportUpToDateWhenCheckFailed(t *testing.T) {
+	svc := NewUpdateService(
+		&updateServiceCacheStub{},
+		&updateServiceGitHubClientStub{},
+		"0.3.0",
+		"release",
+		"binary",
+	)
+
+	err := svc.PerformUpdate(context.Background())
+
+	require.ErrorIs(t, err, ErrUpdateCheckUnavailable)
+}
+
 func newRollbackTestService(current string, releases []*GitHubRelease) *UpdateService {
 	return NewUpdateService(
 		&updateServiceCacheStub{},
 		&updateServiceGitHubClientStub{recentReleases: releases},
 		current,
 		"release",
+		"binary",
 	)
 }
 
@@ -137,6 +161,7 @@ func TestUpdateServiceListRollbackVersionsPropagatesFetchError(t *testing.T) {
 		&updateServiceGitHubClientStub{recentErr: errors.New("github unavailable")},
 		"0.1.147",
 		"release",
+		"binary",
 	)
 
 	_, err := svc.ListRollbackVersions(context.Background())
@@ -184,4 +209,149 @@ func TestUpdateServiceRollbackToVersionAcceptsVPrefix(t *testing.T) {
 	require.Error(t, err)
 	require.NotErrorIs(t, err, ErrRollbackVersionNotAllowed)
 	require.Contains(t, err.Error(), "no compatible release found")
+}
+
+func TestUpdateServicePrivateAssetAPIPreservesArchiveName(t *testing.T) {
+	svc := NewUpdateService(
+		&updateServiceCacheStub{},
+		&updateServiceGitHubClientStub{},
+		"0.3.1",
+		"release",
+		"binary",
+	)
+	assetName := "modurelay_0.3.0_" + runtime.GOOS + "_" + runtime.GOARCH + ".tar.gz"
+
+	archiveName, downloadURL, checksumURL, err := svc.selectReleaseAssets([]Asset{
+		{
+			Name:        assetName,
+			DownloadURL: "https://api.github.com/repos/lien0219/modurelay/releases/assets/123",
+		},
+		{
+			Name:        "checksums.txt",
+			DownloadURL: "https://api.github.com/repos/lien0219/modurelay/releases/assets/124",
+		},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, assetName, archiveName)
+	require.Equal(t, "https://api.github.com/repos/lien0219/modurelay/releases/assets/123", downloadURL)
+	require.Equal(t, "https://api.github.com/repos/lien0219/modurelay/releases/assets/124", checksumURL)
+}
+
+func TestUpdateServiceRejectsUnsignedReleaseAsset(t *testing.T) {
+	svc := NewUpdateService(
+		&updateServiceCacheStub{},
+		&updateServiceGitHubClientStub{},
+		"0.3.1",
+		"release",
+		"binary",
+	)
+
+	_, _, _, err := svc.selectReleaseAssets([]Asset{
+		{
+			Name:        "modurelay_0.3.0_" + runtime.GOOS + "_" + runtime.GOARCH + ".tar.gz",
+			DownloadURL: "https://api.github.com/repos/lien0219/modurelay/releases/assets/123",
+		},
+	})
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "checksums.txt is required")
+}
+
+func TestUpdateServiceDockerRollbackUsesOnlyProductionImageTags(t *testing.T) {
+	svc := NewUpdateService(
+		&updateServiceCacheStub{},
+		&updateServiceGitHubClientStub{containerTags: []string{
+			"main", "sha-abcdef", "main-v0.3.1-abcdef", "main-v0.3.1",
+			"main-v0.3.0", "main-v0.2.9", "main-v0.2.8", "main-v0.2.7",
+			"0.2.6", "main-vbad",
+		}},
+		"main-v0.3.1-a1b2c3d4",
+		"release",
+		"docker",
+	)
+
+	versions, err := svc.ListRollbackVersions(context.Background())
+
+	require.NoError(t, err)
+	require.Equal(t, []RollbackVersion{
+		{
+			Version:       "0.3.0",
+			HTMLURL:       ghcrPackageURL,
+			Image:         "ghcr.io/lien0219/modurelay:main-v0.3.0",
+			DeployCommand: "./deploy-main.sh ghcr.io/lien0219/modurelay:main-v0.3.0",
+			Method:        RollbackMethodHostCommand,
+		},
+		{
+			Version:       "0.2.9",
+			HTMLURL:       ghcrPackageURL,
+			Image:         "ghcr.io/lien0219/modurelay:main-v0.2.9",
+			DeployCommand: "./deploy-main.sh ghcr.io/lien0219/modurelay:main-v0.2.9",
+			Method:        RollbackMethodHostCommand,
+		},
+		{
+			Version:       "0.2.8",
+			HTMLURL:       ghcrPackageURL,
+			Image:         "ghcr.io/lien0219/modurelay:main-v0.2.8",
+			DeployCommand: "./deploy-main.sh ghcr.io/lien0219/modurelay:main-v0.2.8",
+			Method:        RollbackMethodHostCommand,
+		},
+	}, versions)
+}
+
+func TestUpdateServiceDockerCheckUsesGHCRAndNormalizesEmbeddedVersion(t *testing.T) {
+	svc := NewUpdateService(
+		&updateServiceCacheStub{},
+		&updateServiceGitHubClientStub{containerTags: []string{
+			"main-v0.3.2", "main-v0.3.1", "main-v0.3.0",
+		}},
+		"main-v0.3.1-a1b2c3d4",
+		"release",
+		"docker",
+	)
+
+	info, err := svc.CheckUpdate(context.Background(), true)
+
+	require.NoError(t, err)
+	require.True(t, info.HasUpdate)
+	require.Equal(t, "0.3.2", info.LatestVersion)
+	require.Equal(t, DeploymentModeDocker, info.DeploymentMode)
+	require.Equal(t, "ghcr.io/lien0219/modurelay:main-v0.3.2", info.TargetImage)
+	require.Equal(t, "./deploy-main.sh ghcr.io/lien0219/modurelay:main-v0.3.2", info.DeployCommand)
+}
+
+func TestUpdateServiceDockerRejectsInContainerRollback(t *testing.T) {
+	svc := NewUpdateService(
+		&updateServiceCacheStub{},
+		&updateServiceGitHubClientStub{},
+		"main-v0.3.1-a1b2c3d4",
+		"release",
+		"docker",
+	)
+
+	err := svc.RollbackToVersion(context.Background(), "0.3.0")
+
+	require.ErrorIs(t, err, ErrHostDeploymentRequired)
+	require.ErrorIs(t, svc.PerformUpdate(context.Background()), ErrHostDeploymentRequired)
+}
+
+func TestUpdateServiceSourceBuildRejectsInPlaceMutation(t *testing.T) {
+	svc := NewUpdateService(
+		&updateServiceCacheStub{},
+		&updateServiceGitHubClientStub{},
+		"0.3.1",
+		"source",
+		"source",
+	)
+
+	versions, err := svc.ListRollbackVersions(context.Background())
+	require.NoError(t, err)
+	require.Empty(t, versions)
+	require.ErrorIs(t, svc.PerformUpdate(context.Background()), ErrInPlaceUpdateUnavailable)
+	require.ErrorIs(t, svc.RollbackToVersion(context.Background(), "0.3.0"), ErrInPlaceUpdateUnavailable)
+}
+
+func TestNormalizeSemanticVersionFromDockerBuildIdentifier(t *testing.T) {
+	require.Equal(t, "0.3.0", normalizeSemanticVersion("main-v0.3.0-81a2f23b25fb"))
+	require.Equal(t, [3]int{0, 3, 0}, parseVersion("main-v0.3.0-81a2f23b25fb"))
 }
