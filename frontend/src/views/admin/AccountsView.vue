@@ -402,6 +402,28 @@
           <template #cell-priority="{ value }">
             <span class="text-sm text-gray-700 dark:text-gray-300">{{ value }}</span>
           </template>
+          <template #header-health_score="{ column }">
+            <div class="flex items-center">
+              <span>{{ column.label }}</span>
+              <HelpTooltip :content="t('admin.accounts.healthScore.hint')" width-class="w-80" />
+            </div>
+          </template>
+          <template #cell-health_score="{ row }">
+            <div v-if="row.health" class="flex min-w-[8rem] items-center gap-1.5">
+              <span class="font-mono text-sm font-semibold tabular-nums text-gray-800 dark:text-gray-100">
+                {{ formatHealthScore(row.health.score) }}
+              </span>
+              <AccountHealthLiquidGauge :score="row.health.score" :state="row.health.state" />
+              <span
+                class="inline-flex whitespace-nowrap rounded px-1.5 py-0.5 text-xs font-medium"
+                :class="healthStateClass(row.health.state)"
+              >
+                {{ healthStateLabel(row.health.state) }}
+              </span>
+              <HelpTooltip :content="formatHealthDetails(row.health)" width-class="w-80" />
+            </div>
+            <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
+          </template>
           <template #header-scheduler_score="{ column }">
             <div class="flex items-center">
               <span>{{ column.label }}</span>
@@ -541,6 +563,7 @@ import AccountUsageCell from '@/components/account/AccountUsageCell.vue'
 import AccountTodayStatsCell from '@/components/account/AccountTodayStatsCell.vue'
 import AccountGroupsCell from '@/components/account/AccountGroupsCell.vue'
 import AccountCapacityCell from '@/components/account/AccountCapacityCell.vue'
+import AccountHealthLiquidGauge from '@/components/account/AccountHealthLiquidGauge.vue'
 import UpstreamBillingRateCell from '@/components/account/UpstreamBillingRateCell.vue'
 import UpstreamBalanceCell from '@/components/account/UpstreamBalanceCell.vue'
 import PlatformTypeBadge from '@/components/common/PlatformTypeBadge.vue'
@@ -555,7 +578,7 @@ import { extractApiErrorMessage } from '@/utils/apiError'
 import { sanitizeUrl } from '@/utils/url'
 import { getFloatingPanelPosition } from '@/utils/floatingPanel'
 import { formatMultiplier } from '@/utils/formatters'
-import type { Account, AccountListItem, AccountPlatform, AccountSchedulerGroupScore, AccountType, AccountUsageInfo, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel, UpstreamBillingProbeSnapshot } from '@/types'
+import type { Account, AccountHealthSnapshot, AccountListItem, AccountPlatform, AccountSchedulerGroupScore, AccountType, AccountUsageInfo, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel, UpstreamBillingProbeSnapshot } from '@/types'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -944,6 +967,46 @@ const formatSchedulerScore = (value: unknown): string => {
   return num.toFixed(6).replace(/\.?0+$/, '')
 }
 
+const formatHealthScore = (value: unknown): string => {
+  const score = Number(value)
+  if (!Number.isFinite(score)) return '-'
+  return Math.max(0, Math.min(100, score)).toFixed(0)
+}
+
+const healthStateLabel = (state: AccountHealthSnapshot['state']): string =>
+  t(`admin.accounts.healthScore.states.${state}`)
+
+const healthStateClass = (state: AccountHealthSnapshot['state']): string => {
+  switch (state) {
+    case 'healthy':
+      return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+    case 'degraded':
+      return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300'
+    case 'open':
+      return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+    case 'half_open':
+      return 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300'
+    default:
+      return 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-dark-300'
+  }
+}
+
+const formatHealthDetails = (health: AccountHealthSnapshot): string => {
+  const details = [
+    t('admin.accounts.healthScore.samples', { count: health.sample_count }),
+    t('admin.accounts.healthScore.errorRate', { value: `${(health.error_rate_ewma * 100).toFixed(1)}%` }),
+    t('admin.accounts.healthScore.consecutiveFailures', { count: health.consecutive_failures }),
+    t('admin.accounts.healthScore.latency', { value: Math.round(health.latency_ewma_ms) })
+  ]
+  if (health.last_failure_reason) {
+    details.push(t('admin.accounts.healthScore.lastFailure', { reason: health.last_failure_reason }))
+  }
+  if (health.open_until_unix) {
+    details.push(t('admin.accounts.healthScore.retryAt', { time: formatDateTime(new Date(health.open_until_unix * 1000)) }))
+  }
+  return details.join(' · ')
+}
+
 const formatStickySchedulerScore = (score: AccountSchedulerGroupScore): string => {
   if (!score) return '-'
   if (score.sticky_score_infinity) return '+∞'
@@ -1072,8 +1135,8 @@ const toggleColumn = (key: string) => {
       console.error('Failed to load account today stats after showing column:', error)
     })
   }
-  if (key === 'scheduler_score') {
-    // The server only returns scheduler scores when this column is visible, so reload the current page immediately.
+  if (key === 'scheduler_score' || key === 'health_score') {
+    // Runtime scores are returned only while their columns are visible.
     syncAccountListDerivedParams()
     load().catch((error) => {
       console.error('Failed to reload accounts after toggling scheduler score column:', error)
@@ -1083,10 +1146,12 @@ const toggleColumn = (key: string) => {
 
 const isColumnVisible = (key: string) => !hiddenColumns.has(key)
 const shouldIncludeSchedulerScore = () => isColumnVisible('scheduler_score')
+const shouldIncludeHealthScore = () => isColumnVisible('health_score')
 const syncAccountListDerivedParams = () => {
   // Keep every load path, including auto-refresh and sorting, aligned with the current column visibility.
   const requestParams = params as any
   requestParams.include_scheduler_score = shouldIncludeSchedulerScore() ? '1' : '0'
+  requestParams.include_health_score = shouldIncludeHealthScore() ? '1' : '0'
 }
 
 const {
@@ -1109,6 +1174,7 @@ const {
     group: '',
     search: '',
     lite: '1',
+    include_health_score: shouldIncludeHealthScore() ? '1' : '0',
     include_scheduler_score: shouldIncludeSchedulerScore() ? '1' : '0',
     sort_by: sortState.sort_by,
     sort_order: sortState.sort_order
@@ -1843,6 +1909,7 @@ const allColumns = computed(() => {
   c.push(
     { key: 'proxy', label: t('admin.accounts.columns.proxy'), sortable: false },
     { key: 'priority', label: t('admin.accounts.columns.priority'), sortable: true },
+    { key: 'health_score', label: t('admin.accounts.columns.healthScore'), sortable: false },
     { key: 'scheduler_score', label: t('admin.accounts.columns.schedulerScore'), sortable: false },
     { key: 'rate_multiplier', label: t('admin.accounts.columns.billingRateMultiplier'), sortable: true },
     { key: 'upstream_billing_rate', label: t('admin.accounts.columns.upstreamBillingRate'), sortable: true },

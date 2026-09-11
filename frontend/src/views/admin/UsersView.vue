@@ -342,8 +342,14 @@
               <!-- 专属分组行 -->
               <span
                 v-if="getUserGroups(row).exclusive.length > 0"
-                class="group/ex relative inline-flex cursor-pointer items-center gap-1 whitespace-nowrap text-xs"
-                @click.stop="toggleExpandedGroup(row.id)"
+                class="group/ex relative inline-flex cursor-pointer items-center gap-1 whitespace-nowrap rounded text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-1"
+                role="button"
+                tabindex="0"
+                aria-haspopup="menu"
+                :aria-expanded="expandedGroupUserId === row.id"
+                @click.stop="toggleExpandedGroup(row.id, $event)"
+                @keydown.enter.prevent.stop="toggleExpandedGroup(row.id, $event)"
+                @keydown.space.prevent.stop="toggleExpandedGroup(row.id, $event)"
               >
                 <Icon name="shield" size="xs" class="h-3.5 w-3.5 text-purple-500 dark:text-purple-400" />
                 <span class="font-medium text-purple-600 dark:text-purple-400">{{ getUserGroups(row).exclusive.length }}</span>
@@ -359,24 +365,31 @@
                   </div>
                 </div>
                 <!-- 点击展开分组操作菜单 -->
+              </span>
+              <Teleport to="body">
                 <div
-                  v-if="expandedGroupUserId === row.id"
-                  class="absolute left-0 top-full z-50 mt-1.5 min-w-[160px] overflow-hidden rounded-lg border border-gray-200 bg-white py-1 text-xs shadow-xl dark:border-dark-600 dark:bg-dark-700"
+                  v-if="expandedGroupUserId === row.id && expandedGroupMenuPosition"
+                  class="user-group-menu glass-popover scrollable-popover fixed z-[9999] overflow-y-auto py-1 text-xs"
+                  :style="floatingPanelStyle(expandedGroupMenuPosition)"
+                  role="menu"
+                  @click.stop
                 >
                   <div class="border-b border-gray-100 px-3 py-1.5 text-[10px] font-medium uppercase tracking-wider text-gray-400 dark:border-dark-600 dark:text-dark-400">
                     {{ t('admin.users.clickToReplace') }}
                   </div>
-                  <div
+                  <button
                     v-for="g in getUserGroups(row).exclusive"
                     :key="g.id"
-                    class="flex cursor-pointer items-center gap-2 px-3 py-2 text-gray-700 transition-colors hover:bg-primary-50 hover:text-primary-600 dark:text-dark-200 dark:hover:bg-primary-900/30 dark:hover:text-primary-400"
+                    type="button"
+                    class="flex w-full min-w-0 items-center gap-2 px-3 py-2 text-left text-gray-700 transition-colors hover:bg-primary-50 hover:text-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500 dark:text-dark-200 dark:hover:bg-primary-900/30 dark:hover:text-primary-400"
+                    role="menuitem"
                     @click.stop="openGroupReplace(row, g)"
                   >
                     <Icon name="swap" size="xs" class="h-3.5 w-3.5 flex-shrink-0 opacity-50" />
-                    <span class="flex-1">{{ g.name }}</span>
-                  </div>
+                    <span class="min-w-0 flex-1 break-words">{{ g.name }}</span>
+                  </button>
                 </div>
-              </span>
+              </Teleport>
               <!-- 公开分组行 -->
               <span
                 v-if="getUserGroups(row).publicGroups.length > 0"
@@ -482,7 +495,9 @@
                     : 'text-gray-400 dark:text-dark-500'"
                   :title="t('admin.users.sortBy')"
                   :data-test="`usage-sort-trigger-${usageKey}`"
-                  @click.stop="toggleUsageSortMenu(usageKey)"
+                  aria-haspopup="menu"
+                  :aria-expanded="openUsageSortMenu === usageKey"
+                  @click.stop="toggleUsageSortMenu(usageKey, $event)"
                 >
                   <span
                     v-if="usageSort && usageSort.key === usageKey"
@@ -506,40 +521,46 @@
                   </svg>
                 </button>
                 <!-- 弹出菜单：今日 / 近30天，点击进行三态循环切换。 -->
-                <div
-                  v-if="openUsageSortMenu === usageKey"
-                  class="absolute right-0 top-full z-50 mt-1 min-w-[120px] rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-dark-600 dark:bg-dark-800"
-                >
-                  <button
-                    v-for="metric in (['today', 'total'] as const)"
-                    :key="metric"
-                    type="button"
-                    class="flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left text-xs normal-case tracking-normal hover:bg-gray-100 dark:hover:bg-dark-700"
-                    :class="isUsageSortActive(usageKey, metric)
-                      ? 'font-medium text-primary-600 dark:text-primary-400'
-                      : 'text-gray-700 dark:text-gray-300'"
-                    :data-test="`usage-sort-${usageKey}-${metric}`"
-                    @click.stop="toggleUsageSort(usageKey, metric)"
+                <Teleport to="body">
+                  <div
+                    v-if="openUsageSortMenu === usageKey && usageSortMenuPosition"
+                    class="usage-sort-menu glass-popover scrollable-popover fixed z-[9999] overflow-y-auto py-1"
+                    :style="floatingPanelStyle(usageSortMenuPosition)"
+                    role="menu"
+                    @click.stop
                   >
-                    <span>{{ metric === 'today' ? t('admin.users.today') : t('admin.users.total') }}</span>
-                    <svg
-                      v-if="getUsageSortOrder(usageKey, metric)"
-                      class="h-3 w-3"
-                      :class="{ 'rotate-180': getUsageSortOrder(usageKey, metric) === 'desc' }"
-                      fill="currentColor"
-                      viewBox="0 0 20 20"
+                    <button
+                      v-for="metric in (['today', 'total'] as const)"
+                      :key="metric"
+                      type="button"
+                      class="flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left text-xs normal-case tracking-normal hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500 dark:hover:bg-dark-700"
+                      :class="isUsageSortActive(usageKey, metric)
+                        ? 'font-medium text-primary-600 dark:text-primary-400'
+                        : 'text-gray-700 dark:text-gray-300'"
+                      :data-test="`usage-sort-${usageKey}-${metric}`"
+                      role="menuitem"
+                      @click.stop="toggleUsageSort(usageKey, metric)"
                     >
-                      <path
-                        fill-rule="evenodd"
-                        d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z"
-                        clip-rule="evenodd"
-                      />
-                    </svg>
-                  </button>
-                  <div class="mt-1 border-t border-gray-100 px-3 py-1 text-[10px] normal-case tracking-normal text-gray-400 dark:border-dark-700 dark:text-dark-500">
-                    {{ t('admin.users.sortCurrentPageOnly') }}
+                      <span>{{ metric === 'today' ? t('admin.users.today') : t('admin.users.total') }}</span>
+                      <svg
+                        v-if="getUsageSortOrder(usageKey, metric)"
+                        class="h-3 w-3"
+                        :class="{ 'rotate-180': getUsageSortOrder(usageKey, metric) === 'desc' }"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path
+                          fill-rule="evenodd"
+                          d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z"
+                          clip-rule="evenodd"
+                        />
+                      </svg>
+                    </button>
+                    <div class="mt-1 border-t border-gray-100 px-3 py-1 text-[10px] normal-case tracking-normal text-gray-400 dark:border-dark-700 dark:text-dark-500">
+                      {{ t('admin.users.sortCurrentPageOnly') }}
+                    </div>
                   </div>
-                </div>
+                </Teleport>
               </div>
             </div>
           </template>
@@ -784,6 +805,7 @@ import { useAppStore } from '@/stores/app'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { useTableSelection } from '@/composables/useTableSelection'
 import { formatDateTime } from '@/utils/format'
+import { getFloatingPanelPosition, type FloatingPanelPosition } from '@/utils/floatingPanel'
 import Icon from '@/components/icons/Icon.vue'
 
 const { t } = useI18n()
@@ -818,6 +840,14 @@ import UserBalanceHistoryModal from '@/components/admin/user/UserBalanceHistoryM
 import GroupReplaceModal from '@/components/admin/user/GroupReplaceModal.vue'
 
 const appStore = useAppStore()
+
+const floatingPanelStyle = (position: FloatingPanelPosition) => ({
+  top: position.top == null ? 'auto' : `${position.top}px`,
+  bottom: position.bottom == null ? 'auto' : `${position.bottom}px`,
+  left: `${position.left}px`,
+  width: `${position.width}px`,
+  maxHeight: `${position.maxHeight}px`
+})
 
 // Generate dynamic attribute columns from enabled definitions
 const attributeColumns = computed<Column[]>(() =>
@@ -1213,6 +1243,7 @@ type UsageSortState = { key: string; metric: UsageMetric; order: 'asc' | 'desc' 
 const USAGE_SORT_STORAGE_KEY = 'admin-users-usage-sort'
 // 列头排序按钮点击后弹出的"今日/近30天"选择菜单，同时只允许一个列展开。
 const openUsageSortMenu = ref<string | null>(null)
+const usageSortMenuPosition = ref<FloatingPanelPosition | null>(null)
 
 const loadInitialUsageSort = (): UsageSortState => {
   try {
@@ -1240,9 +1271,10 @@ const persistUsageSort = () => {
   }
 }
 const clearUsageSort = () => {
+  openUsageSortMenu.value = null
+  usageSortMenuPosition.value = null
   if (!usageSort.value) return
   usageSort.value = null
-  openUsageSortMenu.value = null
   persistUsageSort()
 }
 
@@ -1262,11 +1294,26 @@ const toggleUsageSort = (key: string, metric: UsageMetric) => {
   }
   persistUsageSort()
   openUsageSortMenu.value = null
+  usageSortMenuPosition.value = null
 }
 
 // 点击图标本身不触发排序，仅开关菜单；首次排序由用户在菜单内选择 metric 触发（默认 desc，详见 toggleUsageSort）。
-const toggleUsageSortMenu = (key: string) => {
-  openUsageSortMenu.value = openUsageSortMenu.value === key ? null : key
+const toggleUsageSortMenu = (key: string, event: MouseEvent) => {
+  if (openUsageSortMenu.value === key) {
+    openUsageSortMenu.value = null
+    usageSortMenuPosition.value = null
+    return
+  }
+
+  const trigger = event.currentTarget as HTMLElement | null
+  if (!trigger) return
+  usageSortMenuPosition.value = getFloatingPanelPosition(
+    trigger.getBoundingClientRect(),
+    window.innerWidth,
+    window.innerHeight,
+    { viewportPadding: 8, gap: 4, maxWidth: 160, maxHeightRatio: 0.5, minComfortableHeight: 128 }
+  )
+  openUsageSortMenu.value = key
 }
 
 const getUsageValue = (userId: number, key: string, metric: UsageMetric): number => {
@@ -1511,10 +1558,12 @@ const handleClickOutside = (event: MouseEvent) => {
   // Close usage sort dropdown when clicking outside any usage-sort-trigger
   if (openUsageSortMenu.value !== null && !target.closest('.usage-sort-trigger')) {
     openUsageSortMenu.value = null
+    usageSortMenuPosition.value = null
   }
   // Close expanded group dropdown when clicking outside
   if (expandedGroupUserId.value !== null) {
     expandedGroupUserId.value = null
+    expandedGroupMenuPosition.value = null
   }
 }
 
@@ -1524,8 +1573,23 @@ const allowedGroupsUser = ref<AdminUser | null>(null)
 
 // Expanded group dropdown state (click to show exclusive groups list)
 const expandedGroupUserId = ref<number | null>(null)
-const toggleExpandedGroup = (userId: number) => {
-  expandedGroupUserId.value = expandedGroupUserId.value === userId ? null : userId
+const expandedGroupMenuPosition = ref<FloatingPanelPosition | null>(null)
+const toggleExpandedGroup = (userId: number, event: MouseEvent | KeyboardEvent) => {
+  if (expandedGroupUserId.value === userId) {
+    expandedGroupUserId.value = null
+    expandedGroupMenuPosition.value = null
+    return
+  }
+
+  const trigger = event.currentTarget as HTMLElement | null
+  if (!trigger) return
+  expandedGroupMenuPosition.value = getFloatingPanelPosition(
+    trigger.getBoundingClientRect(),
+    window.innerWidth,
+    window.innerHeight,
+    { viewportPadding: 8, gap: 6, maxWidth: 240, maxHeightRatio: 0.5, minComfortableHeight: 160 }
+  )
+  expandedGroupUserId.value = userId
 }
 
 // Group replace modal state
@@ -1761,6 +1825,7 @@ const closeAllowedGroupsModal = () => {
 
 const openGroupReplace = (user: AdminUser, group: { id: number; name: string }) => {
   expandedGroupUserId.value = null
+  expandedGroupMenuPosition.value = null
   groupReplaceUser.value = user
   groupReplaceOldGroup.value = group
   showGroupReplaceModal.value = true
@@ -1835,6 +1900,10 @@ const handleWithdrawFromHistory = () => {
 // 滚动时关闭菜单
 const handleScroll = () => {
   closeActionMenu()
+  openUsageSortMenu.value = null
+  usageSortMenuPosition.value = null
+  expandedGroupUserId.value = null
+  expandedGroupMenuPosition.value = null
 }
 
 onMounted(async () => {
@@ -1850,11 +1919,13 @@ onMounted(async () => {
   }
   document.addEventListener('click', handleClickOutside)
   window.addEventListener('scroll', handleScroll, true)
+  window.addEventListener('resize', handleScroll)
 })
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
   window.removeEventListener('scroll', handleScroll, true)
+  window.removeEventListener('resize', handleScroll)
   clearTimeout(searchTimeout)
   abortController?.abort()
 })

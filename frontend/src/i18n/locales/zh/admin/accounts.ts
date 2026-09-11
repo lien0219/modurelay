@@ -108,6 +108,7 @@ export default {
         upstreamBillingRate: '上游声明倍率',
         upstreamBalance: '上游余额',
         weight: '权重',
+        healthScore: '健康分',
         schedulerScore: '调度权值',
         status: '状态',
         schedulable: '调度',
@@ -125,6 +126,22 @@ export default {
         stickyShort: '粘性',
         ungrouped: '未分组',
         hint: '显示格式为“分组名 / 基础分 / 粘性加分”。基础分按当前筛选条件限定的候选账号计算，包含优先级、负载、排队、错误率、首包延迟、重置窗口、额度余量、计费倍率等因子；粘性加分只在开启粘性加权时用于 previous_response_id 或 session_hash。分数越大越优先。'
+      },
+      healthScore: {
+        hint: '统一健康分范围为 0～100。仅在同一分组、同一优先级的可调度账号中优先选择高分账号；限流、配额、模型能力和渠道定价规则仍优先生效。',
+        states: {
+          warming: '采样中',
+          healthy: '健康',
+          degraded: '降级',
+          open: '熔断',
+          half_open: '恢复探测'
+        },
+        samples: '样本数：{count}',
+        errorRate: '错误率：{value}',
+        consecutiveFailures: '连续失败：{count}',
+        latency: 'EWMA 延迟：{value} ms',
+        lastFailure: '最近失败：{reason}',
+        retryAt: '恢复探测时间：{time}'
       },
       usageWindowsHint: '“5h / 7d”是上游账号（如 OpenAI ChatGPT、Claude）官方的滚动用量窗口限制，由上游对账号设定，并非 ModuRelay 配置，也与你映射的模型无关。窗口滚动到期后用量会自动重置，无法在 ModuRelay 端解除该限制。',
       ollamaCloud: {

@@ -37,4 +37,19 @@ describe('TablePageLayout responsive table scrolling', () => {
     expect(headerBlock?.[1]).toContain('background-color: var(--color-surface-raised)')
     expect(headerBlock?.[1]).not.toContain('backdrop-filter')
   })
+
+  it('keeps toolbar dropdowns above the sticky table stacking context', () => {
+    const rootBlock = componentSource.match(/\.table-page-layout\s*\{([^}]*)\}/)
+    const actionsBlock = componentSource.match(/\.layout-section-actions\s*\{([^}]*)\}/)
+    const filtersBlock = componentSource.match(/\.layout-section-filters\s*\{([^}]*)\}/)
+    const scrollableBlock = componentSource.match(/\.layout-section-scrollable\s*\{([^}]*)\}/)
+    const readZIndex = (block: RegExpMatchArray | null) =>
+      Number(block?.[1].match(/z-index:\s*(\d+)/)?.[1] ?? -1)
+
+    expect(componentSource).toContain('layout-section-fixed layout-section-actions')
+    expect(rootBlock?.[1]).toContain('position: relative')
+    expect(rootBlock?.[1]).toContain('isolation: isolate')
+    expect(readZIndex(actionsBlock)).toBeGreaterThan(readZIndex(filtersBlock))
+    expect(readZIndex(filtersBlock)).toBeGreaterThan(readZIndex(scrollableBlock))
+  })
 })

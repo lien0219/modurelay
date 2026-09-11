@@ -327,6 +327,8 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 			return
 		}
 
+		h.gatewayService.ObserveAccountHealthSuccess(c.Request.Context(), account, result.Duration)
+
 		// 6. Record usage
 		userAgent := c.GetHeader("User-Agent")
 		clientIP := ip.GetClientIP(c)

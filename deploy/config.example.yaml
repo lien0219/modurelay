@@ -569,6 +569,24 @@ gateway:
     outbox_backlog_rebuild_rows: 10000
     # 全量重建周期（秒），0 表示禁用
     full_rebuild_interval_seconds: 300
+
+  # Shared account health score and circuit breaker. Redis is authoritative
+  # across instances; cache failures fail open to the existing scheduler.
+  # 跨实例账号健康分与熔断；Redis 异常时自动回退现有调度。
+  account_health:
+    enabled: true
+    # Set false for observation-only rollback without deleting health history.
+    # 设为 false 可仅观察健康分，不影响调度。
+    enforcement_enabled: true
+    minimum_samples: 10
+    degraded_score: 80
+    open_score: 45
+    consecutive_failures: 3
+    base_cooldown_seconds: 30
+    max_cooldown_seconds: 600
+    half_open_max_probes: 1
+    state_ttl_seconds: 86400
+    local_cache_ttl_ms: 500
   # TLS fingerprint simulation / TLS 指纹伪装
   # Default profile "claude_cli_v2" simulates Node.js 20.x
   # 默认模板 "claude_cli_v2" 模拟 Node.js 20.x 指纹

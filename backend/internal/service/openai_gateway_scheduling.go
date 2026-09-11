@@ -1082,6 +1082,9 @@ func (s *OpenAIGatewayService) isBetterAccount(candidate, current *Account) bool
 	if candidate.Priority > current.Priority {
 		return false
 	}
+	if healthCmp := compareAccountSchedulingHealth(candidate, current); healthCmp != 0 {
+		return healthCmp < 0
+	}
 
 	// 同优先级，比较最后使用时间
 	// Same priority, compare last used time
@@ -1134,7 +1137,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		if err != nil {
 			return nil, err
 		}
-		result, err := s.tryAcquireAccountSlot(ctx, account.ID, account.Concurrency)
+		result, err := s.tryAcquireAccountSlot(ctx, account)
 		if err == nil && result != nil && result.Acquired {
 			return s.newAcquiredSelectionResult(ctx, account, result.ReleaseFunc)
 		}
@@ -1201,7 +1204,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 					} else if !parentHealthyForShadow(account, s.parentAccountLookup(ctx)) {
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 					} else {
-						result, err := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
+						result, err := s.tryAcquireAccountSlot(ctx, account)
 						if err == nil && result != nil && result.Acquired {
 							selection, selectErr := s.newAcquiredSelectionResult(ctx, account, result.ReleaseFunc)
 							if selectErr != nil {
@@ -1314,6 +1317,9 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 			if a.account.Priority != b.account.Priority {
 				return a.account.Priority < b.account.Priority
 			}
+			if healthCmp := compareAccountSchedulingHealth(a.account, b.account); healthCmp != 0 {
+				return healthCmp < 0
+			}
 			if a.loadInfo.LoadRate != b.loadInfo.LoadRate {
 				return a.loadInfo.LoadRate < b.loadInfo.LoadRate
 			}
@@ -1366,7 +1372,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 			if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, fresh, requestedModel, requireCompact) {
 				continue
 			}
-			result, err := s.tryAcquireAccountSlot(ctx, fresh.ID, fresh.Concurrency)
+			result, err := s.tryAcquireAccountSlot(ctx, fresh)
 			if err == nil && result != nil && result.Acquired {
 				selection, selectErr := s.newAcquiredSelectionResult(ctx, fresh, result.ReleaseFunc)
 				if selectErr != nil {
@@ -1405,7 +1411,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 			if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, fresh, requestedModel, requireCompact) {
 				continue
 			}
-			result, err := s.tryAcquireAccountSlot(ctx, fresh.ID, fresh.Concurrency)
+			result, err := s.tryAcquireAccountSlot(ctx, fresh)
 			if err == nil && result != nil && result.Acquired {
 				selection, selectErr := s.newAcquiredSelectionResult(ctx, fresh, result.ReleaseFunc)
 				if selectErr != nil {
@@ -1480,6 +1486,9 @@ func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, grou
 		if platform == PlatformGrok {
 			accounts = s.filterGrokFreeQuotaAccountsForOpenAI(ctx, accounts)
 		}
+		if s.rateLimitService != nil {
+			accounts = s.rateLimitService.annotateAccountsWithHealth(ctx, accounts)
+		}
 		return accounts, nil
 	}
 	var accounts []Account
@@ -1498,14 +1507,49 @@ func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, grou
 	if platform == PlatformGrok {
 		accounts = s.filterGrokFreeQuotaAccountsForOpenAI(ctx, accounts)
 	}
+	if s.rateLimitService != nil {
+		accounts = s.rateLimitService.annotateAccountsWithHealth(ctx, accounts)
+	}
 	return accounts, nil
 }
 
-func (s *OpenAIGatewayService) tryAcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int) (*AcquireResult, error) {
-	if s.concurrencyService == nil {
-		return &AcquireResult{Acquired: true, ReleaseFunc: func() {}}, nil
+func (s *OpenAIGatewayService) tryAcquireAccountSlot(ctx context.Context, account *Account) (*AcquireResult, error) {
+	if account == nil {
+		return &AcquireResult{}, nil
 	}
-	return s.concurrencyService.AcquireAccountSlot(ctx, accountID, maxConcurrency)
+	probeToken := ""
+	releaseProbe := func() {}
+	if s.rateLimitService != nil {
+		var allowed bool
+		probeToken, allowed = s.rateLimitService.acquireAccountHealthProbe(ctx, account)
+		if !allowed {
+			return &AcquireResult{}, nil
+		}
+		releaseProbe = func() {
+			s.rateLimitService.releaseAccountHealthProbe(ctx, account.ID, probeToken)
+		}
+	}
+	if s.concurrencyService == nil {
+		return &AcquireResult{
+			Acquired:    true,
+			ReleaseFunc: releaseProbe,
+		}, nil
+	}
+	result, err := s.concurrencyService.AcquireAccountSlot(ctx, account.ID, account.Concurrency)
+	if err != nil || result == nil || !result.Acquired {
+		releaseProbe()
+		return result, err
+	}
+	if probeToken != "" {
+		releaseSlot := result.ReleaseFunc
+		result.ReleaseFunc = func() {
+			if releaseSlot != nil {
+				releaseSlot()
+			}
+			releaseProbe()
+		}
+	}
+	return result, err
 }
 
 func (s *OpenAIGatewayService) resolveFreshSchedulableOpenAIAccount(ctx context.Context, account *Account, platform string, requestedModel string, requireCompact bool, requiredCapability OpenAIEndpointCapability) *Account {
@@ -1533,6 +1577,7 @@ func (s *OpenAIGatewayService) resolveFreshSchedulableOpenAIAccountBeforeProfit(
 		}
 		fresh = current
 	}
+	copySchedulingHealthAnnotation(account, fresh)
 
 	if !isOpenAICompatibleAccountEligibleForRequestBeforeProfit(ctx, fresh, platform, requestedModel, requireCompact, requiredCapability) {
 		return nil
@@ -1605,6 +1650,7 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDBBeforeProfit(ct
 	if err != nil || latest == nil {
 		return nil
 	}
+	copySchedulingHealthAnnotation(account, latest)
 	if !s.openAIAccountMatchesSchedulingGroup(latest, groupID) {
 		return nil
 	}
@@ -1658,6 +1704,13 @@ func (s *OpenAIGatewayService) getSchedulableAccount(ctx context.Context, accoun
 			return nil, nil
 		}
 	}
+	if s.rateLimitService != nil {
+		annotated := s.rateLimitService.annotateAccountsWithHealth(ctx, []Account{*account})
+		if len(annotated) == 0 {
+			return nil, nil
+		}
+		account = &annotated[0]
+	}
 	return account, nil
 }
 
@@ -1707,6 +1760,9 @@ func (s *OpenAIGatewayService) hydrateSelectedAccount(ctx context.Context, accou
 }
 
 func (s *OpenAIGatewayService) newSelectionResult(ctx context.Context, account *Account, acquired bool, release func(), waitPlan *AccountWaitPlan) (*AccountSelectionResult, error) {
+	if !acquired && waitPlan != nil && s.rateLimitService != nil && !s.rateLimitService.accountHealthAllowsWait(account) {
+		return nil, ErrNoAvailableAccounts
+	}
 	hydrated, err := s.hydrateSelectedAccount(ctx, account)
 	if err != nil {
 		return nil, err

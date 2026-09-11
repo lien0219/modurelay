@@ -1,7 +1,7 @@
 <template>
   <div class="table-page-layout" :class="{ 'mobile-mode': isMobile }">
     <!-- 固定区域：操作按钮 -->
-    <div v-if="$slots.actions" class="layout-section-fixed">
+    <div v-if="$slots.actions" class="layout-section-fixed layout-section-actions">
       <slot name="actions" />
     </div>
 
@@ -47,6 +47,8 @@ onUnmounted(() => {
 /* 桌面端：Flexbox 布局 */
 .table-page-layout {
   @apply flex flex-col gap-6;
+  position: relative;
+  isolation: isolate;
   height: calc(100vh - 64px - 4rem); /* 减去 header + lg:p-8 的上下padding */
 }
 
@@ -54,7 +56,14 @@ onUnmounted(() => {
   @apply flex-shrink-0;
 }
 
+.layout-section-actions {
+  position: relative;
+  z-index: 30;
+}
+
 .layout-section-filters {
+  position: relative;
+  z-index: 20;
   padding: 12px;
   border: 1px solid var(--glass-border);
   border-radius: 12px;
@@ -66,6 +75,8 @@ onUnmounted(() => {
 
 .layout-section-scrollable {
   @apply flex-1 min-h-0 flex flex-col;
+  position: relative;
+  z-index: 0;
 }
 
 /* 表格滚动容器 - 增强版表体滚动方案 */

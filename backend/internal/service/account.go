@@ -82,6 +82,13 @@ type Account struct {
 	headerOverrideCacheRawPtr         uintptr
 	headerOverrideCacheRawLen         int
 	headerOverrideCacheRawSig         uint64
+
+	// schedulingHealth* are request-local annotations populated from the shared
+	// Redis health snapshot. They are never persisted in account records.
+	schedulingHealthKnown    bool
+	schedulingHealthEnforced bool
+	schedulingHealthScore    float64
+	schedulingHealthState    AccountHealthState
 }
 
 type OpenAIEndpointCapability string

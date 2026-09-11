@@ -188,6 +188,7 @@ describe('admin AccountsView select all filtered results', () => {
     expect(wrapper.get('[data-test="all-results-selected"]').text()).toBe('true')
     expect(listAccounts).toHaveBeenCalledWith(1, 1000, expect.objectContaining({
       lite: '1',
+      include_health_score: '0',
       include_scheduler_score: '0'
     }))
 

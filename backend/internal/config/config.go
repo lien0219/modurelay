@@ -1010,6 +1010,8 @@ type GatewayConfig struct {
 	Live GatewayLiveConfig `mapstructure:"live"`
 	// OpenAIScheduler: OpenAI 高级调度器粘性逃逸配置
 	OpenAIScheduler GatewayOpenAISchedulerConfig `mapstructure:"openai_scheduler"`
+	// AccountHealth: 跨实例账号健康评分、熔断与半开探测配置。
+	AccountHealth GatewayAccountHealthConfig `mapstructure:"account_health"`
 	// OpenAIHTTP2: OpenAI HTTP 上游协议策略（默认启用 HTTP/2，可按代理能力回退 HTTP/1.1）
 	OpenAIHTTP2 GatewayOpenAIHTTP2Config `mapstructure:"openai_http2"`
 	// OpenAIProxyStreamCircuit: Responses SSE 代理断流熔断策略。
@@ -1371,6 +1373,23 @@ type GatewayOpenAISchedulerConfig struct {
 	StickyEscapeTTFTMs int `mapstructure:"sticky_escape_ttft_ms"`
 	// StickyEscapeErrorRate: 错误率 EWMA 超过该阈值时跳过 sticky
 	StickyEscapeErrorRate float64 `mapstructure:"sticky_escape_error_rate"`
+}
+
+// GatewayAccountHealthConfig controls the shared account health circuit breaker.
+// Enabled controls observation and display; EnforcementEnabled additionally
+// enables routing filters, health ordering, and half-open probe limits.
+type GatewayAccountHealthConfig struct {
+	Enabled             bool    `mapstructure:"enabled"`
+	EnforcementEnabled  bool    `mapstructure:"enforcement_enabled"`
+	MinimumSamples      int     `mapstructure:"minimum_samples"`
+	DegradedScore       float64 `mapstructure:"degraded_score"`
+	OpenScore           float64 `mapstructure:"open_score"`
+	ConsecutiveFailures int     `mapstructure:"consecutive_failures"`
+	BaseCooldownSeconds int     `mapstructure:"base_cooldown_seconds"`
+	MaxCooldownSeconds  int     `mapstructure:"max_cooldown_seconds"`
+	HalfOpenMaxProbes   int     `mapstructure:"half_open_max_probes"`
+	StateTTLSeconds     int     `mapstructure:"state_ttl_seconds"`
+	LocalCacheTTLMS     int     `mapstructure:"local_cache_ttl_ms"`
 }
 
 // GatewayUsageRecordConfig 使用量记录异步队列配置
@@ -2510,6 +2529,17 @@ func setDefaults() {
 	viper.SetDefault("gateway.scheduling.outbox_lag_rebuild_failures", 3)
 	viper.SetDefault("gateway.scheduling.outbox_backlog_rebuild_rows", 10000)
 	viper.SetDefault("gateway.scheduling.full_rebuild_interval_seconds", 300)
+	viper.SetDefault("gateway.account_health.enabled", true)
+	viper.SetDefault("gateway.account_health.enforcement_enabled", true)
+	viper.SetDefault("gateway.account_health.minimum_samples", 10)
+	viper.SetDefault("gateway.account_health.degraded_score", 80.0)
+	viper.SetDefault("gateway.account_health.open_score", 45.0)
+	viper.SetDefault("gateway.account_health.consecutive_failures", 3)
+	viper.SetDefault("gateway.account_health.base_cooldown_seconds", 30)
+	viper.SetDefault("gateway.account_health.max_cooldown_seconds", 600)
+	viper.SetDefault("gateway.account_health.half_open_max_probes", 1)
+	viper.SetDefault("gateway.account_health.state_ttl_seconds", 86400)
+	viper.SetDefault("gateway.account_health.local_cache_ttl_ms", 500)
 	viper.SetDefault("gateway.usage_record.worker_count", 128)
 	viper.SetDefault("gateway.usage_record.queue_size", 16384)
 	viper.SetDefault("gateway.usage_record.task_timeout_seconds", 5)

@@ -193,9 +193,10 @@ type CheckMixedChannelRequest struct {
 // AccountWithConcurrency extends Account with real-time concurrency info
 type AccountWithConcurrency struct {
 	*dto.Account
-	CurrentConcurrency int                          `json:"current_concurrency"`
-	SchedulerScore     *AccountSchedulerScore       `json:"scheduler_score,omitempty"`
-	SchedulerScores    []AccountSchedulerGroupScore `json:"scheduler_scores,omitempty"`
+	CurrentConcurrency int                            `json:"current_concurrency"`
+	Health             *service.AccountHealthSnapshot `json:"health,omitempty"`
+	SchedulerScore     *AccountSchedulerScore         `json:"scheduler_score,omitempty"`
+	SchedulerScores    []AccountSchedulerGroupScore   `json:"scheduler_scores,omitempty"`
 	// 以下字段仅对 Anthropic OAuth/SetupToken 账号有效，且仅在启用相应功能时返回
 	CurrentWindowCost *float64 `json:"current_window_cost,omitempty"` // 当前窗口费用
 	ActiveSessions    *int     `json:"active_sessions,omitempty"`     // 当前活跃会话数
@@ -207,12 +208,13 @@ type AccountWithConcurrency struct {
 // so groups/account_groups never appear in the list payload.
 type AccountListItemWithConcurrency struct {
 	*dto.AccountListItem
-	CurrentConcurrency int                          `json:"current_concurrency"`
-	SchedulerScore     *AccountSchedulerScore       `json:"scheduler_score,omitempty"`
-	SchedulerScores    []AccountSchedulerGroupScore `json:"scheduler_scores,omitempty"`
-	CurrentWindowCost  *float64                     `json:"current_window_cost,omitempty"`
-	ActiveSessions     *int                         `json:"active_sessions,omitempty"`
-	CurrentRPM         *int                         `json:"current_rpm,omitempty"`
+	CurrentConcurrency int                            `json:"current_concurrency"`
+	Health             *service.AccountHealthSnapshot `json:"health,omitempty"`
+	SchedulerScore     *AccountSchedulerScore         `json:"scheduler_score,omitempty"`
+	SchedulerScores    []AccountSchedulerGroupScore   `json:"scheduler_scores,omitempty"`
+	CurrentWindowCost  *float64                       `json:"current_window_cost,omitempty"`
+	ActiveSessions     *int                           `json:"active_sessions,omitempty"`
+	CurrentRPM         *int                           `json:"current_rpm,omitempty"`
 }
 
 type AccountSchedulerScore struct {
@@ -541,6 +543,7 @@ func (h *AccountHandler) List(c *gin.Context) {
 	lite := parseBoolQueryWithDefault(c.Query("lite"), false)
 	// 调度分需要跨候选池批量打分并读取负载，默认列表不计算；只有前端列可见时才显式开启。
 	includeSchedulerScore := parseBoolQueryWithDefault(c.Query("include_scheduler_score"), false)
+	includeHealthScore := parseBoolQueryWithDefault(c.Query("include_health_score"), false)
 
 	var groupID int64
 	if groupIDStr := c.Query("group"); groupIDStr != "" {
@@ -589,6 +592,7 @@ func (h *AccountHandler) List(c *gin.Context) {
 	// 双重门控：用户要看该列，且当前页确实有 OpenAI 账号，才进入昂贵的候选池打分路径。
 	var schedulerScores map[int64]*AccountSchedulerScore
 	var schedulerGroupScores map[int64][]AccountSchedulerGroupScore
+	var healthSnapshots map[int64]*service.AccountHealthSnapshot
 	pageHasOpenAIAccounts := false
 	for i := range accounts {
 		if accounts[i].Platform == service.PlatformOpenAI {
@@ -599,6 +603,9 @@ func (h *AccountHandler) List(c *gin.Context) {
 	if includeSchedulerScore && pageHasOpenAIAccounts {
 		schedulerFilterPool := h.listAccountSchedulerScoreFilterPool(c.Request.Context(), platform, accountType, status, search, groupID, privacyMode)
 		schedulerScores, schedulerGroupScores = h.buildOpenAIAccountSchedulerScores(c.Request.Context(), accounts, schedulerFilterPool)
+	}
+	if includeHealthScore && h.rateLimitService != nil {
+		healthSnapshots = h.rateLimitService.GetAccountHealthSnapshots(c.Request.Context(), accountIDs)
 	}
 
 	// 始终获取并发数（Redis ZCARD，极低开销）
@@ -684,6 +691,7 @@ func (h *AccountHandler) List(c *gin.Context) {
 		item := AccountWithConcurrency{
 			Account:            accountResponse,
 			CurrentConcurrency: concurrencyCounts[acc.ID],
+			Health:             healthSnapshots[acc.ID],
 			SchedulerScore:     schedulerScores[acc.ID],
 			SchedulerScores:    schedulerGroupScores[acc.ID],
 		}
@@ -721,6 +729,7 @@ func (h *AccountHandler) List(c *gin.Context) {
 			compact[i] = AccountListItemWithConcurrency{
 				AccountListItem:    dto.AccountListItemFromAccount(item.Account),
 				CurrentConcurrency: item.CurrentConcurrency,
+				Health:             item.Health,
 				SchedulerScore:     item.SchedulerScore,
 				SchedulerScores:    item.SchedulerScores,
 				CurrentWindowCost:  item.CurrentWindowCost,

@@ -491,6 +491,9 @@ func ProvideRateLimitService(
 	if healthCache, ok := tempUnschedCache.(OpenAIAPIKeyHealthCache); ok {
 		svc.SetOpenAIAPIKeyHealthCache(healthCache)
 	}
+	if healthCache, ok := tempUnschedCache.(AccountHealthCache); ok {
+		svc.SetAccountHealthCache(healthCache)
+	}
 	svc.SetTimeoutCounterCache(timeoutCounterCache)
 	svc.SetOpenAI403CounterCache(openAI403CounterCache)
 	svc.SetSettingService(settingService)

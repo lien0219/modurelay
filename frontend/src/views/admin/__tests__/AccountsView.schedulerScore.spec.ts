@@ -70,6 +70,9 @@ const DataTableStub = {
       <div v-for="row in data" :key="row.id" :data-test="'scheduler-score-' + row.id">
         <slot name="cell-scheduler_score" :row="row" />
       </div>
+      <div v-for="row in data" :key="'health-' + row.id" :data-test="'health-score-' + row.id">
+        <slot name="cell-health_score" :row="row" />
+      </div>
     </div>
   `
 }
@@ -104,6 +107,7 @@ function mountView() {
         BulkEditAccountModal: true,
         PlatformTypeBadge: true,
         AccountCapacityCell: true,
+        AccountHealthLiquidGauge: true,
         AccountStatusIndicator: true,
         AccountTodayStatsCell: true,
         AccountGroupsCell: true,
@@ -150,6 +154,16 @@ describe('admin AccountsView scheduler score column', () => {
             base_score: 1.234567,
             sticky_score: 0,
             sticky_weighted_enabled: false
+          },
+          health: {
+            score: 92,
+            state: 'healthy',
+            sample_count: 24,
+            error_rate_ewma: 0.02,
+            latency_ewma_ms: 180,
+            consecutive_failures: 0,
+            open_count: 0,
+            updated_at_unix: 1767225600
           }
         },
         {
@@ -206,6 +220,31 @@ describe('admin AccountsView scheduler score column', () => {
     expect(ungroupedCell.text()).toContain('1.234567')
     expect(ungroupedCell.text()).toContain('admin.accounts.schedulerScore.ungrouped')
     expect(ungroupedCell.text()).not.toBe('-')
+  })
+
+  it('requests and renders the unified health score by default', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(listAccounts.mock.calls[0]?.[2]).toEqual(expect.objectContaining({
+      include_health_score: '1'
+    }))
+    const healthCell = wrapper.find('[data-test="health-score-1"]')
+    expect(healthCell.exists()).toBe(true)
+    expect(healthCell.text()).toContain('92')
+    expect(healthCell.text()).toContain('admin.accounts.healthScore.states.healthy')
+  })
+
+  it('omits the health lookup when the health column is hidden', async () => {
+    localStorage.setItem('account-hidden-columns', JSON.stringify(['health_score']))
+    localStorage.setItem('account-hidden-columns-version', 'scheduler-score-hidden-by-default')
+
+    mountView()
+    await flushPromises()
+
+    expect(listAccounts.mock.calls[0]?.[2]).toEqual(expect.objectContaining({
+      include_health_score: '0'
+    }))
   })
 
   it('renders per-group scores for grouped accounts', async () => {

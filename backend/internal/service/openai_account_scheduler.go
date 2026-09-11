@@ -564,7 +564,7 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		)
 		return nil, true, nil
 	}
-	result, acquireErr := s.service.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
+	result, acquireErr := s.service.tryAcquireAccountSlot(ctx, account)
 	if acquireErr == nil && result != nil && result.Acquired {
 		if !req.PreserveStickyBinding {
 			_ = s.service.refreshStickySessionTTL(ctx, req.GroupID, sessionHash, s.service.openAIWSSessionStickyTTL())
@@ -691,6 +691,11 @@ func isOpenAIAccountCandidateBetter(left openAIAccountCandidateScore, right open
 	}
 	if left.account.Priority != right.account.Priority {
 		return left.account.Priority < right.account.Priority
+	}
+	// Health is a deterministic tie-breaker within an equal priority tier;
+	// scheduler score remains the primary OpenAI routing signal.
+	if healthCmp := compareAccountSchedulingHealth(left.account, right.account); healthCmp != 0 {
+		return healthCmp < 0
 	}
 	if left.loadInfo.LoadRate != right.loadInfo.LoadRate {
 		return left.loadInfo.LoadRate < right.loadInfo.LoadRate
@@ -1128,6 +1133,9 @@ func sortOpenAICompactRetryCandidates(pool []openAIAccountCandidateScore) []open
 		if a.account.Priority != b.account.Priority {
 			return a.account.Priority < b.account.Priority
 		}
+		if healthCmp := compareAccountSchedulingHealth(a.account, b.account); healthCmp != 0 {
+			return healthCmp < 0
+		}
 		if a.loadInfo.LoadRate != b.loadInfo.LoadRate {
 			return a.loadInfo.LoadRate < b.loadInfo.LoadRate
 		}
@@ -1180,7 +1188,7 @@ func (s *defaultOpenAIAccountScheduler) tryAcquireOpenAISelectionOrderWithBudget
 			continue
 		}
 
-		result, attempted, acquireErr := s.tryAcquireOpenAIAccountSlot(ctx, candidate.account.ID, candidate.account.Concurrency, budget)
+		result, attempted, acquireErr := s.tryAcquireOpenAIAccountSlot(ctx, candidate.account, budget)
 		if !attempted {
 			break
 		}
@@ -1213,7 +1221,7 @@ func (s *defaultOpenAIAccountScheduler) tryAcquireOpenAISelectionOrderWithBudget
 
 		if fresh.Concurrency != candidate.account.Concurrency {
 			release(result)
-			result, attempted, acquireErr = s.tryAcquireOpenAIAccountSlot(ctx, fresh.ID, fresh.Concurrency, budget)
+			result, attempted, acquireErr = s.tryAcquireOpenAIAccountSlot(ctx, fresh, budget)
 			if !attempted {
 				continue
 			}
@@ -1238,14 +1246,16 @@ func (s *defaultOpenAIAccountScheduler) tryAcquireOpenAISelectionOrderWithBudget
 
 func (s *defaultOpenAIAccountScheduler) tryAcquireOpenAIAccountSlot(
 	ctx context.Context,
-	accountID int64,
-	maxConcurrency int,
+	account *Account,
 	budget *openAISelectionProbeBudget,
 ) (*AcquireResult, bool, error) {
-	if s.service.concurrencyService != nil && maxConcurrency > 0 && !budget.recordAcquire(accountID) {
+	if account == nil {
 		return nil, false, nil
 	}
-	result, err := s.service.tryAcquireAccountSlot(ctx, accountID, maxConcurrency)
+	if s.service.concurrencyService != nil && account.Concurrency > 0 && !budget.recordAcquire(account.ID) {
+		return nil, false, nil
+	}
+	result, err := s.service.tryAcquireAccountSlot(ctx, account)
 	return result, true, err
 }
 
@@ -1310,7 +1320,7 @@ func (s *defaultOpenAIAccountScheduler) tryFallbackToWeightedSticky(
 			isGrokModelQuotaBlocked(account.ID, upstreamModel, now) {
 			continue
 		}
-		result, acquireErr := s.service.tryAcquireAccountSlot(ctx, account.ID, account.Concurrency)
+		result, acquireErr := s.service.tryAcquireAccountSlot(ctx, account)
 		if acquireErr != nil {
 			return nil, acquireErr
 		}
@@ -2424,8 +2434,14 @@ func (s *OpenAIGatewayService) ReportOpenAIAccountScheduleResult(account *Accoun
 	healthTripped := false
 	if s != nil && s.rateLimitService != nil {
 		if success {
+			latency := time.Duration(0)
+			if firstTokenMs != nil && *firstTokenMs > 0 {
+				latency = time.Duration(*firstTokenMs) * time.Millisecond
+			}
+			s.rateLimitService.ObserveAccountHealthSuccess(context.Background(), account, latency)
 			s.rateLimitService.ObserveOpenAIAPIKeyHealthSuccess(context.Background(), account)
 		} else if len(observedErr) > 0 && observedErr[0] != nil {
+			s.rateLimitService.ObserveAccountHealthFailure(context.Background(), account.ID, observedErr[0])
 			healthTripped = s.rateLimitService.ObserveOpenAIAPIKeyHealthFailure(context.Background(), account, observedErr[0])
 		}
 	}
@@ -2447,6 +2463,7 @@ func (s *OpenAIGatewayService) ObserveOpenAIAccountHealthFailure(ctx context.Con
 	if s == nil || s.rateLimitService == nil || account == nil || observedErr == nil {
 		return false
 	}
+	s.rateLimitService.ObserveAccountHealthFailure(ctx, account.ID, observedErr)
 	return s.rateLimitService.ObserveOpenAIAPIKeyHealthFailure(ctx, account, observedErr)
 }
 

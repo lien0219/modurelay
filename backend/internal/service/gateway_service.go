@@ -586,6 +586,20 @@ type AccountSelectionResult struct {
 	profitGate *openAIProfitControlGate
 }
 
+func (s *GatewayService) ObserveAccountHealthFailure(ctx context.Context, accountID int64, observedErr error) {
+	if s == nil || s.rateLimitService == nil {
+		return
+	}
+	s.rateLimitService.ObserveAccountHealthFailure(ctx, accountID, observedErr)
+}
+
+func (s *GatewayService) ObserveAccountHealthSuccess(ctx context.Context, account *Account, latency time.Duration) {
+	if s == nil || s.rateLimitService == nil {
+		return
+	}
+	s.rateLimitService.ObserveAccountHealthSuccess(ctx, account, latency)
+}
+
 // ProfitGateActive 报告本次选号是否处于利润门之下。
 func (r *AccountSelectionResult) ProfitGateActive() bool {
 	return r != nil && r.profitGate != nil

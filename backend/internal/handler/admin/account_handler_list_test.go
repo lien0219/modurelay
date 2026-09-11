@@ -3,7 +3,9 @@ package admin
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -11,10 +13,53 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
+
+type accountListHealthCacheStub struct {
+	snapshots map[int64]*service.AccountHealthSnapshot
+	calls     int
+	err       error
+}
+
+func (s *accountListHealthCacheStub) Record(context.Context, service.AccountHealthEvent, service.AccountHealthPolicy) (*service.AccountHealthSnapshot, error) {
+	return nil, nil
+}
+
+func (s *accountListHealthCacheStub) GetBatch(_ context.Context, accountIDs []int64) (map[int64]*service.AccountHealthSnapshot, error) {
+	s.calls++
+	if s.err != nil {
+		return nil, s.err
+	}
+	result := make(map[int64]*service.AccountHealthSnapshot, len(accountIDs))
+	for _, id := range accountIDs {
+		if snapshot := s.snapshots[id]; snapshot != nil {
+			result[id] = snapshot
+		}
+	}
+	return result, nil
+}
+
+func (s *accountListHealthCacheStub) AcquireProbe(context.Context, int64, int, time.Duration) (string, bool, error) {
+	return "", false, nil
+}
+
+func (s *accountListHealthCacheStub) ReleaseProbe(context.Context, int64, string) error { return nil }
+
+func newAccountListHealthRateLimitService(cache service.AccountHealthCache) *service.RateLimitService {
+	cfg := &config.Config{Gateway: config.GatewayConfig{AccountHealth: config.GatewayAccountHealthConfig{
+		Enabled: true, EnforcementEnabled: true, MinimumSamples: 10, DegradedScore: 80,
+		OpenScore: 45, ConsecutiveFailures: 3, BaseCooldownSeconds: 30,
+		MaxCooldownSeconds: 600, HalfOpenMaxProbes: 1, StateTTLSeconds: 86400,
+		LocalCacheTTLMS: 500,
+	}}}
+	svc := service.NewRateLimitService(nil, nil, cfg, nil, nil)
+	svc.SetAccountHealthCache(cache)
+	return svc
+}
 
 func TestAccountHandlerListLiteUsesCompactDTOAndETag(t *testing.T) {
 	router, adminSvc := setupAccountListRouter()
@@ -404,4 +449,64 @@ func TestAccountHandlerListSchedulerScoreIgnoresPagination(t *testing.T) {
 	require.Equal(t, int64(301), payload.Data.Items[0].ID)
 	require.Less(t, payload.Data.Items[0].SchedulerScore.BaseScore, 3.75)
 	require.Empty(t, payload.Data.Items[0].SchedulerScores)
+}
+
+func TestAccountHandlerListSkipsHealthLookupUnlessRequested(t *testing.T) {
+	router, adminSvc := setupAccountListRouter()
+	cache := &accountListHealthCacheStub{snapshots: map[int64]*service.AccountHealthSnapshot{
+		3: {Score: 91, State: service.AccountHealthStateHealthy},
+	}}
+	handler := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, newAccountListHealthRateLimitService(cache), nil, nil, nil, nil, nil, nil, nil)
+	router = gin.New()
+	router.GET("/api/v1/admin/accounts", handler.List)
+
+	adminSvc.accounts = []service.Account{{ID: 3, Name: "health-account", Platform: service.PlatformAnthropic, Type: service.AccountTypeOAuth, Status: service.StatusActive}}
+	withoutHealth := httptest.NewRecorder()
+	router.ServeHTTP(withoutHealth, httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts?page=1&page_size=20", nil))
+	require.Equal(t, http.StatusOK, withoutHealth.Code)
+	require.Zero(t, cache.calls)
+	var withoutPayload struct {
+		Data struct {
+			Items []map[string]any `json:"items"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(withoutHealth.Body.Bytes(), &withoutPayload))
+	require.NotContains(t, withoutPayload.Data.Items[0], "health")
+
+	withHealth := httptest.NewRecorder()
+	router.ServeHTTP(withHealth, httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts?page=1&page_size=20&include_health_score=1", nil))
+	require.Equal(t, http.StatusOK, withHealth.Code)
+	require.Equal(t, 1, cache.calls)
+	var withPayload struct {
+		Data struct {
+			Items []struct {
+				Health *service.AccountHealthSnapshot `json:"health"`
+			} `json:"items"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(withHealth.Body.Bytes(), &withPayload))
+	require.Len(t, withPayload.Data.Items, 1)
+	require.NotNil(t, withPayload.Data.Items[0].Health)
+	require.Equal(t, 91.0, withPayload.Data.Items[0].Health.Score)
+}
+
+func TestAccountHandlerListHealthLookupFailsOpen(t *testing.T) {
+	router, adminSvc := setupAccountListRouter()
+	cache := &accountListHealthCacheStub{err: errors.New("redis unavailable")}
+	handler := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, newAccountListHealthRateLimitService(cache), nil, nil, nil, nil, nil, nil, nil)
+	router = gin.New()
+	router.GET("/api/v1/admin/accounts", handler.List)
+	adminSvc.accounts = []service.Account{{ID: 4, Name: "health-fallback", Platform: service.PlatformAnthropic, Type: service.AccountTypeOAuth, Status: service.StatusActive}}
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts?page=1&page_size=20&include_health_score=1", nil))
+	require.Equal(t, http.StatusOK, rec.Code)
+	var payload struct {
+		Data struct {
+			Items []map[string]any `json:"items"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &payload))
+	require.Len(t, payload.Data.Items, 1)
+	require.NotContains(t, payload.Data.Items[0], "health")
 }

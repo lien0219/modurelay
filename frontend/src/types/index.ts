@@ -1443,6 +1443,7 @@ export interface Account {
   concurrency: number
   load_factor?: number | null
   current_concurrency?: number // Real-time concurrency count from Redis
+  health?: AccountHealthSnapshot | null
   scheduler_score?: {
     base_score: number
     sticky_score?: number
@@ -1538,6 +1539,19 @@ export interface Account {
   parent_privacy_mode?: string
   parent_subscription_expires_at?: string
   parent_chatgpt_account_id?: string
+}
+
+export interface AccountHealthSnapshot {
+  score: number
+  state: 'warming' | 'healthy' | 'degraded' | 'open' | 'half_open'
+  sample_count: number
+  error_rate_ewma: number
+  latency_ewma_ms: number
+  consecutive_failures: number
+  open_count: number
+  open_until_unix?: number
+  last_failure_reason?: string
+  updated_at_unix: number
 }
 
 // The admin account list may return this compact shape when lite=1. Detail

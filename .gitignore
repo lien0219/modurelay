@@ -30,6 +30,8 @@ vendor/
 backend/.gocache/
 backend/.gomodcache/
 backend/.gopath/
+# Repository-local Go caches used by focused validation runs
+backend/.tmp-go-cache*/
 
 # Local package-manager caches
 .corepack/

@@ -174,7 +174,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 				return nil, err
 			}
 
-			result, err := s.tryAcquireAccountSlot(ctx, account.ID, account.Concurrency)
+			result, err := s.tryAcquireAccountSlot(ctx, account)
 			if err == nil && result.Acquired {
 				// 获取槽位后检查会话限制（使用 sessionHash 作为会话标识符）
 				if !s.checkAndRegisterSession(ctx, account, sessionHash) {
@@ -366,7 +366,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 						rpmPass := gatePass && s.isAccountSchedulableForRPM(ctx, stickyAccount, true)
 
 						if rpmPass { // 粘性会话窗口费用+RPM 检查
-							result, err := s.tryAcquireAccountSlot(ctx, stickyAccountID, stickyAccount.Concurrency)
+							result, err := s.tryAcquireAccountSlot(ctx, stickyAccount)
 							if err == nil && result.Acquired {
 								// 会话数量限制检查
 								if !s.checkAndRegisterSession(ctx, stickyAccount, sessionHash) {
@@ -462,6 +462,9 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 					if a.account.Priority != b.account.Priority {
 						return a.account.Priority < b.account.Priority
 					}
+					if healthCmp := compareAccountSchedulingHealth(a.account, b.account); healthCmp != 0 {
+						return healthCmp < 0
+					}
 					if a.loadInfo.LoadRate != b.loadInfo.LoadRate {
 						return a.loadInfo.LoadRate < b.loadInfo.LoadRate
 					}
@@ -480,7 +483,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 
 				// 4. 尝试获取槽位
 				for _, item := range routingAvailable {
-					result, err := s.tryAcquireAccountSlot(ctx, item.account.ID, item.account.Concurrency)
+					result, err := s.tryAcquireAccountSlot(ctx, item.account)
 					if err == nil && result.Acquired {
 						// 会话数量限制检查
 						if !s.checkAndRegisterSession(ctx, item.account, sessionHash) {
@@ -566,7 +569,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 				)
 
 				if !clearSticky && platformOK && profitOK && modelSupported && channelOK && modelSchedulable && quotaOK && windowCostOK && rpmOK && schedulable {
-					result, err := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
+					result, err := s.tryAcquireAccountSlot(ctx, account)
 					if err == nil && result.Acquired {
 						// 会话数量限制检查
 						if !s.checkAndRegisterSession(ctx, account, sessionHash) {
@@ -735,23 +738,25 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 			}
 		}
 
-		// 分层过滤选择：优先级 →（可选）最早重置 → 负载率 → LRU
+		// 分层过滤选择：优先级 → 健康分 →（可选）最早重置 → 负载率 → LRU
 		for len(available) > 0 {
 			// 1. 取优先级最小的集合
 			candidates := filterByMinPriority(available)
-			// 2. （可选）use-it-or-lose-it：优先选用会话窗口最早重置的账号
+			// 2. 同优先级内取健康分最高的集合
+			candidates = filterByMaxHealth(candidates)
+			// 3. （可选）use-it-or-lose-it：优先选用会话窗口最早重置的账号
 			if cfg.PreferSoonestReset {
 				candidates = filterBySoonestReset(candidates)
 			}
-			// 3. 取负载率最低的集合
+			// 4. 取负载率最低的集合
 			candidates = filterByMinLoadRate(candidates)
-			// 4. LRU 选择最久未用的账号
+			// 5. LRU 选择最久未用的账号
 			selected := selectByLRU(candidates, preferOAuth)
 			if selected == nil {
 				break
 			}
 
-			result, err := s.tryAcquireAccountSlot(ctx, selected.account.ID, selected.account.Concurrency)
+			result, err := s.tryAcquireAccountSlot(ctx, selected.account)
 			if err == nil && result.Acquired {
 				// 会话数量限制检查
 				if !s.checkAndRegisterSession(ctx, selected.account, sessionHash) {
@@ -798,7 +803,7 @@ func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates
 	sortAccountsByPriorityAndLastUsed(ordered, preferOAuth)
 
 	for _, acc := range ordered {
-		result, err := s.tryAcquireAccountSlot(ctx, acc.ID, acc.Concurrency)
+		result, err := s.tryAcquireAccountSlot(ctx, acc)
 		if err == nil && result.Acquired {
 			// 会话数量限制检查
 			if !s.checkAndRegisterSession(ctx, acc, sessionHash) {
@@ -992,6 +997,9 @@ func (s *GatewayService) listSchedulableAccounts(ctx context.Context, groupID *i
 			if platform == PlatformGrok || strings.EqualFold(platform, PlatformGrok) {
 				accounts = s.filterGrokFreeQuotaAccountsForGateway(ctx, accounts)
 			}
+			if s.rateLimitService != nil {
+				accounts = s.rateLimitService.annotateAccountsWithHealth(ctx, accounts)
+			}
 			slog.Debug("account_scheduling_list_snapshot",
 				"group_id", derefGroupID(groupID),
 				"platform", platform,
@@ -1053,7 +1061,11 @@ func (s *GatewayService) listSchedulableAccounts(ctx context.Context, groupID *i
 					"tls_fingerprint", acc.IsTLSFingerprintEnabled())
 			}
 		}
-		return s.filterAccountsBySchedulingThreshold(ctx, filtered), useMixed, nil
+		filtered = s.filterAccountsBySchedulingThreshold(ctx, filtered)
+		if s.rateLimitService != nil {
+			filtered = s.rateLimitService.annotateAccountsWithHealth(ctx, filtered)
+		}
+		return filtered, useMixed, nil
 	}
 
 	var accounts []Account
@@ -1091,6 +1103,9 @@ func (s *GatewayService) listSchedulableAccounts(ctx context.Context, groupID *i
 	accounts = s.filterAccountsBySchedulingThreshold(ctx, accounts)
 	if platform == PlatformGrok || strings.EqualFold(platform, PlatformGrok) {
 		accounts = s.filterGrokFreeQuotaAccountsForGateway(ctx, accounts)
+	}
+	if s.rateLimitService != nil {
+		accounts = s.rateLimitService.annotateAccountsWithHealth(ctx, accounts)
 	}
 	return accounts, useMixed, nil
 }
@@ -1151,11 +1166,43 @@ func (s *GatewayService) isAccountInGroup(account *Account, groupID *int64) bool
 	return false
 }
 
-func (s *GatewayService) tryAcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int) (*AcquireResult, error) {
-	if s.concurrencyService == nil {
-		return &AcquireResult{Acquired: true, ReleaseFunc: func() {}}, nil
+func (s *GatewayService) tryAcquireAccountSlot(ctx context.Context, account *Account) (*AcquireResult, error) {
+	if account == nil {
+		return &AcquireResult{}, nil
 	}
-	return s.concurrencyService.AcquireAccountSlot(ctx, accountID, maxConcurrency)
+	probeToken := ""
+	releaseProbe := func() {}
+	if s.rateLimitService != nil {
+		var allowed bool
+		probeToken, allowed = s.rateLimitService.acquireAccountHealthProbe(ctx, account)
+		if !allowed {
+			return &AcquireResult{}, nil
+		}
+		releaseProbe = func() {
+			s.rateLimitService.releaseAccountHealthProbe(ctx, account.ID, probeToken)
+		}
+	}
+	if s.concurrencyService == nil {
+		return &AcquireResult{
+			Acquired:    true,
+			ReleaseFunc: releaseProbe,
+		}, nil
+	}
+	result, err := s.concurrencyService.AcquireAccountSlot(ctx, account.ID, account.Concurrency)
+	if err != nil || result == nil || !result.Acquired {
+		releaseProbe()
+		return result, err
+	}
+	if probeToken != "" {
+		releaseSlot := result.ReleaseFunc
+		result.ReleaseFunc = func() {
+			if releaseSlot != nil {
+				releaseSlot()
+			}
+			releaseProbe()
+		}
+	}
+	return result, err
 }
 
 type usageLogWindowStatsBatchProvider interface {
@@ -1506,6 +1553,16 @@ func (s *GatewayService) getSchedulableAccount(ctx context.Context, accountID in
 			return nil, nil
 		}
 	}
+	// Sticky and routed legacy hits bypass the list path, so hydrate the
+	// shared health snapshot here as well. This keeps open circuits blocked
+	// consistently across every selection entry point.
+	if s.rateLimitService != nil {
+		annotated := s.rateLimitService.annotateAccountsWithHealth(ctx, []Account{*account})
+		if len(annotated) == 0 {
+			return nil, nil
+		}
+		account = &annotated[0]
+	}
 	return account, nil
 }
 
@@ -1546,6 +1603,9 @@ func (s *GatewayService) hydrateSelectedAccount(ctx context.Context, account *Ac
 }
 
 func (s *GatewayService) newSelectionResult(ctx context.Context, account *Account, acquired bool, release func(), waitPlan *AccountWaitPlan) (*AccountSelectionResult, error) {
+	if !acquired && waitPlan != nil && s.rateLimitService != nil && !s.rateLimitService.accountHealthAllowsWait(account) {
+		return nil, ErrNoAvailableAccounts
+	}
 	hydrated, err := s.hydrateSelectedAccount(ctx, account)
 	if err != nil {
 		return nil, err
@@ -1573,6 +1633,26 @@ func filterByMinPriority(accounts []accountWithLoad) []accountWithLoad {
 	for _, acc := range accounts {
 		if acc.account.Priority == minPriority {
 			result = append(result, acc)
+		}
+	}
+	return result
+}
+
+// filterByMaxHealth applies only inside the already selected priority tier.
+func filterByMaxHealth(accounts []accountWithLoad) []accountWithLoad {
+	if len(accounts) <= 1 {
+		return accounts
+	}
+	maxScore := accountSchedulingHealthScore(accounts[0].account)
+	for _, candidate := range accounts[1:] {
+		if score := accountSchedulingHealthScore(candidate.account); score > maxScore {
+			maxScore = score
+		}
+	}
+	result := make([]accountWithLoad, 0, len(accounts))
+	for _, candidate := range accounts {
+		if accountSchedulingHealthScore(candidate.account) == maxScore {
+			result = append(result, candidate)
 		}
 	}
 	return result
@@ -1697,6 +1777,9 @@ func sortAccountsByPriorityAndLastUsed(accounts []*Account, preferOAuth bool) {
 		if a.Priority != b.Priority {
 			return a.Priority < b.Priority
 		}
+		if healthCmp := compareAccountSchedulingHealth(a, b); healthCmp != 0 {
+			return healthCmp < 0
+		}
 		switch {
 		case a.LastUsedAt == nil && b.LastUsedAt != nil:
 			return true
@@ -1738,6 +1821,9 @@ func shuffleWithinSortGroups(accounts []accountWithLoad) {
 // sameAccountWithLoadGroup 判断两个 accountWithLoad 是否属于同一排序组
 func sameAccountWithLoadGroup(a, b accountWithLoad) bool {
 	if a.account.Priority != b.account.Priority {
+		return false
+	}
+	if accountSchedulingHealthScore(a.account) != accountSchedulingHealthScore(b.account) {
 		return false
 	}
 	if a.loadInfo.LoadRate != b.loadInfo.LoadRate {
@@ -1796,6 +1882,9 @@ func sameAccountGroup(a, b *Account) bool {
 	if a.Priority != b.Priority {
 		return false
 	}
+	if accountSchedulingHealthScore(a) != accountSchedulingHealthScore(b) {
+		return false
+	}
 	return sameLastUsedAt(a.LastUsedAt, b.LastUsedAt)
 }
 
@@ -1830,6 +1919,9 @@ func sortAccountsByPriorityOnly(accounts []*Account, preferOAuth bool) {
 		a, b := accounts[i], accounts[j]
 		if a.Priority != b.Priority {
 			return a.Priority < b.Priority
+		}
+		if healthCmp := compareAccountSchedulingHealth(a, b); healthCmp != 0 {
+			return healthCmp < 0
 		}
 		if preferOAuth && a.Type != b.Type {
 			return a.Type == AccountTypeOAuth
@@ -1974,6 +2066,14 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 			if acc.Priority < selected.Priority {
 				selected = acc
 			} else if acc.Priority == selected.Priority {
+				// Keep routed legacy selection consistent with the primary
+				// scheduler: health breaks ties inside a priority tier.
+				if healthCmp := compareAccountSchedulingHealth(acc, selected); healthCmp < 0 {
+					selected = acc
+					continue
+				} else if healthCmp > 0 {
+					continue
+				}
 				switch {
 				case acc.LastUsedAt == nil && selected.LastUsedAt != nil:
 					selected = acc
@@ -2091,6 +2191,14 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 		if acc.Priority < selected.Priority {
 			selected = acc
 		} else if acc.Priority == selected.Priority {
+			// Health is a tie-breaker within the same priority tier, including
+			// the legacy no-concurrency fallback path.
+			if healthCmp := compareAccountSchedulingHealth(acc, selected); healthCmp < 0 {
+				selected = acc
+				continue
+			} else if healthCmp > 0 {
+				continue
+			}
 			switch {
 			case acc.LastUsedAt == nil && selected.LastUsedAt != nil:
 				selected = acc
@@ -2240,6 +2348,14 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 			if acc.Priority < selected.Priority {
 				selected = acc
 			} else if acc.Priority == selected.Priority {
+				// Mixed routed fallback also honors health before the existing
+				// OAuth/LRU tie-breakers.
+				if healthCmp := compareAccountSchedulingHealth(acc, selected); healthCmp < 0 {
+					selected = acc
+					continue
+				} else if healthCmp > 0 {
+					continue
+				}
 				switch {
 				case acc.LastUsedAt == nil && selected.LastUsedAt != nil:
 					selected = acc
@@ -2358,6 +2474,14 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 		if acc.Priority < selected.Priority {
 			selected = acc
 		} else if acc.Priority == selected.Priority {
+			// Preserve priority first, then prefer the healthier account before
+			// applying the existing LRU/OAuth tie-breakers.
+			if healthCmp := compareAccountSchedulingHealth(acc, selected); healthCmp < 0 {
+				selected = acc
+				continue
+			} else if healthCmp > 0 {
+				continue
+			}
 			switch {
 			case acc.LastUsedAt == nil && selected.LastUsedAt != nil:
 				selected = acc
