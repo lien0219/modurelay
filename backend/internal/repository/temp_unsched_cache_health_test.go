@@ -118,7 +118,8 @@ func TestAccountHealthCacheLimitsHalfOpenProbesAcrossCallers(t *testing.T) {
 	server := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
 	t.Cleanup(func() { _ = client.Close() })
-	store := NewTempUnschedCache(client).(service.AccountHealthCache)
+	store, ok := NewTempUnschedCache(client).(service.AccountHealthCache)
+	require.True(t, ok)
 	ctx := context.Background()
 
 	firstToken, acquired, err := store.AcquireProbe(ctx, 88, 1, 30*time.Second)
@@ -140,7 +141,8 @@ func TestAccountHealthCacheGetBatchSkipsMissingAccounts(t *testing.T) {
 	server := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
 	t.Cleanup(func() { _ = client.Close() })
-	store := NewTempUnschedCache(client).(service.AccountHealthCache)
+	store, ok := NewTempUnschedCache(client).(service.AccountHealthCache)
+	require.True(t, ok)
 	ctx := context.Background()
 
 	_, err := store.Record(ctx, service.AccountHealthEvent{AccountID: 91, Success: true}, testAccountHealthPolicy())

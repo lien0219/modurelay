@@ -452,12 +452,12 @@ func TestAccountHandlerListSchedulerScoreIgnoresPagination(t *testing.T) {
 }
 
 func TestAccountHandlerListSkipsHealthLookupUnlessRequested(t *testing.T) {
-	router, adminSvc := setupAccountListRouter()
+	_, adminSvc := setupAccountListRouter()
 	cache := &accountListHealthCacheStub{snapshots: map[int64]*service.AccountHealthSnapshot{
 		3: {Score: 91, State: service.AccountHealthStateHealthy},
 	}}
 	handler := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, newAccountListHealthRateLimitService(cache), nil, nil, nil, nil, nil, nil, nil)
-	router = gin.New()
+	router := gin.New()
 	router.GET("/api/v1/admin/accounts", handler.List)
 
 	adminSvc.accounts = []service.Account{{ID: 3, Name: "health-account", Platform: service.PlatformAnthropic, Type: service.AccountTypeOAuth, Status: service.StatusActive}}
@@ -491,10 +491,10 @@ func TestAccountHandlerListSkipsHealthLookupUnlessRequested(t *testing.T) {
 }
 
 func TestAccountHandlerListHealthLookupFailsOpen(t *testing.T) {
-	router, adminSvc := setupAccountListRouter()
+	_, adminSvc := setupAccountListRouter()
 	cache := &accountListHealthCacheStub{err: errors.New("redis unavailable")}
 	handler := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, newAccountListHealthRateLimitService(cache), nil, nil, nil, nil, nil, nil, nil)
-	router = gin.New()
+	router := gin.New()
 	router.GET("/api/v1/admin/accounts", handler.List)
 	adminSvc.accounts = []service.Account{{ID: 4, Name: "health-fallback", Platform: service.PlatformAnthropic, Type: service.AccountTypeOAuth, Status: service.StatusActive}}
 

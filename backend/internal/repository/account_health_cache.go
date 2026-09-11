@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"math"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -193,7 +192,7 @@ func (c *tempUnschedCache) AcquireProbe(ctx context.Context, accountID int64, li
 		return "", false, fmt.Errorf("create account health probe token: %w", err)
 	}
 	token := hex.EncodeToString(tokenBytes[:])
-	acquired, err := accountHealthAcquireProbeScript.Run(ctx, c.rdb, []string{accountHealthProbeKey(accountID)}, token, limit, math.Ceil(float64(ttl.Milliseconds()))).Int64()
+	acquired, err := accountHealthAcquireProbeScript.Run(ctx, c.rdb, []string{accountHealthProbeKey(accountID)}, token, limit, ttl.Milliseconds()).Int64()
 	if err != nil {
 		return "", false, fmt.Errorf("acquire account health probe: %w", err)
 	}
