@@ -23,4 +23,18 @@ describe('TablePageLayout responsive table scrolling', () => {
       true
     )
   })
+
+  it('keeps the scrolling table and its header on stable rendering layers', () => {
+    const wrapperBlock = componentSource.match(
+      /\.table-scroll-container :deep\(\.table-wrapper\)\s*\{([^}]*)\}/
+    )
+    const headerBlock = componentSource.match(
+      /\.table-scroll-container :deep\(thead\)\s*\{([^}]*)\}/
+    )
+
+    expect(wrapperBlock?.[1]).toContain('overscroll-behavior: contain')
+    expect(wrapperBlock?.[1]).toContain('scrollbar-gutter: stable')
+    expect(headerBlock?.[1]).toContain('background-color: var(--color-surface-raised)')
+    expect(headerBlock?.[1]).not.toContain('backdrop-filter')
+  })
 })

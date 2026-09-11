@@ -58,7 +58,7 @@
         <div
           v-if="isOpen"
           ref="dropdownRef"
-          class="select-dropdown-portal glass-popover"
+          class="select-dropdown-portal glass-popover scrollable-popover"
           :class="[instanceId]"
           :style="dropdownStyle"
           role="listbox"

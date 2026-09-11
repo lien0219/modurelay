@@ -79,6 +79,7 @@ onUnmounted(() => {
 .table-scroll-container :deep(.table-wrapper) {
   @apply flex-1 overflow-x-auto overflow-y-auto;
   /* 确保横向滚动条显示在最底部 */
+  overscroll-behavior: contain;
   scrollbar-gutter: stable;
 }
 
@@ -89,9 +90,7 @@ onUnmounted(() => {
 }
 
 .table-scroll-container :deep(thead) {
-  background-color: var(--color-surface-overlay);
-  -webkit-backdrop-filter: blur(var(--glass-blur));
-  backdrop-filter: blur(var(--glass-blur));
+  background-color: var(--color-surface-raised);
 }
 
 .table-scroll-container :deep(tbody) {

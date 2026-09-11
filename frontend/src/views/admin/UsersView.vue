@@ -210,7 +210,7 @@
                 <!-- Dropdown menu -->
                 <div
                   v-if="showColumnDropdown"
-                  class="glass-popover absolute right-0 top-full z-50 mt-1 max-h-80 w-48 overflow-y-auto"
+                  class="glass-popover scrollable-popover absolute right-0 top-full z-50 mt-1 max-h-80 w-48 overflow-y-auto"
                 >
                   <button
                     v-for="col in toggleableColumns"

@@ -4,7 +4,7 @@
       <motion.div
         v-if="show"
         :key="dialogId"
-        class="modal-overlay"
+        class="modal-overlay viewport-scrim"
         :style="zIndexStyle"
         :aria-labelledby="dialogId"
         role="dialog"
@@ -17,7 +17,7 @@
       >
         <motion.div
           ref="dialogRef"
-          :class="['modal-content', 'glass-panel', widthClasses]"
+          :class="['modal-content', widthClasses]"
           :initial="panelInitial"
           :animate="panelAnimate"
           :exit="panelExit"

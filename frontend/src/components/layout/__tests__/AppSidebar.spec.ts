@@ -40,6 +40,15 @@ describe('AppSidebar scroll position persistence', () => {
     expect(componentSource).toContain('appStore.sidebarScrollTop')
     expect(componentSource).toContain('nextTick')
   })
+
+  it('keeps its scroll container off a live backdrop-filter layer', () => {
+    const sidebarBlock = styleSource.match(/\.sidebar\s*\{[\s\S]*?\n {2}\}/)
+    const navBlock = styleSource.match(/\.sidebar-nav\s*\{[\s\S]*?\n {2}\}/)
+
+    expect(sidebarBlock?.[0]).toContain('background-color: var(--color-surface)')
+    expect(sidebarBlock?.[0]).toContain('backdrop-filter: none')
+    expect(navBlock?.[0]).toContain('overscroll-behavior: contain')
+  })
 })
 
 describe('AppSidebar collapsible groups', () => {
