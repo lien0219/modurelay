@@ -1,6 +1,8 @@
 export default {
   batchImage: {
     columns: {
+      customId: '自定义 ID',
+      prompt: '提示词',
       taskName: '任务名称',
       model: '模型',
       apiKey: '提交密钥',

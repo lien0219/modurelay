@@ -388,8 +388,8 @@
             </colgroup>
             <thead class="bg-gray-50 dark:bg-dark-800/80">
               <tr>
-                <th class="px-3 py-3 text-center text-sm font-medium text-gray-500 dark:text-gray-400">Custom ID</th>
-                <th class="px-3 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">Prompt</th>
+                <th class="px-3 py-3 text-center text-sm font-medium text-gray-500 dark:text-gray-400">{{ t('batchImage.columns.customId') }}</th>
+                <th class="px-3 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{{ t('batchImage.columns.prompt') }}</th>
                 <th class="px-3 py-3 text-center text-sm font-medium text-gray-500 dark:text-gray-400">{{ t('common.status') }}</th>
                 <th class="px-3 py-3 text-center text-sm font-medium text-gray-500 dark:text-gray-400">{{ t('batchImage.detail.preview') }}</th>
                 <th class="px-3 py-3 text-center text-sm font-medium text-gray-500 dark:text-gray-400">{{ t('batchImage.detail.result') }}</th>
@@ -552,7 +552,7 @@
           </div>
 
           <div class="md:col-span-2">
-            <label class="input-label">API Key</label>
+            <label class="input-label">{{ t('batchImage.columns.apiKey') }}</label>
             <select v-model.number="form.apiKeyId" class="input" :disabled="loadingKeys">
               <option :value="0">{{ loadingKeys ? t('batchImage.create.loadingKeys') : t('batchImage.create.selectKeyPlaceholder') }}</option>
               <option v-for="key in geminiApiKeys" :key="key.id" :value="key.id">
@@ -608,7 +608,7 @@
 
         <div class="space-y-3">
           <div class="flex items-center justify-between gap-3">
-            <label class="input-label mb-0">Prompt</label>
+            <label class="input-label mb-0">{{ t('batchImage.columns.prompt') }}</label>
             <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('batchImage.create.promptAdded', { count: promptRows.length }) }}</span>
           </div>
           <div class="rounded-lg border border-gray-200 p-3 dark:border-dark-700">
