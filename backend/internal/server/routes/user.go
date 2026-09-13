@@ -146,6 +146,27 @@ func RegisterUserRoutes(
 			activities.POST("/:slug/claim", h.Activity.Claim)
 		}
 
+		if h.Canvas != nil {
+			canvas := authenticated.Group("/canvas")
+			{
+				canvas.GET("/projects", h.Canvas.List)
+				canvas.POST("/projects", h.Canvas.Create)
+				canvas.GET("/projects/:id", h.Canvas.Get)
+				canvas.PUT("/projects/:id", h.Canvas.Save)
+				canvas.DELETE("/projects/:id", h.Canvas.Delete)
+				canvas.GET("/projects/:id/revisions", h.Canvas.Revisions)
+				canvas.POST("/projects/:id/checkpoints", h.Canvas.Checkpoint)
+				canvas.POST("/projects/:id/revisions/:revision_id/restore", h.Canvas.Restore)
+				canvas.POST("/projects/:id/assets", h.Canvas.Upload)
+				canvas.POST("/projects/:id/assets/from-task", h.Canvas.Promote)
+			}
+			canvasAssets := authenticated.Group("/canvas/assets")
+			{
+				canvasAssets.GET("/:id/url", h.Canvas.AssetURL)
+				canvasAssets.DELETE("/:id", h.Canvas.DeleteAsset)
+			}
+		}
+
 		// 卡密兑换
 		redeem := authenticated.Group("/redeem")
 		{

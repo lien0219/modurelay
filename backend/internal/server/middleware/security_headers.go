@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"log"
+	"net/url"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -112,6 +113,16 @@ func GetNonceFromContext(c *gin.Context) string {
 // getFrameSrcOrigins is an optional function that returns extra origins to inject into frame-src;
 // pass nil to disable dynamic frame-src injection.
 func SecurityHeaders(cfg config.CSPConfig, getFrameSrcOrigins func() []string) gin.HandlerFunc {
+	return SecurityHeadersWithCanvasOrigins(cfg, getFrameSrcOrigins, nil)
+}
+
+// SecurityHeadersWithCanvasOrigins adds exact browser-facing object-storage
+// origins to the directives needed by canvas images, media, and local editing.
+func SecurityHeadersWithCanvasOrigins(
+	cfg config.CSPConfig,
+	getFrameSrcOrigins func() []string,
+	getCanvasOrigins func() []string,
+) gin.HandlerFunc {
 	policy := strings.TrimSpace(cfg.Policy)
 	if policy == "" {
 		policy = config.DefaultCSPPolicy
@@ -128,6 +139,22 @@ func SecurityHeaders(cfg config.CSPConfig, getFrameSrcOrigins func() []string) g
 					finalPolicy = addToDirective(finalPolicy, "frame-src", origin)
 				}
 			}
+		}
+		if getCanvasOrigins != nil {
+			for _, rawOrigin := range getCanvasOrigins() {
+				origin := normalizeCSPOrigin(rawOrigin)
+				if origin == "" {
+					continue
+				}
+				for _, directive := range []string{"img-src", "media-src", "connect-src"} {
+					if !directiveHasValue(finalPolicy, directive, origin) {
+						finalPolicy = addToDirective(finalPolicy, directive, origin)
+					}
+				}
+			}
+		}
+		if isInfiniteCanvasPath(c) {
+			finalPolicy = addToDirective(finalPolicy, "script-src", "blob:")
 		}
 
 		c.Header("X-Content-Type-Options", "nosniff")
@@ -168,8 +195,25 @@ func SecurityHeaders(cfg config.CSPConfig, getFrameSrcOrigins func() []string) g
 	}
 }
 
+func normalizeCSPOrigin(rawOrigin string) string {
+	parsed, err := url.Parse(strings.TrimSpace(rawOrigin))
+	scheme := strings.ToLower(parsed.Scheme)
+	if err != nil || parsed.User != nil || parsed.Host == "" || (scheme != "http" && scheme != "https") {
+		return ""
+	}
+	return scheme + "://" + parsed.Host
+}
+
 func isSylvaScenePath(c *gin.Context) bool {
 	return c != nil && c.Request != nil && c.Request.URL != nil && c.Request.URL.Path == SylvaScenePath
+}
+
+func isInfiniteCanvasPath(c *gin.Context) bool {
+	if c == nil || c.Request == nil || c.Request.URL == nil {
+		return false
+	}
+	path := c.Request.URL.Path
+	return path == "/infinite-canvas" || strings.HasPrefix(path, "/infinite-canvas/")
 }
 
 // relaxSylvaCSPPolicy adapts the normal page policy for the byte-exact Sylva

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { RouterView, useRouter, useRoute } from 'vue-router'
-import { defineAsyncComponent, onMounted, onBeforeUnmount, watch } from 'vue'
+import { defineAsyncComponent, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import NavigationProgress from '@/components/common/NavigationProgress.vue'
+import WorkspaceModeTransition from '@/components/common/WorkspaceModeTransition.vue'
 import { resolveRouteDocumentTitle } from '@/router/title'
 import { brand } from '@/config/brand'
 import { useAppStore, useAuthStore, useSubscriptionStore, useAnnouncementStore, useAdminComplianceStore, useAdminSettingsStore, useOnboardingStore } from '@/stores'
@@ -25,6 +26,7 @@ const announcementStore = useAnnouncementStore()
 const adminComplianceStore = useAdminComplianceStore()
 const adminSettingsStore = useAdminSettingsStore()
 const onboardingStore = useOnboardingStore()
+const routeStageRef = ref<HTMLElement | null>(null)
 const HOME_ROUTE_PATH = '/home'
 const ONBOARDING_DISABLED_PATHS = new Set([HOME_ROUTE_PATH, '/ai-learning', '/activities'])
 let homeOverlayObserver: MutationObserver | null = null
@@ -240,8 +242,18 @@ onMounted(async () => {
 
 <template>
   <NavigationProgress />
-  <RouterView />
+  <div ref="routeStageRef" class="app-route-stage">
+    <RouterView />
+  </div>
+  <WorkspaceModeTransition :route-stage="routeStageRef" />
   <Toast />
   <AnnouncementPopup v-if="authStore.isAuthenticated" />
   <AdminComplianceDialog v-if="authStore.isAuthenticated && authStore.isAdmin" />
 </template>
+
+<style>
+.app-route-stage {
+  min-height: 100dvh;
+  transform-origin: center center;
+}
+</style>

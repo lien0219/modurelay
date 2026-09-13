@@ -144,6 +144,11 @@ export const FeatureFlags = {
     mode: 'opt-in',
     label: 'Activity Center',
   }),
+  canvas: defineFlag({
+    key: 'canvas_enabled',
+    mode: 'opt-in',
+    label: 'Infinite canvas',
+  }),
 } as const
 
 export type RegisteredFeatureFlag = keyof typeof FeatureFlags

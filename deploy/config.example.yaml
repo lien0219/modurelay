@@ -1259,6 +1259,9 @@ image_storage:
   # 若填写公开桶 / CDN 域名，则返回 public_base_url/key 永久直链；
   # 留空则返回带过期时间的 presigned 临时链接
   public_base_url: ""
+  # 当 S3 内部 endpoint 对浏览器不可达时，单独指定预签名 URL 使用的外部端点。
+  # 例如容器内 endpoint 为 http://minio:9000，浏览器端可填写 https://assets.example.com。
+  public_endpoint: ""
   # public_base_url 为空时，presigned 链接的有效时长（小时）
   presign_expiry_hours: 24
   # 当上游返回的是图片 url 时，下载该图片再转存的字节上限（默认 32MB）

@@ -260,6 +260,7 @@ type ImageStorageConfig struct {
 	Prefix          string `mapstructure:"prefix"`               // S3 key 前缀，如 "images/"
 	ForcePathStyle  bool   `mapstructure:"force_path_style"`     // MinIO/路径风格桶
 	PublicBaseURL   string `mapstructure:"public_base_url"`      // 配了则返回 public_base_url/key 直链；否则 presigned
+	PublicEndpoint  string `mapstructure:"public_endpoint"`      // 可选：仅用于生成浏览器可达的 presigned URL
 	PresignExpiry   int    `mapstructure:"presign_expiry_hours"` // public_base_url 为空时的 presigned 过期时长(小时)
 	MaxDownloadByte int64  `mapstructure:"max_download_bytes"`   // 下载上游 url 图片的字节上限
 }
@@ -2268,6 +2269,7 @@ func setDefaults() {
 	viper.SetDefault("image_storage.access_key_id", "")
 	viper.SetDefault("image_storage.secret_access_key", "")
 	viper.SetDefault("image_storage.public_base_url", "")
+	viper.SetDefault("image_storage.public_endpoint", "")
 
 	// Ops (vNext)
 	viper.SetDefault("ops.enabled", true)

@@ -7319,6 +7319,22 @@
 
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('admin.settings.features.canvas.title') }}</h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.settings.features.canvas.description') }}</p>
+          </div>
+          <div class="space-y-5 p-6">
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.settings.features.canvas.enabled') }}</label>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.features.canvas.enabledHint') }}</p>
+              </div>
+              <Toggle v-model="form.canvas_enabled" />
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
             <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
               {{ t('admin.settings.features.modelPlaza.title') }}
             </h2>
@@ -9961,6 +9977,7 @@ const form = reactive<SettingsForm>({
   channel_monitor_show_quota: false,
   // Available Channels feature switch
   available_channels_enabled: false,
+  canvas_enabled: false,
   // Model Plaza feature switches + description
   model_plaza_enabled: false,
   model_plaza_require_auth: false,
@@ -10940,6 +10957,15 @@ async function loadSettings() {
         (form as Record<string, unknown>)[key] = value;
       }
     }
+    // 旧版本可能将非 URL 文本遗留在已关闭的购买订阅配置中（例如管理员邮箱）。
+    // 该配置关闭时不应阻塞保存画布等其他设置；清空后由后端在下一次保存时持久化修复。
+    if (
+      !form.purchase_subscription_enabled &&
+      form.purchase_subscription_url.trim() &&
+      !isAbsoluteHttpUrl(form.purchase_subscription_url)
+    ) {
+      form.purchase_subscription_url = "";
+    }
     syncCaptchaProviderSelection();
     if (!form.claude_oauth_system_prompt_blocks?.trim()) {
       form.claude_oauth_system_prompt_blocks =
@@ -11098,6 +11124,15 @@ async function loadSettings() {
     );
   } finally {
     loading.value = false;
+  }
+}
+
+function isAbsoluteHttpUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value.trim());
+    return (parsed.protocol === "http:" || parsed.protocol === "https:") && Boolean(parsed.hostname);
+  } catch {
+    return false;
   }
 }
 
@@ -11627,6 +11662,7 @@ async function saveSettings() {
       channel_monitor_show_quota: Boolean(form.channel_monitor_show_quota),
       // Available Channels feature switch
       available_channels_enabled: form.available_channels_enabled,
+      canvas_enabled: form.canvas_enabled,
       // Model Plaza feature switches + description
       model_plaza_enabled: form.model_plaza_enabled,
       model_plaza_require_auth: form.model_plaza_require_auth,

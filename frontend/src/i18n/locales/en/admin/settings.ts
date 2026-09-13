@@ -42,6 +42,12 @@ export default {
           enabled: 'Enable Available Channels',
           enabledHint: 'When off, the sidebar entry is hidden and the endpoint returns an empty list.',
         },
+        canvas: {
+          title: 'Infinite canvas',
+          description: 'Enable the authenticated canvas workspace after storage and migration checks pass.',
+          enabled: 'Canvas runtime',
+          enabledHint: 'Feature is fail-closed until explicitly enabled.',
+        },
         modelPlaza: {
           title: 'Model Plaza',
           description: 'A public page showcasing available models and pricing by group. Disabled by default.',

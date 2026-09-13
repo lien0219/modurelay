@@ -42,6 +42,12 @@ export default {
           enabled: '启用可用渠道',
           enabledHint: '关闭后用户端侧边栏入口隐藏，接口返回空数组。',
         },
+        canvas: {
+          title: '无限画布',
+          description: '存储和迁移检查通过后，启用登录用户的画布工作区。',
+          enabled: '画布运行时',
+          enabledHint: '功能默认关闭，必须明确开启后才会运行。',
+        },
         modelPlaza: {
           title: '模型广场',
           description: '以分组为单位向访客展示可用模型与价格的公开页面。默认关闭。',

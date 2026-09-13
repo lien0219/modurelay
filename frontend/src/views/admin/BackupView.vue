@@ -114,6 +114,10 @@
             <input v-model="imageStorageForm.public_base_url" class="input w-full" :placeholder="t('admin.backup.imageStorage.publicBaseUrlPlaceholder')" />
           </div>
           <div>
+            <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">{{ t('admin.backup.imageStorage.publicEndpoint') }}</label>
+            <input v-model="imageStorageForm.public_endpoint" class="input w-full" :placeholder="t('admin.backup.imageStorage.publicEndpointPlaceholder')" />
+          </div>
+          <div>
             <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">{{ t('admin.backup.imageStorage.presignExpiryHours') }}</label>
             <input v-model.number="imageStorageForm.presign_expiry_hours" type="number" min="1" class="input w-full" />
           </div>
@@ -451,6 +455,7 @@ const imageStorageForm = ref<ImageStorageConfig>({
   bucket: '',
   prefix: 'images/',
   public_base_url: '',
+  public_endpoint: '',
   presign_expiry_hours: 24,
   max_download_bytes: 33554432,
   endpoint: '',
@@ -640,6 +645,7 @@ async function loadImageStorageConfig() {
       ...config,
       prefix: config.prefix || 'images/',
       region: config.region || 'auto',
+      public_endpoint: config.public_endpoint || '',
       secret_access_key: '',
     }
     imageStorageSecretConfigured.value = secret_configured

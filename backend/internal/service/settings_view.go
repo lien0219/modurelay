@@ -165,6 +165,7 @@ type SystemSettings struct {
 	CustomMenuItems             string // JSON array of custom menu items
 	CustomEndpoints             string // JSON array of custom endpoints
 	ResourceCenterEnabled       bool
+	CanvasEnabled               bool `json:"canvas_enabled"`
 	ActivityCenterEnabled       bool
 
 	DefaultConcurrency           int
@@ -364,6 +365,7 @@ type PublicSettings struct {
 	CustomMenuItems             string // JSON array of custom menu items
 	CustomEndpoints             string // JSON array of custom endpoints
 	ResourceCenterEnabled       bool
+	CanvasEnabled               bool `json:"canvas_enabled"`
 	ActivityCenterEnabled       bool
 
 	LinuxDoOAuthEnabled      bool

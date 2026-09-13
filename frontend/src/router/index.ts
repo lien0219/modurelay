@@ -214,6 +214,43 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/canvas',
+    name: 'CanvasHome',
+    component: () => import('@/views/user/CanvasAppRedirectView.vue'),
+    beforeEnter: (to) => {
+      if (!to.query.project) return true
+      return { name: 'CanvasEditor', query: to.query, hash: to.hash }
+    },
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Infinite canvas',
+      titleKey: 'nav.canvas'
+    }
+  },
+  {
+    path: '/canvas/editor',
+    name: 'CanvasEditor',
+    component: () => import('@/views/user/CanvasView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Infinite canvas',
+      titleKey: 'nav.canvas'
+    }
+  },
+  {
+    path: '/canvas/video',
+    name: 'CanvasVideo',
+    component: () => import('@/views/user/CanvasVideoView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Video workbench',
+      titleKey: 'canvas.video.title'
+    }
+  },
+  {
     path: '/quick-start',
     name: 'QuickStart',
     alias: '/docs/quick-start',
@@ -1031,6 +1068,16 @@ router.beforeEach(async (to, _from, next) => {
       }
     }
     if (appStore.cachedPublicSettings?.activity_center_enabled !== true) {
+      next('/dashboard')
+      return
+    }
+  }
+
+  if (to.path.startsWith('/canvas')) {
+    if (!appStore.publicSettingsLoaded) {
+      try { await appStore.fetchPublicSettings() } catch { /* backend remains the source of truth */ }
+    }
+    if (appStore.publicSettingsLoaded && appStore.cachedPublicSettings?.canvas_enabled !== true) {
       next('/dashboard')
       return
     }

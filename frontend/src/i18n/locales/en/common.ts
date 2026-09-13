@@ -219,6 +219,7 @@ export default {
     resourceCenter: 'Forum',
     resourceCenterAdmin: 'Forum Management',
     activityCenter: 'Activity Center',
+    canvas: 'Infinite canvas',
     activityManagement: 'Activity Management',
     promptAudit: 'Prompt Audit',
     auditLogs: 'Audit Logs',

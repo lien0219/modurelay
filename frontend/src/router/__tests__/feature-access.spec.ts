@@ -8,6 +8,7 @@ type NavigationGuard = (
 
 const routerHarness = vi.hoisted(() => ({
   guard: null as NavigationGuard | null,
+  routes: [] as Array<Record<string, any>>,
 }))
 
 const authStore = vi.hoisted(() => ({
@@ -26,6 +27,7 @@ const appStore = vi.hoisted(() => ({
     payment_enabled?: boolean
     risk_control_enabled?: boolean
     activity_center_enabled?: boolean
+    canvas_enabled?: boolean
     custom_menu_items?: []
   },
   fetchPublicSettings: vi.fn(),
@@ -33,13 +35,16 @@ const appStore = vi.hoisted(() => ({
 
 vi.mock('vue-router', () => ({
   createWebHistory: vi.fn(() => ({})),
-  createRouter: vi.fn(() => ({
-    beforeEach: vi.fn((guard: NavigationGuard) => {
-      routerHarness.guard = guard
-    }),
-    afterEach: vi.fn(),
-    onError: vi.fn(),
-  })),
+  createRouter: vi.fn((options: { routes: Array<Record<string, any>> }) => {
+    routerHarness.routes = options.routes
+    return {
+      beforeEach: vi.fn((guard: NavigationGuard) => {
+        routerHarness.guard = guard
+      }),
+      afterEach: vi.fn(),
+      onError: vi.fn(),
+    }
+  }),
 }))
 
 vi.mock('@/stores/auth', () => ({
@@ -190,5 +195,49 @@ describe('feature route guard', () => {
     await disabled.navigation
     expect(disabled.next).toHaveBeenCalledOnce()
     expect(disabled.next).toHaveBeenCalledWith('/dashboard')
+  })
+
+  it.each(['/canvas', '/canvas/editor', '/canvas/video'])(
+    'blocks %s when the canvas feature is disabled',
+    async (path) => {
+      appStore.cachedPublicSettings = { canvas_enabled: false }
+      appStore.publicSettingsLoaded = true
+
+      const { navigation, next } = runGuard({}, path)
+      await navigation
+
+      expect(next).toHaveBeenCalledOnce()
+      expect(next).toHaveBeenCalledWith('/dashboard')
+    },
+  )
+
+  it('requires authentication for the canvas and preserves the requested route', async () => {
+    authStore.isAuthenticated = false
+
+    const { navigation, next } = runGuard({}, '/canvas')
+    await navigation
+
+    expect(next).toHaveBeenCalledOnce()
+    expect(next).toHaveBeenCalledWith({
+      path: '/login',
+      query: { redirect: '/canvas' },
+    })
+  })
+
+  it('keeps legacy canvas project links compatible with the editor route', () => {
+    const homeRoute = routerHarness.routes.find(route => route.path === '/canvas')
+    const editorRoute = routerHarness.routes.find(route => route.path === '/canvas/editor')
+
+    expect(homeRoute?.name).toBe('CanvasHome')
+    expect(editorRoute?.name).toBe('CanvasEditor')
+    expect(homeRoute?.beforeEnter({ query: {}, hash: '' })).toBe(true)
+    expect(homeRoute?.beforeEnter({
+      query: { project: '17', focus: 'image-1' },
+      hash: '#result',
+    })).toEqual({
+      name: 'CanvasEditor',
+      query: { project: '17', focus: 'image-1' },
+      hash: '#result',
+    })
   })
 })

@@ -689,6 +689,12 @@ func ProvideImageTaskService(store ImageTaskStore, settings *ImageStorageSetting
 	return NewImageTaskServiceWithResolver(store, settings.Resolver(), defaultImageTaskTTL, defaultImageTaskExecutionTimeout)
 }
 
+func ProvideCanvasService(repo CanvasProjectRepository, settingRepo SettingRepository, settings *ImageStorageSettingService, imageTasks *ImageTaskService) *CanvasService {
+	svc := NewCanvasService(repo, settingRepo, settings.CanvasStoreResolver(), imageTasks)
+	svc.StartCleanup()
+	return svc
+}
+
 // ProvideBackupService creates and starts BackupService
 func ProvideBackupService(
 	settingRepo SettingRepository,
@@ -850,6 +856,7 @@ var ProviderSet = wire.NewSet(
 	NewOpenAIGatewayService,
 	ProvideImageStorageSettingService,
 	ProvideImageTaskService,
+	ProvideCanvasService,
 	ProvideBatchImageModelPricingResolver,
 	NewBatchImagePublicService,
 	NewBatchImageDownloadService,

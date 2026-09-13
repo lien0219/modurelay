@@ -70,6 +70,7 @@ type Handlers struct {
 	BatchImage       *BatchImageHandler
 	ResourceCenter   *ResourceCenterHandler
 	Activity         *ActivityHandler
+	Canvas           *CanvasHandler
 }
 
 // BuildInfo contains build-time information

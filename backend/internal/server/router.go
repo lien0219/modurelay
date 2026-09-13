@@ -33,6 +33,7 @@ func SetupRouter(
 	subscriptionService *service.SubscriptionService,
 	opsService *service.OpsService,
 	settingService *service.SettingService,
+	imageStorageSettingService *service.ImageStorageSettingService,
 	compositeResolver *service.CompositeRouteResolver,
 	cfg *config.Config,
 	redisClient *redis.Client,
@@ -62,12 +63,12 @@ func SetupRouter(
 	r.Use(middleware2.SessionBindingContext(cfg))
 	r.Use(middleware2.Logger())
 	r.Use(middleware2.CORS(cfg.CORS))
-	r.Use(middleware2.SecurityHeaders(cfg.Security.CSP, func() []string {
+	r.Use(middleware2.SecurityHeadersWithCanvasOrigins(cfg.Security.CSP, func() []string {
 		if p := cachedFrameOrigins.Load(); p != nil {
 			return *p
 		}
 		return nil
-	}))
+	}, imageStorageSettingService.CanvasCSPOrigins))
 	r.Use(middleware2.ServerTiming(cfg.Server.EnableServerTiming))
 
 	bindPublicSettingsUpdate := func(callback func()) {

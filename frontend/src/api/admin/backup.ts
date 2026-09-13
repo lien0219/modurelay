@@ -89,6 +89,7 @@ export interface ImageStorageConfig {
   bucket: string
   prefix: string
   public_base_url: string
+  public_endpoint: string
   presign_expiry_hours: number
   max_download_bytes: number
   endpoint: string

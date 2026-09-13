@@ -84,6 +84,14 @@ describe('AppSidebar activity center navigation', () => {
   })
 })
 
+describe('AppSidebar canvas workspace transition', () => {
+  it('uses the shared mode transition for primary canvas navigation', () => {
+    expect(componentSource).toContain("import { navigateWithWorkspaceModeTransition } from '@/utils/workspaceModeTransition'")
+    expect(componentSource).toContain("itemPath === '/canvas'")
+    expect(componentSource).toContain("navigateWithWorkspaceModeTransition(router, { name: 'CanvasHome' }, 'to-canvas')")
+  })
+})
+
 describe('AppSidebar distribution placeholders', () => {
   it('adds distinct user and administrator distribution entries', () => {
     expect(componentSource).toContain("{ path: '/distribution', label: t('nav.distribution'), icon: DistributionIcon }")

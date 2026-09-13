@@ -200,6 +200,7 @@ func ProvideHandlers(
 	batchImageHandler *BatchImageHandler,
 	resourceCenterHandler *ResourceCenterHandler,
 	activityHandler *ActivityHandler,
+	canvasHandler *CanvasHandler,
 	_ *service.IdempotencyCoordinator,
 	_ *service.IdempotencyCleanupService,
 	_ *service.OpenAIQuotaAutoResetService,
@@ -228,6 +229,7 @@ func ProvideHandlers(
 		BatchImage:       batchImageHandler,
 		ResourceCenter:   resourceCenterHandler,
 		Activity:         activityHandler,
+		Canvas:           canvasHandler,
 	}
 }
 
@@ -256,6 +258,7 @@ var ProviderSet = wire.NewSet(
 	ProvideBatchImageHandler,
 	ProvideResourceCenterHandler,
 	NewActivityHandler,
+	NewCanvasHandler,
 
 	// Admin handlers
 	admin.NewDashboardHandler,

@@ -112,6 +112,8 @@ export default {
         prefix: 'Key prefix',
         publicBaseUrl: 'Public base URL',
         publicBaseUrlPlaceholder: 'Leave empty to return presigned links',
+        publicEndpoint: 'Public presign endpoint',
+        publicEndpointPlaceholder: 'Optional browser-facing S3 endpoint',
         presignExpiryHours: 'Presigned link TTL (hours)',
         saved: 'Async image object storage saved'
       },

@@ -10,7 +10,10 @@
 # Documentation
 *.md
 !deploy/DOCKER.md
-docs/
+!third_party/infinite-canvas/CHANGELOG.md
+# Keep the docs directory traversable so the legal markdown imported by the
+# Vue build can be re-included without copying the rest of docs/ into Docker.
+docs/*
 # admin-compliance gate (LegalDocumentView.vue) build-time imports
 # docs/legal/*.md?raw into the frontend bundle; keep that subtree in the
 # Docker build context even though docs/ is otherwise excluded.
@@ -33,6 +36,7 @@ build/
 
 # Node modules (will be installed in container)
 frontend/node_modules/
+third_party/infinite-canvas/web/node_modules/
 node_modules/
 
 # Go build cache (will be built in container)
@@ -64,6 +68,15 @@ logs/
 tmp/
 temp/
 *.tmp
+/.tmp-codex/
+/.tmp-go-cache/
+/.tmp-ui/
+/backend/.tmp/
+/backend/.gocache/
+/backend/.gomodcache/
+/backend/.gopath/
+/backend/.tmp-go-cache*/
+frontend/.canvas-*
 
 # Deploy files (not needed in image)
 deploy/install.sh
@@ -72,6 +85,8 @@ deploy/sub2api-sudoers
 deploy/data/
 deploy/postgres_data/
 deploy/redis_data/
+deploy/workbench-local/data/
+deploy/workbench-local/backups/
 
 # GoReleaser
 .goreleaser.yaml

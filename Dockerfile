@@ -8,6 +8,7 @@
 # =============================================================================
 
 ARG NODE_IMAGE=node:24-alpine
+ARG BUN_IMAGE=oven/bun:1.3.13
 ARG GOLANG_IMAGE=golang:1.27.0-alpine
 ARG ALPINE_IMAGE=alpine:3.21
 ARG POSTGRES_IMAGE=postgres:18-alpine
@@ -44,7 +45,24 @@ COPY docs/legal/ /app/docs/legal/
 RUN pnpm run build
 
 # -----------------------------------------------------------------------------
-# Stage 2: Backend Builder
+# Stage 2: Vendored Infinite Canvas Builder
+# -----------------------------------------------------------------------------
+FROM --platform=${BUILDPLATFORM} ${BUN_IMAGE} AS infinite-canvas-builder
+
+ARG INFINITE_CANVAS_BASE=/infinite-canvas/
+WORKDIR /app/infinite-canvas/web
+
+COPY third_party/infinite-canvas/web/package.json third_party/infinite-canvas/web/bun.lock ./
+RUN --mount=type=cache,id=infinite-canvas-bun-cache,target=/root/.bun/install/cache \
+    bun install --frozen-lockfile --cache-dir=/root/.bun/install/cache
+
+COPY third_party/infinite-canvas/VERSION /app/infinite-canvas/VERSION
+COPY third_party/infinite-canvas/CHANGELOG.md /app/infinite-canvas/CHANGELOG.md
+COPY third_party/infinite-canvas/web/ ./
+RUN VITE_BASE=${INFINITE_CANVAS_BASE} bun run build
+
+# -----------------------------------------------------------------------------
+# Stage 3: Backend Builder
 # -----------------------------------------------------------------------------
 # --platform=$BUILDPLATFORM: run the Go toolchain on the native host arch and
 # cross-compile to the target arch below. The binary is CGO_ENABLED=0, so this
@@ -82,6 +100,7 @@ COPY backend/ ./
 
 # Copy frontend dist from previous stage (must be after backend copy to avoid being overwritten)
 COPY --from=frontend-builder /app/backend/internal/web/dist ./internal/web/dist
+COPY --from=infinite-canvas-builder /app/infinite-canvas/web/dist ./internal/web/dist/infinite-canvas
 
 # Build the binary (BuildType=release for CI builds, embed frontend)
 # Version precedence: build arg VERSION > exact git tag > cmd/server/VERSION
@@ -98,12 +117,12 @@ RUN --mount=type=cache,id=sub2api-gomod,target=/go/pkg/mod \
     ./cmd/server
 
 # -----------------------------------------------------------------------------
-# Stage 3: PostgreSQL Client (version-matched with docker-compose)
+# Stage 4: PostgreSQL Client (version-matched with docker-compose)
 # -----------------------------------------------------------------------------
 FROM ${POSTGRES_IMAGE} AS pg-client
 
 # -----------------------------------------------------------------------------
-# Stage 4: Final Runtime Image
+# Stage 5: Final Runtime Image
 # -----------------------------------------------------------------------------
 FROM ${ALPINE_IMAGE}
 

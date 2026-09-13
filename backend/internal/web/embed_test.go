@@ -679,6 +679,56 @@ func TestFrontendServer_Middleware(t *testing.T) {
 		assert.Equal(t, staticAssetsCacheControl, assetWriter.Header().Get("Cache-Control"))
 	})
 
+	t.Run("serves_infinite_canvas_root_and_deep_routes_with_nonce", func(t *testing.T) {
+		provider := &mockSettingsProvider{settings: map[string]string{"test": "value"}}
+		server, err := NewFrontendServer(provider)
+		require.NoError(t, err)
+		require.NotEmpty(t, server.infiniteCanvasHTML, "build the vendored Infinite Canvas frontend before embed tests")
+
+		router := gin.New()
+		router.Use(func(c *gin.Context) {
+			c.Set(middleware.CSPNonceKey, "canvas-nonce")
+			c.Next()
+		})
+		router.Use(server.Middleware())
+
+		for _, requestPath := range []string{
+			"/infinite-canvas/",
+			"/infinite-canvas/canvas",
+			"/infinite-canvas/canvas/project-1",
+		} {
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, requestPath, nil)
+			router.ServeHTTP(w, req)
+
+			assert.Equal(t, http.StatusOK, w.Code, requestPath)
+			assert.Contains(t, w.Header().Get("Content-Type"), "text/html", requestPath)
+			assert.Equal(t, "no-store", w.Header().Get("Cache-Control"), requestPath)
+			assert.Contains(t, w.Body.String(), `nonce="canvas-nonce"`, requestPath)
+			assert.NotContains(t, w.Body.String(), NonceHTMLPlaceholder, requestPath)
+		}
+	})
+
+	t.Run("returns_404_for_missing_infinite_canvas_assets", func(t *testing.T) {
+		provider := &mockSettingsProvider{settings: map[string]string{"test": "value"}}
+		server, err := NewFrontendServer(provider)
+		require.NoError(t, err)
+
+		router := gin.New()
+		router.Use(server.Middleware())
+
+		for _, requestPath := range []string{
+			"/infinite-canvas/assets/missing.js",
+			"/infinite-canvas/plugins/missing.js",
+			"/infinite-canvas/icons/missing.svg",
+		} {
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, requestPath, nil)
+			router.ServeHTTP(w, req)
+			assert.Equal(t, http.StatusNotFound, w.Code, requestPath)
+		}
+	})
+
 	t.Run("returns_404_for_missing_threeui_assets", func(t *testing.T) {
 		provider := &mockSettingsProvider{
 			settings: map[string]string{"test": "value"},
@@ -754,6 +804,7 @@ func TestNewFrontendServer(t *testing.T) {
 		assert.NotNil(t, server.distFS)
 		assert.NotNil(t, server.fileServer)
 		assert.NotNil(t, server.baseHTML)
+		assert.NotEmpty(t, server.infiniteCanvasHTML)
 		assert.NotNil(t, server.cache)
 		assert.Equal(t, provider, server.settings)
 	})
@@ -826,6 +877,39 @@ func TestServeEmbeddedFrontend(t *testing.T) {
 				assert.Equal(t, http.StatusOK, w.Code)
 				assert.Contains(t, w.Header().Get("Content-Type"), "text/html")
 			})
+		}
+	})
+
+	t.Run("serves_infinite_canvas_deep_routes", func(t *testing.T) {
+		for _, path := range []string{
+			"/infinite-canvas/",
+			"/infinite-canvas/canvas",
+			"/infinite-canvas/canvas/project-1",
+		} {
+			t.Run(path, func(t *testing.T) {
+				w := httptest.NewRecorder()
+				req := httptest.NewRequest(http.MethodGet, path, nil)
+				router := gin.New()
+				router.Use(ServeEmbeddedFrontend())
+				router.ServeHTTP(w, req)
+				assert.Equal(t, http.StatusOK, w.Code)
+				assert.Contains(t, w.Header().Get("Content-Type"), "text/html")
+			})
+		}
+	})
+
+	t.Run("returns_404_for_missing_infinite_canvas_assets", func(t *testing.T) {
+		for _, path := range []string{
+			"/infinite-canvas/assets/missing.js",
+			"/infinite-canvas/plugins/missing.js",
+			"/infinite-canvas/icons/missing.svg",
+		} {
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			router := gin.New()
+			router.Use(ServeEmbeddedFrontend())
+			router.ServeHTTP(w, req)
+			assert.Equal(t, http.StatusNotFound, w.Code, path)
 		}
 	})
 

@@ -132,6 +132,58 @@ func TestSecurityHeaders(t *testing.T) {
 		assert.Equal(t, 1, countDirectiveValue(csp, "worker-src", TencentCaptchaWorkerSource))
 	})
 
+	t.Run("adds_exact_canvas_storage_origin_without_duplicates", func(t *testing.T) {
+		cfg := config.CSPConfig{
+			Enabled: true,
+			Policy:  "default-src 'self'; img-src 'self'; media-src 'self'; connect-src 'self' http://127.0.0.1:19000",
+		}
+		middleware := SecurityHeadersWithCanvasOrigins(cfg, nil, func() []string {
+			return []string{
+				" HTTP://127.0.0.1:19000/canvas/image.png?signature=secret ",
+				"http://127.0.0.1:19000",
+			}
+		})
+
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodGet, "/canvas", nil)
+
+		middleware(c)
+
+		csp := w.Header().Get("Content-Security-Policy")
+		for _, directive := range []string{"img-src", "media-src", "connect-src"} {
+			assert.Equal(t, 1, countDirectiveValue(csp, directive, "http://127.0.0.1:19000"))
+		}
+		assert.NotContains(t, csp, "/canvas/image.png")
+		assert.NotContains(t, csp, "signature=secret")
+	})
+
+	t.Run("ignores_invalid_or_credentialed_canvas_origins", func(t *testing.T) {
+		cfg := config.CSPConfig{
+			Enabled: true,
+			Policy:  "default-src 'self'; img-src 'self'; media-src 'self'; connect-src 'self'",
+		}
+		middleware := SecurityHeadersWithCanvasOrigins(cfg, nil, func() []string {
+			return []string{
+				"javascript:alert(1)",
+				"//assets.example.com",
+				"https://user:password@assets.example.com/private",
+				"not a URL",
+			}
+		})
+
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodGet, "/canvas", nil)
+
+		middleware(c)
+
+		csp := w.Header().Get("Content-Security-Policy")
+		assert.NotContains(t, csp, "javascript:")
+		assert.NotContains(t, csp, "assets.example.com")
+		assert.NotContains(t, csp, "not a URL")
+	})
+
 	t.Run("old_custom_policy_dynamically_allows_same_origin_frames", func(t *testing.T) {
 		cfg := config.CSPConfig{
 			Enabled: true,
@@ -307,6 +359,27 @@ func TestSecurityHeaders(t *testing.T) {
 
 		assert.True(t, nextCalled, "next handler should be called")
 		assert.Equal(t, http.StatusOK, w.Code)
+	})
+
+	t.Run("allows_blob_modules_only_for_infinite_canvas", func(t *testing.T) {
+		cfg := config.CSPConfig{
+			Enabled: true,
+			Policy:  "default-src 'self'; script-src 'self' __CSP_NONCE__",
+		}
+		middleware := SecurityHeaders(cfg, nil)
+
+		canvasWriter := httptest.NewRecorder()
+		canvasContext, _ := gin.CreateTestContext(canvasWriter)
+		canvasContext.Request = httptest.NewRequest(http.MethodGet, "/infinite-canvas/canvas/project-1", nil)
+		middleware(canvasContext)
+
+		dashboardWriter := httptest.NewRecorder()
+		dashboardContext, _ := gin.CreateTestContext(dashboardWriter)
+		dashboardContext.Request = httptest.NewRequest(http.MethodGet, "/dashboard", nil)
+		middleware(dashboardContext)
+
+		assert.Equal(t, 1, countDirectiveValue(canvasWriter.Header().Get("Content-Security-Policy"), "script-src", "blob:"))
+		assert.Zero(t, countDirectiveValue(dashboardWriter.Header().Get("Content-Security-Policy"), "script-src", "blob:"))
 	})
 
 	t.Run("nonce_unique_per_request", func(t *testing.T) {

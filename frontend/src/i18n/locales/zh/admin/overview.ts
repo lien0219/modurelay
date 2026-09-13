@@ -112,6 +112,8 @@ export default {
         prefix: 'Key 前缀',
         publicBaseUrl: '公开访问域名',
         publicBaseUrlPlaceholder: '留空则返回预签名临时链接',
+        publicEndpoint: '公开预签名端点',
+        publicEndpointPlaceholder: '可选，填写浏览器可访问的 S3 端点',
         presignExpiryHours: '预签名链接有效期（小时）',
         saved: '异步生图对象存储配置已保存'
       },
