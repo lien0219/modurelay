@@ -43,6 +43,7 @@ RUN pnpm run build
 FROM ${BUN_IMAGE} AS infinite-canvas-builder
 
 ARG INFINITE_CANVAS_BASE=/infinite-canvas/
+ARG INFINITE_CANVAS_MODURELAY_INTEGRATION=true
 WORKDIR /app/infinite-canvas/web
 
 COPY third_party/infinite-canvas/web/package.json third_party/infinite-canvas/web/bun.lock ./
@@ -51,7 +52,7 @@ RUN bun install --frozen-lockfile
 COPY third_party/infinite-canvas/VERSION /app/infinite-canvas/VERSION
 COPY third_party/infinite-canvas/CHANGELOG.md /app/infinite-canvas/CHANGELOG.md
 COPY third_party/infinite-canvas/web/ ./
-RUN VITE_BASE=${INFINITE_CANVAS_BASE} bun run build
+RUN VITE_BASE=${INFINITE_CANVAS_BASE} VITE_MODURELAY_INTEGRATION=${INFINITE_CANVAS_MODURELAY_INTEGRATION} bun run build
 
 # -----------------------------------------------------------------------------
 # Stage 3: Backend Builder

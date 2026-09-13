@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -16,6 +17,7 @@ func RegisterUserRoutes(
 	auditLog middleware.AuditLogMiddleware,
 	settingService *service.SettingService,
 	panelRateLimiter *middleware.PanelRateLimiter,
+	cfg *config.Config,
 ) {
 	authenticated := v1.Group("")
 	authenticated.Use(gin.HandlerFunc(jwtAuth))
@@ -149,6 +151,9 @@ func RegisterUserRoutes(
 		if h.Canvas != nil {
 			canvas := authenticated.Group("/canvas")
 			{
+				canvas.POST("/models/fetch", panelRateLimiter.Heavy(), h.Canvas.FetchModels)
+				canvas.GET("/upstream", h.Canvas.ProxyProvider)
+				canvas.POST("/upstream", middleware.RequestBodyLimit(cfg.Gateway.MaxBodySize), h.Canvas.ProxyProvider)
 				canvas.GET("/projects", h.Canvas.List)
 				canvas.POST("/projects", h.Canvas.Create)
 				canvas.GET("/projects/:id", h.Canvas.Get)

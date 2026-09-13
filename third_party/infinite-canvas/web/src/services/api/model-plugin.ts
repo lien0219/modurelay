@@ -2,6 +2,7 @@ import axios, { type AxiosRequestConfig } from "axios";
 
 import i18n from "@/i18n";
 import { buildApiUrl, withLocalProxy, type AiConfig, type ModelCapability } from "@/stores/use-config-store";
+import { providerAxios, providerFetch } from "./provider-transport";
 
 type RequestOptions = { signal?: AbortSignal };
 
@@ -47,7 +48,7 @@ function pluginUrl(config: AiConfig, path: string) {
 function createPluginHttp(config: AiConfig, options?: RequestOptions): PluginHttp {
     const run = async (method: "get" | "post", path: string, body: unknown, opts?: PluginHttpOptions) => {
         const isForm = typeof FormData !== "undefined" && body instanceof FormData;
-        const response = await axios.request({
+        const response = await providerAxios.request({
             method,
             url: pluginUrl(config, path),
             data: method === "post" ? body : undefined,
@@ -68,7 +69,7 @@ function createPluginHttp(config: AiConfig, options?: RequestOptions): PluginHtt
 /** Raw request with no automatic auth header — the script controls method, url, headers, body entirely. */
 function createPluginRequest(config: AiConfig, options?: RequestOptions) {
     return async (requestConfig: AxiosRequestConfig & { url: string }) => {
-        const response = await axios.request({ ...requestConfig, url: pluginUrl(config, requestConfig.url), signal: options?.signal });
+        const response = await providerAxios.request({ ...requestConfig, url: pluginUrl(config, requestConfig.url), signal: options?.signal });
         return response.data;
     };
 }
@@ -133,6 +134,7 @@ export async function runModelPlugin<T = unknown>(args: RunPluginArgs): Promise<
         "sleep",
         "signal",
         "onDelta",
+        "fetch",
         `"use strict"; return (async () => {\n${args.script}\n})();`,
     ) as (...fnArgs: unknown[]) => Promise<T>;
     try {
@@ -154,6 +156,7 @@ export async function runModelPlugin<T = unknown>(args: RunPluginArgs): Promise<
             (ms: number) => sleep(ms, args.signal),
             args.signal,
             args.onDelta,
+            providerFetch,
         );
     } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") throw error;
@@ -225,10 +228,10 @@ export type PluginTemplate = { label: string; script: string };
 
 export function getPluginTemplates(): Record<ModelCapability, PluginTemplate[]> {
     return {
-    image: [
-        {
-            label: i18n.t("modelPlugin.templates.openai"),
-            script: `/**
+        image: [
+            {
+                label: i18n.t("modelPlugin.templates.openai"),
+                script: `/**
  * OpenAI image generation and editing.
  * Text-to-image uses POST /v1/images/generations (JSON) when images is empty.
  * Image editing uses POST /v1/images/edits (multipart) when images has data URLs.
@@ -320,10 +323,10 @@ return await generateImage({
   apiKey,
   request,
 });`,
-        },
-        {
-            label: i18n.t("modelPlugin.templates.gemini"),
-            script: `/**
+            },
+            {
+                label: i18n.t("modelPlugin.templates.gemini"),
+                script: `/**
  * Gemini image generation via models/{model}:generateContent.
  * Reference images go into parts.inline_data. size maps to aspectRatio; quality maps to imageSize.
  * @param {string} prompt
@@ -432,12 +435,12 @@ return await generateImage({
   apiKey,
   request,
 });`,
-        },
-    ],
-    video: [
-        {
-            label: i18n.t("modelPlugin.templates.openai"),
-            script: `/**
+            },
+        ],
+        video: [
+            {
+                label: i18n.t("modelPlugin.templates.openai"),
+                script: `/**
  * OpenAI-compatible video: POST /v1/videos (multipart), then poll GET /v1/videos/{id}.
  * Do not set Content-Type on FormData; the browser adds the boundary.
  * @param {string} prompt
@@ -555,10 +558,10 @@ return await generateVideo({
   request,
   poll,
 });`,
-        },
-        {
-            label: i18n.t("modelPlugin.templates.gemini"),
-            script: `/**
+            },
+            {
+                label: i18n.t("modelPlugin.templates.gemini"),
+                script: `/**
  * Gemini Veo video: POST models/{model}:predictLongRunning, then poll the operation.
  * First/last-frame mode: images[0] -> image, images[1] -> lastFrame.
  * Reference mode: all images -> referenceImages.
@@ -715,12 +718,12 @@ return await generateVideo({
   request,
   poll,
 });`,
-        },
-    ],
-    audio: [
-        {
-            label: i18n.t("modelPlugin.templates.openai"),
-            script: `/**
+            },
+        ],
+        audio: [
+            {
+                label: i18n.t("modelPlugin.templates.openai"),
+                script: `/**
  * OpenAI speech: POST /v1/audio/speech.
  * @param {string} prompt - text to speak
  * @param {object} params
@@ -774,10 +777,10 @@ return await generateAudio({
   apiKey,
   request,
 });`,
-        },
-        {
-            label: i18n.t("modelPlugin.templates.gemini"),
-            script: `/**
+            },
+            {
+                label: i18n.t("modelPlugin.templates.gemini"),
+                script: `/**
  * Gemini TTS: POST models/{model}:generateContent with AUDIO modality.
  * Audio bytes are returned in inlineData.data (base64 PCM).
  * @param {string} prompt - text to speak
@@ -843,12 +846,12 @@ return await generateAudio({
   apiKey,
   request,
 });`,
-        },
-    ],
-    text: [
-        {
-            label: i18n.t("modelPlugin.templates.openai"),
-            script: `/**
+            },
+        ],
+        text: [
+            {
+                label: i18n.t("modelPlugin.templates.openai"),
+                script: `/**
  * OpenAI text: POST /v1/responses.
  * @param {{role: string, content: string}[]} messages - includes the system message when present
  * @param {string} model
@@ -902,10 +905,10 @@ return await generateText({
   request,
   onDelta,
 });`,
-        },
-        {
-            label: i18n.t("modelPlugin.templates.gemini"),
-            script: `/**
+            },
+            {
+                label: i18n.t("modelPlugin.templates.gemini"),
+                script: `/**
  * Gemini text: POST models/{model}:generateContent.
  * System messages are skipped in contents; systemPrompt goes to systemInstruction.
  * @param {{role: string, content: string}[]} messages
@@ -968,8 +971,8 @@ return await generateText({
   request,
   onDelta,
 });`,
-        },
-    ],
+            },
+        ],
     };
 }
 

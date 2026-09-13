@@ -128,6 +128,8 @@ var auditActionOverrides = map[string]string{
 	"POST /api/v1/auth/register":                              service.AuditActionRegister,
 	"POST /api/v1/auth/refresh":                               service.AuditActionTokenRefresh,
 	"POST /api/v1/user/totp/step-up":                          service.AuditActionStepUpVerify,
+	"POST /api/v1/canvas/models/fetch":                        "canvas.models.fetch",
+	"POST /api/v1/canvas/upstream":                            "canvas.provider.proxy",
 	"POST /api/v1/admin/audit-logs/clear":                     service.AuditActionAuditLogClear,
 	"POST /api/v1/admin/accounts/data":                        "admin.accounts.import",
 	"POST /api/v1/admin/backups":                              "admin.backups.create",
@@ -149,6 +151,8 @@ var auditActionOverrides = map[string]string{
 var auditBodyOmittedRoutes = map[string]struct{}{
 	"POST /api/v1/auth/passkey/login/finish":                    {},
 	"POST /api/v1/user/passkeys/register/finish":                {},
+	"POST /api/v1/canvas/models/fetch":                          {},
+	"POST /api/v1/canvas/upstream":                              {},
 	"POST /api/v1/admin/accounts/import/codex-session":          {},
 	"PUT /api/v1/admin/accounts/:id/ollama-cloud-usage/session": {},
 	"PUT /api/v1/admin/prompt-audit/config":                     {},

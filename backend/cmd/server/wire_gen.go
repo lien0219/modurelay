@@ -323,7 +323,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	resourceCenterHandler := handler.ProvideResourceCenterHandler(resourceCenterService)
 	activityHandler := handler.NewActivityHandler(activityService)
 	canvasProjectRepository := repository.NewCanvasRepository(db)
-	canvasService := service.ProvideCanvasService(canvasProjectRepository, settingRepository, imageStorageSettingService, imageTaskService)
+	canvasService := service.ProvideCanvasService(canvasProjectRepository, settingRepository, imageStorageSettingService, imageTaskService, httpUpstream, configConfig)
 	canvasHandler := handler.NewCanvasHandler(canvasService)
 	idempotencyCoordinator := service.ProvideIdempotencyCoordinator(idempotencyRepository, configConfig)
 	idempotencyCleanupService := service.ProvideIdempotencyCleanupService(idempotencyRepository, configConfig)

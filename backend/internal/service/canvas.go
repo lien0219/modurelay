@@ -162,6 +162,11 @@ type CanvasService struct {
 	settingRepo   SettingRepository
 	storeResolver CanvasStoreResolver
 	imageTasks    *ImageTaskService
+	httpUpstream  HTTPUpstream
+
+	modelsListReadMaxBytes       int64
+	providerResponseReadMaxBytes int64
+	resolveModelHost             func(context.Context, string) (context.Context, error)
 
 	mu       sync.Mutex
 	cachedAt time.Time

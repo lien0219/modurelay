@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -272,4 +273,96 @@ func (h *CanvasHandler) DeleteAsset(c *gin.Context) {
 		return
 	}
 	c.Status(http.StatusNoContent)
+}
+
+func (h *CanvasHandler) FetchModels(c *gin.Context) {
+	uid, ok := h.subject(c)
+	if !ok {
+		return
+	}
+	var in service.CanvasModelListRequest
+	if err := c.ShouldBindJSON(&in); err != nil {
+		response.BadRequest(c, "Invalid model provider configuration")
+		return
+	}
+	out, err := h.service.FetchProviderModels(c, uid, in)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, out)
+}
+
+func (h *CanvasHandler) ProxyProvider(c *gin.Context) {
+	uid, ok := h.subject(c)
+	if !ok {
+		return
+	}
+	result, err := h.service.ProxyProviderRequest(
+		c,
+		uid,
+		c.Request,
+		c.GetHeader("X-Canvas-Upstream-URL"),
+		c.GetHeader("X-Canvas-Provider-Authorization"),
+	)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	defer func() { _ = result.Response.Body.Close() }()
+
+	copyCanvasProviderResponseHeaders(c.Writer.Header(), result.Response.Header)
+	c.Status(result.Response.StatusCode)
+	streamCanvasProviderResponse(c, result.Response.Body, result.MaxBytes)
+}
+
+func copyCanvasProviderResponseHeaders(destination, source http.Header) {
+	for _, key := range []string{
+		"Cache-Control",
+		"Content-Disposition",
+		"Content-Length",
+		"Content-Type",
+		"ETag",
+		"Last-Modified",
+		"OpenAI-Processing-Ms",
+		"OpenAI-Request-ID",
+		"Retry-After",
+		"X-Request-ID",
+	} {
+		for _, value := range source.Values(key) {
+			destination.Add(key, value)
+		}
+	}
+}
+
+func streamCanvasProviderResponse(c *gin.Context, body io.Reader, maxBytes int64) {
+	if body == nil || maxBytes <= 0 {
+		return
+	}
+	limited := &io.LimitedReader{R: body, N: maxBytes + 1}
+	buffer := make([]byte, 32*1024)
+	written := int64(0)
+	flushChunks := strings.HasPrefix(strings.ToLower(c.Writer.Header().Get("Content-Type")), "text/event-stream")
+	for {
+		count, readErr := limited.Read(buffer)
+		if count > 0 {
+			remaining := maxBytes - written
+			if remaining <= 0 {
+				return
+			}
+			if int64(count) > remaining {
+				count = int(remaining)
+			}
+			if _, writeErr := c.Writer.Write(buffer[:count]); writeErr != nil {
+				return
+			}
+			written += int64(count)
+			if flushChunks {
+				c.Writer.Flush()
+			}
+		}
+		if readErr != nil {
+			return
+		}
+	}
 }

@@ -3,6 +3,7 @@ import axios from "axios";
 import i18n from "@/i18n";
 import { buildApiUrl, resolveModelRequestConfig, resolveModelScript, withLocalProxy, type AiConfig, type ModelChannel } from "@/stores/use-config-store";
 import { normalizePluginImages, runModelPlugin } from "./model-plugin";
+import { providerAxios, providerFetch } from "./provider-transport";
 import { nanoid } from "nanoid";
 import { dataUrlToFile } from "@/lib/image-utils";
 import { buildImageReferencePromptText } from "@/lib/image-reference-prompt";
@@ -24,10 +25,7 @@ type ResponseToolCall = {
     thoughtSignature?: string;
 };
 
-type ResponseInputMessage =
-    | AiTextMessage
-    | { type: "function_call"; call_id: string; name: string; arguments: string; thoughtSignature?: string }
-    | { role: "tool"; tool_call_id: string; content: string };
+type ResponseInputMessage = AiTextMessage | { type: "function_call"; call_id: string; name: string; arguments: string; thoughtSignature?: string } | { role: "tool"; tool_call_id: string; content: string };
 
 type ResponseFunctionTool = {
     type: "function";
@@ -47,10 +45,7 @@ type ToolResponseResult = {
 type ToolChoice = "auto" | "required" | { type: "function"; name: string };
 type ResponseMessageContent = AiTextMessage["content"] | string;
 type ResponseInputContent = { type: "input_text"; text: string } | { type: "input_image"; image_url: string };
-type ResponseInputItem =
-    | { role: "system" | "user" | "assistant"; content: string | ResponseInputContent[] }
-    | { type: "function_call"; call_id: string; name: string; arguments: string }
-    | { type: "function_call_output"; call_id: string; output: string };
+type ResponseInputItem = { role: "system" | "user" | "assistant"; content: string | ResponseInputContent[] } | { type: "function_call"; call_id: string; name: string; arguments: string } | { type: "function_call_output"; call_id: string; output: string };
 type ResponseApiToolDefinition = {
     type: "function";
     name: string;
@@ -58,9 +53,7 @@ type ResponseApiToolDefinition = {
     parameters: Record<string, unknown>;
     strict?: boolean;
 };
-type ResponseApiOutputItem =
-    | { type?: "message"; content?: Array<{ type?: string; text?: string }> }
-    | { type?: "function_call"; id?: string; call_id?: string; name?: string; arguments?: string };
+type ResponseApiOutputItem = { type?: "message"; content?: Array<{ type?: string; text?: string }> } | { type?: "function_call"; id?: string; call_id?: string; name?: string; arguments?: string };
 type ResponseApiPayload = {
     id?: string;
     output?: ResponseApiOutputItem[];
@@ -255,10 +248,7 @@ function parseImagePayload(payload: ImageApiResponse) {
         throw new Error(payload.msg || apiText("requestFailed"));
     }
     // Support data, images, and results response fields used by different APIs.
-    const imageList = payload.data
-        || (payload as Record<string, unknown>).images as Array<Record<string, unknown>> | undefined
-        || (payload as Record<string, unknown>).results as Array<Record<string, unknown>> | undefined
-        || [];
+    const imageList = payload.data || ((payload as Record<string, unknown>).images as Array<Record<string, unknown>> | undefined) || ((payload as Record<string, unknown>).results as Array<Record<string, unknown>> | undefined) || [];
     const images = imageList
         .map(resolveImageSource)
         .filter((value): value is string => Boolean(value))
@@ -267,9 +257,7 @@ function parseImagePayload(payload: ImageApiResponse) {
     if (images.length === 0) {
         // Check whether the response contains data in an unrecognized format.
         const rawKeys = Object.keys(payload).filter((k) => k !== "code" && k !== "msg" && k !== "error");
-        throw new Error(rawKeys.length > 0
-            ? apiText("unknownImageResponse", { fields: rawKeys.join(", ") })
-            : apiText("noImageReturned"));
+        throw new Error(rawKeys.length > 0 ? apiText("unknownImageResponse", { fields: rawKeys.join(", ") }) : apiText("noImageReturned"));
     }
 
     return images;
@@ -294,17 +282,8 @@ function readApiErrorMessage(value: unknown): string {
     if (typeof value !== "object") return "";
     const payload = value as { msg?: unknown; message?: unknown; error?: unknown; detail?: unknown };
     // error may be a string or an object containing a message.
-    const errorMsg =
-        typeof payload.error === "string"
-            ? payload.error
-            : (payload.error as { message?: unknown })?.message;
-    return (
-        readApiErrorMessage(payload.msg) ||
-        readApiErrorMessage(payload.message) ||
-        readApiErrorMessage(errorMsg) ||
-        readApiErrorMessage(payload.detail) ||
-        ""
-    );
+    const errorMsg = typeof payload.error === "string" ? payload.error : (payload.error as { message?: unknown })?.message;
+    return readApiErrorMessage(payload.msg) || readApiErrorMessage(payload.message) || readApiErrorMessage(errorMsg) || readApiErrorMessage(payload.detail) || "";
 }
 
 function readAxiosError(error: unknown, fallback: string) {
@@ -499,7 +478,7 @@ function consumeResponseStreamText(state: ResponseStreamState, text: string, onD
 }
 
 async function requestStreamingResponse(config: AiConfig, body: Record<string, unknown>, onDelta?: (text: string) => void, options?: RequestOptions): Promise<ToolResponseResult> {
-    const response = await fetch(aiApiUrl(config, "/responses"), {
+    const response = await providerFetch(aiApiUrl(config, "/responses"), {
         method: "POST",
         headers: { ...aiHeaders(config, "application/json"), Accept: "text/event-stream" },
         body: JSON.stringify({ ...body, stream: true }),
@@ -530,12 +509,7 @@ async function requestStreamingResponse(config: AiConfig, body: Record<string, u
 }
 
 function toGeminiBody(config: AiConfig, messages: ResponseInputMessage[], extra?: Record<string, unknown>) {
-    const systemText = [
-        config.systemPrompt.trim(),
-        ...messages.flatMap((message) => (!("type" in message) && message.role === "system" ? [geminiTextContent(message.content)] : [])),
-    ]
-        .filter(Boolean)
-        .join("\n\n");
+    const systemText = [config.systemPrompt.trim(), ...messages.flatMap((message) => (!("type" in message) && message.role === "system" ? [geminiTextContent(message.content)] : []))].filter(Boolean).join("\n\n");
     const contents = toGeminiContents(messages.filter((message) => ("type" in message ? true : message.role !== "system")));
     return {
         contents,
@@ -595,10 +569,7 @@ function toGeminiToolOptions(tools: ResponseFunctionTool[], toolChoice: ToolChoi
         description: tool.function.description,
         parameters: tool.function.parameters,
     }));
-    const functionCallingConfig =
-        typeof toolChoice === "object"
-            ? { mode: "ANY", allowedFunctionNames: [toolChoice.name] }
-            : { mode: toolChoice === "required" ? "ANY" : "AUTO" };
+    const functionCallingConfig = typeof toolChoice === "object" ? { mode: "ANY", allowedFunctionNames: [toolChoice.name] } : { mode: toolChoice === "required" ? "ANY" : "AUTO" };
     return {
         tools: [{ functionDeclarations }],
         toolConfig: { functionCallingConfig },
@@ -606,7 +577,7 @@ function toGeminiToolOptions(tools: ResponseFunctionTool[], toolChoice: ToolChoi
 }
 
 async function requestGeminiStreamingResponse(config: AiConfig, body: Record<string, unknown>, onDelta?: (text: string) => void, options?: RequestOptions): Promise<ToolResponseResult> {
-    const response = await fetch(`${geminiApiUrl(config, "streamGenerateContent")}?alt=sse`, {
+    const response = await providerFetch(`${geminiApiUrl(config, "streamGenerateContent")}?alt=sse`, {
         method: "POST",
         headers: geminiHeaders(config),
         body: JSON.stringify(body),
@@ -693,7 +664,7 @@ async function requestGeminiImagesOnce(config: AiConfig, prompt: string, referen
     for (const image of references) {
         parts.push(toGeminiImagePart(await imageToDataUrl(image)));
     }
-    const response = await axios.post<GeminiPayload>(
+    const response = await providerAxios.post<GeminiPayload>(
         geminiApiUrl(config, "generateContent"),
         {
             ...toGeminiBody(config, [{ role: "user", content: prompt }], { generationConfig: { responseModalities: ["TEXT", "IMAGE"], ...resolveGeminiImageConfig(config) } }),
@@ -754,7 +725,7 @@ export async function requestGeneration(config: AiConfig, prompt: string, option
     const requestSize = resolveRequestSize(quality, config.size);
     const background = normalizeBackground(config.background);
     try {
-        const response = await axios.post<ImageApiResponse>(
+        const response = await providerAxios.post<ImageApiResponse>(
             aiApiUrl(requestConfig, "/images/generations"),
             {
                 model: requestConfig.model,
@@ -838,7 +809,7 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
     files.forEach((file) => formData.append(imageField, file));
 
     try {
-        const response = await axios.post<ImageApiResponse>(aiApiUrl(requestConfig, "/images/edits"), formData, { headers: aiHeaders(requestConfig), signal: options?.signal });
+        const response = await providerAxios.post<ImageApiResponse>(aiApiUrl(requestConfig, "/images/edits"), formData, { headers: aiHeaders(requestConfig), signal: options?.signal });
         const images = await parseImagePayload(response.data);
         return images;
     } catch (error) {
@@ -872,11 +843,19 @@ export async function requestImageQuestion(config: AiConfig, messages: AiTextMes
             if (answer === apiText("noContent")) onDelta(answer);
             return answer;
         }
-        const answer = (await requestStreamingResponse(requestConfig, {
-            model: requestConfig.model,
-            input: toResponseInput(withSystemMessage(requestConfig, messages)),
-            ...(requestConfig.reasoningEffort === "auto" ? {} : { reasoning: { effort: requestConfig.reasoningEffort } }),
-        }, onDelta, options)).content || apiText("noContent");
+        const answer =
+            (
+                await requestStreamingResponse(
+                    requestConfig,
+                    {
+                        model: requestConfig.model,
+                        input: toResponseInput(withSystemMessage(requestConfig, messages)),
+                        ...(requestConfig.reasoningEffort === "auto" ? {} : { reasoning: { effort: requestConfig.reasoningEffort } }),
+                    },
+                    onDelta,
+                    options,
+                )
+            ).content || apiText("noContent");
         if (answer === apiText("noContent")) onDelta(answer);
         return answer;
     } catch (error) {
@@ -886,15 +865,18 @@ export async function requestImageQuestion(config: AiConfig, messages: AiTextMes
 
 export async function fetchImageModels(config: Pick<AiConfig, "baseUrl" | "apiKey" | "apiFormat">) {
     try {
+        if (shouldUseModuRelayModelProxy(config.baseUrl)) {
+            return await fetchModuRelayModels(config);
+        }
         if (config.apiFormat === "gemini") {
-            const response = await axios.get<GeminiPayload>(geminiApiUrl({ ...defaultGeminiConfig, ...config }), { headers: geminiHeaders({ ...defaultGeminiConfig, ...config }) });
+            const response = await providerAxios.get<GeminiPayload>(geminiApiUrl({ ...defaultGeminiConfig, ...config }), { headers: geminiHeaders({ ...defaultGeminiConfig, ...config }) });
             validateGeminiPayload(response.data);
             return (response.data.models || [])
                 .map((model) => model.name?.replace(/^models\//, ""))
                 .filter((id): id is string => Boolean(id))
                 .sort((a, b) => a.localeCompare(b));
         }
-        const response = await axios.get<{ data?: Array<{ id?: string }>; error?: { message?: string } }>(buildApiUrl(config.baseUrl, "/models"), {
+        const response = await providerAxios.get<{ data?: Array<{ id?: string }>; error?: { message?: string } }>(buildApiUrl(config.baseUrl, "/models"), {
             headers: {
                 Authorization: `Bearer ${config.apiKey}`,
             },
@@ -905,6 +887,49 @@ export async function fetchImageModels(config: Pick<AiConfig, "baseUrl" | "apiKe
             .sort((a, b) => a.localeCompare(b));
     } catch (error) {
         throw new Error(readAxiosError(error, apiText("modelReadFailed")));
+    }
+}
+
+function shouldUseModuRelayModelProxy(baseUrl: string) {
+    if (typeof window === "undefined" || import.meta.env.VITE_MODURELAY_INTEGRATION !== "true") return false;
+    try {
+        return new URL(baseUrl.trim()).origin !== window.location.origin;
+    } catch {
+        return false;
+    }
+}
+
+async function fetchModuRelayModels(config: Pick<AiConfig, "baseUrl" | "apiKey" | "apiFormat">) {
+    const token = localStorage.getItem("auth_token") || "";
+    if (!token) throw new Error(apiText("modurelaySessionRequired"));
+    try {
+        const response = await axios.post<{ data?: { models?: unknown[] }; code?: number; message?: string }>(
+            "/api/v1/canvas/models/fetch",
+            { base_url: config.baseUrl, api_key: config.apiKey, api_format: config.apiFormat },
+            {
+                headers: {
+                    Accept: "application/json",
+                    "Accept-Language": localStorage.getItem("sub2api_locale") || "zh",
+                    Authorization: `Bearer ${token}`,
+                    "Content-Type": "application/json",
+                    "X-User-UI-Request": "1",
+                },
+            },
+        );
+        const models = response.data.data?.models;
+        if (!Array.isArray(models)) throw new Error(apiText("modelProviderResponseInvalid"));
+        return Array.from(new Set(models.map((model) => (typeof model === "string" ? model.trim() : "")).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+    } catch (error) {
+        if (axios.isAxiosError(error)) {
+            const reason = (error.response?.data as { reason?: unknown } | undefined)?.reason;
+            if (error.response?.status === 401 || error.response?.status === 403) throw new Error(apiText("modurelaySessionRequired"));
+            if (reason === "CANVAS_MODEL_URL_REJECTED" || reason === "CANVAS_MODEL_REQUEST_INVALID") throw new Error(apiText("modelProviderURLRejected"));
+            if (reason === "CANVAS_MODEL_UPSTREAM_AUTH_FAILED") throw new Error(apiText("modelProviderAuthFailed"));
+            if (reason === "CANVAS_MODEL_UPSTREAM_RATE_LIMITED") throw new Error(apiText("modelProviderRateLimited"));
+            if (reason === "CANVAS_MODEL_RESPONSE_INVALID") throw new Error(apiText("modelProviderResponseInvalid"));
+            throw new Error(apiText("modelProviderUnavailable"));
+        }
+        throw error;
     }
 }
 

@@ -14,7 +14,15 @@ ModuRelay-specific changes are intentionally limited to the web application:
 - provide navigation back to the ModuRelay console;
 - share the ModuRelay language and light/dark preference;
 - allow an authenticated user to explicitly create a dedicated ModuRelay API
-  key and store it in Infinite Canvas's existing browser-local configuration.
+  key and store it in Infinite Canvas's existing browser-local configuration;
+- fetch third-party model lists through a narrow authenticated ModuRelay
+  endpoint when the canvas is served below `/infinite-canvas/`;
+- route cross-origin AI provider traffic through `/api/v1/canvas/upstream`,
+  including image, text, video, audio, custom model-script, polling, and
+  generated-media requests, while preserving standalone direct/local-proxy
+  behavior and rejecting private-network targets;
+- hand off navigation between the Vue console and React canvas through a
+  text-free, reduced-motion-aware frosted-glass double-door transition;
 - use the Ant Design 6 `Modal.styles.container` slot required by the locked
   dependency version so the vendored source passes TypeScript validation.
 

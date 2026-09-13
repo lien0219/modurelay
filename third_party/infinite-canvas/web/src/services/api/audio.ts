@@ -5,6 +5,7 @@ import { audioMimeType, normalizeAudioFormatValue, normalizeAudioSpeedValue, nor
 import { uploadMediaFile, type UploadedFile } from "@/services/file-storage";
 import { buildApiUrl, resolveModelRequestConfig, resolveModelScript, withLocalProxy, type AiConfig } from "@/stores/use-config-store";
 import { runModelPlugin } from "./model-plugin";
+import { providerAxios, providerFetch } from "./provider-transport";
 
 type RequestOptions = { signal?: AbortSignal };
 const apiText = (key: string, options?: Record<string, unknown>) => i18n.t(`apiErrors.${key}`, options);
@@ -47,7 +48,7 @@ export async function requestAudioGeneration(config: AiConfig, prompt: string, o
     const instructions = config.audioInstructions.trim();
 
     try {
-        const response = await axios.post<Blob>(
+        const response = await providerAxios.post<Blob>(
             aiApiUrl(requestConfig, "/audio/speech"),
             {
                 model,
@@ -76,7 +77,7 @@ async function audioPluginBlob(result: unknown, format: string): Promise<Blob> {
     }
     if (!source) throw new Error(apiText("scriptNoAudio"));
     const url = source.startsWith("data:") || /^https?:/i.test(source) ? source : `data:${audioMimeType(format)};base64,${source}`;
-    const blob = await (await fetch(withLocalProxy(url))).blob();
+    const blob = await (await providerFetch(withLocalProxy(url))).blob();
     return blob.type.startsWith("audio/") ? blob : new Blob([blob], { type: audioMimeType(format) });
 }
 
@@ -119,17 +120,8 @@ function readApiErrorMessage(value: unknown): string {
     }
     if (typeof value !== "object") return "";
     const payload = value as { msg?: unknown; message?: unknown; error?: unknown; detail?: unknown };
-    const errorMsg =
-        typeof payload.error === "string"
-            ? payload.error
-            : (payload.error as { message?: unknown })?.message;
-    return (
-        readApiErrorMessage(payload.msg) ||
-        readApiErrorMessage(payload.message) ||
-        readApiErrorMessage(errorMsg) ||
-        readApiErrorMessage(payload.detail) ||
-        ""
-    );
+    const errorMsg = typeof payload.error === "string" ? payload.error : (payload.error as { message?: unknown })?.message;
+    return readApiErrorMessage(payload.msg) || readApiErrorMessage(payload.message) || readApiErrorMessage(errorMsg) || readApiErrorMessage(payload.detail) || "";
 }
 
 function readAxiosError(error: unknown, fallback: string) {

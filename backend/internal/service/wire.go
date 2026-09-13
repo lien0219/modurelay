@@ -689,8 +689,11 @@ func ProvideImageTaskService(store ImageTaskStore, settings *ImageStorageSetting
 	return NewImageTaskServiceWithResolver(store, settings.Resolver(), defaultImageTaskTTL, defaultImageTaskExecutionTimeout)
 }
 
-func ProvideCanvasService(repo CanvasProjectRepository, settingRepo SettingRepository, settings *ImageStorageSettingService, imageTasks *ImageTaskService) *CanvasService {
+func ProvideCanvasService(repo CanvasProjectRepository, settingRepo SettingRepository, settings *ImageStorageSettingService, imageTasks *ImageTaskService, httpUpstream HTTPUpstream, cfg *config.Config) *CanvasService {
 	svc := NewCanvasService(repo, settingRepo, settings.CanvasStoreResolver(), imageTasks)
+	svc.httpUpstream = httpUpstream
+	svc.modelsListReadMaxBytes = resolveModelsListReadLimit(cfg)
+	svc.providerResponseReadMaxBytes = cfg.Gateway.UpstreamResponseReadMaxBytes
 	svc.StartCleanup()
 	return svc
 }
