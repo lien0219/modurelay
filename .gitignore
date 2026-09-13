@@ -1,6 +1,8 @@
 # 本地杂项文档、测试数据和外部项目副本
 /docs-local/
 .codex
+# 本地参考仓库副本（仅用于对照，不随 ModuRelay 发布）
+/.reference/
 
 # ===================
 # Go 后端
@@ -35,6 +37,8 @@ backend/.tmp-go-cache*/
 
 # Local package-manager caches
 .corepack/
+third_party/infinite-canvas/web/node_modules/
+third_party/infinite-canvas/web/.tmp-bun-cache/
 
 # ===================
 # Node.js / Vue 前端
@@ -87,6 +91,7 @@ Desktop.ini
 # ===================
 tmp/
 temp/
+.tmp/
 *.tmp
 *.temp
 *.log
@@ -101,6 +106,7 @@ temp/
 dist/
 build/
 release/
+third_party/infinite-canvas/web/dist/
 
 # 后端嵌入的前端构建产物
 # Keep a placeholder file so `//go:embed all:dist` always has a match in CI/lint,
