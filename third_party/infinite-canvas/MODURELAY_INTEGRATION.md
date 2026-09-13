@@ -13,8 +13,12 @@ ModuRelay-specific changes are intentionally limited to the web application:
 - resolve runtime config, logo, and local plugin assets below that base path;
 - provide navigation back to the ModuRelay console;
 - share the ModuRelay language and light/dark preference;
-- allow an authenticated user to explicitly create a dedicated ModuRelay API
-  key and store it in Infinite Canvas's existing browser-local configuration;
+- allow an authenticated user to explicitly reuse an available grouped API key
+  or create a dedicated key after selecting one of the account's available
+  groups, then store the selected key in Infinite Canvas's existing
+  browser-local configuration;
+- expose a canvas account center with the current user, balance, concurrency,
+  available groups, and masked reusable keys without rendering full secrets;
 - fetch third-party model lists through a narrow authenticated ModuRelay
   endpoint when the canvas is served below `/infinite-canvas/`;
 - route cross-origin AI provider traffic through `/api/v1/canvas/upstream`,
