@@ -4,7 +4,10 @@ import { fileURLToPath } from 'node:url'
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { toggleThemeWithTransition } from '@/utils/themeTransition'
+import {
+  registerThemeTransitionRunner,
+  toggleThemeWithTransition,
+} from '@/utils/themeTransition'
 
 const stylePath = resolve(dirname(fileURLToPath(import.meta.url)), '../../style.css')
 const styleSource = readFileSync(stylePath, 'utf8')
@@ -68,5 +71,30 @@ describe('toggleThemeWithTransition', () => {
     expect(document.documentElement.classList.contains('dark')).toBe(false)
     expect(document.documentElement.classList.contains('theme-transition-running')).toBe(false)
     expect(localStorage.getItem('theme')).toBe('light')
+  })
+
+  it('delegates theme application to the shared door runner', async () => {
+    let finish: (() => void) | undefined
+    const runner = vi.fn(({ apply }) => new Promise<void>((resolve) => {
+      finish = () => {
+        apply()
+        resolve()
+      }
+    }))
+    const unregister = registerThemeTransitionRunner(runner)
+
+    try {
+      expect(toggleThemeWithTransition(false)).toBe(true)
+      expect(document.documentElement.classList.contains('dark')).toBe(false)
+      expect(runner).toHaveBeenCalledOnce()
+
+      finish?.()
+      await Promise.resolve()
+      expect(document.documentElement.classList.contains('dark')).toBe(true)
+      expect(localStorage.getItem('theme')).toBe('dark')
+    } finally {
+      finish?.()
+      unregister()
+    }
   })
 })

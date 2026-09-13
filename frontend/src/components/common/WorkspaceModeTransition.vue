@@ -17,6 +17,10 @@ import {
   registerWorkspaceModeTransitionRunner,
   type WorkspaceModeTransitionDirection,
 } from '@/utils/workspaceModeTransition'
+import {
+  registerThemeTransitionRunner,
+  type ThemeTransitionRequest,
+} from '@/utils/themeTransition'
 
 defineProps<{
   routeStage: HTMLElement | null
@@ -31,6 +35,7 @@ let timeline: gsap.core.Timeline | null = null
 let media: gsap.MatchMedia | null = null
 let reduceMotion = false
 let unregisterRunner: (() => void) | null = null
+let unregisterThemeRunner: (() => void) | null = null
 
 function runTimeline(build: (instance: gsap.core.Timeline) => void) {
   return new Promise<void>((resolve) => {
@@ -144,6 +149,50 @@ async function playArrival(nextDirection: WorkspaceModeTransitionDirection) {
   }
 }
 
+async function playThemeTransition(request: ThemeTransitionRequest) {
+  if (reduceMotion || !overlayRef.value || !leftPanelRef.value || !rightPanelRef.value) {
+    request.apply()
+    return
+  }
+
+  // A workspace route transition already owns the doors. Apply the theme
+  // while that overlay is covering the page instead of creating a second
+  // competing timeline.
+  if (active.value) {
+    request.apply()
+    return
+  }
+
+  active.value = true
+  document.body.classList.add('workspace-mode-transitioning')
+  await nextTick()
+
+  gsap.set(overlayRef.value, { autoAlpha: 1 })
+  gsap.set(leftPanelRef.value, { xPercent: -102, '--workspace-door-blur': '0px' })
+  gsap.set(rightPanelRef.value, { xPercent: 102, '--workspace-door-blur': '0px' })
+
+  try {
+    await runTimeline((tl) => {
+      tl.addLabel('close', 0)
+        .to(leftPanelRef.value, { xPercent: 0, duration: 0.36, ease: 'power2.inOut' }, 'close')
+        .to(rightPanelRef.value, { xPercent: 0, duration: 0.36, ease: 'power2.inOut' }, 'close')
+        .to([leftPanelRef.value, rightPanelRef.value], { '--workspace-door-blur': '20px', duration: 0.34, ease: 'power1.inOut' }, 'close')
+    })
+
+    request.apply()
+    await nextTick()
+
+    await runTimeline((tl) => {
+      tl.addLabel('open', 0)
+        .to([leftPanelRef.value, rightPanelRef.value], { '--workspace-door-blur': '0px', duration: 0.3, ease: 'power1.inOut' }, 'open')
+        .to(leftPanelRef.value, { xPercent: -102, duration: 0.42, ease: 'power2.inOut' }, 'open')
+        .to(rightPanelRef.value, { xPercent: 102, duration: 0.42, ease: 'power2.inOut' }, 'open')
+    })
+  } finally {
+    resetVisualState()
+  }
+}
+
 onMounted(() => {
   media = gsap.matchMedia()
   media.add('(prefers-reduced-motion: reduce)', () => {
@@ -152,6 +201,7 @@ onMounted(() => {
   })
   resetVisualState()
   unregisterRunner = registerWorkspaceModeTransitionRunner(playTransition)
+  unregisterThemeRunner = registerThemeTransitionRunner(playThemeTransition)
   const arrival = sessionStorage.getItem('modurelay-workspace-door')
   if (arrival === 'to-relay' || arrival === 'to-canvas') {
     void playArrival(arrival)
@@ -161,6 +211,8 @@ onMounted(() => {
 onBeforeUnmount(() => {
   unregisterRunner?.()
   unregisterRunner = null
+  unregisterThemeRunner?.()
+  unregisterThemeRunner = null
   media?.revert()
   media = null
   resetVisualState()
