@@ -92,7 +92,7 @@
                       ? 'sidebar-wallet'
                       : undefined
               "
-              @click="handleMenuItemClick(item.path, $event)"
+              @click.capture="handleMenuItemClick(item.path, $event)"
             >
               <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
               <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
@@ -117,7 +117,7 @@
             :class="{ 'sidebar-link-active': isActive(item.path), 'sidebar-link-collapsed': sidebarCollapsed }"
             :title="sidebarCollapsed ? item.label : undefined"
             :data-tour="item.path === '/keys' ? 'sidebar-my-keys' : undefined"
-            @click="handleMenuItemClick(item.path, $event)"
+            @click.capture="handleMenuItemClick(item.path, $event)"
           >
             <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
             <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
@@ -137,7 +137,7 @@
             :class="{ 'sidebar-link-active': isActive(item.path), 'sidebar-link-collapsed': sidebarCollapsed }"
             :title="sidebarCollapsed ? item.label : undefined"
             :data-tour="item.path === '/keys' ? 'sidebar-my-keys' : undefined"
-            @click="handleMenuItemClick(item.path, $event)"
+            @click.capture="handleMenuItemClick(item.path, $event)"
           >
             <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
             <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
@@ -204,7 +204,7 @@ import { sanitizeUrl } from '@/utils/url'
 import { FeatureFlags, makeSidebarFlag } from '@/utils/featureFlags'
 import { useBatchImageAccess } from '@/composables/useBatchImageAccess'
 import { toggleThemeWithTransition } from '@/utils/themeTransition'
-import { navigateWithWorkspaceModeTransition } from '@/utils/workspaceModeTransition'
+import { navigateToWorkspaceUrlWithTransition } from '@/utils/workspaceModeTransition'
 
 interface NavItem {
   path: string
@@ -951,7 +951,7 @@ function handleMenuItemClick(itemPath: string, event?: MouseEvent) {
 
   if (shouldAnimateCanvasNavigation) {
     event.preventDefault()
-    void navigateWithWorkspaceModeTransition(router, { name: 'CanvasHome' }, 'to-canvas')
+    void navigateToWorkspaceUrlWithTransition('/infinite-canvas/canvas', 'to-canvas')
   }
 
   if (mobileOpen.value) {
@@ -1076,8 +1076,12 @@ onBeforeUnmount(() => {
 }
 
 .sidebar-brand {
+  display: flex;
   min-width: 0;
   flex: 1 1 auto;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
   white-space: nowrap;
   transition:
     max-width 0.22s ease,
@@ -1096,6 +1100,7 @@ onBeforeUnmount(() => {
 
 .sidebar-brand-title {
   display: block;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

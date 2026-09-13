@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Router } from 'vue-router'
 import {
+  navigateToWorkspaceUrlWithTransition,
   navigateWithWorkspaceModeTransition,
   registerWorkspaceModeTransitionRunner,
   workspaceModeTransitioning,
@@ -45,5 +46,21 @@ describe('workspaceModeTransition', () => {
     await expect(navigateWithWorkspaceModeTransition(router, { name: 'CanvasHome' }, 'to-canvas')).resolves.toBe(true)
 
     expect(router.push).toHaveBeenCalledWith({ name: 'CanvasHome' })
+  })
+
+  it('keeps the transition overlay closed during a cross-document handoff', async () => {
+    const runner = vi.fn(async () => undefined)
+    const unregister = registerWorkspaceModeTransitionRunner(runner)
+
+    await expect(
+      navigateToWorkspaceUrlWithTransition('/infinite-canvas/canvas', 'to-canvas'),
+    ).resolves.toBe(true)
+
+    expect(runner).toHaveBeenCalledWith(expect.objectContaining({
+      direction: 'to-canvas',
+      keepOverlay: true,
+    }))
+    expect(workspaceModeTransitioning.value).toBe(false)
+    unregister()
   })
 })

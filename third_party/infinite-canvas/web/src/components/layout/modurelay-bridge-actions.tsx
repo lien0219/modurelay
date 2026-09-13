@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import type { CSSProperties, MouseEvent as ReactMouseEvent } from "react";
 import { useMemo, useState } from "react";
 import { App, Tooltip } from "antd";
 import { ArrowLeft, Check, Link2, LoaderCircle, LogIn } from "lucide-react";
@@ -9,6 +9,7 @@ import { encodeChannelModel, guessCapability, modelOptionsFromChannels, useConfi
 type ModuRelayBridgeActionsProps = {
     className: string;
     style?: CSSProperties;
+    showBackLabel?: boolean;
 };
 
 type ApiKeyRecord = { key?: unknown };
@@ -78,7 +79,7 @@ function attachModels(baseUrl: string, modelNames: string[]) {
     }
 }
 
-export function ModuRelayBridgeActions({ className, style }: ModuRelayBridgeActionsProps) {
+export function ModuRelayBridgeActions({ className, style, showBackLabel = false }: ModuRelayBridgeActionsProps) {
     const { message, modal } = App.useApp();
     const { t } = useTranslation();
     const [connecting, setConnecting] = useState(false);
@@ -129,14 +130,20 @@ export function ModuRelayBridgeActions({ className, style }: ModuRelayBridgeActi
         });
     };
 
+    const returnToRelay = (event: ReactMouseEvent<HTMLAnchorElement>) => {
+        event.preventDefault();
+        window.dispatchEvent(new CustomEvent("modurelay-workspace-door", { detail: { direction: "to-relay", href: "/dashboard" } }));
+    };
+
     const connectionLabel = t(!token ? "modurelay.signIn" : connected ? "modurelay.connected" : "modurelay.connect");
     const ConnectionIcon = connecting ? LoaderCircle : !token ? LogIn : connected ? Check : Link2;
 
     return (
         <>
             <Tooltip title={t("modurelay.back")} mouseEnterDelay={0.2}>
-                <a href="/dashboard" className={className} style={style} aria-label={t("modurelay.back")}>
+                <a href="/dashboard" onClick={returnToRelay} className={showBackLabel ? `${className} !w-auto min-w-fit gap-1 px-2 text-xs` : className} style={style} aria-label={t("modurelay.back")}>
                     <ArrowLeft className="size-4" />
+                    {showBackLabel ? <span className="hidden whitespace-nowrap sm:inline">{t("modurelay.back")}</span> : null}
                 </a>
             </Tooltip>
             <Tooltip title={connectionLabel} mouseEnterDelay={0.2}>

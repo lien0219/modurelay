@@ -8,6 +8,8 @@ const componentPath = resolve(dirname(fileURLToPath(import.meta.url)), '../AppSi
 const componentSource = readFileSync(componentPath, 'utf8')
 const stylePath = resolve(dirname(fileURLToPath(import.meta.url)), '../../../style.css')
 const styleSource = readFileSync(stylePath, 'utf8')
+const versionBadgePath = resolve(dirname(fileURLToPath(import.meta.url)), '../../common/VersionBadge.vue')
+const versionBadgeSource = readFileSync(versionBadgePath, 'utf8')
 
 describe('AppSidebar custom SVG styles', () => {
   it('does not override uploaded SVG fill or stroke colors', () => {
@@ -70,6 +72,16 @@ describe('AppSidebar header styles', () => {
     expect(sidebarHeaderBlockMatch?.[0]).not.toContain('@apply overflow-hidden;')
     expect(sidebarBrandBlockMatch?.[0]).not.toContain('overflow: hidden;')
   })
+
+  it('stacks the version below the brand and bounds long build identifiers', () => {
+    const sidebarBrandBlockMatch = componentSource.match(/\.sidebar-brand\s*\{[\s\S]*?\n\}/)
+
+    expect(sidebarBrandBlockMatch?.[0]).toContain('flex-direction: column;')
+    expect(sidebarBrandBlockMatch?.[0]).toContain('align-items: flex-start;')
+    expect(versionBadgeSource).toContain('version-badge relative min-w-0 max-w-full')
+    expect(versionBadgeSource).toContain('min-w-0 truncate font-medium')
+    expect(versionBadgeSource).toContain(':title="versionBadgeLabel"')
+  })
 })
 
 describe('AppSidebar activity center navigation', () => {
@@ -85,10 +97,11 @@ describe('AppSidebar activity center navigation', () => {
 })
 
 describe('AppSidebar canvas workspace transition', () => {
-  it('uses the shared mode transition for primary canvas navigation', () => {
-    expect(componentSource).toContain("import { navigateWithWorkspaceModeTransition } from '@/utils/workspaceModeTransition'")
+  it('hands primary canvas navigation directly to the standalone app', () => {
+    expect(componentSource).toContain("import { navigateToWorkspaceUrlWithTransition } from '@/utils/workspaceModeTransition'")
     expect(componentSource).toContain("itemPath === '/canvas'")
-    expect(componentSource).toContain("navigateWithWorkspaceModeTransition(router, { name: 'CanvasHome' }, 'to-canvas')")
+    expect(componentSource).toContain('@click.capture="handleMenuItemClick(item.path, $event)"')
+    expect(componentSource).toContain("navigateToWorkspaceUrlWithTransition('/infinite-canvas/canvas', 'to-canvas')")
   })
 })
 

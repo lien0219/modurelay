@@ -9,7 +9,6 @@ import { parseChangelog } from "./src/lib/release";
 const webDir = dirname(fileURLToPath(import.meta.url));
 const localVersion = readFileSync(resolve(webDir, "../VERSION"), "utf8").trim() || "dev";
 const localChangelog = readFileSync(resolve(webDir, "../CHANGELOG.md"), "utf8");
-const appBase = normalizeBase(process.env.VITE_BASE || "/");
 
 function normalizeBase(value: string) {
     const trimmed = value.trim();
@@ -17,13 +16,10 @@ function normalizeBase(value: string) {
     return `/${trimmed.replace(/^\/+|\/+$/g, "")}/`;
 }
 
-function withBase(pathname: string) {
-    return `${appBase}${pathname.replace(/^\/+/, "")}`;
-}
-
 // Expose /plugins/index.json with local plugin files from public/plugins.
 // The frontend can discover and list them when enabled; development reads the directory live, while builds emit a static registry.
-function localPluginsManifest(): Plugin {
+function localPluginsManifest(appBase: string): Plugin {
+    const withBase = (pathname: string) => `${appBase}${pathname.replace(/^\/+/, "")}`;
     const pluginsDir = resolve(webDir, "public/plugins");
     const listLocalPlugins = () => {
         try {
@@ -49,16 +45,21 @@ function localPluginsManifest(): Plugin {
     };
 }
 
-export default defineConfig({
-    base: appBase,
-    plugins: [react(), localPluginsManifest()],
-    resolve: {
-        alias: {
-            "@": resolve(webDir, "src"),
+export default defineConfig(({ command }) => {
+    const defaultBase = command === "build" ? "/infinite-canvas/" : "/";
+    const appBase = normalizeBase(process.env.VITE_BASE || defaultBase);
+
+    return {
+        base: appBase,
+        plugins: [react(), localPluginsManifest(appBase)],
+        resolve: {
+            alias: {
+                "@": resolve(webDir, "src"),
+            },
         },
-    },
-    define: {
-        __APP_VERSION__: JSON.stringify(localVersion),
-        __APP_RELEASES__: JSON.stringify(parseChangelog(localChangelog)),
-    },
+        define: {
+            __APP_VERSION__: JSON.stringify(localVersion),
+            __APP_RELEASES__: JSON.stringify(parseChangelog(localChangelog)),
+        },
+    };
 });

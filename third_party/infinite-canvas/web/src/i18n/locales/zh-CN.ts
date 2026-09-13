@@ -1,10 +1,12 @@
 export default {
     meta: {
-        title: "无限画布",
-        description: "一个无限画布创作工具",
+        title: "ModuRelay",
+        description: "ModuRelay 无限画布创作工具",
     },
     theme: { toggle: "切换主题" },
     modurelay: {
+        entering: "正在进入画布",
+        returning: "正在返回 ModuRelay",
         back: "返回 ModuRelay",
         connect: "连接 ModuRelay 网关",
         connected: "已连接 ModuRelay 网关",

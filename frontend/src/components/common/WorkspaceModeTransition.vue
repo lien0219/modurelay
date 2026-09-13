@@ -94,13 +94,16 @@ function resetVisualState() {
 async function playTransition(request: {
   direction: WorkspaceModeTransitionDirection
   navigate: () => Promise<unknown>
+  keepOverlay?: boolean
 }) {
   direction.value = request.direction
 
   if (reduceMotion || !props.routeStage || !overlayRef.value || !leftPanelRef.value || !rightPanelRef.value || !centerRef.value) {
     await request.navigate()
-    await nextTick()
-    focusDestination()
+    if (!request.keepOverlay) {
+      await nextTick()
+      focusDestination()
+    }
     return
   }
 
@@ -115,6 +118,7 @@ async function playTransition(request: {
   gsap.set(rightPanelRef.value, { xPercent: 102 })
   gsap.set(centerRef.value, { autoAlpha: 0, scale: 0.96 })
 
+  let keepOverlay = false
   try {
     await runTimeline((tl) => {
       tl.addLabel('close', 0)
@@ -125,9 +129,45 @@ async function playTransition(request: {
     })
 
     await request.navigate()
+    keepOverlay = request.keepOverlay === true
+    if (keepOverlay) return
     await nextTick()
 
     gsap.set(stage, { autoAlpha: 0, x: -travel, scale: 0.992 })
+    await runTimeline((tl) => {
+      tl.addLabel('open', 0)
+        .to(centerRef.value, { autoAlpha: 0, scale: 1.03, duration: 0.14, ease: 'power1.in' }, 'open')
+        .to(leftPanelRef.value, { xPercent: -102, duration: 0.3, ease: 'power2.inOut' }, 'open+=0.08')
+        .to(rightPanelRef.value, { xPercent: 102, duration: 0.3, ease: 'power2.inOut' }, 'open+=0.08')
+        .to(stage, { autoAlpha: 1, x: 0, scale: 1, duration: 0.28, ease: 'power2.out' }, 'open+=0.12')
+    })
+    focusDestination()
+  } finally {
+    if (!keepOverlay) resetVisualState()
+  }
+}
+
+async function playArrival(nextDirection: WorkspaceModeTransitionDirection) {
+  direction.value = nextDirection
+  sessionStorage.removeItem('modurelay-workspace-door')
+
+  if (reduceMotion || !props.routeStage || !overlayRef.value || !leftPanelRef.value || !rightPanelRef.value || !centerRef.value) {
+    focusDestination()
+    return
+  }
+
+  active.value = true
+  document.body.classList.add('workspace-mode-transitioning')
+  await nextTick()
+
+  const stage = props.routeStage
+  gsap.set(overlayRef.value, { autoAlpha: 1 })
+  gsap.set(leftPanelRef.value, { xPercent: 0 })
+  gsap.set(rightPanelRef.value, { xPercent: 0 })
+  gsap.set(centerRef.value, { autoAlpha: 0, scale: 1.03 })
+  gsap.set(stage, { autoAlpha: 0, x: nextDirection === 'to-relay' ? -18 : 18, scale: 0.992 })
+
+  try {
     await runTimeline((tl) => {
       tl.addLabel('open', 0)
         .to(centerRef.value, { autoAlpha: 0, scale: 1.03, duration: 0.14, ease: 'power1.in' }, 'open')
@@ -149,6 +189,10 @@ onMounted(() => {
   })
   resetVisualState()
   unregisterRunner = registerWorkspaceModeTransitionRunner(playTransition)
+  const arrival = sessionStorage.getItem('modurelay-workspace-door')
+  if (arrival === 'to-relay' || arrival === 'to-canvas') {
+    void playArrival(arrival)
+  }
 })
 
 onBeforeUnmount(() => {

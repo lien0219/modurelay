@@ -1,10 +1,12 @@
 export default {
     meta: {
-        title: "Infinite Canvas",
-        description: "An infinite canvas creation tool",
+        title: "ModuRelay",
+        description: "ModuRelay infinite canvas creation tool",
     },
     theme: { toggle: "Toggle theme" },
     modurelay: {
+        entering: "Opening canvas",
+        returning: "Returning to ModuRelay",
         back: "Back to ModuRelay",
         connect: "Connect ModuRelay gateway",
         connected: "ModuRelay gateway connected",
