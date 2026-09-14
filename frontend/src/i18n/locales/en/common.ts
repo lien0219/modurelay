@@ -1,4 +1,5 @@
 export default {
+  planCatalog: { eyebrow: 'Enterprise plans', title: 'Plans built for your team', description: 'Choose a transparent service package and continue securely through the configured payment provider.', cta: 'Get started', empty: 'No plans are currently available.', loadError: 'Unable to load plans.', adminTitle: 'Plan catalog', adminDescription: 'Configure independent plan cards and external payment destinations.', newPlan: 'New plan', published: 'Published', draft: 'Draft', featured: 'Featured', deleteConfirm: 'Delete this plan?', fields: { name: 'Name', subtitle: 'Subtitle', description: 'Description', price: 'Price', originalPrice: 'Original price', currency: 'Currency', period: 'Billing period', badge: 'Badge', accent: 'Accent', sortOrder: 'Sort order', paymentUrl: 'Payment URL', benefits: 'Benefits', benefitsHint: 'Enter one benefit per line', status: 'Status' }, period: { monthly: '/ month', quarterly: '/ quarter', yearly: '/ year', one_time: 'one-time', custom: 'custom' } },
   common: {
     loading: 'Loading...',
     submitting: 'Submitting...',
@@ -164,6 +165,8 @@ export default {
 
   // Navigation
   nav: {
+    planCatalog: 'Plans',
+    planCatalogManagement: 'Plan catalog',
     website: 'Website',
     home: 'Home',
     aboutUs: 'About us',

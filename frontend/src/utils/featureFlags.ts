@@ -149,6 +149,11 @@ export const FeatureFlags = {
     mode: 'opt-in',
     label: 'Infinite canvas',
   }),
+  planCatalog: defineFlag({
+    key: 'plan_catalog_enabled',
+    mode: 'opt-in',
+    label: 'Plan catalog',
+  }),
 } as const
 
 export type RegisteredFeatureFlag = keyof typeof FeatureFlags

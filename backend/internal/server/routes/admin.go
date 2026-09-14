@@ -135,6 +135,20 @@ func RegisterAdminRoutes(
 		registerResourceCenterRoutes(admin, h)
 
 		registerActivityRoutes(admin, h, stepUpAuth)
+		registerPlanCatalogRoutes(admin, h)
+	}
+}
+
+func registerPlanCatalogRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	if h.Admin == nil || h.Admin.PlanCatalog == nil {
+		return
+	}
+	plans := admin.Group("/plan-catalog")
+	{
+		plans.GET("", h.Admin.PlanCatalog.List)
+		plans.POST("", h.Admin.PlanCatalog.Create)
+		plans.PUT("/:id", h.Admin.PlanCatalog.Update)
+		plans.DELETE("/:id", h.Admin.PlanCatalog.Delete)
 	}
 }
 

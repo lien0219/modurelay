@@ -698,6 +698,10 @@ func ProvideCanvasService(repo CanvasProjectRepository, settingRepo SettingRepos
 	return svc
 }
 
+func ProvidePlanCatalogService(repo PlanCatalogRepository, settingRepo SettingRepository) *PlanCatalogService {
+	return NewPlanCatalogService(repo, settingRepo)
+}
+
 // ProvideBackupService creates and starts BackupService
 func ProvideBackupService(
 	settingRepo SettingRepository,
@@ -860,6 +864,7 @@ var ProviderSet = wire.NewSet(
 	ProvideImageStorageSettingService,
 	ProvideImageTaskService,
 	ProvideCanvasService,
+	ProvidePlanCatalogService,
 	ProvideBatchImageModelPricingResolver,
 	NewBatchImagePublicService,
 	NewBatchImageDownloadService,

@@ -172,6 +172,10 @@ func RegisterUserRoutes(
 			}
 		}
 
+		if h.PlanCatalog != nil {
+			authenticated.GET("/plan-catalog", h.PlanCatalog.List)
+		}
+
 		// 卡密兑换
 		redeem := authenticated.Group("/redeem")
 		{

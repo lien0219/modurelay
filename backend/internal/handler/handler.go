@@ -43,6 +43,7 @@ type AdminHandlers struct {
 	Affiliate              *admin.AffiliateHandler
 	Compliance             *admin.ComplianceHandler
 	AuditLog               *admin.AuditLogHandler
+	PlanCatalog            *AdminPlanCatalogHandler
 }
 
 // Handlers contains all HTTP handlers
@@ -71,6 +72,7 @@ type Handlers struct {
 	ResourceCenter   *ResourceCenterHandler
 	Activity         *ActivityHandler
 	Canvas           *CanvasHandler
+	PlanCatalog      *PlanCatalogHandler
 }
 
 // BuildInfo contains build-time information

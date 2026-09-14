@@ -316,6 +316,7 @@ type SystemSettings struct {
 	// Available Channels feature switch (user-facing aggregate view)
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
 	CanvasEnabled            bool `json:"canvas_enabled"`
+	PlanCatalogEnabled       bool `json:"plan_catalog_enabled"`
 
 	// Model Plaza feature (public group/model pricing showcase)
 	ModelPlazaEnabled       bool   `json:"model_plaza_enabled"`
@@ -396,6 +397,7 @@ CustomEndpoints                  []CustomEndpoint         `json:"custom_endpoint
 
 	ResourceCenterEnabled            bool                     `json:"resource_center_enabled"`
 	CanvasEnabled                    bool                     `json:"canvas_enabled"`
+	PlanCatalogEnabled               bool                     `json:"plan_catalog_enabled"`
 
 ActivityCenterEnabled            bool                     `json:"activity_center_enabled"`
 DingTalkOAuthEnabled             bool                     `json:"dingtalk_oauth_enabled"`
@@ -507,6 +509,7 @@ type PublicSettings struct {
 	CustomEndpoints                      []CustomEndpoint         `json:"custom_endpoints"`
 	ResourceCenterEnabled                bool                     `json:"resource_center_enabled"`
 	CanvasEnabled                        bool                     `json:"canvas_enabled"`
+	PlanCatalogEnabled                   bool                     `json:"plan_catalog_enabled"`
 	ActivityCenterEnabled                bool                     `json:"activity_center_enabled"`
 	DingTalkOAuthEnabled                 bool                     `json:"dingtalk_oauth_enabled"`
 	LinuxDoOAuthEnabled                  bool                     `json:"linuxdo_oauth_enabled"`

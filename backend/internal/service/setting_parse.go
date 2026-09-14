@@ -77,6 +77,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyCustomEndpoints:                           "[]",
 		SettingKeyResourceCenterEnabled:                     "true",
 		SettingKeyCanvasEnabled:                             "false",
+		SettingKeyPlanCatalogEnabled:                        "false",
 		SettingKeyActivityCenterEnabled:                     "false",
 		SettingKeyWeChatConnectEnabled:                      "false",
 		SettingKeyWeChatConnectAppID:                        "",
@@ -374,6 +375,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		CustomEndpoints:                        settings[SettingKeyCustomEndpoints],
 		ResourceCenterEnabled:                  settings[SettingKeyResourceCenterEnabled] != "false",
 		CanvasEnabled:                          settings[SettingKeyCanvasEnabled] == "true",
+		PlanCatalogEnabled:                     settings[SettingKeyPlanCatalogEnabled] == "true",
 		ActivityCenterEnabled:                  settings[SettingKeyActivityCenterEnabled] == "true",
 		BackendModeEnabled:                     settings[SettingKeyBackendModeEnabled] == "true",
 	}

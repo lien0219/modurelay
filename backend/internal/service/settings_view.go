@@ -166,6 +166,7 @@ type SystemSettings struct {
 	CustomEndpoints             string // JSON array of custom endpoints
 	ResourceCenterEnabled       bool
 	CanvasEnabled               bool `json:"canvas_enabled"`
+	PlanCatalogEnabled          bool `json:"plan_catalog_enabled"`
 	ActivityCenterEnabled       bool
 
 	DefaultConcurrency           int
@@ -366,6 +367,7 @@ type PublicSettings struct {
 	CustomEndpoints             string // JSON array of custom endpoints
 	ResourceCenterEnabled       bool
 	CanvasEnabled               bool `json:"canvas_enabled"`
+	PlanCatalogEnabled          bool `json:"plan_catalog_enabled"`
 	ActivityCenterEnabled       bool
 
 	LinuxDoOAuthEnabled      bool

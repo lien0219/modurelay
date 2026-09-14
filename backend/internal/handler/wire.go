@@ -47,6 +47,7 @@ func ProvideAdminHandlers(
 	affiliateHandler *admin.AffiliateHandler,
 	complianceHandler *admin.ComplianceHandler,
 	auditLogHandler *admin.AuditLogHandler,
+	adminPlanCatalogHandler *AdminPlanCatalogHandler,
 	upstreamBillingProbe *service.UpstreamBillingProbeService,
 	ollamaCloudUsage *service.OllamaCloudUsageService,
 ) *AdminHandlers {
@@ -89,6 +90,7 @@ func ProvideAdminHandlers(
 		Affiliate:              affiliateHandler,
 		Compliance:             complianceHandler,
 		AuditLog:               auditLogHandler,
+		PlanCatalog:            adminPlanCatalogHandler,
 	}
 }
 
@@ -201,6 +203,7 @@ func ProvideHandlers(
 	resourceCenterHandler *ResourceCenterHandler,
 	activityHandler *ActivityHandler,
 	canvasHandler *CanvasHandler,
+	planCatalogHandler *PlanCatalogHandler,
 	_ *service.IdempotencyCoordinator,
 	_ *service.IdempotencyCleanupService,
 	_ *service.OpenAIQuotaAutoResetService,
@@ -230,6 +233,7 @@ func ProvideHandlers(
 		ResourceCenter:   resourceCenterHandler,
 		Activity:         activityHandler,
 		Canvas:           canvasHandler,
+		PlanCatalog:      planCatalogHandler,
 	}
 }
 
@@ -259,6 +263,7 @@ var ProviderSet = wire.NewSet(
 	ProvideResourceCenterHandler,
 	NewActivityHandler,
 	NewCanvasHandler,
+	NewPlanCatalogHandler,
 
 	// Admin handlers
 	admin.NewDashboardHandler,
@@ -296,6 +301,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewAffiliateHandler,
 	admin.NewComplianceHandler,
 	admin.NewAuditLogHandler,
+	NewAdminPlanCatalogHandler,
 
 	// AdminHandlers and Handlers constructors
 	ProvideAdminHandlers,

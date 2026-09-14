@@ -208,6 +208,7 @@ export interface LoginAgreementDocument {
 }
 
 export interface PublicSettings {
+  plan_catalog_enabled?: boolean
   canvas_enabled?: boolean
   registration_enabled: boolean
   email_verify_enabled: boolean

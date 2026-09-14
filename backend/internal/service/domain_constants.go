@@ -365,6 +365,7 @@ const (
 	SettingKeyCustomEndpoints             = "custom_endpoints"              // 自定义端点列表（JSON 数组）
 	SettingKeyResourceCenterEnabled       = "resource_center_enabled"
 	SettingKeyCanvasEnabled               = "canvas_enabled"
+	SettingKeyPlanCatalogEnabled          = "plan_catalog_enabled"
 
 	// 默认配置
 	SettingKeyDefaultConcurrency   = "default_concurrency"    // 新用户默认并发量

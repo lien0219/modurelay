@@ -420,6 +420,12 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/plan-catalog',
+    name: 'PlanCatalog',
+    component: () => import('@/views/user/PlanCatalogView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: false, title: 'Plans', titleKey: 'nav.planCatalog' }
+  },
+  {
     path: '/purchase',
     name: 'PurchaseSubscription',
     component: () => import('@/views/user/PaymentView.vue'),
@@ -726,6 +732,12 @@ const routes: RouteRecordRaw[] = [
       titleKey: 'admin.settings.title',
       descriptionKey: 'admin.settings.description'
     }
+  },
+  {
+    path: '/admin/plan-catalog',
+    name: 'AdminPlanCatalog',
+    component: () => import('@/views/admin/PlanCatalogView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true, title: 'Plan Catalog', titleKey: 'nav.planCatalogManagement' }
   },
   {
     path: '/admin/resource-center',
@@ -1089,6 +1101,23 @@ router.beforeEach(async (to, _from, next) => {
       try { await appStore.fetchPublicSettings() } catch { /* backend remains the source of truth */ }
     }
     if (appStore.publicSettingsLoaded && appStore.cachedPublicSettings?.canvas_enabled !== true) {
+      next('/dashboard')
+      return
+    }
+  }
+
+  // The backend remains the source of truth for the catalog, while this guard
+  // keeps a disabled user-facing entry from rendering after a direct deep link.
+  if (to.path === '/plan-catalog' && !authStore.isAdmin) {
+    if (!appStore.publicSettingsLoaded) {
+      try {
+        await appStore.fetchPublicSettings()
+      } catch {
+        // Do not block on a transient settings fetch failure; the API will
+        // still enforce the feature flag when the page loads.
+      }
+    }
+    if (appStore.publicSettingsLoaded && appStore.cachedPublicSettings?.plan_catalog_enabled !== true) {
       next('/dashboard')
       return
     }

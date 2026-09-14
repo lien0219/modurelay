@@ -343,6 +343,7 @@ type UpdateSettingsRequest struct {
 	// Available Channels feature switch (user-facing)
 	AvailableChannelsEnabled *bool `json:"available_channels_enabled"`
 	CanvasEnabled            *bool `json:"canvas_enabled"`
+	PlanCatalogEnabled       *bool `json:"plan_catalog_enabled"`
 
 	// Model Plaza feature switches + description
 	ModelPlazaEnabled     *bool   `json:"model_plaza_enabled"`
@@ -1958,6 +1959,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.CanvasEnabled
 		}(),
+		PlanCatalogEnabled: func() bool {
+			if req.PlanCatalogEnabled != nil {
+				return *req.PlanCatalogEnabled
+			}
+			return previousSettings.PlanCatalogEnabled
+		}(),
 		ModelPlazaEnabled: func() bool {
 			if req.ModelPlazaEnabled != nil {
 				return *req.ModelPlazaEnabled
@@ -2401,6 +2408,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 
 		AvailableChannelsEnabled: updatedSettings.AvailableChannelsEnabled,
 		CanvasEnabled:            updatedSettings.CanvasEnabled,
+		PlanCatalogEnabled:       updatedSettings.PlanCatalogEnabled,
 
 		ModelPlazaEnabled:       updatedSettings.ModelPlazaEnabled,
 		ModelPlazaRequireAuth:   updatedSettings.ModelPlazaRequireAuth,

@@ -197,6 +197,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyCustomEndpoints,
 		SettingKeyResourceCenterEnabled,
 		SettingKeyCanvasEnabled,
+		SettingKeyPlanCatalogEnabled,
 		SettingKeyActivityCenterEnabled,
 		SettingKeyLinuxDoConnectEnabled,
 		SettingKeyDingTalkConnectEnabled,
@@ -344,6 +345,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		CustomEndpoints:                     settings[SettingKeyCustomEndpoints],
 		ResourceCenterEnabled:               settings[SettingKeyResourceCenterEnabled] != "false",
 		CanvasEnabled:                       settings[SettingKeyCanvasEnabled] == "true",
+		PlanCatalogEnabled:                  settings[SettingKeyPlanCatalogEnabled] == "true",
 		ActivityCenterEnabled:               settings[SettingKeyActivityCenterEnabled] == "true",
 		LinuxDoOAuthEnabled:                 linuxDoEnabled,
 		DingTalkOAuthEnabled:                dingTalkEnabled,
@@ -804,6 +806,7 @@ type PublicSettingsInjectionPayload struct {
 	ResourceCenterEnabled               bool                     `json:"resource_center_enabled"`
 	ActivityCenterEnabled               bool                     `json:"activity_center_enabled"`
 	CanvasEnabled                       bool                     `json:"canvas_enabled"`
+	PlanCatalogEnabled                  bool                     `json:"plan_catalog_enabled"`
 	LinuxDoOAuthEnabled                 bool                     `json:"linuxdo_oauth_enabled"`
 	DingTalkOAuthEnabled                bool                     `json:"dingtalk_oauth_enabled"`
 	WeChatOAuthEnabled                  bool                     `json:"wechat_oauth_enabled"`
@@ -1057,6 +1060,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		ChannelMonitorHideThroughput:         settings.ChannelMonitorHideThroughput,
 		ChannelMonitorShowQuota:              settings.ChannelMonitorShowQuota,
 		AvailableChannelsEnabled:             settings.AvailableChannelsEnabled,
+		PlanCatalogEnabled:                   settings.PlanCatalogEnabled,
 		ModelPlazaEnabled:                    settings.ModelPlazaEnabled,
 		ModelPlazaRequireAuth:                settings.ModelPlazaRequireAuth,
 		PluginManagementEnabled:              settings.PluginManagementEnabled,

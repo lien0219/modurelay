@@ -60,6 +60,7 @@ func TestSettingHandler_GetPublicSettings_ExposesForceEmailOnThirdPartySignup(t 
 		values: map[string]string{
 			service.SettingKeyForceEmailOnThirdPartySignup: "true",
 			service.SettingKeyCanvasEnabled:                "true",
+			service.SettingKeyPlanCatalogEnabled:           "true",
 		},
 	}
 	h := NewSettingHandler(service.NewSettingService(repo, &config.Config{}), "test-version")
@@ -77,12 +78,14 @@ func TestSettingHandler_GetPublicSettings_ExposesForceEmailOnThirdPartySignup(t 
 		Data struct {
 			ForceEmailOnThirdPartySignup bool `json:"force_email_on_third_party_signup"`
 			CanvasEnabled                bool `json:"canvas_enabled"`
+			PlanCatalogEnabled           bool `json:"plan_catalog_enabled"`
 		} `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
 	require.Equal(t, 0, resp.Code)
 	require.True(t, resp.Data.ForceEmailOnThirdPartySignup)
 	require.True(t, resp.Data.CanvasEnabled)
+	require.True(t, resp.Data.PlanCatalogEnabled)
 }
 
 func TestSettingHandler_GetPublicSettings_ExposesTencentCaptchaConfiguration(t *testing.T) {

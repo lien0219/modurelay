@@ -205,6 +205,7 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		CustomEndpoints:                      dto.ParseCustomEndpoints(settings.CustomEndpoints),
 		ResourceCenterEnabled:                settings.ResourceCenterEnabled,
 		CanvasEnabled:                        settings.CanvasEnabled,
+		PlanCatalogEnabled:                   settings.PlanCatalogEnabled,
 		ActivityCenterEnabled:                settings.ActivityCenterEnabled,
 		DingTalkOAuthEnabled:                 settings.DingTalkOAuthEnabled,
 		LinuxDoOAuthEnabled:                  settings.LinuxDoOAuthEnabled,

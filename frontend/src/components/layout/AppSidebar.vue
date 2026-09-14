@@ -804,6 +804,7 @@ const flagBatchImageAccess = () => canUseBatchImage.value
 const flagResourceCenter = makeSidebarFlag(FeatureFlags.resourceCenter)
 const flagActivityCenter = makeSidebarFlag(FeatureFlags.activityCenter)
 const flagCanvas = makeSidebarFlag(FeatureFlags.canvas)
+const flagPlanCatalog = makeSidebarFlag(FeatureFlags.planCatalog)
 
 const siteNavItems = computed((): NavItem[] => [
   { path: '/home', label: t('nav.home'), icon: SiteHomeIcon },
@@ -822,6 +823,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
   }
   items.push(
     { path: '/canvas', label: t('nav.canvas'), icon: CanvasIcon, featureFlag: flagCanvas },
+    { path: '/plan-catalog', label: t('nav.planCatalog'), icon: CreditCardIcon, featureFlag: flagPlanCatalog },
     { path: '/batch-image', label: t('nav.batchImage'), icon: BatchImageIcon, hideInSimpleMode: true, featureFlag: flagBatchImageAccess },
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
@@ -902,6 +904,7 @@ const adminNavItems = computed((): NavItem[] => {
     { path: '/resource-center', label: t('nav.resourceCenter'), icon: ResourceCenterIcon },
     { path: '/admin/resource-center', label: t('nav.resourceCenterAdmin'), icon: ResourceCenterIcon },
     { path: '/admin/activities', label: t('nav.activityManagement'), icon: CalendarIcon },
+    { path: '/admin/plan-catalog', label: t('nav.planCatalogManagement'), icon: CreditCardIcon },
     { path: '/admin/proxies', label: t('nav.proxies'), icon: ServerIcon },
     {
       path: '/admin/security-audit',

@@ -6718,6 +6718,12 @@
             </div>
           </div>
 
+          <div class="card">
+            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"><h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ localText('套餐目录', 'Plan catalog') }}</h2><p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ localText('控制用户侧套餐入口，套餐内容在独立页面配置。', 'Control the user-facing plan entry; configure plans on the dedicated page.') }}</p></div>
+            <div class="flex items-center justify-between gap-6 p-6"><div><label class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ localText('在导航中显示套餐', 'Show plans in navigation') }}</label></div><Toggle v-model="form.plan_catalog_enabled" /></div>
+            <div class="px-6 pb-6"><router-link to="/admin/plan-catalog" class="text-sm text-primary-600 hover:underline">{{ localText('管理套餐', 'Manage plans') }} →</router-link></div>
+          </div>
+
           <!-- User Usage Cost Detail Visibility -->
           <div class="card">
             <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
@@ -9978,6 +9984,7 @@ const form = reactive<SettingsForm>({
   // Available Channels feature switch
   available_channels_enabled: false,
   canvas_enabled: false,
+  plan_catalog_enabled: false,
   // Model Plaza feature switches + description
   model_plaza_enabled: false,
   model_plaza_require_auth: false,
@@ -11663,6 +11670,7 @@ async function saveSettings() {
       // Available Channels feature switch
       available_channels_enabled: form.available_channels_enabled,
       canvas_enabled: form.canvas_enabled,
+      plan_catalog_enabled: form.plan_catalog_enabled,
       // Model Plaza feature switches + description
       model_plaza_enabled: form.model_plaza_enabled,
       model_plaza_require_auth: form.model_plaza_require_auth,
