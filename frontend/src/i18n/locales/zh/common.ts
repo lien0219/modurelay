@@ -1,5 +1,5 @@
 export default {
-  planCatalog: { eyebrow: '企业级套餐', title: '为团队打造的服务套餐', description: '选择透明的服务方案，并通过管理员配置的支付渠道安全完成开通。', cta: '立即开通', empty: '当前暂无可用套餐。', loadError: '套餐加载失败。', adminTitle: '套餐目录', adminDescription: '配置独立套餐卡片与外部支付地址。', newPlan: '新建套餐', published: '已上架', draft: '已下架', featured: '推荐', deleteConfirm: '确定删除该套餐？', fields: { name: '名称', subtitle: '副标题', description: '描述', price: '价格', originalPrice: '原价', currency: '币种', period: '周期', badge: '标签', accent: '强调色', sortOrder: '排序', paymentUrl: '支付链接', benefits: '权益', benefitsHint: '每行填写一项权益', status: '状态' }, period: { monthly: '/ 月', quarterly: '/ 季度', yearly: '/ 年', one_time: '一次性', custom: '自定义' } },
+  planCatalog: { eyebrow: '企业级套餐', title: '为团队打造的服务套餐', description: '选择透明的服务方案，并通过管理员配置的支付渠道安全完成开通。', cta: '立即开通', empty: '暂无套餐计划', loadError: '套餐加载失败。', adminTitle: '套餐目录', adminDescription: '配置独立套餐卡片与外部支付地址。', newPlan: '新建套餐', published: '已上架', draft: '已下架', featured: '推荐', deleteConfirm: '确定删除该套餐？', fields: { name: '名称', subtitle: '副标题', description: '描述', price: '价格', originalPrice: '原价', currency: '币种', period: '周期', badge: '标签', accent: '强调色', sortOrder: '排序', paymentUrl: '支付链接', benefits: '权益', benefitsHint: '每行填写一项权益', status: '状态' }, period: { monthly: '/ 月', quarterly: '/ 季度', yearly: '/ 年', one_time: '一次性', custom: '自定义' } },
   common: {
     loading: '加载中...',
     submitting: '提交中...',

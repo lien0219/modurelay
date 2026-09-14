@@ -1,7 +1,7 @@
 <template>
   <AppLayout>
     <section class="mx-auto max-w-7xl space-y-8">
-      <header class="space-y-2">
+      <header v-if="items.length" class="space-y-2">
         <p class="text-xs font-semibold uppercase tracking-[0.18em] text-primary-600 dark:text-primary-400">{{ t('planCatalog.eyebrow') }}</p>
         <h1 class="text-3xl font-semibold tracking-tight text-gray-900 dark:text-white">{{ t('planCatalog.title') }}</h1>
         <p class="max-w-2xl text-sm text-gray-500 dark:text-gray-400">{{ t('planCatalog.description') }}</p>
