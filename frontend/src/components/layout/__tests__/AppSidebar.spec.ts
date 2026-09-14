@@ -97,6 +97,12 @@ describe('AppSidebar activity center navigation', () => {
 })
 
 describe('AppSidebar canvas workspace transition', () => {
+  it('uses a dedicated canvas icon distinct from AI learning', () => {
+    expect(componentSource).toContain("render: () => h(Icon, { name: 'group' })")
+    expect(componentSource).toContain("{ path: '/canvas', label: t('nav.canvas'), icon: CanvasIcon, featureFlag: flagCanvas }")
+    expect(componentSource).toContain("{ path: '/ai-learning', label: t('nav.aiLearning'), icon: AILearningIcon }")
+  })
+
   it('hands primary canvas navigation directly to the standalone app', () => {
     expect(componentSource).toContain("import { navigateToWorkspaceUrlWithTransition } from '@/utils/workspaceModeTransition'")
     expect(componentSource).toContain("itemPath === '/canvas'")

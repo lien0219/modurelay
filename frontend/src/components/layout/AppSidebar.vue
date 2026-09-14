@@ -510,6 +510,10 @@ const QuickStartIcon = {
   render: () => h(Icon, { name: 'terminal' })
 }
 
+const CanvasIcon = {
+  render: () => h(Icon, { name: 'group' })
+}
+
 const BellIcon = {
   render: () =>
     h(
@@ -783,7 +787,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     items.push({ path: '/dashboard', label: t('nav.dashboard'), icon: DashboardIcon })
   }
     items.push(
-    { path: '/canvas', label: t('nav.canvas'), icon: AILearningIcon, featureFlag: flagCanvas },
+    { path: '/canvas', label: t('nav.canvas'), icon: CanvasIcon, featureFlag: flagCanvas },
     { path: '/quick-start', label: t('nav.quickStart'), icon: QuickStartIcon },
     { path: '/ai-learning', label: t('nav.aiLearning'), icon: AILearningIcon },
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
