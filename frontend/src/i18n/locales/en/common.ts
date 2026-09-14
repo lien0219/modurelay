@@ -164,6 +164,9 @@ export default {
 
   // Navigation
   nav: {
+    website: 'Website',
+    home: 'Home',
+    aboutUs: 'About us',
     dashboard: 'Dashboard',
     announcements: 'Announcements',
     apiKeys: 'API Keys',
@@ -463,6 +466,51 @@ export default {
     verifyFailed: 'Verification failed, please try again',
     notEnabled: 'This operation requires two-factor authentication. Please enable TOTP in your profile first.',
     adminApiKeyForbidden: 'Admin API keys cannot perform this operation. Use a two-factor verified admin session.'
+  },
+
+  about: {
+    eyebrow: 'ModuRelay enterprise services',
+    title: 'About us',
+    description: 'An enterprise AI aggregation and digital delivery team turning models, workflows, and software engineering into production-ready capability.',
+    scopeLabel: 'Enterprise service scope',
+    heroKicker: 'From idea to systems that keep running',
+    heroTitle: 'Turn every AI investment into reusable enterprise capability.',
+    heroDescription: 'We connect AI product development, automation, Token asset operations, and custom software so teams can validate faster, deliver with confidence, and keep improving in real business environments.',
+    visualAlt: 'Abstract illustration of enterprise AI capabilities connected to business systems',
+    visualCaption: 'AI × Engineering × Operations',
+    heroPoints: {
+      delivery: 'Product and engineering delivery',
+      integration: 'Models, data, and systems together',
+      iteration: 'Continuous improvement after launch',
+    },
+    servicesEyebrow: 'Capabilities',
+    servicesTitle: 'Enterprise AI services across the full lifecycle',
+    servicesDescription: 'Combine focused delivery or platform-level work around your stage of growth, without fragmented tooling and vendors.',
+    services: {
+      aiProduct: { title: 'AI product development', description: 'From product definition and prototypes to reliable production delivery.' },
+      automation: { title: 'AI automation products', description: 'Turn repetitive, cross-system work into controlled automation flows.' },
+      productivity: { title: 'AI productivity products', description: 'Unlock leverage across engineering, operations, support, and management.' },
+      workflow: { title: 'AI workflows', description: 'Connect models, tools, and business rules into observable task paths.' },
+      distilledResources: { title: 'Distilled resource services', description: 'Organize, distill, and operationalize resources for business use cases.' },
+      tokenAssets: { title: 'Token asset management', description: 'Manage keys, quotas, usage, and cost with a transparent control plane.' },
+      saas: { title: 'Enterprise SaaS customization', description: 'Shape stable software around your organization, permissions, and processes.' },
+      knowledgeBase: { title: 'Enterprise knowledge bases', description: 'Build searchable, collaborative, continuously maintained organizational knowledge.' },
+      customSoftware: { title: 'Software, apps, and mini-programs', description: 'Custom web, mobile, and mini-program engineering with integration.' },
+      gameDevelopment: { title: 'Game development', description: 'Support from concept validation through clients, services, and operations tools.' },
+    },
+    industriesEyebrow: 'Industries',
+    industriesTitle: 'Built for real work across industries',
+    industriesDescription: 'We place AI into the workflows, growth loops, and delivery realities of each sector.',
+    industries: { ai: 'AI', ecommerce: 'E-commerce', livestream: 'Livestreaming', metaverse: 'Metaverse', internet: 'Internet', education: 'Education', crossBorder: 'Cross-border', payments: 'Payments' },
+    deliveryEyebrow: 'Delivery model',
+    deliveryTitle: 'From consulting to long-term co-creation',
+    delivery: { consulting: 'Business discovery and product consulting', solution: 'Prototype, architecture, and delivery plan', engineering: 'Frontend, backend, and AI engineering', integration: 'Platform, data, and system integration', iteration: 'Launch support and continuous iteration' },
+    contactEyebrow: 'Let’s build',
+    contactTitle: 'Start a conversation about your next enterprise AI initiative',
+    contactDescription: 'Whether it is an AI product, enterprise software, or cross-system automation, we start with a clear business outcome.',
+    phoneLabel: 'Phone',
+    wechatLabel: 'WeChat (same number)',
+    phoneAria: 'Call 13017739011',
   },
 
   // Dashboard

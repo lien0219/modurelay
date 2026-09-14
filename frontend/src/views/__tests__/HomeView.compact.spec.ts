@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { mount, RouterLinkStub } from '@vue/test-utils'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { enableAutoUnmount, mount, RouterLinkStub } from '@vue/test-utils'
 import { defineComponent, h, type Component } from 'vue'
 
 import HomeView from '../HomeView.vue'
@@ -39,6 +39,21 @@ vi.mock('vue-i18n', async (importOriginal) => {
 })
 
 const defaultHomeHeroSceneStub = { template: '<div data-testid="home-hero-scene" />' }
+
+enableAutoUnmount(afterEach)
+
+function mockMatchMedia(matches = false) {
+  vi.spyOn(window, 'matchMedia').mockReturnValue({
+    matches,
+    media: '(prefers-reduced-motion: reduce)',
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(() => true),
+  } as unknown as MediaQueryList)
+}
 
 function mountHome(
   settings: Record<string, unknown> = {},
@@ -88,7 +103,8 @@ describe('HomeView compact mode', () => {
     authStore.checkAuth.mockClear()
     appStore.fetchPublicSettings.mockClear()
     localStorage.clear()
-    vi.spyOn(window, 'matchMedia').mockReturnValue({ matches: false } as MediaQueryList)
+    window.history.replaceState({}, '', '/home')
+    mockMatchMedia()
     vi.spyOn(window, 'scrollTo').mockImplementation(() => undefined)
   })
 
@@ -197,24 +213,29 @@ describe('HomeView compact mode', () => {
     expect(modelPlazaDestination(wrapper)).toBeUndefined()
   })
 
-  it('renders the kinetic official home as five narrative stages', () => {
-    const wrapper = mountHome()
+  it('renders the kinetic official home as five fixed narrative states', () => {
+    const wrapper = mountHome({ canvas_enabled: true })
 
     expect(wrapper.get('.home-page.kinetic-home').exists()).toBe(true)
     expect(wrapper.get('[data-testid="home-hero-scene"]').exists()).toBe(true)
     expect(wrapper.get('[data-testid="home-ambient-effects"]').exists()).toBe(true)
     expect(wrapper.findAll('[data-home-section]').map(section => section.attributes('id'))).toEqual([
       'home',
-      'manifesto',
-      'work',
-      'lab',
+      'about',
+      'canvas',
+      'relay',
       'contact',
     ])
-    expect(wrapper.findAll('.kinetic-card')).toHaveLength(5)
-    expect(wrapper.findAll('.kinetic-top-nav button')).toHaveLength(1)
+    expect(wrapper.findAll('.kinetic-card')).toHaveLength(0)
+    expect(wrapper.findAll('.kinetic-section-index button')).toHaveLength(5)
+    expect(wrapper.findAll('.kinetic-top-nav button')).toHaveLength(3)
     expect(wrapper.findComponent('.kinetic-login-link').props('to')).toBe('/login')
-    expect(wrapper.get('.kinetic-lab-route').exists()).toBe(true)
-    expect(wrapper.find('.kinetic-lab-horizon').exists()).toBe(false)
+    expect(wrapper.get('.kinetic-about').text()).toContain('From AI capability to digital products')
+    expect(wrapper.get('.kinetic-about').text()).toContain('AI distillation resources')
+    expect(wrapper.get('.kinetic-about').text()).toContain('Custom enterprise SaaS')
+    expect(wrapper.get('.kinetic-about').text()).toContain('Cross-border')
+    expect(wrapper.get('.kinetic-canvas').text()).toContain('Infinite canvas')
+    expect(wrapper.findComponent('.kinetic-canvas-cta').props('to')).toBe('/canvas')
     expect(wrapper.get('.kinetic-footer').text()).not.toContain('Dark mode')
     expect(wrapper.get('.kinetic-footer').text()).not.toContain('Light mode')
     expect(wrapper.get('.kinetic-footer [data-testid="locale-switcher"]').attributes('data-placement')).toBe('top-end')
@@ -252,21 +273,93 @@ describe('HomeView compact mode', () => {
     })
 
     expect(wrapper.get('.kinetic-hero-copy h1').text()).toBe('Test site')
-    expect(wrapper.get('.kinetic-hero-eyebrow').text()).toBe('An enterprise-grade AI API gateway')
-    expect(wrapper.get('.kinetic-hero-endpoint').text()).toContain('https://relay.example.com/v1/chat/completions')
+    expect(wrapper.get('.kinetic-hero-eyebrow').text()).toBe('01 / Enterprise AI aggregation and procurement')
+    expect(wrapper.get('.kinetic-hero-tagline').text()).toContain('enterprise AI')
+    expect(wrapper.get('.kinetic-section-description').text()).toContain('10+ enterprises')
+    expect(wrapper.get('.kinetic-hero-endpoint').text()).toContain('https://relay.example.com/v1')
     const links = wrapper.findAllComponents(RouterLinkStub)
     expect(links.find(link => link.classes().includes('kinetic-hero-primary'))?.props('to')).toBe('/login')
     expect(links.find(link => link.classes().includes('kinetic-hero-secondary'))?.props('to')).toBe('/model-plaza')
   })
 
-  it('switches the spatial work deck from its filter controls', async () => {
-    const wrapper = mountHome()
-    const filters = wrapper.findAll('.kinetic-work-filter button')
+  it('switches one fixed state for a downward wheel gesture', async () => {
+    mockMatchMedia(true)
+    const immediateReadyScene = defineComponent({
+      emits: ['ready'],
+      setup(_, { emit }) {
+        emit('ready')
+        return () => h('div', { 'data-testid': 'home-hero-scene' })
+      },
+    })
+    const wrapper = mountHome({ canvas_enabled: true }, immediateReadyScene)
+    await wrapper.vm.$nextTick()
 
-    expect(filters).toHaveLength(5)
-    expect(filters[0].classes()).toContain('is-active')
-    await filters[1].trigger('click')
-    expect(wrapper.findAll('.kinetic-card')[1].classes()).toContain('is-active')
+    expect(wrapper.get('#home').classes()).toContain('is-active')
+    await wrapper.get('.kinetic-home').trigger('wheel', { deltaX: 0, deltaY: 100 })
+
+    expect(wrapper.get('#about').classes()).toContain('is-active')
+    expect(wrapper.get('#home').attributes('aria-hidden')).toBe('true')
+    expect(window.location.hash).toBe('#about')
+    expect(window.scrollY).toBe(0)
+  })
+
+  it('opens the about state directly from its public hash link', async () => {
+    window.history.replaceState({}, '', '/home#about')
+    mockMatchMedia(true)
+    const immediateReadyScene = defineComponent({
+      emits: ['ready'],
+      setup(_, { emit }) {
+        emit('ready')
+        return () => h('div', { 'data-testid': 'home-hero-scene' })
+      },
+    })
+
+    const wrapper = mountHome({}, immediateReadyScene)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.get('#about').classes()).toContain('is-active')
+    expect(wrapper.get('#home').attributes('aria-hidden')).toBe('true')
+    expect(window.location.hash).toBe('#about')
+  })
+
+  it('returns to the first state when the public section hash is cleared', async () => {
+    window.history.replaceState({}, '', '/home#about')
+    mockMatchMedia(true)
+    const immediateReadyScene = defineComponent({
+      emits: ['ready'],
+      setup(_, { emit }) {
+        emit('ready')
+        return () => h('div', { 'data-testid': 'home-hero-scene' })
+      },
+    })
+
+    const wrapper = mountHome({}, immediateReadyScene)
+    await wrapper.vm.$nextTick()
+    window.history.replaceState({}, '', '/home')
+    window.dispatchEvent(new HashChangeEvent('hashchange'))
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.get('#home').classes()).toContain('is-active')
+    expect(window.location.hash).toBe('')
+  })
+
+  it('supports keyboard navigation without moving the document', async () => {
+    mockMatchMedia(true)
+    const immediateReadyScene = defineComponent({
+      emits: ['ready'],
+      setup(_, { emit }) {
+        emit('ready')
+        return () => h('div', { 'data-testid': 'home-hero-scene' })
+      },
+    })
+    const wrapper = mountHome({}, immediateReadyScene)
+    await wrapper.vm.$nextTick()
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', cancelable: true }))
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.get('#contact').classes()).toContain('is-active')
+    expect(document.documentElement.style.overflow).toBe('hidden')
   })
 
   it('keeps the primary kinetic CTA connected to the existing login route', () => {

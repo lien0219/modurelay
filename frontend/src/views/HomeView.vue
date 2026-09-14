@@ -56,7 +56,15 @@
     v-else
     ref="pageRef"
     class="home-page kinetic-home"
-    :class="{ 'kinetic-home-ready': !loaderVisible, 'kinetic-home-scrolled': scrollProgress > 2 }"
+    :class="{
+      'kinetic-home-ready': !loaderVisible,
+      'kinetic-home-advanced': activeSectionIndex > 0,
+      'is-transitioning': isTransitioning,
+    }"
+    @wheel.prevent="handleWheel"
+    @touchstart.passive="handleTouchStart"
+    @touchend.passive="handleTouchEnd"
+    @touchcancel.passive="resetTouchGesture"
   >
     <a class="kinetic-skip-link" href="#kinetic-main">{{ copy.chrome.skip }}</a>
 
@@ -64,6 +72,7 @@
       <HomeHeroScene :progress="sceneProgress" @ready="handleSceneReady" />
     </div>
     <HomeAmbientEffects class="kinetic-ambient" :enabled="ambientEnabled" :progress="sceneProgress" />
+    <div class="kinetic-world-shade" aria-hidden="true"></div>
 
     <Transition name="kinetic-loader">
       <div v-if="loaderVisible" class="kinetic-loader" role="status" :aria-label="copy.chrome.loading">
@@ -76,15 +85,12 @@
             <span>{{ copy.chrome.loading }}</span>
             <strong>{{ String(Math.round(loaderProgress)).padStart(2, '0') }}</strong>
           </div>
-          <i class="kinetic-loader-track" aria-hidden="true">
-            <b :style="{ transform: 'scaleX(' + loaderProgress / 100 + ')' }"></b>
-          </i>
         </div>
       </div>
     </Transition>
 
     <header class="kinetic-header">
-      <button type="button" class="kinetic-wordmark" :aria-label="copy.nav.home" @click="scrollToSection('home')">
+      <button type="button" class="kinetic-wordmark" :aria-label="copy.nav.home" @click="goToSection('home')">
         <span class="kinetic-wordmark-mark">
           <img v-if="siteLogo" :src="siteLogo" :alt="siteName" />
           <span v-else>M</span>
@@ -96,6 +102,24 @@
       </button>
 
       <nav class="kinetic-top-nav" :aria-label="copy.chrome.navigation">
+        <button
+          type="button"
+          :class="{ 'is-current': activeSection === 'about' }"
+          :aria-current="activeSection === 'about' ? 'page' : undefined"
+          @click="goToSection('about')"
+        >
+          {{ copy.nav.about }}
+        </button>
+        <button
+          v-if="canvasEnabled"
+          type="button"
+          class="kinetic-canvas-nav"
+          :class="{ 'is-current': activeSection === 'canvas' }"
+          :aria-current="activeSection === 'canvas' ? 'page' : undefined"
+          @click="goToSection('canvas')"
+        >
+          {{ copy.nav.canvas }}
+        </button>
         <router-link :to="isAuthenticated ? dashboardPath : '/login'" class="kinetic-login-link">
           {{ isAuthenticated ? copy.chrome.dashboard : copy.chrome.login }}
         </router-link>
@@ -104,180 +128,202 @@
           type="button"
           :class="{ 'is-current': activeSection === 'contact' }"
           :aria-current="activeSection === 'contact' ? 'page' : undefined"
-          @click="scrollToSection('contact')"
+          @click="goToSection('contact')"
         >
           {{ copy.chrome.contact }}
         </button>
       </nav>
     </header>
 
-    <aside class="kinetic-section-index" aria-hidden="true">
-      <span>{{ String(activeSectionIndex + 1).padStart(2, '0') }}</span>
-      <i><b :style="{ transform: 'scaleY(' + sectionRailProgress + ')' }"></b></i>
-      <span>{{ String(navigationItems.length).padStart(2, '0') }}</span>
-    </aside>
+    <nav class="kinetic-section-index" :aria-label="copy.chrome.sectionNavigation">
+      <button
+        v-for="(item, index) in navigationItems"
+        :key="item.id"
+        type="button"
+        :class="{ 'is-active': index === activeSectionIndex }"
+        :aria-label="copy.chrome.goToSection.replace('{section}', item.label)"
+        :aria-current="index === activeSectionIndex ? 'step' : undefined"
+        :data-label="item.label"
+        @click="goToSection(item.id)"
+      >
+        <i aria-hidden="true"></i>
+      </button>
+    </nav>
 
-    <main id="kinetic-main">
-      <section id="home" data-home-section class="kinetic-section kinetic-hero" aria-label="ModuRelay">
-        <div class="kinetic-hero-copy kinetic-reveal">
-          <span class="kinetic-hero-eyebrow">{{ copy.hero.eyebrow }}</span>
-          <h1>{{ siteName }}</h1>
-          <p class="kinetic-hero-tagline">{{ copy.hero.tagline }}</p>
-          <p class="kinetic-hero-description">{{ copy.hero.description }}</p>
-          <div class="kinetic-hero-actions">
-            <router-link :to="isAuthenticated ? dashboardPath : '/login'" class="kinetic-hero-primary">
-              {{ isAuthenticated ? copy.contact.dashboardCta : copy.hero.primaryCta }}
-              <Icon name="arrowRight" size="sm" />
-            </router-link>
-            <router-link v-if="showModelPlazaEntry" to="/model-plaza" class="kinetic-hero-secondary">
-              {{ copy.hero.secondaryCta }}
-            </router-link>
-            <a v-else-if="docUrl" :href="docUrl" target="_blank" rel="noopener noreferrer" class="kinetic-hero-secondary">
-              {{ copy.chrome.docs }}
-            </a>
-          </div>
-          <code class="kinetic-hero-endpoint">
-            <span>{{ copy.hero.endpoint }}</span>
-            {{ apiBaseUrl }}/v1/chat/completions
-          </code>
-        </div>
-        <div class="kinetic-hero-meta kinetic-reveal">
-          <span>MODURELAY / SIGNAL 01</span>
-          <p>{{ copy.hero.signal }}</p>
-        </div>
-      </section>
+    <main
+      id="kinetic-main"
+      ref="stageRef"
+      tabindex="-1"
+      :aria-busy="isTransitioning || undefined"
+    >
+      <p class="kinetic-sr-only" role="status" aria-live="polite">
+        {{ copy.chrome.sectionStatus.replace('{current}', String(activeSectionIndex + 1)).replace('{total}', String(navigationItems.length)).replace('{section}', activeSectionLabel) }}
+      </p>
 
-      <section id="manifesto" data-home-section class="kinetic-section kinetic-manifesto" aria-labelledby="kinetic-manifesto-title">
-        <div class="kinetic-manifesto-sticky">
-          <div class="kinetic-manifesto-wash" aria-hidden="true"></div>
-          <div class="kinetic-manifesto-layout">
-            <div class="kinetic-manifesto-heading kinetic-reveal">
-              <span class="kinetic-section-label">01 / {{ copy.nav.manifesto }}</span>
-              <h1 id="kinetic-manifesto-title">
-                <span>{{ copy.manifesto.lineOne }}</span>
-                <span>{{ copy.manifesto.lineTwo }}</span>
-                <span>{{ copy.manifesto.lineThree }}</span>
-              </h1>
+      <section
+        id="home"
+        data-home-section
+        class="kinetic-section kinetic-hero"
+        :class="{ 'is-active': activeSection === 'home' }"
+        :aria-hidden="activeSection === 'home' ? 'false' : 'true'"
+        :inert="activeSection !== 'home'"
+        aria-labelledby="kinetic-hero-title"
+      >
+        <div class="kinetic-section-inner">
+          <div class="kinetic-section-copy kinetic-hero-copy">
+            <span class="kinetic-section-label kinetic-hero-eyebrow">01 / {{ copy.hero.eyebrow }}</span>
+            <h1 id="kinetic-hero-title">{{ siteName }}</h1>
+            <p class="kinetic-hero-tagline">{{ copy.hero.tagline }}</p>
+            <p class="kinetic-section-description">{{ copy.hero.description }}</p>
+            <div class="kinetic-section-actions">
+              <router-link :to="isAuthenticated ? dashboardPath : '/login'" class="kinetic-primary-action kinetic-hero-primary">
+                {{ isAuthenticated ? copy.contact.dashboardCta : copy.hero.primaryCta }}
+                <Icon name="arrowRight" size="sm" aria-hidden="true" />
+              </router-link>
+              <router-link v-if="showModelPlazaEntry" to="/model-plaza" class="kinetic-secondary-action kinetic-hero-secondary">
+                {{ copy.hero.secondaryCta }}
+              </router-link>
+              <button v-else-if="canvasEnabled" type="button" class="kinetic-secondary-action kinetic-hero-secondary" @click="goToSection('canvas')">
+                {{ copy.canvas.secondaryCta }}
+              </button>
             </div>
-            <div class="kinetic-manifesto-copy kinetic-reveal">
-              <span>{{ copy.manifesto.eyebrow }}</span>
-              <p>{{ copy.manifesto.description }}</p>
-              <p>{{ copy.manifesto.detail }}</p>
-              <code>{{ apiBaseUrl }}/v1/chat/completions</code>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section id="work" ref="workSectionRef" data-home-section class="kinetic-section kinetic-work" aria-labelledby="kinetic-work-title">
-        <div class="kinetic-work-sticky">
-          <div class="kinetic-work-heading kinetic-reveal">
-            <span class="kinetic-section-label">02 / {{ copy.nav.work }}</span>
-            <h2 id="kinetic-work-title">{{ copy.work.title }}</h2>
-          </div>
-
-          <div class="kinetic-deck" data-testid="kinetic-work-deck" :aria-label="copy.work.deckLabel">
-            <article
-              v-for="(card, index) in workCards"
-              :key="card.key"
-              class="kinetic-card"
-              :class="['kinetic-card-' + card.key, { 'is-active': index === activeCardIndex }]"
-              :data-card-index="index"
-              :style="cardStyle(index)"
-              :aria-hidden="Math.abs(index - deckPosition) > 1.45 ? 'true' : 'false'"
-              @pointerenter="animateCardParticles"
-              @pointerleave="settleCardParticles"
-              @focusin="animateCardParticles"
-              @focusout="settleCardParticles"
-            >
-              <div class="kinetic-card-visual" aria-hidden="true">
-                <span class="kinetic-card-plane kinetic-card-plane-one"></span>
-                <span class="kinetic-card-plane kinetic-card-plane-two"></span>
-                <span class="kinetic-card-plane kinetic-card-plane-three"></span>
-                <span class="kinetic-card-orbit"></span>
-                <span class="kinetic-card-scan"></span>
-                <span class="kinetic-card-particles">
-                  <i
-                    v-for="particleIndex in 12"
-                    :key="particleIndex"
-                    class="kinetic-card-particle"
-                    :style="cardParticleStyle(index, particleIndex - 1)"
-                  ></i>
-                </span>
-              </div>
-              <div class="kinetic-card-topline">
-                <span>{{ String(index + 1).padStart(2, '0') }}</span>
-                <span>{{ card.eyebrow }}</span>
-              </div>
-              <div class="kinetic-card-content">
-                <h3>{{ card.title }}</h3>
-                <p>{{ card.description }}</p>
-                <router-link :to="card.to" :tabindex="index === activeCardIndex ? 0 : -1">
-                  {{ card.action }}<Icon name="arrowRight" size="sm" />
-                </router-link>
-              </div>
-            </article>
-          </div>
-
-          <div class="kinetic-work-filter">
-            <span>{{ copy.work.question }}</span>
-            <button
-              v-for="(card, index) in workCards"
-              :key="card.key"
-              type="button"
-              :class="{ 'is-active': index === activeCardIndex }"
-              @click="selectCard(index)"
-            >
-              <i></i>{{ card.short }}
-            </button>
-          </div>
-
-          <div class="kinetic-deck-progress" aria-hidden="true">
-            <span>{{ String(activeCardIndex + 1).padStart(2, '0') }}</span>
-            <i><b :style="{ transform: 'scaleX(' + deckRailProgress + ')' }"></b></i>
-            <span>{{ String(workCards.length).padStart(2, '0') }}</span>
+            <code class="kinetic-hero-endpoint">
+              <span>{{ copy.hero.endpoint }}</span>
+              {{ apiBaseUrl }}/v1
+            </code>
           </div>
         </div>
       </section>
 
-      <section id="lab" data-home-section class="kinetic-section kinetic-lab" aria-labelledby="kinetic-lab-title">
-        <div class="kinetic-lab-sticky">
-          <div class="kinetic-lab-shell">
-            <div class="kinetic-lab-heading kinetic-reveal">
-              <span class="kinetic-section-label">03 / {{ copy.nav.lab }}</span>
-              <div class="kinetic-lab-title-row">
-                <div class="kinetic-lab-mark" aria-hidden="true"><span>M</span></div>
-                <h2 id="kinetic-lab-title">{{ copy.lab.title }}</h2>
-              </div>
+      <section
+        id="about"
+        data-home-section
+        class="kinetic-section kinetic-about"
+        :class="{ 'is-active': activeSection === 'about' }"
+        :aria-hidden="activeSection === 'about' ? 'false' : 'true'"
+        :inert="activeSection !== 'about'"
+        aria-labelledby="kinetic-about-title"
+      >
+        <div class="kinetic-section-inner kinetic-about-layout">
+          <div class="kinetic-section-copy kinetic-about-intro">
+            <span class="kinetic-section-label">02 / {{ copy.about.eyebrow }}</span>
+            <h2 id="kinetic-about-title">{{ copy.about.title }}</h2>
+            <p class="kinetic-section-description">{{ copy.about.description }}</p>
+            <div class="kinetic-section-actions">
+              <button type="button" class="kinetic-primary-action" @click="goToSection('contact')">
+                {{ copy.about.action }}
+                <Icon name="arrowRight" size="sm" aria-hidden="true" />
+              </button>
             </div>
-            <div class="kinetic-lab-route kinetic-reveal" aria-hidden="true">
-              <span class="kinetic-lab-route-line"></span>
-              <i class="kinetic-lab-route-node kinetic-lab-route-node-start"></i>
-              <i class="kinetic-lab-route-node kinetic-lab-route-node-middle"></i>
-              <i class="kinetic-lab-route-node kinetic-lab-route-node-end"></i>
-              <strong>M</strong>
-            </div>
-            <div class="kinetic-lab-copy kinetic-reveal">
-              <span>{{ copy.lab.eyebrow }}</span>
-              <p>{{ copy.lab.description }}</p>
-              <router-link :to="learningEntry">{{ copy.lab.action }}<Icon name="arrowRight" size="sm" /></router-link>
+          </div>
+
+          <div class="kinetic-about-directory" :aria-label="copy.about.servicesLabel">
+            <section class="kinetic-about-group">
+              <span>01</span>
+              <h3>{{ copy.about.aiTitle }}</h3>
+              <ul>
+                <li v-for="service in copy.about.aiServices" :key="service">{{ service }}</li>
+              </ul>
+            </section>
+            <section class="kinetic-about-group">
+              <span>02</span>
+              <h3>{{ copy.about.deliveryTitle }}</h3>
+              <ul>
+                <li v-for="service in copy.about.deliveryServices" :key="service">{{ service }}</li>
+              </ul>
+            </section>
+            <section class="kinetic-about-group kinetic-about-industries">
+              <span>03</span>
+              <h3>{{ copy.about.industriesTitle }}</h3>
+              <ul>
+                <li v-for="industry in copy.about.industries" :key="industry">{{ industry }}</li>
+              </ul>
+            </section>
+          </div>
+        </div>
+      </section>
+
+      <section
+        id="canvas"
+        data-home-section
+        class="kinetic-section kinetic-canvas"
+        :class="{ 'is-active': activeSection === 'canvas' }"
+        :aria-hidden="activeSection === 'canvas' ? 'false' : 'true'"
+        :inert="activeSection !== 'canvas'"
+        aria-labelledby="kinetic-canvas-title"
+      >
+        <div class="kinetic-section-inner">
+          <div class="kinetic-section-copy">
+            <span class="kinetic-section-label">03 / {{ copy.canvas.eyebrow }}</span>
+            <h2 id="kinetic-canvas-title">{{ copy.canvas.title }}</h2>
+            <p class="kinetic-section-description">{{ copy.canvas.description }}</p>
+            <ul class="kinetic-capability-list" :aria-label="copy.canvas.capabilitiesLabel">
+              <li v-for="capability in copy.canvas.capabilities" :key="capability">{{ capability }}</li>
+            </ul>
+            <div v-if="canvasEnabled" class="kinetic-section-actions">
+              <router-link to="/canvas" class="kinetic-primary-action kinetic-canvas-cta">
+                {{ copy.canvas.action }}
+                <Icon name="arrowRight" size="sm" aria-hidden="true" />
+              </router-link>
             </div>
           </div>
         </div>
       </section>
 
-      <section id="contact" data-home-section class="kinetic-section kinetic-contact" aria-labelledby="kinetic-contact-title">
-        <div class="kinetic-contact-content kinetic-reveal">
-          <span class="kinetic-section-label">04 / {{ copy.nav.contact }}</span>
-          <h2 id="kinetic-contact-title">
-            <span>{{ copy.contact.lineOne }}</span>
-            <span>{{ copy.contact.lineTwo }}</span>
-          </h2>
-          <p>{{ copy.contact.description }}</p>
-          <router-link :to="isAuthenticated ? dashboardPath : '/login'" class="kinetic-primary-cta">
-            {{ isAuthenticated ? copy.contact.dashboardCta : copy.contact.primaryCta }}
-            <Icon name="arrowRight" size="sm" />
-          </router-link>
+      <section
+        id="relay"
+        data-home-section
+        class="kinetic-section kinetic-relay"
+        :class="{ 'is-active': activeSection === 'relay' }"
+        :aria-hidden="activeSection === 'relay' ? 'false' : 'true'"
+        :inert="activeSection !== 'relay'"
+        aria-labelledby="kinetic-relay-title"
+      >
+        <div class="kinetic-section-inner">
+          <div class="kinetic-section-copy">
+            <span class="kinetic-section-label">04 / {{ copy.relay.eyebrow }}</span>
+            <h2 id="kinetic-relay-title">{{ copy.relay.title }}</h2>
+            <p class="kinetic-section-description">{{ copy.relay.description }}</p>
+            <ul class="kinetic-capability-list" :aria-label="copy.relay.capabilitiesLabel">
+              <li v-for="capability in copy.relay.capabilities" :key="capability">{{ capability }}</li>
+            </ul>
+            <div class="kinetic-section-actions">
+              <router-link :to="relayDestination" class="kinetic-secondary-action kinetic-relay-cta">
+                {{ showModelPlazaEntry ? copy.relay.modelsAction : copy.relay.usageAction }}
+                <Icon name="arrowRight" size="sm" aria-hidden="true" />
+              </router-link>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section
+        id="contact"
+        data-home-section
+        class="kinetic-section kinetic-contact"
+        :class="{ 'is-active': activeSection === 'contact' }"
+        :aria-hidden="activeSection === 'contact' ? 'false' : 'true'"
+        :inert="activeSection !== 'contact'"
+        aria-labelledby="kinetic-contact-title"
+      >
+        <div class="kinetic-section-inner">
+          <div class="kinetic-section-copy kinetic-contact-content">
+            <span class="kinetic-section-label">05 / {{ copy.nav.contact }}</span>
+            <h2 id="kinetic-contact-title">
+              <span>{{ copy.contact.lineOne }}</span>
+              <span>{{ copy.contact.lineTwo }}</span>
+            </h2>
+            <p class="kinetic-section-description">{{ copy.contact.description }}</p>
+            <div class="kinetic-section-actions">
+              <router-link :to="isAuthenticated ? dashboardPath : '/login'" class="kinetic-primary-action kinetic-primary-cta">
+                {{ isAuthenticated ? copy.contact.dashboardCta : copy.contact.primaryCta }}
+                <Icon name="arrowRight" size="sm" aria-hidden="true" />
+              </router-link>
+              <router-link to="/quick-start" class="kinetic-secondary-action">
+                {{ copy.contact.quickStartCta }}
+              </router-link>
+            </div>
+          </div>
         </div>
 
         <footer class="kinetic-footer">
@@ -288,18 +334,27 @@
             <router-link to="/key-usage">{{ copy.chrome.usage }}</router-link>
             <LocaleSwitcher placement="top-end" />
           </div>
-          <span>MODURELAY / SYSTEM 01</span>
         </footer>
       </section>
     </main>
+
+    <button
+      v-if="activeSectionIndex < navigationItems.length - 1"
+      type="button"
+      class="kinetic-next-section"
+      :aria-label="copy.chrome.nextSection.replace('{section}', nextSectionLabel)"
+      :title="copy.chrome.nextSection.replace('{section}', nextSectionLabel)"
+      @click="stepSection(1)"
+    >
+      <Icon name="chevronDown" size="sm" aria-hidden="true" />
+    </button>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type CSSProperties } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { gsap } from 'gsap'
-import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import { brand } from '@/config/brand'
 import { useAuthStore, useAppStore } from '@/stores'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
@@ -310,136 +365,159 @@ import { sanitizeUrl } from '@/utils/url'
 import { FeatureFlags, isFeatureFlagEnabled } from '@/utils/featureFlags'
 import { toggleThemeWithTransition } from '@/utils/themeTransition'
 
-type SectionId = 'home' | 'manifesto' | 'work' | 'lab' | 'contact'
+type SectionId = 'home' | 'about' | 'canvas' | 'relay' | 'contact'
+
+const SECTION_ORDER: SectionId[] = ['home', 'about', 'canvas', 'relay', 'contact']
+const WHEEL_THRESHOLD = 24
+const WHEEL_IDLE_MS = 180
+const TOUCH_THRESHOLD = 48
 
 const zhCopy = {
   chrome: {
-    loading: '正在加载中继生态场', navigation: '首页导航', work: '作品', contact: '联系',
+    loading: '正在加载中继生态场', navigation: '首页导航', contact: '开始使用',
     docs: '文档', usage: '用量查询', dashboard: '控制台', login: '登录',
-    light: '浅色模式', dark: '深色模式', skip: '跳到主要内容'
+    light: '浅色模式', dark: '深色模式', skip: '跳到主要内容',
+    sectionNavigation: '首页内容导航', goToSection: '前往{section}',
+    nextSection: '查看{section}', sectionStatus: '第 {current} 项，共 {total} 项：{section}',
   },
-  nav: { home: '首页', manifesto: '系统宣言', work: '核心能力', lab: '中继实验室', contact: '开始使用' },
+  nav: { home: '首页', about: '关于我们', canvas: '无限画布', relay: '统一中继', contact: '开始使用' },
   hero: {
-    eyebrow: '企业级的 AI API 网关',
-    tagline: '一个入口，连接每个模型。',
-    description: '用兼容接口统一模型接入，把策略路由、故障切换与用量记录留在同一条可观测链路中。',
+    eyebrow: '企业级 AI 聚合与采购平台',
+    tagline: '企业 AI 采购、接入与治理，由一个可靠平台统一承载。',
+    description: '已为 10+ 企业提供 AI 服务与采购支持，统一完成多模型接入、智能路由、成本治理与用量审计，为关键 AI 业务构建可靠、可控、可持续扩展的服务底座。',
     primaryCta: '开始使用',
     secondaryCta: '查看模型',
     endpoint: '兼容端点',
-    signal: '策略路由 / 故障切换 / 用量可见'
   },
-  manifesto: {
-    ariaTitle: '可靠的 AI 接口体验',
-    lineOne: '可靠的',
-    lineTwo: 'AI 接口',
-    lineThree: '体验',
-    eyebrow: '一个入口 / 多条路径',
-    description: 'ModuRelay 把兼容接口、模型发现与供应商路由汇入同一条调用路径。',
-    detail: '策略、故障切换、用量和请求上下文保持可见，让应用不必感知底层线路变化。'
+  about: {
+    eyebrow: '关于我们',
+    title: '从 AI 能力到数字产品，交付企业下一条增长曲线',
+    description: '我们面向企业提供从产品定义、工程研发到持续运营的一体化技术服务，把复杂 AI 能力、业务自动化与数字产品真正带进生产流程。无论从 0 到 1 打造新产品，还是升级既有系统，都以可落地、可扩展、可治理为交付标准。',
+    action: '开启合作',
+    servicesLabel: '我们的服务与行业范围',
+    aiTitle: 'AI 产品与效率引擎',
+    aiServices: ['AI 产品开发', 'AI 自动化产品', 'AI 提效产品', 'AI 工作流', 'AI 蒸馏资源服务', 'Token 资产管理'],
+    deliveryTitle: '企业软件与数字交付',
+    deliveryServices: ['企业 SaaS 软件定制', '企业知识库搭建', '软件定制', 'App 与小程序定制', '游戏开发'],
+    industriesTitle: '跨行业落地',
+    industries: ['AI', '电商', '直播', '元宇宙', '互联网', '教育', '跨境', '支付'],
   },
-  work: {
-    title: '运行中的系统', deckLabel: 'ModuRelay 核心能力空间卡片', question: '你要进入哪一层？',
-    cards: [
-      { title: '统一入口', short: 'API', eyebrow: 'OPENAI COMPATIBLE', description: '保留熟悉的 SDK 与请求结构，把模型接入集中到一个 base URL。', action: '开始接入' },
-      { title: '策略路由', short: 'ROUTING', eyebrow: 'POLICY ENGINE', description: '依据模型、分组和线路健康选择可用路径，并遵循已配置的故障切换。', action: '查看模型' },
-      { title: '请求信号', short: 'SIGNALS', eyebrow: 'USAGE + TRACE', description: '把密钥、模型、Token 用量与线路结果放回同一套查询上下文。', action: '查询用量' },
-      { title: 'AI 实践', short: 'LEARNING', eyebrow: 'AGENT + WORKFLOW', description: '围绕 Agent、工作流、记忆与具身智能整理案例、练习和学习路径。', action: '进入学习' },
-      { title: '运行控制', short: 'CONTROL', eyebrow: 'OPERATIONS', description: '在控制台维护账户池、策略与系统配置，让转发链路持续可控。', action: '打开控制台' }
-    ]
+  canvas: {
+    eyebrow: '无限画布',
+    title: '把创意铺在一张可运行的画布上',
+    description: '组织提示词、参考素材与生成结果，让图像和视频工作流始终保留上下文。',
+    capabilitiesLabel: '无限画布能力',
+    capabilities: ['提示词与素材', '图像与视频', '项目持续保存'],
+    action: '进入无限画布',
+    secondaryCta: '了解无限画布',
   },
-  lab: {
-    title: '中继实验室', eyebrow: '从原型进入实践',
-    description: '探索 Agent、工作流和 AI 系统能力，并把实验带回可运行的应用链路。',
-    action: '进入 AI 学习'
+  relay: {
+    eyebrow: '统一中继',
+    title: '一次接入，路由与用量始终可见',
+    description: '保留熟悉的 SDK 与请求结构，由已配置的策略选择模型线路，并记录每次调用。',
+    capabilitiesLabel: '统一中继能力',
+    capabilities: ['兼容 API', '策略路由', '用量记录'],
+    modelsAction: '查看可用模型',
+    usageAction: '查询用量',
   },
   contact: {
-    lineOne: '一个入口',
-    lineTwo: '连接每个模型',
-    description: '从兼容端点开始，把模型、路由、账户和用量带回同一条可靠链路。',
+    lineOne: '从一个入口开始',
+    lineTwo: '把 AI 连接起来',
+    description: '创建密钥，选择模型，然后把创作与调用带入同一条清晰链路。',
     primaryCta: '开始使用',
-    dashboardCta: '进入控制台'
-  }
+    dashboardCta: '进入控制台',
+    quickStartCta: '查看快速启动',
+  },
 }
 
 const enCopy = {
   chrome: {
-    loading: 'Loading the relay landscape', navigation: 'Homepage navigation', work: 'Work', contact: 'Contact',
+    loading: 'Loading the relay landscape', navigation: 'Homepage navigation', contact: 'Get started',
     docs: 'Docs', usage: 'Usage', dashboard: 'Dashboard', login: 'Sign in',
-    light: 'Light mode', dark: 'Dark mode', skip: 'Skip to main content'
+    light: 'Light mode', dark: 'Dark mode', skip: 'Skip to main content',
+    sectionNavigation: 'Homepage sections', goToSection: 'Go to {section}',
+    nextSection: 'View {section}', sectionStatus: 'Item {current} of {total}: {section}',
   },
-  nav: { home: 'Home', manifesto: 'System manifesto', work: 'Core systems', lab: 'Relay lab', contact: 'Get started' },
+  nav: { home: 'Home', about: 'About us', canvas: 'Infinite canvas', relay: 'Unified relay', contact: 'Get started' },
   hero: {
-    eyebrow: 'An enterprise-grade AI API gateway',
-    tagline: 'One entry. Every model.',
-    description: 'Unify model access through a compatible API while policy routing, failover, and usage records stay on one observable path.',
+    eyebrow: 'Enterprise AI aggregation and procurement',
+    tagline: 'Source, connect, and govern enterprise AI on one reliable platform.',
+    description: 'Already supporting 10+ enterprises with AI services and procurement, ModuRelay unifies multi-model access, intelligent routing, cost governance, and usage auditing for reliable, controlled operations at scale.',
     primaryCta: 'Get started',
     secondaryCta: 'Browse models',
     endpoint: 'Compatible endpoint',
-    signal: 'Policy routing / failover / visible usage'
   },
-  manifesto: {
-    ariaTitle: 'Reliable AI API experiences',
-    lineOne: 'Reliable',
-    lineTwo: 'AI API',
-    lineThree: 'Experiences',
-    eyebrow: 'One entry / many paths',
-    description: 'ModuRelay brings compatible APIs, model discovery and provider routing into one request path.',
-    detail: 'Policy, failover, usage and request context stay visible while applications remain independent from the underlying route.'
+  about: {
+    eyebrow: 'About us',
+    title: 'From AI capability to digital products, we build the enterprise\'s next growth engine',
+    description: 'We help enterprises move from product definition and engineering to continuous operation, turning complex AI capabilities, business automation, and digital ideas into production-ready systems. From new ventures to core-system upgrades, every engagement is built to be deployable, scalable, and governable.',
+    action: 'Start a partnership',
+    servicesLabel: 'Our services and industry reach',
+    aiTitle: 'AI products and efficiency',
+    aiServices: ['AI product development', 'AI automation products', 'AI productivity products', 'AI workflows', 'AI distillation resources', 'Token asset management'],
+    deliveryTitle: 'Enterprise digital delivery',
+    deliveryServices: ['Custom enterprise SaaS', 'Enterprise knowledge bases', 'Custom software', 'Apps and mini programs', 'Game development'],
+    industriesTitle: 'Industry reach',
+    industries: ['AI', 'E-commerce', 'Live streaming', 'Metaverse', 'Internet', 'Education', 'Cross-border', 'Payments'],
   },
-  work: {
-    title: 'Systems in motion', deckLabel: 'ModuRelay core system cards', question: 'Which layer are you looking for?',
-    cards: [
-      { title: 'Unified entry', short: 'API', eyebrow: 'OPENAI COMPATIBLE', description: 'Keep familiar SDKs and request shapes while models converge on one base URL.', action: 'Start integrating' },
-      { title: 'Policy routing', short: 'ROUTING', eyebrow: 'POLICY ENGINE', description: 'Choose an available path from model, group and route health, then follow configured failover.', action: 'Browse models' },
-      { title: 'Request signals', short: 'SIGNALS', eyebrow: 'USAGE + TRACE', description: 'Keep key, model, token usage and route outcome in one queryable operating context.', action: 'Inspect usage' },
-      { title: 'AI practice', short: 'LEARNING', eyebrow: 'AGENT + WORKFLOW', description: 'Turn agents, workflows, memory and embodied AI into cases, exercises and learning paths.', action: 'Enter learning' },
-      { title: 'Operational control', short: 'CONTROL', eyebrow: 'OPERATIONS', description: 'Maintain account pools, policy and system settings from one operational surface.', action: 'Open dashboard' }
-    ]
+  canvas: {
+    eyebrow: 'Infinite canvas',
+    title: 'Give every idea room to become a workflow',
+    description: 'Arrange prompts, references, and generated results while image and video work keep their context.',
+    capabilitiesLabel: 'Infinite canvas capabilities',
+    capabilities: ['Prompts and assets', 'Image and video', 'Persistent projects'],
+    action: 'Open infinite canvas',
+    secondaryCta: 'Explore the canvas',
   },
-  lab: {
-    title: 'The Relay Lab', eyebrow: 'From prototype to practice',
-    description: 'Explore agents, workflows and AI system capability, then bring experiments back to a runnable application path.',
-    action: 'Enter AI Learning'
+  relay: {
+    eyebrow: 'Unified relay',
+    title: 'Connect once. Keep routing and usage visible.',
+    description: 'Keep familiar SDKs and request shapes while configured policy chooses a model route and records each call.',
+    capabilitiesLabel: 'Unified relay capabilities',
+    capabilities: ['Compatible API', 'Policy routing', 'Usage records'],
+    modelsAction: 'Browse available models',
+    usageAction: 'Inspect usage',
   },
   contact: {
-    lineOne: 'One entry',
-    lineTwo: 'Every model',
-    description: 'Start with a compatible endpoint and bring models, routing, accounts and usage into one reliable path.',
+    lineOne: 'Start from one entry',
+    lineTwo: 'Connect the rest of AI',
+    description: 'Create a key, choose a model, and bring creation and requests into one clear operating path.',
     primaryCta: 'Get started',
-    dashboardCta: 'Open dashboard'
-  }
+    dashboardCta: 'Open dashboard',
+    quickStartCta: 'View quick start',
+  },
 }
 
 const { t, locale } = useI18n()
 const authStore = useAuthStore()
 const appStore = useAppStore()
 const pageRef = ref<HTMLElement | null>(null)
-const workSectionRef = ref<HTMLElement | null>(null)
+const stageRef = ref<HTMLElement | null>(null)
 const activeSection = ref<SectionId>('home')
-const scrollProgress = ref(0)
-const deckPosition = ref(0)
-const activeCardIndex = ref(0)
 const isDark = ref(document.documentElement.classList.contains('dark'))
 const loaderVisible = ref(true)
 const loaderProgress = ref(4)
 const sceneReady = ref(false)
 const ambientEnabled = ref(false)
+const isTransitioning = ref(false)
 
-let sectionObserver: IntersectionObserver | null = null
-let homeMatchMedia: ReturnType<typeof gsap.matchMedia> | null = null
-let heroIntroTimeline: gsap.core.Timeline | null = null
-let cardTransitionTimeline: gsap.core.Timeline | null = null
-let cardTransitionTarget: HTMLElement | null = null
-let cardTransitionToken = 0
-let scrollFrame = 0
-let deckAnimationFrame = 0
+let motionContext: gsap.Context | null = null
+let motionMatchMedia: ReturnType<typeof gsap.matchMedia> | null = null
+let sectionTransitionTimeline: gsap.core.Timeline | null = null
+let introTimeline: gsap.core.Timeline | null = null
 let loaderTimer = 0
 let loaderSafetyTimer = 0
 let loaderHideTimer = 0
+let wheelIdleTimer = 0
+let wheelAccumulator = 0
+let wheelDirection = 0
+let wheelGestureConsumed = false
+let touchStartX: number | null = null
+let touchStartY: number | null = null
 let homeMounted = false
-let targetDeckPosition = 0
-const cardParticleTimelines = new Set<gsap.core.Timeline>()
-const cardParticleTimelineByCard = new WeakMap<HTMLElement, gsap.core.Timeline>()
+let prefersReducedMotion = false
+let viewportLocked = false
+let previousHtmlOverflow = ''
 
 const copy = computed(() => locale.value === 'zh' ? zhCopy : enCopy)
 const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || brand.name)
@@ -455,239 +533,241 @@ const isAdmin = computed(() => authStore.isAdmin)
 const dashboardPath = computed(() => isAdmin.value ? '/admin/dashboard' : '/dashboard')
 const currentYear = computed(() => new Date().getFullYear())
 const modelPlazaEnabled = computed(() => isFeatureFlagEnabled(FeatureFlags.modelPlaza))
+const canvasEnabled = computed(() => isFeatureFlagEnabled(FeatureFlags.canvas))
 const modelPlazaRequiresAuth = computed(() => appStore.cachedPublicSettings?.model_plaza_require_auth === true)
 const showModelPlazaEntry = computed(() => modelPlazaEnabled.value && (isAuthenticated.value || !modelPlazaRequiresAuth.value))
-const learningEntry = computed(() => isAuthenticated.value ? '/ai-learning' : { path: '/login', query: { redirect: '/ai-learning' } })
+const relayDestination = computed(() => showModelPlazaEntry.value ? '/model-plaza' : '/key-usage')
 const apiBaseUrl = computed(() => {
   const configured = appStore.cachedPublicSettings?.api_base_url
   return typeof configured === 'string' && configured.trim() ? configured.trim().replace(/\/+$/, '') : window.location.origin
 })
-const navigationItems = computed(() => (Object.keys(copy.value.nav) as SectionId[]).map(id => ({ id, label: copy.value.nav[id] })))
-const activeSectionIndex = computed(() => Math.max(0, navigationItems.value.findIndex(item => item.id === activeSection.value)))
-const sceneProgress = computed(() => scrollProgress.value / 100)
-const sectionRailProgress = computed(() => Math.max(0.04, Math.min(1, scrollProgress.value / 100)))
-const workCards = computed(() => {
-  const definitions = copy.value.work.cards
-  const loginOrDashboard = isAuthenticated.value ? dashboardPath.value : '/login'
-  const modelDestination = showModelPlazaEntry.value ? '/model-plaza' : loginOrDashboard
-  return [
-    { key: 'gateway', ...definitions[0], to: loginOrDashboard },
-    { key: 'routing', ...definitions[1], to: modelDestination },
-    { key: 'signals', ...definitions[2], to: '/key-usage' },
-    { key: 'learning', ...definitions[3], to: learningEntry.value },
-    { key: 'control', ...definitions[4], to: loginOrDashboard }
-  ]
-})
-const deckRailProgress = computed(() => {
-  if (workCards.value.length <= 1) return 1
-  return Math.max(0.04, Math.min(1, deckPosition.value / (workCards.value.length - 1)))
-})
+const navigationItems = computed(() => SECTION_ORDER.map(id => ({ id, label: copy.value.nav[id] })))
+const activeSectionIndex = computed(() => Math.max(0, SECTION_ORDER.indexOf(activeSection.value)))
+const activeSectionLabel = computed(() => navigationItems.value[activeSectionIndex.value]?.label || '')
+const nextSectionLabel = computed(() => navigationItems.value[activeSectionIndex.value + 1]?.label || '')
+const sceneProgress = computed(() => activeSectionIndex.value / Math.max(1, SECTION_ORDER.length - 1))
 
 function toggleTheme(event?: MouseEvent) {
   isDark.value = toggleThemeWithTransition(isDark.value, event)
 }
 
-function cardStyle(index: number): CSSProperties {
-  const delta = index - deckPosition.value
-  const distance = Math.abs(delta)
-  const isMobileViewport = window.innerWidth < 700
-  const x = delta * (isMobileViewport ? 78 : 34)
-  const y = distance * (isMobileViewport ? 1.2 : 1.8)
-  const z = -distance * 260
-  const rotateY = delta * -6
-  const rotateZ = delta * 0.45
-  const scale = Math.max(0.76, 1 - distance * 0.11)
-  const opacity = Math.max(0, 1 - Math.max(0, distance - 0.3) * 0.88)
-  return {
-    '--deck-x': x + 'vw',
-    '--deck-y': y + 'vh',
-    '--deck-z': z + 'px',
-    '--deck-ry': rotateY + 'deg',
-    '--deck-rz': rotateZ + 'deg',
-    '--deck-scale': String(scale),
-    '--deck-opacity': String(opacity),
-    '--deck-order': String(100 - Math.round(distance * 10))
-  } as CSSProperties
+function sectionElements() {
+  return pageRef.value
+    ? Array.from(pageRef.value.querySelectorAll<HTMLElement>('[data-home-section]'))
+    : []
 }
 
-function cardParticleStyle(cardIndex: number, particleIndex: number): CSSProperties {
-  const horizontal = ((cardIndex * 37 + particleIndex * 61) % 89) / 88
-  const vertical = ((cardIndex * 53 + particleIndex * 29) % 83) / 82
-  const size = 1.2 + ((cardIndex + particleIndex * 3) % 5) * 0.55
-  return {
-    '--particle-left': `${7 + horizontal * 86}%`,
-    '--particle-top': `${8 + vertical * 84}%`,
-    '--particle-size': `${size.toFixed(2)}px`,
-    '--particle-alpha': String(0.16 + ((particleIndex * 7) % 6) * 0.045),
-  } as CSSProperties
+function setSectionVisibility(index = activeSectionIndex.value) {
+  sectionElements().forEach((section, sectionIndex) => {
+    gsap.set(section, {
+      autoAlpha: sectionIndex === index ? 1 : 0,
+      scale: sectionIndex === index ? 1 : 0.992,
+    })
+  })
 }
 
-function animateCardParticles(event: Event) {
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
-  const card = event.currentTarget as HTMLElement | null
-  if (!card) return
-  const particles = Array.from(card.querySelectorAll<HTMLElement>('.kinetic-card-particle'))
-  const planes = Array.from(card.querySelectorAll<HTMLElement>('.kinetic-card-plane'))
-  const orbit = card.querySelector<HTMLElement>('.kinetic-card-orbit')
-  if (!particles.length) return
+function sectionFromLocationHash(): SectionId | null {
+  const hashSection = window.location.hash.slice(1)
+  return SECTION_ORDER.includes(hashSection as SectionId) ? hashSection as SectionId : null
+}
 
-  const previousTimeline = cardParticleTimelineByCard.get(card)
-  previousTimeline?.kill()
-  if (previousTimeline) cardParticleTimelines.delete(previousTimeline)
-  const timeline = gsap.timeline({
+function syncLocationHash(id: SectionId) {
+  const nextHash = id === 'home' ? '' : `#${id}`
+  if (window.location.hash === nextHash) return
+
+  window.history.replaceState(
+    window.history.state,
+    '',
+    `${window.location.pathname}${window.location.search}${nextHash}`,
+  )
+}
+
+function revealCurrentSection() {
+  const section = sectionElements()[activeSectionIndex.value]
+  if (!section) return
+
+  introTimeline?.kill()
+  if (prefersReducedMotion) {
+    gsap.set(section, { autoAlpha: 1, scale: 1 })
+    return
+  }
+
+  introTimeline = gsap.timeline({ defaults: { overwrite: 'auto' } })
+    .fromTo(section, { autoAlpha: 0, scale: 1.012 }, {
+      autoAlpha: 1,
+      scale: 1,
+      duration: 0.48,
+      ease: 'power2.out',
+    })
+}
+
+function transitionToSection(targetIndex: number, updateHash = true) {
+  const boundedIndex = Math.max(0, Math.min(SECTION_ORDER.length - 1, targetIndex))
+  if (boundedIndex === activeSectionIndex.value || isTransitioning.value || loaderVisible.value) return false
+
+  const sections = sectionElements()
+  const currentSection = sections[activeSectionIndex.value]
+  const targetSection = sections[boundedIndex]
+  if (!currentSection || !targetSection) return false
+
+  sectionTransitionTimeline?.kill()
+  introTimeline?.kill()
+
+  if (prefersReducedMotion) {
+    activeSection.value = SECTION_ORDER[boundedIndex]
+    if (updateHash) syncLocationHash(activeSection.value)
+    setSectionVisibility(boundedIndex)
+    return true
+  }
+
+  isTransitioning.value = true
+  sectionTransitionTimeline = gsap.timeline({
     defaults: { overwrite: 'auto' },
     onComplete: () => {
-      cardParticleTimelines.delete(timeline)
-      if (cardParticleTimelineByCard.get(card) === timeline) cardParticleTimelineByCard.delete(card)
+      setSectionVisibility(boundedIndex)
+      isTransitioning.value = false
+      sectionTransitionTimeline = null
     },
   })
-  cardParticleTimelines.add(timeline)
-  cardParticleTimelineByCard.set(card, timeline)
-  timeline
-    .to(particles, {
-      x: index => ((index * 47) % 58) - 29,
-      y: index => ((index * 31) % 44) - 22,
-      scale: index => 1.15 + (index % 4) * 0.18,
-      autoAlpha: 0.72,
-      duration: 0.28,
-      ease: 'power2.out',
-      stagger: { amount: 0.14, from: 'random' },
-    }, 0)
-    .to(planes, {
-      x: index => (index - 1) * 7,
-      y: index => (1 - index) * 5,
-      duration: 0.42,
-      ease: 'power2.out',
-    }, 0)
-    .to(orbit, { rotation: 18, duration: 0.48, ease: 'power2.out' }, 0)
-    .to(particles, {
-      x: 0,
-      y: 0,
-      scale: 1,
-      autoAlpha: index => 0.16 + ((index * 7) % 6) * 0.045,
-      duration: 0.58,
-      ease: 'elastic.out(1, 0.42)',
-      stagger: { amount: 0.18, from: 'random' },
-    }, '>-0.06')
-}
-
-function settleCardParticles(event: Event) {
-  const card = event.currentTarget as HTMLElement | null
-  const relatedTarget = 'relatedTarget' in event ? event.relatedTarget as Node | null : null
-  if (!card || (relatedTarget && card.contains(relatedTarget))) return
-  const particles = card.querySelectorAll<HTMLElement>('.kinetic-card-particle')
-  const planes = card.querySelectorAll<HTMLElement>('.kinetic-card-plane')
-  const orbit = card.querySelector<HTMLElement>('.kinetic-card-orbit')
-  const timeline = cardParticleTimelineByCard.get(card)
-  timeline?.kill()
-  if (timeline) cardParticleTimelines.delete(timeline)
-  cardParticleTimelineByCard.delete(card)
-  gsap.to(particles, {
-    x: 0,
-    y: 0,
-    scale: 1,
-    autoAlpha: index => 0.16 + ((index * 7) % 6) * 0.045,
-    duration: 0.34,
-    ease: 'power2.out',
-    overwrite: true,
-  })
-  gsap.to(planes, { x: 0, y: 0, duration: 0.34, ease: 'power2.out', overwrite: true })
-  gsap.to(orbit, { rotation: 0, duration: 0.34, ease: 'power2.out', overwrite: true })
-}
-
-async function animateActiveCard(index: number) {
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
-  const transitionToken = ++cardTransitionToken
-  await nextTick()
-  if (transitionToken !== cardTransitionToken) return
-  const card = pageRef.value?.querySelector<HTMLElement>(`.kinetic-card[data-card-index="${index}"]`)
-  if (!card) return
-  const topline = card.querySelector<HTMLElement>('.kinetic-card-topline')
-  const content = Array.from(card.querySelectorAll<HTMLElement>('.kinetic-card-content > *'))
-  const visual = card.querySelector<HTMLElement>('.kinetic-card-visual')
-
-  cardTransitionTimeline?.kill()
-  if (cardTransitionTarget) {
-    gsap.set(cardTransitionTarget.querySelectorAll('.kinetic-card-topline, .kinetic-card-content > *, .kinetic-card-visual'), {
-      clearProps: 'transform,opacity,visibility',
+    .to(currentSection, {
+      autoAlpha: 0,
+      scale: 0.988,
+      duration: 0.16,
+      ease: 'power1.in',
     })
-  }
-  cardTransitionTarget = card
-  cardTransitionTimeline = gsap.timeline({ defaults: { ease: 'power3.out', overwrite: 'auto' } })
-    .fromTo(visual, { scale: 1.035, autoAlpha: 0.76 }, {
+    .add(() => {
+      activeSection.value = SECTION_ORDER[boundedIndex]
+      if (updateHash) syncLocationHash(activeSection.value)
+      gsap.set(targetSection, { autoAlpha: 0, scale: 1.012 })
+    })
+    .to(targetSection, {
+      autoAlpha: 1,
       scale: 1,
-      autoAlpha: 1,
-      duration: 0.48,
-      clearProps: 'transform,opacity,visibility',
-    }, 0)
-    .fromTo(topline, { y: -4, autoAlpha: 0.45 }, {
-      y: 0,
-      autoAlpha: 1,
       duration: 0.3,
-      clearProps: 'transform,opacity,visibility',
-    }, 0.06)
-    .fromTo(content, { y: 8, autoAlpha: 0.38 }, {
-      y: 0,
-      autoAlpha: 1,
-      duration: 0.34,
-      stagger: 0.04,
-      clearProps: 'transform,opacity,visibility',
-    }, 0.1)
+      ease: 'power2.out',
+    })
+
+  return true
 }
 
-function scrollToSection(id: SectionId) {
-  document.getElementById(id)?.scrollIntoView({
-    behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
-    block: 'start'
-  })
+function goToSection(id: SectionId) {
+  transitionToSection(SECTION_ORDER.indexOf(id))
 }
 
-function selectCard(index: number) {
-  const work = workSectionRef.value
-  activeCardIndex.value = index
-  deckPosition.value = index
-  targetDeckPosition = index
-  if (!work) return
-  const scrollSpan = Math.max(1, work.offsetHeight - window.innerHeight)
-  const destination = work.offsetTop + (index / Math.max(1, workCards.value.length - 1)) * scrollSpan
-  window.scrollTo({
-    top: destination,
-    behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
-  })
-}
+function handleHashChange() {
+  if (hasHomeContent.value || compactHomeEnabled.value) return
+  const targetSection = window.location.hash ? sectionFromLocationHash() : 'home'
+  if (!targetSection) return
 
-function scheduleDeckMotion() {
-  if (deckAnimationFrame) return
-  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  const update = () => {
-    const delta = targetDeckPosition - deckPosition.value
-    if (reduceMotion || Math.abs(delta) < 0.001) {
-      deckPosition.value = targetDeckPosition
-      activeCardIndex.value = Math.round(deckPosition.value)
-      deckAnimationFrame = 0
-      return
-    }
-    deckPosition.value += delta * 0.16
-    activeCardIndex.value = Math.round(deckPosition.value)
-    deckAnimationFrame = requestAnimationFrame(update)
+  const targetIndex = SECTION_ORDER.indexOf(targetSection)
+  if (loaderVisible.value) {
+    activeSection.value = targetSection
+    return
   }
-  deckAnimationFrame = requestAnimationFrame(update)
+  transitionToSection(targetIndex, false)
 }
 
-function updateScrollState() {
-  cancelAnimationFrame(scrollFrame)
-  scrollFrame = requestAnimationFrame(() => {
-    const scrollTop = window.scrollY || document.documentElement.scrollTop
-    const scrollable = Math.max(document.documentElement.scrollHeight - window.innerHeight, 1)
-    scrollProgress.value = Math.min(100, Math.max(0, scrollTop / scrollable * 100))
-    const work = workSectionRef.value
-    if (work) {
-      const workSpan = Math.max(1, work.offsetHeight - window.innerHeight)
-      const local = Math.min(1, Math.max(0, (scrollTop - work.offsetTop) / workSpan))
-      targetDeckPosition = local * Math.max(0, workCards.value.length - 1)
-      scheduleDeckMotion()
-    }
-  })
+function stepSection(direction: -1 | 1) {
+  return transitionToSection(activeSectionIndex.value + direction)
+}
+
+function resetWheelSession() {
+  wheelAccumulator = 0
+  wheelDirection = 0
+  wheelGestureConsumed = false
+  wheelIdleTimer = 0
+}
+
+function scheduleWheelReset() {
+  window.clearTimeout(wheelIdleTimer)
+  wheelIdleTimer = window.setTimeout(resetWheelSession, WHEEL_IDLE_MS)
+}
+
+function handleWheel(event: WheelEvent) {
+  scheduleWheelReset()
+  if (loaderVisible.value || isTransitioning.value || wheelGestureConsumed) return
+  if (Math.abs(event.deltaY) <= Math.abs(event.deltaX) || event.deltaY === 0) return
+
+  const direction = event.deltaY > 0 ? 1 : -1
+  if (wheelDirection !== 0 && direction !== wheelDirection) wheelAccumulator = 0
+  wheelDirection = direction
+  wheelAccumulator += Math.abs(event.deltaY)
+
+  if (wheelAccumulator < WHEEL_THRESHOLD) return
+  wheelGestureConsumed = stepSection(direction)
+  wheelAccumulator = 0
+}
+
+function handleTouchStart(event: TouchEvent) {
+  const touch = event.changedTouches[0]
+  touchStartX = touch?.clientX ?? null
+  touchStartY = touch?.clientY ?? null
+}
+
+function resetTouchGesture() {
+  touchStartX = null
+  touchStartY = null
+}
+
+function handleTouchEnd(event: TouchEvent) {
+  const touch = event.changedTouches[0]
+  if (!touch || touchStartX === null || touchStartY === null) {
+    resetTouchGesture()
+    return
+  }
+
+  const deltaX = touch.clientX - touchStartX
+  const deltaY = touch.clientY - touchStartY
+  resetTouchGesture()
+  if (Math.abs(deltaY) < TOUCH_THRESHOLD || Math.abs(deltaY) <= Math.abs(deltaX)) return
+  stepSection(deltaY < 0 ? 1 : -1)
+}
+
+function isEditableTarget(target: EventTarget | null) {
+  return target instanceof HTMLElement && Boolean(target.closest('input, textarea, select, [contenteditable="true"]'))
+}
+
+function handleKeydown(event: KeyboardEvent) {
+  if (hasHomeContent.value || compactHomeEnabled.value || event.repeat || isEditableTarget(event.target)) return
+
+  let handled = true
+  switch (event.key) {
+    case 'ArrowDown':
+    case 'PageDown':
+    case ' ':
+      stepSection(1)
+      break
+    case 'ArrowUp':
+    case 'PageUp':
+      stepSection(-1)
+      break
+    case 'Home':
+      transitionToSection(0)
+      break
+    case 'End':
+      transitionToSection(SECTION_ORDER.length - 1)
+      break
+    default:
+      handled = false
+  }
+
+  if (handled) event.preventDefault()
+}
+
+function lockOfficialViewport() {
+  if (viewportLocked) return
+  viewportLocked = true
+  previousHtmlOverflow = document.documentElement.style.overflow
+  document.documentElement.style.overflow = 'hidden'
+  window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
+  window.addEventListener('keydown', handleKeydown)
+}
+
+function unlockOfficialViewport() {
+  if (!viewportLocked) return
+  viewportLocked = false
+  document.documentElement.style.overflow = previousHtmlOverflow
+  window.removeEventListener('keydown', handleKeydown)
 }
 
 function clearLoaderTimers() {
@@ -708,6 +788,7 @@ function beginLoader() {
     ambientEnabled.value = true
     return
   }
+
   loaderVisible.value = true
   loaderProgress.value = 4
   loaderTimer = window.setInterval(() => {
@@ -726,97 +807,65 @@ function handleSceneReady() {
   loaderHideTimer = window.setTimeout(() => {
     loaderVisible.value = false
     ambientEnabled.value = true
-    heroIntroTimeline?.play(0)
-    if (homeMatchMedia) window.requestAnimationFrame(() => ScrollTrigger.refresh())
+    revealCurrentSection()
     loaderHideTimer = 0
-  }, window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 280)
+  }, window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 220)
 }
 
 function initializeMotion() {
   const root = pageRef.value
   if (!root) return
-  const sections = Array.from(root.querySelectorAll<HTMLElement>('[data-home-section]'))
-  if ('IntersectionObserver' in window) {
-    sectionObserver = new IntersectionObserver((entries) => {
-      const visible = entries.filter(entry => entry.isIntersecting).sort((a, b) => b.intersectionRatio - a.intersectionRatio)
-      if (visible[0]?.target.id) activeSection.value = visible[0].target.id as SectionId
-    }, { rootMargin: '-28% 0px -48% 0px', threshold: [0.05, 0.18, 0.42, 0.68] })
-    sections.forEach(section => sectionObserver?.observe(section))
-  }
 
-  const reveals = Array.from(root.querySelectorAll<HTMLElement>('.kinetic-reveal'))
-  const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
-  if (motionQuery.matches || typeof motionQuery.addEventListener !== 'function') {
-    gsap.set(reveals, { autoAlpha: 1, y: 0 })
-    return
-  }
-  gsap.registerPlugin(ScrollTrigger)
-  homeMatchMedia = gsap.matchMedia()
-  homeMatchMedia.add('(prefers-reduced-motion: no-preference)', () => {
-    const hero = Array.from(root.querySelectorAll<HTMLElement>('.kinetic-hero .kinetic-reveal'))
-    heroIntroTimeline = gsap.timeline({ paused: true, defaults: { ease: 'power3.out' } })
-      .fromTo(hero, { autoAlpha: 0, y: 18 }, {
-        autoAlpha: 1,
-        y: 0,
-        duration: 0.72,
-        stagger: 0.075,
-      })
-    if (!loaderVisible.value) heroIntroTimeline.play(0)
+  motionContext = gsap.context(() => {
+    const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
+    if (typeof motionQuery.addEventListener !== 'function') {
+      prefersReducedMotion = motionQuery.matches
+      setSectionVisibility()
+      if (loaderVisible.value) {
+        gsap.set(sectionElements()[activeSectionIndex.value], { autoAlpha: 0, scale: 1 })
+      } else {
+        revealCurrentSection()
+      }
+      return
+    }
 
-    sections.filter(section => section.id !== 'home').forEach((section) => {
-      const sectionReveals = Array.from(section.querySelectorAll<HTMLElement>('.kinetic-reveal'))
-      if (!sectionReveals.length) return
-      const timeline = gsap.timeline({ paused: true, defaults: { ease: 'power3.out' } })
-        .fromTo(sectionReveals, { autoAlpha: 0, y: 24 }, {
-          autoAlpha: 1,
-          y: 0,
-          duration: 0.58,
-          stagger: 0.07,
-        })
-      ScrollTrigger.create({
-        trigger: section,
-        start: 'top 82%',
-        end: 'bottom 16%',
-        animation: timeline,
-        toggleActions: 'play reverse play reverse',
-        fastScrollEnd: true,
-      })
+    motionMatchMedia = gsap.matchMedia()
+    motionMatchMedia.add({
+      reduceMotion: '(prefers-reduced-motion: reduce)',
+      allowMotion: '(prefers-reduced-motion: no-preference)',
+    }, context => {
+      prefersReducedMotion = Boolean(context.conditions?.reduceMotion)
+      setSectionVisibility()
+      if (loaderVisible.value) {
+        gsap.set(sectionElements()[activeSectionIndex.value], { autoAlpha: 0, scale: 1 })
+      } else {
+        revealCurrentSection()
+      }
     })
   }, root)
 }
 
 function cleanupMotion() {
-  cancelAnimationFrame(scrollFrame)
-  cancelAnimationFrame(deckAnimationFrame)
-  deckAnimationFrame = 0
-  window.removeEventListener('scroll', updateScrollState)
-  window.removeEventListener('resize', updateScrollState)
-  sectionObserver?.disconnect()
-  sectionObserver = null
-  homeMatchMedia?.revert()
-  homeMatchMedia = null
-  heroIntroTimeline?.kill()
-  heroIntroTimeline = null
-  cardTransitionToken += 1
-  cardTransitionTimeline?.kill()
-  cardTransitionTimeline = null
-  if (cardTransitionTarget) {
-    gsap.set(cardTransitionTarget.querySelectorAll('.kinetic-card-topline, .kinetic-card-content > *, .kinetic-card-visual'), {
-      clearProps: 'transform,opacity,visibility',
-    })
-  }
-  cardTransitionTarget = null
-  cardParticleTimelines.forEach(timeline => timeline.kill())
-  cardParticleTimelines.clear()
+  window.clearTimeout(wheelIdleTimer)
+  wheelIdleTimer = 0
+  resetWheelSession()
+  resetTouchGesture()
+  sectionTransitionTimeline?.kill()
+  sectionTransitionTimeline = null
+  introTimeline?.kill()
+  introTimeline = null
+  isTransitioning.value = false
+  motionMatchMedia?.revert()
+  motionMatchMedia = null
+  motionContext?.revert()
+  motionContext = null
 }
 
 async function syncHomeMode() {
   cleanupMotion()
-  activeSection.value = 'home'
-  scrollProgress.value = 0
-  deckPosition.value = 0
-  targetDeckPosition = 0
-  activeCardIndex.value = 0
+  unlockOfficialViewport()
+  activeSection.value = sectionFromLocationHash() || 'home'
+
   if (hasHomeContent.value || compactHomeEnabled.value) {
     sceneReady.value = false
     ambientEnabled.value = false
@@ -824,21 +873,16 @@ async function syncHomeMode() {
     loaderVisible.value = false
     return
   }
+
   beginLoader()
   await nextTick()
   if (hasHomeContent.value || compactHomeEnabled.value) return
+  lockOfficialViewport()
   initializeMotion()
-  updateScrollState()
-  window.addEventListener('scroll', updateScrollState, { passive: true })
-  window.addEventListener('resize', updateScrollState, { passive: true })
 }
 
 watch([hasHomeContent, compactHomeEnabled], () => {
   if (homeMounted) void syncHomeMode()
-})
-
-watch(activeCardIndex, (index, previousIndex) => {
-  if (index !== previousIndex) void animateActiveCard(index)
 })
 
 onMounted(() => {
@@ -846,14 +890,17 @@ onMounted(() => {
   isDark.value = document.documentElement.classList.contains('dark')
   authStore.checkAuth()
   if (!appStore.publicSettingsLoaded) appStore.fetchPublicSettings()
+  window.addEventListener('hashchange', handleHashChange)
   void syncHomeMode()
 })
 
 onBeforeUnmount(() => {
   homeMounted = false
   cleanupMotion()
+  unlockOfficialViewport()
   clearLoaderTimers()
   ambientEnabled.value = false
+  window.removeEventListener('hashchange', handleHashChange)
 })
 </script>
 
@@ -866,1073 +913,491 @@ onBeforeUnmount(() => {
 .compact-home-actions { display: flex; align-items: center; gap: 5px; }
 .compact-home-main { display: grid; min-height: min(70vh, 720px); place-items: center; padding: 64px 16px; }
 .compact-home-content { max-width: 580px; text-align: center; }
-.compact-home-content h1 { margin: 18px 0 10px; font-size: clamp(30px, 6vw, 48px); font-weight: 680; letter-spacing: -0.03em; }
+.compact-home-content h1 { margin: 18px 0 10px; font-size: 48px; font-weight: 680; letter-spacing: 0; }
 .compact-home-content p { margin: 0 auto 28px; max-width: 520px; color: var(--mr-text-muted); line-height: 1.7; white-space: pre-wrap; }
 .compact-home-logo { margin: 16px auto 0; }
 .compact-home-footer { padding: 20px 16px; border-top: 1px solid var(--mr-border); color: var(--mr-text-subtle); font-size: 12px; text-align: center; }
 .brand-mark { display: grid; width: 30px; height: 30px; flex: 0 0 auto; place-items: center; overflow: hidden; border: 1px solid var(--mr-primary-border); border-radius: 8px; background: var(--mr-primary); }
-.brand-mark-large { width: 64px; height: 64px; border-radius: 16px; }
-.brand-mark img { width: 100%; height: 100%; object-fit: contain; }
+.brand-mark img, .kinetic-wordmark-mark img, .kinetic-loader-mark img { width: 100%; height: 100%; object-fit: cover; }
+.brand-mark-large { width: 54px; height: 54px; }
 .home-icon-button, .home-quiet-link { display: inline-flex; min-width: 36px; min-height: 36px; align-items: center; justify-content: center; gap: 6px; padding: 0 9px; border: 1px solid transparent; border-radius: 8px; color: var(--mr-text-muted); font-size: 12px; transition: color var(--motion-fast) var(--ease-standard), background-color var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard), transform var(--motion-fast) var(--ease-standard); }
 .home-icon-button:hover, .home-quiet-link:hover { border-color: var(--mr-border); color: var(--mr-text); background: var(--mr-surface-subtle); transform: translateY(-1px); }
 .home-solid-button, .home-primary-button { display: inline-flex; min-height: 38px; align-items: center; justify-content: center; gap: 7px; padding: 0 14px; border-radius: 8px; color: #fff; background: var(--mr-primary); font-size: 12px; font-weight: 650; transition: background-color var(--motion-fast) var(--ease-standard), transform var(--motion-fast) var(--ease-standard); }
 .home-solid-button:hover, .home-primary-button:hover { background: var(--mr-primary-strong); transform: translateY(-1px); }
-.home-overline { color: var(--mr-primary); font-size: 11px; font-weight: 700; letter-spacing: 0.14em; }
+.home-overline { color: var(--mr-primary); font-size: 11px; font-weight: 700; letter-spacing: 0; }
 
 .kinetic-home {
-  --kinetic-ink: #f5f7fb;
-  --kinetic-muted: rgba(226, 232, 240, 0.74);
-  --kinetic-dim: rgba(203, 213, 225, 0.48);
-  --kinetic-line: rgba(199, 210, 254, 0.2);
-  --kinetic-line-strong: rgba(165, 180, 252, 0.46);
-  --kinetic-teal: #22d3ee;
-  --kinetic-violet: #818cf8;
+  --kinetic-text: rgba(255, 255, 255, 0.96);
+  --kinetic-body: rgba(244, 247, 250, 0.78);
+  --kinetic-muted: rgba(233, 238, 244, 0.58);
+  --kinetic-line: rgba(255, 255, 255, 0.18);
+  --kinetic-surface: rgba(11, 15, 19, 0.64);
   position: relative;
   width: 100%;
-  max-width: 100vw;
-  min-height: 100vh;
-  overflow: clip;
-  color: var(--kinetic-ink);
-  background: #4a4d44;
+  height: 100dvh;
+  min-height: 100svh;
+  overflow: hidden;
+  overscroll-behavior: none;
+  color: var(--kinetic-text);
+  background: var(--color-bg-deep);
   color-scheme: dark;
-  font-family: "Noto Sans SC", ui-sans-serif, system-ui, sans-serif;
-  isolation: isolate;
+  font-family: "Noto Sans SC Variable", "Noto Sans SC", system-ui, sans-serif;
+  touch-action: pan-x pinch-zoom;
 }
-.kinetic-world {
-  position: fixed;
+
+.kinetic-world,
+.kinetic-world-shade,
+.kinetic-ambient,
+.kinetic-loader {
+  position: absolute;
   inset: 0;
-  z-index: 0;
-  contain: layout paint;
-  pointer-events: none;
 }
-.kinetic-ambient {
-  position: fixed;
-  inset: 0;
+
+.kinetic-world { z-index: 0; }
+.kinetic-ambient { z-index: 1; opacity: 0.58; pointer-events: none; }
+.kinetic-world-shade {
   z-index: 2;
+  background: rgba(5, 9, 11, 0.22);
+  box-shadow:
+    inset 58vw 0 34vw -20vw rgba(3, 7, 9, 0.76),
+    inset 0 18vh 18vh -18vh rgba(3, 7, 9, 0.46),
+    inset 0 -20vh 18vh -16vh rgba(3, 7, 9, 0.48);
   pointer-events: none;
 }
-.kinetic-skip-link {
-  position: fixed;
-  top: 12px;
-  left: 12px;
-  z-index: 120;
-  padding: 10px 14px;
-  color: #041012;
-  background: #eafff7;
-  font-size: 12px;
-  transform: translateY(-160%);
-  transition: transform var(--motion-fast) var(--ease-enter);
-}
-.kinetic-skip-link:focus { transform: translateY(0); }
+
 .kinetic-header {
-  position: fixed;
+  position: absolute;
   top: 0;
   right: 0;
   left: 0;
-  z-index: 55;
+  z-index: 12;
   display: flex;
-  align-items: flex-start;
+  min-height: 76px;
+  align-items: center;
   justify-content: space-between;
-  padding: clamp(20px, 3vw, 42px) clamp(20px, 3.6vw, 58px);
-  pointer-events: none;
+  gap: 24px;
+  padding: max(16px, env(safe-area-inset-top)) clamp(24px, 4vw, 64px) 12px;
 }
-.kinetic-wordmark,
-.kinetic-top-nav {
-  pointer-events: auto;
-}
+
 .kinetic-wordmark {
   display: inline-flex;
+  min-width: 0;
+  min-height: 44px;
   align-items: center;
-  gap: 10px;
-  color: var(--kinetic-ink);
-  opacity: 0.72;
+  gap: 11px;
+  color: var(--kinetic-text);
   text-align: left;
-  transition: opacity var(--motion-fast) var(--ease-standard), transform var(--motion-fast) var(--ease-standard);
 }
-.kinetic-wordmark:hover { opacity: 1; transform: translateY(-1px); }
+
 .kinetic-wordmark-mark {
   display: grid;
-  width: 28px;
-  height: 28px;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
   place-items: center;
   overflow: hidden;
-  border: 1px solid var(--kinetic-line-strong);
-  border-radius: 50%;
-  font: 650 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  border: 1px solid rgba(255, 255, 255, 0.26);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--mr-primary) 76%, rgba(14, 20, 25, 0.9));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), var(--shadow-sm);
+  font: 700 15px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
 }
-.kinetic-wordmark-mark img { width: 100%; height: 100%; object-fit: contain; }
-.kinetic-wordmark-copy { display: flex; flex-direction: column; gap: 3px; }
-.kinetic-wordmark-copy strong { font: 620 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.08em; }
-.kinetic-wordmark-copy small { color: var(--kinetic-dim); font: 600 6px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.14em; }
-.kinetic-top-nav {
-  position: relative;
-  display: flex;
-  min-width: 194px;
-  height: 40px;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 0 17px;
-  border: 1px solid var(--kinetic-line);
-  border-radius: 999px;
-  background: rgba(3, 9, 11, 0.7);
-  box-shadow: inset 0 1px rgba(255, 255, 255, 0.05), 0 14px 34px rgba(0, 0, 0, 0.24);
-  backdrop-filter: blur(18px) saturate(120%);
-}
+
+.kinetic-wordmark-copy { display: grid; min-width: 0; gap: 1px; }
+.kinetic-wordmark-copy strong { overflow: hidden; max-width: 220px; font-size: 14px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.kinetic-wordmark-copy small { color: var(--kinetic-muted); font: 600 9px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0; }
+
+.kinetic-top-nav { display: flex; align-items: center; gap: 16px; }
 .kinetic-top-nav a,
 .kinetic-top-nav button {
-  position: relative;
-  z-index: 1;
   display: inline-flex;
-  min-height: 28px;
+  min-height: 44px;
   align-items: center;
-  color: var(--kinetic-muted);
-  font: 560 9px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  transition: color var(--motion-fast) var(--ease-standard);
+  justify-content: center;
+  border-bottom: 1px solid transparent;
+  color: var(--kinetic-body);
+  font-size: 12px;
+  font-weight: 650;
+  transition: color var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard);
 }
 .kinetic-top-nav a:hover,
 .kinetic-top-nav button:hover,
-.kinetic-top-nav button.is-current { color: #fff; }
-.kinetic-nav-signal {
-  position: relative;
-  z-index: 1;
-  display: block;
-  width: 44px;
-  height: 10px;
-  overflow: hidden;
-}
-.kinetic-nav-signal::before {
-  position: absolute;
-  top: 50%;
-  right: 0;
-  left: 0;
-  height: 1px;
-  background: var(--kinetic-line-strong);
-  content: '';
-}
-.kinetic-nav-signal i {
-  position: absolute;
-  top: 4px;
-  left: 0;
-  width: 18px;
-  height: 2px;
-  border-radius: 50%;
-  background: #dfffee;
-  filter: blur(0.2px) drop-shadow(0 0 4px rgba(159, 255, 223, 0.6));
-  animation: kinetic-signal 2.6s ease-in-out infinite;
-}
-@keyframes kinetic-signal {
-  0%, 100% { transform: translateX(0) scaleX(0.35); }
-  50% { transform: translateX(26px) scaleX(1); }
-}
-.kinetic-header button:focus-visible,
-.kinetic-header a:focus-visible,
-.kinetic-hero-actions a:focus-visible,
-.kinetic-card a:focus-visible,
-.kinetic-work-filter button:focus-visible,
-.kinetic-lab-shell a:focus-visible,
-.kinetic-contact a:focus-visible,
-.kinetic-footer a:focus-visible,
-.kinetic-footer button:focus-visible {
-  outline: 2px solid var(--kinetic-teal);
-  outline-offset: 4px;
-}
-.kinetic-section-index {
-  position: fixed;
-  top: 50%;
-  right: clamp(16px, 2.2vw, 36px);
-  z-index: 45;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  color: var(--kinetic-dim);
-  font: 560 7px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
-  pointer-events: none;
-  transform: translateY(-50%);
-}
-.kinetic-section-index > i {
-  position: relative;
-  display: block;
-  width: 1px;
-  height: 62px;
-  background: var(--kinetic-line);
-}
-.kinetic-section-index b {
+.kinetic-top-nav button.is-current { border-color: color-mix(in srgb, var(--mr-secondary) 72%, transparent); color: var(--kinetic-text); }
+.kinetic-nav-signal { display: inline-flex; width: 18px; align-items: center; justify-content: center; }
+.kinetic-nav-signal i { width: 5px; height: 5px; border-radius: 50%; background: var(--mr-success); box-shadow: 0 0 0 4px color-mix(in srgb, var(--mr-success) 16%, transparent); }
+
+#kinetic-main { position: absolute; inset: 0; z-index: 4; overflow: hidden; outline: none; }
+.kinetic-section {
   position: absolute;
   inset: 0;
-  background: var(--kinetic-ink);
-  transform-origin: top;
-}
-.kinetic-section {
-  position: relative;
-  z-index: 4;
-  min-height: 100svh;
+  display: grid;
+  opacity: 0;
+  visibility: hidden;
+  transform: scale(0.992);
+  transform-origin: 28% 52%;
   pointer-events: none;
 }
-.kinetic-section > * { pointer-events: auto; }
-.kinetic-hero {
-  min-height: 112svh;
+.kinetic-section.is-active { opacity: 1; visibility: visible; transform: scale(1); pointer-events: auto; }
+
+.kinetic-section-inner {
+  display: flex;
+  width: min(100% - 128px, 1280px);
+  height: 100%;
+  align-items: center;
+  margin: 0 auto;
+  padding: 100px 0 88px;
 }
-.kinetic-hero-copy {
-  position: absolute;
-  top: 22vh;
-  left: max(24px, 6vw);
-  width: min(620px, calc(100% - 48px));
-}
-.kinetic-hero-eyebrow {
+
+.kinetic-section-copy { width: min(610px, 52vw); min-width: 0; }
+.kinetic-section-label {
   display: block;
   margin-bottom: 20px;
-  color: var(--kinetic-teal);
-  font: 620 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: color-mix(in srgb, var(--mr-secondary) 82%, white);
+  font: 700 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
   letter-spacing: 0;
   text-transform: uppercase;
 }
-.kinetic-hero-copy h1 {
-  max-width: 100%;
+
+.kinetic-hero-copy h1,
+.kinetic-section-copy h2 {
+  max-width: 760px;
   margin: 0;
-  color: var(--kinetic-ink);
-  font-size: 108px;
-  font-weight: 620;
-  line-height: 0.92;
+  color: var(--kinetic-text);
+  font-weight: 680;
   letter-spacing: 0;
   text-wrap: balance;
 }
-.kinetic-hero-tagline {
-  margin: 26px 0 0;
-  color: var(--kinetic-ink);
-  font-size: 32px;
-  font-weight: 440;
-  line-height: 1.2;
-}
-.kinetic-hero-description {
-  max-width: 560px;
-  margin: 16px 0 0;
-  color: var(--kinetic-muted);
-  font-size: 16px;
-  line-height: 1.7;
-}
-.kinetic-hero-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 28px;
-}
-.kinetic-hero-primary,
-.kinetic-hero-secondary {
+.kinetic-hero-copy h1 { font-size: 72px; line-height: 1.02; }
+.kinetic-section-copy h2 { font-size: 50px; line-height: 1.14; }
+.kinetic-contact-content h2 span { display: block; }
+.kinetic-hero-tagline { max-width: 610px; margin: 22px 0 0; color: var(--kinetic-text); font-size: 24px; font-weight: 560; line-height: 1.45; text-wrap: balance; }
+.kinetic-section-description { max-width: 560px; margin: 18px 0 0; color: var(--kinetic-body); font-size: 16px; line-height: 1.75; text-wrap: pretty; }
+
+.kinetic-section-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 30px; }
+.kinetic-primary-action,
+.kinetic-secondary-action {
   display: inline-flex;
   min-height: 44px;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 0 18px;
+  padding: 0 16px;
   border: 1px solid transparent;
   border-radius: 8px;
   font-size: 13px;
-  font-weight: 650;
-  transition: color var(--motion-fast) var(--ease-standard), background-color var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard), transform var(--motion-fast) var(--ease-standard);
+  font-weight: 700;
+  transition: color var(--motion-fast) var(--ease-standard), background-color var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard), transform var(--motion-fast) var(--ease-standard), box-shadow var(--motion-fast) var(--ease-standard);
 }
-.kinetic-hero-primary {
+.kinetic-primary-action {
   color: #fff;
-  background: var(--color-primary, #6366f1);
+  background: color-mix(in srgb, var(--mr-primary) 88%, white);
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--mr-primary) 24%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.24);
 }
-.kinetic-hero-primary:hover {
-  background: var(--color-primary-hover, #818cf8);
-  transform: translateY(-1px);
-}
-.kinetic-hero-secondary {
-  border-color: var(--kinetic-line-strong);
-  color: var(--kinetic-ink);
-  background: rgba(19, 23, 32, 0.72);
-}
-.kinetic-hero-secondary:hover {
-  border-color: var(--kinetic-teal);
-  background: rgba(25, 30, 40, 0.9);
-  transform: translateY(-1px);
-}
+.kinetic-primary-action:hover { background: color-mix(in srgb, var(--mr-primary-strong) 88%, white); transform: translateY(-1px); }
+.kinetic-secondary-action { border-color: var(--kinetic-line); color: var(--kinetic-text); background: var(--kinetic-surface); backdrop-filter: blur(16px) saturate(112%); }
+.kinetic-secondary-action:hover { border-color: color-mix(in srgb, var(--mr-secondary) 58%, white); background: rgba(16, 22, 28, 0.8); transform: translateY(-1px); }
+
 .kinetic-hero-endpoint {
   display: flex;
   width: fit-content;
   max-width: 100%;
+  min-height: 38px;
+  align-items: center;
+  gap: 12px;
+  overflow-wrap: anywhere;
+  margin-top: 22px;
+  padding: 8px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.82);
+  background: rgba(7, 11, 14, 0.54);
+  font: 500 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  backdrop-filter: blur(14px);
+}
+.kinetic-hero-endpoint span { flex: 0 0 auto; color: var(--kinetic-muted); }
+
+.kinetic-capability-list {
+  display: flex;
   flex-wrap: wrap;
-  gap: 8px 12px;
-  margin-top: 20px;
-  color: var(--kinetic-muted);
-  font: 520 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
-  overflow-wrap: anywhere;
+  gap: 12px 22px;
+  margin: 28px 0 0;
+  padding: 0;
+  color: var(--kinetic-text);
+  font-size: 12px;
+  font-weight: 650;
+  list-style: none;
 }
-.kinetic-hero-endpoint span {
-  color: var(--kinetic-dim);
-}
-.kinetic-hero-meta {
-  position: absolute;
-  bottom: 6vh;
-  left: clamp(24px, 6vw, 96px);
-  width: min(300px, 30vw);
-}
-.kinetic-hero-meta > span,
-.kinetic-section-label,
-.kinetic-manifesto-copy > span,
-.kinetic-lab-copy > span {
-  color: var(--kinetic-dim);
-  font: 580 8px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-.kinetic-hero-meta p {
-  margin: 10px 0 0;
-  color: var(--kinetic-muted);
-  font-size: 11px;
-  line-height: 1.65;
-}
-.kinetic-manifesto {
-  min-height: 138svh;
-}
-.kinetic-manifesto-sticky,
-.kinetic-work-sticky,
-.kinetic-lab-sticky {
-  position: sticky;
-  top: 0;
-  height: 100svh;
-  overflow: hidden;
-}
-.kinetic-manifesto-wash {
-  position: absolute;
-  inset: 0;
-  background: transparent;
-  box-shadow: none;
-  pointer-events: none;
-}
-.kinetic-manifesto-layout {
-  position: absolute;
-  right: clamp(48px, 8vw, 138px);
-  bottom: clamp(54px, 8vh, 100px);
-  left: clamp(38px, 8vw, 138px);
+.kinetic-capability-list li { display: inline-flex; align-items: center; gap: 9px; }
+.kinetic-capability-list li::before { width: 5px; height: 5px; flex: 0 0 auto; border-radius: 50%; background: var(--mr-secondary); box-shadow: 0 0 0 4px color-mix(in srgb, var(--mr-secondary) 12%, transparent); content: ''; }
+
+.kinetic-about-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.24fr) minmax(270px, 0.56fr);
-  align-items: end;
-  gap: clamp(44px, 7vw, 112px);
+  grid-template-columns: minmax(0, 0.92fr) minmax(440px, 0.88fr);
+  gap: clamp(52px, 7vw, 108px);
 }
-.kinetic-manifesto-heading h1 {
-  position: relative;
-  max-width: 820px;
-  margin: 24px 0 0;
-  color: #eff6f1;
-  font-family: "Noto Sans SC", ui-sans-serif, system-ui, sans-serif;
-  font-size: 96px;
-  font-weight: 560;
-  line-height: 0.98;
-  letter-spacing: 0;
-  text-wrap: balance;
-  text-shadow: 0 14px 44px rgba(0, 0, 0, 0.24);
+.kinetic-about-intro { width: 100%; }
+.kinetic-about-directory {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-content: center;
+  gap: 30px 34px;
 }
-.kinetic-manifesto-heading h1 span {
-  display: block;
-  max-width: 100%;
-  overflow-wrap: anywhere;
-}
-.kinetic-manifesto-heading h1 span:nth-child(2) {
-  color: #b9f3da;
-}
-.kinetic-manifesto-copy {
-  max-width: 380px;
-  padding-bottom: 2vh;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-}
-.kinetic-manifesto-copy p {
-  margin: 18px 0 0;
-  color: var(--kinetic-muted);
-  font-size: clamp(10px, 0.9vw, 13px);
-  line-height: 1.62;
-}
-.kinetic-manifesto-copy code {
-  display: block;
-  overflow: hidden;
-  margin-top: 24px;
+.kinetic-about-group {
+  min-width: 0;
   padding-top: 14px;
   border-top: 1px solid var(--kinetic-line);
-  color: rgba(151, 235, 217, 0.62);
-  font-size: 8px;
-  text-overflow: ellipsis;
+}
+.kinetic-about-group > span {
+  display: block;
+  margin-bottom: 7px;
+  color: color-mix(in srgb, var(--mr-secondary) 80%, white);
+  font: 650 9px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.kinetic-about-group h3 {
+  margin: 0;
+  color: var(--kinetic-text);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+.kinetic-about-group ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px 13px;
+  margin: 12px 0 0;
+  padding: 0;
+  color: var(--kinetic-body);
+  font-size: 12px;
+  line-height: 1.5;
+  list-style: none;
+}
+.kinetic-about-group li { position: relative; padding-left: 10px; }
+.kinetic-about-group li::before {
+  position: absolute;
+  top: 0.66em;
+  left: 0;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--mr-secondary);
+  content: '';
+}
+.kinetic-about-industries { grid-column: 1 / -1; }
+
+.kinetic-section-index {
+  position: absolute;
+  top: 50%;
+  right: clamp(18px, 3vw, 48px);
+  z-index: 13;
+  display: grid;
+  gap: 2px;
+  transform: translateY(-50%);
+}
+.kinetic-section-index button {
+  position: relative;
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  color: var(--kinetic-text);
+}
+.kinetic-section-index button::before {
+  position: absolute;
+  top: 50%;
+  right: 38px;
+  max-width: 180px;
+  padding: 5px 8px;
+  border: 1px solid var(--kinetic-line);
+  border-radius: 6px;
+  opacity: 0;
+  color: var(--kinetic-text);
+  background: rgba(8, 12, 15, 0.82);
+  box-shadow: var(--shadow-sm);
+  content: attr(data-label);
+  font-size: 11px;
+  pointer-events: none;
+  transform: translate(5px, -50%);
+  transition: opacity var(--motion-fast) var(--ease-standard), transform var(--motion-fast) var(--ease-standard);
   white-space: nowrap;
 }
-.kinetic-work {
-  min-height: 460svh;
-}
-.kinetic-work-heading {
-  position: absolute;
-  top: clamp(88px, 12vh, 138px);
-  left: clamp(28px, 4.8vw, 78px);
-  z-index: 140;
-}
-.kinetic-work-heading h2 {
-  margin: 9px 0 0;
-  color: var(--kinetic-ink);
-  font: 470 clamp(22px, 2.5vw, 40px)/1 ui-monospace, SFMono-Regular, Menlo, monospace;
-  letter-spacing: 0;
-  text-transform: uppercase;
-}
-.kinetic-deck {
-  position: absolute;
-  inset: 0;
-  perspective: 1300px;
-  transform-style: preserve-3d;
-}
-.kinetic-card {
-  --card-accent: 129, 140, 248;
-  --card-secondary: 34, 211, 238;
-  --deck-x: 0vw;
-  --deck-y: 0vh;
-  --deck-z: 0px;
-  --deck-ry: 0deg;
-  --deck-rz: 0deg;
-  --deck-scale: 1;
-  --deck-opacity: 1;
-  --deck-order: 100;
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  z-index: var(--deck-order);
-  display: flex;
-  width: min(46vw, 640px);
-  height: min(54vh, 530px);
-  min-height: 370px;
-  flex-direction: column;
-  justify-content: space-between;
-  overflow: hidden;
-  padding: clamp(20px, 2.4vw, 34px);
-  border: 1px solid rgba(199, 210, 254, 0.28);
-  border-radius: 16px;
-  color: #f5fbf8;
-  background: rgba(11, 13, 18, 0.9);
-  box-shadow: inset 0 1px rgba(255, 255, 255, 0.08), 0 24px 58px rgba(0, 0, 0, 0.28);
-  opacity: var(--deck-opacity);
-  transform: translate3d(calc(-50% + var(--deck-x)), calc(-50% + var(--deck-y)), var(--deck-z)) rotateY(var(--deck-ry)) rotateZ(var(--deck-rz)) scale(var(--deck-scale));
-  transform-style: preserve-3d;
-  transition: border-color var(--motion-base) var(--ease-standard), box-shadow var(--motion-base) var(--ease-standard);
-  will-change: transform, opacity;
-}
-.kinetic-card::before {
-  position: absolute;
-  inset: 34% 0 0;
-  z-index: 1;
-  background: linear-gradient(180deg, transparent, rgba(7, 9, 13, 0.54) 34%, rgba(7, 9, 13, 0.96));
-  content: '';
-  pointer-events: none;
-}
-.kinetic-card::after {
-  position: absolute;
-  inset: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.045);
-  border-radius: 10px;
-  content: '';
-  pointer-events: none;
-}
-.kinetic-card.is-active {
-  border-color: rgba(165, 180, 252, 0.62);
-  box-shadow: inset 0 1px rgba(255, 255, 255, 0.12), 0 28px 70px rgba(0, 0, 0, 0.34);
-}
-.kinetic-card-visual {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  background:
-    radial-gradient(circle at 53% 36%, rgba(var(--card-accent), 0.38), transparent 24%),
-    radial-gradient(circle at 16% 84%, rgba(var(--card-secondary), 0.3), transparent 38%),
-    radial-gradient(circle at 88% 72%, rgba(var(--card-accent), 0.14), transparent 30%),
-    #0b0d12;
-}
-.kinetic-card-routing { --card-accent: 99, 102, 241; --card-secondary: 34, 211, 238; }
-.kinetic-card-signals { --card-accent: 34, 211, 238; --card-secondary: 129, 140, 248; }
-.kinetic-card-learning { --card-accent: 74, 222, 128; --card-secondary: 129, 140, 248; }
-.kinetic-card-control { --card-accent: 129, 140, 248; --card-secondary: 94, 234, 212; }
-.kinetic-card-plane {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  display: block;
-  border: 1px solid rgba(220, 250, 240, 0.38);
-  background: rgba(var(--card-accent), 0.07);
-  box-shadow: inset 0 0 24px rgba(var(--card-secondary), 0.06);
-  transform-style: preserve-3d;
-}
-.kinetic-card-plane-one {
-  width: 46%;
-  height: 62%;
-  transform: translate(-76%, -53%) rotate(-16deg) skewY(8deg);
-}
-.kinetic-card-plane-two {
-  width: 52%;
-  height: 52%;
-  transform: translate(-14%, -44%) rotate(19deg) skewX(-9deg);
-}
-.kinetic-card-plane-three {
-  width: 20%;
-  height: 86%;
-  background: rgba(161, 128, 255, 0.12);
-  transform: translate(-50%, -52%) rotate(42deg);
-}
-.kinetic-card-orbit {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  display: block;
-  width: 34%;
-  aspect-ratio: 1;
-  border: 2px solid rgba(239, 255, 247, 0.56);
+.kinetic-section-index button:hover::before,
+.kinetic-section-index button:focus-visible::before { opacity: 1; transform: translate(0, -50%); }
+.kinetic-section-index i {
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
-  box-shadow: 0 0 0 9px rgba(111, 222, 211, 0.06), 0 0 42px rgba(151, 255, 231, 0.18);
-  transform: translate(-50%, -50%);
+  background: rgba(255, 255, 255, 0.42);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+  transition: height var(--motion-base) var(--ease-enter), background-color var(--motion-base) var(--ease-standard), box-shadow var(--motion-base) var(--ease-standard);
 }
-.kinetic-card-scan {
+.kinetic-section-index button.is-active i { height: 18px; background: color-mix(in srgb, var(--mr-secondary) 76%, white); box-shadow: 0 0 0 4px color-mix(in srgb, var(--mr-secondary) 12%, transparent); }
+
+.kinetic-next-section {
   position: absolute;
-  right: -20%;
-  bottom: 17%;
-  left: -20%;
-  height: 1px;
-  background: rgba(239, 255, 248, 0.68);
-  box-shadow: 0 0 18px rgba(128, 255, 226, 0.46);
-  transform: rotate(-9deg);
-}
-.kinetic-card-particles {
-  position: absolute;
-  inset: 0;
-  display: block;
-  pointer-events: none;
-}
-.kinetic-card-particle {
-  position: absolute;
-  top: var(--particle-top);
-  left: var(--particle-left);
-  display: block;
-  width: var(--particle-size);
-  height: var(--particle-size);
-  border-radius: 50%;
-  opacity: var(--particle-alpha);
-  background: rgb(var(--card-accent));
-  box-shadow: 0 0 8px rgba(var(--card-accent), 0.7);
-  will-change: transform, opacity;
-}
-.kinetic-card-topline,
-.kinetic-card-content {
-  position: relative;
-  z-index: 2;
-}
-.kinetic-card-topline {
-  display: flex;
-  justify-content: space-between;
-  color: rgba(235, 248, 242, 0.62);
-  font: 560 8px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
-  letter-spacing: 0.1em;
-}
-.kinetic-card-content {
-  display: flex;
-  max-width: 82%;
-  flex-direction: column;
-  align-items: flex-start;
-  padding: 0;
-}
-.kinetic-card-content h3 {
-  margin: 0;
-  font: 540 clamp(30px, 3.7vw, 54px)/0.96 ui-monospace, SFMono-Regular, Menlo, monospace;
-  letter-spacing: 0;
-  text-transform: uppercase;
-}
-.kinetic-card-content p {
-  margin: 15px 0 0;
-  color: rgba(226, 232, 240, 0.76);
-  font-size: 12px;
-  line-height: 1.62;
-}
-.kinetic-card-content a {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 18px;
-  padding-bottom: 4px;
-  border-bottom: 1px solid rgba(235, 249, 242, 0.42);
-  color: #f4fbf7;
-  font: 560 8px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
-  letter-spacing: 0.07em;
-}
-.kinetic-work-filter {
-  position: absolute;
-  bottom: clamp(28px, 5vh, 64px);
-  left: clamp(28px, 4.8vw, 78px);
-  z-index: 145;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 9px;
-}
-.kinetic-work-filter > span {
-  margin-bottom: 4px;
-  color: var(--kinetic-dim);
-  font: 560 7px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-}
-.kinetic-work-filter button {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  color: rgba(213, 231, 222, 0.46);
-  font: 540 8px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
-  text-transform: uppercase;
-  transition: color var(--motion-fast) var(--ease-standard), transform var(--motion-fast) var(--ease-standard);
-}
-.kinetic-work-filter button i {
-  width: 10px;
-  height: 1px;
-  background: currentColor;
-}
-.kinetic-work-filter button:hover,
-.kinetic-work-filter button.is-active { color: #f4fbf7; transform: translateX(2px); }
-.kinetic-deck-progress {
-  position: absolute;
-  right: clamp(52px, 7vw, 110px);
-  bottom: clamp(30px, 5vh, 66px);
-  z-index: 145;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--kinetic-dim);
-  font: 560 7px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
-}
-.kinetic-deck-progress > i {
-  position: relative;
-  display: block;
-  width: 86px;
-  height: 1px;
-  background: var(--kinetic-line);
-}
-.kinetic-deck-progress b {
-  position: absolute;
-  inset: 0;
-  background: #eefaf5;
-  transform-origin: left;
-}
-.kinetic-lab {
-  min-height: 146svh;
-}
-.kinetic-lab-sticky::before {
-  position: absolute;
-  inset: 0;
-  background: transparent;
-  box-shadow: none;
-  content: '';
-  pointer-events: none;
-}
-.kinetic-lab-shell {
-  position: absolute;
-  top: 51%;
-  right: 0;
-  left: 0;
+  bottom: max(20px, env(safe-area-inset-bottom));
+  left: 50%;
+  z-index: 13;
   display: grid;
-  width: 100%;
-  min-height: 430px;
-  grid-template-columns: minmax(0, 1.18fr) minmax(150px, 0.44fr) minmax(260px, 0.72fr);
-  align-items: center;
-  gap: clamp(32px, 5vw, 78px);
-  padding: clamp(42px, 5vw, 72px) max(56px, calc((100vw - 1180px) / 2 + 56px));
-  color: #eff8f3;
-  background: transparent;
-  transform: translateY(-50%);
-  isolation: isolate;
-}
-.kinetic-lab-heading {
-  position: relative;
-  display: flex;
-  min-width: 0;
-  min-height: 150px;
-  flex-direction: column;
-  justify-content: center;
-  gap: 0;
-}
-.kinetic-lab-heading > .kinetic-section-label {
-  position: absolute;
-  top: 0;
-  left: 0;
-}
-.kinetic-lab-title-row {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: clamp(18px, 2.6vw, 36px);
-}
-.kinetic-lab-mark {
-  display: grid;
-  width: 76px;
-  flex: 0 0 auto;
-  aspect-ratio: 1;
+  width: 44px;
+  height: 44px;
   place-items: center;
-  border: 1px solid rgba(239, 255, 247, 0.56);
+  border: 1px solid var(--kinetic-line);
   border-radius: 50%;
-  box-shadow: 0 0 0 8px rgba(151, 247, 222, 0.04);
-  font: 560 24px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
-}
-.kinetic-lab-shell h2 {
-  min-width: 0;
-  margin: 0;
-  font-family: "Noto Sans SC", ui-sans-serif, system-ui, sans-serif;
-  font-size: 58px;
-  font-weight: 560;
-  line-height: 1;
-  letter-spacing: 0;
-  overflow-wrap: anywhere;
-}
-.kinetic-lab-route {
-  position: relative;
-  width: 100%;
-  height: 150px;
-}
-.kinetic-lab-route::before,
-.kinetic-lab-route::after {
-  position: absolute;
-  left: 50%;
-  width: 1px;
-  height: 34%;
-  background: rgba(197, 241, 224, 0.18);
-  content: '';
+  color: var(--kinetic-text);
+  background: rgba(7, 11, 14, 0.42);
+  backdrop-filter: blur(14px);
   transform: translateX(-50%);
+  transition: color var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard), background-color var(--motion-fast) var(--ease-standard);
 }
-.kinetic-lab-route::before { top: 0; }
-.kinetic-lab-route::after { bottom: 0; }
-.kinetic-lab-route-line {
-  position: absolute;
-  top: 50%;
-  right: 0;
-  left: 0;
-  height: 1px;
-  background: rgba(209, 249, 233, 0.38);
-}
-.kinetic-lab-route-node {
-  position: absolute;
-  top: 50%;
-  width: 9px;
-  height: 9px;
-  border: 1px solid rgba(218, 255, 239, 0.68);
-  border-radius: 50%;
-  background: #12372d;
-  transform: translate(-50%, -50%);
-}
-.kinetic-lab-route-node-start { left: 0; }
-.kinetic-lab-route-node-middle { left: 28%; }
-.kinetic-lab-route-node-end { left: 100%; }
-.kinetic-lab-route strong {
-  position: absolute;
-  top: 50%;
-  left: 58%;
-  display: grid;
-  width: 58px;
-  aspect-ratio: 1;
-  place-items: center;
-  border: 1px solid rgba(229, 255, 242, 0.58);
-  border-radius: 50%;
-  color: #e9fff4;
-  background: rgba(16, 56, 45, 0.74);
-  box-shadow: 0 0 0 8px rgba(112, 230, 190, 0.05);
-  font: 600 17px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
-  transform: translate(-50%, -50%);
-}
-.kinetic-lab-copy { max-width: 340px; }
-.kinetic-lab-copy p {
-  margin: 15px 0 0;
-  color: var(--kinetic-muted);
-  font-size: 13px;
-  line-height: 1.68;
-}
-.kinetic-lab-copy a {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 18px;
-  padding-bottom: 4px;
-  border-bottom: 1px solid var(--kinetic-line-strong);
-  color: var(--kinetic-ink);
-  font: 560 9px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
-}
-.kinetic-contact {
-  display: flex;
-  min-height: 112svh;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-}
-.kinetic-contact::before {
-  position: absolute;
-  inset: 0;
-  background: transparent;
-  content: '';
-  pointer-events: none;
-}
-.kinetic-contact-content {
-  position: relative;
-  z-index: 3;
-  display: flex;
-  max-width: 1140px;
-  flex-direction: column;
-  align-items: center;
-  padding: 100px 28px;
-}
-.kinetic-contact-content h2 {
-  margin: 24px 0 0;
-  font: 470 clamp(62px, 9.2vw, 152px)/0.78 ui-monospace, SFMono-Regular, Menlo, monospace;
-  letter-spacing: 0;
-  text-transform: uppercase;
-}
-.kinetic-contact-content h2 span { display: block; }
-.kinetic-contact-content h2 span:last-child { color: transparent; -webkit-text-stroke: 1px rgba(235, 249, 242, 0.75); }
-.kinetic-contact-content p {
-  max-width: 520px;
-  margin: 32px 0 0;
-  color: var(--kinetic-muted);
-  font-size: 13px;
-  line-height: 1.65;
-}
-.kinetic-primary-cta {
-  position: relative;
-  display: inline-flex;
-  width: 132px;
-  height: 132px;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  margin-top: 32px;
-  border: 1px solid var(--kinetic-line-strong);
-  border-radius: 50%;
-  color: #f3fbf7;
-  background: rgba(3, 10, 12, 0.54);
-  font: 570 9px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
-  backdrop-filter: blur(15px);
-  transition: border-color var(--motion-base) var(--ease-standard), background-color var(--motion-base) var(--ease-standard), transform var(--motion-base) var(--ease-enter);
-}
-.kinetic-primary-cta::before {
-  position: absolute;
-  inset: 8px;
-  border: 1px solid rgba(119, 231, 215, 0.28);
-  border-radius: inherit;
-  content: '';
-  transition: transform var(--motion-slow) var(--ease-enter);
-}
-.kinetic-primary-cta:hover { border-color: var(--kinetic-teal); background: rgba(30, 94, 91, 0.56); transform: rotate(-4deg) scale(1.025); }
-.kinetic-primary-cta:hover::before { transform: rotate(24deg); }
+.kinetic-next-section:hover { border-color: color-mix(in srgb, var(--mr-secondary) 58%, white); color: color-mix(in srgb, var(--mr-secondary) 68%, white); background: rgba(10, 15, 19, 0.72); }
+
 .kinetic-footer {
   position: absolute;
-  right: clamp(24px, 3.6vw, 58px);
-  bottom: 28px;
-  left: clamp(24px, 3.6vw, 58px);
-  z-index: 30;
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  align-items: center;
-  gap: 28px;
-  padding-top: 15px;
-  border-top: 1px solid var(--kinetic-line);
-  color: var(--kinetic-dim);
-  font: 550 7px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace;
-  letter-spacing: 0.08em;
-  text-align: left;
-}
-.kinetic-footer > span:last-child { text-align: right; }
-.kinetic-footer-links {
+  right: clamp(24px, 4vw, 64px);
+  bottom: max(18px, env(safe-area-inset-bottom));
+  left: clamp(24px, 4vw, 64px);
   display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-}
-.kinetic-footer-links a,
-.kinetic-footer-links button { color: var(--kinetic-muted); transition: color var(--motion-fast) var(--ease-standard); }
-.kinetic-footer-links a:hover,
-.kinetic-footer-links button:hover { color: #fff; }
-.kinetic-loader {
-  position: fixed;
-  inset: 0;
-  z-index: 100;
-  display: grid;
-  place-content: center;
-  color: #eef7f2;
-  background: #26332d;
-  contain: layout paint style;
-  pointer-events: none;
-}
-.kinetic-loader-shell {
-  display: grid;
-  width: min(330px, calc(100vw - 48px));
-  grid-template-columns: 52px minmax(0, 1fr);
-  align-items: center;
-  gap: 17px;
-}
-.kinetic-loader-mark {
-  display: grid;
-  width: 52px;
-  height: 52px;
-  place-items: center;
-  overflow: hidden;
-  border: 1px solid rgba(226, 232, 240, 0.36);
-  border-radius: 50%;
-  background: rgba(11, 13, 18, 0.62);
-  font: 650 15px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
-}
-.kinetic-loader-mark img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-.kinetic-loader-status {
-  display: flex;
-  min-width: 0;
+  min-height: 40px;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  color: rgba(226, 232, 240, 0.68);
-  font: 560 10px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  gap: 24px;
+  color: var(--kinetic-muted);
+  font-size: 10px;
 }
-.kinetic-loader-status > span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.kinetic-loader-status strong {
-  color: #f5f7fb;
-  font-size: 13px;
-  font-weight: 620;
-}
-.kinetic-loader-track {
-  position: relative;
-  display: block;
-  height: 3px;
-  grid-column: 2;
-  overflow: hidden;
-  background: rgba(226, 232, 240, 0.16);
-}
-.kinetic-loader-track b {
+.kinetic-footer-links { display: flex; align-items: center; gap: 18px; }
+.kinetic-footer-links a { color: var(--kinetic-body); transition: color var(--motion-fast) var(--ease-standard); }
+.kinetic-footer-links a:hover { color: var(--kinetic-text); }
+
+.kinetic-loader { z-index: 30; display: grid; place-items: center; background: rgba(7, 10, 12, 0.9); }
+.kinetic-loader-shell { display: flex; min-height: 42px; align-items: center; gap: 14px; }
+.kinetic-loader-mark { display: grid; width: 42px; height: 42px; place-items: center; overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.24); border-radius: 8px; color: #fff; background: color-mix(in srgb, var(--mr-primary) 78%, rgba(10, 14, 18, 0.9)); font: 700 17px/1 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.kinetic-loader-status { display: grid; min-width: 140px; align-items: center; grid-template-columns: 1fr auto; gap: 16px; color: var(--kinetic-body); font-size: 11px; line-height: 1; }
+.kinetic-loader-status > span, .kinetic-loader-status strong { display: inline-flex; min-height: 16px; align-items: center; }
+.kinetic-loader-status strong { min-width: 2ch; justify-content: flex-end; color: var(--kinetic-text); font: 600 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace; text-align: right; }
+.kinetic-loader-enter-active, .kinetic-loader-leave-active { transition: opacity 220ms var(--ease-standard); }
+.kinetic-loader-enter-from, .kinetic-loader-leave-to { opacity: 0; }
+
+.kinetic-skip-link {
   position: absolute;
-  inset: 0;
-  background: #a5b4fc;
-  transform-origin: left;
-  transition: transform 100ms linear;
+  top: 8px;
+  left: 16px;
+  z-index: 40;
+  padding: 9px 12px;
+  border-radius: 8px;
+  color: #fff;
+  background: var(--mr-primary);
+  transform: translateY(-160%);
+  transition: transform var(--motion-fast) var(--ease-enter);
 }
-.kinetic-loader-enter-active,
-.kinetic-loader-leave-active { transition: opacity 280ms var(--ease-standard); }
-.kinetic-loader-enter-from,
-.kinetic-loader-leave-to { opacity: 0; }
+.kinetic-skip-link:focus { transform: translateY(0); }
+.kinetic-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; margin: -1px; padding: 0; border: 0; clip: rect(0, 0, 0, 0); white-space: nowrap; }
 
-@media (max-width: 1120px) {
-  .kinetic-lab-shell {
-    grid-template-columns: minmax(0, 1fr) minmax(280px, 0.62fr);
-    padding-right: 34px;
-    padding-left: 34px;
-  }
-  .kinetic-lab-route { display: none; }
-}
-
-@media (max-width: 920px) {
-  .kinetic-wordmark-copy { display: none; }
-  .kinetic-section-index { display: none; }
-  .kinetic-hero-copy h1 { font-size: 82px; }
-  .kinetic-manifesto-layout {
-    right: 34px;
-    bottom: 72px;
-    left: 34px;
-    grid-template-columns: 1fr;
-    gap: 40px;
-  }
-  .kinetic-manifesto-copy { max-width: 440px; margin-left: auto; }
-  .kinetic-card { width: min(64vw, 600px); }
-  .kinetic-lab-shell {
-    width: 100%;
-    grid-template-columns: minmax(0, 1fr) minmax(180px, 0.58fr);
-  }
+.kinetic-home button:focus-visible,
+.kinetic-home a:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--mr-secondary) 68%, white);
+  outline-offset: 3px;
 }
 
-@media (max-width: 640px) {
-  .kinetic-header { padding: 16px; }
-  .kinetic-top-nav { min-width: 164px; height: 36px; padding: 0 13px; }
-  .kinetic-wordmark-mark { width: 34px; height: 34px; }
-  .kinetic-hero { min-height: 104svh; }
-  .kinetic-hero-copy { top: 112px; right: 18px; left: 18px; width: auto; }
-  .kinetic-hero-eyebrow { margin-bottom: 14px; font-size: 9px; }
-  .kinetic-hero-copy h1 { font-size: 50px; line-height: 0.96; }
-  .kinetic-hero-tagline { margin-top: 18px; font-size: 26px; }
-  .kinetic-hero-description { max-width: 430px; margin-top: 12px; font-size: 14px; line-height: 1.6; }
-  .kinetic-hero-actions { margin-top: 20px; }
-  .kinetic-hero-primary, .kinetic-hero-secondary { min-height: 42px; padding: 0 14px; }
-  .kinetic-hero-endpoint { margin-top: 16px; font-size: 9px; }
-  .kinetic-hero-meta { bottom: 34px; left: 18px; width: min(280px, 72vw); }
-  .kinetic-manifesto { min-height: 128svh; }
-  .kinetic-manifesto-layout { right: 18px; bottom: 72px; left: 18px; gap: 32px; }
-  .kinetic-manifesto-heading h1 { max-width: 100%; font-size: 48px; line-height: 1; }
-  .kinetic-manifesto-copy { margin: 0; }
-  .kinetic-manifesto-copy p:nth-of-type(2) { display: none; }
-  .kinetic-work { min-height: 410svh; }
-  .kinetic-work-heading { top: 78px; left: 18px; }
-  .kinetic-card {
-    width: 82vw;
-    height: 54vh;
-    min-height: 390px;
-    padding: 20px;
-  }
-  .kinetic-card-content { max-width: 92%; padding: 0; }
-  .kinetic-card-content h3 { font-size: clamp(31px, 10vw, 48px); }
-  .kinetic-work-filter {
-    right: 18px;
-    bottom: 26px;
-    left: 18px;
-    flex-direction: row;
-    flex-wrap: wrap;
-    gap: 8px 14px;
-  }
-  .kinetic-work-filter > span { width: 100%; }
-  .kinetic-work-filter button { font-size: 7px; }
-  .kinetic-deck-progress { display: none; }
-  .kinetic-lab { min-height: 132svh; }
-  .kinetic-lab-shell {
-    width: 100%;
-    min-height: 0;
-    grid-template-columns: 1fr;
-    justify-items: start;
-    gap: 32px;
-    padding: 38px 20px;
-  }
-  .kinetic-lab-heading {
-    min-height: 0;
-    justify-content: flex-start;
-    gap: 22px;
-  }
-  .kinetic-lab-heading > .kinetic-section-label { position: static; }
-  .kinetic-lab-title-row { gap: 18px; }
-  .kinetic-lab-mark { width: 56px; font-size: 18px; }
-  .kinetic-lab-shell h2 { font-size: 42px; }
-  .kinetic-lab-copy { max-width: 100%; }
-  .kinetic-contact-content { padding-right: 18px; padding-left: 18px; }
-  .kinetic-contact-content h2 { font-size: clamp(54px, 16vw, 76px); line-height: 0.82; }
-  .kinetic-primary-cta { width: 108px; height: 108px; }
-  .kinetic-footer { right: 18px; bottom: 18px; left: 18px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
-  .kinetic-footer-links { flex-wrap: wrap; justify-content: flex-start; }
-  .kinetic-footer > span:last-child { display: none; }
+@media (max-width: 900px) {
+  .kinetic-world-shade { background: rgba(5, 9, 11, 0.34); box-shadow: inset 72vw 0 38vw -18vw rgba(3, 7, 9, 0.74), inset 0 -22vh 20vh -15vh rgba(3, 7, 9, 0.58); }
+  .kinetic-section-inner { width: min(100% - 64px, 760px); }
+  .kinetic-section-copy { width: min(580px, 72vw); }
+  .kinetic-about-layout { grid-template-columns: minmax(0, 1fr) minmax(310px, 0.7fr); gap: 44px; }
+  .kinetic-about-intro { width: 100%; }
+  .kinetic-about-directory { grid-template-columns: 1fr; gap: 18px; }
+  .kinetic-about-industries { grid-column: auto; }
+  .kinetic-hero-copy h1 { font-size: 60px; }
+  .kinetic-section-copy h2 { font-size: 44px; }
+}
+
+@media (max-width: 700px) {
+  .kinetic-home { touch-action: pan-x pinch-zoom; }
+  .kinetic-world-shade { background: rgba(4, 8, 10, 0.3); box-shadow: inset 0 48vh 30vh -13vh rgba(3, 7, 9, 0.82), inset 0 -18vh 18vh -12vh rgba(3, 7, 9, 0.5); }
+  .kinetic-ambient { opacity: 0.34; }
+  .kinetic-header { min-height: 64px; padding: max(10px, env(safe-area-inset-top)) 16px 8px; }
+  .kinetic-wordmark-copy small { display: none; }
+  .kinetic-wordmark-copy strong { max-width: 112px; }
+  .kinetic-top-nav { gap: 10px; }
+  .kinetic-canvas-nav { display: none !important; }
+  .kinetic-nav-signal { display: none; }
+  .kinetic-section-inner { width: calc(100% - 40px); align-items: flex-start; padding: 104px 0 122px; }
+  .kinetic-section-copy { width: 100%; }
+  .kinetic-about-layout { display: flex; overflow: hidden; flex-direction: column; align-items: stretch; gap: 22px; }
+  .kinetic-about-intro { flex: 0 0 auto; }
+  .kinetic-about-directory { width: 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 20px; }
+  .kinetic-about-industries { grid-column: 1 / -1; }
+  .kinetic-about-group { padding-top: 10px; }
+  .kinetic-about-group > span { margin-bottom: 4px; }
+  .kinetic-about-group ul { gap: 5px 11px; margin-top: 7px; font-size: 11px; }
+  .kinetic-section-label { margin-bottom: 14px; font-size: 10px; }
+  .kinetic-hero-copy h1 { font-size: 44px; line-height: 1.08; }
+  .kinetic-section-copy h2 { max-width: 520px; font-size: 38px; line-height: 1.18; }
+  .kinetic-hero-tagline { margin-top: 16px; font-size: 19px; line-height: 1.45; }
+  .kinetic-section-description { max-width: 500px; margin-top: 12px; font-size: 14px; line-height: 1.65; }
+  .kinetic-section-actions { margin-top: 22px; }
+  .kinetic-hero-endpoint { margin-top: 16px; }
+  .kinetic-capability-list { gap: 10px 16px; margin-top: 20px; }
+  .kinetic-section-index { top: auto; right: 12px; bottom: max(18px, env(safe-area-inset-bottom)); display: flex; transform: none; }
+  .kinetic-section-index button { width: 34px; height: 34px; }
+  .kinetic-section-index button::before { display: none; }
+  .kinetic-section-index button.is-active i { width: 18px; height: 5px; }
+  .kinetic-next-section { bottom: max(16px, env(safe-area-inset-bottom)); left: 20px; width: 36px; height: 36px; transform: none; }
+  .kinetic-footer { right: 20px; bottom: max(58px, calc(env(safe-area-inset-bottom) + 48px)); left: 20px; display: grid; gap: 8px; }
+  .kinetic-footer-links { gap: 14px; }
+}
+
+@media (max-width: 430px) {
   .compact-home-nav { width: min(100% - 20px, 1180px); }
   .compact-home-actions :deep(.locale-switcher) { display: none; }
+  .compact-home-content h1 { font-size: 38px; }
+  .kinetic-wordmark-copy { display: none; }
+  .kinetic-top-nav { gap: 8px; }
+  .kinetic-top-nav a, .kinetic-top-nav button { font-size: 11px; }
+  .kinetic-section-inner { width: calc(100% - 32px); padding-top: 94px; }
+  .kinetic-hero-copy h1 { font-size: 40px; }
+  .kinetic-section-copy h2 { font-size: 34px; }
+  .kinetic-section-actions { gap: 8px; }
+  .kinetic-about-layout { gap: 16px; }
+  .kinetic-about-intro .kinetic-section-description { font-size: 13px; line-height: 1.55; }
+  .kinetic-about-directory { gap: 10px 14px; }
+  .kinetic-about-group h3 { font-size: 13px; }
+  .kinetic-about-group ul { gap: 4px 9px; font-size: 10.5px; }
+  .kinetic-primary-action, .kinetic-secondary-action { padding: 0 13px; font-size: 12px; }
+  .kinetic-hero-endpoint { display: grid; gap: 3px; font-size: 10px; }
+  .kinetic-footer-links { flex-wrap: wrap; gap: 8px 12px; }
+}
+
+@media (max-height: 720px) {
+  .kinetic-section-inner { padding-top: 84px; padding-bottom: 78px; }
+  .kinetic-section-label { margin-bottom: 10px; }
+  .kinetic-hero-copy h1 { font-size: 42px; }
+  .kinetic-section-copy h2 { font-size: 36px; }
+  .kinetic-hero-tagline { margin-top: 12px; font-size: 18px; }
+  .kinetic-section-description { margin-top: 10px; line-height: 1.55; }
+  .kinetic-section-actions { margin-top: 16px; }
+  .kinetic-hero-endpoint { margin-top: 12px; }
+  .kinetic-capability-list { margin-top: 16px; }
+  .kinetic-about-layout { gap: 12px; }
+  .kinetic-about-intro h2 { font-size: 30px; line-height: 1.14; }
+  .kinetic-about-intro .kinetic-section-description { max-width: 680px; font-size: 12.5px; line-height: 1.5; }
+  .kinetic-about-intro .kinetic-section-actions { margin-top: 12px; }
+  .kinetic-about-group { padding-top: 7px; }
+  .kinetic-about-group ul { margin-top: 5px; font-size: 10px; line-height: 1.35; }
+}
+
+@media (min-width: 701px) and (max-height: 720px) {
+  .kinetic-about-directory { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+  .kinetic-about-industries { grid-column: auto; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .kinetic-nav-signal i { animation: none; }
-  .kinetic-wordmark,
-  .kinetic-top-nav button,
-  .kinetic-work-filter button,
-  .kinetic-primary-cta,
-  .kinetic-primary-cta::before,
-  .kinetic-footer a,
-  .kinetic-footer button,
-  .kinetic-loader,
-  .kinetic-loader-track b { transition-duration: 1ms !important; }
-  .kinetic-card { will-change: auto; }
-  .kinetic-card-particle { will-change: auto; }
-  .kinetic-reveal { opacity: 1 !important; visibility: visible !important; transform: none !important; }
-  .kinetic-loader { display: none; }
+  .kinetic-loader-enter-active,
+  .kinetic-loader-leave-active,
+  .kinetic-section-index i,
+  .kinetic-section-index button::before,
+  .kinetic-primary-action,
+  .kinetic-secondary-action,
+  .kinetic-next-section { transition-duration: 1ms; }
 }
 </style>

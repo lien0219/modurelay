@@ -111,6 +111,53 @@ describe('AppSidebar canvas workspace transition', () => {
   })
 })
 
+describe('AppSidebar website navigation', () => {
+  it('exposes the official home and authenticated about page in a dedicated section', () => {
+    expect(componentSource).toContain("{{ t('nav.website') }}")
+    expect(componentSource).toContain("{ path: '/home', label: t('nav.home'), icon: SiteHomeIcon }")
+    expect(componentSource).toContain("{ path: '/about', label: t('nav.aboutUs'), icon: AboutIcon }")
+  })
+
+  it('uses distinct existing icons and matches hash routes precisely', () => {
+    expect(componentSource).toContain("render: () => h(Icon, { name: 'home' })")
+    expect(componentSource).toContain("render: () => h(Icon, { name: 'infoCircle' })")
+    expect(componentSource).toContain("route.hash === `#${hash}`")
+  })
+})
+
+describe('AppSidebar personal navigation order', () => {
+  it('keeps primary tools and account operations ahead of guidance and billing', () => {
+    const navBlock = componentSource.slice(
+      componentSource.indexOf('function buildSelfNavItems'),
+      componentSource.indexOf('// finalizeNav')
+    )
+    const expectedPaths = [
+      '/canvas',
+      '/batch-image',
+      '/keys',
+      '/usage',
+      '/available-channels',
+      '/monitor',
+      '/quick-start',
+      '/ai-learning',
+      '/subscriptions',
+      '/purchase',
+      '/recharge',
+      '/orders',
+      '/activities',
+      '/redeem',
+      '/resource-center',
+      '/affiliate',
+      '/distribution',
+      '/profile'
+    ]
+    const positions = expectedPaths.map(path => navBlock.indexOf(`path: '${path}'`))
+
+    expect(positions.every(position => position >= 0)).toBe(true)
+    expect(positions).toEqual([...positions].sort((left, right) => left - right))
+  })
+})
+
 describe('AppSidebar distribution placeholders', () => {
   it('adds distinct user and administrator distribution entries', () => {
     expect(componentSource).toContain("{ path: '/distribution', label: t('nav.distribution'), icon: DistributionIcon }")

@@ -164,6 +164,9 @@ export default {
 
   // Navigation
   nav: {
+    website: '官网',
+    home: '官网首页',
+    aboutUs: '关于我们',
     dashboard: '仪表盘',
     announcements: '公告',
     apiKeys: 'API 密钥',
@@ -462,6 +465,51 @@ export default {
     verifyFailed: '验证失败，请重试',
     notEnabled: '此操作需要开启二次验证，请先在个人资料中启用 TOTP。',
     adminApiKeyForbidden: '管理 API Key 无法执行此操作，请使用已通过二次验证的管理员会话。'
+  },
+
+  about: {
+    eyebrow: 'ModuRelay 企业服务',
+    title: '关于我们',
+    description: '面向企业的 AI 聚合与数字化交付团队，把模型能力、业务流程与软件工程组织成可落地的生产力。',
+    scopeLabel: '企业级服务范围',
+    heroKicker: '从想法到可持续运行的系统',
+    heroTitle: '让每一次 AI 预算，都沉淀为可复用的企业能力。',
+    heroDescription: '我们连接 AI 产品研发、自动化流程、Token 资产与软件定制，帮助团队更快验证、更稳交付，并在真实业务中持续迭代。',
+    visualAlt: '企业 AI 能力与业务系统连接的抽象示意图',
+    visualCaption: 'AI × Engineering × Operations',
+    heroPoints: {
+      delivery: '方案与工程一体交付',
+      integration: '模型、数据、系统协同',
+      iteration: '上线后持续优化',
+    },
+    servicesEyebrow: 'Capabilities',
+    servicesTitle: '覆盖企业 AI 全链路的服务能力',
+    servicesDescription: '从单点提效到平台级建设，按你的业务阶段组合服务，减少重复采购与系统割裂。',
+    services: {
+      aiProduct: { title: 'AI 产品开发', description: '从产品定义、原型到工程化上线，构建真正可用的 AI 产品。' },
+      automation: { title: 'AI 自动化产品', description: '把高频、重复、跨系统的工作交给可控的自动化流程。' },
+      productivity: { title: 'AI 提效产品', description: '围绕研发、运营、客服与管理场景，释放团队生产力。' },
+      workflow: { title: 'AI 工作流', description: '连接模型、工具与业务规则，形成可观测的任务链路。' },
+      distilledResources: { title: '蒸馏资源服务', description: '提供面向业务场景的资源整理、蒸馏与调用支持。' },
+      tokenAssets: { title: 'Token 资产管理', description: '统一管理密钥、额度、用量与成本，让资产透明可控。' },
+      saas: { title: '企业 SaaS 定制', description: '按组织、权限与流程定制稳定易用的企业软件。' },
+      knowledgeBase: { title: '企业知识库', description: '沉淀组织知识，构建可检索、可协作、可持续更新的知识体系。' },
+      customSoftware: { title: '软件 / App / 小程序', description: '覆盖 Web、移动端与小程序的定制研发和系统集成。' },
+      gameDevelopment: { title: '游戏开发', description: '从创意验证到客户端、服务端与运营工具的完整研发支持。' },
+    },
+    industriesEyebrow: 'Industries',
+    industriesTitle: '服务多元行业的真实业务',
+    industriesDescription: '深入理解业务现场，把 AI 能力放进每个行业的工作流、增长与交付环节。',
+    industries: { ai: 'AI', ecommerce: '电商', livestream: '直播', metaverse: '元宇宙', internet: '互联网', education: '教育', crossBorder: '跨境', payments: '支付' },
+    deliveryEyebrow: 'Delivery model',
+    deliveryTitle: '从咨询到长期共创',
+    delivery: { consulting: '业务诊断与产品咨询', solution: '原型、架构与实施方案', engineering: '前后端与 AI 工程研发', integration: '平台、数据与系统集成', iteration: '上线保障与持续迭代' },
+    contactEyebrow: 'Let’s build',
+    contactTitle: '聊聊你的下一项企业级 AI 计划',
+    contactDescription: '无论是 AI 产品、企业软件，还是跨系统自动化，我们都可以从一个清晰的业务目标开始。',
+    phoneLabel: '电话',
+    wechatLabel: '微信（同号）',
+    phoneAria: '拨打联系电话 13017739011',
   },
 
   // Dashboard
