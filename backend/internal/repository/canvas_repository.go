@@ -49,7 +49,7 @@ func (r *canvasRepository) ListProjects(ctx context.Context, userID int64, limit
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	projects := make([]*service.CanvasProject, 0)
 	for rows.Next() {
 		project, err := scanCanvasProject(rows.Scan)
@@ -172,7 +172,7 @@ func (r *canvasRepository) ListRevisions(ctx context.Context, userID, projectID 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]*service.CanvasRevision, 0)
 	for rows.Next() {
 		item, err := scanCanvasRevision(rows.Scan)
@@ -304,7 +304,7 @@ func (r *canvasRepository) ClaimAssetsForDeletion(ctx context.Context, limit int
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	assets := make([]*service.CanvasAsset, 0)
 	for rows.Next() {
 		asset, err := scanCanvasAsset(rows.Scan)

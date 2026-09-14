@@ -209,7 +209,7 @@ func (h *CanvasHandler) Upload(c *gin.Context) {
 		response.BadRequest(c, "file is required")
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	out, e := h.service.UploadAsset(c, uid, id, c.GetHeader("Idempotency-Key"), service.CanvasAssetUpload{FileName: header.Filename, ContentType: header.Header.Get("Content-Type"), Body: file, Size: header.Size})
 	if e != nil {
 		response.ErrorFrom(c, e)
