@@ -4,7 +4,39 @@
       <div class="flex flex-wrap items-center justify-between gap-3"><div><h1 class="text-2xl font-semibold text-gray-900 dark:text-white">{{ t('planCatalog.adminTitle') }}</h1><p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('planCatalog.adminDescription') }}</p></div><button class="btn btn-primary" @click="openCreate">{{ t('planCatalog.newPlan') }}</button></div>
       <div class="card overflow-x-auto"><table class="min-w-full text-left text-sm"><thead><tr class="border-b border-gray-200 text-xs uppercase tracking-wide text-gray-500 dark:border-dark-700"><th class="px-5 py-3">{{ t('planCatalog.fields.name') }}</th><th class="px-5 py-3">{{ t('planCatalog.fields.price') }}</th><th class="px-5 py-3">{{ t('planCatalog.fields.status') }}</th><th class="px-5 py-3"></th></tr></thead><tbody><tr v-for="item in items" :key="item.id" class="border-b border-gray-100 dark:border-dark-700/70"><td class="px-5 py-4"><div class="font-medium text-gray-900 dark:text-white">{{ item.name }}</div><div class="text-xs text-gray-500">{{ item.subtitle }}</div></td><td class="px-5 py-4 tabular-nums">{{ item.currency }} {{ item.price }}</td><td class="px-5 py-4"><button class="rounded-full px-2.5 py-1 text-xs font-medium" :class="item.is_published ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-300'" @click="togglePublished(item)">{{ item.is_published ? t('planCatalog.published') : t('planCatalog.draft') }}</button></td><td class="px-5 py-4 text-right"><button class="mr-3 text-primary-600 hover:underline" @click="openEdit(item)">{{ t('common.edit') }}</button><button class="text-red-600 hover:underline" @click="remove(item)">{{ t('common.delete') }}</button></td></tr><tr v-if="!items.length"><td colspan="4" class="px-5 py-12 text-center text-gray-500">{{ t('planCatalog.empty') }}</td></tr></tbody></table></div>
     </section>
-    <div v-if="dialog" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" @click.self="dialog=false"><form class="max-h-[90vh] w-full max-w-2xl space-y-4 overflow-y-auto rounded-2xl bg-white p-6 shadow-xl dark:bg-dark-800" @submit.prevent="save"><div class="flex items-center justify-between"><h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ editing ? t('common.edit') : t('planCatalog.newPlan') }}</h2><button type="button" class="text-gray-500" @click="dialog=false">×</button></div><div class="grid gap-4 sm:grid-cols-2"><label class="field">{{ t('planCatalog.fields.name') }}<input v-model="form.name" class="input mt-1" required maxlength="80" /></label><label class="field">{{ t('planCatalog.fields.subtitle') }}<input v-model="form.subtitle" class="input mt-1" maxlength="160" /></label><label class="field">{{ t('planCatalog.fields.price') }}<input v-model="form.price" class="input mt-1" type="number" min="0" step="0.0001" required /></label><label class="field">{{ t('planCatalog.fields.originalPrice') }}<input v-model="form.original_price" class="input mt-1" type="number" min="0" step="0.0001" /></label><label class="field">{{ t('planCatalog.fields.currency') }}<select v-model="form.currency" class="input mt-1"><option v-for="v in currencies" :key="v">{{ v }}</option></select></label><label class="field">{{ t('planCatalog.fields.period') }}<select v-model="form.billing_period" class="input mt-1"><option v-for="v in periods" :key="v" :value="v">{{ t(`planCatalog.period.${v}`) }}</option></select></label><label class="field sm:col-span-2">{{ t('planCatalog.fields.paymentUrl') }}<input v-model="form.payment_url" class="input mt-1 font-mono text-sm" type="url" required placeholder="https://" /></label><label class="field sm:col-span-2">{{ t('planCatalog.fields.benefits') }}<textarea v-model="benefitsText" class="input mt-1 min-h-28" placeholder="One benefit per line" /></label></div><div class="flex items-center gap-5"><label class="flex items-center gap-2 text-sm"><input v-model="form.is_published" type="checkbox" />{{ t('planCatalog.published') }}</label><label class="flex items-center gap-2 text-sm"><input v-model="form.is_featured" type="checkbox" />{{ t('planCatalog.featured') }}</label></div><div class="flex justify-end gap-2"><button type="button" class="btn btn-secondary" @click="dialog=false">{{ t('common.cancel') }}</button><button class="btn btn-primary" :disabled="saving">{{ t('common.save') }}</button></div></form></div>
+    <div v-if="dialog" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" @click.self="dialog=false">
+      <form class="max-h-[90vh] w-full max-w-2xl space-y-4 overflow-y-auto rounded-2xl bg-white p-6 shadow-xl dark:bg-dark-800" @submit.prevent="save">
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ editing ? t('common.edit') : t('planCatalog.newPlan') }}</h2>
+          <button type="button" class="text-gray-500" :aria-label="t('common.close')" @click="dialog=false">×</button>
+        </div>
+
+        <div class="grid gap-4 sm:grid-cols-2">
+          <label class="field">{{ t('planCatalog.fields.name') }}<input v-model="form.name" class="input mt-1" required maxlength="80" /></label>
+          <label class="field">{{ t('planCatalog.fields.subtitle') }}<input v-model="form.subtitle" class="input mt-1" maxlength="160" /></label>
+          <label class="field sm:col-span-2">{{ t('planCatalog.fields.description') }}<textarea v-model="form.description" class="input mt-1 min-h-20" maxlength="300" /></label>
+          <label class="field">{{ t('planCatalog.fields.price') }}<input v-model="form.price" class="input mt-1" type="number" min="0" step="0.0001" required /></label>
+          <label class="field">{{ t('planCatalog.fields.originalPrice') }}<input v-model="form.original_price" class="input mt-1" type="number" min="0" step="0.0001" /></label>
+          <label class="field">{{ t('planCatalog.fields.currency') }}<select v-model="form.currency" class="input mt-1"><option v-for="v in currencies" :key="v">{{ v }}</option></select></label>
+          <label class="field">{{ t('planCatalog.fields.period') }}<select v-model="form.billing_period" class="input mt-1"><option v-for="v in periods" :key="v" :value="v">{{ t(`planCatalog.period.${v}`) }}</option></select></label>
+          <label class="field">{{ t('planCatalog.fields.badge') }}<input v-model="form.badge" class="input mt-1" maxlength="40" /></label>
+          <label class="field">{{ t('planCatalog.fields.accent') }}<select v-model="form.accent" class="input mt-1"><option v-for="v in accents" :key="v" :value="v">{{ v }}</option></select></label>
+          <label class="field">{{ t('planCatalog.fields.sortOrder') }}<input v-model.number="form.sort_order" class="input mt-1" type="number" step="1" /></label>
+          <label class="field sm:col-span-2">{{ t('planCatalog.fields.paymentUrl') }}<input v-model="form.payment_url" class="input mt-1 font-mono text-sm" type="url" required placeholder="https://" /></label>
+          <label class="field sm:col-span-2">{{ t('planCatalog.fields.benefits') }}<textarea v-model="benefitsText" class="input mt-1 min-h-28" :placeholder="t('planCatalog.fields.benefitsHint')" /></label>
+        </div>
+
+        <div class="flex items-center gap-5">
+          <label class="flex items-center gap-2 text-sm"><input v-model="form.is_published" type="checkbox" />{{ t('planCatalog.published') }}</label>
+          <label class="flex items-center gap-2 text-sm"><input v-model="form.is_featured" type="checkbox" />{{ t('planCatalog.featured') }}</label>
+        </div>
+
+        <div class="flex justify-end gap-2">
+          <button type="button" class="btn btn-secondary" @click="dialog=false">{{ t('common.cancel') }}</button>
+          <button class="btn btn-primary" :disabled="saving">{{ t('common.save') }}</button>
+        </div>
+      </form>
+    </div>
   </AppLayout>
 </template>
 <script setup lang="ts">
@@ -13,7 +45,7 @@ import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import { adminPlanCatalogAPI } from '@/api/admin/planCatalog'
 import type { PlanCatalogInput, PlanCatalogItem } from '@/types/planCatalog'
-const { t } = useI18n(); const items = ref<PlanCatalogItem[]>([]); const dialog = ref(false); const editing = ref<number | null>(null); const saving = ref(false); const currencies = ['CNY','USD','EUR','HKD'] as const; const periods = ['monthly','quarterly','yearly','one_time','custom'] as const; const benefitsText = ref('')
+const { t } = useI18n(); const items = ref<PlanCatalogItem[]>([]); const dialog = ref(false); const editing = ref<number | null>(null); const saving = ref(false); const currencies = ['CNY','USD','EUR','HKD'] as const; const periods = ['monthly','quarterly','yearly','one_time','custom'] as const; const accents = ['indigo','emerald','amber','rose','slate'] as const; const benefitsText = ref('')
 const blank = (): PlanCatalogInput => ({ name:'', subtitle:'', description:'', price:'0', original_price:null, currency:'CNY', billing_period:'monthly', badge:'', accent:'indigo', benefits:[], payment_url:'https://', is_published:false, is_featured:false, sort_order:0 })
 const form = reactive<PlanCatalogInput>(blank())
 async function load(){ items.value = (await adminPlanCatalogAPI.list()).data ?? [] }
