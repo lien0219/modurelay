@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/url"
 	"strings"
@@ -48,6 +49,59 @@ type PlanCatalogInput struct {
 	IsPublished   bool     `json:"is_published"`
 	IsFeatured    bool     `json:"is_featured"`
 	SortOrder     int      `json:"sort_order"`
+}
+
+// UnmarshalJSON accepts both JSON strings and JSON numbers for monetary fields.
+// Browser number inputs commonly submit 10 rather than "10", while the
+// service keeps the decimal text representation to preserve precision.
+func (input *PlanCatalogInput) UnmarshalJSON(data []byte) error {
+	type alias PlanCatalogInput
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+
+	priceRaw := fields["price"]
+	originalPriceRaw := fields["original_price"]
+	delete(fields, "price")
+	delete(fields, "original_price")
+	normalized, err := json.Marshal(fields)
+	if err != nil {
+		return err
+	}
+	var decoded alias
+	if err := json.Unmarshal(normalized, &decoded); err != nil {
+		return err
+	}
+
+	if len(priceRaw) > 0 {
+		decoded.Price, err = decodePlanCatalogDecimal(priceRaw)
+		if err != nil {
+			return err
+		}
+	}
+	if len(originalPriceRaw) > 0 && string(originalPriceRaw) != "null" {
+		value, decodeErr := decodePlanCatalogDecimal(originalPriceRaw)
+		if decodeErr != nil {
+			return decodeErr
+		}
+		decoded.OriginalPrice = &value
+	}
+
+	*input = PlanCatalogInput(decoded)
+	return nil
+}
+
+func decodePlanCatalogDecimal(raw json.RawMessage) (string, error) {
+	var value string
+	if err := json.Unmarshal(raw, &value); err == nil {
+		return value, nil
+	}
+	var number json.Number
+	if err := json.Unmarshal(raw, &number); err != nil {
+		return "", err
+	}
+	return number.String(), nil
 }
 
 type PlanCatalogRepository interface {
