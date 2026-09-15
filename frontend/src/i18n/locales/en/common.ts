@@ -1,5 +1,5 @@
 export default {
-  planCatalog: { eyebrow: 'Enterprise plans', title: 'Plans built for your team', description: 'Choose a transparent service package and continue securely through the configured payment provider.', cta: 'Get started', empty: 'No plan packages yet.', loadError: 'Unable to load plans.', adminTitle: 'Plan catalog', adminDescription: 'Configure independent plan cards and external payment destinations.', newPlan: 'New plan', published: 'Published', draft: 'Draft', featured: 'Featured', deleteConfirm: 'Delete this plan?', fields: { name: 'Name', subtitle: 'Subtitle', description: 'Description', price: 'Price', originalPrice: 'Original price', currency: 'Currency', period: 'Billing period', badge: 'Badge', accent: 'Accent', sortOrder: 'Sort order', paymentUrl: 'Payment URL', benefits: 'Benefits', benefitsHint: 'Enter one benefit per line', status: 'Status' }, period: { monthly: '/ month', quarterly: '/ quarter', yearly: '/ year', one_time: 'one-time', custom: 'custom' } },
+  planCatalog: { eyebrow: 'Enterprise plans', title: 'Plans built for your team', description: 'Choose a transparent service package and continue securely through the configured payment provider.', cta: 'Get started', empty: 'No plan packages yet.', loadError: 'Unable to load plans.', adminTitle: 'Plan management', adminDescription: 'Configure plan cards, model resources, and external payment destinations.', newPlan: 'New plan', duplicate: 'Duplicate', duplicatePlan: 'Duplicate plan', copySuffix: 'copy', published: 'Published', draft: 'Draft', featured: 'Featured', deleteConfirm: 'Delete this plan?', selectedCount: '{count} selected', batchPublish: 'Publish selected', batchUnpublish: 'Unpublish selected', batchDelete: 'Delete selected', search: 'Search plans, groups, or providers', columns: 'Columns', allStatus: 'All statuses', noResults: 'No matching plans', group: 'Group', provider: 'Model provider', rate: 'Rate', quota: 'Quota', daily: 'Daily limit', weekly: 'Weekly limit', monthly: 'Monthly limit', unlimited: 'Unlimited', fields: { name: 'Name', subtitle: 'Subtitle', description: 'Description', price: 'Price', originalPrice: 'Original price', currency: 'Currency', period: 'Billing period', badge: 'Badge', accent: 'Accent', sortOrder: 'Sort order', paymentUrl: 'Payment URL', benefits: 'Benefits', benefitsHint: 'Enter one benefit per line', status: 'Status', group: 'Available group', provider: 'Model provider', rate: 'Rate multiplier', daily: 'Daily limit (USD)', weekly: 'Weekly limit (USD)', monthly: 'Monthly limit (USD)' }, period: { monthly: '/ month', quarterly: '/ quarter', yearly: '/ year', one_time: 'one-time', custom: 'custom' } },
   common: {
     loading: 'Loading...',
     submitting: 'Submitting...',
@@ -166,7 +166,7 @@ export default {
   // Navigation
   nav: {
     planCatalog: 'Plans',
-    planCatalogManagement: 'Plan catalog',
+    planCatalogManagement: 'Plan management',
     website: 'Website',
     home: 'Home',
     aboutUs: 'About us',

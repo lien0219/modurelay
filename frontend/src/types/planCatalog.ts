@@ -13,6 +13,12 @@ export interface PlanCatalogItem {
   billing_period: PlanCatalogPeriod
   badge: string
   accent: PlanCatalogAccent
+  group_name: string
+  provider: string
+  rate_multiplier: string
+  daily_limit_usd?: string | null
+  weekly_limit_usd?: string | null
+  monthly_limit_usd?: string | null
   benefits: string[]
   payment_url: string
   is_published: boolean
@@ -32,6 +38,12 @@ export interface PlanCatalogInput {
   billing_period: PlanCatalogPeriod
   badge: string
   accent: PlanCatalogAccent
+  group_name: string
+  provider: string
+  rate_multiplier: string
+  daily_limit_usd?: string | null
+  weekly_limit_usd?: string | null
+  monthly_limit_usd?: string | null
   benefits: string[]
   payment_url: string
   is_published: boolean

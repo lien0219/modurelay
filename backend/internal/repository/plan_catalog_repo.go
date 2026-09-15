@@ -17,8 +17,9 @@ func NewPlanCatalogRepository(db *sql.DB) service.PlanCatalogRepository {
 }
 
 const planCatalogColumns = `id, name, subtitle, description, price::text, original_price::text,
-currency, billing_period, badge, accent, benefits::text, payment_url, is_published,
-is_featured, sort_order, created_at, updated_at`
+currency, billing_period, badge, accent, group_name, provider, rate_multiplier::text,
+daily_limit_usd::text, weekly_limit_usd::text, monthly_limit_usd::text, benefits::text,
+payment_url, is_published, is_featured, sort_order, created_at, updated_at`
 
 type planCatalogScanner interface{ Scan(...any) error }
 
@@ -26,9 +27,11 @@ func scanPlanCatalogItem(scanner planCatalogScanner) (*service.PlanCatalogItem, 
 	var item service.PlanCatalogItem
 	var original sql.NullString
 	var benefitsJSON string
+	var rate, daily, weekly, monthly sql.NullString
 	if err := scanner.Scan(
 		&item.ID, &item.Name, &item.Subtitle, &item.Description, &item.Price, &original,
-		&item.Currency, &item.BillingPeriod, &item.Badge, &item.Accent, &benefitsJSON,
+		&item.Currency, &item.BillingPeriod, &item.Badge, &item.Accent, &item.GroupName, &item.Provider, &rate,
+		&daily, &weekly, &monthly, &benefitsJSON,
 		&item.PaymentURL, &item.IsPublished, &item.IsFeatured, &item.SortOrder,
 		&item.CreatedAt, &item.UpdatedAt,
 	); err != nil {
@@ -36,6 +39,18 @@ func scanPlanCatalogItem(scanner planCatalogScanner) (*service.PlanCatalogItem, 
 	}
 	if original.Valid {
 		item.OriginalPrice = &original.String
+	}
+	if rate.Valid {
+		item.RateMultiplier = rate.String
+	}
+	if daily.Valid {
+		item.DailyLimitUSD = &daily.String
+	}
+	if weekly.Valid {
+		item.WeeklyLimitUSD = &weekly.String
+	}
+	if monthly.Valid {
+		item.MonthlyLimitUSD = &monthly.String
 	}
 	if err := json.Unmarshal([]byte(benefitsJSON), &item.Benefits); err != nil {
 		return nil, fmt.Errorf("decode plan catalog benefits: %w", err)
@@ -86,11 +101,12 @@ func (r *planCatalogRepository) Create(ctx context.Context, input service.PlanCa
 	}
 	row := r.db.QueryRowContext(ctx, `
 INSERT INTO plan_catalog_items
-(name, subtitle, description, price, original_price, currency, billing_period, badge, accent, benefits, payment_url, is_published, is_featured, sort_order)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,$12,$13,$14)
+(name, subtitle, description, price, original_price, currency, billing_period, badge, accent, group_name, provider, rate_multiplier, daily_limit_usd, weekly_limit_usd, monthly_limit_usd, benefits, payment_url, is_published, is_featured, sort_order)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb,$17,$18,$19,$20)
 RETURNING `+planCatalogColumns,
 		input.Name, input.Subtitle, input.Description, input.Price, input.OriginalPrice,
-		input.Currency, input.BillingPeriod, input.Badge, input.Accent, string(benefits),
+		input.Currency, input.BillingPeriod, input.Badge, input.Accent, input.GroupName, input.Provider, input.RateMultiplier,
+		input.DailyLimitUSD, input.WeeklyLimitUSD, input.MonthlyLimitUSD, string(benefits),
 		input.PaymentURL, input.IsPublished, input.IsFeatured, input.SortOrder)
 	return scanPlanCatalogItem(row)
 }
@@ -103,11 +119,13 @@ func (r *planCatalogRepository) Update(ctx context.Context, id int64, input serv
 	row := r.db.QueryRowContext(ctx, `
 UPDATE plan_catalog_items SET
 name=$2, subtitle=$3, description=$4, price=$5, original_price=$6, currency=$7,
-billing_period=$8, badge=$9, accent=$10, benefits=$11::jsonb, payment_url=$12,
-is_published=$13, is_featured=$14, sort_order=$15, updated_at=NOW()
+billing_period=$8, badge=$9, accent=$10, group_name=$11, provider=$12, rate_multiplier=$13,
+daily_limit_usd=$14, weekly_limit_usd=$15, monthly_limit_usd=$16, benefits=$17::jsonb, payment_url=$18,
+is_published=$19, is_featured=$20, sort_order=$21, updated_at=NOW()
 WHERE id=$1 RETURNING `+planCatalogColumns,
 		id, input.Name, input.Subtitle, input.Description, input.Price, input.OriginalPrice,
-		input.Currency, input.BillingPeriod, input.Badge, input.Accent, string(benefits),
+		input.Currency, input.BillingPeriod, input.Badge, input.Accent, input.GroupName, input.Provider, input.RateMultiplier,
+		input.DailyLimitUSD, input.WeeklyLimitUSD, input.MonthlyLimitUSD, string(benefits),
 		input.PaymentURL, input.IsPublished, input.IsFeatured, input.SortOrder)
 	item, err := scanPlanCatalogItem(row)
 	if errors.Is(err, sql.ErrNoRows) {

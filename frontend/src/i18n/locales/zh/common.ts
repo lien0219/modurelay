@@ -1,5 +1,5 @@
 export default {
-  planCatalog: { eyebrow: '企业级套餐', title: '为团队打造的服务套餐', description: '选择透明的服务方案，并通过管理员配置的支付渠道安全完成开通。', cta: '立即开通', empty: '暂无套餐计划', loadError: '套餐加载失败。', adminTitle: '套餐目录', adminDescription: '配置独立套餐卡片与外部支付地址。', newPlan: '新建套餐', published: '已上架', draft: '已下架', featured: '推荐', deleteConfirm: '确定删除该套餐？', fields: { name: '名称', subtitle: '副标题', description: '描述', price: '价格', originalPrice: '原价', currency: '币种', period: '周期', badge: '标签', accent: '强调色', sortOrder: '排序', paymentUrl: '支付链接', benefits: '权益', benefitsHint: '每行填写一项权益', status: '状态' }, period: { monthly: '/ 月', quarterly: '/ 季度', yearly: '/ 年', one_time: '一次性', custom: '自定义' } },
+  planCatalog: { eyebrow: '企业级套餐', title: '为团队打造的服务套餐', description: '选择透明的服务方案，并通过管理员配置的支付渠道安全完成开通。', cta: '立即开通', empty: '暂无套餐计划', loadError: '套餐加载失败。', adminTitle: '套餐管理', adminDescription: '配置套餐卡片、模型资源与外部支付地址。', newPlan: '新建套餐', duplicate: '复制套餐', duplicatePlan: '复制套餐', copySuffix: '副本', published: '已上架', draft: '已下架', featured: '推荐', deleteConfirm: '确定删除该套餐？', selectedCount: '已选择 {count} 项', batchPublish: '批量上架', batchUnpublish: '批量下架', batchDelete: '批量删除', search: '搜索套餐、分组或厂商', columns: '列显示', allStatus: '全部状态', noResults: '没有匹配的套餐', group: '分组', provider: '模型厂商', rate: '倍率', quota: '限额', daily: '日限额', weekly: '周限额', monthly: '月限额', unlimited: '不限', fields: { name: '名称', subtitle: '副标题', description: '描述', price: '价格', originalPrice: '原价', currency: '币种', period: '周期', badge: '标签', accent: '强调色', sortOrder: '排序', paymentUrl: '支付链接', benefits: '权益', benefitsHint: '每行填写一项权益', status: '状态', group: '可用分组', provider: '模型厂商', rate: '倍率', daily: '日限额（USD）', weekly: '周限额（USD）', monthly: '月限额（USD）' }, period: { monthly: '/ 月', quarterly: '/ 季度', yearly: '/ 年', one_time: '一次性', custom: '自定义' } },
   common: {
     loading: '加载中...',
     submitting: '提交中...',
@@ -166,7 +166,7 @@ export default {
   // Navigation
   nav: {
     planCatalog: '套餐',
-    planCatalogManagement: '套餐目录',
+    planCatalogManagement: '套餐管理',
     website: '官网',
     home: '官网首页',
     aboutUs: '关于我们',
