@@ -204,6 +204,7 @@ func ProvideHandlers(
 	activityHandler *ActivityHandler,
 	canvasHandler *CanvasHandler,
 	planCatalogHandler *PlanCatalogHandler,
+	smsHandler *SMSHandler,
 	_ *service.IdempotencyCoordinator,
 	_ *service.IdempotencyCleanupService,
 	_ *service.OpenAIQuotaAutoResetService,
@@ -234,6 +235,7 @@ func ProvideHandlers(
 		Activity:         activityHandler,
 		Canvas:           canvasHandler,
 		PlanCatalog:      planCatalogHandler,
+		SMS:              smsHandler,
 	}
 }
 
@@ -264,6 +266,7 @@ var ProviderSet = wire.NewSet(
 	NewActivityHandler,
 	NewCanvasHandler,
 	NewPlanCatalogHandler,
+	NewSMSHandler,
 
 	// Admin handlers
 	admin.NewDashboardHandler,

@@ -725,6 +725,7 @@ export interface SystemSettings {
 
   // Available Channels feature switch
   available_channels_enabled: boolean;
+  sms_service_enabled: boolean;
   canvas_enabled: boolean;
   plan_catalog_enabled: boolean;
 
@@ -1033,6 +1034,7 @@ export interface UpdateSettingsRequest {
 
   // Available Channels feature switch
   available_channels_enabled?: boolean;
+  sms_service_enabled?: boolean;
   canvas_enabled?: boolean;
   plan_catalog_enabled?: boolean;
 

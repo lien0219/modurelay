@@ -104,6 +104,11 @@ export const FeatureFlags = {
     mode: 'opt-in',
     label: 'Available Channels',
   }),
+  smsService: defineFlag({
+    key: 'sms_service_enabled',
+    mode: 'opt-in',
+    label: 'SMS Verification',
+  }),
   modelPlaza: defineFlag({
     key: 'model_plaza_enabled',
     mode: 'opt-in',

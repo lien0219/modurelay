@@ -82,6 +82,12 @@ type Tx struct {
 	SecuritySecret *SecuritySecretClient
 	// Setting is the client for interacting with the Setting builders.
 	Setting *SettingClient
+	// SmsChannel is the client for interacting with the SmsChannel builders.
+	SmsChannel *SmsChannelClient
+	// SmsOrder is the client for interacting with the SmsOrder builders.
+	SmsOrder *SmsOrderClient
+	// SmsProvider is the client for interacting with the SmsProvider builders.
+	SmsProvider *SmsProviderClient
 	// SubscriptionPlan is the client for interacting with the SubscriptionPlan builders.
 	SubscriptionPlan *SubscriptionPlanClient
 	// TLSFingerprintProfile is the client for interacting with the TLSFingerprintProfile builders.
@@ -267,6 +273,9 @@ func (tx *Tx) init() {
 	tx.ResourcePost = NewResourcePostClient(tx.config)
 	tx.SecuritySecret = NewSecuritySecretClient(tx.config)
 	tx.Setting = NewSettingClient(tx.config)
+	tx.SmsChannel = NewSmsChannelClient(tx.config)
+	tx.SmsOrder = NewSmsOrderClient(tx.config)
+	tx.SmsProvider = NewSmsProviderClient(tx.config)
 	tx.SubscriptionPlan = NewSubscriptionPlanClient(tx.config)
 	tx.TLSFingerprintProfile = NewTLSFingerprintProfileClient(tx.config)
 	tx.UsageCleanupTask = NewUsageCleanupTaskClient(tx.config)

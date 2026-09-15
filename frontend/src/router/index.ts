@@ -463,6 +463,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/sms',
+    name: 'SMSVerification',
+    component: () => import('@/views/user/SMSVerificationView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      requiresSms: true,
+      title: 'SMS Verification',
+      titleKey: 'nav.smsService'
+    }
+  },
+  {
     path: '/payment/qrcode',
     name: 'PaymentQRCode',
     component: () => import('@/views/user/PaymentQRCodeView.vue'),
@@ -731,6 +743,17 @@ const routes: RouteRecordRaw[] = [
       title: 'System Settings',
       titleKey: 'admin.settings.title',
       descriptionKey: 'admin.settings.description'
+    }
+  },
+  {
+    path: '/admin/sms',
+    name: 'AdminSMS',
+    component: () => import('@/views/admin/SMSManagementView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'SMS Verification Management',
+      titleKey: 'nav.smsManagement'
     }
   },
   {
@@ -1091,6 +1114,16 @@ router.beforeEach(async (to, _from, next) => {
       }
     }
     if (appStore.cachedPublicSettings?.activity_center_enabled !== true) {
+      next('/dashboard')
+      return
+    }
+  }
+
+  if (to.meta.requiresSms && !authStore.isAdmin) {
+    if (!appStore.publicSettingsLoaded) {
+      try { await appStore.fetchPublicSettings() } catch { /* backend remains the source of truth */ }
+    }
+    if (appStore.publicSettingsLoaded && appStore.cachedPublicSettings?.sms_service_enabled !== true) {
       next('/dashboard')
       return
     }

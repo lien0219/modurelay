@@ -359,6 +359,12 @@ const ChartIcon = {
     )
 }
 
+const MessageIcon = {
+  render: () => h('svg', { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' }, [
+    h('path', { 'stroke-linecap': 'round', 'stroke-linejoin': 'round', d: 'M8.625 9.75h6.75m-6.75 3h4.5M5.25 19.5l1.64-2.05A8.25 8.25 0 1 1 19.5 12c0 4.556-3.358 7.5-7.5 7.5H5.25Z' })
+  ])
+}
+
 const GiftIcon = {
   render: () =>
     h(
@@ -795,6 +801,7 @@ const flagChannelMonitor = makeSidebarFlag(FeatureFlags.channelMonitor)
 const flagPayment = makeSidebarFlag(FeatureFlags.payment)
 const flagRechargeCenter = makeSidebarFlag(FeatureFlags.rechargeCenter)
 const flagAvailableChannels = makeSidebarFlag(FeatureFlags.availableChannels)
+const flagSmsService = makeSidebarFlag(FeatureFlags.smsService)
 const flagAffiliate = makeSidebarFlag(FeatureFlags.affiliate)
 const flagRiskControl = makeSidebarFlag(FeatureFlags.riskControl)
 const flagPluginManagement = makeSidebarFlag(FeatureFlags.pluginManagement)
@@ -828,6 +835,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
     { path: '/available-channels', label: t('nav.availableChannels'), icon: ChannelIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
+    { path: '/sms', label: t('nav.smsService'), icon: MessageIcon, hideInSimpleMode: true, featureFlag: flagSmsService },
     { path: '/monitor', label: t('nav.channelStatus'), icon: SignalIcon, featureFlag: flagChannelMonitor },
     { path: '/quick-start', label: t('nav.quickStart'), icon: QuickStartIcon },
     { path: '/ai-learning', label: t('nav.aiLearning'), icon: AILearningIcon },
@@ -947,6 +955,7 @@ const adminNavItems = computed((): NavItem[] => {
       ],
     },
     { path: '/admin/usage', label: t('nav.usage'), icon: ChartIcon },
+    { path: '/admin/sms', label: t('nav.smsManagement'), icon: MessageIcon, hideInSimpleMode: true },
     { path: '/admin/audit-logs', label: t('nav.auditLogs'), icon: ShieldIcon, hideInSimpleMode: true }
   ]
 

@@ -73,6 +73,7 @@ type Handlers struct {
 	Activity         *ActivityHandler
 	Canvas           *CanvasHandler
 	PlanCatalog      *PlanCatalogHandler
+	SMS              *SMSHandler
 }
 
 // BuildInfo contains build-time information

@@ -49,6 +49,9 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/resourcepost"
 	"github.com/Wei-Shaw/sub2api/ent/securitysecret"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
+	"github.com/Wei-Shaw/sub2api/ent/smschannel"
+	"github.com/Wei-Shaw/sub2api/ent/smsorder"
+	"github.com/Wei-Shaw/sub2api/ent/smsprovider"
 	"github.com/Wei-Shaw/sub2api/ent/subscriptionplan"
 	"github.com/Wei-Shaw/sub2api/ent/tlsfingerprintprofile"
 	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
@@ -136,6 +139,12 @@ type Client struct {
 	SecuritySecret *SecuritySecretClient
 	// Setting is the client for interacting with the Setting builders.
 	Setting *SettingClient
+	// SmsChannel is the client for interacting with the SmsChannel builders.
+	SmsChannel *SmsChannelClient
+	// SmsOrder is the client for interacting with the SmsOrder builders.
+	SmsOrder *SmsOrderClient
+	// SmsProvider is the client for interacting with the SmsProvider builders.
+	SmsProvider *SmsProviderClient
 	// SubscriptionPlan is the client for interacting with the SubscriptionPlan builders.
 	SubscriptionPlan *SubscriptionPlanClient
 	// TLSFingerprintProfile is the client for interacting with the TLSFingerprintProfile builders.
@@ -201,6 +210,9 @@ func (c *Client) init() {
 	c.ResourcePost = NewResourcePostClient(c.config)
 	c.SecuritySecret = NewSecuritySecretClient(c.config)
 	c.Setting = NewSettingClient(c.config)
+	c.SmsChannel = NewSmsChannelClient(c.config)
+	c.SmsOrder = NewSmsOrderClient(c.config)
+	c.SmsProvider = NewSmsProviderClient(c.config)
 	c.SubscriptionPlan = NewSubscriptionPlanClient(c.config)
 	c.TLSFingerprintProfile = NewTLSFingerprintProfileClient(c.config)
 	c.UsageCleanupTask = NewUsageCleanupTaskClient(c.config)
@@ -337,6 +349,9 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		ResourcePost:                  NewResourcePostClient(cfg),
 		SecuritySecret:                NewSecuritySecretClient(cfg),
 		Setting:                       NewSettingClient(cfg),
+		SmsChannel:                    NewSmsChannelClient(cfg),
+		SmsOrder:                      NewSmsOrderClient(cfg),
+		SmsProvider:                   NewSmsProviderClient(cfg),
 		SubscriptionPlan:              NewSubscriptionPlanClient(cfg),
 		TLSFingerprintProfile:         NewTLSFingerprintProfileClient(cfg),
 		UsageCleanupTask:              NewUsageCleanupTaskClient(cfg),
@@ -400,6 +415,9 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		ResourcePost:                  NewResourcePostClient(cfg),
 		SecuritySecret:                NewSecuritySecretClient(cfg),
 		Setting:                       NewSettingClient(cfg),
+		SmsChannel:                    NewSmsChannelClient(cfg),
+		SmsOrder:                      NewSmsOrderClient(cfg),
+		SmsProvider:                   NewSmsProviderClient(cfg),
 		SubscriptionPlan:              NewSubscriptionPlanClient(cfg),
 		TLSFingerprintProfile:         NewTLSFingerprintProfileClient(cfg),
 		UsageCleanupTask:              NewUsageCleanupTaskClient(cfg),
@@ -448,8 +466,9 @@ func (c *Client) Use(hooks ...Hook) {
 		c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode, c.PromoCodeUsage,
 		c.Proxy, c.RedeemCode, c.ResourceCategory, c.ResourceComment, c.ResourceLike,
 		c.ResourceNotification, c.ResourcePost, c.SecuritySecret, c.Setting,
-		c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
-		c.User, c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
+		c.SmsChannel, c.SmsOrder, c.SmsProvider, c.SubscriptionPlan,
+		c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog, c.User,
+		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
 		c.UserPlatformQuota, c.UserSubscription,
 	} {
 		n.Use(hooks...)
@@ -469,8 +488,9 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode, c.PromoCodeUsage,
 		c.Proxy, c.RedeemCode, c.ResourceCategory, c.ResourceComment, c.ResourceLike,
 		c.ResourceNotification, c.ResourcePost, c.SecuritySecret, c.Setting,
-		c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
-		c.User, c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
+		c.SmsChannel, c.SmsOrder, c.SmsProvider, c.SubscriptionPlan,
+		c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog, c.User,
+		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
 		c.UserPlatformQuota, c.UserSubscription,
 	} {
 		n.Intercept(interceptors...)
@@ -548,6 +568,12 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.SecuritySecret.mutate(ctx, m)
 	case *SettingMutation:
 		return c.Setting.mutate(ctx, m)
+	case *SmsChannelMutation:
+		return c.SmsChannel.mutate(ctx, m)
+	case *SmsOrderMutation:
+		return c.SmsOrder.mutate(ctx, m)
+	case *SmsProviderMutation:
+		return c.SmsProvider.mutate(ctx, m)
 	case *SubscriptionPlanMutation:
 		return c.SubscriptionPlan.mutate(ctx, m)
 	case *TLSFingerprintProfileMutation:
@@ -5776,6 +5802,405 @@ func (c *SettingClient) mutate(ctx context.Context, m *SettingMutation) (Value, 
 	}
 }
 
+// SmsChannelClient is a client for the SmsChannel schema.
+type SmsChannelClient struct {
+	config
+}
+
+// NewSmsChannelClient returns a client for the SmsChannel from the given config.
+func NewSmsChannelClient(c config) *SmsChannelClient {
+	return &SmsChannelClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `smschannel.Hooks(f(g(h())))`.
+func (c *SmsChannelClient) Use(hooks ...Hook) {
+	c.hooks.SmsChannel = append(c.hooks.SmsChannel, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `smschannel.Intercept(f(g(h())))`.
+func (c *SmsChannelClient) Intercept(interceptors ...Interceptor) {
+	c.inters.SmsChannel = append(c.inters.SmsChannel, interceptors...)
+}
+
+// Create returns a builder for creating a SmsChannel entity.
+func (c *SmsChannelClient) Create() *SmsChannelCreate {
+	mutation := newSmsChannelMutation(c.config, OpCreate)
+	return &SmsChannelCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of SmsChannel entities.
+func (c *SmsChannelClient) CreateBulk(builders ...*SmsChannelCreate) *SmsChannelCreateBulk {
+	return &SmsChannelCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *SmsChannelClient) MapCreateBulk(slice any, setFunc func(*SmsChannelCreate, int)) *SmsChannelCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &SmsChannelCreateBulk{err: fmt.Errorf("calling to SmsChannelClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*SmsChannelCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &SmsChannelCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for SmsChannel.
+func (c *SmsChannelClient) Update() *SmsChannelUpdate {
+	mutation := newSmsChannelMutation(c.config, OpUpdate)
+	return &SmsChannelUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *SmsChannelClient) UpdateOne(_m *SmsChannel) *SmsChannelUpdateOne {
+	mutation := newSmsChannelMutation(c.config, OpUpdateOne, withSmsChannel(_m))
+	return &SmsChannelUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *SmsChannelClient) UpdateOneID(id int64) *SmsChannelUpdateOne {
+	mutation := newSmsChannelMutation(c.config, OpUpdateOne, withSmsChannelID(id))
+	return &SmsChannelUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for SmsChannel.
+func (c *SmsChannelClient) Delete() *SmsChannelDelete {
+	mutation := newSmsChannelMutation(c.config, OpDelete)
+	return &SmsChannelDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *SmsChannelClient) DeleteOne(_m *SmsChannel) *SmsChannelDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *SmsChannelClient) DeleteOneID(id int64) *SmsChannelDeleteOne {
+	builder := c.Delete().Where(smschannel.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &SmsChannelDeleteOne{builder}
+}
+
+// Query returns a query builder for SmsChannel.
+func (c *SmsChannelClient) Query() *SmsChannelQuery {
+	return &SmsChannelQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeSmsChannel},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a SmsChannel entity by its id.
+func (c *SmsChannelClient) Get(ctx context.Context, id int64) (*SmsChannel, error) {
+	return c.Query().Where(smschannel.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *SmsChannelClient) GetX(ctx context.Context, id int64) *SmsChannel {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *SmsChannelClient) Hooks() []Hook {
+	return c.hooks.SmsChannel
+}
+
+// Interceptors returns the client interceptors.
+func (c *SmsChannelClient) Interceptors() []Interceptor {
+	return c.inters.SmsChannel
+}
+
+func (c *SmsChannelClient) mutate(ctx context.Context, m *SmsChannelMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&SmsChannelCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&SmsChannelUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&SmsChannelUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&SmsChannelDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown SmsChannel mutation op: %q", m.Op())
+	}
+}
+
+// SmsOrderClient is a client for the SmsOrder schema.
+type SmsOrderClient struct {
+	config
+}
+
+// NewSmsOrderClient returns a client for the SmsOrder from the given config.
+func NewSmsOrderClient(c config) *SmsOrderClient {
+	return &SmsOrderClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `smsorder.Hooks(f(g(h())))`.
+func (c *SmsOrderClient) Use(hooks ...Hook) {
+	c.hooks.SmsOrder = append(c.hooks.SmsOrder, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `smsorder.Intercept(f(g(h())))`.
+func (c *SmsOrderClient) Intercept(interceptors ...Interceptor) {
+	c.inters.SmsOrder = append(c.inters.SmsOrder, interceptors...)
+}
+
+// Create returns a builder for creating a SmsOrder entity.
+func (c *SmsOrderClient) Create() *SmsOrderCreate {
+	mutation := newSmsOrderMutation(c.config, OpCreate)
+	return &SmsOrderCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of SmsOrder entities.
+func (c *SmsOrderClient) CreateBulk(builders ...*SmsOrderCreate) *SmsOrderCreateBulk {
+	return &SmsOrderCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *SmsOrderClient) MapCreateBulk(slice any, setFunc func(*SmsOrderCreate, int)) *SmsOrderCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &SmsOrderCreateBulk{err: fmt.Errorf("calling to SmsOrderClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*SmsOrderCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &SmsOrderCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for SmsOrder.
+func (c *SmsOrderClient) Update() *SmsOrderUpdate {
+	mutation := newSmsOrderMutation(c.config, OpUpdate)
+	return &SmsOrderUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *SmsOrderClient) UpdateOne(_m *SmsOrder) *SmsOrderUpdateOne {
+	mutation := newSmsOrderMutation(c.config, OpUpdateOne, withSmsOrder(_m))
+	return &SmsOrderUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *SmsOrderClient) UpdateOneID(id int64) *SmsOrderUpdateOne {
+	mutation := newSmsOrderMutation(c.config, OpUpdateOne, withSmsOrderID(id))
+	return &SmsOrderUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for SmsOrder.
+func (c *SmsOrderClient) Delete() *SmsOrderDelete {
+	mutation := newSmsOrderMutation(c.config, OpDelete)
+	return &SmsOrderDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *SmsOrderClient) DeleteOne(_m *SmsOrder) *SmsOrderDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *SmsOrderClient) DeleteOneID(id int64) *SmsOrderDeleteOne {
+	builder := c.Delete().Where(smsorder.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &SmsOrderDeleteOne{builder}
+}
+
+// Query returns a query builder for SmsOrder.
+func (c *SmsOrderClient) Query() *SmsOrderQuery {
+	return &SmsOrderQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeSmsOrder},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a SmsOrder entity by its id.
+func (c *SmsOrderClient) Get(ctx context.Context, id int64) (*SmsOrder, error) {
+	return c.Query().Where(smsorder.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *SmsOrderClient) GetX(ctx context.Context, id int64) *SmsOrder {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *SmsOrderClient) Hooks() []Hook {
+	return c.hooks.SmsOrder
+}
+
+// Interceptors returns the client interceptors.
+func (c *SmsOrderClient) Interceptors() []Interceptor {
+	return c.inters.SmsOrder
+}
+
+func (c *SmsOrderClient) mutate(ctx context.Context, m *SmsOrderMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&SmsOrderCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&SmsOrderUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&SmsOrderUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&SmsOrderDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown SmsOrder mutation op: %q", m.Op())
+	}
+}
+
+// SmsProviderClient is a client for the SmsProvider schema.
+type SmsProviderClient struct {
+	config
+}
+
+// NewSmsProviderClient returns a client for the SmsProvider from the given config.
+func NewSmsProviderClient(c config) *SmsProviderClient {
+	return &SmsProviderClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `smsprovider.Hooks(f(g(h())))`.
+func (c *SmsProviderClient) Use(hooks ...Hook) {
+	c.hooks.SmsProvider = append(c.hooks.SmsProvider, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `smsprovider.Intercept(f(g(h())))`.
+func (c *SmsProviderClient) Intercept(interceptors ...Interceptor) {
+	c.inters.SmsProvider = append(c.inters.SmsProvider, interceptors...)
+}
+
+// Create returns a builder for creating a SmsProvider entity.
+func (c *SmsProviderClient) Create() *SmsProviderCreate {
+	mutation := newSmsProviderMutation(c.config, OpCreate)
+	return &SmsProviderCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of SmsProvider entities.
+func (c *SmsProviderClient) CreateBulk(builders ...*SmsProviderCreate) *SmsProviderCreateBulk {
+	return &SmsProviderCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *SmsProviderClient) MapCreateBulk(slice any, setFunc func(*SmsProviderCreate, int)) *SmsProviderCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &SmsProviderCreateBulk{err: fmt.Errorf("calling to SmsProviderClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*SmsProviderCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &SmsProviderCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for SmsProvider.
+func (c *SmsProviderClient) Update() *SmsProviderUpdate {
+	mutation := newSmsProviderMutation(c.config, OpUpdate)
+	return &SmsProviderUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *SmsProviderClient) UpdateOne(_m *SmsProvider) *SmsProviderUpdateOne {
+	mutation := newSmsProviderMutation(c.config, OpUpdateOne, withSmsProvider(_m))
+	return &SmsProviderUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *SmsProviderClient) UpdateOneID(id int64) *SmsProviderUpdateOne {
+	mutation := newSmsProviderMutation(c.config, OpUpdateOne, withSmsProviderID(id))
+	return &SmsProviderUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for SmsProvider.
+func (c *SmsProviderClient) Delete() *SmsProviderDelete {
+	mutation := newSmsProviderMutation(c.config, OpDelete)
+	return &SmsProviderDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *SmsProviderClient) DeleteOne(_m *SmsProvider) *SmsProviderDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *SmsProviderClient) DeleteOneID(id int64) *SmsProviderDeleteOne {
+	builder := c.Delete().Where(smsprovider.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &SmsProviderDeleteOne{builder}
+}
+
+// Query returns a query builder for SmsProvider.
+func (c *SmsProviderClient) Query() *SmsProviderQuery {
+	return &SmsProviderQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeSmsProvider},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a SmsProvider entity by its id.
+func (c *SmsProviderClient) Get(ctx context.Context, id int64) (*SmsProvider, error) {
+	return c.Query().Where(smsprovider.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *SmsProviderClient) GetX(ctx context.Context, id int64) *SmsProvider {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *SmsProviderClient) Hooks() []Hook {
+	return c.hooks.SmsProvider
+}
+
+// Interceptors returns the client interceptors.
+func (c *SmsProviderClient) Interceptors() []Interceptor {
+	return c.inters.SmsProvider
+}
+
+func (c *SmsProviderClient) mutate(ctx context.Context, m *SmsProviderMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&SmsProviderCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&SmsProviderUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&SmsProviderUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&SmsProviderDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown SmsProvider mutation op: %q", m.Op())
+	}
+}
+
 // SubscriptionPlanClient is a client for the SubscriptionPlan schema.
 type SubscriptionPlanClient struct {
 	config
@@ -7540,9 +7965,9 @@ type (
 		PaymentOrder, PaymentProviderInstance, PendingAuthSession, PromoCode,
 		PromoCodeUsage, Proxy, RedeemCode, ResourceCategory, ResourceComment,
 		ResourceLike, ResourceNotification, ResourcePost, SecuritySecret, Setting,
-		SubscriptionPlan, TLSFingerprintProfile, UsageCleanupTask, UsageLog, User,
-		UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
-		UserPlatformQuota, UserSubscription []ent.Hook
+		SmsChannel, SmsOrder, SmsProvider, SubscriptionPlan, TLSFingerprintProfile,
+		UsageCleanupTask, UsageLog, User, UserAllowedGroup, UserAttributeDefinition,
+		UserAttributeValue, UserPlatformQuota, UserSubscription []ent.Hook
 	}
 	inters struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AuthIdentity,
@@ -7553,9 +7978,9 @@ type (
 		PaymentOrder, PaymentProviderInstance, PendingAuthSession, PromoCode,
 		PromoCodeUsage, Proxy, RedeemCode, ResourceCategory, ResourceComment,
 		ResourceLike, ResourceNotification, ResourcePost, SecuritySecret, Setting,
-		SubscriptionPlan, TLSFingerprintProfile, UsageCleanupTask, UsageLog, User,
-		UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
-		UserPlatformQuota, UserSubscription []ent.Interceptor
+		SmsChannel, SmsOrder, SmsProvider, SubscriptionPlan, TLSFingerprintProfile,
+		UsageCleanupTask, UsageLog, User, UserAllowedGroup, UserAttributeDefinition,
+		UserAttributeValue, UserPlatformQuota, UserSubscription []ent.Interceptor
 	}
 )
 

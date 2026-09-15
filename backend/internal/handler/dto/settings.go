@@ -315,6 +315,7 @@ type SystemSettings struct {
 
 	// Available Channels feature switch (user-facing aggregate view)
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
+	SMSServiceEnabled       bool `json:"sms_service_enabled"`
 	CanvasEnabled            bool `json:"canvas_enabled"`
 	PlanCatalogEnabled       bool `json:"plan_catalog_enabled"`
 
@@ -536,6 +537,7 @@ type PublicSettings struct {
 	ChannelMonitorHideThroughput         bool                     `json:"channel_monitor_hide_throughput"`
 	ChannelMonitorShowQuota              bool                     `json:"channel_monitor_show_quota"`
 	AvailableChannelsEnabled             bool                     `json:"available_channels_enabled"`
+	SMSServiceEnabled                    bool                     `json:"sms_service_enabled"`
 	ModelPlazaEnabled                    bool                     `json:"model_plaza_enabled"`
 	ModelPlazaRequireAuth                bool                     `json:"model_plaza_require_auth"`
 	PluginManagementEnabled              bool                     `json:"plugin_management_enabled"`
@@ -564,6 +566,7 @@ type PublicSettings struct {
 		ChannelMonitorShowQuota              bool   `json:"channel_monitor_show_quota"`
 
 		AvailableChannelsEnabled bool `json:"available_channels_enabled"`
+		SMSServiceEnabled       bool `json:"sms_service_enabled"`
 
 		ModelPlazaEnabled       bool `json:"model_plaza_enabled"`
 		ModelPlazaRequireAuth   bool `json:"model_plaza_require_auth"`

@@ -1,8 +1,10 @@
 package routes
 
 import (
+	"context"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -19,6 +21,9 @@ func RegisterUserRoutes(
 	panelRateLimiter *middleware.PanelRateLimiter,
 	cfg *config.Config,
 ) {
+	if h.SMS != nil {
+		v1.POST("/sms/webhooks/:provider", h.SMS.Webhook)
+	}
 	authenticated := v1.Group("")
 	authenticated.Use(gin.HandlerFunc(jwtAuth))
 	authenticated.Use(middleware.BackendModeUserGuard(settingService))
@@ -176,6 +181,23 @@ func RegisterUserRoutes(
 			authenticated.GET("/plan-catalog", h.PlanCatalog.List)
 		}
 
+		if h.SMS != nil {
+			sms := authenticated.Group("/sms")
+			sms.Use(smsFeatureGuard(h.SMS))
+			sms.GET("/services", h.SMS.Services)
+			sms.GET("/countries", h.SMS.Countries)
+			sms.GET("/quotes", h.SMS.Quotes)
+			sms.POST("/orders", h.SMS.Purchase)
+			sms.GET("/orders", h.SMS.Orders)
+			sms.GET("/orders/:id", h.SMS.Order)
+			sms.POST("/orders/:id/cancel", h.SMS.Cancel)
+			sms.GET("/orders/:id/refund-status", h.SMS.RefundStatus)
+			sms.POST("/orders/:id/refund", h.SMS.Refund)
+			sms.GET("/rentals", h.SMS.Orders)
+			sms.GET("/rentals/:id", h.SMS.Order)
+			sms.POST("/rentals/:id/extend", h.SMS.ExtendRental)
+		}
+
 		// 卡密兑换
 		redeem := authenticated.Group("/redeem")
 		{
@@ -211,5 +233,16 @@ func RegisterUserRoutes(
 			monitorV2.GET("/errors", h.ChannelMonitorV2.Errors)
 			monitorV2.GET("/users", h.ChannelMonitorV2.Users)
 		}
+	}
+}
+
+func smsFeatureGuard(svc interface{ Enabled(context.Context) bool }) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if !svc.Enabled(c.Request.Context()) {
+			response.ErrorWithDetails(c, 404, "SMS Verification is unavailable", "FEATURE_DISABLED", nil)
+			c.Abort()
+			return
+		}
+		c.Next()
 	}
 }

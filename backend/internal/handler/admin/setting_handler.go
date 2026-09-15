@@ -382,6 +382,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		GrokDefaultBaseURLMode:         settings.GrokDefaultBaseURLMode,
 
 		AvailableChannelsEnabled: settings.AvailableChannelsEnabled,
+		SMSServiceEnabled:        settings.SMSServiceEnabled,
 		CanvasEnabled:            settings.CanvasEnabled,
 		PlanCatalogEnabled:       settings.PlanCatalogEnabled,
 

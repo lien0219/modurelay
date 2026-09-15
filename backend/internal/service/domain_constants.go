@@ -506,6 +506,9 @@ const (
 	// user-facing aggregate view. When false: user endpoint returns an empty list and the
 	// sidebar entry is hidden. Defaults to false (opt-in feature).
 	SettingKeyAvailableChannelsEnabled = "available_channels_enabled"
+	// SettingKeySMSServiceEnabled controls the user-facing SMS Verification module.
+	// It is opt-in and defaults to false until providers are configured.
+	SettingKeySMSServiceEnabled = "sms_service_enabled"
 
 	// SettingKeyModelPlazaEnabled is a DB-backed soft switch for the Model Plaza page
 	// (public group/model pricing showcase). When false: the plaza endpoint returns 404

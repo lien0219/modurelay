@@ -40,6 +40,9 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/schema"
 	"github.com/Wei-Shaw/sub2api/ent/securitysecret"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
+	"github.com/Wei-Shaw/sub2api/ent/smschannel"
+	"github.com/Wei-Shaw/sub2api/ent/smsorder"
+	"github.com/Wei-Shaw/sub2api/ent/smsprovider"
 	"github.com/Wei-Shaw/sub2api/ent/subscriptionplan"
 	"github.com/Wei-Shaw/sub2api/ent/tlsfingerprintprofile"
 	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
@@ -2109,6 +2112,210 @@ func init() {
 	setting.DefaultUpdatedAt = settingDescUpdatedAt.Default.(func() time.Time)
 	// setting.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	setting.UpdateDefaultUpdatedAt = settingDescUpdatedAt.UpdateDefault.(func() time.Time)
+	smschannelFields := schema.SmsChannel{}.Fields()
+	_ = smschannelFields
+	// smschannelDescCode is the schema descriptor for code field.
+	smschannelDescCode := smschannelFields[0].Descriptor()
+	// smschannel.CodeValidator is a validator for the "code" field. It is called by the builders before save.
+	smschannel.CodeValidator = func() func(string) error {
+		validators := smschannelDescCode.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(code string) error {
+			for _, fn := range fns {
+				if err := fn(code); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// smschannelDescPublicName is the schema descriptor for public_name field.
+	smschannelDescPublicName := smschannelFields[1].Descriptor()
+	// smschannel.PublicNameValidator is a validator for the "public_name" field. It is called by the builders before save.
+	smschannel.PublicNameValidator = func() func(string) error {
+		validators := smschannelDescPublicName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(public_name string) error {
+			for _, fn := range fns {
+				if err := fn(public_name); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// smschannelDescRole is the schema descriptor for role field.
+	smschannelDescRole := smschannelFields[2].Descriptor()
+	// smschannel.DefaultRole holds the default value on creation for the role field.
+	smschannel.DefaultRole = smschannelDescRole.Default.(string)
+	// smschannel.RoleValidator is a validator for the "role" field. It is called by the builders before save.
+	smschannel.RoleValidator = smschannelDescRole.Validators[0].(func(string) error)
+	// smschannelDescEnabled is the schema descriptor for enabled field.
+	smschannelDescEnabled := smschannelFields[4].Descriptor()
+	// smschannel.DefaultEnabled holds the default value on creation for the enabled field.
+	smschannel.DefaultEnabled = smschannelDescEnabled.Default.(bool)
+	// smschannelDescVisible is the schema descriptor for visible field.
+	smschannelDescVisible := smschannelFields[5].Descriptor()
+	// smschannel.DefaultVisible holds the default value on creation for the visible field.
+	smschannel.DefaultVisible = smschannelDescVisible.Default.(bool)
+	// smschannelDescHealthy is the schema descriptor for healthy field.
+	smschannelDescHealthy := smschannelFields[6].Descriptor()
+	// smschannel.DefaultHealthy holds the default value on creation for the healthy field.
+	smschannel.DefaultHealthy = smschannelDescHealthy.Default.(bool)
+	// smschannelDescSortOrder is the schema descriptor for sort_order field.
+	smschannelDescSortOrder := smschannelFields[7].Descriptor()
+	// smschannel.DefaultSortOrder holds the default value on creation for the sort_order field.
+	smschannel.DefaultSortOrder = smschannelDescSortOrder.Default.(int)
+	smsorderFields := schema.SmsOrder{}.Fields()
+	_ = smsorderFields
+	// smsorderDescProductType is the schema descriptor for product_type field.
+	smsorderDescProductType := smsorderFields[6].Descriptor()
+	// smsorder.ProductTypeValidator is a validator for the "product_type" field. It is called by the builders before save.
+	smsorder.ProductTypeValidator = smsorderDescProductType.Validators[0].(func(string) error)
+	// smsorderDescStatus is the schema descriptor for status field.
+	smsorderDescStatus := smsorderFields[7].Descriptor()
+	// smsorder.DefaultStatus holds the default value on creation for the status field.
+	smsorder.DefaultStatus = smsorderDescStatus.Default.(string)
+	// smsorder.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	smsorder.StatusValidator = smsorderDescStatus.Validators[0].(func(string) error)
+	// smsorderDescProviderOrderID is the schema descriptor for provider_order_id field.
+	smsorderDescProviderOrderID := smsorderFields[8].Descriptor()
+	// smsorder.DefaultProviderOrderID holds the default value on creation for the provider_order_id field.
+	smsorder.DefaultProviderOrderID = smsorderDescProviderOrderID.Default.(string)
+	// smsorder.ProviderOrderIDValidator is a validator for the "provider_order_id" field. It is called by the builders before save.
+	smsorder.ProviderOrderIDValidator = smsorderDescProviderOrderID.Validators[0].(func(string) error)
+	// smsorderDescPhoneNumber is the schema descriptor for phone_number field.
+	smsorderDescPhoneNumber := smsorderFields[9].Descriptor()
+	// smsorder.DefaultPhoneNumber holds the default value on creation for the phone_number field.
+	smsorder.DefaultPhoneNumber = smsorderDescPhoneNumber.Default.(string)
+	// smsorder.PhoneNumberValidator is a validator for the "phone_number" field. It is called by the builders before save.
+	smsorder.PhoneNumberValidator = smsorderDescPhoneNumber.Validators[0].(func(string) error)
+	// smsorderDescProviderCostSnapshot is the schema descriptor for provider_cost_snapshot field.
+	smsorderDescProviderCostSnapshot := smsorderFields[10].Descriptor()
+	// smsorder.DefaultProviderCostSnapshot holds the default value on creation for the provider_cost_snapshot field.
+	smsorder.DefaultProviderCostSnapshot = smsorderDescProviderCostSnapshot.Default.(float64)
+	// smsorderDescSalePriceSnapshot is the schema descriptor for sale_price_snapshot field.
+	smsorderDescSalePriceSnapshot := smsorderFields[11].Descriptor()
+	// smsorder.DefaultSalePriceSnapshot holds the default value on creation for the sale_price_snapshot field.
+	smsorder.DefaultSalePriceSnapshot = smsorderDescSalePriceSnapshot.Default.(float64)
+	// smsorderDescSuccessRateSourceSnapshot is the schema descriptor for success_rate_source_snapshot field.
+	smsorderDescSuccessRateSourceSnapshot := smsorderFields[13].Descriptor()
+	// smsorder.DefaultSuccessRateSourceSnapshot holds the default value on creation for the success_rate_source_snapshot field.
+	smsorder.DefaultSuccessRateSourceSnapshot = smsorderDescSuccessRateSourceSnapshot.Default.(string)
+	// smsorder.SuccessRateSourceSnapshotValidator is a validator for the "success_rate_source_snapshot" field. It is called by the builders before save.
+	smsorder.SuccessRateSourceSnapshotValidator = smsorderDescSuccessRateSourceSnapshot.Validators[0].(func(string) error)
+	// smsorderDescSuccessRateGradeSnapshot is the schema descriptor for success_rate_grade_snapshot field.
+	smsorderDescSuccessRateGradeSnapshot := smsorderFields[14].Descriptor()
+	// smsorder.DefaultSuccessRateGradeSnapshot holds the default value on creation for the success_rate_grade_snapshot field.
+	smsorder.DefaultSuccessRateGradeSnapshot = smsorderDescSuccessRateGradeSnapshot.Default.(string)
+	// smsorder.SuccessRateGradeSnapshotValidator is a validator for the "success_rate_grade_snapshot" field. It is called by the builders before save.
+	smsorder.SuccessRateGradeSnapshotValidator = smsorderDescSuccessRateGradeSnapshot.Validators[0].(func(string) error)
+	// smsorderDescSuccessRateMultiplierSnapshot is the schema descriptor for success_rate_multiplier_snapshot field.
+	smsorderDescSuccessRateMultiplierSnapshot := smsorderFields[15].Descriptor()
+	// smsorder.DefaultSuccessRateMultiplierSnapshot holds the default value on creation for the success_rate_multiplier_snapshot field.
+	smsorder.DefaultSuccessRateMultiplierSnapshot = smsorderDescSuccessRateMultiplierSnapshot.Default.(float64)
+	// smsorderDescCurrencySnapshot is the schema descriptor for currency_snapshot field.
+	smsorderDescCurrencySnapshot := smsorderFields[16].Descriptor()
+	// smsorder.DefaultCurrencySnapshot holds the default value on creation for the currency_snapshot field.
+	smsorder.DefaultCurrencySnapshot = smsorderDescCurrencySnapshot.Default.(string)
+	// smsorder.CurrencySnapshotValidator is a validator for the "currency_snapshot" field. It is called by the builders before save.
+	smsorder.CurrencySnapshotValidator = smsorderDescCurrencySnapshot.Validators[0].(func(string) error)
+	// smsorderDescIdempotencyKey is the schema descriptor for idempotency_key field.
+	smsorderDescIdempotencyKey := smsorderFields[18].Descriptor()
+	// smsorder.IdempotencyKeyValidator is a validator for the "idempotency_key" field. It is called by the builders before save.
+	smsorder.IdempotencyKeyValidator = smsorderDescIdempotencyKey.Validators[0].(func(string) error)
+	// smsorderDescRefundStatus is the schema descriptor for refund_status field.
+	smsorderDescRefundStatus := smsorderFields[19].Descriptor()
+	// smsorder.DefaultRefundStatus holds the default value on creation for the refund_status field.
+	smsorder.DefaultRefundStatus = smsorderDescRefundStatus.Default.(string)
+	// smsorder.RefundStatusValidator is a validator for the "refund_status" field. It is called by the builders before save.
+	smsorder.RefundStatusValidator = smsorderDescRefundStatus.Validators[0].(func(string) error)
+	// smsorderDescRefundReason is the schema descriptor for refund_reason field.
+	smsorderDescRefundReason := smsorderFields[20].Descriptor()
+	// smsorder.DefaultRefundReason holds the default value on creation for the refund_reason field.
+	smsorder.DefaultRefundReason = smsorderDescRefundReason.Default.(string)
+	// smsorderDescLastProviderError is the schema descriptor for last_provider_error field.
+	smsorderDescLastProviderError := smsorderFields[21].Descriptor()
+	// smsorder.DefaultLastProviderError holds the default value on creation for the last_provider_error field.
+	smsorder.DefaultLastProviderError = smsorderDescLastProviderError.Default.(string)
+	smsproviderFields := schema.SmsProvider{}.Fields()
+	_ = smsproviderFields
+	// smsproviderDescCode is the schema descriptor for code field.
+	smsproviderDescCode := smsproviderFields[0].Descriptor()
+	// smsprovider.CodeValidator is a validator for the "code" field. It is called by the builders before save.
+	smsprovider.CodeValidator = func() func(string) error {
+		validators := smsproviderDescCode.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(code string) error {
+			for _, fn := range fns {
+				if err := fn(code); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// smsproviderDescName is the schema descriptor for name field.
+	smsproviderDescName := smsproviderFields[1].Descriptor()
+	// smsprovider.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	smsprovider.NameValidator = func() func(string) error {
+		validators := smsproviderDescName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(name string) error {
+			for _, fn := range fns {
+				if err := fn(name); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// smsproviderDescBaseURL is the schema descriptor for base_url field.
+	smsproviderDescBaseURL := smsproviderFields[2].Descriptor()
+	// smsprovider.BaseURLValidator is a validator for the "base_url" field. It is called by the builders before save.
+	smsprovider.BaseURLValidator = func() func(string) error {
+		validators := smsproviderDescBaseURL.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(base_url string) error {
+			for _, fn := range fns {
+				if err := fn(base_url); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// smsproviderDescCredentialRef is the schema descriptor for credential_ref field.
+	smsproviderDescCredentialRef := smsproviderFields[3].Descriptor()
+	// smsprovider.DefaultCredentialRef holds the default value on creation for the credential_ref field.
+	smsprovider.DefaultCredentialRef = smsproviderDescCredentialRef.Default.(string)
+	// smsprovider.CredentialRefValidator is a validator for the "credential_ref" field. It is called by the builders before save.
+	smsprovider.CredentialRefValidator = smsproviderDescCredentialRef.Validators[0].(func(string) error)
+	// smsproviderDescEnabled is the schema descriptor for enabled field.
+	smsproviderDescEnabled := smsproviderFields[4].Descriptor()
+	// smsprovider.DefaultEnabled holds the default value on creation for the enabled field.
+	smsprovider.DefaultEnabled = smsproviderDescEnabled.Default.(bool)
+	// smsproviderDescHealthStatus is the schema descriptor for health_status field.
+	smsproviderDescHealthStatus := smsproviderFields[5].Descriptor()
+	// smsprovider.DefaultHealthStatus holds the default value on creation for the health_status field.
+	smsprovider.DefaultHealthStatus = smsproviderDescHealthStatus.Default.(string)
+	// smsprovider.HealthStatusValidator is a validator for the "health_status" field. It is called by the builders before save.
+	smsprovider.HealthStatusValidator = smsproviderDescHealthStatus.Validators[0].(func(string) error)
 	subscriptionplanFields := schema.SubscriptionPlan{}.Fields()
 	_ = subscriptionplanFields
 	// subscriptionplanDescName is the schema descriptor for name field.

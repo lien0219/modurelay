@@ -1649,6 +1649,81 @@ var (
 		Columns:    SettingsColumns,
 		PrimaryKey: []*schema.Column{SettingsColumns[0]},
 	}
+	// SmsChannelsColumns holds the columns for the "sms_channels" table.
+	SmsChannelsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "code", Type: field.TypeString, Unique: true, Size: 64},
+		{Name: "public_name", Type: field.TypeString, Size: 128},
+		{Name: "role", Type: field.TypeString, Size: 16, Default: "primary"},
+		{Name: "provider_id", Type: field.TypeInt64},
+		{Name: "enabled", Type: field.TypeBool, Default: false},
+		{Name: "visible", Type: field.TypeBool, Default: true},
+		{Name: "healthy", Type: field.TypeBool, Default: false},
+		{Name: "sort_order", Type: field.TypeInt, Default: 0},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// SmsChannelsTable holds the schema information for the "sms_channels" table.
+	SmsChannelsTable = &schema.Table{
+		Name:       "sms_channels",
+		Columns:    SmsChannelsColumns,
+		PrimaryKey: []*schema.Column{SmsChannelsColumns[0]},
+	}
+	// SmsOrdersColumns holds the columns for the "sms_orders" table.
+	SmsOrdersColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "public_id", Type: field.TypeUUID, Unique: true},
+		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "channel_id", Type: field.TypeInt64},
+		{Name: "provider_id", Type: field.TypeInt64},
+		{Name: "service_id", Type: field.TypeInt64},
+		{Name: "country_id", Type: field.TypeInt64},
+		{Name: "product_type", Type: field.TypeString, Size: 16},
+		{Name: "status", Type: field.TypeString, Size: 32, Default: "pending"},
+		{Name: "provider_order_id", Type: field.TypeString, Size: 256, Default: ""},
+		{Name: "phone_number", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "provider_cost_snapshot", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "numeric(20,8)"}},
+		{Name: "sale_price_snapshot", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "numeric(20,8)"}},
+		{Name: "success_rate_snapshot", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "numeric(8,5)"}},
+		{Name: "success_rate_source_snapshot", Type: field.TypeString, Size: 32, Default: "unavailable"},
+		{Name: "success_rate_grade_snapshot", Type: field.TypeString, Size: 2, Default: ""},
+		{Name: "success_rate_multiplier_snapshot", Type: field.TypeFloat64, Default: 1, SchemaType: map[string]string{"postgres": "numeric(20,8)"}},
+		{Name: "currency_snapshot", Type: field.TypeString, Size: 8, Default: "USD"},
+		{Name: "expires_at", Type: field.TypeTime, Nullable: true},
+		{Name: "idempotency_key", Type: field.TypeString, Size: 128},
+		{Name: "refund_status", Type: field.TypeString, Size: 32, Default: "not_requested"},
+		{Name: "refund_reason", Type: field.TypeString, Default: "", SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "last_provider_error", Type: field.TypeString, Default: "", SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "metadata", Type: field.TypeJSON},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// SmsOrdersTable holds the schema information for the "sms_orders" table.
+	SmsOrdersTable = &schema.Table{
+		Name:       "sms_orders",
+		Columns:    SmsOrdersColumns,
+		PrimaryKey: []*schema.Column{SmsOrdersColumns[0]},
+	}
+	// SmsProvidersColumns holds the columns for the "sms_providers" table.
+	SmsProvidersColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "code", Type: field.TypeString, Unique: true, Size: 64},
+		{Name: "name", Type: field.TypeString, Size: 128},
+		{Name: "base_url", Type: field.TypeString, Size: 512},
+		{Name: "credential_ref", Type: field.TypeString, Size: 256, Default: ""},
+		{Name: "enabled", Type: field.TypeBool, Default: false},
+		{Name: "health_status", Type: field.TypeString, Size: 32, Default: "unknown"},
+		{Name: "capabilities", Type: field.TypeJSON},
+		{Name: "metadata", Type: field.TypeJSON},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// SmsProvidersTable holds the schema information for the "sms_providers" table.
+	SmsProvidersTable = &schema.Table{
+		Name:       "sms_providers",
+		Columns:    SmsProvidersColumns,
+		PrimaryKey: []*schema.Column{SmsProvidersColumns[0]},
+	}
 	// SubscriptionPlansColumns holds the columns for the "subscription_plans" table.
 	SubscriptionPlansColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -2236,6 +2311,9 @@ var (
 		ResourcePostsTable,
 		SecuritySecretsTable,
 		SettingsTable,
+		SmsChannelsTable,
+		SmsOrdersTable,
+		SmsProvidersTable,
 		SubscriptionPlansTable,
 		TLSFingerprintProfilesTable,
 		UsageCleanupTasksTable,
@@ -2374,6 +2452,15 @@ func init() {
 	}
 	SettingsTable.Annotation = &entsql.Annotation{
 		Table: "settings",
+	}
+	SmsChannelsTable.Annotation = &entsql.Annotation{
+		Table: "sms_channels",
+	}
+	SmsOrdersTable.Annotation = &entsql.Annotation{
+		Table: "sms_orders",
+	}
+	SmsProvidersTable.Annotation = &entsql.Annotation{
+		Table: "sms_providers",
 	}
 	SubscriptionPlansTable.Annotation = &entsql.Annotation{
 		Table: "subscription_plans",

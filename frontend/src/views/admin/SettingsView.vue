@@ -7292,6 +7292,14 @@
 
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ localText('接码服务', 'SMS Verification') }}</h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ localText('默认关闭。开启后用户端才会显示接码入口；Provider 凭证和 Channel 健康状态在接码管理页配置。', 'Opt-in feature. Users see the SMS entry only after enabling it; configure credentials and channel health in SMS Management.') }}</p>
+          </div>
+          <div class="space-y-5 p-6"><div class="flex items-center justify-between"><div><label class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ localText('启用接码服务', 'Enable SMS Verification') }}</label><p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{{ localText('关闭时用户 API 返回 FEATURE_DISABLED。', 'Disabled user APIs return FEATURE_DISABLED.') }}</p></div><Toggle v-model="form.sms_service_enabled" /></div></div>
+        </div>
+
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
             <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
               {{ t('admin.settings.features.availableChannels.title') }}
             </h2>
@@ -9983,6 +9991,7 @@ const form = reactive<SettingsForm>({
   channel_monitor_show_quota: false,
   // Available Channels feature switch
   available_channels_enabled: false,
+  sms_service_enabled: false,
   canvas_enabled: false,
   plan_catalog_enabled: false,
   // Model Plaza feature switches + description
@@ -11669,6 +11678,7 @@ async function saveSettings() {
       channel_monitor_show_quota: Boolean(form.channel_monitor_show_quota),
       // Available Channels feature switch
       available_channels_enabled: form.available_channels_enabled,
+      sms_service_enabled: form.sms_service_enabled,
       canvas_enabled: form.canvas_enabled,
       plan_catalog_enabled: form.plan_catalog_enabled,
       // Model Plaza feature switches + description

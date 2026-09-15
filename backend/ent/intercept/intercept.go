@@ -43,6 +43,9 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/resourcepost"
 	"github.com/Wei-Shaw/sub2api/ent/securitysecret"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
+	"github.com/Wei-Shaw/sub2api/ent/smschannel"
+	"github.com/Wei-Shaw/sub2api/ent/smsorder"
+	"github.com/Wei-Shaw/sub2api/ent/smsprovider"
 	"github.com/Wei-Shaw/sub2api/ent/subscriptionplan"
 	"github.com/Wei-Shaw/sub2api/ent/tlsfingerprintprofile"
 	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
@@ -1029,6 +1032,87 @@ func (f TraverseSetting) Traverse(ctx context.Context, q ent.Query) error {
 	return fmt.Errorf("unexpected query type %T. expect *ent.SettingQuery", q)
 }
 
+// The SmsChannelFunc type is an adapter to allow the use of ordinary function as a Querier.
+type SmsChannelFunc func(context.Context, *ent.SmsChannelQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f SmsChannelFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.SmsChannelQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.SmsChannelQuery", q)
+}
+
+// The TraverseSmsChannel type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseSmsChannel func(context.Context, *ent.SmsChannelQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseSmsChannel) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseSmsChannel) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.SmsChannelQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.SmsChannelQuery", q)
+}
+
+// The SmsOrderFunc type is an adapter to allow the use of ordinary function as a Querier.
+type SmsOrderFunc func(context.Context, *ent.SmsOrderQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f SmsOrderFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.SmsOrderQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.SmsOrderQuery", q)
+}
+
+// The TraverseSmsOrder type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseSmsOrder func(context.Context, *ent.SmsOrderQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseSmsOrder) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseSmsOrder) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.SmsOrderQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.SmsOrderQuery", q)
+}
+
+// The SmsProviderFunc type is an adapter to allow the use of ordinary function as a Querier.
+type SmsProviderFunc func(context.Context, *ent.SmsProviderQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f SmsProviderFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.SmsProviderQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.SmsProviderQuery", q)
+}
+
+// The TraverseSmsProvider type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseSmsProvider func(context.Context, *ent.SmsProviderQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseSmsProvider) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseSmsProvider) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.SmsProviderQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.SmsProviderQuery", q)
+}
+
 // The SubscriptionPlanFunc type is an adapter to allow the use of ordinary function as a Querier.
 type SubscriptionPlanFunc func(context.Context, *ent.SubscriptionPlanQuery) (ent.Value, error)
 
@@ -1370,6 +1454,12 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.SecuritySecretQuery, predicate.SecuritySecret, securitysecret.OrderOption]{typ: ent.TypeSecuritySecret, tq: q}, nil
 	case *ent.SettingQuery:
 		return &query[*ent.SettingQuery, predicate.Setting, setting.OrderOption]{typ: ent.TypeSetting, tq: q}, nil
+	case *ent.SmsChannelQuery:
+		return &query[*ent.SmsChannelQuery, predicate.SmsChannel, smschannel.OrderOption]{typ: ent.TypeSmsChannel, tq: q}, nil
+	case *ent.SmsOrderQuery:
+		return &query[*ent.SmsOrderQuery, predicate.SmsOrder, smsorder.OrderOption]{typ: ent.TypeSmsOrder, tq: q}, nil
+	case *ent.SmsProviderQuery:
+		return &query[*ent.SmsProviderQuery, predicate.SmsProvider, smsprovider.OrderOption]{typ: ent.TypeSmsProvider, tq: q}, nil
 	case *ent.SubscriptionPlanQuery:
 		return &query[*ent.SubscriptionPlanQuery, predicate.SubscriptionPlan, subscriptionplan.OrderOption]{typ: ent.TypeSubscriptionPlan, tq: q}, nil
 	case *ent.TLSFingerprintProfileQuery:

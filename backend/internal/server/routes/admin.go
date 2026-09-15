@@ -136,7 +136,22 @@ func RegisterAdminRoutes(
 
 		registerActivityRoutes(admin, h, stepUpAuth)
 		registerPlanCatalogRoutes(admin, h)
+		registerSMSAdminRoutes(admin, h)
 	}
+}
+
+func registerSMSAdminRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	if h.SMS == nil {
+		return
+	}
+	sms := admin.Group("/sms")
+	sms.GET("/providers", h.SMS.AdminProviders)
+	sms.PUT("/providers/:id", h.SMS.AdminProviderUpdate)
+	sms.GET("/channels", h.SMS.AdminChannels)
+	sms.PUT("/channels/:id", h.SMS.AdminChannelUpdate)
+	sms.GET("/stats", h.SMS.AdminStats)
+	sms.GET("/orders", h.SMS.AdminOrders)
+	sms.PUT("/settings", h.SMS.AdminToggle)
 }
 
 func registerPlanCatalogRoutes(admin *gin.RouterGroup, h *handler.Handlers) {

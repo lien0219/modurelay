@@ -342,6 +342,7 @@ type UpdateSettingsRequest struct {
 
 	// Available Channels feature switch (user-facing)
 	AvailableChannelsEnabled *bool `json:"available_channels_enabled"`
+	SMSServiceEnabled        *bool `json:"sms_service_enabled"`
 	CanvasEnabled            *bool `json:"canvas_enabled"`
 	PlanCatalogEnabled       *bool `json:"plan_catalog_enabled"`
 
@@ -1953,6 +1954,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.AvailableChannelsEnabled
 		}(),
+		SMSServiceEnabled: func() bool {
+			if req.SMSServiceEnabled != nil {
+				return *req.SMSServiceEnabled
+			}
+			return previousSettings.SMSServiceEnabled
+		}(),
 		CanvasEnabled: func() bool {
 			if req.CanvasEnabled != nil {
 				return *req.CanvasEnabled
@@ -2407,6 +2414,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		GrokDefaultBaseURLMode:         updatedSettings.GrokDefaultBaseURLMode,
 
 		AvailableChannelsEnabled: updatedSettings.AvailableChannelsEnabled,
+		SMSServiceEnabled:        updatedSettings.SMSServiceEnabled,
 		CanvasEnabled:            updatedSettings.CanvasEnabled,
 		PlanCatalogEnabled:       updatedSettings.PlanCatalogEnabled,
 

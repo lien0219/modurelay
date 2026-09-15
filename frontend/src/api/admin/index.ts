@@ -37,6 +37,7 @@ import adminComplianceAPI from './compliance'
 import auditAPI from './audit'
 import pluginsAPI from './plugins'
 import activityAdminAPI from './activity'
+import smsAdminAPI from './sms'
 
 /**
  * Unified admin API object for convenient access
@@ -75,7 +76,8 @@ export const adminAPI = {
   compliance: adminComplianceAPI,
   audit: auditAPI,
   plugins: pluginsAPI,
-  activities: activityAdminAPI
+  activities: activityAdminAPI,
+  sms: smsAdminAPI
 }
 
 export {
@@ -112,7 +114,8 @@ export {
   adminComplianceAPI,
   auditAPI,
   pluginsAPI,
-  activityAdminAPI
+  activityAdminAPI,
+  smsAdminAPI
 }
 
 export default adminAPI
