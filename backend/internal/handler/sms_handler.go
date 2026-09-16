@@ -119,6 +119,16 @@ func (h *SMSHandler) Orders(c *gin.Context) {
 		response.Unauthorized(c, "User not authenticated")
 		return
 	}
+	if c.Query("page") != "" || c.Query("page_size") != "" || c.Query("keyword") != "" || c.Query("status") != "" {
+		page, pageSize := response.ParsePagination(c)
+		orders, err := h.svc.ListUserOrdersPage(c.Request.Context(), subject.UserID, page, pageSize, c.Query("keyword"), c.Query("status"))
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		response.Success(c, orders)
+		return
+	}
 	orders, err := h.svc.ListOrders(c.Request.Context(), subject.UserID, false)
 	if err != nil {
 		response.ErrorFrom(c, err)

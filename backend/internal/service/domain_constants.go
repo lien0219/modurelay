@@ -509,6 +509,9 @@ const (
 	// SettingKeySMSServiceEnabled controls the user-facing SMS Verification module.
 	// It is opt-in and defaults to false until providers are configured.
 	SettingKeySMSServiceEnabled = "sms_service_enabled"
+	// SettingKeyEmailServiceEnabled controls the user-facing temporary email module.
+	// It is opt-in and defaults to false until an email provider/channel is configured.
+	SettingKeyEmailServiceEnabled = "email_service_enabled"
 
 	// SettingKeyModelPlazaEnabled is a DB-backed soft switch for the Model Plaza page
 	// (public group/model pricing showcase). When false: the plaza endpoint returns 404

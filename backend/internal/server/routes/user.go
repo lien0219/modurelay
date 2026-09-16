@@ -198,6 +198,23 @@ func RegisterUserRoutes(
 			sms.POST("/rentals/:id/extend", h.SMS.ExtendRental)
 		}
 
+		if h.Email != nil {
+			email := authenticated.Group("/email")
+			email.Use(emailFeatureGuard(h.Email))
+			email.GET("/services", h.Email.Services)
+			email.GET("/quotes", h.Email.Quotes)
+			email.POST("/orders", h.Email.Purchase)
+			email.GET("/orders", h.Email.Orders)
+			email.GET("/orders/:id", h.Email.Order)
+			email.POST("/orders/:id/cancel", h.Email.Cancel)
+			email.GET("/orders/:id/refund-status", h.Email.RefundStatus)
+			email.POST("/orders/:id/refund", h.Email.Refund)
+		}
+		if h.VerificationRecords != nil {
+			authenticated.GET("/verification-records", h.VerificationRecords.List)
+			authenticated.GET("/verification-records/options", h.VerificationRecords.Options)
+		}
+
 		// 卡密兑换
 		redeem := authenticated.Group("/redeem")
 		{
@@ -240,6 +257,17 @@ func smsFeatureGuard(svc interface{ Enabled(context.Context) bool }) gin.Handler
 	return func(c *gin.Context) {
 		if !svc.Enabled(c.Request.Context()) {
 			response.ErrorWithDetails(c, 404, "SMS Verification is unavailable", "FEATURE_DISABLED", nil)
+			c.Abort()
+			return
+		}
+		c.Next()
+	}
+}
+
+func emailFeatureGuard(svc interface{ Enabled(context.Context) bool }) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if !svc.Enabled(c.Request.Context()) {
+			response.ErrorWithDetails(c, 404, "Email service is unavailable", "FEATURE_DISABLED", nil)
 			c.Abort()
 			return
 		}

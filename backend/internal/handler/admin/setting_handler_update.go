@@ -343,6 +343,7 @@ type UpdateSettingsRequest struct {
 	// Available Channels feature switch (user-facing)
 	AvailableChannelsEnabled *bool `json:"available_channels_enabled"`
 	SMSServiceEnabled        *bool `json:"sms_service_enabled"`
+	EmailServiceEnabled      *bool `json:"email_service_enabled"`
 	CanvasEnabled            *bool `json:"canvas_enabled"`
 	PlanCatalogEnabled       *bool `json:"plan_catalog_enabled"`
 
@@ -1960,6 +1961,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.SMSServiceEnabled
 		}(),
+		EmailServiceEnabled: func() bool {
+			if req.EmailServiceEnabled != nil {
+				return *req.EmailServiceEnabled
+			}
+			return previousSettings.EmailServiceEnabled
+		}(),
 		CanvasEnabled: func() bool {
 			if req.CanvasEnabled != nil {
 				return *req.CanvasEnabled
@@ -2415,6 +2422,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 
 		AvailableChannelsEnabled: updatedSettings.AvailableChannelsEnabled,
 		SMSServiceEnabled:        updatedSettings.SMSServiceEnabled,
+		EmailServiceEnabled:      updatedSettings.EmailServiceEnabled,
 		CanvasEnabled:            updatedSettings.CanvasEnabled,
 		PlanCatalogEnabled:       updatedSettings.PlanCatalogEnabled,
 

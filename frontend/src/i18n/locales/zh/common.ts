@@ -68,6 +68,7 @@ export default {
     selectOption: '请选择',
     searchPlaceholder: '搜索...',
     noOptionsFound: '无匹配选项',
+    loadMore: '加载更多',
     noGroupsAvailable: '无可用分组',
     unknownError: '发生未知错误',
     saving: '保存中...',
@@ -218,6 +219,9 @@ export default {
     channelManagement: '渠道管理',
     channelPricing: '渠道定价',
     channelMonitor: '渠道监控',
+    emailManagement: '邮箱接码管理',
+    emailService: '邮箱接码',
+    verificationRecords: '接码记录',
     channelStatus: '渠道状态',
     riskControl: '风控中心',
     securityAudit: '安全审计',
@@ -229,8 +233,8 @@ export default {
     activityManagement: '活动管理',
     promptAudit: '提示词审计',
     auditLogs: '操作日志',
-    smsService: '接码服务',
-    smsManagement: '接码管理',
+    smsService: '手机接码',
+    smsManagement: '手机接码管理',
   },
 
   sms: {
@@ -303,7 +307,7 @@ export default {
       extend: '续租',
       requestRefund: '申请退款',
       hoursToExtend: '输入续租小时数',
-      statuses: { waitingSms: '等待短信', reconciling: '对账中', providerUnknown: '渠道状态未知', completed: '已完成', cancelled: '已取消', failed: '失败', refunded: '已退款' },
+      statuses: { pending: '等待处理', waitingSms: '等待短信', reconciling: '对账中', providerUnknown: '渠道状态未知', completed: '已完成', cancelled: '已取消', failed: '失败', refunded: '已退款', expired: '已过期', unknown: '未知状态' },
       refunds: { approved: '退款成功', rejected: '退款被拒', pending: '退款处理中' },
       productTypes: { temporary: '临时号码', rental: '长期号码' },
       errors: { unavailable: '接码服务暂时不可用。', quote: '报价获取失败。', orders: '订单加载失败。', purchase: '下单失败，余额未必扣除，请刷新订单确认。', cancel: '取消失败。', refund: '退款申请失败。', extend: '续租失败。' },
@@ -595,4 +599,42 @@ export default {
   },
 
   // Dashboard
+
+  verificationRecords: {
+    eyebrow: '接码记录',
+    title: '接码记录',
+    description: '统一查看你的手机接码与邮箱接码结果、扣款和退款记录。',
+    adminEyebrow: '接码运营',
+    adminTitle: '接码记录',
+    adminDescription: '统一核对手机与邮箱接码订单、处理结果、用户资金和供应商成本。',
+    tableTitle: '记录明细',
+    adminTableLabel: '管理员接码记录明细',
+    userTableLabel: '用户接码记录明细',
+    resultCount: '共 {count} 条',
+    empty: '暂无符合条件的接码记录',
+    loadError: '接码记录加载失败',
+    types: { sms: '手机接码', email: '邮箱接码' },
+    outcomes: { processing: '处理中', success: '成功', failed: '失败', refunded: '已退款', cancelled: '已取消', expired: '已过期' },
+    filters: { type: '接码类型', allTypes: '全部类型', outcome: '处理结果', allOutcomes: '全部结果', platform: '平台', allPlatforms: '全部平台', country: '国家 / 地区', allCountries: '全部国家 / 地区', searchPlatform: '搜索平台', searchCountry: '搜索国家 / 地区', keyword: '关键词', keywordPlaceholder: '订单号、接码目标或平台', adminKeywordPlaceholder: '订单号、用户、接码目标或平台', from: '开始日期', to: '结束日期' },
+    summary: { title: '接码记录汇总', total: '记录总数', processing: '处理中', success: '成功', failed: '失败', refunded: '退款', totalAmount: '总金额', totalCost: '总成本', profit: '利润' },
+    analytics: { title: '成功率与利润看板', description: '按当前筛选条件统计接码形式、平台与手机接码国家的表现。', terminalHint: '成功率不包含仍在处理中的记录', byType: '不同接码形式成功率', byPlatform: '不同平台成功率', byCountry: '不同国家成功率', successRate: '成功率', profitTitle: '按币种统计金额、成本与利润', currency: '币种', empty: '当前筛选条件下暂无已完成样本' },
+    bulk: { selectPage: '选择当前页', export: '导出所选', clear: '清空选择', exported: '已导出 {count} 条接码记录' },
+    columns: { select: '选择', createdAt: '创建时间', type: '类型', user: '用户', orderNo: '订单号', platform: '平台', country: '国家 / 地区', service: '服务', channel: '通道', target: '接码目标', provider: '供应商', result: '结果 / 状态', refund: '退款状态', amount: '金额', saleAmount: '销售金额', providerCost: '供应商成本', userDebit: '用户扣款', reserved: '预留金额', captured: '已结算', released: '已释放', refundedAmount: '退款金额', requests: '供应商请求', error: '错误明细', note: '说明' },
+  },
+
+  email: {
+    admin: {
+      billingTitle: '供应商计费与配额', billingDescription: '配置成本模式、包含请求数、速率限制和配额熔断阈值。', costMode: '成本模式', monthlyFee: '月费', includedMonthly: '月度包含请求', includedDaily: '每日包含请求', overagePrice: '超额请求单价', warningPercent: '告警阈值 %', stopPercent: '停止新订单阈值 %', reservePercent: '活动订单保留 %', ratePerMinute: '每分钟请求', ratePerHour: '每小时请求', fixedOrderCost: '每单固定成本', estimatedRequests: '每单预估请求数', providerConcurrency: '供应商并发数', saveBilling: '保存计费配置',
+      billingGuide: '金额按人民币计算；包含请求数为 0 表示不设置对应配额。告警阈值用于监控，停止阈值达到后将暂停新订单，活动订单保留比例用于给执行中的订单预留请求额度。',
+      billingHints: { costMode: '决定供应商请求成本如何分摊到订单。', monthlyFee: '供应商套餐的固定月费。', includedMonthly: '月套餐内包含的请求总量。', includedDaily: '每日可用请求量；0 表示不单独限制。', overagePrice: '超出套餐后每次 API 请求的成本。', warningPercent: '达到该配额使用比例时进入告警状态。', stopPercent: '达到该比例后停止创建新订单。', reservePercent: '在停止阈值前为活动订单预留的月度额度比例。', ratePerMinute: '供应商允许的每分钟请求数；0 表示不限制。', ratePerHour: '供应商允许的每小时请求数；0 表示不限制。', fixedOrderCost: '固定按单计费模式下的单笔供应商成本。', estimatedRequests: '用于估算每笔订单成本的平均 API 请求次数。', providerConcurrency: '同时访问供应商 API 的最大请求数，范围 1-32。' },
+      costModes: { request_based_plus_amortized: '按请求计费 + 月费分摊', request_based: '仅按请求计费', monthly_amortized: '仅按月费分摊', fixed_per_order: '每单固定成本', manual: '手动请求成本' },
+      refundPolicies: { refund_if_no_message: '未收到目标邮件自动退款', no_refund_after_inbox_delivery: '邮箱交付后不退款', manual_review: '过期后人工审核' },
+      capturePolicies: { on_target_email_received: '收到目标邮件后结算', on_verification_extracted: '提取验证码或链接后结算' },
+      orderStatuses: { reserved: '已预留', generating_inbox: '生成邮箱中', waiting_email: '等待邮件', email_received: '邮件已收到', verification_extracted: '已提取验证信息', completed: '已完成', reconciling: '核对中', expired: '已过期', refunded: '已退款', failed: '失败', cancelled: '已取消' },
+      eyebrow: '邮箱接码管理', description: '配置临时邮箱通道、供应商、计费与配额策略。', enableTitle: '邮箱接码服务', enableDescription: '开启后，用户可购买公开临时邮箱。', switchLabel: '启用邮箱接码', providers: '供应商', channels: '邮箱通道', orders: '邮箱订单', name: '名称', baseUrl: 'API 地址', credential: '凭证', health: '健康状态', enabled: '启用', visible: '用户可见', action: '操作', openProvider: '打开供应商入口', portal: '供应商配置', configured: '已配置', missing: '未配置', providerEnabled: '启用供应商 {name}', channelVisible: '对用户显示 {name}', channelHealthy: '标记通道健康 {name}', channelEnabled: '启用通道 {name}', save: '保存', saving: '保存中…', saved: '已保存', testConnection: '测试连接', testRequestNotice: '测试会执行一次经过认证的供应商请求。', testing: '测试中…', testSuccess: '连接成功', testFailed: '连接失败', salePrice: '售价', baseMarkup: '基础加价比例', fixedMarkup: '固定加价', minimumProfit: '最低利润', refundPolicy: '退款策略', capturePolicy: '结算策略', orderTtl: '有效期（秒）', maxRequests: '请求上限', pollingBackoff: '轮询退避', backoffPlaceholder: '2, 4, 7, 10, 15', invalidBackoff: '请输入 1 到 3600 秒的逗号分隔轮询间隔。', provider: '供应商', emailAddress: '邮箱地址', statusLabel: '状态', requests: '请求数', createdAt: '创建时间', orderNo: '订单号', user: '用户', service: '服务', stats: { orders: '订单数', completed: '已完成', refunded: '已退款', today_requests: '今日请求', month_requests: '本月请求', failed_requests: '失败请求', rate_limited_requests: '限流请求' }, status: { healthy: '健康', degraded: '降级', unavailable: '不可用', quota_limited: '额度受限', disabled: '已禁用', unknown: '未知' }
+    },
+    user: {
+      description: '使用公开临时邮箱接收验证邮件。', temporary: '临时邮箱', orders: '我的邮箱 / 订单', service: '验证平台', selectService: '选择平台', addressType: '邮箱类型', gmail: '临时 Gmail', privacyWarning: '此通道提供公开临时邮箱。任何知道完整邮箱地址的人都可能访问对应收件箱，请勿用于银行、政府、医疗、身份认证或其他敏感账户。', quoteHint: '请选择可用通道', chooseForQuote: '选择平台后查看可用通道', checking: '查询中…', noChannel: '当前暂无可用邮箱通道', eta: '平均到信', seconds: '秒', retention: '邮件保留', successRate: '成功率', insufficientSuccessData: '暂无足够数据', processing: '处理中…', purchase: '获取邮箱', loading: '加载中…', noOrders: '暂无邮箱订单', code: '验证码', copy: '复制', safeOpen: '打开链接', viewMessage: '查看邮件', waiting: '等待验证邮件', cancel: '取消订单', requestRefund: '申请退款', copied: '已复制', refundPolicies: { refund_if_no_message: '订单过期前未收到匹配邮件时自动退款。', no_refund_after_inbox_delivery: '邮箱交付后订单将正常结算。', manual_review: '订单过期后需要管理员人工审核。' }, statuses: { reserved: '已预留', generating_inbox: '生成邮箱中', waiting_email: '等待邮件', email_received: '邮件已收到', verification_extracted: '已提取验证信息', completed: '已完成', reconciling: '核对中', expired: '已过期', refunded: '已退款', failed: '失败', cancelled: '已取消' }, errors: { unavailable: '当前邮箱通道暂时不可用', quote: '暂时无法获取报价', orders: '暂时无法获取订单', purchase: '邮箱生成失败', cancel: '取消订单失败', refund: '申请退款失败' }
+    }
+  },
 }

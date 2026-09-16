@@ -109,6 +109,7 @@ func provideCleanup(
 	batchImageWorker *service.BatchImageWorkerRuntime,
 	pricing *service.PricingService,
 	emailQueue *service.EmailQueueService,
+	emailVerificationWorker *service.EmailVerificationWorker,
 	billingCache *service.BillingCacheService,
 	usageRecordWorkerPool *service.UsageRecordWorkerPool,
 	subscriptionService *service.SubscriptionService,
@@ -300,6 +301,12 @@ func provideCleanup(
 			}},
 			{"EmailQueueService", func() error {
 				emailQueue.Stop()
+				return nil
+			}},
+			{"EmailVerificationWorker", func() error {
+				if emailVerificationWorker != nil {
+					emailVerificationWorker.Stop()
+				}
 				return nil
 			}},
 			{"BillingCacheService", func() error {

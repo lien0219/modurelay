@@ -969,7 +969,19 @@ var ProviderSet = wire.NewSet(
 	NewChannelMonitorRequestTemplateService,
 	ProvideUserPlatformQuotaUsageFlusher,
 	NewSMSService,
+	NewEmailVerificationService,
+	NewVerificationRecordService,
+	ProvideEmailVerificationWorker,
 )
+
+// ProvideEmailVerificationWorker starts the server-side email polling,
+// reconciliation, and retention loop. LeaderLockCache keeps multi-instance
+// deployments from polling the same inbox concurrently.
+func ProvideEmailVerificationWorker(service *EmailVerificationService, db *sql.DB, lockCache LeaderLockCache) *EmailVerificationWorker {
+	worker := NewEmailVerificationWorker(service, db, lockCache)
+	worker.Start()
+	return worker
+}
 
 // ProvideUserPlatformQuotaUsageFlusher 创建并启动 UserPlatformQuotaUsageFlusher。
 func ProvideUserPlatformQuotaUsageFlusher(cfg *config.Config, cache BillingCache, quotaRepo UserPlatformQuotaRepository, tw *TimingWheelService) *UserPlatformQuotaUsageFlusher {

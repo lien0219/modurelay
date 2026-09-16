@@ -383,6 +383,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 
 		AvailableChannelsEnabled: settings.AvailableChannelsEnabled,
 		SMSServiceEnabled:        settings.SMSServiceEnabled,
+		EmailServiceEnabled:      settings.EmailServiceEnabled,
 		CanvasEnabled:            settings.CanvasEnabled,
 		PlanCatalogEnabled:       settings.PlanCatalogEnabled,
 

@@ -137,7 +137,27 @@ func RegisterAdminRoutes(
 		registerActivityRoutes(admin, h, stepUpAuth)
 		registerPlanCatalogRoutes(admin, h)
 		registerSMSAdminRoutes(admin, h)
+		registerEmailAdminRoutes(admin, h)
+		if h.VerificationRecords != nil {
+			admin.GET("/verification-records", h.VerificationRecords.AdminList)
+			admin.GET("/verification-records/options", h.VerificationRecords.AdminOptions)
+		}
 	}
+}
+
+func registerEmailAdminRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	if h.Email == nil {
+		return
+	}
+	email := admin.Group("/email")
+	email.GET("/providers", h.Email.AdminProviders)
+	email.PUT("/providers/:id", h.Email.AdminProviderUpdate)
+	email.POST("/providers/:id/test", h.Email.AdminProviderTest)
+	email.GET("/channels", h.Email.AdminChannels)
+	email.PUT("/channels/:id", h.Email.AdminChannelUpdate)
+	email.GET("/stats", h.Email.AdminStats)
+	email.GET("/orders", h.Email.AdminOrders)
+	email.PUT("/settings", h.Email.AdminToggle)
 }
 
 func registerSMSAdminRoutes(admin *gin.RouterGroup, h *handler.Handlers) {

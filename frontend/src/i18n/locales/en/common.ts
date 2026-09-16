@@ -68,6 +68,7 @@ export default {
     selectOption: 'Select an option',
     searchPlaceholder: 'Search...',
     noOptionsFound: 'No options found',
+    loadMore: 'Load more',
     noGroupsAvailable: 'No groups available',
     unknownError: 'Unknown error occurred',
     saving: 'Saving...',
@@ -218,6 +219,9 @@ export default {
     channelManagement: 'Channels',
     channelPricing: 'Channel Pricing',
     channelMonitor: 'Channel Monitor',
+    emailManagement: 'Email verification management',
+    emailService: 'Email verification',
+    verificationRecords: 'Verification records',
     channelStatus: 'Channel Status',
     riskControl: 'Risk Control',
     securityAudit: 'Security Audit',
@@ -229,8 +233,8 @@ export default {
     activityManagement: 'Activity Management',
     promptAudit: 'Prompt Audit',
     auditLogs: 'Audit Logs',
-    smsService: 'SMS Verification',
-    smsManagement: 'SMS Management',
+    smsService: 'Phone verification',
+    smsManagement: 'Phone verification management',
   },
 
   sms: {
@@ -303,7 +307,7 @@ export default {
       extend: 'Extend',
       requestRefund: 'Request refund',
       hoursToExtend: 'Hours to extend',
-      statuses: { waitingSms: 'Waiting SMS', reconciling: 'Reconciling', providerUnknown: 'Channel status unknown', completed: 'Completed', cancelled: 'Cancelled', failed: 'Failed', refunded: 'Refunded' },
+      statuses: { pending: 'Pending', waitingSms: 'Waiting SMS', reconciling: 'Reconciling', providerUnknown: 'Channel status unknown', completed: 'Completed', cancelled: 'Cancelled', failed: 'Failed', refunded: 'Refunded', expired: 'Expired', unknown: 'Unknown status' },
       refunds: { approved: 'Refunded', rejected: 'Refund rejected', pending: 'Refund pending' },
       productTypes: { temporary: 'Temporary number', rental: 'Long-term number' },
       errors: { unavailable: 'SMS service is temporarily unavailable.', quote: 'Could not load quotes.', orders: 'Could not load orders.', purchase: 'Purchase failed; refresh orders to confirm the balance state.', cancel: 'Cancellation failed.', refund: 'Refund request failed.', extend: 'Rental extension failed.' },
@@ -596,4 +600,42 @@ export default {
   },
 
   // Dashboard
+
+  verificationRecords: {
+    eyebrow: 'Verification records',
+    title: 'Verification records',
+    description: 'Review your phone and email verification results, charges, and refunds in one place.',
+    adminEyebrow: 'Verification operations',
+    adminTitle: 'Verification records',
+    adminDescription: 'Reconcile phone and email verification orders, outcomes, user funds, and provider costs.',
+    tableTitle: 'Record details',
+    adminTableLabel: 'Admin verification record details',
+    userTableLabel: 'User verification record details',
+    resultCount: '{count} records',
+    empty: 'No verification records match these filters.',
+    loadError: 'Unable to load verification records.',
+    types: { sms: 'Phone', email: 'Email' },
+    outcomes: { processing: 'Processing', success: 'Success', failed: 'Failed', refunded: 'Refunded', cancelled: 'Cancelled', expired: 'Expired' },
+    filters: { type: 'Verification type', allTypes: 'All types', outcome: 'Outcome', allOutcomes: 'All outcomes', platform: 'Platform', allPlatforms: 'All platforms', country: 'Country / region', allCountries: 'All countries / regions', searchPlatform: 'Search platforms', searchCountry: 'Search countries / regions', keyword: 'Keyword', keywordPlaceholder: 'Order, target, or platform', adminKeywordPlaceholder: 'Order, user, target, or platform', from: 'Start date', to: 'End date' },
+    summary: { title: 'Verification record summary', total: 'Total records', processing: 'Processing', success: 'Success', failed: 'Failed', refunded: 'Refunded', totalAmount: 'Total amount', totalCost: 'Total cost', profit: 'Profit' },
+    analytics: { title: 'Success rate and profit dashboard', description: 'Aggregated by verification type, platform, and phone-verification country for the active filters.', terminalHint: 'Processing records are excluded from success rates', byType: 'Success rate by type', byPlatform: 'Success rate by platform', byCountry: 'Success rate by country', successRate: 'Success rate', profitTitle: 'Amount, cost, and profit by currency', currency: 'Currency', empty: 'No completed samples match the current filters' },
+    bulk: { selectPage: 'Select current page', export: 'Export selected', clear: 'Clear selection', exported: 'Exported {count} verification records' },
+    columns: { select: 'Select', createdAt: 'Created at', type: 'Type', user: 'User', orderNo: 'Order no.', platform: 'Platform', country: 'Country / region', service: 'Service', channel: 'Channel', target: 'Target', provider: 'Provider', result: 'Result / status', refund: 'Refund status', amount: 'Amount', saleAmount: 'Sale amount', providerCost: 'Provider cost', userDebit: 'User debit', reserved: 'Reserved', captured: 'Captured', released: 'Released', refundedAmount: 'Refunded', requests: 'Provider requests', error: 'Error detail', note: 'Note' },
+  },
+
+  email: {
+    admin: {
+      billingTitle: 'Provider billing and quota', billingDescription: 'Configure cost mode, included requests, rate limits, and quota circuit-breaker thresholds.', costMode: 'Cost mode', monthlyFee: 'Monthly fee', includedMonthly: 'Included monthly requests', includedDaily: 'Daily included requests', overagePrice: 'Overage price/request', warningPercent: 'Warning threshold %', stopPercent: 'Stop new orders %', reservePercent: 'Active-order reserve %', ratePerMinute: 'Requests/minute', ratePerHour: 'Requests/hour', fixedOrderCost: 'Fixed cost/order', estimatedRequests: 'Estimated requests/order', providerConcurrency: 'Provider concurrency', saveBilling: 'Save billing',
+      billingGuide: 'Amounts are in CNY. A request allowance of 0 leaves that quota unset. The warning threshold is informational; the stop threshold pauses new orders, while the active-order reserve protects capacity for orders already running.',
+      billingHints: { costMode: 'Controls how provider request costs are allocated to an order.', monthlyFee: 'Fixed monthly fee for the provider plan.', includedMonthly: 'Total requests included in the monthly plan.', includedDaily: 'Daily request allowance; 0 leaves it unlimited.', overagePrice: 'Provider cost for each API request beyond the plan.', warningPercent: 'Quota usage percentage that raises a warning.', stopPercent: 'Quota usage percentage that pauses new orders.', reservePercent: 'Monthly capacity reserved for active orders before the stop threshold.', ratePerMinute: 'Maximum provider requests per minute; 0 leaves it unlimited.', ratePerHour: 'Maximum provider requests per hour; 0 leaves it unlimited.', fixedOrderCost: 'Provider cost per order in fixed-per-order mode.', estimatedRequests: 'Average API request count used to estimate an order cost.', providerConcurrency: 'Maximum simultaneous provider API requests, from 1 to 32.' },
+      costModes: { request_based_plus_amortized: 'Per request + monthly amortization', request_based: 'Per request only', monthly_amortized: 'Monthly amortization only', fixed_per_order: 'Fixed cost per order', manual: 'Manual request cost' },
+      refundPolicies: { refund_if_no_message: 'Refund when no target email arrives', no_refund_after_inbox_delivery: 'No refund after inbox delivery', manual_review: 'Manual review after expiry' },
+      capturePolicies: { on_target_email_received: 'Capture when target email arrives', on_verification_extracted: 'Capture after verification data is extracted' },
+      orderStatuses: { reserved: 'Reserved', generating_inbox: 'Generating inbox', waiting_email: 'Waiting for email', email_received: 'Email received', verification_extracted: 'Verification extracted', completed: 'Completed', reconciling: 'Reconciling', expired: 'Expired', refunded: 'Refunded', failed: 'Failed', cancelled: 'Cancelled' },
+      eyebrow: 'Email verification management', description: 'Configure temporary email channels, providers, billing, and quota policies.', enableTitle: 'Email verification service', enableDescription: 'When enabled, users can purchase public temporary inboxes.', switchLabel: 'Enable email verification', providers: 'Providers', channels: 'Email channels', orders: 'Email orders', name: 'Name', baseUrl: 'API URL', credential: 'Credential', health: 'Health', enabled: 'Enabled', visible: 'Visible', action: 'Action', openProvider: 'Open provider portal', portal: 'Provider setup', configured: 'Configured', missing: 'Not configured', providerEnabled: 'Enable provider {name}', channelVisible: 'Show {name} to users', channelHealthy: 'Mark {name} healthy', channelEnabled: 'Enable {name}', save: 'Save', saving: 'Saving…', saved: 'Saved', testConnection: 'Test connection', testRequestNotice: 'The test performs one authenticated provider request.', testing: 'Testing…', testSuccess: 'Connection succeeded', testFailed: 'Connection failed', salePrice: 'Sale price', baseMarkup: 'Base markup', fixedMarkup: 'Fixed markup', minimumProfit: 'Minimum profit', refundPolicy: 'Refund policy', capturePolicy: 'Capture policy', orderTtl: 'TTL (seconds)', maxRequests: 'Request limit', pollingBackoff: 'Polling backoff', backoffPlaceholder: '2, 4, 7, 10, 15', invalidBackoff: 'Enter comma-separated polling delays from 1 to 3600 seconds.', provider: 'Provider', emailAddress: 'Email address', statusLabel: 'Status', requests: 'Requests', createdAt: 'Created at', orderNo: 'Order no.', user: 'User', service: 'Service', stats: { orders: 'Orders', completed: 'Completed', refunded: 'Refunded', today_requests: 'Today requests', month_requests: 'Month requests', failed_requests: 'Failed requests', rate_limited_requests: 'Rate-limited requests' }, status: { healthy: 'Healthy', degraded: 'Degraded', unavailable: 'Unavailable', quota_limited: 'Quota limited', disabled: 'Disabled', unknown: 'Unknown' }
+    },
+    user: {
+      description: 'Use a public temporary inbox to receive verification email.', temporary: 'Temporary inbox', orders: 'My inboxes / orders', service: 'Verification service', selectService: 'Select a service', addressType: 'Email type', gmail: 'Temporary Gmail', privacyWarning: 'This channel provides a public temporary inbox. Anyone who knows the full address may access the inbox. Do not use it for banking, government, healthcare, identity verification, or other sensitive accounts.', quoteHint: 'Select an available channel', chooseForQuote: 'Select a service to view available channels', checking: 'Checking…', noChannel: 'No email channel is currently available', eta: 'Average delivery', seconds: 's', retention: 'Retention', successRate: 'Success rate', insufficientSuccessData: 'Not enough data', processing: 'Processing…', purchase: 'Get inbox', loading: 'Loading…', noOrders: 'No email orders', code: 'Verification code', copy: 'Copy', safeOpen: 'Open link', viewMessage: 'View message', waiting: 'Waiting for verification email', cancel: 'Cancel order', requestRefund: 'Request refund', copied: 'Copied', refundPolicies: { refund_if_no_message: 'Refunded automatically if no matching email arrives before expiry.', no_refund_after_inbox_delivery: 'The order is charged after the inbox is delivered.', manual_review: 'Expired orders require administrator review.' }, statuses: { reserved: 'Reserved', generating_inbox: 'Generating inbox', waiting_email: 'Waiting for email', email_received: 'Email received', verification_extracted: 'Verification extracted', completed: 'Completed', reconciling: 'Reconciling', expired: 'Expired', refunded: 'Refunded', failed: 'Failed', cancelled: 'Cancelled' }, errors: { unavailable: 'Email channel is temporarily unavailable', quote: 'Unable to load quote', orders: 'Unable to load orders', purchase: 'Inbox generation failed', cancel: 'Unable to cancel order', refund: 'Unable to request refund' }
+    }
+  },
 }

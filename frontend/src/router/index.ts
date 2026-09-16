@@ -475,6 +475,29 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/email',
+    name: 'EmailVerification',
+    component: () => import('@/views/user/EmailVerificationView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      requiresEmail: true,
+      title: 'Email Verification',
+      titleKey: 'nav.emailService'
+    }
+  },
+  {
+    path: '/verification-records',
+    name: 'VerificationRecords',
+    component: () => import('@/views/VerificationRecordsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Verification Records',
+      titleKey: 'nav.verificationRecords'
+    }
+  },
+  {
     path: '/payment/qrcode',
     name: 'PaymentQRCode',
     component: () => import('@/views/user/PaymentQRCodeView.vue'),
@@ -754,6 +777,28 @@ const routes: RouteRecordRaw[] = [
       requiresAdmin: true,
       title: 'SMS Verification Management',
       titleKey: 'nav.smsManagement'
+    }
+  },
+  {
+    path: '/admin/email',
+    name: 'AdminEmail',
+    component: () => import('@/views/admin/EmailManagementView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Email Management',
+      titleKey: 'nav.emailManagement'
+    }
+  },
+  {
+    path: '/admin/verification-records',
+    name: 'AdminVerificationRecords',
+    component: () => import('@/views/VerificationRecordsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Verification Records',
+      titleKey: 'nav.verificationRecords'
     }
   },
   {
@@ -1124,6 +1169,16 @@ router.beforeEach(async (to, _from, next) => {
       try { await appStore.fetchPublicSettings() } catch { /* backend remains the source of truth */ }
     }
     if (appStore.publicSettingsLoaded && appStore.cachedPublicSettings?.sms_service_enabled !== true) {
+      next('/dashboard')
+      return
+    }
+  }
+
+  if (to.meta.requiresEmail && !authStore.isAdmin) {
+    if (!appStore.publicSettingsLoaded) {
+      try { await appStore.fetchPublicSettings() } catch { /* backend remains the source of truth */ }
+    }
+    if (appStore.publicSettingsLoaded && appStore.cachedPublicSettings?.email_service_enabled !== true) {
       next('/dashboard')
       return
     }

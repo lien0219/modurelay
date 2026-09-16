@@ -282,6 +282,7 @@ export interface PublicSettings {
   channel_monitor_show_quota?: boolean
   available_channels_enabled: boolean
   sms_service_enabled?: boolean
+  email_service_enabled?: boolean
   model_plaza_enabled: boolean
   model_plaza_require_auth: boolean
   plugin_management_enabled: boolean

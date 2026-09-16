@@ -25,6 +25,8 @@ export { channelMonitorUserAPI } from './channelMonitor'
 export { default as activityAPI } from './activity'
 export { canvasAPI } from './canvas'
 export { smsAPI } from './sms'
+export { emailAPI } from './email'
+export { verificationRecordsAPI } from './verificationRecords'
 
 // Admin APIs
 export { adminAPI } from './admin'

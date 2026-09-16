@@ -109,6 +109,11 @@ export const FeatureFlags = {
     mode: 'opt-in',
     label: 'SMS Verification',
   }),
+  emailService: defineFlag({
+    key: 'email_service_enabled',
+    mode: 'opt-in',
+    label: 'Email Verification',
+  }),
   modelPlaza: defineFlag({
     key: 'model_plaza_enabled',
     mode: 'opt-in',

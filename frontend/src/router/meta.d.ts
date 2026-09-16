@@ -55,6 +55,10 @@ declare module 'vue-router' {
      */
     requiresRiskControl?: boolean
 
+    /** User-facing SMS/email verification modules are independently gated. */
+    requiresSms?: boolean
+    requiresEmail?: boolean
+
     /**
      * i18n key for the page title
      */

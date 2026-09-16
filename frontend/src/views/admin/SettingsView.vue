@@ -6302,6 +6302,7 @@
             </div>
           </div>
         </div>
+
         </div>
         <!-- /Tab: Gateway — Claude Code, Scheduling -->
 
@@ -7292,10 +7293,18 @@
 
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
-            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ localText('接码服务', 'SMS Verification') }}</h2>
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ localText('手机接码', 'Phone Verification') }}</h2>
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ localText('默认关闭。开启后用户端才会显示接码入口；Provider 凭证和 Channel 健康状态在接码管理页配置。', 'Opt-in feature. Users see the SMS entry only after enabling it; configure credentials and channel health in SMS Management.') }}</p>
           </div>
           <div class="space-y-5 p-6"><div class="flex items-center justify-between"><div><label class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ localText('启用接码服务', 'Enable SMS Verification') }}</label><p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{{ localText('关闭时用户 API 返回 FEATURE_DISABLED。', 'Disabled user APIs return FEATURE_DISABLED.') }}</p></div><Toggle v-model="form.sms_service_enabled" /></div></div>
+        </div>
+
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ localText('邮箱接码', 'Email Verification') }}</h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ localText('默认关闭。开启后用户可使用公开临时邮箱；供应商和通道在邮箱管理页配置。', 'Opt-in feature. Users can use public temporary inboxes after enabling it; configure providers and channels in Email Management.') }}</p>
+          </div>
+          <div class="space-y-5 p-6"><div class="flex items-center justify-between gap-4"><div class="min-w-0"><label class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ localText('启用邮箱接码', 'Enable Email Verification') }}</label><p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{{ localText('关闭时用户菜单、路由和 API 均不可用。', 'When disabled, user navigation, routes, and APIs are blocked.') }}</p></div><Toggle v-model="form.email_service_enabled" /></div></div>
         </div>
 
         <div class="card">
@@ -9992,6 +10001,7 @@ const form = reactive<SettingsForm>({
   // Available Channels feature switch
   available_channels_enabled: false,
   sms_service_enabled: false,
+  email_service_enabled: false,
   canvas_enabled: false,
   plan_catalog_enabled: false,
   // Model Plaza feature switches + description
@@ -11679,6 +11689,7 @@ async function saveSettings() {
       // Available Channels feature switch
       available_channels_enabled: form.available_channels_enabled,
       sms_service_enabled: form.sms_service_enabled,
+      email_service_enabled: form.email_service_enabled,
       canvas_enabled: form.canvas_enabled,
       plan_catalog_enabled: form.plan_catalog_enabled,
       // Model Plaza feature switches + description

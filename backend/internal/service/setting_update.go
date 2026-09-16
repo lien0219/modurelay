@@ -431,6 +431,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	// Available channels feature switch
 	updates[SettingKeyAvailableChannelsEnabled] = strconv.FormatBool(settings.AvailableChannelsEnabled)
 	updates[SettingKeySMSServiceEnabled] = strconv.FormatBool(settings.SMSServiceEnabled)
+	updates[SettingKeyEmailServiceEnabled] = strconv.FormatBool(settings.EmailServiceEnabled)
 	updates[SettingKeyCanvasEnabled] = strconv.FormatBool(settings.CanvasEnabled)
 	updates[SettingKeyPlanCatalogEnabled] = strconv.FormatBool(settings.PlanCatalogEnabled)
 

@@ -44,6 +44,14 @@ type Tx struct {
 	ChannelMonitorRequestTemplate *ChannelMonitorRequestTemplateClient
 	// CompositeModelRoute is the client for interacting with the CompositeModelRoute builders.
 	CompositeModelRoute *CompositeModelRouteClient
+	// EmailChannel is the client for interacting with the EmailChannel builders.
+	EmailChannel *EmailChannelClient
+	// EmailMessage is the client for interacting with the EmailMessage builders.
+	EmailMessage *EmailMessageClient
+	// EmailOrder is the client for interacting with the EmailOrder builders.
+	EmailOrder *EmailOrderClient
+	// EmailProvider is the client for interacting with the EmailProvider builders.
+	EmailProvider *EmailProviderClient
 	// ErrorPassthroughRule is the client for interacting with the ErrorPassthroughRule builders.
 	ErrorPassthroughRule *ErrorPassthroughRuleClient
 	// Group is the client for interacting with the Group builders.
@@ -254,6 +262,10 @@ func (tx *Tx) init() {
 	tx.ChannelMonitorHistory = NewChannelMonitorHistoryClient(tx.config)
 	tx.ChannelMonitorRequestTemplate = NewChannelMonitorRequestTemplateClient(tx.config)
 	tx.CompositeModelRoute = NewCompositeModelRouteClient(tx.config)
+	tx.EmailChannel = NewEmailChannelClient(tx.config)
+	tx.EmailMessage = NewEmailMessageClient(tx.config)
+	tx.EmailOrder = NewEmailOrderClient(tx.config)
+	tx.EmailProvider = NewEmailProviderClient(tx.config)
 	tx.ErrorPassthroughRule = NewErrorPassthroughRuleClient(tx.config)
 	tx.Group = NewGroupClient(tx.config)
 	tx.IdempotencyRecord = NewIdempotencyRecordClient(tx.config)

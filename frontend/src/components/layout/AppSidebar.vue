@@ -802,6 +802,7 @@ const flagPayment = makeSidebarFlag(FeatureFlags.payment)
 const flagRechargeCenter = makeSidebarFlag(FeatureFlags.rechargeCenter)
 const flagAvailableChannels = makeSidebarFlag(FeatureFlags.availableChannels)
 const flagSmsService = makeSidebarFlag(FeatureFlags.smsService)
+const flagEmailService = makeSidebarFlag(FeatureFlags.emailService)
 const flagAffiliate = makeSidebarFlag(FeatureFlags.affiliate)
 const flagRiskControl = makeSidebarFlag(FeatureFlags.riskControl)
 const flagPluginManagement = makeSidebarFlag(FeatureFlags.pluginManagement)
@@ -836,6 +837,8 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
     { path: '/available-channels', label: t('nav.availableChannels'), icon: ChannelIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
     { path: '/sms', label: t('nav.smsService'), icon: MessageIcon, hideInSimpleMode: true, featureFlag: flagSmsService },
+    { path: '/email', label: t('nav.emailService'), icon: MessageIcon, hideInSimpleMode: true, featureFlag: flagEmailService },
+    { path: '/verification-records', label: t('nav.verificationRecords'), icon: OrderIcon, hideInSimpleMode: true },
     { path: '/monitor', label: t('nav.channelStatus'), icon: SignalIcon, featureFlag: flagChannelMonitor },
     { path: '/quick-start', label: t('nav.quickStart'), icon: QuickStartIcon },
     { path: '/ai-learning', label: t('nav.aiLearning'), icon: AILearningIcon },
@@ -956,6 +959,8 @@ const adminNavItems = computed((): NavItem[] => {
     },
     { path: '/admin/usage', label: t('nav.usage'), icon: ChartIcon },
     { path: '/admin/sms', label: t('nav.smsManagement'), icon: MessageIcon, hideInSimpleMode: true },
+    { path: '/admin/email', label: t('nav.emailManagement'), icon: MessageIcon, hideInSimpleMode: true },
+    { path: '/admin/verification-records', label: t('nav.verificationRecords'), icon: OrderIcon, hideInSimpleMode: true },
     { path: '/admin/audit-logs', label: t('nav.auditLogs'), icon: ShieldIcon, hideInSimpleMode: true }
   ]
 

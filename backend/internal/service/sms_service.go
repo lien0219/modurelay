@@ -624,6 +624,13 @@ type SMSOrder struct {
 	ExpiresAt         *time.Time `json:"expires_at,omitempty"`
 	CreatedAt         time.Time  `json:"created_at"`
 }
+type SMSOrderPage struct {
+	Items    []SMSOrder `json:"items"`
+	Total    int64      `json:"total"`
+	Page     int        `json:"page"`
+	PageSize int        `json:"page_size"`
+	Pages    int        `json:"pages"`
+}
 
 type SMSSvcCatalogItem struct {
 	Code        string `json:"code"`
@@ -1092,6 +1099,71 @@ func (s *SMSService) ListOrders(ctx context.Context, userID int64, admin bool) (
 		out = append(out, o)
 	}
 	return out, rows.Err()
+}
+
+func (s *SMSService) ListUserOrdersPage(ctx context.Context, userID int64, page, pageSize int, keyword, status string) (*SMSOrderPage, error) {
+	if page <= 0 {
+		page = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 20
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+	keyword = strings.TrimSpace(keyword)
+	status = strings.TrimSpace(status)
+	where := ` WHERE o.user_id=$1`
+	args := []any{userID}
+	if keyword != "" {
+		args = append(args, "%"+keyword+"%")
+		where += fmt.Sprintf(` AND (o.public_id::text ILIKE $%d OR o.phone_number ILIKE $%d OR sv.code ILIKE $%d OR co.iso2 ILIKE $%d)`, len(args), len(args), len(args), len(args))
+	}
+	if status != "" {
+		args = append(args, status)
+		where += fmt.Sprintf(` AND o.status=$%d`, len(args))
+	}
+	from := ` FROM sms_orders o JOIN sms_channels c ON c.id=o.channel_id JOIN sms_services sv ON sv.id=o.service_id JOIN sms_countries co ON co.id=o.country_id`
+	var total int64
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*)`+from+where, args...).Scan(&total); err != nil {
+		return nil, err
+	}
+	listArgs := append([]any{}, args...)
+	listArgs = append(listArgs, pageSize)
+	limitPlaceholder := fmt.Sprintf("$%d", len(listArgs))
+	listArgs = append(listArgs, (page-1)*pageSize)
+	offsetPlaceholder := fmt.Sprintf("$%d", len(listArgs))
+	query := `SELECT o.id,o.public_id::text,o.user_id,o.product_type,o.status,c.code,c.public_name,sv.code,co.iso2,o.phone_number,o.sale_price_snapshot,o.success_rate_snapshot,o.success_rate_grade_snapshot,o.success_rate_source_snapshot,o.refund_status,o.refund_reason,o.expires_at,o.created_at` + from + where + ` ORDER BY o.created_at DESC LIMIT ` + limitPlaceholder + ` OFFSET ` + offsetPlaceholder
+	rows, err := s.db.QueryContext(ctx, query, listArgs...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]SMSOrder, 0, pageSize)
+	for rows.Next() {
+		var order SMSOrder
+		var internalID, owner int64
+		var rate sql.NullFloat64
+		var expiresAt sql.NullTime
+		if err := rows.Scan(&internalID, &order.ID, &owner, &order.ProductType, &order.Status, &order.ChannelCode, &order.ChannelName, &order.ServiceCode, &order.CountryCode, &order.PhoneNumber, &order.Price, &rate, &order.SuccessRateGrade, &order.SuccessRateSource, &order.RefundStatus, &order.RefundReason, &expiresAt, &order.CreatedAt); err != nil {
+			return nil, err
+		}
+		if rate.Valid {
+			order.SuccessRate = &rate.Float64
+		}
+		if expiresAt.Valid {
+			order.ExpiresAt = &expiresAt.Time
+		}
+		items = append(items, order)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	pages := int((total + int64(pageSize) - 1) / int64(pageSize))
+	if pages < 1 {
+		pages = 1
+	}
+	return &SMSOrderPage{Items: items, Total: total, Page: page, PageSize: pageSize, Pages: pages}, nil
 }
 func (s *SMSService) RequestRefund(ctx context.Context, userID int64, orderPublicID string) error {
 	var id int64

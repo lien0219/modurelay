@@ -582,6 +582,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.SMSServiceEnabled != after.SMSServiceEnabled {
 		changed = append(changed, "sms_service_enabled")
 	}
+	if before.EmailServiceEnabled != after.EmailServiceEnabled {
+		changed = append(changed, "email_service_enabled")
+	}
 	if before.ModelPlazaEnabled != after.ModelPlazaEnabled {
 		changed = append(changed, "model_plaza_enabled")
 	}
