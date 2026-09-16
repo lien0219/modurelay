@@ -240,7 +240,7 @@ export default {
   sms: {
     admin: {
       eyebrow: '运营管理',
-      description: '配置供应商、公开通道和功能开关。凭证只显示配置状态。',
+      description: '配置供应商、公开通道和功能开关。凭证可直接在此填写并加密保存。',
       enableTitle: '启用接码服务',
       enableDescription: '关闭时普通用户菜单、路由和 API 都拒绝访问；管理员仍可配置。',
       providers: '供应商',
@@ -248,7 +248,9 @@ export default {
       name: '名称',
       code: '编码',
       baseUrl: '接口地址',
-      credential: '凭证引用',
+      credential: '供应商凭证',
+      credentialPlaceholder: '请输入供应商 API 密钥，保存后加密存储',
+      credentialRequired: '请输入供应商凭证后再保存。',
       health: '健康状态',
       enabled: '启用',
       action: '操作',
@@ -257,8 +259,13 @@ export default {
       portal: '供应商入口',
       openProvider: '打开供应商入口',
       save: '保存',
-      configured: '已配置',
-      missing: '未配置',
+      saving: '保存中…',
+      saved: '已保存',
+      testConnection: '测试连接',
+      testRequestNotice: '测试仅调用供应商的只读认证接口，不会购买号码。',
+      testing: '测试中…',
+      testSuccess: '连接成功',
+      testFailed: '连接失败',
       stats: { completed: '已完成', feature_enabled: '功能开关', orders: '订单数', refunded: '已退款', revenue: '收入' },
       status: { healthy: '健康', degraded: '降级', unavailable: '不可用', disabled: '已禁用', unknown: '未知' },
       primary: '主通道',
@@ -631,7 +638,7 @@ export default {
       refundPolicies: { refund_if_no_message: '未收到目标邮件自动退款', no_refund_after_inbox_delivery: '邮箱交付后不退款', manual_review: '过期后人工审核' },
       capturePolicies: { on_target_email_received: '收到目标邮件后结算', on_verification_extracted: '提取验证码或链接后结算' },
       orderStatuses: { reserved: '已预留', generating_inbox: '生成邮箱中', waiting_email: '等待邮件', email_received: '邮件已收到', verification_extracted: '已提取验证信息', completed: '已完成', reconciling: '核对中', expired: '已过期', refunded: '已退款', failed: '失败', cancelled: '已取消' },
-      eyebrow: '邮箱接码管理', description: '配置临时邮箱通道、供应商、计费与配额策略。', enableTitle: '邮箱接码服务', enableDescription: '开启后，用户可购买公开临时邮箱。', switchLabel: '启用邮箱接码', providers: '供应商', channels: '邮箱通道', orders: '邮箱订单', name: '名称', baseUrl: 'API 地址', credential: '凭证', health: '健康状态', enabled: '启用', visible: '用户可见', action: '操作', openProvider: '打开供应商入口', portal: '供应商配置', configured: '已配置', missing: '未配置', providerEnabled: '启用供应商 {name}', channelVisible: '对用户显示 {name}', channelHealthy: '标记通道健康 {name}', channelEnabled: '启用通道 {name}', save: '保存', saving: '保存中…', saved: '已保存', testConnection: '测试连接', testRequestNotice: '测试会执行一次经过认证的供应商请求。', testing: '测试中…', testSuccess: '连接成功', testFailed: '连接失败', salePrice: '售价', baseMarkup: '基础加价比例', fixedMarkup: '固定加价', minimumProfit: '最低利润', refundPolicy: '退款策略', capturePolicy: '结算策略', orderTtl: '有效期（秒）', maxRequests: '请求上限', pollingBackoff: '轮询退避', backoffPlaceholder: '2, 4, 7, 10, 15', invalidBackoff: '请输入 1 到 3600 秒的逗号分隔轮询间隔。', provider: '供应商', emailAddress: '邮箱地址', statusLabel: '状态', requests: '请求数', createdAt: '创建时间', orderNo: '订单号', user: '用户', service: '服务', stats: { orders: '订单数', completed: '已完成', refunded: '已退款', today_requests: '今日请求', month_requests: '本月请求', failed_requests: '失败请求', rate_limited_requests: '限流请求' }, status: { healthy: '健康', degraded: '降级', unavailable: '不可用', quota_limited: '额度受限', disabled: '已禁用', unknown: '未知' }
+      eyebrow: '邮箱接码管理', description: '配置临时邮箱通道、供应商、计费与配额策略。', enableTitle: '邮箱接码服务', enableDescription: '开启后，用户可购买公开临时邮箱。', switchLabel: '启用邮箱接码', providers: '供应商', channels: '邮箱通道', orders: '邮箱订单', name: '名称', baseUrl: 'API 地址', credential: '供应商凭证', credentialPlaceholder: '请输入供应商 API 密钥，保存后加密存储', credentialRequired: '请输入供应商凭证后再保存。', health: '健康状态', enabled: '启用', visible: '用户可见', action: '操作', openProvider: '打开供应商入口', portal: '供应商配置', providerEnabled: '启用供应商 {name}', channelVisible: '对用户显示 {name}', channelHealthy: '标记通道健康 {name}', channelEnabled: '启用通道 {name}', save: '保存', saving: '保存中…', saved: '已保存', testConnection: '测试连接', testRequestNotice: '测试会执行一次经过认证的供应商请求。', testing: '测试中…', testSuccess: '连接成功', testFailed: '连接失败', salePrice: '售价', baseMarkup: '基础加价比例', fixedMarkup: '固定加价', minimumProfit: '最低利润', refundPolicy: '退款策略', capturePolicy: '结算策略', orderTtl: '有效期（秒）', maxRequests: '请求上限', pollingBackoff: '轮询退避', backoffPlaceholder: '2, 4, 7, 10, 15', invalidBackoff: '请输入 1 到 3600 秒的逗号分隔轮询间隔。', provider: '供应商', emailAddress: '邮箱地址', statusLabel: '状态', requests: '请求数', createdAt: '创建时间', orderNo: '订单号', user: '用户', service: '服务', stats: { orders: '订单数', completed: '已完成', refunded: '已退款', today_requests: '今日请求', month_requests: '本月请求', failed_requests: '失败请求', rate_limited_requests: '限流请求' }, status: { healthy: '健康', degraded: '降级', unavailable: '不可用', quota_limited: '额度受限', disabled: '已禁用', unknown: '未知' }
     },
     user: {
       description: '使用公开临时邮箱接收验证邮件。', temporary: '临时邮箱', orders: '我的邮箱 / 订单', service: '验证平台', selectService: '选择平台', addressType: '邮箱类型', gmail: '临时 Gmail', privacyWarning: '此通道提供公开临时邮箱。任何知道完整邮箱地址的人都可能访问对应收件箱，请勿用于银行、政府、医疗、身份认证或其他敏感账户。', quoteHint: '请选择可用通道', chooseForQuote: '选择平台后查看可用通道', checking: '查询中…', noChannel: '当前暂无可用邮箱通道', eta: '平均到信', seconds: '秒', retention: '邮件保留', successRate: '成功率', insufficientSuccessData: '暂无足够数据', processing: '处理中…', purchase: '获取邮箱', loading: '加载中…', noOrders: '暂无邮箱订单', code: '验证码', copy: '复制', safeOpen: '打开链接', viewMessage: '查看邮件', waiting: '等待验证邮件', cancel: '取消订单', requestRefund: '申请退款', copied: '已复制', refundPolicies: { refund_if_no_message: '订单过期前未收到匹配邮件时自动退款。', no_refund_after_inbox_delivery: '邮箱交付后订单将正常结算。', manual_review: '订单过期后需要管理员人工审核。' }, statuses: { reserved: '已预留', generating_inbox: '生成邮箱中', waiting_email: '等待邮件', email_received: '邮件已收到', verification_extracted: '已提取验证信息', completed: '已完成', reconciling: '核对中', expired: '已过期', refunded: '已退款', failed: '失败', cancelled: '已取消' }, errors: { unavailable: '当前邮箱通道暂时不可用', quote: '暂时无法获取报价', orders: '暂时无法获取订单', purchase: '邮箱生成失败', cancel: '取消订单失败', refund: '申请退款失败' }

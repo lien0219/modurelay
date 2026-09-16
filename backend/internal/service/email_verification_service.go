@@ -32,15 +32,16 @@ import (
 )
 
 var (
-	ErrEmailFeatureDisabled      = errors.New("email service is disabled")
-	ErrEmailInsufficientBalance  = errors.New("insufficient balance")
-	ErrEmailChannelUnavailable   = errors.New("email channel is unavailable")
-	ErrEmailPriceChanged         = errors.New("email quote changed")
-	ErrEmailQuoteExpired         = errors.New("email quote expired")
-	ErrEmailQuoteInvalid         = errors.New("email quote invalid")
-	ErrEmailProviderUnknown      = errors.New("email provider result is unknown")
-	ErrEmailNotFound             = errors.New("email order not found")
-	ErrEmailProviderTestCooldown = errors.New("email provider test connection is cooling down")
+	ErrEmailFeatureDisabled           = errors.New("email service is disabled")
+	ErrEmailInsufficientBalance       = errors.New("insufficient balance")
+	ErrEmailChannelUnavailable        = errors.New("email channel is unavailable")
+	ErrEmailPriceChanged              = errors.New("email quote changed")
+	ErrEmailQuoteExpired              = errors.New("email quote expired")
+	ErrEmailQuoteInvalid              = errors.New("email quote invalid")
+	ErrEmailProviderUnknown           = errors.New("email provider result is unknown")
+	ErrEmailNotFound                  = errors.New("email order not found")
+	ErrEmailProviderCredentialMissing = errors.New("email provider credential is not configured")
+	ErrEmailProviderTestCooldown      = errors.New("email provider test connection is cooling down")
 )
 
 const (
@@ -397,17 +398,21 @@ func hashString(v string) string { h := sha256.Sum256([]byte(v)); return hex.Enc
 
 func emailProviderAPIKey(code, credentialRef string, encryptor SecretEncryptor) string {
 	name := "EMAIL_" + strings.ToUpper(strings.ReplaceAll(code, "-", "_")) + "_API_KEY"
-	if v := strings.TrimSpace(os.Getenv(name)); v != "" {
-		return v
-	}
 	ref := strings.TrimSpace(credentialRef)
 	if strings.HasPrefix(ref, "env:") {
-		return strings.TrimSpace(os.Getenv(strings.TrimPrefix(ref, "env:")))
+		if value := strings.TrimSpace(os.Getenv(strings.TrimPrefix(ref, "env:"))); value != "" {
+			return value
+		}
 	}
 	if strings.HasPrefix(ref, "enc:") && encryptor != nil {
-		if v, e := encryptor.Decrypt(strings.TrimPrefix(ref, "enc:")); e == nil {
-			return strings.TrimSpace(v)
+		if value, err := encryptor.Decrypt(strings.TrimPrefix(ref, "enc:")); err == nil {
+			if value = strings.TrimSpace(value); value != "" {
+				return value
+			}
 		}
+	}
+	if value := strings.TrimSpace(os.Getenv(name)); value != "" {
+		return value
 	}
 	return ""
 }
@@ -2194,13 +2199,6 @@ func normalizeEmailBilling(values map[string]any) map[string]any {
 // is configured, so the cooldown and usage meter prevent accidental churn.
 func (s *EmailVerificationService) AdminTestProvider(ctx context.Context, id int64) (map[string]any, error) {
 	now := time.Now()
-	emailProviderTestMu.Lock()
-	if previous, ok := emailProviderLastTests[id]; ok && now.Sub(previous) < time.Minute {
-		emailProviderTestMu.Unlock()
-		return nil, ErrEmailProviderTestCooldown
-	}
-	emailProviderLastTests[id] = now
-	emailProviderTestMu.Unlock()
 
 	var code, base, cred string
 	var metadataRaw, billingRaw []byte
@@ -2211,6 +2209,16 @@ func (s *EmailVerificationService) AdminTestProvider(ctx context.Context, id int
 	_ = json.Unmarshal(metadataRaw, &metadata)
 	var billing map[string]any
 	_ = json.Unmarshal(billingRaw, &billing)
+	if emailProviderAPIKey(code, cred, s.encryptor) == "" {
+		return nil, ErrEmailProviderCredentialMissing
+	}
+	emailProviderTestMu.Lock()
+	if previous, ok := emailProviderLastTests[id]; ok && now.Sub(previous) < time.Minute {
+		emailProviderTestMu.Unlock()
+		return nil, ErrEmailProviderTestCooldown
+	}
+	emailProviderLastTests[id] = now
+	emailProviderTestMu.Unlock()
 	provider := emailProviderFor(code, base, cred, metadata, s.encryptor, billing)
 	if provider == nil {
 		return nil, ErrEmailChannelUnavailable
@@ -2289,11 +2297,11 @@ func (s *EmailVerificationService) AdminUpdateChannel(ctx context.Context, id in
 		}
 	}
 	if ttl == nil && maxRequests == nil && backoff == nil {
-		_, e := s.db.ExecContext(ctx, `UPDATE email_channels SET enabled=$1,visible=$2,healthy=$3,sale_price=CASE WHEN $4>=0 THEN $4 ELSE sale_price END,refund_policy=COALESCE(NULLIF($5,''),refund_policy),capture_policy=COALESCE(NULLIF($6,''),capture_policy),updated_at=NOW() WHERE id=$7`, enabled, visible, healthy, price, refund, capture, id)
+		_, e := s.db.ExecContext(ctx, `UPDATE email_channels SET enabled=$1,visible=$2,healthy=$3,sale_price=CASE WHEN $4::numeric>=0 THEN $4::numeric ELSE sale_price END,refund_policy=COALESCE(NULLIF($5,''),refund_policy),capture_policy=COALESCE(NULLIF($6,''),capture_policy),updated_at=NOW() WHERE id=$7`, enabled, visible, healthy, price, refund, capture, id)
 		return e
 	}
 	backoffJSON, _ := json.Marshal(backoff)
-	_, e := s.db.ExecContext(ctx, `UPDATE email_channels SET enabled=$1,visible=$2,healthy=$3,sale_price=CASE WHEN $4>=0 THEN $4 ELSE sale_price END,refund_policy=COALESCE(NULLIF($5,''),refund_policy),capture_policy=COALESCE(NULLIF($6,''),capture_policy),order_ttl_seconds=COALESCE(NULLIF($7,0),order_ttl_seconds),max_provider_requests_per_order=COALESCE(NULLIF($8,0),max_provider_requests_per_order),polling_backoff=CASE WHEN $9::jsonb='null'::jsonb THEN polling_backoff ELSE $9::jsonb END,updated_at=NOW() WHERE id=$10`, enabled, visible, healthy, price, refund, capture, emailIntValue(ttl), emailIntValue(maxRequests), backoffJSON, id)
+	_, e := s.db.ExecContext(ctx, `UPDATE email_channels SET enabled=$1,visible=$2,healthy=$3,sale_price=CASE WHEN $4::numeric>=0 THEN $4::numeric ELSE sale_price END,refund_policy=COALESCE(NULLIF($5,''),refund_policy),capture_policy=COALESCE(NULLIF($6,''),capture_policy),order_ttl_seconds=COALESCE(NULLIF($7::integer,0),order_ttl_seconds),max_provider_requests_per_order=COALESCE(NULLIF($8::integer,0),max_provider_requests_per_order),polling_backoff=CASE WHEN $9::jsonb='null'::jsonb THEN polling_backoff ELSE $9::jsonb END,updated_at=NOW() WHERE id=$10`, enabled, visible, healthy, price, refund, capture, emailIntValue(ttl), emailIntValue(maxRequests), backoffJSON, id)
 	return e
 }
 

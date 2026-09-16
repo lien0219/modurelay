@@ -329,7 +329,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	canvasService := service.ProvideCanvasService(canvasProjectRepository, settingRepository, imageStorageSettingService, imageTaskService, httpUpstream, configConfig)
 	canvasHandler := handler.NewCanvasHandler(canvasService)
 	planCatalogHandler := handler.NewPlanCatalogHandler(planCatalogService)
-	smsService := service.NewSMSService(db, settingService)
+	smsService := service.NewSMSService(db, settingService, secretEncryptor)
 	smsHandler := handler.NewSMSHandler(smsService)
 	emailVerificationService := service.NewEmailVerificationService(db, settingService, secretEncryptor, configConfig)
 	emailHandler := handler.NewEmailHandler(emailVerificationService)

@@ -283,6 +283,31 @@ func (h *SMSHandler) AdminProviderUpdate(c *gin.Context) {
 	}
 	response.Success(c, gin.H{"updated": true})
 }
+func (h *SMSHandler) AdminProviderTest(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "invalid provider id")
+		return
+	}
+	result, err := h.svc.AdminTestProvider(c.Request.Context(), id)
+	if err != nil {
+		if err == service.ErrSMSProviderCredentialMissing {
+			response.ErrorWithDetails(c, http.StatusUnprocessableEntity, "Provider credential is not configured", "PROVIDER_CREDENTIAL_MISSING", nil)
+			return
+		}
+		if err == service.ErrSMSProviderTestUnsupported {
+			response.ErrorWithDetails(c, http.StatusUnprocessableEntity, "This provider does not support a safe connection test", "TEST_UNSUPPORTED", nil)
+			return
+		}
+		if err == service.ErrSMSProviderTestCooldown {
+			response.ErrorWithDetails(c, http.StatusTooManyRequests, "Provider test is cooling down", "TEST_COOLDOWN", nil)
+			return
+		}
+		response.ErrorWithDetails(c, http.StatusBadGateway, "Provider health check failed", "PROVIDER_HEALTH_CHECK_FAILED", nil)
+		return
+	}
+	response.Success(c, result)
+}
 func (h *SMSHandler) AdminChannels(c *gin.Context) {
 	items, err := h.svc.ListChannelsAdmin(c.Request.Context())
 	if err != nil {

@@ -83,12 +83,11 @@
                 <td class="px-5 py-3 font-mono text-xs text-gray-600 dark:text-gray-300">{{ provider.code }}</td>
                 <td class="px-5 py-3"><input v-model="provider.base_url" class="input min-w-52" :aria-label="`${t('sms.admin.baseUrl')} - ${provider.name}`" /></td>
                 <td class="px-5 py-3">
-                  <input v-model="provider.credential_ref" class="input min-w-44" placeholder="env:SMS_PROVIDER_API_KEY" :aria-label="`${t('sms.admin.credential')} - ${provider.name}`" />
-                  <div class="mt-1 text-xs text-gray-500">{{ provider.credential_configured ? t('sms.admin.configured') : t('sms.admin.missing') }}</div>
+                  <input v-model="credentialDrafts[provider.id]" type="password" autocomplete="new-password" class="input min-w-52" :placeholder="t('sms.admin.credentialPlaceholder')" :aria-label="`${t('sms.admin.credential')} - ${provider.name}`" />
                 </td>
                 <td class="px-5 py-3"><span class="badge" :class="provider.health_status === 'healthy' ? 'badge-success' : 'badge-warning'">{{ healthLabel(provider.health_status) }}</span></td>
                 <td class="px-5 py-3"><input v-model="provider.enabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" :aria-label="t('sms.admin.providerEnabled', { name: provider.name })" @change="saveProvider(provider)" /></td>
-                <td class="px-5 py-3"><button type="button" class="btn btn-secondary btn-sm" @click="saveProvider(provider)">{{ t('sms.admin.save') }}</button></td>
+                <td class="px-5 py-3"><div class="flex flex-wrap gap-2"><button type="button" class="btn btn-secondary btn-sm" @click="saveProvider(provider)">{{ t('sms.admin.save') }}</button><button v-if="supportsTestConnection(provider)" type="button" class="btn btn-secondary btn-sm" :disabled="testingProviderId === provider.id" :aria-busy="testingProviderId === provider.id" :title="t('sms.admin.testRequestNotice')" @click="testProvider(provider)">{{ testingProviderId === provider.id ? t('sms.admin.testing') : t('sms.admin.testConnection') }}</button></div></td>
               </tr>
             </tbody>
           </table>
@@ -145,6 +144,8 @@ const stats = ref<Record<string, number | boolean>>({})
 const enabled = ref(false)
 const loading = ref(false)
 const savingEnabled = ref(false)
+const testingProviderId = ref<number | null>(null)
+const credentialDrafts = ref<Record<number, string>>({})
 
 const providerPortals: Record<string, string> = {
   '5sim': 'https://5sim.net/',
@@ -162,6 +163,14 @@ const statItems = computed(() => statOrder.filter((key) => key in stats.value).m
 
 function providerPortalUrl(provider: SMSProviderAdmin) {
   return providerPortals[provider.code] || ''
+}
+
+function supportsTestConnection(provider: SMSProviderAdmin) {
+  return ['5sim', 'onlinesim', 'smspool'].includes(provider.code.toLowerCase())
+}
+
+function errorMessage(error: unknown, fallback: string) {
+  return (error as { message?: string })?.message || fallback
 }
 
 function healthLabel(status: string) {
@@ -184,11 +193,12 @@ async function load() {
   try {
     const [nextProviders, nextChannels, nextStats] = await Promise.all([adminSMS.providers(), adminSMS.channels(), adminSMS.stats()])
     providers.value = nextProviders
+    credentialDrafts.value = Object.fromEntries(nextProviders.map((provider) => [provider.id, '']))
     channels.value = nextChannels
     stats.value = nextStats
     enabled.value = Boolean(stats.value.feature_enabled)
   } catch (error) {
-    appStore.showError((error as { message?: string }).message || t('sms.user.errors.unavailable'))
+    appStore.showError(errorMessage(error, t('sms.user.errors.unavailable')))
   } finally {
     loading.value = false
   }
@@ -202,17 +212,37 @@ async function toggle() {
     await load()
   } catch (error) {
     enabled.value = !nextValue
-    appStore.showError((error as { message?: string }).message || t('sms.admin.enableTitle'))
+    appStore.showError(errorMessage(error, t('sms.admin.enableTitle')))
   } finally {
     savingEnabled.value = false
   }
 }
 
 async function saveProvider(provider: SMSProviderAdmin) {
+  const credential = (credentialDrafts.value[provider.id] || '').trim()
+  if (!credential && !provider.credential_configured) {
+    appStore.showError(t('sms.admin.credentialRequired'))
+    return
+  }
   try {
-    await adminSMS.updateProvider(provider.id, { enabled: provider.enabled, base_url: provider.base_url, credential_ref: provider.credential_ref })
+    await adminSMS.updateProvider(provider.id, { enabled: provider.enabled, base_url: provider.base_url, credential_ref: credential || undefined })
+    if (credential) provider.credential_configured = true
+    credentialDrafts.value[provider.id] = ''
   } catch (error) {
-    appStore.showError((error as { message?: string }).message || t('sms.admin.providers'))
+    appStore.showError(errorMessage(error, t('sms.admin.providers')))
+  }
+}
+
+async function testProvider(provider: SMSProviderAdmin) {
+  testingProviderId.value = provider.id
+  try {
+    const result = await adminSMS.testProvider(provider.id)
+    provider.health_status = result.health_status
+    appStore.showSuccess(`${t('sms.admin.testSuccess')} (${result.latency_ms}ms)`)
+  } catch (error) {
+    appStore.showError(errorMessage(error, t('sms.admin.testFailed')))
+  } finally {
+    testingProviderId.value = null
   }
 }
 
@@ -221,7 +251,7 @@ async function saveChannel(channel: SMSChannelAdmin) {
     await adminSMS.updateChannel(channel.id, { enabled: channel.enabled, visible: channel.visible, healthy: channel.healthy, provider_id: channel.provider_id })
     await load()
   } catch (error) {
-    appStore.showError((error as { message?: string }).message || t('sms.admin.channels'))
+    appStore.showError(errorMessage(error, t('sms.admin.channels')))
   }
 }
 

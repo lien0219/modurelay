@@ -2,9 +2,10 @@ package service
 
 // SMS Verification domain service. This file deliberately keeps upstream
 // provider details behind a narrow adapter interface and returns public
-// channel DTOs only. Provider credentials are read from environment variables
-// (SMS_<PROVIDER>_API_KEY); credential_ref may point to env:NAME but is never
-// treated as a raw secret.
+// channel DTOs only. Provider credentials may be supplied through the
+// deployment environment or entered by an administrator. Values entered in
+// the admin UI are encrypted before they are stored; credential_ref may also
+// point to env:NAME.
 
 import (
 	"bytes"
@@ -21,20 +22,25 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/shopspring/decimal"
 )
 
 var (
-	ErrSMSFeatureDisabled     = errors.New("sms service is disabled")
-	ErrSMSInsufficientBalance = errors.New("insufficient balance")
-	ErrSMSProviderUnavailable = errors.New("selected channel is unavailable")
-	ErrSMSPriceChanged        = errors.New("price changed; please confirm again")
-	ErrSMSProviderUnknown     = errors.New("channel purchase is being reconciled")
-	ErrSMSRefundPending       = errors.New("channel refund is being processed")
+	ErrSMSFeatureDisabled           = errors.New("sms service is disabled")
+	ErrSMSInsufficientBalance       = errors.New("insufficient balance")
+	ErrSMSProviderUnavailable       = errors.New("selected channel is unavailable")
+	ErrSMSPriceChanged              = errors.New("price changed; please confirm again")
+	ErrSMSProviderUnknown           = errors.New("channel purchase is being reconciled")
+	ErrSMSRefundPending             = errors.New("channel refund is being processed")
+	ErrSMSProviderCredentialMissing = errors.New("sms provider credential is not configured")
+	ErrSMSProviderTestUnsupported   = errors.New("provider does not support a safe connection test")
+	ErrSMSProviderTestCooldown      = errors.New("provider connection test is cooling down")
 )
 
 type SMSProviderCapabilities struct {
@@ -99,23 +105,37 @@ type SMSProvider interface {
 	CancelRental(context.Context, string) error
 }
 
+type smsProviderHealthChecker interface {
+	TestConnection(context.Context) error
+}
+
 type httpSMSProvider struct {
 	code, baseURL, apiKey string
 	client                *http.Client
 	cap                   SMSProviderCapabilities
+	credentialQueryParam  string
 }
 
 func (p *httpSMSProvider) Code() string                                         { return p.code }
 func (p *httpSMSProvider) Capabilities(context.Context) SMSProviderCapabilities { return p.cap }
 
-func providerAPIKey(code, credentialRef string) string {
+func providerAPIKey(code, credentialRef string, encryptor SecretEncryptor) string {
 	envName := "SMS_" + strings.ToUpper(strings.ReplaceAll(code, "-", "_")) + "_API_KEY"
-	if key := strings.TrimSpace(os.Getenv(envName)); key != "" {
-		return key
-	}
 	ref := strings.TrimSpace(credentialRef)
 	if strings.HasPrefix(ref, "env:") {
-		return strings.TrimSpace(os.Getenv(strings.TrimPrefix(ref, "env:")))
+		if key := strings.TrimSpace(os.Getenv(strings.TrimPrefix(ref, "env:"))); key != "" {
+			return key
+		}
+	}
+	if strings.HasPrefix(ref, "enc:") && encryptor != nil {
+		if value, err := encryptor.Decrypt(strings.TrimPrefix(ref, "enc:")); err == nil {
+			if value = strings.TrimSpace(value); value != "" {
+				return value
+			}
+		}
+	}
+	if key := strings.TrimSpace(os.Getenv(envName)); key != "" {
+		return key
 	}
 	return ""
 }
@@ -147,6 +167,13 @@ func (p *httpSMSProvider) requestBytes(ctx context.Context, method, path string,
 	if query != nil {
 		u.RawQuery = query.Encode()
 	}
+	if p.credentialQueryParam != "" {
+		if query == nil {
+			query = url.Values{}
+		}
+		query.Set(p.credentialQueryParam, p.apiKey)
+		u.RawQuery = query.Encode()
+	}
 	var payload io.Reader
 	if body != nil {
 		b, e := json.Marshal(body)
@@ -163,7 +190,9 @@ func (p *httpSMSProvider) requestBytes(ctx context.Context, method, path string,
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	req.Header.Set("Authorization", "Bearer "+p.apiKey)
+	if p.credentialQueryParam == "" {
+		req.Header.Set("Authorization", "Bearer "+p.apiKey)
+	}
 	resp, err := p.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("provider %s request: %w", p.code, err)
@@ -180,6 +209,17 @@ func (p *httpSMSProvider) requestBytes(ctx context.Context, method, path string,
 }
 
 type fiveSIMProvider struct{ *httpSMSProvider }
+
+func (p *fiveSIMProvider) TestConnection(ctx context.Context) error {
+	var out map[string]any
+	if err := p.request(ctx, http.MethodGet, "user/profile", nil, nil, &out); err != nil {
+		return err
+	}
+	if providerResponseHasError(out) {
+		return errors.New("5SIM credential was rejected")
+	}
+	return nil
+}
 
 func (p *fiveSIMProvider) Quote(ctx context.Context, req SMSQuoteRequest) (*SMSProviderQuote, error) {
 	var payload map[string]map[string]map[string]struct {
@@ -269,6 +309,51 @@ type providerJSONResponse struct {
 	Metadata  map[string]any `json:"metadata"`
 }
 
+func jsonNumber(raw json.RawMessage) (float64, bool) {
+	value := strings.TrimSpace(string(raw))
+	if value == "" || value == "null" {
+		return 0, false
+	}
+	if strings.HasPrefix(value, `"`) {
+		var text string
+		if json.Unmarshal(raw, &text) != nil {
+			return 0, false
+		}
+		value = strings.TrimSpace(text)
+	}
+	parsed, err := strconv.ParseFloat(value, 64)
+	return parsed, err == nil
+}
+
+func providerResponseHasError(values map[string]any) bool {
+	for key, value := range values {
+		name := strings.ToLower(strings.TrimSpace(key))
+		switch typed := value.(type) {
+		case bool:
+			if name == "success" && !typed {
+				return true
+			}
+		case float64:
+			if name == "success" && typed == 0 {
+				return true
+			}
+		case string:
+			text := strings.ToLower(strings.TrimSpace(typed))
+			if name == "success" && (text == "false" || text == "0") {
+				return true
+			}
+			if strings.Contains(name, "error") || name == "response" || name == "status" {
+				for _, marker := range []string{"error", "invalid", "wrong_key", "unauthorized", "failed", "denied"} {
+					if strings.Contains(text, marker) {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
 // providerJSONAdapter is shared transport/decoding code. Each concrete
 // provider below owns its endpoint contract and capability boundary.
 type providerJSONAdapter struct{ *httpSMSProvider }
@@ -323,7 +408,47 @@ func (p *smsPoolProvider) Capabilities(context.Context) SMSProviderCapabilities 
 	return SMSProviderCapabilities{Temporary: true, Polling: true, Cancel: true, Refund: true, ServiceSelection: true}
 }
 func (p *smsPoolProvider) Quote(ctx context.Context, req SMSQuoteRequest) (*SMSProviderQuote, error) {
-	return p.quoteJSON(ctx, "/purchase/sms", req)
+	var out struct {
+		Price     json.RawMessage `json:"price"`
+		Cost      json.RawMessage `json:"cost"`
+		Stock     int             `json:"stock"`
+		Available int             `json:"available"`
+		Success   *bool           `json:"success"`
+		Error     string          `json:"error"`
+		Message   string          `json:"message"`
+	}
+	query := url.Values{"country": {req.CountryCode}, "service": {req.ServiceCode}}
+	if err := p.request(ctx, http.MethodGet, "/request/price", query, nil, &out); err != nil {
+		return nil, err
+	}
+	if out.Success != nil && !*out.Success || strings.TrimSpace(out.Error) != "" {
+		return nil, ErrSMSProviderUnavailable
+	}
+	cost, ok := jsonNumber(out.Price)
+	if !ok {
+		cost, ok = jsonNumber(out.Cost)
+	}
+	stock := out.Stock
+	if stock == 0 {
+		stock = out.Available
+	}
+	if !ok || cost <= 0 {
+		return nil, ErrSMSProviderUnavailable
+	}
+	if stock <= 0 {
+		stock = 1
+	}
+	return &SMSProviderQuote{Cost: decimal.NewFromFloat(cost), Currency: "USD", Stock: stock, ExpiresAt: time.Now().Add(30 * time.Second), EstimatedDeliverySeconds: 90}, nil
+}
+func (p *smsPoolProvider) TestConnection(ctx context.Context) error {
+	var out map[string]any
+	if err := p.request(ctx, http.MethodGet, "/request/balance", nil, nil, &out); err != nil {
+		return err
+	}
+	if providerResponseHasError(out) {
+		return errors.New("SMSPool credential was rejected")
+	}
+	return nil
 }
 func (p *smsPoolProvider) PurchaseTemporary(ctx context.Context, req SMSPurchaseRequest) (*SMSPurchaseResult, error) {
 	return p.purchaseJSON(ctx, "/purchase/sms", req)
@@ -441,6 +566,16 @@ func (p *onlineSIMProvider) call(ctx context.Context, path string, query url.Val
 	query.Set("apikey", p.apiKey)
 	return p.request(ctx, http.MethodGet, path, query, nil, out)
 }
+func (p *onlineSIMProvider) TestConnection(ctx context.Context) error {
+	var out map[string]any
+	if err := p.call(ctx, "getBalance.php", url.Values{}, &out); err != nil {
+		return err
+	}
+	if providerResponseHasError(out) {
+		return errors.New("OnlineSIM credential was rejected")
+	}
+	return nil
+}
 func (p *onlineSIMProvider) Quote(ctx context.Context, req SMSQuoteRequest) (*SMSProviderQuote, error) {
 	var out struct {
 		Services map[string]struct {
@@ -551,6 +686,8 @@ func providerFor(code, baseURL, apiKey string) SMSProvider {
 	case "5sim":
 		return &fiveSIMProvider{p}
 	case "smspool":
+		// SMSPool authenticates with the key query parameter, not Bearer auth.
+		p.credentialQueryParam = "key"
 		return &smsPoolProvider{providerJSONAdapter: &providerJSONAdapter{httpSMSProvider: p}}
 	case "sms_activate":
 		return &smsActivateProvider{httpSMSProvider: p}
@@ -568,12 +705,18 @@ func providerFor(code, baseURL, apiKey string) SMSProvider {
 }
 
 type SMSService struct {
-	db       *sql.DB
-	settings *SettingService
+	db        *sql.DB
+	settings  *SettingService
+	encryptor SecretEncryptor
 }
 
-func NewSMSService(db *sql.DB, settings *SettingService) *SMSService {
-	return &SMSService{db: db, settings: settings}
+var (
+	smsProviderTestMu sync.Mutex
+	smsProviderTests  = map[int64]time.Time{}
+)
+
+func NewSMSService(db *sql.DB, settings *SettingService, encryptor SecretEncryptor) *SMSService {
+	return &SMSService{db: db, settings: settings, encryptor: encryptor}
 }
 func (s *SMSService) Enabled(ctx context.Context) bool {
 	if s == nil || s.settings == nil || s.settings.settingRepo == nil {
@@ -702,7 +845,7 @@ func (s *SMSService) Quote(ctx context.Context, req SMSQuoteRequest) ([]SMSPubli
 		if req.ProductType == "rental" && !rental {
 			continue
 		}
-		key := providerAPIKey(pc, cred)
+		key := providerAPIKey(pc, cred, s.encryptor)
 		p := providerFor(pc, base, key)
 		if p == nil {
 			continue
@@ -824,7 +967,7 @@ func (s *SMSService) Purchase(ctx context.Context, userID int64, req SMSPurchase
 	if err != nil {
 		return nil, ErrSMSProviderUnavailable
 	}
-	key := providerAPIKey(providerCode, credential)
+	key := providerAPIKey(providerCode, credential, s.encryptor)
 	provider := providerFor(providerCode, base, key)
 	if provider == nil {
 		return nil, ErrSMSProviderUnavailable
@@ -952,7 +1095,7 @@ func (s *SMSService) SyncOrderStatus(ctx context.Context, userID int64, publicID
 	if status != "active" || providerOrder == "" {
 		return nil
 	}
-	p := providerFor(providerCode, base, providerAPIKey(providerCode, credential))
+	p := providerFor(providerCode, base, providerAPIKey(providerCode, credential, s.encryptor))
 	if p == nil {
 		return ErrSMSProviderUnavailable
 	}
@@ -1036,7 +1179,7 @@ func (s *SMSService) CancelOrder(ctx context.Context, userID int64, publicID str
 	if status != "active" {
 		return errors.New("order cannot be cancelled")
 	}
-	key := providerAPIKey(providerCode, credential)
+	key := providerAPIKey(providerCode, credential, s.encryptor)
 	p := providerFor(providerCode, base, key)
 	if p == nil {
 		return ErrSMSProviderUnavailable
@@ -1179,7 +1322,7 @@ func (s *SMSService) RequestRefund(ctx context.Context, userID int64, orderPubli
 	if productType == "rental" {
 		return errors.New("rental refunds are unavailable for this channel")
 	}
-	key := providerAPIKey(providerCode, cred)
+	key := providerAPIKey(providerCode, cred, s.encryptor)
 	p := providerFor(providerCode, base, key)
 	if p == nil {
 		return ErrSMSProviderUnavailable
@@ -1253,7 +1396,7 @@ func (s *SMSService) ExtendRental(ctx context.Context, userID int64, publicID st
 	if already {
 		return s.GetOrderByPublicID(ctx, userID, publicID)
 	}
-	p := providerFor(providerCode, base, providerAPIKey(providerCode, credential))
+	p := providerFor(providerCode, base, providerAPIKey(providerCode, credential, s.encryptor))
 	if p == nil || !p.Capabilities(ctx).Extend {
 		return nil, errors.New("rental extension is unavailable for this channel")
 	}
@@ -1334,14 +1477,59 @@ func (s *SMSService) ListProviders(ctx context.Context) ([]SMSProviderAdmin, err
 		if err := rows.Scan(&x.ID, &x.Code, &x.Name, &x.BaseURL, &x.Enabled, &x.HealthStatus, &cred, &raw); err != nil {
 			return nil, err
 		}
-		x.CredentialConfigured = providerAPIKey(x.Code, cred) != ""
-		x.CredentialRef = cred
+		x.CredentialConfigured = providerAPIKey(x.Code, cred, s.encryptor) != ""
 		x.Capabilities = decodeCapabilities(raw)
 		out = append(out, x)
 	}
 	return out, rows.Err()
 }
+
+// AdminTestProvider performs a bounded, read-only provider authentication
+// check. It never allocates a phone number or creates a provider order.
+func (s *SMSService) AdminTestProvider(ctx context.Context, id int64) (map[string]any, error) {
+	var code, base, credential string
+	if err := s.db.QueryRowContext(ctx, `SELECT code,base_url,credential_ref FROM sms_providers WHERE id=$1`, id).Scan(&code, &base, &credential); err != nil {
+		return nil, err
+	}
+	key := providerAPIKey(code, credential, s.encryptor)
+	if key == "" {
+		return nil, ErrSMSProviderCredentialMissing
+	}
+	provider := providerFor(strings.ToLower(strings.TrimSpace(code)), base, key)
+	checker, ok := provider.(smsProviderHealthChecker)
+	if !ok {
+		return nil, ErrSMSProviderTestUnsupported
+	}
+	smsProviderTestMu.Lock()
+	if previous, exists := smsProviderTests[id]; exists && time.Since(previous) < time.Minute {
+		smsProviderTestMu.Unlock()
+		return nil, ErrSMSProviderTestCooldown
+	}
+	smsProviderTests[id] = time.Now()
+	smsProviderTestMu.Unlock()
+
+	testCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	started := time.Now()
+	err := checker.TestConnection(testCtx)
+	latency := time.Since(started)
+	health := "healthy"
+	if err != nil {
+		health = "unavailable"
+	}
+	_, _ = s.db.ExecContext(ctx, `UPDATE sms_providers SET health_status=$1,updated_at=NOW() WHERE id=$2`, health, id)
+	result := map[string]any{"healthy": err == nil, "health_status": health, "latency_ms": latency.Milliseconds()}
+	if err != nil {
+		return result, err
+	}
+	return result, nil
+}
+
 func (s *SMSService) UpdateProvider(ctx context.Context, id int64, enabled bool, baseURL, credentialRef string) error {
+	var code, existingCredential string
+	if err := s.db.QueryRowContext(ctx, `SELECT code,credential_ref FROM sms_providers WHERE id=$1`, id).Scan(&code, &existingCredential); err != nil {
+		return err
+	}
 	baseURL = strings.TrimSpace(baseURL)
 	if baseURL != "" {
 		u, err := url.Parse(baseURL)
@@ -1350,8 +1538,25 @@ func (s *SMSService) UpdateProvider(ctx context.Context, id int64, enabled bool,
 		}
 	}
 	credentialRef = strings.TrimSpace(credentialRef)
-	if credentialRef != "" && !strings.HasPrefix(credentialRef, "env:") {
-		return errors.New("credential_ref must use env:NAME")
+	if strings.HasPrefix(credentialRef, "env:") {
+		name := strings.TrimPrefix(credentialRef, "env:")
+		validName, _ := regexp.MatchString(`^[A-Za-z_][A-Za-z0-9_]*$`, name)
+		if !validName {
+			return errors.New("invalid provider credential environment reference")
+		}
+	}
+	if credentialRef == "" && providerAPIKey(code, existingCredential, s.encryptor) == "" {
+		return errors.New("provider credential is required")
+	}
+	if credentialRef != "" && !strings.HasPrefix(credentialRef, "env:") && !strings.HasPrefix(credentialRef, "enc:") {
+		if s.encryptor == nil {
+			return errors.New("credential encryption is unavailable")
+		}
+		encrypted, err := s.encryptor.Encrypt(credentialRef)
+		if err != nil {
+			return errors.New("credential encryption failed")
+		}
+		credentialRef = "enc:" + encrypted
 	}
 	_, err := s.db.ExecContext(ctx, `UPDATE sms_providers SET enabled=$1,base_url=COALESCE(NULLIF($2,''),base_url),credential_ref=COALESCE(NULLIF($3,''),credential_ref),updated_at=NOW() WHERE id=$4`, enabled, baseURL, credentialRef, id)
 	return err

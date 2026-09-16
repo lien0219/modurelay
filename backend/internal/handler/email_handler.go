@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -230,6 +231,15 @@ func (h *EmailHandler) AdminProviderTest(c *gin.Context) {
 	if err != nil {
 		if err == service.ErrEmailProviderTestCooldown {
 			response.ErrorWithDetails(c, http.StatusTooManyRequests, "Provider test is cooling down", "TEST_COOLDOWN", nil)
+			return
+		}
+		if err == service.ErrEmailProviderCredentialMissing || strings.Contains(err.Error(), "credential is not configured") {
+			response.ErrorWithDetails(c, http.StatusUnprocessableEntity, "Provider credential is not configured", "PROVIDER_CREDENTIAL_MISSING", nil)
+			return
+		}
+		var providerErr *service.EmailProviderHTTPError
+		if errors.As(err, &providerErr) {
+			response.ErrorWithDetails(c, http.StatusBadGateway, "Provider rejected the health check", "PROVIDER_HEALTH_CHECK_REJECTED", map[string]string{"provider_status": strconv.Itoa(providerErr.StatusCode)})
 			return
 		}
 		response.ErrorWithDetails(c, http.StatusBadGateway, "Provider health check failed", "PROVIDER_HEALTH_CHECK_FAILED", nil)

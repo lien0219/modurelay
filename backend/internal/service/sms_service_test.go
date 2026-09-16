@@ -49,6 +49,76 @@ func TestSMSActivateUsesRealActionContract(t *testing.T) {
 	}
 }
 
+func TestSMSPoolQuoteUsesReadOnlyPriceEndpointAndKeyAuth(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/request/price" {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			return
+		}
+		if r.URL.Query().Get("key") != "secret" || r.URL.Query().Get("country") != "US" || r.URL.Query().Get("service") != "google" {
+			t.Errorf("unexpected query: %s", r.URL.RawQuery)
+			return
+		}
+		if r.Header.Get("Authorization") != "" {
+			t.Errorf("SMSPool must not receive bearer auth")
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"price":"0.8","available":4}`))
+	}))
+	defer server.Close()
+
+	quote, err := providerFor("smspool", server.URL, "secret").Quote(context.Background(), SMSQuoteRequest{ServiceCode: "google", CountryCode: "US", ProductType: "temporary"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if quote.Stock != 4 || quote.Cost.String() != "0.8" {
+		t.Fatalf("unexpected quote: %#v", quote)
+	}
+}
+
+func TestSMSProviderConnectionChecksAreReadOnly(t *testing.T) {
+	tests := []struct {
+		name  string
+		code  string
+		path  string
+		query string
+	}{
+		{name: "5sim", code: "5sim", path: "/user/profile"},
+		{name: "onlinesim", code: "onlinesim", path: "/getBalance.php", query: "apikey"},
+		{name: "smspool", code: "smspool", path: "/request/balance", query: "key"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodGet || r.URL.Path != tt.path {
+					t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+					return
+				}
+				if tt.query != "" && r.URL.Query().Get(tt.query) != "secret" {
+					t.Errorf("missing %s credential: %s", tt.query, r.URL.RawQuery)
+					return
+				}
+				if r.Header.Get("Authorization") != "" && tt.code == "smspool" {
+					t.Errorf("SMSPool must not receive bearer auth")
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"balance":1,"response":"ACCESS_OK"}`))
+			}))
+			defer server.Close()
+			provider := providerFor(tt.code, server.URL, "secret")
+			checker, ok := provider.(smsProviderHealthChecker)
+			if !ok {
+				t.Fatalf("%s does not expose a health checker", tt.code)
+			}
+			if err := checker.TestConnection(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
 func TestSMSPublicDTODoesNotExposeProviderFields(t *testing.T) {
 	payload, err := json.Marshal(struct {
 		Order   SMSOrder

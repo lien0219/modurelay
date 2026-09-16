@@ -167,6 +167,7 @@ func registerSMSAdminRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	sms := admin.Group("/sms")
 	sms.GET("/providers", h.SMS.AdminProviders)
 	sms.PUT("/providers/:id", h.SMS.AdminProviderUpdate)
+	sms.POST("/providers/:id/test", h.SMS.AdminProviderTest)
 	sms.GET("/channels", h.SMS.AdminChannels)
 	sms.PUT("/channels/:id", h.SMS.AdminChannelUpdate)
 	sms.GET("/stats", h.SMS.AdminStats)

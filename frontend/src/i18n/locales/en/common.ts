@@ -240,7 +240,7 @@ export default {
   sms: {
     admin: {
       eyebrow: 'Operations',
-      description: 'Configure providers, public channels, and the feature switch. Credentials are shown only as configured.',
+      description: 'Configure providers, public channels, and the feature switch. Enter credentials here; they are encrypted at rest.',
       enableTitle: 'Enable SMS Verification',
       enableDescription: 'When disabled, user navigation, routes, and APIs are blocked while administrators can still configure the module.',
       providers: 'Providers',
@@ -248,7 +248,9 @@ export default {
       name: 'Name',
       code: 'Code',
       baseUrl: 'API URL',
-      credential: 'Credential reference',
+      credential: 'Provider credential',
+      credentialPlaceholder: 'Enter the provider API key; it will be encrypted when saved',
+      credentialRequired: 'Enter the provider credential before saving.',
       health: 'Health',
       enabled: 'Enabled',
       action: 'Actions',
@@ -257,8 +259,13 @@ export default {
       portal: 'Provider portal',
       openProvider: 'Open provider portal',
       save: 'Save',
-      configured: 'Configured',
-      missing: 'Missing',
+      saving: 'Saving…',
+      saved: 'Saved',
+      testConnection: 'Test connection',
+      testRequestNotice: 'The test uses a read-only authenticated provider endpoint and does not purchase a number.',
+      testing: 'Testing…',
+      testSuccess: 'Connection succeeded',
+      testFailed: 'Connection failed',
       stats: { completed: 'Completed', feature_enabled: 'Feature switch', orders: 'Orders', refunded: 'Refunded', revenue: 'Revenue' },
       status: { healthy: 'Healthy', degraded: 'Degraded', unavailable: 'Unavailable', disabled: 'Disabled', unknown: 'Unknown' },
       primary: 'Primary',
@@ -632,7 +639,7 @@ export default {
       refundPolicies: { refund_if_no_message: 'Refund when no target email arrives', no_refund_after_inbox_delivery: 'No refund after inbox delivery', manual_review: 'Manual review after expiry' },
       capturePolicies: { on_target_email_received: 'Capture when target email arrives', on_verification_extracted: 'Capture after verification data is extracted' },
       orderStatuses: { reserved: 'Reserved', generating_inbox: 'Generating inbox', waiting_email: 'Waiting for email', email_received: 'Email received', verification_extracted: 'Verification extracted', completed: 'Completed', reconciling: 'Reconciling', expired: 'Expired', refunded: 'Refunded', failed: 'Failed', cancelled: 'Cancelled' },
-      eyebrow: 'Email verification management', description: 'Configure temporary email channels, providers, billing, and quota policies.', enableTitle: 'Email verification service', enableDescription: 'When enabled, users can purchase public temporary inboxes.', switchLabel: 'Enable email verification', providers: 'Providers', channels: 'Email channels', orders: 'Email orders', name: 'Name', baseUrl: 'API URL', credential: 'Credential', health: 'Health', enabled: 'Enabled', visible: 'Visible', action: 'Action', openProvider: 'Open provider portal', portal: 'Provider setup', configured: 'Configured', missing: 'Not configured', providerEnabled: 'Enable provider {name}', channelVisible: 'Show {name} to users', channelHealthy: 'Mark {name} healthy', channelEnabled: 'Enable {name}', save: 'Save', saving: 'Saving…', saved: 'Saved', testConnection: 'Test connection', testRequestNotice: 'The test performs one authenticated provider request.', testing: 'Testing…', testSuccess: 'Connection succeeded', testFailed: 'Connection failed', salePrice: 'Sale price', baseMarkup: 'Base markup', fixedMarkup: 'Fixed markup', minimumProfit: 'Minimum profit', refundPolicy: 'Refund policy', capturePolicy: 'Capture policy', orderTtl: 'TTL (seconds)', maxRequests: 'Request limit', pollingBackoff: 'Polling backoff', backoffPlaceholder: '2, 4, 7, 10, 15', invalidBackoff: 'Enter comma-separated polling delays from 1 to 3600 seconds.', provider: 'Provider', emailAddress: 'Email address', statusLabel: 'Status', requests: 'Requests', createdAt: 'Created at', orderNo: 'Order no.', user: 'User', service: 'Service', stats: { orders: 'Orders', completed: 'Completed', refunded: 'Refunded', today_requests: 'Today requests', month_requests: 'Month requests', failed_requests: 'Failed requests', rate_limited_requests: 'Rate-limited requests' }, status: { healthy: 'Healthy', degraded: 'Degraded', unavailable: 'Unavailable', quota_limited: 'Quota limited', disabled: 'Disabled', unknown: 'Unknown' }
+      eyebrow: 'Email verification management', description: 'Configure temporary email channels, providers, billing, and quota policies.', enableTitle: 'Email verification service', enableDescription: 'When enabled, users can purchase public temporary inboxes.', switchLabel: 'Enable email verification', providers: 'Providers', channels: 'Email channels', orders: 'Email orders', name: 'Name', baseUrl: 'API URL', credential: 'Provider credential', credentialPlaceholder: 'Enter the provider API key; it will be encrypted when saved', credentialRequired: 'Enter the provider credential before saving.', health: 'Health', enabled: 'Enabled', visible: 'Visible', action: 'Action', openProvider: 'Open provider portal', portal: 'Provider setup', providerEnabled: 'Enable provider {name}', channelVisible: 'Show {name} to users', channelHealthy: 'Mark {name} healthy', channelEnabled: 'Enable {name}', save: 'Save', saving: 'Saving…', saved: 'Saved', testConnection: 'Test connection', testRequestNotice: 'The test performs one authenticated provider request.', testing: 'Testing…', testSuccess: 'Connection succeeded', testFailed: 'Connection failed', salePrice: 'Sale price', baseMarkup: 'Base markup', fixedMarkup: 'Fixed markup', minimumProfit: 'Minimum profit', refundPolicy: 'Refund policy', capturePolicy: 'Capture policy', orderTtl: 'TTL (seconds)', maxRequests: 'Request limit', pollingBackoff: 'Polling backoff', backoffPlaceholder: '2, 4, 7, 10, 15', invalidBackoff: 'Enter comma-separated polling delays from 1 to 3600 seconds.', provider: 'Provider', emailAddress: 'Email address', statusLabel: 'Status', requests: 'Requests', createdAt: 'Created at', orderNo: 'Order no.', user: 'User', service: 'Service', stats: { orders: 'Orders', completed: 'Completed', refunded: 'Refunded', today_requests: 'Today requests', month_requests: 'Month requests', failed_requests: 'Failed requests', rate_limited_requests: 'Rate-limited requests' }, status: { healthy: 'Healthy', degraded: 'Degraded', unavailable: 'Unavailable', quota_limited: 'Quota limited', disabled: 'Disabled', unknown: 'Unknown' }
     },
     user: {
       description: 'Use a public temporary inbox to receive verification email.', temporary: 'Temporary inbox', orders: 'My inboxes / orders', service: 'Verification service', selectService: 'Select a service', addressType: 'Email type', gmail: 'Temporary Gmail', privacyWarning: 'This channel provides a public temporary inbox. Anyone who knows the full address may access the inbox. Do not use it for banking, government, healthcare, identity verification, or other sensitive accounts.', quoteHint: 'Select an available channel', chooseForQuote: 'Select a service to view available channels', checking: 'Checking…', noChannel: 'No email channel is currently available', eta: 'Average delivery', seconds: 's', retention: 'Retention', successRate: 'Success rate', insufficientSuccessData: 'Not enough data', processing: 'Processing…', purchase: 'Get inbox', loading: 'Loading…', noOrders: 'No email orders', code: 'Verification code', copy: 'Copy', safeOpen: 'Open link', viewMessage: 'View message', waiting: 'Waiting for verification email', cancel: 'Cancel order', requestRefund: 'Request refund', copied: 'Copied', refundPolicies: { refund_if_no_message: 'Refunded automatically if no matching email arrives before expiry.', no_refund_after_inbox_delivery: 'The order is charged after the inbox is delivered.', manual_review: 'Expired orders require administrator review.' }, statuses: { reserved: 'Reserved', generating_inbox: 'Generating inbox', waiting_email: 'Waiting for email', email_received: 'Email received', verification_extracted: 'Verification extracted', completed: 'Completed', reconciling: 'Reconciling', expired: 'Expired', refunded: 'Refunded', failed: 'Failed', cancelled: 'Cancelled' }, errors: { unavailable: 'Email channel is temporarily unavailable', quote: 'Unable to load quote', orders: 'Unable to load orders', purchase: 'Inbox generation failed', cancel: 'Unable to cancel order', refund: 'Unable to request refund' }

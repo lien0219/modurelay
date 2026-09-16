@@ -6,6 +6,7 @@ export interface SMSChannelAdmin { id: number; code: string; public_name: string
 const smsAdminAPI = {
   providers: () => apiClient.get<SMSProviderAdmin[]>('/admin/sms/providers').then(r => r.data),
   updateProvider: (id: number, payload: { enabled: boolean; base_url?: string; credential_ref?: string }) => apiClient.put(`/admin/sms/providers/${id}`, payload).then(r => r.data),
+  testProvider: (id: number) => apiClient.post<{ healthy: boolean; health_status: string; latency_ms: number }>(`/admin/sms/providers/${id}/test`).then(r => r.data),
   channels: () => apiClient.get<SMSChannelAdmin[]>('/admin/sms/channels').then(r => r.data),
   updateChannel: (id: number, payload: { enabled: boolean; visible: boolean; healthy: boolean; provider_id?: number }) => apiClient.put(`/admin/sms/channels/${id}`, payload).then(r => r.data),
   stats: () => apiClient.get<Record<string, number | boolean>>('/admin/sms/stats').then(r => r.data),

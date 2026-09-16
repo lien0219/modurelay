@@ -54,7 +54,7 @@ describe('EmailManagementView', () => {
     })
     await flushPromises()
 
-    expect(wrapper.get('input[placeholder="env:EMAIL_EMAILNATOR_API_KEY"]').attributes('type')).toBe('password')
+    expect(wrapper.get('input[placeholder="email.admin.credentialPlaceholder"]').attributes('type')).toBe('password')
     const backoff = wrapper.get('input[placeholder="email.admin.backoffPlaceholder"]')
     const channelSave = () => wrapper.findAll('button').filter(button => button.text() === 'email.admin.save').at(-1)!
 
@@ -73,6 +73,29 @@ describe('EmailManagementView', () => {
       polling_backoff: [2, 4, 9],
     }))
     expect(showSuccess).toHaveBeenCalledWith('email.admin.saved')
+  })
+
+  it('requires a credential before the first provider save', async () => {
+    const wrapper = mount(EmailManagementView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<main><slot /></main>' },
+          Icon: true,
+          Toggle: { props: ['modelValue', 'label', 'disabled'], template: '<button type="button" :disabled="disabled">{{ label }}</button>' },
+        },
+      },
+    })
+    await flushPromises()
+
+    await wrapper.findAll('button').filter((button) => button.text() === 'email.admin.save')[0].trigger('click')
+    expect(showError).toHaveBeenCalledWith('email.admin.credentialRequired')
+    expect(adminEmail.updateProvider).not.toHaveBeenCalled()
+
+    await wrapper.get('input[placeholder="email.admin.credentialPlaceholder"]').setValue('rapid-api-secret')
+    await wrapper.findAll('button').filter((button) => button.text() === 'email.admin.save')[0].trigger('click')
+    await flushPromises()
+    expect(adminEmail.updateProvider).toHaveBeenCalledWith(1, expect.objectContaining({ credential_ref: 'rapid-api-secret' }))
+    expect((wrapper.get('input[placeholder="email.admin.credentialPlaceholder"]').element as HTMLInputElement).value).toBe('')
   })
 
   it('shows localized configuration guidance and two scrollable full-width tables', async () => {
