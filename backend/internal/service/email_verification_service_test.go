@@ -204,7 +204,7 @@ func TestGetEmailOrderScopesLookupToAuthenticatedUser(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	mock.ExpectQuery(`SELECT id FROM email_orders WHERE user_id=\$1 AND public_id=\$2::uuid`).
 		WithArgs(int64(42), "other-users-order").
 		WillReturnError(sql.ErrNoRows)
@@ -248,7 +248,7 @@ func TestRecordProviderUsageUsesNullOrderForAdminHealthCheck(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	mock.ExpectQuery(`SELECT billing FROM email_providers`).WithArgs(int64(7)).WillReturnRows(sqlmock.NewRows([]string{"billing"}).AddRow([]byte(`{}`)))
 	mock.ExpectExec(`INSERT INTO email_provider_usage`).WithArgs(int64(7), nil, "health_check", 0, true, int64(25), false, float64(0)).WillReturnResult(sqlmock.NewResult(1, 1))
 	svc := &EmailVerificationService{db: db}
@@ -263,7 +263,7 @@ func TestExpireEmailOrderCapturesAfterTargetMessage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	messageAt := time.Now().Add(-time.Minute)
 	mock.ExpectQuery(`SELECT status,refund_policy_snapshot,sale_price_snapshot,first_message_at FROM email_orders`).WithArgs(int64(12)).WillReturnRows(sqlmock.NewRows([]string{"status", "refund_policy_snapshot", "sale_price_snapshot", "first_message_at"}).AddRow("email_received", EmailRefundIfNoMessage, 1.25, messageAt))
 	mock.ExpectBegin()
@@ -285,7 +285,7 @@ func TestEmailRefundRechecksNoMessageConditionInsideTransaction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	mock.ExpectQuery(`SELECT id,status,refund_policy_snapshot,sale_price_snapshot,first_message_at FROM email_orders`).
 		WithArgs(int64(7), "order-id").
 		WillReturnRows(sqlmock.NewRows([]string{"id", "status", "refund_policy_snapshot", "sale_price_snapshot", "first_message_at"}).
@@ -310,7 +310,7 @@ func TestReconcileRefundsUndeliveredInboxForNoRefundAfterDeliveryPolicy(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	mock.ExpectQuery(`SELECT id,user_id,status,expires_at,refund_policy_snapshot,sale_price_snapshot,provider_inbox_id,email_address FROM email_orders`).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "user_id", "status", "expires_at", "refund_policy_snapshot", "sale_price_snapshot", "provider_inbox_id", "email_address"}).
@@ -343,7 +343,7 @@ func TestReconcileCapturesDeliveredInboxForNoRefundAfterDeliveryPolicy(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	mock.ExpectQuery(`SELECT id,user_id,status,expires_at,refund_policy_snapshot,sale_price_snapshot,provider_inbox_id,email_address FROM email_orders`).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "user_id", "status", "expires_at", "refund_policy_snapshot", "sale_price_snapshot", "provider_inbox_id", "email_address"}).
@@ -376,7 +376,7 @@ func TestReconcileCapturesDeliveredInboxForRefundIfNoMessagePolicy(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	mock.ExpectQuery(`SELECT id,user_id,status,expires_at,refund_policy_snapshot,sale_price_snapshot,provider_inbox_id,email_address FROM email_orders`).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "user_id", "status", "expires_at", "refund_policy_snapshot", "sale_price_snapshot", "provider_inbox_id", "email_address"}).

@@ -334,7 +334,7 @@ func (s *VerificationRecordService) List(ctx context.Context, options Verificati
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]VerificationRecord, 0, options.PageSize)
 	for rows.Next() {
 		var item VerificationRecord
@@ -449,7 +449,7 @@ func (s *VerificationRecordService) Analytics(ctx context.Context, options Verif
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	result := &VerificationRecordAnalytics{ByPlatform: []VerificationRecordBreakdown{}, ByCountry: []VerificationRecordBreakdown{}, ByType: []VerificationRecordBreakdown{}, Financial: []VerificationRecordFinancialTotal{}}
 	for rows.Next() {
 		var dimension, key string
@@ -478,7 +478,7 @@ func (s *VerificationRecordService) Analytics(ctx context.Context, options Verif
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var item VerificationRecordFinancialTotal
 		if err := rows.Scan(&item.Currency, &item.SaleAmount, &item.ProviderCost, &item.CapturedAmount, &item.RefundedAmount); err != nil {
@@ -551,7 +551,7 @@ func (s *VerificationRecordService) ListOptions(ctx context.Context, options Ver
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]VerificationRecordOption, 0, options.PageSize)
 	for rows.Next() {
 		var item VerificationRecordOption

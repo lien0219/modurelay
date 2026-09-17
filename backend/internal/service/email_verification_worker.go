@@ -104,7 +104,7 @@ func (s *EmailVerificationService) Reconcile(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var id, userID int64
 		var status, policy, providerInboxID, emailAddress string

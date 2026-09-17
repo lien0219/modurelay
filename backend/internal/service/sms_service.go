@@ -197,7 +197,7 @@ func (p *httpSMSProvider) requestBytes(ctx context.Context, method, path string,
 	if err != nil {
 		return nil, fmt.Errorf("provider %s request: %w", p.code, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	data, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 	if err != nil {
 		return nil, err
@@ -795,7 +795,7 @@ func (s *SMSService) ListServices(ctx context.Context) ([]SMSSvcCatalogItem, err
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := []SMSSvcCatalogItem{}
 	for rows.Next() {
 		var item SMSSvcCatalogItem
@@ -811,7 +811,7 @@ func (s *SMSService) ListCountries(ctx context.Context) ([]SMSCountryCatalogItem
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := []SMSCountryCatalogItem{}
 	for rows.Next() {
 		var item SMSCountryCatalogItem
@@ -834,7 +834,7 @@ func (s *SMSService) Quote(ctx context.Context, req SMSQuoteRequest) ([]SMSPubli
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := []SMSPublicChannel{}
 	for rows.Next() {
 		var code, name, role, pc, base, cred string
@@ -1201,7 +1201,7 @@ func (s *SMSService) CancelOrder(ctx context.Context, userID int64, publicID str
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	var changed int
 	if err = tx.QueryRowContext(ctx, `UPDATE sms_orders SET status='cancelled',refund_status='approved',updated_at=NOW() WHERE id=$1 AND refund_status='not_requested' RETURNING id`, id).Scan(&changed); err != nil {
 		return err
@@ -1223,7 +1223,7 @@ func (s *SMSService) ListOrders(ctx context.Context, userID int64, admin bool) (
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := []SMSOrder{}
 	for rows.Next() {
 		var o SMSOrder
@@ -1281,7 +1281,7 @@ func (s *SMSService) ListUserOrdersPage(ctx context.Context, userID int64, page,
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]SMSOrder, 0, pageSize)
 	for rows.Next() {
 		var order SMSOrder
@@ -1340,7 +1340,7 @@ func (s *SMSService) RequestRefund(ctx context.Context, userID int64, orderPubli
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	var changed int
 	if err = tx.QueryRowContext(ctx, `UPDATE sms_orders SET refund_status='approved',status='refunded',updated_at=NOW() WHERE id=$1 AND refund_status='not_requested' RETURNING id`, id).Scan(&changed); err != nil {
 		return err
@@ -1468,7 +1468,7 @@ func (s *SMSService) ListProviders(ctx context.Context) ([]SMSProviderAdmin, err
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := []SMSProviderAdmin{}
 	for rows.Next() {
 		var x SMSProviderAdmin
@@ -1566,7 +1566,7 @@ func (s *SMSService) ListChannelsAdmin(ctx context.Context) ([]SMSChannelAdmin, 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := []SMSChannelAdmin{}
 	for rows.Next() {
 		var x SMSChannelAdmin

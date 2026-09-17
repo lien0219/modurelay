@@ -208,7 +208,7 @@ func (p *emailnatorProvider) request(ctx context.Context, operation, method, pat
 	if err != nil {
 		return nil, fmt.Errorf("email provider request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	data, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 	if err != nil {
 		return nil, err
@@ -455,7 +455,11 @@ func emailProviderFor(code, baseURL, credentialRef string, metadata map[string]a
 	}
 	limiterKey := strings.ToLower(strings.TrimSpace(code)) + "|" + strings.TrimRight(baseURL, "/") + "|" + host + "|" + interval.String() + "|" + strconv.Itoa(concurrency)
 	limiterValue, _ := emailProviderLimiters.LoadOrStore(limiterKey, newEmailProviderLimiter(concurrency, interval))
-	return &emailnatorProvider{code: code, baseURL: baseURL, rapidAPIKey: key, rapidAPIHost: host, client: &http.Client{Timeout: 20 * time.Second}, cap: emailnatorCapabilities(), endpoints: endpoints, limiter: limiterValue.(*emailProviderLimiter)}
+	limiter, ok := limiterValue.(*emailProviderLimiter)
+	if !ok {
+		return nil
+	}
+	return &emailnatorProvider{code: code, baseURL: baseURL, rapidAPIKey: key, rapidAPIHost: host, client: &http.Client{Timeout: 20 * time.Second}, cap: emailnatorCapabilities(), endpoints: endpoints, limiter: limiter}
 }
 
 type emailProviderLimiter struct {
@@ -621,7 +625,7 @@ func (s *EmailVerificationService) ListServices(ctx context.Context) ([]EmailPub
 	if e != nil {
 		return nil, e
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := []EmailPublicService{}
 	for rows.Next() {
 		var v EmailPublicService
@@ -698,7 +702,7 @@ func (s *EmailVerificationService) Quote(ctx context.Context, serviceCode, addre
 	if e != nil {
 		return nil, e
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := []EmailPublicChannel{}
 	for rows.Next() {
 		var code, name, emailType, privacy, refund, pc, base, cred string
@@ -851,25 +855,6 @@ func (s *EmailVerificationService) emailSuccessGrade(ctx context.Context, v floa
 		return "B"
 	}
 	if v >= threshold("email_success_grade_c_threshold", .60) {
-		return "C"
-	}
-	return "D"
-}
-
-// emailSuccessGrade is kept as a small compatibility helper for callers/tests
-// that do not have a settings service; production quote paths use the
-// configurable method above.
-func emailSuccessGrade(v float64) string {
-	if v >= .95 {
-		return "S"
-	}
-	if v >= .90 {
-		return "A"
-	}
-	if v >= .80 {
-		return "B"
-	}
-	if v >= .60 {
 		return "C"
 	}
 	return "D"
@@ -1102,10 +1087,7 @@ func (s *EmailVerificationService) emailQuotaAllowsNewOrder(ctx context.Context,
 	var monthUsed, dayUsed, activeOrders int64
 	_ = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FILTER (WHERE created_at>=date_trunc('month',NOW())), COUNT(*) FILTER (WHERE created_at>=CURRENT_DATE) FROM email_provider_usage WHERE provider_id=$1`, providerID).Scan(&monthUsed, &dayUsed)
 	_ = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM email_orders WHERE provider_id=$1 AND status IN ('reserved','generating_inbox','reconciling','waiting_email','email_received','verification_extracted')`, providerID).Scan(&activeOrders)
-	allowed := true
-	if limit > 0 && float64(monthUsed) >= limit*stopPercent/100 {
-		allowed = false
-	}
+	allowed := !(limit > 0 && float64(monthUsed) >= limit*stopPercent/100)
 	if daily := numberFromMap(billing, "included_requests_daily"); daily > 0 && float64(dayUsed) >= daily*stopPercent/100 {
 		allowed = false
 	}
@@ -1241,7 +1223,7 @@ func (s *EmailVerificationService) listMessagesPublic(ctx context.Context, id in
 	if e != nil {
 		return nil, e
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := []EmailMessage{}
 	for rows.Next() {
 		var m EmailMessage
@@ -1278,7 +1260,7 @@ func (s *EmailVerificationService) CancelOrder(ctx context.Context, userID int64
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	var balanceBack bool
 	var query string
 	if status == "reserved" || status == "generating_inbox" || status == "reconciling" {
@@ -1328,7 +1310,7 @@ func (s *EmailVerificationService) RequestRefund(ctx context.Context, userID int
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	res, err := tx.ExecContext(ctx, `UPDATE email_orders SET status='refunded',refund_status='approved',refund_reason='user requested refund before target email',refunded_amount=sale_price_snapshot,updated_at=NOW() WHERE id=$1 AND user_id=$2 AND status IN ('waiting_email','email_received') AND first_message_at IS NULL AND refunded_amount=0 AND captured_amount=0`, id, userID)
 	if err != nil {
 		return err
@@ -1350,7 +1332,7 @@ func (s *EmailVerificationService) ListOrders(ctx context.Context, userID int64)
 	if e != nil {
 		return nil, e
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := []EmailOrder{}
 	for rows.Next() {
 		var id string
@@ -1401,7 +1383,7 @@ func (s *EmailVerificationService) ListUserOrdersPage(ctx context.Context, userI
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	ids := make([]string, 0, pageSize)
 	for rows.Next() {
 		var id string
@@ -1432,7 +1414,7 @@ func (s *EmailVerificationService) captureEmailOrder(ctx context.Context, orderI
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	res, err := tx.ExecContext(ctx, `UPDATE email_orders SET status='completed',completed_at=NOW(),captured_amount=sale_price_snapshot,updated_at=NOW() WHERE id=$1 AND status IN ('email_received','verification_extracted') AND captured_amount=0`, orderID)
 	if err != nil {
 		return err
@@ -1604,7 +1586,7 @@ func (s *EmailVerificationService) messageMatches(ctx context.Context, serviceID
 	if e != nil {
 		return false
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	matched := false
 	ruleCount := 0
 	for rows.Next() {
@@ -1649,7 +1631,10 @@ func (s *EmailVerificationService) messageMatches(ctx context.Context, serviceID
 	}
 	return matched
 }
-func (s *EmailVerificationService) expireOrder(ctx context.Context, id, userID int64) error {
+
+// Deprecated: expireOrder is retained only for historical migrations. New
+// polling uses expireOrderV2, which has idempotent balance settlement.
+func (s *EmailVerificationService) expireOrder(ctx context.Context, id, userID int64) error { //nolint:unused
 	var status, policy string
 	var price float64
 	if e := s.db.QueryRowContext(ctx, `SELECT status,refund_policy_snapshot,sale_price_snapshot FROM email_orders WHERE id=$1`, id).Scan(&status, &policy, &price); e != nil {
@@ -1663,7 +1648,7 @@ func (s *EmailVerificationService) expireOrder(ctx context.Context, id, userID i
 		if e != nil {
 			return e
 		}
-		defer tx.Rollback()
+		defer func() { _ = tx.Rollback() }()
 		res, e := tx.ExecContext(ctx, `UPDATE email_orders SET status='refunded',refund_status='approved',refund_reason='未收到目标验证邮件',refunded_amount=sale_price_snapshot,updated_at=NOW() WHERE id=$1 AND status IN ('waiting_email','email_received','verification_extracted') AND refund_status='not_requested'`, id)
 		if e != nil {
 			return e
@@ -1841,7 +1826,7 @@ func (s *EmailVerificationService) expireDueEmailOrders(ctx context.Context) err
 	return nil
 }
 
-func emailPollDelay(pollCount int, err error) time.Duration {
+func emailPollDelay(pollCount int, err error) time.Duration { //nolint:unused
 	return emailPollDelayWithSchedule(pollCount, err, nil)
 }
 
@@ -1899,6 +1884,8 @@ var emailOTPContextRE = regexp.MustCompile(`(?i)(verification code|security code
 var emailOTPContextREUTF8 = regexp.MustCompile(`(?i)(verification code|security code|one[- ]time password|authentication code|confirm(?:ation)? code|otp|\x{9A8C}\x{8BC1}\x{7801}|\x{6821}\x{9A8C}\x{7801}|\x{52A8}\x{6001}\x{7801}|\x{5B89}\x{5168}\x{7801}|\x{767B}\x{5F55}\x{4EE3}\x{7801})[^0-9A-Za-z]{0,30}([0-9A-Za-z]{4,12})`)
 var otpRE = regexp.MustCompile(`(?i)\b[0-9]{4}\b|\b[0-9]{6}\b|\b[0-9]{8}\b|\b[A-Z0-9]{4,8}\b`)
 var urlRE = regexp.MustCompile(`https?://[^\s"'<>]+`)
+
+var _ = emailOTPContextRE
 
 func ExtractVerification(subject, text, htmlBody string) VerificationExtraction {
 	plain := strings.TrimSpace(subject + "\n" + text + "\n" + HTMLToText(htmlBody))
@@ -2038,8 +2025,8 @@ func HTMLToText(raw string) string {
 	var walk func(*xhtml.Node)
 	walk = func(n *xhtml.Node) {
 		if n.Type == xhtml.TextNode {
-			b.WriteString(n.Data)
-			b.WriteByte(' ')
+			_, _ = b.WriteString(n.Data)
+			_ = b.WriteByte(' ')
 		}
 		for c := n.FirstChild; c != nil; c = c.NextSibling {
 			walk(c)
@@ -2091,7 +2078,7 @@ func (s *EmailVerificationService) AdminProviders(ctx context.Context) ([]map[st
 	if e != nil {
 		return nil, e
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := []map[string]any{}
 	for rows.Next() {
 		var id int64
@@ -2249,7 +2236,7 @@ func (s *EmailVerificationService) AdminChannels(ctx context.Context) ([]map[str
 	if e != nil {
 		return nil, e
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := []map[string]any{}
 	for rows.Next() {
 		var id int64
@@ -2400,7 +2387,7 @@ func (s *EmailVerificationService) AdminOrders(ctx context.Context) ([]map[strin
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	orders := make([]map[string]any, 0)
 	for rows.Next() {
 		var id, orderNo, serviceCode, channelCode, channelName, providerCode, inbox, address, addressType, status, refundStatus string
