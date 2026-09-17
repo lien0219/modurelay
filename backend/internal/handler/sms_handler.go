@@ -32,6 +32,11 @@ type smsQuoteRequest struct {
 }
 
 func (h *SMSHandler) Quotes(c *gin.Context) {
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
 	var req smsQuoteRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
 		response.BadRequest(c, "invalid quote request")
@@ -42,7 +47,7 @@ func (h *SMSHandler) Quotes(c *gin.Context) {
 	if req.ProductType == "" {
 		req.ProductType = "temporary"
 	}
-	quotes, err := h.svc.Quote(c.Request.Context(), service.SMSQuoteRequest{ServiceCode: req.ServiceCode, CountryCode: req.CountryCode, ProductType: req.ProductType})
+	quotes, err := h.svc.Quote(c.Request.Context(), subject.UserID, service.SMSQuoteRequest{ServiceCode: req.ServiceCode, CountryCode: req.CountryCode, ProductType: req.ProductType})
 	if err != nil {
 		if err == service.ErrSMSFeatureDisabled {
 			response.ErrorWithDetails(c, http.StatusNotFound, "SMS Verification is unavailable", "FEATURE_DISABLED", nil)
@@ -78,6 +83,7 @@ type smsPurchaseRequest struct {
 	ProductType   string   `json:"product_type"`
 	DurationValue int      `json:"duration_value"`
 	DurationUnit  string   `json:"duration_unit"`
+	QuoteID       string   `json:"quote_id"`
 	ExpectedPrice *float64 `json:"expected_price"`
 }
 
@@ -92,10 +98,14 @@ func (h *SMSHandler) Purchase(c *gin.Context) {
 		response.BadRequest(c, "invalid purchase request")
 		return
 	}
+	if strings.TrimSpace(req.QuoteID) == "" {
+		response.BadRequest(c, "quote_id is required; request a fresh quote before purchasing")
+		return
+	}
 	if req.ProductType == "" {
 		req.ProductType = "temporary"
 	}
-	order, err := h.svc.Purchase(c.Request.Context(), subject.UserID, service.SMSPurchaseRequest{ChannelCode: strings.TrimSpace(req.ChannelCode), ServiceCode: strings.ToLower(strings.TrimSpace(req.ServiceCode)), CountryCode: strings.ToUpper(strings.TrimSpace(req.CountryCode)), ProductType: req.ProductType, DurationValue: req.DurationValue, DurationUnit: req.DurationUnit}, c.GetHeader("Idempotency-Key"), req.ExpectedPrice)
+	order, err := h.svc.Purchase(c.Request.Context(), subject.UserID, service.SMSPurchaseRequest{ChannelCode: strings.TrimSpace(req.ChannelCode), ServiceCode: strings.ToLower(strings.TrimSpace(req.ServiceCode)), CountryCode: strings.ToUpper(strings.TrimSpace(req.CountryCode)), ProductType: req.ProductType, DurationValue: req.DurationValue, DurationUnit: req.DurationUnit, QuoteID: strings.TrimSpace(req.QuoteID)}, c.GetHeader("Idempotency-Key"), req.ExpectedPrice)
 	if err != nil {
 		switch err {
 		case service.ErrSMSFeatureDisabled:
@@ -104,6 +114,8 @@ func (h *SMSHandler) Purchase(c *gin.Context) {
 			response.ErrorWithDetails(c, http.StatusPaymentRequired, "Insufficient balance", "INSUFFICIENT_BALANCE", nil)
 		case service.ErrSMSPriceChanged:
 			response.ErrorWithDetails(c, http.StatusConflict, "The quote changed; please confirm again", "PRICE_CHANGED", nil)
+		case service.ErrSMSQuoteInvalid, service.ErrSMSQuoteExpired:
+			response.ErrorWithDetails(c, http.StatusConflict, "The quote is no longer valid; please request a new quote", "QUOTE_EXPIRED", nil)
 		case service.ErrSMSProviderUnknown:
 			response.ErrorWithDetails(c, http.StatusAccepted, "The channel purchase is being reconciled", "ORDER_RECONCILING", nil)
 		default:
@@ -307,6 +319,66 @@ func (h *SMSHandler) AdminProviderTest(c *gin.Context) {
 		return
 	}
 	response.Success(c, result)
+}
+func (h *SMSHandler) AdminProviderMappings(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "invalid provider id")
+		return
+	}
+	page, pageSize := response.ParsePagination(c)
+	items, err := h.svc.ListProviderMappings(c.Request.Context(), id, strings.ToLower(strings.TrimSpace(c.Query("kind"))), page, pageSize, c.Query("keyword"))
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, items)
+}
+func (h *SMSHandler) AdminProviderServiceMappingUpdate(c *gin.Context) {
+	providerID, providerErr := strconv.ParseInt(c.Param("id"), 10, 64)
+	serviceID, serviceErr := strconv.ParseInt(c.Param("service_id"), 10, 64)
+	if providerErr != nil || serviceErr != nil {
+		response.BadRequest(c, "invalid mapping id")
+		return
+	}
+	var req struct {
+		ProviderCode       string `json:"provider_code"`
+		ProviderName       string `json:"provider_name"`
+		TemporarySupported bool   `json:"temporary_supported"`
+		RentalSupported    bool   `json:"rental_supported"`
+		Enabled            bool   `json:"enabled"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "invalid provider service mapping")
+		return
+	}
+	if err := h.svc.UpsertProviderServiceMapping(c.Request.Context(), providerID, serviceID, req.ProviderCode, req.ProviderName, req.TemporarySupported, req.RentalSupported, req.Enabled); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"updated": true})
+}
+func (h *SMSHandler) AdminProviderCountryMappingUpdate(c *gin.Context) {
+	providerID, providerErr := strconv.ParseInt(c.Param("id"), 10, 64)
+	countryID, countryErr := strconv.ParseInt(c.Param("country_id"), 10, 64)
+	if providerErr != nil || countryErr != nil {
+		response.BadRequest(c, "invalid mapping id")
+		return
+	}
+	var req struct {
+		ProviderCountryID   string `json:"provider_country_id"`
+		ProviderCountryCode string `json:"provider_country_code"`
+		Enabled             bool   `json:"enabled"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "invalid provider country mapping")
+		return
+	}
+	if err := h.svc.UpsertProviderCountryMapping(c.Request.Context(), providerID, countryID, req.ProviderCountryID, req.ProviderCountryCode, req.Enabled); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"updated": true})
 }
 func (h *SMSHandler) AdminChannels(c *gin.Context) {
 	items, err := h.svc.ListChannelsAdmin(c.Request.Context())

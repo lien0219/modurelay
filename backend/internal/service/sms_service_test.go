@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -9,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/DATA-DOG/go-sqlmock"
 )
 
 func TestSMSProviderCapabilitiesAreSeparated(t *testing.T) {
@@ -156,5 +159,200 @@ func TestSMSTimeoutDetection(t *testing.T) {
 	}
 	if got, _ := rentalDuration(2, "hour"); got != 2*time.Hour {
 		t.Fatalf("unexpected duration: %s", got)
+	}
+}
+
+func TestSMSReleaseHoldIsIdempotent(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	mock.ExpectBegin()
+	mock.ExpectQuery(`UPDATE sms_orders SET status=\$1.*settlement_status='held'.*RETURNING reserved_amount`).
+		WithArgs("failed", "not_requested", "purchase failed", "released", int64(11)).
+		WillReturnRows(sqlmock.NewRows([]string{"reserved_amount"}).AddRow(1.25))
+	mock.ExpectExec(`UPDATE users SET balance=balance\+\$1,frozen_balance`).
+		WithArgs(1.25, int64(7)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+	mock.ExpectBegin()
+	mock.ExpectQuery(`UPDATE sms_orders SET status=\$1.*settlement_status='held'.*RETURNING reserved_amount`).
+		WithArgs("failed", "not_requested", "purchase failed", "released", int64(11)).
+		WillReturnError(sql.ErrNoRows)
+	mock.ExpectRollback()
+
+	svc := &SMSService{db: db}
+	if err = svc.releaseSMSHold(context.Background(), 11, 7, "failed", "purchase failed"); err != nil {
+		t.Fatal(err)
+	}
+	if err = svc.releaseSMSHold(context.Background(), 11, 7, "failed", "purchase failed"); err != nil {
+		t.Fatal(err)
+	}
+	if err = mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSMSCaptureIsIdempotent(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	mock.ExpectBegin()
+	mock.ExpectQuery(`UPDATE sms_orders SET captured_amount=reserved_amount.*settlement_status='held'.*RETURNING reserved_amount`).
+		WithArgs(int64(12)).
+		WillReturnRows(sqlmock.NewRows([]string{"reserved_amount"}).AddRow(2.5))
+	mock.ExpectExec(`UPDATE users SET frozen_balance`).WithArgs(2.5, int64(8)).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+	mock.ExpectBegin()
+	mock.ExpectQuery(`UPDATE sms_orders SET captured_amount=reserved_amount.*settlement_status='held'.*RETURNING reserved_amount`).
+		WithArgs(int64(12)).
+		WillReturnError(sql.ErrNoRows)
+	mock.ExpectRollback()
+
+	svc := &SMSService{db: db}
+	if err = svc.captureSMSSettlement(context.Background(), 12, 8); err != nil {
+		t.Fatal(err)
+	}
+	if err = svc.captureSMSSettlement(context.Background(), 12, 8); err != nil {
+		t.Fatal(err)
+	}
+	if err = mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSMSRefundCaptureIsIdempotent(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	mock.ExpectBegin()
+	mock.ExpectQuery(`UPDATE sms_orders SET status=\$1.*settlement_status='captured'.*RETURNING reserved_amount`).
+		WithArgs("refunded", "approved", "provider confirmed", "refunded", int64(13)).
+		WillReturnRows(sqlmock.NewRows([]string{"reserved_amount"}).AddRow(.75))
+	mock.ExpectExec(`UPDATE users SET balance=balance\+\$1,updated_at`).WithArgs(.75, int64(9)).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+	mock.ExpectBegin()
+	mock.ExpectQuery(`UPDATE sms_orders SET status=\$1.*settlement_status='captured'.*RETURNING reserved_amount`).
+		WithArgs("refunded", "approved", "provider confirmed", "refunded", int64(13)).
+		WillReturnError(sql.ErrNoRows)
+	mock.ExpectRollback()
+
+	svc := &SMSService{db: db}
+	if err = svc.refundSMSCapture(context.Background(), 13, 9, "refunded", "provider confirmed"); err != nil {
+		t.Fatal(err)
+	}
+	if err = svc.refundSMSCapture(context.Background(), 13, 9, "refunded", "provider confirmed"); err != nil {
+		t.Fatal(err)
+	}
+	if err = mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSMSQuoteLookupIsUserScopedAndRejectsConsumedQuote(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	mock.ExpectQuery(`FROM sms_quotes q.*WHERE q.id=\$1 AND q.user_id=\$2 AND q.consumed_at IS NULL`).
+		WithArgs("quote-1", int64(42)).
+		WillReturnError(sql.ErrNoRows)
+
+	svc := &SMSService{db: db}
+	if _, err = svc.loadQuote(context.Background(), 42, "quote-1"); !errors.Is(err, ErrSMSQuoteInvalid) {
+		t.Fatalf("loadQuote error=%v, want ErrSMSQuoteInvalid", err)
+	}
+	if err = mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSMSOrderExpiryUsesProviderValueOrSafeDefaults(t *testing.T) {
+	now := time.Date(2026, 9, 17, 0, 0, 0, 0, time.UTC)
+	providerExpiry := now.Add(7 * time.Minute)
+	if got := smsOrderExpiresAt(now, "temporary", 0, "", &providerExpiry); !got.Equal(providerExpiry) {
+		t.Fatalf("provider expiry=%v, want %v", got, providerExpiry)
+	}
+	if got := smsOrderExpiresAt(now, "temporary", 0, "", nil); !got.Equal(now.Add(10 * time.Minute)) {
+		t.Fatalf("temporary expiry=%v", got)
+	}
+	if got := smsOrderExpiresAt(now, "rental", 2, "hour", nil); !got.Equal(now.Add(2 * time.Hour)) {
+		t.Fatalf("rental expiry=%v", got)
+	}
+	if got := smsOrderExpiresAt(now, "rental", 0, "", nil); !got.Equal(now.Add(24 * time.Hour)) {
+		t.Fatalf("fallback rental expiry=%v", got)
+	}
+}
+
+func TestSMSMappingValidationFailsClosed(t *testing.T) {
+	svc := &SMSService{}
+	if err := svc.UpsertProviderServiceMapping(context.Background(), 1, 2, "", "", true, false, true); err == nil {
+		t.Fatal("enabled service mapping without provider code must fail")
+	}
+	if err := svc.UpsertProviderCountryMapping(context.Background(), 1, 2, "", "", true); err == nil {
+		t.Fatal("enabled country mapping without provider identifier must fail")
+	}
+}
+
+func TestSMSReservationConsumesQuoteAndFreezesBalanceInOneTransaction(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	mock.ExpectBegin()
+	mock.ExpectQuery(`INSERT INTO sms_orders .* RETURNING id`).
+		WithArgs(int64(7), int64(1), int64(2), int64(3), int64(4), "temporary", .4, .6, nil, "unavailable", "", 1.0, "idem-1", smsReconciliationPurchase, int(smsVerificationUnknownTimeout.Seconds())).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(int64(15)))
+	mock.ExpectExec(`UPDATE sms_quotes SET consumed_at=NOW\(\),consumed_order_id=\$1`).
+		WithArgs(int64(15), "quote-15", int64(7)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`UPDATE users SET balance=balance-\$1,frozen_balance`).
+		WithArgs(.6, int64(7)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	svc := &SMSService{db: db}
+	selected := &SMSPublicChannel{ProviderCost: .4, SalePrice: .6, SuccessRateSource: "unavailable", GradeMultiplier: 1}
+	id, err := svc.reserveSMSPurchase(context.Background(), 7, 1, 2, 3, 4, SMSPurchaseRequest{ProductType: "temporary", QuoteID: "quote-15"}, selected, "idem-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id != 15 {
+		t.Fatalf("order id=%d", id)
+	}
+	if err = mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSMSReservationRollsBackWhenQuoteWasAlreadyConsumed(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	mock.ExpectBegin()
+	mock.ExpectQuery(`INSERT INTO sms_orders .* RETURNING id`).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(int64(16)))
+	mock.ExpectExec(`UPDATE sms_quotes SET consumed_at=NOW\(\),consumed_order_id=\$1`).
+		WithArgs(int64(16), "quote-used", int64(7)).
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectRollback()
+
+	svc := &SMSService{db: db}
+	selected := &SMSPublicChannel{ProviderCost: .4, SalePrice: .6, SuccessRateSource: "unavailable", GradeMultiplier: 1}
+	_, err = svc.reserveSMSPurchase(context.Background(), 7, 1, 2, 3, 4, SMSPurchaseRequest{ProductType: "temporary", QuoteID: "quote-used"}, selected, "idem-2")
+	if !errors.Is(err, ErrSMSQuoteExpired) {
+		t.Fatalf("reserve error=%v, want ErrSMSQuoteExpired", err)
+	}
+	if err = mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
 	}
 }

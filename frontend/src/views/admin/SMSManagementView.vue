@@ -87,11 +87,56 @@
                 </td>
                 <td class="px-5 py-3"><span class="badge" :class="provider.health_status === 'healthy' ? 'badge-success' : 'badge-warning'">{{ healthLabel(provider.health_status) }}</span></td>
                 <td class="px-5 py-3"><input v-model="provider.enabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" :aria-label="t('sms.admin.providerEnabled', { name: provider.name })" @change="saveProvider(provider)" /></td>
-                <td class="px-5 py-3"><div class="flex flex-wrap gap-2"><button type="button" class="btn btn-secondary btn-sm" @click="saveProvider(provider)">{{ t('sms.admin.save') }}</button><button v-if="supportsTestConnection(provider)" type="button" class="btn btn-secondary btn-sm" :disabled="testingProviderId === provider.id" :aria-busy="testingProviderId === provider.id" :title="t('sms.admin.testRequestNotice')" @click="testProvider(provider)">{{ testingProviderId === provider.id ? t('sms.admin.testing') : t('sms.admin.testConnection') }}</button></div></td>
+                <td class="px-5 py-3"><div class="flex min-w-max flex-wrap gap-2"><button type="button" class="btn btn-secondary btn-sm" @click="saveProvider(provider)">{{ t('sms.admin.save') }}</button><button v-if="supportsTestConnection(provider)" type="button" class="btn btn-secondary btn-sm" :disabled="testingProviderId === provider.id" :aria-busy="testingProviderId === provider.id" :title="t('sms.admin.testRequestNotice')" @click="testProvider(provider)">{{ testingProviderId === provider.id ? t('sms.admin.testing') : t('sms.admin.testConnection') }}</button><button type="button" class="btn btn-secondary btn-sm" @click="openMappings(provider)">{{ t('sms.admin.mappings') }}</button></div></td>
               </tr>
             </tbody>
           </table>
         </div>
+      </section>
+
+      <section v-if="mappingProvider" class="card overflow-hidden">
+        <div class="flex flex-col gap-3 border-b border-gray-200 px-5 py-4 dark:border-dark-700 lg:flex-row lg:items-center lg:justify-between">
+          <div class="min-w-0">
+            <h2 class="font-semibold text-gray-900 dark:text-white">{{ t('sms.admin.mappingTitle', { name: mappingProvider.name }) }}</h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('sms.admin.mappingDescription') }}</p>
+          </div>
+          <div class="flex min-h-9 flex-wrap items-center gap-2">
+            <button type="button" class="btn btn-sm" :class="mappingKind === 'service' ? 'btn-primary' : 'btn-secondary'" @click="changeMappingKind('service')">{{ t('sms.admin.serviceMappings') }}</button>
+            <button type="button" class="btn btn-sm" :class="mappingKind === 'country' ? 'btn-primary' : 'btn-secondary'" @click="changeMappingKind('country')">{{ t('sms.admin.countryMappings') }}</button>
+          </div>
+        </div>
+        <div class="flex flex-wrap items-center gap-2 border-b border-gray-100 px-5 py-3 dark:border-dark-700">
+          <input v-model="mappingKeyword" class="input min-h-9 w-full sm:w-72" :placeholder="t('sms.admin.mappingSearch')" @keyup.enter="searchMappings" />
+          <button type="button" class="btn btn-secondary btn-sm min-h-9" :disabled="mappingLoading" @click="searchMappings">{{ t('common.search') }}</button>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="min-w-[940px] text-left text-sm">
+            <thead class="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-dark-800">
+              <tr>
+                <th class="px-5 py-3">{{ t('sms.admin.internalItem') }}</th>
+                <th class="px-5 py-3">{{ mappingKind === 'service' ? t('sms.admin.providerServiceCode') : t('sms.admin.providerCountryId') }}</th>
+                <th class="px-5 py-3">{{ mappingKind === 'service' ? t('sms.admin.providerMappingName') : t('sms.admin.providerCountryCode') }}</th>
+                <th v-if="mappingKind === 'service'" class="px-5 py-3">{{ t('sms.user.temporary') }}</th>
+                <th v-if="mappingKind === 'service'" class="px-5 py-3">{{ t('sms.user.rental') }}</th>
+                <th class="px-5 py-3">{{ t('sms.admin.enabled') }}</th>
+                <th class="px-5 py-3">{{ t('sms.admin.action') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="mapping in mappingPage.items" :key="`${mapping.kind}-${mapping.target_id}`" class="border-t border-gray-100 dark:border-dark-700">
+                <td class="px-5 py-3"><div class="font-medium text-gray-900 dark:text-white">{{ mapping.internal_name }}</div><div class="font-mono text-xs text-gray-500">{{ mapping.internal_code }}</div></td>
+                <td class="px-5 py-3"><input v-model="mapping.provider_code" class="input min-h-9 min-w-52" :placeholder="mapping.internal_code" /></td>
+                <td class="px-5 py-3"><input v-model="mapping.provider_name" class="input min-h-9 min-w-52" /></td>
+                <td v-if="mappingKind === 'service'" class="px-5 py-3 text-center"><input v-model="mapping.temporary_supported" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" /></td>
+                <td v-if="mappingKind === 'service'" class="px-5 py-3 text-center"><input v-model="mapping.rental_supported" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" /></td>
+                <td class="px-5 py-3 text-center"><input v-model="mapping.enabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" /></td>
+                <td class="px-5 py-3"><button type="button" class="btn btn-secondary btn-sm min-h-9" @click="saveMapping(mapping)">{{ t('sms.admin.save') }}</button></td>
+              </tr>
+              <tr v-if="!mappingLoading && mappingPage.items.length === 0"><td :colspan="mappingKind === 'service' ? 7 : 5" class="px-5 py-8 text-center text-gray-500">{{ t('common.noData') }}</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <Pagination v-if="mappingPage.total > 0" :page="mappingPage.page" :page-size="mappingPage.page_size" :total="mappingPage.total" @update:page="changeMappingPage" @update:page-size="changeMappingPageSize" />
       </section>
 
       <section class="card overflow-hidden">
@@ -132,8 +177,9 @@ import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
+import Pagination from '@/components/common/Pagination.vue'
 import adminSMS from '@/api/admin/sms'
-import type { SMSChannelAdmin, SMSProviderAdmin } from '@/api/admin/sms'
+import type { SMSChannelAdmin, SMSProviderAdmin, SMSProviderMappingAdmin, SMSProviderMappingPage } from '@/api/admin/sms'
 import { useAppStore } from '@/stores'
 
 const { t } = useI18n()
@@ -146,6 +192,11 @@ const loading = ref(false)
 const savingEnabled = ref(false)
 const testingProviderId = ref<number | null>(null)
 const credentialDrafts = ref<Record<number, string>>({})
+const mappingProvider = ref<SMSProviderAdmin | null>(null)
+const mappingKind = ref<'service' | 'country'>('service')
+const mappingKeyword = ref('')
+const mappingLoading = ref(false)
+const mappingPage = ref<SMSProviderMappingPage>({ items: [], total: 0, page: 1, page_size: 20, pages: 1 })
 
 const providerPortals: Record<string, string> = {
   '5sim': 'https://5sim.net/',
@@ -252,6 +303,66 @@ async function saveChannel(channel: SMSChannelAdmin) {
     await load()
   } catch (error) {
     appStore.showError(errorMessage(error, t('sms.admin.channels')))
+  }
+}
+
+async function openMappings(provider: SMSProviderAdmin) {
+  mappingProvider.value = provider
+  mappingKeyword.value = ''
+  mappingPage.value.page = 1
+  await loadMappings()
+}
+
+async function changeMappingKind(kind: 'service' | 'country') {
+  mappingKind.value = kind
+  mappingKeyword.value = ''
+  mappingPage.value.page = 1
+  await loadMappings()
+}
+
+async function searchMappings() {
+  mappingPage.value.page = 1
+  await loadMappings()
+}
+
+async function changeMappingPage(page: number) {
+  mappingPage.value.page = page
+  await loadMappings()
+}
+
+async function changeMappingPageSize(pageSize: number) {
+  mappingPage.value.page = 1
+  mappingPage.value.page_size = pageSize
+  await loadMappings()
+}
+
+async function loadMappings() {
+  if (!mappingProvider.value) return
+  mappingLoading.value = true
+  try {
+    mappingPage.value = await adminSMS.providerMappings(mappingProvider.value.id, { kind: mappingKind.value, page: mappingPage.value.page, page_size: mappingPage.value.page_size, keyword: mappingKeyword.value.trim() || undefined })
+  } catch (error) {
+    appStore.showError(errorMessage(error, t('sms.admin.mappingLoadFailed')))
+  } finally {
+    mappingLoading.value = false
+  }
+}
+
+async function saveMapping(mapping: SMSProviderMappingAdmin) {
+  if (mapping.enabled && !mapping.provider_code.trim()) {
+    appStore.showError(t('sms.admin.mappingCodeRequired'))
+    return
+  }
+  try {
+    if (!mappingProvider.value) return
+    if (mapping.kind === 'service') {
+      await adminSMS.updateProviderServiceMapping(mappingProvider.value.id, mapping.target_id, { provider_code: mapping.provider_code.trim(), provider_name: mapping.provider_name?.trim(), temporary_supported: Boolean(mapping.temporary_supported), rental_supported: Boolean(mapping.rental_supported), enabled: mapping.enabled })
+    } else {
+      await adminSMS.updateProviderCountryMapping(mappingProvider.value.id, mapping.target_id, { provider_country_id: mapping.provider_code.trim(), provider_country_code: mapping.provider_name?.trim(), enabled: mapping.enabled })
+    }
+    appStore.showSuccess(t('sms.admin.mappingSaved'))
+  } catch (error) {
+    appStore.showError(errorMessage(error, t('sms.admin.mappingSaveFailed')))
   }
 }
 

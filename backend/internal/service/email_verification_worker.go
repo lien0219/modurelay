@@ -18,11 +18,13 @@ const (
 	emailVerificationWorkerInterval = 2 * time.Second
 )
 
-// EmailVerificationWorker owns the server-side polling and retention loop.
-// Browser requests may trigger an immediate poll, but provider calls are never
-// made by the browser and the periodic worker is the normal delivery path.
+// EmailVerificationWorker owns the server-side email/SMS polling, settlement,
+// and retention loop. Browser requests may trigger an immediate poll, but
+// provider calls are never made by the browser and the periodic worker is the
+// normal delivery path.
 type EmailVerificationWorker struct {
 	service   *EmailVerificationService
+	sms       *SMSService
 	db        *sql.DB
 	lockCache LeaderLockCache
 	instance  string
@@ -32,9 +34,10 @@ type EmailVerificationWorker struct {
 	wg        sync.WaitGroup
 }
 
-func NewEmailVerificationWorker(service *EmailVerificationService, db *sql.DB, lockCache LeaderLockCache) *EmailVerificationWorker {
+func NewEmailVerificationWorker(service *EmailVerificationService, sms *SMSService, db *sql.DB, lockCache LeaderLockCache) *EmailVerificationWorker {
 	return &EmailVerificationWorker{
 		service:   service,
+		sms:       sms,
 		db:        db,
 		lockCache: lockCache,
 		instance:  uuid.NewString(),
@@ -89,6 +92,11 @@ func (w *EmailVerificationWorker) runOnce() {
 	}
 	if err := w.service.CleanupExpiredMessages(ctx); err != nil {
 		slog.Warn("email message retention cleanup failed", "error", err)
+	}
+	if w.sms != nil {
+		if err := w.sms.Reconcile(ctx); err != nil {
+			slog.Warn("sms verification reconciliation cycle failed", "error", err)
+		}
 	}
 }
 

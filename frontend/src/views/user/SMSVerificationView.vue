@@ -74,6 +74,13 @@
             <div class="flex flex-wrap items-center gap-2"><span class="font-mono text-sm text-gray-900 dark:text-white">{{ order.id }}</span><span class="badge" :class="statusClass(order.status)">{{ statusLabel(order.status) }}</span><span v-if="order.refund_status !== 'not_requested'" class="badge badge-warning">{{ refundLabel(order.refund_status) }}</span></div>
             <div class="mt-2 flex flex-wrap items-center gap-4 text-sm text-gray-500"><VerificationIdentity kind="platform" :code="order.service_code" :label="serviceLabel(order.service_code)" :show-code="false" /><VerificationIdentity kind="country" :code="order.country_code" :label="countryLabel(order.country_code)" :show-code="false" /><span>{{ order.channel_name }}{{ t('sms.user.separator') }}{{ productTypeLabel(order.product_type) }}</span></div>
             <p v-if="order.phone_number" class="mt-1 font-mono text-sm text-gray-800 dark:text-gray-200">{{ order.phone_number }}</p>
+            <div v-if="order.messages?.length" class="mt-3 space-y-2 border-t border-gray-200 pt-3 dark:border-dark-700">
+              <div v-for="message in order.messages" :key="message.id" class="flex flex-wrap items-center gap-2 text-sm">
+                <span class="min-w-0 [overflow-wrap:anywhere] text-gray-500 dark:text-gray-400">{{ message.message_text }}</span>
+                <code v-if="message.verification_code" class="rounded bg-gray-100 px-2 py-1 font-mono font-semibold text-gray-900 dark:bg-dark-700 dark:text-white">{{ message.verification_code }}</code>
+                <time class="text-xs text-gray-400">{{ new Date(message.received_at).toLocaleTimeString() }}</time>
+              </div>
+            </div>
             <p v-if="order.refund_reason" class="mt-1 text-xs text-amber-700 dark:text-amber-300">{{ order.refund_reason }}</p>
           </div>
           <div class="flex items-center gap-2">
@@ -221,6 +228,7 @@ async function loadOrders() {
       orderPagination.page = result.page
       orderPagination.pageSize = result.page_size
     }
+    await refreshActiveOrders()
   } catch (error) {
     appStore.showError((error as { message?: string }).message || t('sms.user.errors.orders'))
   } finally {
@@ -237,7 +245,7 @@ async function purchase(quote: SMSQuote) {
   purchasing.value = true
   try {
     const key = `sms-${Date.now()}-${Math.random().toString(36).slice(2)}`
-    await smsAPI.purchase({ channel_code: quote.channel_code, service_code: serviceCode.value, country_code: countryCode.value, product_type: productType.value, duration_value: productType.value === 'rental' ? durationValue.value : undefined, duration_unit: productType.value === 'rental' ? durationUnit.value : undefined, expected_price: quote.sale_price }, key)
+    await smsAPI.purchase({ channel_code: quote.channel_code, service_code: serviceCode.value, country_code: countryCode.value, product_type: productType.value, duration_value: productType.value === 'rental' ? durationValue.value : undefined, duration_unit: productType.value === 'rental' ? durationUnit.value : undefined, quote_id: quote.quote_id, expected_price: quote.sale_price }, key)
     activeTab.value = 'orders'
     await loadOrders()
   } catch (error) {
@@ -274,6 +282,17 @@ async function refreshOrder(id: string) {
   } finally {
     refreshingId.value = ''
   }
+}
+
+async function refreshActiveOrders() {
+  const activeOrders = orders.value.filter(order => ['active', 'provider_unknown', 'reconciling'].includes(order.status)).slice(0, 20)
+  if (!activeOrders.length) return
+  const updates = await Promise.allSettled(activeOrders.map(order => smsAPI.order(order.id)))
+  updates.forEach((result, index) => {
+    if (result.status !== 'fulfilled' || !result.value) return
+    const orderIndex = orders.value.findIndex(item => item.id === activeOrders[index].id)
+    if (orderIndex >= 0) orders.value[orderIndex] = result.value
+  })
 }
 
 onMounted(() => {

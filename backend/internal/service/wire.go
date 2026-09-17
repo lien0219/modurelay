@@ -977,8 +977,8 @@ var ProviderSet = wire.NewSet(
 // ProvideEmailVerificationWorker starts the server-side email polling,
 // reconciliation, and retention loop. LeaderLockCache keeps multi-instance
 // deployments from polling the same inbox concurrently.
-func ProvideEmailVerificationWorker(service *EmailVerificationService, db *sql.DB, lockCache LeaderLockCache) *EmailVerificationWorker {
-	worker := NewEmailVerificationWorker(service, db, lockCache)
+func ProvideEmailVerificationWorker(service *EmailVerificationService, sms *SMSService, db *sql.DB, lockCache LeaderLockCache) *EmailVerificationWorker {
+	worker := NewEmailVerificationWorker(service, sms, db, lockCache)
 	worker.Start()
 	return worker
 }
