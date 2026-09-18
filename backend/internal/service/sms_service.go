@@ -2278,7 +2278,7 @@ func (s *SMSService) PurchaseBatch(ctx context.Context, userID int64, items []SM
 			}
 			continue
 		}
-		signature := fmt.Sprintf("%d:%d:%d:%d:%s:%s:%s", quote.ChannelID, quote.ProviderID, quote.ServiceID, quote.CountryID, quote.ProductType, quote.ProviderServiceCode, quote.ProviderCountryCode)
+		signature := fmt.Sprintf("%d:%d:%d:%d:%s:%s:%s:%s:%d:%d:%s", quote.ChannelID, quote.ProviderID, quote.ServiceID, quote.CountryID, quote.ProductType, quote.ProviderServiceCode, quote.ProviderCountryCode, quote.OperatorCode, quote.VoiceMode, quote.DurationValue, quote.DurationUnit)
 		requestedBySignature[signature]++
 		stockBySignature[signature] = quote.Stock
 		total += quote.SalePrice
