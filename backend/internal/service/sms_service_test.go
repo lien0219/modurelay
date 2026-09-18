@@ -100,6 +100,56 @@ func TestFiveSIMRentalIsFailClosed(t *testing.T) {
 	}
 }
 
+func TestFiveSIMRecoversTimedOutPurchaseFromOrderHistory(t *testing.T) {
+	startedAt := time.Date(2026, 9, 19, 2, 30, 0, 0, time.UTC)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/user/orders" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		if r.URL.Query().Get("category") != "activation" || r.URL.Query().Get("limit") != "25" || r.URL.Query().Get("reverse") != "true" {
+			t.Fatalf("unexpected history query: %s", r.URL.RawQuery)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"Data":[{"id":1094361636,"phone":"+542243424387","operator":"Virtual62","product":"openai","price":0.05,"status":"PENDING","expires":"2026-09-19T02:45:00Z","created_at":"2026-09-19T02:30:02Z","country":"argentina"}],"Total":1}`))
+	}))
+	defer server.Close()
+
+	p := providerFor("5sim", server.URL, "secret")
+	recovery, ok := p.(SMSPurchaseRecoveryProvider)
+	if !ok {
+		t.Fatal("5SIM purchase recovery adapter missing")
+	}
+	result, err := recovery.RecoverTemporaryPurchase(context.Background(), SMSPurchaseRequest{
+		ServiceCode:       "openai",
+		CountryCode:       "argentina",
+		OperatorCode:      "any",
+		ProviderCostLimit: 0.05,
+	}, startedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result == nil || result.ProviderOrderID != "1094361636" || result.PhoneNumber != "+542243424387" || result.ProviderCost != 0.05 || result.ProviderOperatorCode != "virtual62" {
+		t.Fatalf("unexpected recovered purchase: %#v", result)
+	}
+}
+
+func TestFiveSIMRecoveryRejectsAmbiguousMatches(t *testing.T) {
+	startedAt := time.Date(2026, 9, 19, 2, 30, 0, 0, time.UTC)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"Data":[
+			{"id":1,"phone":"+1","operator":"op1","product":"openai","price":0.05,"status":"PENDING","expires":"2026-09-19T02:45:00Z","created_at":"2026-09-19T02:30:01Z","country":"usa"},
+			{"id":2,"phone":"+2","operator":"op2","product":"openai","price":0.05,"status":"PENDING","expires":"2026-09-19T02:45:00Z","created_at":"2026-09-19T02:30:03Z","country":"usa"}
+		]}`))
+	}))
+	defer server.Close()
+
+	recovery := providerFor("5sim", server.URL, "secret").(SMSPurchaseRecoveryProvider)
+	if _, err := recovery.RecoverTemporaryPurchase(context.Background(), SMSPurchaseRequest{ServiceCode: "openai", CountryCode: "usa", OperatorCode: "any", ProviderCostLimit: 0.05}, startedAt); err == nil {
+		t.Fatal("ambiguous 5SIM recovery must fail closed")
+	}
+}
+
 func TestFiveSIMCountriesParseProductFilteredPricesShape(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
