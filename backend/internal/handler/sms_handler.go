@@ -69,12 +69,53 @@ func (h *SMSHandler) Services(c *gin.Context) {
 	}
 	response.Success(c, items)
 }
-func (h *SMSHandler) Providers(c *gin.Context) { items, err := h.svc.ListPublicProviders(c.Request.Context()); if err != nil { response.ErrorFrom(c, err); return }; response.Success(c, items) }
-func (h *SMSHandler) ProviderServices(c *gin.Context) {
- items, err := h.svc.ProviderServices(c.Request.Context(), c.Param("provider")); if err != nil { response.ErrorFrom(c, err); return }
- if c.Query("page") == "" && c.Query("page_size") == "" && c.Query("keyword") == "" { response.Success(c, items); return }
- page,size:=response.ParsePagination(c); keyword:=strings.ToLower(strings.TrimSpace(c.Query("keyword"))); filtered:=make([]service.SMSSvcCatalogItem,0,len(items)); for _,item:=range items { if keyword=="" || strings.Contains(strings.ToLower(item.Code),keyword) || strings.Contains(strings.ToLower(item.Name),keyword) { filtered=append(filtered,item) } }; start:=(page-1)*size; if start>len(filtered){start=len(filtered)}; end:=start+size;if end>len(filtered){end=len(filtered)}; pages:=(len(filtered)+size-1)/size; response.Success(c,gin.H{"items":filtered[start:end],"total":len(filtered),"page":page,"page_size":size,"pages":pages,"has_more":end<len(filtered)})
+func (h *SMSHandler) Providers(c *gin.Context) {
+	items, err := h.svc.ListPublicProviders(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, items)
 }
+
+func (h *SMSHandler) ProviderServices(c *gin.Context) {
+	items, err := h.svc.ProviderServices(c.Request.Context(), c.Param("provider"))
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if c.Query("page") == "" && c.Query("page_size") == "" && c.Query("keyword") == "" {
+		response.Success(c, items)
+		return
+	}
+
+	page, size := response.ParsePagination(c)
+	keyword := strings.ToLower(strings.TrimSpace(c.Query("keyword")))
+	filtered := make([]service.SMSSvcCatalogItem, 0, len(items))
+	for _, item := range items {
+		if keyword == "" || strings.Contains(strings.ToLower(item.Code), keyword) || strings.Contains(strings.ToLower(item.Name), keyword) {
+			filtered = append(filtered, item)
+		}
+	}
+	start := (page - 1) * size
+	if start > len(filtered) {
+		start = len(filtered)
+	}
+	end := start + size
+	if end > len(filtered) {
+		end = len(filtered)
+	}
+	pages := (len(filtered) + size - 1) / size
+	response.Success(c, gin.H{
+		"items":     filtered[start:end],
+		"total":     len(filtered),
+		"page":      page,
+		"page_size": size,
+		"pages":     pages,
+		"has_more":  end < len(filtered),
+	})
+}
+
 func (h *SMSHandler) Countries(c *gin.Context) {
 	_, items, err := h.svc.ProviderCatalog(c.Request.Context())
 	if err != nil {
@@ -87,9 +128,43 @@ func (h *SMSHandler) Countries(c *gin.Context) {
 func (h *SMSHandler) ServiceCountries(c *gin.Context) {
 	serviceCode := strings.ToLower(strings.TrimSpace(c.Param("service")))
 	items, err := h.svc.CountriesForProviderService(c.Request.Context(), c.Param("provider"), serviceCode)
-	if err != nil { response.ErrorFrom(c, err); return }
-	if c.Query("page") == "" && c.Query("page_size") == "" && c.Query("keyword") == "" { response.Success(c, items); return }
-	page,size:=response.ParsePagination(c); keyword:=strings.ToLower(strings.TrimSpace(c.Query("keyword"))); filtered:=make([]service.SMSCountryCatalogItem,0,len(items)); for _,item:=range items { if keyword=="" || strings.Contains(strings.ToLower(item.ISO2),keyword) || strings.Contains(strings.ToLower(item.NameEN),keyword) || strings.Contains(strings.ToLower(item.NameZH),keyword) { filtered=append(filtered,item) } }; start:=(page-1)*size;if start>len(filtered){start=len(filtered)};end:=start+size;if end>len(filtered){end=len(filtered)};pages:=(len(filtered)+size-1)/size;response.Success(c,gin.H{"items":filtered[start:end],"total":len(filtered),"page":page,"page_size":size,"pages":pages,"has_more":end<len(filtered)})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if c.Query("page") == "" && c.Query("page_size") == "" && c.Query("keyword") == "" {
+		response.Success(c, items)
+		return
+	}
+
+	page, size := response.ParsePagination(c)
+	keyword := strings.ToLower(strings.TrimSpace(c.Query("keyword")))
+	filtered := make([]service.SMSCountryCatalogItem, 0, len(items))
+	for _, item := range items {
+		if keyword == "" ||
+			strings.Contains(strings.ToLower(item.ISO2), keyword) ||
+			strings.Contains(strings.ToLower(item.NameEN), keyword) ||
+			strings.Contains(strings.ToLower(item.NameZH), keyword) {
+			filtered = append(filtered, item)
+		}
+	}
+	start := (page - 1) * size
+	if start > len(filtered) {
+		start = len(filtered)
+	}
+	end := start + size
+	if end > len(filtered) {
+		end = len(filtered)
+	}
+	pages := (len(filtered) + size - 1) / size
+	response.Success(c, gin.H{
+		"items":     filtered[start:end],
+		"total":     len(filtered),
+		"page":      page,
+		"page_size": size,
+		"pages":     pages,
+		"has_more":  end < len(filtered),
+	})
 }
 
 type smsPurchaseRequest struct {
