@@ -30,6 +30,8 @@ type smsQuoteRequest struct {
 	ServiceCode  string `form:"service" json:"service_code"`
 	CountryCode  string `form:"country" json:"country_code"`
 	ProductType  string `form:"product_type" json:"product_type"`
+	OperatorCode string `form:"operator" json:"operator_code"`
+	VoiceMode int `form:"voice_mode" json:"voice_mode"`
 }
 
 func (h *SMSHandler) Quotes(c *gin.Context) {
@@ -49,7 +51,7 @@ func (h *SMSHandler) Quotes(c *gin.Context) {
 	if req.ProductType == "" {
 		req.ProductType = "temporary"
 	}
-	quotes, err := h.svc.Quote(c.Request.Context(), subject.UserID, service.SMSQuoteRequest{ProviderCode: req.ProviderCode, ServiceCode: req.ServiceCode, CountryCode: req.CountryCode, ProductType: req.ProductType})
+	quotes, err := h.svc.Quote(c.Request.Context(), subject.UserID, service.SMSQuoteRequest{ProviderCode: req.ProviderCode, ServiceCode: req.ServiceCode, CountryCode: req.CountryCode, ProductType: req.ProductType, OperatorCode: strings.ToLower(strings.TrimSpace(req.OperatorCode)), VoiceMode: req.VoiceMode})
 	if err != nil {
 		if err == service.ErrSMSFeatureDisabled {
 			response.ErrorWithDetails(c, http.StatusNotFound, "SMS Verification is unavailable", "FEATURE_DISABLED", nil)
@@ -116,6 +118,20 @@ func (h *SMSHandler) ProviderServices(c *gin.Context) {
 	})
 }
 
+func (h *SMSHandler) ProviderOperators(c *gin.Context) {
+	voiceMode, err := strconv.Atoi(strings.TrimSpace(c.DefaultQuery("voice_mode", "0")))
+	if err != nil || voiceMode < 0 || voiceMode > 2 {
+		response.BadRequest(c, "invalid voice_mode")
+		return
+	}
+	items, err := h.svc.ProviderOperators(c.Request.Context(), c.Param("provider"), c.Param("service"), c.Param("country"), voiceMode)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, items)
+}
+
 func (h *SMSHandler) Countries(c *gin.Context) {
 	_, items, err := h.svc.ProviderCatalog(c.Request.Context())
 	if err != nil {
@@ -172,6 +188,8 @@ type smsPurchaseRequest struct {
 	ServiceCode   string   `json:"service_code"`
 	CountryCode   string   `json:"country_code"`
 	ProductType   string   `json:"product_type"`
+	OperatorCode string `json:"operator_code"`
+	VoiceMode int `json:"voice_mode"`
 	DurationValue int      `json:"duration_value"`
 	DurationUnit  string   `json:"duration_unit"`
 	QuoteID       string   `json:"quote_id"`
@@ -196,7 +214,7 @@ func (h *SMSHandler) Purchase(c *gin.Context) {
 	if req.ProductType == "" {
 		req.ProductType = "temporary"
 	}
-	order, err := h.svc.Purchase(c.Request.Context(), subject.UserID, service.SMSPurchaseRequest{ChannelCode: strings.TrimSpace(req.ChannelCode), ServiceCode: strings.ToLower(strings.TrimSpace(req.ServiceCode)), CountryCode: strings.ToUpper(strings.TrimSpace(req.CountryCode)), ProductType: req.ProductType, DurationValue: req.DurationValue, DurationUnit: req.DurationUnit, QuoteID: strings.TrimSpace(req.QuoteID)}, c.GetHeader("Idempotency-Key"), req.ExpectedPrice)
+	order, err := h.svc.Purchase(c.Request.Context(), subject.UserID, service.SMSPurchaseRequest{ChannelCode: strings.TrimSpace(req.ChannelCode), ServiceCode: strings.ToLower(strings.TrimSpace(req.ServiceCode)), CountryCode: strings.ToUpper(strings.TrimSpace(req.CountryCode)), ProductType: req.ProductType, OperatorCode: strings.ToLower(strings.TrimSpace(req.OperatorCode)), VoiceMode: req.VoiceMode, DurationValue: req.DurationValue, DurationUnit: req.DurationUnit, QuoteID: strings.TrimSpace(req.QuoteID)}, c.GetHeader("Idempotency-Key"), req.ExpectedPrice)
 	if err != nil {
 		switch err {
 		case service.ErrSMSFeatureDisabled:
@@ -235,7 +253,7 @@ func (h *SMSHandler) PurchaseBatch(c *gin.Context) {
 	items := make([]service.SMSPurchaseRequest, 0, len(req.Items))
 	prices := make([]*float64, 0, len(req.Items))
 	for _, item := range req.Items {
-		items = append(items, service.SMSPurchaseRequest{ChannelCode: strings.TrimSpace(item.ChannelCode), ServiceCode: strings.ToLower(strings.TrimSpace(item.ServiceCode)), CountryCode: strings.ToUpper(strings.TrimSpace(item.CountryCode)), ProductType: item.ProductType, DurationValue: item.DurationValue, DurationUnit: item.DurationUnit, QuoteID: strings.TrimSpace(item.QuoteID)})
+		items = append(items, service.SMSPurchaseRequest{ChannelCode: strings.TrimSpace(item.ChannelCode), ServiceCode: strings.ToLower(strings.TrimSpace(item.ServiceCode)), CountryCode: strings.ToUpper(strings.TrimSpace(item.CountryCode)), ProductType: item.ProductType, OperatorCode: strings.ToLower(strings.TrimSpace(item.OperatorCode)), VoiceMode: item.VoiceMode, DurationValue: item.DurationValue, DurationUnit: item.DurationUnit, QuoteID: strings.TrimSpace(item.QuoteID)})
 		prices = append(prices, item.ExpectedPrice)
 	}
 	orders, err := h.svc.PurchaseBatch(c.Request.Context(), subject.UserID, items, c.GetHeader("Idempotency-Key"), prices)
@@ -332,6 +350,25 @@ func (h *SMSHandler) Webhook(c *gin.Context) {
 	}
 	response.Success(c, gin.H{"accepted": true})
 }
+func (h *SMSHandler) Finish(c *gin.Context) {
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok { response.Unauthorized(c, "User not authenticated"); return }
+	if err := h.svc.FinishOrder(c.Request.Context(), subject.UserID, c.Param("id")); err != nil {
+		if err == service.ErrSMSProviderUnknown { response.ErrorWithDetails(c,http.StatusAccepted,"The finish action is being reconciled","ORDER_RECONCILING",nil); return }
+		response.ErrorWithDetails(c,http.StatusUnprocessableEntity,err.Error(),"FINISH_REJECTED",nil); return
+	}
+	response.Success(c, gin.H{"status":"completed"})
+}
+func (h *SMSHandler) Ban(c *gin.Context) {
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok { response.Unauthorized(c, "User not authenticated"); return }
+	if err := h.svc.BanOrder(c.Request.Context(), subject.UserID, c.Param("id")); err != nil {
+		if err == service.ErrSMSProviderUnknown { response.ErrorWithDetails(c,http.StatusAccepted,"The ban action is being reconciled","ORDER_RECONCILING",nil); return }
+		response.ErrorWithDetails(c,http.StatusUnprocessableEntity,err.Error(),"BAN_REJECTED",nil); return
+	}
+	response.Success(c, gin.H{"status":"reconciling"})
+}
+
 func (h *SMSHandler) Cancel(c *gin.Context) {
 	subject, ok := middleware.GetAuthSubjectFromContext(c)
 	if !ok {
