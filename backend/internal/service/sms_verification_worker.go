@@ -109,13 +109,13 @@ func (s *SMSService) reconcileSMSAction(ctx context.Context, id, userID int64, p
 			return nil
 		}
 		if time.Since(updatedAt) >= smsVerificationUnknownTimeout {
-			return s.releaseSMSHold(ctx, id, userID, "failed", "provider result was not confirmed before reconciliation timeout")
+			return s.failSMSPurchase(ctx, id, userID, "provider did not create a recoverable order before reconciliation timeout")
 		}
 		return nil
 	}
 	if providerOrder == "" {
 		if settlementStatus == "held" {
-			return s.releaseSMSHold(ctx, id, userID, "failed", "provider order reference is missing")
+			return s.failSMSPurchase(ctx, id, userID, "provider order reference is missing and no allocation was confirmed")
 		}
 		return errors.New("provider order reference is missing during reconciliation")
 	}
