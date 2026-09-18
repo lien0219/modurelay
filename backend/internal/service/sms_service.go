@@ -485,9 +485,8 @@ func (p *fiveSIMProvider) GetTemporaryStatus(ctx context.Context, id string) (*S
 }
 func (p *fiveSIMProvider) CancelTemporary(ctx context.Context, id string) error { return p.request(ctx,http.MethodGet,"user/cancel/"+url.PathEscape(id),nil,nil,nil) }
 func (p *fiveSIMProvider) RequestTemporaryRefund(ctx context.Context, id string) error {
-	// 5SIM cancellation is itself the provider refund operation. CancelOrder
-	// calls CancelTemporary first, so a second provider mutation must not occur.
-	return nil
+	// For 5SIM the cancellation endpoint is also the refund-producing operation.
+	return p.CancelTemporary(ctx, id)
 }
 func (p *fiveSIMProvider) FinishTemporary(ctx context.Context, id string) error { return p.request(ctx,http.MethodGet,"user/finish/"+url.PathEscape(id),nil,nil,nil) }
 func (p *fiveSIMProvider) BanTemporary(ctx context.Context, id string) error { return p.request(ctx,http.MethodGet,"user/ban/"+url.PathEscape(id),nil,nil,nil) }
@@ -2456,38 +2455,41 @@ func (s *SMSService) CancelOrder(ctx context.Context, userID int64, publicID str
 	if productType != "rental" && !capabilities.Cancel {
 		return errors.New("provider does not support cancellation")
 	}
-	var cancelErr error
 	if productType == "rental" {
-		cancelErr = p.CancelRental(ctx, providerOrder)
-	} else {
-		cancelErr = p.CancelTemporary(ctx, providerOrder)
+		if err := p.CancelRental(ctx, providerOrder); err != nil {
+			if isSMSProviderTimeout(err) {
+				_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET status='reconciling',refund_status='pending',reconciliation_action=$1,reconcile_after=NOW()+($2 * INTERVAL '1 second'),refund_reason=$3,last_provider_error=$3,updated_at=NOW() WHERE id=$4 AND status='active'`, smsReconciliationCancel, int(smsVerificationPollInterval.Seconds()), "provider rental cancellation timeout; reconciliation required", id)
+				return ErrSMSProviderUnknown
+			}
+			return errors.New("channel refused rental cancellation")
+		}
+		return s.markSMSClosed(ctx, id, "cancelled", "rejected", "provider rental cancellation confirmed")
 	}
-	if cancelErr != nil {
-		if isSMSProviderTimeout(cancelErr) {
-			_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET status='reconciling',refund_status='pending',reconciliation_action=$1,reconcile_after=NOW()+($2 * INTERVAL '1 second'),refund_reason=$3,last_provider_error=$3,updated_at=NOW() WHERE id=$4 AND status='active'`, smsReconciliationCancel, int(smsVerificationPollInterval.Seconds()), "provider cancellation timeout; reconciliation required", id)
+	// For refund-capable temporary products, RequestTemporaryRefund is the
+	// single provider mutation. On 5SIM and SMSPVA this maps to their cancel
+	// operation, avoiding a dangerous double-cancel while keeping the explicit
+	// refund endpoint correct as well.
+	if capabilities.Refund {
+		if err := p.RequestTemporaryRefund(ctx, providerOrder); err != nil {
+			s.markProviderRefund(ctx, id, "pending", "provider refund is being confirmed")
+			if isSMSProviderTimeout(err) {
+				_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET status='reconciling',refund_status='pending',reconciliation_action=$1,reconcile_after=NOW()+($2 * INTERVAL '1 second'),refund_reason=$3,last_provider_error=$3,updated_at=NOW() WHERE id=$4 AND status='active'`, smsReconciliationRefund, int(smsVerificationPollInterval.Seconds()), "provider cancellation/refund is being confirmed", id)
+				return ErrSMSRefundPending
+			}
+			s.markProviderRefund(ctx, id, "rejected", "provider refused cancellation/refund")
+			return errors.New("channel refused cancellation/refund")
+		}
+		s.markProviderRefund(ctx, id, "succeeded", "")
+		return s.refundSMSCapture(ctx, id, userID, "cancelled", "provider cancellation and refund confirmed")
+	}
+	if err := p.CancelTemporary(ctx, providerOrder); err != nil {
+		if isSMSProviderTimeout(err) {
+			_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET status='reconciling',refund_status='not_requested',reconciliation_action=$1,reconcile_after=NOW()+($2 * INTERVAL '1 second'),refund_reason=$3,last_provider_error=$3,updated_at=NOW() WHERE id=$4 AND status='active'`, smsReconciliationCancel, int(smsVerificationPollInterval.Seconds()), "provider cancellation timeout; reconciliation required", id)
 			return ErrSMSProviderUnknown
 		}
 		return errors.New("channel refused cancellation")
 	}
-	if productType == "temporary" {
-		if !p.Capabilities(ctx).Refund {
-			return s.markSMSClosed(ctx, id, "cancelled", "rejected", "provider does not support refunds; administrator review is required")
-		}
-		if refundErr := p.RequestTemporaryRefund(ctx, providerOrder); refundErr != nil {
-			s.markProviderRefund(ctx, id, "pending", "provider refund is being confirmed")
-			if isSMSProviderTimeout(refundErr) {
-				_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET status='reconciling',refund_status='pending',reconciliation_action=$1,reconcile_after=NOW()+($2 * INTERVAL '1 second'),refund_reason=$3,last_provider_error=$3,updated_at=NOW() WHERE id=$4 AND status='active'`, smsReconciliationRefund, int(smsVerificationPollInterval.Seconds()), "provider refund is being confirmed", id)
-				return ErrSMSRefundPending
-			}
-			_ = s.markSMSClosed(ctx, id, "cancelled", "rejected", "provider cancellation succeeded but refund was unavailable")
-			return errors.New("provider cancellation succeeded but refund was unavailable")
-		}
-		s.markProviderRefund(ctx, id, "succeeded", "")
-	}
-	if productType == "rental" {
-		return s.markSMSClosed(ctx, id, "cancelled", "rejected", "provider does not support rental refunds")
-	}
-	return s.refundSMSCapture(ctx, id, userID, "cancelled", "provider cancellation and refund confirmed")
+	return s.markSMSClosed(ctx, id, "cancelled", "rejected", "provider cancellation confirmed; refund unsupported")
 }
 func (s *SMSService) ListOrders(ctx context.Context, userID int64, admin bool) ([]SMSOrder, error) {
 	q := `SELECT o.id,o.public_id::text,o.user_id,o.product_type,o.status,c.code,c.public_name,sv.code,co.iso2,o.phone_number,o.operator_code,o.voice_mode,o.sale_price_snapshot,o.success_rate_snapshot,o.success_rate_grade_snapshot,o.success_rate_source_snapshot,o.refund_status,o.refund_reason,o.expires_at,o.created_at,p.code,p.base_url,p.capabilities FROM sms_orders o JOIN sms_channels c ON c.id=o.channel_id JOIN sms_providers p ON p.id=o.provider_id JOIN sms_services sv ON sv.id=o.service_id JOIN sms_countries co ON co.id=o.country_id`
