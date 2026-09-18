@@ -2817,7 +2817,7 @@ func normalizeSMSStatus(status string) string {
 		return "completed"
 	case "cancel", "cancelled", "canceled":
 		return "cancelled"
-	case "expired":
+	case "expired", "timeout":
 		return "expired"
 	case "failed", "error":
 		return "failed"
@@ -2889,6 +2889,11 @@ func (s *SMSService) pollSMSOrder(ctx context.Context, id int64, providerOrder, 
 	if productType == "rental" && newStatus == "completed" {
 		newStatus = "active"
 	}
+	if productType == "temporary" && newStatus == "completed" {
+		if action, ok := p.(SMSOrderActionProvider); ok && p.Capabilities(ctx).Finish {
+			_ = action.FinishTemporary(ctx, providerOrder)
+		}
+	}
 	if _, err = s.db.ExecContext(ctx, `UPDATE sms_orders SET status=$1,phone_number=COALESCE(NULLIF($2,''),phone_number),reconciliation_attempts=0,reconcile_after=NULL,updated_at=NOW() WHERE id=$3 AND status IN ('active','provider_unknown','reconciling')`, newStatus, result.PhoneNumber, id); err != nil {
 		return err
 	}
@@ -2904,8 +2909,8 @@ func (s *SMSService) pollSMSOrder(ctx context.Context, id int64, providerOrder, 
 
 func (s *SMSService) convergeSMSProviderStatus(ctx context.Context, id int64, status string) error {
 	var userID int64
-	var settlementStatus, action, providerRefundStatus string
-	if err := s.db.QueryRowContext(ctx, `SELECT user_id,settlement_status,reconciliation_action,provider_refund_status FROM sms_orders WHERE id=$1`, id).Scan(&userID, &settlementStatus, &action, &providerRefundStatus); err != nil {
+	var settlementStatus, action, providerRefundStatus, providerCode string
+	if err := s.db.QueryRowContext(ctx, `SELECT o.user_id,o.settlement_status,o.reconciliation_action,o.provider_refund_status,p.code FROM sms_orders o JOIN sms_providers p ON p.id=o.provider_id WHERE o.id=$1`, id).Scan(&userID, &settlementStatus, &action, &providerRefundStatus, &providerCode); err != nil {
 		return err
 	}
 	switch status {
@@ -2916,6 +2921,10 @@ func (s *SMSService) convergeSMSProviderStatus(ctx context.Context, id int64, st
 	case "failed", "cancelled", "canceled", "expired":
 		if settlementStatus == "held" {
 			return s.releaseSMSHold(ctx, id, userID, status, "provider ended the order before allocation was confirmed")
+		}
+		if settlementStatus == "captured" && providerCode == "5sim" && (status == "cancelled" || status == "canceled" || status == "expired") {
+			s.markProviderRefund(ctx, id, "succeeded", "5SIM confirmed cancellation/timeout; provider refund is automatic")
+			return s.refundSMSCapture(ctx, id, userID, normalizedSMSTerminalStatus(status, action), "5SIM confirmed cancellation/timeout and automatic refund")
 		}
 		if settlementStatus == "captured" && providerRefundStatus == "succeeded" {
 			return s.refundSMSCapture(ctx, id, userID, normalizedSMSTerminalStatus(status, action), "provider confirmed the order ended without service")
@@ -3081,6 +3090,24 @@ func (s *SMSService) BanOrder(ctx context.Context, userID int64, publicID string
 	return err
 }
 
+func (s *SMSService) reconcileTemporaryRefundState(ctx context.Context, p SMSProvider, id, userID int64, providerOrder, terminalStatus string) (bool, error) {
+	result, err := p.GetTemporaryStatus(ctx, providerOrder)
+	if err != nil || result == nil {
+		return false, nil
+	}
+	state := smsStatusFromProvider(result)
+	switch state {
+	case "cancelled", "expired":
+		s.markProviderRefund(ctx, id, "succeeded", "provider status confirms cancellation/timeout refund")
+		return true, s.refundSMSCapture(ctx, id, userID, terminalStatus, "provider status confirms cancellation/timeout refund")
+	case "completed":
+		s.markProviderRefund(ctx, id, "rejected", "verification SMS was already received; cancellation/refund is no longer available")
+		_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET refund_status='rejected',refund_reason=$1,updated_at=NOW() WHERE id=$2`, "已收到验证码，供应商不再允许取消退款", id)
+		return true, errors.New("verification SMS has already been received; cancellation/refund is no longer available")
+	}
+	return false, nil
+}
+
 func (s *SMSService) CancelOrder(ctx context.Context, userID int64, publicID string) error {
 	var id int64
 	var providerOrder, providerCode, base, credential, status, productType string
@@ -3091,7 +3118,7 @@ func (s *SMSService) CancelOrder(ctx context.Context, userID int64, publicID str
 	if status != "active" {
 		return errors.New("order cannot be cancelled")
 	}
-	if productType == "temporary" {
+	if productType == "temporary" && providerCode != "5sim" {
 		pricing, pricingErr := s.GetPricingSettings(ctx)
 		if pricingErr != nil {
 			return pricingErr
@@ -3128,6 +3155,9 @@ func (s *SMSService) CancelOrder(ctx context.Context, userID int64, publicID str
 	// refund endpoint correct as well.
 	if capabilities.Refund {
 		if err := p.RequestTemporaryRefund(ctx, providerOrder); err != nil {
+			if handled, reconcileErr := s.reconcileTemporaryRefundState(ctx, p, id, userID, providerOrder, "cancelled"); handled {
+				return reconcileErr
+			}
 			s.markProviderRefund(ctx, id, "pending", "provider refund is being confirmed")
 			if isSMSProviderTimeout(err) {
 				_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET status='reconciling',refund_status='pending',reconciliation_action=$1,reconcile_after=NOW()+($2 * INTERVAL '1 second'),refund_reason=$3,last_provider_error=$3,updated_at=NOW() WHERE id=$4 AND status='active'`, smsReconciliationRefund, int(smsVerificationPollInterval.Seconds()), "provider cancellation/refund is being confirmed", id)
@@ -3275,12 +3305,14 @@ func (s *SMSService) RequestRefund(ctx context.Context, userID int64, orderPubli
 	if productType == "rental" {
 		return errors.New("rental refunds are unavailable for this channel")
 	}
-	pricing, pricingErr := s.GetPricingSettings(ctx)
-	if pricingErr != nil {
-		return pricingErr
-	}
-	if wait := time.Duration(pricing.SelfServiceCancelAfterMinutes) * time.Minute; wait > 0 && time.Now().Before(createdAt.Add(wait)) {
-		return ErrSMSCancelTooEarly
+	if providerCode != "5sim" {
+		pricing, pricingErr := s.GetPricingSettings(ctx)
+		if pricingErr != nil {
+			return pricingErr
+		}
+		if wait := time.Duration(pricing.SelfServiceCancelAfterMinutes) * time.Minute; wait > 0 && time.Now().Before(createdAt.Add(wait)) {
+			return ErrSMSCancelTooEarly
+		}
 	}
 	key := providerAPIKey(providerCode, cred, s.encryptor)
 	p := providerFor(providerCode, base, key)
@@ -3292,9 +3324,12 @@ func (s *SMSService) RequestRefund(ctx context.Context, userID int64, orderPubli
 		return errors.New("provider does not support refunds; administrator review is required")
 	}
 	if err := p.RequestTemporaryRefund(ctx, providerOrder); err != nil {
+		if handled, reconcileErr := s.reconcileTemporaryRefundState(ctx, p, id, userID, providerOrder, "refunded"); handled {
+			return reconcileErr
+		}
 		if isSMSProviderTimeout(err) {
 			s.markProviderRefund(ctx, id, "pending", "provider refund is being confirmed")
-			_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET status='reconciling',refund_status='pending',reconciliation_action=$1,reconcile_after=NOW()+($2 * INTERVAL '1 second'),refund_reason=$3,updated_at=NOW() WHERE id=$4 AND refund_status='not_requested'`, smsReconciliationRefund, int(smsVerificationPollInterval.Seconds()), "渠道退款处理中", id)
+			_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET status='reconciling',refund_status='pending',reconciliation_action=$1,reconcile_after=NOW()+($2 * INTERVAL '1 second'),refund_reason=$3,updated_at=NOW() WHERE id=$4 AND refund_status IN ('not_requested','rejected')`, smsReconciliationRefund, int(smsVerificationPollInterval.Seconds()), "渠道退款处理中", id)
 			return ErrSMSRefundPending
 		}
 		s.markProviderRefund(ctx, id, "rejected", "provider refused refund")
