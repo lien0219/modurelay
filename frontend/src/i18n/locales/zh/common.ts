@@ -404,7 +404,7 @@ export default {
       extend: '续租',
       requestRefund: '申请退款',
       hoursToExtend: '输入续租小时数',
-      statuses: { pending: '等待处理', waitingSms: '等待短信', reconciling: '对账中', providerUnknown: '渠道状态未知', completed: '已完成', cancelled: '已取消', failed: '失败', refunded: '已退款', expired: '已过期', unknown: '未知状态' },
+      statuses: { pending: '等待处理', waitingSms: '等待短信', confirmingPurchase: '正在确认下单', reconciling: '对账中', providerUnknown: '渠道状态未知', completed: '已完成', cancelled: '已取消', failed: '失败', refunded: '已退款', expired: '已过期', unknown: '未知状态' },
       refundProcessing: '取消/退款处理中',
       refunds: { approved: '退款成功', rejected: '退款被拒', pending: '退款处理中' },
       provider: '供应商', selectProvider: '选择供应商', selected: '已选择',
