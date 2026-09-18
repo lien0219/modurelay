@@ -137,6 +137,8 @@ type SMSQuoteRequest struct {
 	ProductType  string `json:"product_type"`
 	OperatorCode string `json:"operator_code,omitempty"`
 	VoiceMode    int    `json:"voice_mode,omitempty"`
+	DurationValue int `json:"duration_value,omitempty"`
+	DurationUnit string `json:"duration_unit,omitempty"`
 }
 type SMSProviderQuote struct {
 	Cost                     decimal.Decimal `json:"cost"`
@@ -1547,6 +1549,8 @@ func (s *SMSService) Quote(ctx context.Context, userID int64, req SMSQuoteReques
 		providerReq := req
 		providerReq.ServiceCode = providerServiceCode
 		providerReq.CountryCode = providerCountryCode
+		providerReq.DurationValue = req.DurationValue
+		providerReq.DurationUnit = req.DurationUnit
 		q, err := p.Quote(ctx, providerReq)
 		if err != nil || q == nil || q.Stock <= 0 {
 			continue
@@ -2180,6 +2184,7 @@ func (s *SMSService) pollSMSOrder(ctx context.Context, id int64, providerOrder, 
 		return nil
 	}
 	newStatus := smsStatusFromProvider(result)
+	if productType == "rental" && newStatus == "completed" { newStatus = "active" }
 	if _, err = s.db.ExecContext(ctx, `UPDATE sms_orders SET status=$1,phone_number=COALESCE(NULLIF($2,''),phone_number),reconciliation_attempts=0,reconcile_after=NULL,updated_at=NOW() WHERE id=$3 AND status IN ('active','provider_unknown','reconciling')`, newStatus, result.PhoneNumber, id); err != nil {
 		return err
 	}
