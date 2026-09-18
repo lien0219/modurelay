@@ -26,9 +26,10 @@ func (h *SMSHandler) Enabled(ctx context.Context) bool {
 }
 
 type smsQuoteRequest struct {
-	ServiceCode string `form:"service" json:"service_code"`
-	CountryCode string `form:"country" json:"country_code"`
-	ProductType string `form:"product_type" json:"product_type"`
+	ProviderCode string `form:"provider" json:"provider_code"`
+	ServiceCode  string `form:"service" json:"service_code"`
+	CountryCode  string `form:"country" json:"country_code"`
+	ProductType  string `form:"product_type" json:"product_type"`
 }
 
 func (h *SMSHandler) Quotes(c *gin.Context) {
@@ -42,12 +43,13 @@ func (h *SMSHandler) Quotes(c *gin.Context) {
 		response.BadRequest(c, "invalid quote request")
 		return
 	}
+	req.ProviderCode = strings.ToLower(strings.TrimSpace(req.ProviderCode))
 	req.ServiceCode = strings.ToLower(strings.TrimSpace(req.ServiceCode))
 	req.CountryCode = strings.ToUpper(strings.TrimSpace(req.CountryCode))
 	if req.ProductType == "" {
 		req.ProductType = "temporary"
 	}
-	quotes, err := h.svc.Quote(c.Request.Context(), subject.UserID, service.SMSQuoteRequest{ServiceCode: req.ServiceCode, CountryCode: req.CountryCode, ProductType: req.ProductType})
+	quotes, err := h.svc.Quote(c.Request.Context(), subject.UserID, service.SMSQuoteRequest{ProviderCode: req.ProviderCode, ServiceCode: req.ServiceCode, CountryCode: req.CountryCode, ProductType: req.ProductType})
 	if err != nil {
 		if err == service.ErrSMSFeatureDisabled {
 			response.ErrorWithDetails(c, http.StatusNotFound, "SMS Verification is unavailable", "FEATURE_DISABLED", nil)
