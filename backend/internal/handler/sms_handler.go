@@ -10,6 +10,9 @@ import (
 	"strconv"
 	"strings"
 
+	"golang.org/x/text/language"
+	"golang.org/x/text/language/display"
+
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -81,6 +84,33 @@ func (h *SMSHandler) Providers(c *gin.Context) {
 		return
 	}
 	response.Success(c, items)
+}
+
+func (h *SMSHandler) RecentSuccesses(c *gin.Context) {
+	feed, err := h.svc.RecentSuccesses(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, feed)
+}
+
+func localizeSMSCountryCatalog(items []service.SMSCountryCatalogItem) {
+	zh := display.Regions(language.SimplifiedChinese)
+	en := display.Regions(language.English)
+	for i := range items {
+		tag := language.Make("und-" + strings.ToUpper(strings.TrimSpace(items[i].ISO2)))
+		region, confidence := tag.Region()
+		if confidence == language.No {
+			continue
+		}
+		if strings.TrimSpace(items[i].NameZH) == "" {
+			items[i].NameZH = zh.Name(region)
+		}
+		if strings.TrimSpace(items[i].NameEN) == "" {
+			items[i].NameEN = en.Name(region)
+		}
+	}
 }
 
 func (h *SMSHandler) ProviderServices(c *gin.Context) {
@@ -155,6 +185,7 @@ func (h *SMSHandler) Countries(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	localizeSMSCountryCatalog(items)
 	response.Success(c, items)
 }
 
@@ -166,6 +197,7 @@ func (h *SMSHandler) ServiceCountries(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	localizeSMSCountryCatalog(items)
 	sort.SliceStable(items, func(i, j int) bool {
 		left := strings.TrimSpace(items[i].NameEN)
 		right := strings.TrimSpace(items[j].NameEN)
