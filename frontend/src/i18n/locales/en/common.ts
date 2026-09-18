@@ -404,7 +404,7 @@ export default {
       extend: 'Extend',
       requestRefund: 'Request refund',
       hoursToExtend: 'Hours to extend',
-      statuses: { pending: 'Pending', waitingSms: 'Waiting SMS', reconciling: 'Reconciling', providerUnknown: 'Channel status unknown', completed: 'Completed', cancelled: 'Cancelled', failed: 'Failed', refunded: 'Refunded', expired: 'Expired', unknown: 'Unknown status' },
+      statuses: { pending: 'Pending', waitingSms: 'Waiting SMS', confirmingPurchase: 'Confirming purchase', reconciling: 'Reconciling', providerUnknown: 'Channel status unknown', completed: 'Completed', cancelled: 'Cancelled', failed: 'Failed', refunded: 'Refunded', expired: 'Expired', unknown: 'Unknown status' },
       refundProcessing: 'Cancellation/refund processing',
       refunds: { approved: 'Refunded', rejected: 'Refund rejected', pending: 'Refund pending' },
       provider: 'Provider', selectProvider: 'Select provider', selected: 'Selected',
