@@ -222,6 +222,12 @@ type SMSServiceCatalogProvider interface {
 type SMSServiceCountryProvider interface {
 	CountriesForService(context.Context, string) ([]SMSCountryCatalogItem, error)
 }
+type SMSProductServiceCatalogProvider interface {
+	CatalogServicesForProduct(context.Context, string, int, string) ([]SMSSvcCatalogItem, error)
+}
+type SMSProductServiceCountryProvider interface {
+	CountriesForServiceProduct(context.Context, string, string, int, string) ([]SMSCountryCatalogItem, error)
+}
 
 type SMSOperatorOption struct {
 	Code string `json:"code"`
@@ -233,6 +239,9 @@ type SMSOperatorOption struct {
 
 type SMSOperatorProvider interface {
 	Operators(context.Context, string, string, int) ([]SMSOperatorOption, error)
+}
+type SMSProductOperatorProvider interface {
+	OperatorsForProduct(context.Context, string, string, string, int, int, string) ([]SMSOperatorOption, error)
 }
 
 type SMSOrderActionProvider interface {
@@ -1250,31 +1259,48 @@ func (s *SMSService) ListPublicProviders(ctx context.Context) ([]SMSPublicProvid
 }
 
 func (s *SMSService) ProviderServices(ctx context.Context, providerCode string) ([]SMSSvcCatalogItem, error) {
+	return s.ProviderServicesForProduct(ctx, providerCode, "temporary", 0, "")
+}
+
+func (s *SMSService) ProviderServicesForProduct(ctx context.Context, providerCode, productType string, durationValue int, durationUnit string) ([]SMSSvcCatalogItem, error) {
 	providerCode = strings.ToLower(strings.TrimSpace(providerCode))
+	productType = strings.ToLower(strings.TrimSpace(productType))
+	if productType == "" { productType = "temporary" }
 	rows, snapshotErr := s.db.QueryContext(ctx, `SELECT c.provider_service_code,c.provider_service_name,c.category FROM sms_provider_catalog_services c JOIN sms_providers p ON p.id=c.provider_id WHERE p.code=$1 AND p.enabled AND c.enabled ORDER BY c.provider_service_code`, providerCode)
 	if snapshotErr == nil { defer func() { _ = rows.Close() }(); items := make([]SMSSvcCatalogItem, 0); for rows.Next() { var item SMSSvcCatalogItem; if scanErr := rows.Scan(&item.Code, &item.Name, &item.Category); scanErr != nil { return nil, scanErr }; item.ProviderCode = item.Code; items = append(items, item) }; if rows.Err() != nil { return nil, rows.Err() }; if len(items)>0 { return items,nil } }
 	var base, credential string
 	if err := s.db.QueryRowContext(ctx, `SELECT base_url,credential_ref FROM sms_providers WHERE code=$1 AND enabled`, providerCode).Scan(&base,&credential); err != nil { return nil, err }
 	provider := providerFor(providerCode,base,providerAPIKey(providerCode,credential,s.encryptor))
+	if productCatalog, ok := provider.(SMSProductServiceCatalogProvider); ok {
+		items, err := productCatalog.CatalogServicesForProduct(ctx, productType, durationValue, durationUnit)
+		if err == nil && len(items) > 0 { return s.persistProviderServices(ctx, providerCode, items) }
+		if err != nil && productType == "rental" { return nil, err }
+	}
 	if catalog,ok := provider.(SMSCatalogProvider); ok {
 		_, countries, err := catalog.Catalog(ctx); if err != nil { return nil, err }
 		if serviceCatalog,ok := provider.(SMSServiceCatalogProvider); ok {
 			items, err := serviceCatalog.CatalogServices(ctx,countries); if err != nil { return nil, err }
-			var providerID int64
-			if s.db.QueryRowContext(ctx, `SELECT id FROM sms_providers WHERE code=$1`, providerCode).Scan(&providerID) == nil {
-				for _, item := range items {
-					providerServiceCode := strings.TrimSpace(item.ProviderCode); if providerServiceCode == "" { providerServiceCode = item.Code }
-					_, _ = s.db.ExecContext(ctx, `INSERT INTO sms_provider_catalog_services(provider_id,provider_service_code,provider_service_name,category,enabled,observed_at) VALUES($1,$2,$3,$4,TRUE,NOW()) ON CONFLICT(provider_id,provider_service_code) DO UPDATE SET provider_service_name=EXCLUDED.provider_service_name,category=EXCLUDED.category,enabled=TRUE,observed_at=NOW()`,providerID,providerServiceCode,item.Name,item.Category)
-					var serviceID int64
-					if s.db.QueryRowContext(ctx, `INSERT INTO sms_services(code,name,category,enabled) VALUES ($1,$2,$3,TRUE) ON CONFLICT (code) DO UPDATE SET name=EXCLUDED.name,category=EXCLUDED.category RETURNING id`,item.Code,item.Name,item.Category).Scan(&serviceID) == nil && providerCode != "5sim" && providerCode != "smspva" {
-						_, _ = s.db.ExecContext(ctx, `INSERT INTO sms_provider_service_mappings(provider_id,service_id,provider_service_code,provider_service_name,temporary_supported,rental_supported,enabled) VALUES ($1,$2,$3,$4,TRUE,FALSE,TRUE) ON CONFLICT (provider_id,service_id) DO UPDATE SET provider_service_code=EXCLUDED.provider_service_code,provider_service_name=EXCLUDED.provider_service_name,enabled=TRUE`,providerID,serviceID,providerServiceCode,item.Name)
-					}
-				}
-			}
-			return items,nil
+			return s.persistProviderServices(ctx, providerCode, items)
 		}
 	}
 	return s.ListServices(ctx)
+}
+
+func (s *SMSService) persistProviderServices(ctx context.Context, providerCode string, items []SMSSvcCatalogItem) ([]SMSSvcCatalogItem, error) {
+	var providerID int64
+	if err := s.db.QueryRowContext(ctx, `SELECT id FROM sms_providers WHERE code=$1`, providerCode).Scan(&providerID); err != nil { return nil, err }
+	for _, item := range items {
+		item.Code = strings.ToLower(strings.TrimSpace(item.Code))
+		if item.Code == "" { continue }
+		providerServiceCode := strings.TrimSpace(item.ProviderCode); if providerServiceCode == "" { providerServiceCode = item.Code }
+		if item.Name == "" { item.Name = item.Code }
+		_, _ = s.db.ExecContext(ctx, `INSERT INTO sms_provider_catalog_services(provider_id,provider_service_code,provider_service_name,category,enabled,observed_at) VALUES($1,$2,$3,$4,TRUE,NOW()) ON CONFLICT(provider_id,provider_service_code) DO UPDATE SET provider_service_name=EXCLUDED.provider_service_name,category=EXCLUDED.category,enabled=TRUE,observed_at=NOW()`,providerID,providerServiceCode,item.Name,item.Category)
+		var serviceID int64
+		if s.db.QueryRowContext(ctx, `INSERT INTO sms_services(code,name,category,enabled) VALUES ($1,$2,$3,TRUE) ON CONFLICT (code) DO UPDATE SET name=EXCLUDED.name,category=EXCLUDED.category,enabled=TRUE RETURNING id`,item.Code,item.Name,item.Category).Scan(&serviceID) == nil && providerCode != "5sim" && providerCode != "smspva" {
+			_, _ = s.db.ExecContext(ctx, `INSERT INTO sms_provider_service_mappings(provider_id,service_id,provider_service_code,provider_service_name,temporary_supported,rental_supported,enabled) VALUES ($1,$2,$3,$4,TRUE,FALSE,TRUE) ON CONFLICT (provider_id,service_id) DO UPDATE SET provider_service_code=EXCLUDED.provider_service_code,provider_service_name=EXCLUDED.provider_service_name,enabled=TRUE`,providerID,serviceID,providerServiceCode,item.Name)
+		}
+	}
+	return items,nil
 }
 
 func (s *SMSService) ProviderCatalog(ctx context.Context) ([]SMSSvcCatalogItem, []SMSCountryCatalogItem, error) {
@@ -1375,13 +1401,22 @@ func (s *SMSService) CountriesForService(ctx context.Context, serviceCode string
 	return []SMSCountryCatalogItem{}, nil
 }
 func (s *SMSService) CountriesForProviderService(ctx context.Context, providerCode, serviceCode string) ([]SMSCountryCatalogItem, error) {
+	return s.CountriesForProviderServiceProduct(ctx, providerCode, serviceCode, "temporary", 0, "")
+}
+
+func (s *SMSService) CountriesForProviderServiceProduct(ctx context.Context, providerCode, serviceCode, productType string, durationValue int, durationUnit string) ([]SMSCountryCatalogItem, error) {
 	providerCode = strings.ToLower(strings.TrimSpace(providerCode))
 	serviceCode = strings.ToLower(strings.TrimSpace(serviceCode))
+	productType = strings.ToLower(strings.TrimSpace(productType))
+	if productType == "" { productType = "temporary" }
 	var base, credential string
 	if err := s.db.QueryRowContext(ctx, `SELECT base_url,credential_ref FROM sms_providers WHERE code=$1 AND enabled`, providerCode).Scan(&base,&credential); err != nil {
 		return nil, err
 	}
 	provider := providerFor(providerCode,base,providerAPIKey(providerCode,credential,s.encryptor))
+	if p, ok := provider.(SMSProductServiceCountryProvider); ok {
+		if items, err := p.CountriesForServiceProduct(ctx,serviceCode,productType,durationValue,durationUnit); err == nil { return items,nil } else if productType == "rental" { return nil,err }
+	}
 	if p, ok := provider.(SMSServiceCountryProvider); ok {
 		if items, err := p.CountriesForService(ctx,serviceCode); err == nil {
 			// This live service-specific result is authoritative. A provider-wide
@@ -1501,6 +1536,10 @@ func (s *SMSService) ensureProviderCatalogSelection(ctx context.Context, provide
 }
 
 func (s *SMSService) ProviderOperators(ctx context.Context, providerCode, serviceCode, countryCode string, voiceMode int) ([]SMSOperatorOption, error) {
+	return s.ProviderOperatorsForProduct(ctx, providerCode, serviceCode, countryCode, "temporary", voiceMode, 0, "")
+}
+
+func (s *SMSService) ProviderOperatorsForProduct(ctx context.Context, providerCode, serviceCode, countryCode, productType string, voiceMode, durationValue int, durationUnit string) ([]SMSOperatorOption, error) {
 	providerCode = strings.ToLower(strings.TrimSpace(providerCode))
 	serviceCode = strings.ToLower(strings.TrimSpace(serviceCode))
 	countryCode = strings.ToUpper(strings.TrimSpace(countryCode))
@@ -1509,12 +1548,15 @@ func (s *SMSService) ProviderOperators(ctx context.Context, providerCode, servic
 	var base, credential string
 	if err := s.db.QueryRowContext(ctx, `SELECT base_url,credential_ref FROM sms_providers WHERE code=$1 AND enabled`, providerCode).Scan(&base,&credential); err != nil { return nil, err }
 	provider := providerFor(providerCode,base,providerAPIKey(providerCode,credential,s.encryptor))
-	p, ok := provider.(SMSOperatorProvider)
-	if !ok { return []SMSOperatorOption{}, nil }
 	providerCountry := countryCode
-	if countries, err := s.CountriesForProviderService(ctx, providerCode, serviceCode); err == nil {
+	if countries, err := s.CountriesForProviderServiceProduct(ctx, providerCode, serviceCode, productType, durationValue, durationUnit); err == nil {
 		for _, item := range countries { if strings.EqualFold(item.ISO2,countryCode) && strings.TrimSpace(item.ProviderCode)!="" { providerCountry=item.ProviderCode; break } }
 	}
+	if p, ok := provider.(SMSProductOperatorProvider); ok {
+		return p.OperatorsForProduct(ctx, providerCountry, serviceCode, productType, voiceMode, durationValue, durationUnit)
+	}
+	p, ok := provider.(SMSOperatorProvider)
+	if !ok { return []SMSOperatorOption{}, nil }
 	return p.Operators(ctx, providerCountry, serviceCode, voiceMode)
 }
 
