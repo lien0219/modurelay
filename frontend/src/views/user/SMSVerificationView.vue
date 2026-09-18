@@ -5,7 +5,6 @@
         <div class="min-w-0">
           <p class="text-xs font-semibold uppercase tracking-[0.14em] text-cyan-600 dark:text-cyan-400">ModuRelay</p>
           <h1 class="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">{{ t('nav.smsService') }}</h1>
-          <p class="mt-1 max-w-3xl text-sm text-gray-500 dark:text-gray-400">{{ t('sms.user.description') }}</p>
         </div>
         <button type="button" class="btn btn-secondary" :disabled="loading" :title="t('common.refresh')" :aria-label="t('common.refresh')" @click="loadAll">
           <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" aria-hidden="true" />
@@ -22,7 +21,6 @@
           <div class="mb-3 flex items-center justify-between gap-3">
             <div>
               <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">1 · {{ t('sms.admin.channels') }}</p>
-              <p class="mt-1 text-xs text-gray-500">先选择接码渠道，再按该供应商实时支持的平台和国家下单。</p>
             </div>
           </div>
           <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -39,11 +37,10 @@
               @click="switchProvider(provider.code)"
             >
               <div class="flex items-center justify-between gap-2">
-                <span class="font-semibold text-gray-900 dark:text-white">渠道{{ index + 1 }}</span>
+                <span class="font-semibold text-gray-900 dark:text-white">{{ t('sms.user.channel') }}{{ index + 1 }}</span>
                 <span v-if="provider.beta" class="rounded bg-gray-200 px-2 py-0.5 text-[10px] font-bold tracking-wider text-gray-600 dark:bg-dark-600 dark:text-gray-300">BETA</span>
               </div>
-              <div class="mt-1 text-sm text-gray-500">{{ provider.name }}</div>
-              <div v-if="!provider.selectable" class="mt-2 text-xs text-gray-400">暂未开放</div>
+              <div v-if="!provider.selectable" class="mt-2 text-xs text-gray-400">{{ t('sms.user.unavailable') }}</div>
             </button>
           </div>
         </div>
@@ -51,37 +48,97 @@
         <div class="grid gap-4 lg:grid-cols-3">
           <div class="rounded-xl border border-gray-200 p-4 dark:border-dark-700">
             <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">2 · {{ t('sms.user.service') }}</p>
-            <div class="mt-3"><input v-model.trim="serviceKeyword" class="input h-10 w-full" placeholder="搜索网站 / APP / 平台" /></div>
-            <div class="mt-3 max-h-72 space-y-2 overflow-y-auto pr-1">
-              <button v-for="option in filteredServiceOptions" :key="String(option.value)" type="button" class="flex min-h-10 w-full items-center justify-between gap-3 rounded-lg border px-3 text-left text-sm" :class="serviceCode === option.value ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-900/20' : 'border-gray-200 dark:border-dark-700'" @click="selectService(String(option.value))">
-                <span class="min-w-0 truncate">{{ option.label }}</span><span class="shrink-0 font-mono text-[10px] text-gray-400">{{ option.value }}</span>
+            <div class="mt-3"><input v-model.trim="serviceKeyword" class="input h-10 w-full" :placeholder="t('sms.user.serviceSearch')" /></div>
+            <div class="mt-3 max-h-[390px] space-y-2 overflow-y-auto pr-1">
+              <button v-for="option in filteredServiceOptions" :key="String(option.value)" type="button" class="flex min-h-14 w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left text-sm transition" :class="serviceCode === option.value ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-900/20' : 'border-gray-200 hover:border-primary-300 dark:border-dark-700'" @click="selectService(String(option.value))">
+                <span class="flex min-w-0 items-center gap-3">
+                  <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-base font-semibold text-gray-600 dark:bg-dark-700 dark:text-gray-200">
+                    <IconifyIcon v-if="option.logo" :icon="option.logo" class="h-6 w-6" />
+                    <span v-else>{{ option.label.slice(0, 1).toUpperCase() }}</span>
+                  </span>
+                  <span class="min-w-0">
+                    <span class="block truncate font-medium">{{ option.label }}</span>
+                    <span v-if="option.stock != null && option.stock > 0" class="block text-[11px] text-emerald-600 dark:text-emerald-400">{{ t('sms.user.numbersAvailable', { count: option.stock.toLocaleString() }) }}</span>
+                  </span>
+                </span>
+                <span class="shrink-0 text-right">
+                  <span v-if="option.startingPrice != null && option.startingPrice > 0" class="block font-semibold tabular-nums text-gray-900 dark:text-white">{{ t('sms.user.startingAt', { price: formatPrice(option.startingPrice) }) }}</span>
+                  <span class="block font-mono text-[10px] text-gray-400">{{ option.value }}</span>
+                </span>
               </button>
-              <div v-if="!filteredServiceOptions.length" class="py-8 text-center text-sm text-gray-400">当前渠道暂无匹配平台</div>
+              <div v-if="servicesLoading && !services.length" class="py-8 text-center text-sm text-gray-400">{{ t('sms.user.loading') }}</div>
+              <div v-else-if="!filteredServiceOptions.length" class="py-8 text-center text-sm text-gray-400">{{ t('sms.user.noServiceMatch') }}</div>
+              <button v-if="servicePagination.hasMore" type="button" class="btn btn-secondary w-full" :disabled="servicesLoading" @click="loadServicePage(false)">{{ servicesLoading ? t('sms.user.loading') : t('sms.user.loadMore') }}</button>
             </div>
           </div>
+
           <div class="rounded-xl border border-gray-200 p-4 dark:border-dark-700">
             <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">3 · {{ t('sms.user.country') }}</p>
-            <div class="mt-3"><input v-model.trim="countryKeyword" class="input h-10 w-full" placeholder="搜索国家 / 地区" :disabled="!serviceCode" /></div>
-            <div class="mt-3 max-h-72 space-y-2 overflow-y-auto pr-1">
-              <button v-for="option in filteredCountryOptions" :key="String(option.value)" type="button" class="flex min-h-11 w-full items-center justify-between gap-3 rounded-lg border px-3 text-left text-sm disabled:cursor-not-allowed disabled:opacity-45" :disabled="option.available === false" :class="countryCode === option.value ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-900/20' : 'border-gray-200 dark:border-dark-700'" @click="selectCountry(String(option.value))">
-                <span class="min-w-0"><span class="block truncate">{{ option.label }}</span><span v-if="option.stock != null" class="block text-[10px] text-gray-400">库存 {{ option.stock }}<template v-if="option.conversionRate != null && option.conversionRate > 0"> · 转化指标 {{ option.conversionRate }}</template></span></span>
-                <span class="shrink-0 text-right"><span v-if="countryCode === option.value" class="block text-[10px] text-gray-500">{{ t('sms.user.selected') }}</span></span>
+            <div class="mt-3"><input v-model.trim="countryKeyword" class="input h-10 w-full" :placeholder="t('sms.user.countrySearch')" :disabled="!serviceCode" /></div>
+            <div class="mt-3 max-h-[390px] space-y-2 overflow-y-auto pr-1">
+              <button v-for="option in filteredCountryOptions" :key="String(option.value)" type="button" class="flex min-h-14 w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left text-sm disabled:cursor-not-allowed disabled:opacity-45" :disabled="option.available === false" :class="countryCode === option.value ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-900/20' : 'border-gray-200 hover:border-primary-300 dark:border-dark-700'" @click="selectCountry(String(option.value))">
+                <span class="flex min-w-0 items-center gap-3">
+                  <span class="text-2xl leading-none" aria-hidden="true">{{ flagEmoji(String(option.value)) }}</span>
+                  <span class="min-w-0">
+                    <span class="block truncate font-medium">{{ option.label }}</span>
+                    <span class="block text-[11px] text-gray-400">{{ option.value }}<template v-if="option.stock != null"> · {{ t('sms.user.numbersAvailable', { count: option.stock.toLocaleString() }) }}</template></span>
+                  </span>
+                </span>
+                <span v-if="option.startingPrice != null && option.startingPrice > 0" class="shrink-0 font-semibold tabular-nums text-gray-900 dark:text-white">{{ t('sms.user.startingAt', { price: formatPrice(option.startingPrice) }) }}</span>
               </button>
-              <div v-if="serviceCode && !filteredCountryOptions.length" class="py-8 text-center text-sm text-gray-400">当前平台暂无匹配国家</div>
+              <div v-if="countriesLoading && !countries.length" class="py-8 text-center text-sm text-gray-400">{{ t('sms.user.loading') }}</div>
+              <div v-else-if="serviceCode && !filteredCountryOptions.length" class="py-8 text-center text-sm text-gray-400">{{ t('sms.user.noCountryMatch') }}</div>
+              <button v-if="countryPagination.hasMore" type="button" class="btn btn-secondary w-full" :disabled="countriesLoading" @click="loadCountryPage(false)">{{ countriesLoading ? t('sms.user.loading') : t('sms.user.loadMore') }}</button>
             </div>
             <p v-if="!serviceCode" class="mt-3 text-xs text-gray-500">{{ t('sms.user.selectService') }}</p>
           </div>
-          <div class="rounded-xl border border-gray-200 p-4 dark:border-dark-700"><p class="text-xs font-semibold uppercase tracking-wide text-gray-500">4 · {{ t('sms.user.purchase') }}</p><div class="mt-4 space-y-3"><p class="text-sm text-gray-600 dark:text-gray-300">{{ serviceLabel(serviceCode) }} · {{ countryLabel(countryCode) }}</p>
-          <div v-if="productType === 'rental' && providerCode === 'smspva'" class="grid grid-cols-2 gap-2">
-            <label class="block min-w-0"><span class="input-label">{{ t('sms.user.duration') }}</span><input v-model.number="durationValue" class="input h-[42px]" type="number" min="1" @change="reloadRentalCatalog" /></label>
-            <Select v-model="durationUnit" :label="t('sms.user.unit')" :options="durationUnitOptions" @update:model-value="reloadRentalCatalog" />
-          </div>
-          <label v-if="currentProvider?.capabilities.supports_voice" class="block"><span class="input-label">验证码类型</span><select v-model.number="voiceMode" class="input h-[42px] w-full" @change="changeVoiceMode"><option v-for="item in voiceModeOptions" :key="item.value" :value="item.value">{{ item.label }}</option></select></label>
-          <label v-if="currentProvider?.capabilities.supports_operator_selection" class="block"><span class="input-label">运营商</span><select v-model="operatorCode" class="input h-[42px] w-full" @change="quotes = []; loadQuotes()"><option value="any">Any / 自动选择</option><option v-for="item in operators.filter(op => op.code !== 'any')" :key="item.code" :value="item.code" :disabled="item.available === false">{{ item.name }}{{ item.stock != null ? ` · 库存 ${item.stock}` : '' }}{{ item.provider_rate != null && item.provider_rate > 0 ? ` · 成功率指标 ${item.provider_rate}` : '' }}</option></select></label>
-          <label class="block"><span class="input-label">{{ t('sms.user.quantity') }}</span><input v-model.number="purchaseQuantity" class="input h-[42px] w-full" type="number" min="1" max="50" /></label><button type="button" class="btn btn-primary w-full" :disabled="!serviceCode || !countryCode || quoting" @click="loadQuotes">{{ quoting ? t('sms.user.quoting') : t('sms.user.getQuote') }}</button></div></div>
-        </div>
 
-        <p class="text-xs text-gray-500 dark:text-gray-400">{{ quoteHint }}</p>
+          <div class="rounded-xl border border-gray-200 p-4 dark:border-dark-700">
+            <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">4 · {{ t('sms.user.confirmSelection') }}</p>
+            <div class="mt-4 space-y-4">
+              <div class="space-y-3 rounded-xl bg-gray-50 p-3 dark:bg-dark-800/60">
+                <div class="flex items-center justify-between gap-3">
+                  <span class="text-xs text-gray-500">{{ t('sms.user.selectedService') }}</span>
+                  <span class="flex min-w-0 items-center gap-2 font-medium text-gray-900 dark:text-white">
+                    <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-white dark:bg-dark-700">
+                      <IconifyIcon v-if="selectedServiceLogo" :icon="selectedServiceLogo" class="h-5 w-5" />
+                      <span v-else>{{ serviceLabel(serviceCode).slice(0, 1).toUpperCase() }}</span>
+                    </span>
+                    <span class="max-w-44 truncate">{{ serviceLabel(serviceCode) || '-' }}</span>
+                  </span>
+                </div>
+                <div class="border-t border-gray-200 dark:border-dark-700"></div>
+                <div class="flex items-center justify-between gap-3">
+                  <span class="text-xs text-gray-500">{{ t('sms.user.selectedCountry') }}</span>
+                  <span class="flex items-center gap-2 font-medium text-gray-900 dark:text-white"><span class="text-xl">{{ flagEmoji(countryCode) }}</span>{{ countryLabel(countryCode) || '-' }}</span>
+                </div>
+              </div>
+
+              <div v-if="productType === 'rental' && providerCode === 'smspva'" class="grid grid-cols-2 gap-2">
+                <label class="block min-w-0"><span class="input-label">{{ t('sms.user.duration') }}</span><input v-model.number="durationValue" class="input h-[42px]" type="number" min="1" @change="reloadRentalCatalog" /></label>
+                <Select v-model="durationUnit" :label="t('sms.user.unit')" :options="durationUnitOptions" @update:model-value="reloadRentalCatalog" />
+              </div>
+              <label v-if="currentProvider?.capabilities.supports_voice" class="block"><span class="input-label">{{ t('sms.user.verificationType') }}</span><select v-model.number="voiceMode" class="input h-[42px] w-full" @change="changeVoiceMode"><option v-for="item in voiceModeOptions" :key="item.value" :value="item.value">{{ item.label }}</option></select></label>
+              <label v-if="currentProvider?.capabilities.supports_operator_selection" class="block"><span class="input-label">{{ t('sms.user.operator') }}</span><select v-model="operatorCode" class="input h-[42px] w-full" @change="quotes = []; loadQuotes()"><option value="any">{{ t('sms.user.autoOperator') }}</option><option v-for="item in operators.filter(op => op.code !== 'any')" :key="item.code" :value="item.code" :disabled="item.available === false">{{ item.name }}{{ item.stock != null ? ` · ${t('sms.user.stock')} ${item.stock}` : '' }}</option></select></label>
+              <label class="block"><span class="input-label">{{ t('sms.user.quantity') }}</span><input v-model.number="purchaseQuantity" class="input h-[42px] w-full" type="number" min="1" max="50" /></label>
+
+              <div v-if="bestQuote" class="flex items-center justify-between border-t border-gray-200 pt-3 dark:border-dark-700">
+                <span class="text-sm text-gray-500">{{ t('sms.user.price') }}</span>
+                <span class="text-xl font-semibold tabular-nums text-gray-900 dark:text-white">{{ formatPrice(bestQuote.sale_price) }}</span>
+              </div>
+              <button type="button" class="btn btn-primary w-full" :disabled="!serviceCode || !countryCode || quoting || purchasing" @click="confirmSelection">
+                {{ purchasing ? t('sms.user.processing') : quoting ? t('sms.user.quoting') : bestQuote ? t('sms.user.purchase') : t('sms.user.getQuote') }}
+              </button>
+              <p v-if="currentProvider?.capabilities.supports_refund && productType === 'temporary'" class="text-center text-xs text-gray-500">{{ t('sms.user.refundGuarantee') }}</p>
+              <div v-if="countryCode" class="rounded-xl border border-amber-200 bg-amber-50/70 p-3 dark:border-amber-900/50 dark:bg-amber-950/20">
+                <div class="flex gap-2.5">
+                  <span class="mt-0.5 text-amber-600"><Icon name="shield" size="sm" aria-hidden="true" /></span>
+                  <div><div class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('sms.user.deliveryTipTitle') }}</div><div class="mt-1 text-xs leading-5 text-gray-600 dark:text-gray-300">{{ t('sms.user.deliveryTipBody') }}</div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </section>
 
       <section v-if="activeTab !== 'orders'" class="space-y-3">
@@ -134,12 +191,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
+import { Icon as IconifyIcon } from '@iconify/vue'
 import { smsAPI, type SMSCountryItem, type SMSOperatorItem, type SMSOrder, type SMSOrderPage, type SMSProviderItem, type SMSQuote, type SMSServiceItem } from '@/api/sms'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { useAppStore } from '@/stores'
@@ -158,13 +216,17 @@ const voiceMode = ref(0)
 const serviceKeyword = ref('')
 const countryKeyword = ref('')
 const serviceCode = ref('')
-const countryCode = ref('US')
+const countryCode = ref('')
 const durationValue = ref(1)
 const durationUnit = ref('week')
 const quotes = ref<SMSQuote[]>([])
 const orders = ref<SMSOrder[]>([])
 const loading = ref(false)
 const quoting = ref(false)
+const servicesLoading = ref(false)
+const countriesLoading = ref(false)
+const servicePagination = reactive({ page: 1, pageSize: 50, total: 0, hasMore: false })
+const countryPagination = reactive({ page: 1, pageSize: 50, total: 0, hasMore: false })
 const ordersLoading = ref(false)
 const purchasing = ref(false)
 const purchaseQuantity = ref(1)
@@ -174,37 +236,36 @@ const orderDraft = reactive({ keyword: '', status: '' })
 const orderFilters = reactive({ keyword: '', status: '' })
 let pollTimer: number | undefined
 let countdownTimer: number | undefined
+let serviceSearchTimer: number | undefined
+let countrySearchTimer: number | undefined
 
 const currentProvider = computed(() => providers.value.find(item => item.code === providerCode.value))
 const tabs = computed(() => [
   { value: 'temporary' as const, label: t('sms.user.temporary'), disabled: !currentProvider.value?.capabilities.supports_temporary },
   { value: 'rental' as const, label: t('sms.user.rental'), disabled: !currentProvider.value?.capabilities.supports_rental },
 ])
-const quoteHint = computed(() => quotes.value.length ? t('sms.user.quoteHint') : t('sms.user.visibilityHint'))
-const serviceOptions = computed(() => services.value.map(item => ({ value: item.code, label: item.name, icon: item.icon || '' })))
-const filteredServiceOptions = computed(() => {
-  const q = serviceKeyword.value.toLowerCase()
-  return serviceOptions.value.filter(item => !q || item.label.toLowerCase().includes(q) || item.value.toLowerCase().includes(q))
-})
-const countryOptions = computed(() => countries.value.map(item => ({ value: item.iso2, label: countryName(item), stock: item.stock, conversionRate: item.conversion_rate, available: item.available })))
-const filteredCountryOptions = computed(() => {
-  const q = countryKeyword.value.toLowerCase()
-  return countryOptions.value.filter(item => !q || item.label.toLowerCase().includes(q) || item.value.toLowerCase().includes(q))
-})
+const selectedService = computed(() => services.value.find(item => item.code === serviceCode.value))
+const selectedCountry = computed(() => countries.value.find(item => item.iso2 === countryCode.value))
+const selectedServiceLogo = computed(() => serviceLogo(selectedService.value?.code || '', selectedService.value?.name || ''))
+const bestQuote = computed(() => [...quotes.value].sort((a, b) => a.sale_price - b.sale_price)[0])
+const serviceOptions = computed(() => services.value.map(item => ({ value: item.code, label: item.name || item.code, logo: item.icon || serviceLogo(item.code, item.name), stock: item.stock, startingPrice: item.starting_price })))
+const filteredServiceOptions = computed(() => serviceOptions.value)
+const countryOptions = computed(() => countries.value.map(item => ({ value: item.iso2, label: countryName(item), stock: item.stock, startingPrice: item.starting_price, conversionRate: item.conversion_rate, available: item.available })))
+const filteredCountryOptions = computed(() => [...countryOptions.value].sort((a, b) => englishCountryName(String(a.value)).localeCompare(englishCountryName(String(b.value)), 'en')))
 const durationUnitOptions = computed(() => {
   if (providerCode.value === 'smspva') {
-    return [{ value: 'week', label: t('sms.user.week') }, { value: 'month', label: '月' }]
+    return [{ value: 'week', label: t('sms.user.week') }, { value: 'month', label: t('sms.user.month') }]
   }
   return [{ value: 'hour', label: t('sms.user.hour') }, { value: 'day', label: t('sms.user.day') }, { value: 'week', label: t('sms.user.week') }]
 })
 const voiceModeOptions = computed(() => {
   const cap = currentProvider.value?.capabilities
-  if (!cap) return [{ value: 0, label: '短信 SMS' }]
+  if (!cap) return [{ value: 0, label: t('sms.user.smsType') }]
   const items: Array<{ value: number; label: string }> = []
-  if (cap.supports_voice_sms || !cap.supports_voice) items.push({ value: 0, label: '短信 SMS' })
-  if (cap.supports_voice_caller_id) items.push({ value: 1, label: '来电显示 Caller ID' })
-  if (cap.supports_voice_call) items.push({ value: 2, label: '语音验证码 Voice' })
-  return items.length ? items : [{ value: 0, label: '短信 SMS' }]
+  if (cap.supports_voice_sms || !cap.supports_voice) items.push({ value: 0, label: t('sms.user.smsType') })
+  if (cap.supports_voice_caller_id) items.push({ value: 1, label: t('sms.user.callerIdType') })
+  if (cap.supports_voice_call) items.push({ value: 2, label: t('sms.user.voiceType') })
+  return items.length ? items : [{ value: 0, label: t('sms.user.smsType') }]
 })
 const orderStatuses = ['pending', 'active', 'reconciling', 'provider_unknown', 'completed', 'cancelled', 'failed', 'refunded', 'expired']
 const orderStatusOptions = computed(() => orderStatuses.map(value => ({ value, label: statusLabel(value) })))
@@ -227,8 +288,38 @@ function refreshCountdowns() {
   orders.value = orders.value.map(order => ({ ...order }))
 }
 
+function englishCountryName(iso2: string) {
+  try { return new Intl.DisplayNames(['en'], { type: 'region' }).of(iso2.toUpperCase()) || iso2 } catch { return iso2 }
+}
+
 function countryName(country: SMSCountryItem) {
+  try {
+    const localized = new Intl.DisplayNames([String(locale.value || 'en')], { type: 'region' }).of(country.iso2.toUpperCase())
+    if (localized) return localized
+  } catch {}
   return locale.value.startsWith('zh') ? country.name_zh || country.name_en || country.iso2 : country.name_en || country.name_zh || country.iso2
+}
+
+function flagEmoji(iso2: string) {
+  const code = String(iso2 || '').toUpperCase()
+  if (!/^[A-Z]{2}$/.test(code)) return '🌐'
+  return String.fromCodePoint(...[...code].map(char => 127397 + char.charCodeAt(0)))
+}
+
+function formatPrice(value: number) {
+  return `${Number(value || 0).toFixed(4).replace(/0+$/, '').replace(/\.$/, '')}`
+}
+
+function serviceLogo(code: string, name = '') {
+  const key = `${code} ${name}`.toLowerCase()
+  const logos: Array<[RegExp, string]> = [
+    [/amazon/, 'logos:amazon-icon'], [/facebook|meta/, 'logos:facebook'], [/telegram/, 'logos:telegram'],
+    [/whatsapp/, 'logos:whatsapp-icon'], [/google|youtube/, 'logos:google-icon'], [/microsoft/, 'logos:microsoft-icon'],
+    [/openai|chatgpt/, 'simple-icons:openai'], [/instagram|threads/, 'skill-icons:instagram'],
+    [/apple/, 'logos:apple'], [/discord/, 'logos:discord-icon'], [/ebay/, 'logos:ebay'], [/paypal/, 'logos:paypal'],
+    [/tiktok/, 'logos:tiktok-icon'], [/twitter|\bx\b/, 'simple-icons:x'],
+  ]
+  return logos.find(([pattern]) => pattern.test(key))?.[1] || ''
 }
 
 function statusLabel(status: string) {
@@ -266,6 +357,61 @@ async function loadAll() {
   }
 }
 
+async function loadServicePage(reset = false) {
+  if (!providerCode.value || servicesLoading.value) return
+  if (reset) {
+    services.value = []
+    servicePagination.page = 1
+    servicePagination.hasMore = false
+  }
+  servicesLoading.value = true
+  try {
+    const page = await smsAPI.providerServicesPage(providerCode.value, {
+      page: servicePagination.page,
+      page_size: servicePagination.pageSize,
+      keyword: serviceKeyword.value || undefined,
+      product_type: productType.value,
+      duration_value: productType.value === 'rental' ? durationValue.value : undefined,
+      duration_unit: productType.value === 'rental' ? durationUnit.value : undefined,
+    })
+    services.value = reset ? page.items : [...services.value, ...page.items.filter(item => !services.value.some(existing => existing.code === item.code))]
+    servicePagination.total = page.total
+    servicePagination.hasMore = page.has_more
+    if (page.has_more) servicePagination.page += 1
+  } finally {
+    servicesLoading.value = false
+  }
+}
+
+async function loadCountryPage(reset = false) {
+  if (!providerCode.value || !serviceCode.value || countriesLoading.value) return
+  if (reset) {
+    countries.value = []
+    countryPagination.page = 1
+    countryPagination.hasMore = false
+    countryCode.value = ''
+  }
+  countriesLoading.value = true
+  try {
+    const page = await smsAPI.serviceCountriesPage(providerCode.value, serviceCode.value, {
+      page: countryPagination.page,
+      page_size: countryPagination.pageSize,
+      keyword: countryKeyword.value || undefined,
+      product_type: productType.value,
+      duration_value: productType.value === 'rental' ? durationValue.value : undefined,
+      duration_unit: productType.value === 'rental' ? durationUnit.value : undefined,
+    })
+    countries.value = reset ? page.items : [...countries.value, ...page.items.filter(item => !countries.value.some(existing => existing.iso2 === item.iso2))]
+    countryPagination.total = page.total
+    countryPagination.hasMore = page.has_more
+    if (page.has_more) countryPagination.page += 1
+    if (reset) countryCode.value = countries.value.find(item => item.available !== false)?.iso2 || ''
+    await loadOperators()
+  } finally {
+    countriesLoading.value = false
+  }
+}
+
 async function loadProviderCatalog() {
   services.value = []
   countries.value = []
@@ -278,14 +424,9 @@ async function loadProviderCatalog() {
   countryCode.value = ''
   quotes.value = []
   if (!providerCode.value) return
-  const nextServices = await smsAPI.providerServices(providerCode.value, {
-    product_type: productType.value,
-    duration_value: productType.value === 'rental' ? durationValue.value : undefined,
-    duration_unit: productType.value === 'rental' ? durationUnit.value : undefined,
-  })
-  services.value = nextServices
+  await loadServicePage(true)
   serviceCode.value = services.value[0]?.code || ''
-  await loadServiceCountries()
+  if (serviceCode.value) await loadCountryPage(true)
 }
 
 async function switchProvider(code: string) {
@@ -435,7 +576,9 @@ async function refund(id: string) {
 async function selectService(code: string) {
   if (code === serviceCode.value) return
   serviceCode.value = code
-  await loadServiceCountries()
+  countryKeyword.value = ''
+  quotes.value = []
+  await loadCountryPage(true)
 }
 
 async function selectCountry(code: string) {
@@ -479,22 +622,26 @@ async function changeVoiceMode() {
   if (countryCode.value) await loadQuotes()
 }
 
-async function loadServiceCountries() {
-  countryKeyword.value = ''
-  countryCode.value = ''
-  quotes.value = []
-  if (!serviceCode.value) return
-  try {
-    countries.value = await smsAPI.serviceCountries(providerCode.value, serviceCode.value, {
-      product_type: productType.value,
-      duration_value: productType.value === 'rental' ? durationValue.value : undefined,
-      duration_unit: productType.value === 'rental' ? durationUnit.value : undefined,
-    })
-    countryCode.value = countries.value.find(item => item.available !== false)?.iso2 || ''
-    await loadOperators()
+
+
+async function confirmSelection() {
+  if (!serviceCode.value || !countryCode.value) return
+  if (!bestQuote.value) {
+    await loadQuotes()
+    return
   }
-  catch (error) { appStore.showError(errorMessage(error, t('sms.user.errors.unavailable'))) }
+  await purchase(bestQuote.value)
 }
+
+watch(serviceKeyword, () => {
+  if (serviceSearchTimer) window.clearTimeout(serviceSearchTimer)
+  serviceSearchTimer = window.setTimeout(() => { void loadServicePage(true) }, 250)
+})
+
+watch(countryKeyword, () => {
+  if (countrySearchTimer) window.clearTimeout(countrySearchTimer)
+  countrySearchTimer = window.setTimeout(() => { if (serviceCode.value) void loadCountryPage(true) }, 250)
+})
 
 function refundLabel(status: string) {
   const labels: Record<string, string> = { approved: t('sms.user.refunds.approved'), rejected: t('sms.user.refunds.rejected'), pending: t('sms.user.refunds.pending') }
@@ -551,6 +698,8 @@ onMounted(() => {
 onBeforeUnmount(() => {
   if (pollTimer) window.clearInterval(pollTimer)
   if (countdownTimer) window.clearInterval(countdownTimer)
+  if (serviceSearchTimer) window.clearTimeout(serviceSearchTimer)
+  if (countrySearchTimer) window.clearTimeout(countrySearchTimer)
 })
 </script>
 
