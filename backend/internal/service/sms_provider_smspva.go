@@ -186,37 +186,32 @@ func (p *smsPVAProvider) PurchaseTemporary(ctx context.Context, req SMSPurchaseR
 
 func (p *smsPVAProvider) GetTemporaryStatus(ctx context.Context, id string) (*SMSStatusResult, error) {
 	var env smsPVAEnvelope
-	if _, err := p.requestJSON(ctx, http.MethodGet, "activation/orders", nil, &env); err != nil { return nil, err }
-	var payload struct {
-		Orders []struct {
-			OrderID json.RawMessage `json:"orderId"`
-			PhoneNumber json.RawMessage `json:"phoneNumber"`
-			Status string `json:"status"`
-			SMS *struct {
-				Code string `json:"code"`
-				FullText string `json:"fullText"`
-			} `json:"sms"`
-		} `json:"orders"`
+	httpStatus, err := p.requestJSON(ctx, http.MethodGet, "activation/sms/"+url.PathEscape(strings.TrimSpace(id)), nil, &env, http.StatusAccepted, http.StatusGone)
+	if err != nil { return nil, err }
+	switch httpStatus {
+	case http.StatusAccepted:
+		return &SMSStatusResult{Status: "active"}, nil
+	case http.StatusGone:
+		return &SMSStatusResult{Status: "expired"}, nil
 	}
-	if err := json.Unmarshal(env.Data, &payload); err != nil { return nil, err }
-	for _, order := range payload.Orders {
-		orderID := strings.Trim(string(order.OrderID), "\"")
-		if orderID != strings.TrimSpace(id) { continue }
-		status := "active"
-		switch strings.ToUpper(order.Status) {
-		case "SMS_READY": status = "completed"
-		case "PENDING_SMS", "PENDING_PAYMENT": status = "active"
-		case "CANCELLED", "CLOSED": status = "cancelled"
-		}
-		msgs := []string{}
-		if order.SMS != nil {
-			if order.SMS.FullText != "" { msgs = append(msgs, order.SMS.FullText) }
-			if order.SMS.Code != "" { msgs = append(msgs, order.SMS.Code) }
-		}
-		return &SMSStatusResult{Status: status, PhoneNumber: strings.Trim(string(order.PhoneNumber), "\""), Messages: msgs}, nil
+	var data struct {
+		OrderID json.RawMessage `json:"orderId"`
+		PhoneNumber json.RawMessage `json:"phoneNumber"`
+		OrderExpireIn int `json:"orderExpireIn"`
+		SMS *struct {
+			Code string `json:"code"`
+			FullText string `json:"fullText"`
+		} `json:"sms"`
 	}
-	// A missing active order may already be closed by the provider.
-	return &SMSStatusResult{Status: "expired"}, nil
+	if err := json.Unmarshal(env.Data, &data); err != nil { return nil, err }
+	msgs := []string{}
+	if data.SMS != nil {
+		if strings.TrimSpace(data.SMS.FullText) != "" { msgs = append(msgs, data.SMS.FullText) }
+		if strings.TrimSpace(data.SMS.Code) != "" { msgs = append(msgs, data.SMS.Code) }
+	}
+	status := "active"
+	if len(msgs) > 0 { status = "completed" }
+	return &SMSStatusResult{Status: status, PhoneNumber: rawString(data.PhoneNumber), Messages: msgs}, nil
 }
 
 func (p *smsPVAProvider) CancelTemporary(ctx context.Context, id string) error {
