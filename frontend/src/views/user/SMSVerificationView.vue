@@ -245,7 +245,6 @@ const tabs = computed(() => [
   { value: 'rental' as const, label: t('sms.user.rental'), disabled: !currentProvider.value?.capabilities.supports_rental },
 ])
 const selectedService = computed(() => services.value.find(item => item.code === serviceCode.value))
-const selectedCountry = computed(() => countries.value.find(item => item.iso2 === countryCode.value))
 const selectedServiceLogo = computed(() => serviceLogo(selectedService.value?.code || '', selectedService.value?.name || ''))
 const bestQuote = computed(() => [...quotes.value].sort((a, b) => a.sale_price - b.sale_price)[0])
 const serviceOptions = computed(() => services.value.map(item => ({ value: item.code, label: item.name || item.code, logo: item.icon || serviceLogo(item.code, item.name), stock: item.stock, startingPrice: item.starting_price })))
@@ -293,11 +292,12 @@ function englishCountryName(iso2: string) {
 }
 
 function countryName(country: SMSCountryItem) {
+  const fallback = locale.value.startsWith('zh') ? country.name_zh || country.name_en || country.iso2 : country.name_en || country.name_zh || country.iso2
   try {
-    const localized = new Intl.DisplayNames([String(locale.value || 'en')], { type: 'region' }).of(country.iso2.toUpperCase())
-    if (localized) return localized
-  } catch {}
-  return locale.value.startsWith('zh') ? country.name_zh || country.name_en || country.iso2 : country.name_en || country.name_zh || country.iso2
+    return new Intl.DisplayNames([String(locale.value || 'en')], { type: 'region' }).of(country.iso2.toUpperCase()) || fallback
+  } catch {
+    return fallback
+  }
 }
 
 function flagEmoji(iso2: string) {
