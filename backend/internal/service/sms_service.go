@@ -133,6 +133,8 @@ type SMSQuoteRequest struct {
 	ServiceCode  string `json:"service_code"`
 	CountryCode  string `json:"country_code"`
 	ProductType  string `json:"product_type"`
+	OperatorCode string `json:"operator_code,omitempty"`
+	VoiceMode    int    `json:"voice_mode,omitempty"`
 }
 type SMSProviderQuote struct {
 	Cost                     decimal.Decimal `json:"cost"`
@@ -146,6 +148,8 @@ type SMSPurchaseRequest struct {
 	ServiceCode   string `json:"service_code"`
 	CountryCode   string `json:"country_code"`
 	ProductType   string `json:"product_type"`
+	OperatorCode string `json:"operator_code,omitempty"`
+	VoiceMode int `json:"voice_mode,omitempty"`
 	DurationValue int    `json:"duration_value,omitempty"`
 	DurationUnit  string `json:"duration_unit,omitempty"`
 	QuoteID       string `json:"quote_id,omitempty"`
@@ -213,6 +217,23 @@ type SMSServiceCatalogProvider interface {
 }
 type SMSServiceCountryProvider interface {
 	CountriesForService(context.Context, string) ([]SMSCountryCatalogItem, error)
+}
+
+type SMSOperatorOption struct {
+	Code string `json:"code"`
+	Name string `json:"name"`
+	Stock int `json:"stock,omitempty"`
+	ProviderCost float64 `json:"provider_cost,omitempty"`
+	Available bool `json:"available"`
+}
+
+type SMSOperatorProvider interface {
+	Operators(context.Context, string, string, int) ([]SMSOperatorOption, error)
+}
+
+type SMSOrderActionProvider interface {
+	FinishTemporary(context.Context, string) error
+	BanTemporary(context.Context, string) error
 }
 
 type smsProviderHealthChecker interface {
@@ -391,7 +412,9 @@ func (p *fiveSIMProvider) TestConnection(ctx context.Context) error {
 }
 
 func (p *fiveSIMProvider) Quote(ctx context.Context, req SMSQuoteRequest) (*SMSProviderQuote, error) {
-	path := "guest/products/" + url.PathEscape(strings.ToLower(req.CountryCode)) + "/any/" + url.PathEscape(req.ServiceCode)
+	operator := strings.ToLower(strings.TrimSpace(req.OperatorCode))
+	if operator == "" { operator = "any" }
+	path := "guest/products/" + url.PathEscape(strings.ToLower(req.CountryCode)) + "/" + url.PathEscape(operator) + "/" + url.PathEscape(req.ServiceCode)
 	body, err := p.requestBytes(ctx, http.MethodGet, path, nil, nil)
 	if err != nil {
 		return nil, err
@@ -453,7 +476,9 @@ func (p *fiveSIMProvider) PurchaseTemporary(ctx context.Context, req SMSPurchase
 		Phone   string    `json:"phone"`
 		Expires time.Time `json:"expires"`
 	}
-	err := p.request(ctx, http.MethodGet, "user/buy/activation/"+url.PathEscape(strings.ToLower(req.CountryCode))+"/any/"+url.PathEscape(req.ServiceCode), nil, nil, &out)
+	operator := strings.ToLower(strings.TrimSpace(req.OperatorCode))
+	if operator == "" { operator = "any" }
+	err := p.request(ctx, http.MethodGet, "user/buy/activation/"+url.PathEscape(strings.ToLower(req.CountryCode))+"/"+url.PathEscape(operator)+"/"+url.PathEscape(req.ServiceCode), nil, nil, &out)
 	if err != nil {
 		return nil, err
 	}
@@ -486,6 +511,26 @@ func (p *fiveSIMProvider) CancelTemporary(ctx context.Context, id string) error 
 }
 func (p *fiveSIMProvider) RequestTemporaryRefund(ctx context.Context, id string) error {
 	return p.request(ctx, http.MethodGet, "user/cancel/"+url.PathEscape(id), nil, nil, nil)
+}
+func (p *fiveSIMProvider) FinishTemporary(ctx context.Context, id string) error {
+	return p.request(ctx, http.MethodGet, "user/finish/"+url.PathEscape(id), nil, nil, nil)
+}
+func (p *fiveSIMProvider) BanTemporary(ctx context.Context, id string) error {
+	return p.request(ctx, http.MethodGet, "user/ban/"+url.PathEscape(id), nil, nil, nil)
+}
+func (p *fiveSIMProvider) Operators(ctx context.Context, countryCode, serviceCode string, voiceMode int) ([]SMSOperatorOption, error) {
+	countryCode = strings.ToLower(strings.TrimSpace(countryCode))
+	serviceCode = strings.ToLower(strings.TrimSpace(serviceCode))
+	if countryCode == "" || serviceCode == "" { return nil, ErrSMSProviderUnavailable }
+	var all map[string]map[string]struct { Category string `json:"Category"`; Qty int `json:"Qty"`; Price float64 `json:"Price"` }
+	if err := p.request(ctx, http.MethodGet, "guest/products/"+url.PathEscape(countryCode)+"/any", nil, nil, &all); err != nil { return nil, err }
+	// The provider's public product endpoint exposes the aggregate Any option.
+	// Keep it first; deployments with operator-specific catalog support can add
+	// concrete operator rows without changing the public API.
+	if product, ok := all[serviceCode]; ok {
+		return []SMSOperatorOption{{Code:"any", Name:"Any / 自动选择", Stock:product.Qty, ProviderCost:product.Price, Available:product.Qty>0}}, nil
+	}
+	return []SMSOperatorOption{{Code:"any", Name:"Any / 自动选择", Available:true}}, nil
 }
 func (p *fiveSIMProvider) PurchaseRental(context.Context, SMSPurchaseRequest) (*SMSPurchaseResult, error) {
 	return nil, errors.New("rental is not supported by this provider")
