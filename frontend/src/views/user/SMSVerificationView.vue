@@ -79,19 +79,12 @@
           <label class="block"><span class="input-label">{{ t('sms.user.quantity') }}</span><input v-model.number="purchaseQuantity" class="input h-[42px] w-full" type="number" min="1" max="50" /></label><button type="button" class="btn btn-primary w-full" :disabled="!serviceCode || !countryCode || quoting" @click="loadQuotes">{{ quoting ? t('sms.user.quoting') : t('sms.user.getQuote') }}</button></div></div>
         </div>
 
-        <div class="flex flex-wrap items-center justify-between gap-3">
-          <span class="text-xs text-gray-500 dark:text-gray-400">{{ quoteHint }}</span>
-          <button type="button" class="btn btn-primary" :disabled="!serviceCode || !countryCode || quoting" @click="loadQuotes">{{ quoting ? t('sms.user.quoting') : t('sms.user.getQuote') }}</button>
-        </div>
+        <p class="text-xs text-gray-500 dark:text-gray-400">{{ quoteHint }}</p>
       </section>
 
       <section v-if="activeTab !== 'orders'" class="space-y-3">
         <div v-if="quoting" class="card p-8 text-center text-sm text-gray-500">{{ t('sms.user.checkingStock') }}</div>
         <div v-else-if="!quotes.length" class="card p-8 text-center text-sm text-gray-500">{{ serviceCode && countryCode ? t('sms.user.noChannel') : t('sms.user.chooseForQuote') }}</div>
-        <div class="card flex flex-wrap items-end gap-3 p-4">
-          <label class="block"><span class="input-label">{{ t('sms.user.quantity') }}</span><input v-model.number="purchaseQuantity" class="input h-[42px] w-28" type="number" min="1" max="50" /></label>
-          <span class="text-xs text-gray-500">{{ t('sms.user.batchPurchaseHint') }}</span>
-        </div>
         <div v-for="quote in quotes" :key="quote.quote_id" class="card flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
           <div class="min-w-0">
             <div class="flex flex-wrap items-center gap-2">
