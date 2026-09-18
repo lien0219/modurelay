@@ -8,7 +8,7 @@ export interface SMSCapabilities { supports_temporary: boolean; supports_rental:
 export interface SMSQuote { channel_code: string; public_name: string; channel_role: string; sale_price: number; stock: number; success_rate?: number; success_rate_grade?: string; success_rate_source: string; estimated_delivery_seconds: number; capabilities: SMSCapabilities; quote_id: string; quote_expires_at: string }
 export interface SMSOperatorItem { code: string; name: string; stock?: number; provider_cost?: number; available: boolean }
 export interface SMSMessage { id: number; message_text: string; verification_code?: string; received_at: string }
-export interface SMSOrder { id: string; product_type: 'temporary' | 'rental'; status: string; channel_code: string; channel_name: string; service_code: string; country_code: string; phone_number?: string; price: number; success_rate?: number; success_rate_grade?: string; success_rate_source: string; refund_status: string; refund_reason?: string; capabilities?: SMSCapabilities; messages?: SMSMessage[]; expires_at?: string; remaining_seconds?: number; created_at: string }
+export interface SMSOrder { id: string; product_type: 'temporary' | 'rental'; status: string; channel_code: string; channel_name: string; service_code: string; country_code: string; phone_number?: string; operator_code?: string; voice_mode?: number; price: number; success_rate?: number; success_rate_grade?: string; success_rate_source: string; refund_status: string; refund_reason?: string; capabilities?: SMSCapabilities; messages?: SMSMessage[]; expires_at?: string; remaining_seconds?: number; created_at: string }
 export interface SMSOrderPage { items: SMSOrder[]; total: number; page: number; page_size: number; pages: number }
 
 export const smsAPI = {
