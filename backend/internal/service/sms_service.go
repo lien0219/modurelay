@@ -165,7 +165,7 @@ type SMSPurchaseRequest struct {
 // original quote remains available for the first item.
 func (s *SMSService) CloneQuote(ctx context.Context, userID int64, quoteID string) (string, error) {
 	cloneID := randomID()
-	result, err := s.db.ExecContext(ctx, `INSERT INTO sms_quotes (id,user_id,channel_id,provider_id,service_id,country_id,product_type,provider_service_code,provider_country_code,operator_code,voice_mode,provider_cost_snapshot,sale_price_snapshot,success_rate_snapshot,success_rate_source_snapshot,success_rate_grade_snapshot,success_rate_multiplier_snapshot,fixed_markup_snapshot,stock,estimated_delivery_seconds,expires_at) SELECT $1,user_id,channel_id,provider_id,service_id,country_id,product_type,provider_service_code,provider_country_code,operator_code,voice_mode,provider_cost_snapshot,sale_price_snapshot,success_rate_snapshot,success_rate_source_snapshot,success_rate_grade_snapshot,success_rate_multiplier_snapshot,fixed_markup_snapshot,stock,estimated_delivery_seconds,expires_at FROM sms_quotes WHERE id=$2 AND user_id=$3 AND consumed_at IS NULL AND expires_at>NOW()`, cloneID, strings.TrimSpace(quoteID), userID)
+	result, err := s.db.ExecContext(ctx, `INSERT INTO sms_quotes (id,user_id,channel_id,provider_id,service_id,country_id,product_type,provider_service_code,provider_country_code,operator_code,voice_mode,duration_value,duration_unit,provider_cost_snapshot,sale_price_snapshot,success_rate_snapshot,success_rate_source_snapshot,success_rate_grade_snapshot,success_rate_multiplier_snapshot,fixed_markup_snapshot,stock,estimated_delivery_seconds,expires_at) SELECT $1,user_id,channel_id,provider_id,service_id,country_id,product_type,provider_service_code,provider_country_code,operator_code,voice_mode,duration_value,duration_unit,provider_cost_snapshot,sale_price_snapshot,success_rate_snapshot,success_rate_source_snapshot,success_rate_grade_snapshot,success_rate_multiplier_snapshot,fixed_markup_snapshot,stock,estimated_delivery_seconds,expires_at FROM sms_quotes WHERE id=$2 AND user_id=$3 AND consumed_at IS NULL AND expires_at>NOW()`, cloneID, strings.TrimSpace(quoteID), userID)
 	if err != nil {
 		return "", err
 	}
@@ -1625,7 +1625,7 @@ func (s *SMSService) Quote(ctx context.Context, userID int64, req SMSQuoteReques
 		}
 		providerCost := quantize(q.Cost)
 		salePrice := quantize(price)
-		if _, err := s.db.ExecContext(ctx, `INSERT INTO sms_quotes (id,user_id,channel_id,provider_id,service_id,country_id,product_type,provider_service_code,provider_country_code,operator_code,voice_mode,provider_cost_snapshot,sale_price_snapshot,success_rate_snapshot,success_rate_source_snapshot,success_rate_grade_snapshot,success_rate_multiplier_snapshot,fixed_markup_snapshot,stock,estimated_delivery_seconds,expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`, id, userID, channelID, providerID, serviceID, countryID, req.ProductType, providerServiceCode, providerCountryCode, req.OperatorCode, req.VoiceMode, providerCost, salePrice, rate, rateSource(rate), grade, multiplier, fixed, q.Stock, q.EstimatedDeliverySeconds, expiresAt); err != nil {
+		if _, err := s.db.ExecContext(ctx, `INSERT INTO sms_quotes (id,user_id,channel_id,provider_id,service_id,country_id,product_type,provider_service_code,provider_country_code,operator_code,voice_mode,duration_value,duration_unit,provider_cost_snapshot,sale_price_snapshot,success_rate_snapshot,success_rate_source_snapshot,success_rate_grade_snapshot,success_rate_multiplier_snapshot,fixed_markup_snapshot,stock,estimated_delivery_seconds,expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`, id, userID, channelID, providerID, serviceID, countryID, req.ProductType, providerServiceCode, providerCountryCode, req.OperatorCode, req.VoiceMode, req.DurationValue, req.DurationUnit, providerCost, salePrice, rate, rateSource(rate), grade, multiplier, fixed, q.Stock, q.EstimatedDeliverySeconds, expiresAt); err != nil {
 			return nil, err
 		}
 		out = append(out, SMSPublicChannel{Code: code, PublicName: name, Role: role, SalePrice: salePrice, Stock: q.Stock, SuccessRate: rate, SuccessRateGrade: grade, SuccessRateSource: rateSource(rate), EstimatedDeliverySeconds: q.EstimatedDeliverySeconds, Capabilities: capabilities, QuoteID: id, QuoteExpiresAt: expiresAt, ProviderCost: providerCost, GradeMultiplier: multiplier, GradeFixedMarkup: fixed, ProviderServiceCode: providerServiceCode, ProviderCountryCode: providerCountryCode})
@@ -1705,6 +1705,8 @@ type smsQuoteRecord struct {
 	ProviderCountryCode   string
 	OperatorCode          string
 	VoiceMode             int
+	DurationValue         int
+	DurationUnit          string
 	ProviderCost          float64
 	SalePrice             float64
 	SuccessRate           sql.NullFloat64
@@ -1718,7 +1720,7 @@ type smsQuoteRecord struct {
 
 func (s *SMSService) loadQuote(ctx context.Context, userID int64, quoteID string) (*smsQuoteRecord, error) {
 	var quote smsQuoteRecord
-	err := s.db.QueryRowContext(ctx, `SELECT q.channel_id,q.provider_id,q.service_id,q.country_id,c.code,c.public_name,c.role,p.code,p.base_url,p.credential_ref,sv.code,co.iso2,q.product_type,q.provider_service_code,q.provider_country_code,q.operator_code,q.voice_mode,q.provider_cost_snapshot,q.sale_price_snapshot,q.success_rate_snapshot,q.success_rate_source_snapshot,q.success_rate_grade_snapshot,q.success_rate_multiplier_snapshot,q.fixed_markup_snapshot,q.stock,q.expires_at FROM sms_quotes q JOIN sms_channels c ON c.id=q.channel_id JOIN sms_providers p ON p.id=q.provider_id JOIN sms_services sv ON sv.id=q.service_id JOIN sms_countries co ON co.id=q.country_id WHERE q.id=$1 AND q.user_id=$2 AND q.consumed_at IS NULL`, strings.TrimSpace(quoteID), userID).Scan(&quote.ChannelID, &quote.ProviderID, &quote.ServiceID, &quote.CountryID, &quote.ChannelCode, &quote.ChannelName, &quote.ChannelRole, &quote.ProviderCode, &quote.ProviderBaseURL, &quote.ProviderCredential, &quote.ServiceCode, &quote.CountryCode, &quote.ProductType, &quote.ProviderServiceCode, &quote.ProviderCountryCode, &quote.OperatorCode, &quote.VoiceMode, &quote.ProviderCost, &quote.SalePrice, &quote.SuccessRate, &quote.SuccessRateSource, &quote.SuccessRateGrade, &quote.SuccessRateMultiplier, &quote.FixedMarkup, &quote.Stock, &quote.ExpiresAt)
+	err := s.db.QueryRowContext(ctx, `SELECT q.channel_id,q.provider_id,q.service_id,q.country_id,c.code,c.public_name,c.role,p.code,p.base_url,p.credential_ref,sv.code,co.iso2,q.product_type,q.provider_service_code,q.provider_country_code,q.operator_code,q.voice_mode,q.duration_value,q.duration_unit,q.provider_cost_snapshot,q.sale_price_snapshot,q.success_rate_snapshot,q.success_rate_source_snapshot,q.success_rate_grade_snapshot,q.success_rate_multiplier_snapshot,q.fixed_markup_snapshot,q.stock,q.expires_at FROM sms_quotes q JOIN sms_channels c ON c.id=q.channel_id JOIN sms_providers p ON p.id=q.provider_id JOIN sms_services sv ON sv.id=q.service_id JOIN sms_countries co ON co.id=q.country_id WHERE q.id=$1 AND q.user_id=$2 AND q.consumed_at IS NULL`, strings.TrimSpace(quoteID), userID).Scan(&quote.ChannelID, &quote.ProviderID, &quote.ServiceID, &quote.CountryID, &quote.ChannelCode, &quote.ChannelName, &quote.ChannelRole, &quote.ProviderCode, &quote.ProviderBaseURL, &quote.ProviderCredential, &quote.ServiceCode, &quote.CountryCode, &quote.ProductType, &quote.ProviderServiceCode, &quote.ProviderCountryCode, &quote.OperatorCode, &quote.VoiceMode, &quote.DurationValue, &quote.DurationUnit, &quote.ProviderCost, &quote.SalePrice, &quote.SuccessRate, &quote.SuccessRateSource, &quote.SuccessRateGrade, &quote.SuccessRateMultiplier, &quote.FixedMarkup, &quote.Stock, &quote.ExpiresAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrSMSQuoteInvalid
 	}
@@ -1770,6 +1772,9 @@ func (s *SMSService) Purchase(ctx context.Context, userID int64, req SMSPurchase
 	requestedOperator := strings.ToLower(strings.TrimSpace(req.OperatorCode))
 	if requestedOperator == "" { requestedOperator = "any" }
 	if quote.OperatorCode != requestedOperator || quote.VoiceMode != req.VoiceMode {
+		return nil, ErrSMSQuoteInvalid
+	}
+	if quote.ProductType == "rental" && (quote.DurationValue != req.DurationValue || !strings.EqualFold(strings.TrimSpace(quote.DurationUnit), strings.TrimSpace(req.DurationUnit))) {
 		return nil, ErrSMSQuoteInvalid
 	}
 	selected := &SMSPublicChannel{Code: quote.ChannelCode, PublicName: quote.ChannelName, Role: quote.ChannelRole, SalePrice: quote.SalePrice, SuccessRate: func() *float64 {
