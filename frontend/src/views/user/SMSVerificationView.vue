@@ -49,7 +49,7 @@
         </div>
 
         <div class="grid gap-4 lg:grid-cols-3">
-          <div class="rounded-xl border border-gray-200 p-4 dark:border-dark-700"><p class="text-xs font-semibold uppercase tracking-wide text-gray-500">2 · {{ t('sms.user.service') }}</p><div class="mt-3 max-h-72 space-y-2 overflow-y-auto"><button v-for="option in serviceOptions" :key="String(option.value)" type="button" class="flex min-h-10 w-full items-center rounded-lg border px-3 text-left text-sm" :class="serviceCode === option.value ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-900/20' : 'border-gray-200 dark:border-dark-700'" @click="serviceCode = String(option.value)"><span class="min-w-0 truncate">{{ option.label }}</span></button><div v-if="!serviceOptions.length" class="py-8 text-center text-sm text-gray-400">当前渠道暂无可用平台</div></div></div>
+          <div class="rounded-xl border border-gray-200 p-4 dark:border-dark-700"><p class="text-xs font-semibold uppercase tracking-wide text-gray-500">2 · {{ t('sms.user.service') }}</p><div class="mt-3 max-h-72 space-y-2 overflow-y-auto"><button v-for="option in serviceOptions" :key="String(option.value)" type="button" class="flex min-h-10 w-full items-center rounded-lg border px-3 text-left text-sm" :class="serviceCode === option.value ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-900/20' : 'border-gray-200 dark:border-dark-700'" @click="selectService(String(option.value))"><span class="min-w-0 truncate">{{ option.label }}</span></button><div v-if="!serviceOptions.length" class="py-8 text-center text-sm text-gray-400">当前渠道暂无可用平台</div></div></div>
           <div class="rounded-xl border border-gray-200 p-4 dark:border-dark-700"><p class="text-xs font-semibold uppercase tracking-wide text-gray-500">3 · {{ t('sms.user.country') }}</p><div class="mt-3 max-h-72 space-y-2 overflow-y-auto"><button v-for="option in countryOptions" :key="String(option.value)" type="button" class="flex min-h-10 w-full items-center justify-between rounded-lg border px-3 text-left text-sm" :class="countryCode === option.value ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-900/20' : 'border-gray-200 dark:border-dark-700'" @click="countryCode = String(option.value)"><span class="truncate">{{ option.label }}</span><span class="text-xs text-gray-500">{{ countryCode === option.value ? t('sms.user.selected') : '' }}</span></button></div><p v-if="!serviceCode" class="mt-3 text-xs text-gray-500">{{ t('sms.user.selectService') }}</p></div>
           <div class="rounded-xl border border-gray-200 p-4 dark:border-dark-700"><p class="text-xs font-semibold uppercase tracking-wide text-gray-500">4 · {{ t('sms.user.purchase') }}</p><div class="mt-4 space-y-3"><p class="text-sm text-gray-600 dark:text-gray-300">{{ serviceLabel(serviceCode) }} · {{ countryLabel(countryCode) }}</p>
           <div v-if="productType === 'rental'" class="grid grid-cols-2 gap-2">
@@ -119,7 +119,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Pagination from '@/components/common/Pagination.vue'
@@ -332,6 +332,12 @@ async function refund(id: string) {
   }
 }
 
+async function selectService(code: string) {
+  if (code === serviceCode.value) return
+  serviceCode.value = code
+  await loadServiceCountries()
+}
+
 async function loadServiceCountries() {
   countryCode.value = ''
   quotes.value = []
@@ -386,8 +392,6 @@ onMounted(() => {
     if (activeTab.value === 'orders') void loadOrders()
   }, 10000)
 })
-
-watch(serviceCode, () => { void loadServiceCountries() })
 
 onBeforeUnmount(() => {
   if (pollTimer) window.clearInterval(pollTimer)
