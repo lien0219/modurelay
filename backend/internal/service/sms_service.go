@@ -66,6 +66,7 @@ const (
 type SMSProviderCapabilities struct {
 	Temporary         bool `json:"supports_temporary"`
 	Rental            bool `json:"supports_rental"`
+	RentalCancel      bool `json:"supports_rental_cancel"`
 	Webhook           bool `json:"supports_webhook"`
 	Polling           bool `json:"supports_polling"`
 	Cancel            bool `json:"supports_cancel"`
@@ -356,7 +357,7 @@ func (p *httpSMSProvider) requestBytes(ctx context.Context, method, path string,
 type fiveSIMProvider struct{ *httpSMSProvider }
 
 func (p *fiveSIMProvider) Capabilities(context.Context) SMSProviderCapabilities {
-	return SMSProviderCapabilities{Temporary:true, Polling:true, Cancel:true, Refund:true, Finish:true, Ban:true, OperatorSelection:true, ServiceSelection:true}
+	return SMSProviderCapabilities{Temporary:true, Rental:true, Polling:true, Cancel:true, Refund:true, Finish:true, Ban:true, OperatorSelection:true, ServiceSelection:true}
 }
 
 func (p *fiveSIMProvider) Catalog(ctx context.Context) ([]SMSSvcCatalogItem, []SMSCountryCatalogItem, error) {
@@ -2450,7 +2451,11 @@ func (s *SMSService) CancelOrder(ctx context.Context, userID int64, publicID str
 	if p == nil {
 		return ErrSMSProviderUnavailable
 	}
-	if !p.Capabilities(ctx).Cancel {
+	capabilities := p.Capabilities(ctx)
+	if productType == "rental" && !capabilities.RentalCancel {
+		return errors.New("provider does not support rental cancellation")
+	}
+	if productType != "rental" && !capabilities.Cancel {
 		return errors.New("provider does not support cancellation")
 	}
 	var cancelErr error
@@ -2761,6 +2766,7 @@ func decodeCapabilities(raw []byte) SMSProviderCapabilities {
 	return SMSProviderCapabilities{
 		Temporary:         values["supports_temporary"] || values["temporary"],
 		Rental:            values["supports_rental"] || values["rental"],
+		RentalCancel:      values["supports_rental_cancel"] || values["rental_cancel"],
 		Webhook:           values["supports_webhook"] || values["webhook"],
 		Polling:           values["supports_polling"] || values["polling"],
 		Cancel:            values["supports_cancel"] || values["cancel"],
