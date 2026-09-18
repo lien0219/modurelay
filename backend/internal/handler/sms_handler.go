@@ -470,12 +470,21 @@ func (h *SMSHandler) AdminProviderTest(c *gin.Context) {
 }
 
 func (h *SMSHandler) AdminCatalogSync(c *gin.Context) {
-    provider := strings.TrimSpace(c.Param("provider"))
-    if err := h.svc.SyncProviderCatalog(c.Request.Context(), provider); err != nil { response.ErrorFrom(c, err); return }
-    response.Success(c, gin.H{"synced": true})
+	provider := strings.TrimSpace(c.Param("provider"))
+	if err := h.svc.SyncProviderCatalog(c.Request.Context(), provider); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"synced": true})
 }
+
 func (h *SMSHandler) AdminCatalogSyncStatus(c *gin.Context) {
-    status, err := h.svc.CatalogSyncStatus(c.Request.Context(), c.Param("provider")); if err != nil { response.ErrorFrom(c, err); return }; response.Success(c, status)
+	status, err := h.svc.CatalogSyncStatus(c.Request.Context(), c.Param("provider"))
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, status)
 }
 func (h *SMSHandler) AdminProviderMappings(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
