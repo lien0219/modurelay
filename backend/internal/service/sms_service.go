@@ -1231,18 +1231,19 @@ func (s *SMSService) ListServices(ctx context.Context) ([]SMSSvcCatalogItem, err
 }
 
 func (s *SMSService) ListPublicProviders(ctx context.Context) ([]SMSPublicProvider, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT code,name,enabled,capabilities FROM sms_providers ORDER BY CASE code WHEN '5sim' THEN 1 WHEN 'smspva' THEN 2 ELSE 100 END,id`)
+	rows, err := s.db.QueryContext(ctx, `SELECT code,name,base_url,enabled,capabilities FROM sms_providers ORDER BY CASE code WHEN '5sim' THEN 1 WHEN 'smspva' THEN 2 ELSE 100 END,id`)
 	if err != nil { return nil, err }
 	defer func() { _ = rows.Close() }()
 	out := []SMSPublicProvider{}
 	for rows.Next() {
 		var item SMSPublicProvider
 		var enabled bool
+		var baseURL string
 		var raw []byte
-		if err := rows.Scan(&item.Code,&item.Name,&enabled,&raw); err != nil { return nil, err }
+		if err := rows.Scan(&item.Code,&item.Name,&baseURL,&enabled,&raw); err != nil { return nil, err }
 		item.Beta = item.Code != "5sim" && item.Code != "smspva"
 		item.Selectable = enabled && !item.Beta
-		item.Capabilities = decodeCapabilities(raw)
+		item.Capabilities = resolveSMSCapabilities(item.Code, baseURL, raw)
 		out = append(out,item)
 	}
 	return out, rows.Err()
@@ -1254,7 +1255,25 @@ func (s *SMSService) ProviderServices(ctx context.Context, providerCode string) 
 	if snapshotErr == nil { defer func() { _ = rows.Close() }(); items := make([]SMSSvcCatalogItem, 0); for rows.Next() { var item SMSSvcCatalogItem; if scanErr := rows.Scan(&item.Code, &item.Name, &item.Category); scanErr != nil { return nil, scanErr }; item.ProviderCode = item.Code; items = append(items, item) }; if rows.Err() != nil { return nil, rows.Err() }; if len(items)>0 { return items,nil } }
 	var base, credential string
 	if err := s.db.QueryRowContext(ctx, `SELECT base_url,credential_ref FROM sms_providers WHERE code=$1 AND enabled`, providerCode).Scan(&base,&credential); err != nil { return nil, err }
-	provider := providerFor(providerCode,base,providerAPIKey(providerCode,credential,s.encryptor)); if catalog,ok := provider.(SMSCatalogProvider); ok { _, countries, err := catalog.Catalog(ctx); if err != nil { return nil, err }; if serviceCatalog,ok := provider.(SMSServiceCatalogProvider); ok { items, err := serviceCatalog.CatalogServices(ctx,countries); if err != nil { return nil, err }; var providerID int64; if s.db.QueryRowContext(ctx, `SELECT id FROM sms_providers WHERE code=$1`, providerCode).Scan(&providerID) == nil { for _, item := range items { var serviceID int64; if s.db.QueryRowContext(ctx, `INSERT INTO sms_services(code,name,category,enabled) VALUES ($1,$2,$3,TRUE) ON CONFLICT (code) DO UPDATE SET name=EXCLUDED.name,category=EXCLUDED.category RETURNING id`,item.Code,item.Name,item.Category).Scan(&serviceID) == nil { _, _ = s.db.ExecContext(ctx, `INSERT INTO sms_provider_service_mappings(provider_id,service_id,provider_service_code,provider_service_name,temporary_supported,rental_supported,enabled) VALUES ($1,$2,$3,$4,TRUE,FALSE,TRUE) ON CONFLICT (provider_id,service_id) DO UPDATE SET provider_service_code=EXCLUDED.provider_service_code,provider_service_name=EXCLUDED.provider_service_name,enabled=TRUE`,providerID,serviceID,item.ProviderCode,item.Name) } } }; return items,nil } }
+	provider := providerFor(providerCode,base,providerAPIKey(providerCode,credential,s.encryptor))
+	if catalog,ok := provider.(SMSCatalogProvider); ok {
+		_, countries, err := catalog.Catalog(ctx); if err != nil { return nil, err }
+		if serviceCatalog,ok := provider.(SMSServiceCatalogProvider); ok {
+			items, err := serviceCatalog.CatalogServices(ctx,countries); if err != nil { return nil, err }
+			var providerID int64
+			if s.db.QueryRowContext(ctx, `SELECT id FROM sms_providers WHERE code=$1`, providerCode).Scan(&providerID) == nil {
+				for _, item := range items {
+					providerServiceCode := strings.TrimSpace(item.ProviderCode); if providerServiceCode == "" { providerServiceCode = item.Code }
+					_, _ = s.db.ExecContext(ctx, `INSERT INTO sms_provider_catalog_services(provider_id,provider_service_code,provider_service_name,category,enabled,observed_at) VALUES($1,$2,$3,$4,TRUE,NOW()) ON CONFLICT(provider_id,provider_service_code) DO UPDATE SET provider_service_name=EXCLUDED.provider_service_name,category=EXCLUDED.category,enabled=TRUE,observed_at=NOW()`,providerID,providerServiceCode,item.Name,item.Category)
+					var serviceID int64
+					if s.db.QueryRowContext(ctx, `INSERT INTO sms_services(code,name,category,enabled) VALUES ($1,$2,$3,TRUE) ON CONFLICT (code) DO UPDATE SET name=EXCLUDED.name,category=EXCLUDED.category RETURNING id`,item.Code,item.Name,item.Category).Scan(&serviceID) == nil && providerCode != "5sim" && providerCode != "smspva" {
+						_, _ = s.db.ExecContext(ctx, `INSERT INTO sms_provider_service_mappings(provider_id,service_id,provider_service_code,provider_service_name,temporary_supported,rental_supported,enabled) VALUES ($1,$2,$3,$4,TRUE,FALSE,TRUE) ON CONFLICT (provider_id,service_id) DO UPDATE SET provider_service_code=EXCLUDED.provider_service_code,provider_service_name=EXCLUDED.provider_service_name,enabled=TRUE`,providerID,serviceID,providerServiceCode,item.Name)
+					}
+				}
+			}
+			return items,nil
+		}
+	}
 	return s.ListServices(ctx)
 }
 
@@ -1416,7 +1435,8 @@ func (s *SMSService) ensureProviderCatalogSelection(ctx context.Context, provide
 
 	var providerID int64
 	var rawCapabilities []byte
-	if err := s.db.QueryRowContext(ctx, `SELECT id,capabilities FROM sms_providers WHERE code=$1 AND enabled`, providerCode).Scan(&providerID, &rawCapabilities); err != nil {
+	var providerBaseURL, providerCredential string
+	if err := s.db.QueryRowContext(ctx, `SELECT id,capabilities,base_url,credential_ref FROM sms_providers WHERE code=$1 AND enabled`, providerCode).Scan(&providerID, &rawCapabilities, &providerBaseURL, &providerCredential); err != nil {
 		return err
 	}
 	capabilities := decodeCapabilities(rawCapabilities)
@@ -1441,8 +1461,27 @@ func (s *SMSService) ensureProviderCatalogSelection(ctx context.Context, provide
 	}
 
 	var providerCountryID, providerCountryCode, nameZH, nameEN string
-	err = s.db.QueryRowContext(ctx, `SELECT provider_country_id,provider_country_code,name_zh,name_en FROM sms_provider_catalog_countries WHERE provider_id=$1 AND upper(iso2)=upper($2) AND enabled ORDER BY observed_at DESC LIMIT 1`, providerID, countryCode).Scan(&providerCountryID, &providerCountryCode, &nameZH, &nameEN)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) { return err }
+	if providerCode == "5sim" || providerCode == "smspva" {
+		provider := providerFor(providerCode, providerBaseURL, providerAPIKey(providerCode, providerCredential, s.encryptor))
+		if countryProvider, ok := provider.(SMSServiceCountryProvider); ok {
+			liveCountries, liveErr := countryProvider.CountriesForService(ctx, serviceCode)
+			if liveErr != nil { return liveErr }
+			for _, live := range liveCountries {
+				if !strings.EqualFold(live.ISO2, countryCode) { continue }
+				providerCountryID = strings.TrimSpace(live.ProviderCode)
+				providerCountryCode = providerCountryID
+				nameZH, nameEN = live.NameZH, live.NameEN
+				if providerCountryID == "" { providerCountryID = countryCode; providerCountryCode = countryCode }
+				_, _ = s.db.ExecContext(ctx, `INSERT INTO sms_provider_catalog_countries(provider_id,provider_country_id,provider_country_code,iso2,name_zh,name_en,enabled,observed_at) VALUES($1,$2,$3,$4,$5,$6,TRUE,NOW()) ON CONFLICT(provider_id,provider_country_id) DO UPDATE SET provider_country_code=EXCLUDED.provider_country_code,iso2=EXCLUDED.iso2,name_zh=EXCLUDED.name_zh,name_en=EXCLUDED.name_en,enabled=TRUE,observed_at=NOW()`,providerID,providerCountryID,providerCountryCode,countryCode,nameZH,nameEN)
+				break
+			}
+			if providerCountryID == "" { return ErrSMSProviderUnavailable }
+		}
+	}
+	if providerCountryID == "" {
+		err = s.db.QueryRowContext(ctx, `SELECT provider_country_id,provider_country_code,name_zh,name_en FROM sms_provider_catalog_countries WHERE provider_id=$1 AND upper(iso2)=upper($2) AND enabled ORDER BY observed_at DESC LIMIT 1`, providerID, countryCode).Scan(&providerCountryID, &providerCountryCode, &nameZH, &nameEN)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) { return err }
+	}
 	if providerCountryID == "" { providerCountryID = countryCode }
 	if providerCountryCode == "" { providerCountryCode = countryCode }
 	if nameEN == "" { nameEN = countryCode }
@@ -2709,7 +2748,7 @@ func (s *SMSService) ListProviders(ctx context.Context) ([]SMSProviderAdmin, err
 			return nil, err
 		}
 		x.CredentialConfigured = providerAPIKey(x.Code, cred, s.encryptor) != ""
-		x.Capabilities = decodeCapabilities(raw)
+		x.Capabilities = resolveSMSCapabilities(x.Code, x.BaseURL, raw)
 		out = append(out, x)
 	}
 	return out, rows.Err()
