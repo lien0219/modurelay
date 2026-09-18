@@ -116,6 +116,7 @@ describe('SMSVerificationView', () => {
           Icon: true,
           Pagination: true,
           Select: true,
+          ConfirmDialog: true,
         },
       },
     })
@@ -138,6 +139,7 @@ describe('SMSVerificationView', () => {
           Icon: true,
           Pagination: true,
           Select: true,
+          ConfirmDialog: true,
         },
       },
     })
