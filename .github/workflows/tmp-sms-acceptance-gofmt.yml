@@ -1,0 +1,34 @@
+name: Temporary SMS acceptance gofmt
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - ".github/workflows/tmp-sms-acceptance-gofmt.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: develop
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+      - name: Format modified SMS Go files
+        run: |
+          gofmt -w backend/internal/service/sms_service.go backend/internal/service/sms_provider_smspva.go backend/internal/service/sms_service_test.go backend/internal/handler/sms_handler.go
+      - name: Commit formatted files
+        run: |
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend/internal/service/sms_service.go backend/internal/service/sms_provider_smspva.go backend/internal/service/sms_service_test.go backend/internal/handler/sms_handler.go
+          git commit -m "chore(sms): gofmt acceptance fixes"
+          git push origin HEAD:develop
