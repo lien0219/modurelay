@@ -107,11 +107,10 @@ describe('SMSManagementView', () => {
     })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('平台 1200')
-    expect(wrapper.text()).toContain('国家 80')
+    expect(wrapper.text()).toContain('sms.admin.catalogStats')
     expect(wrapper.text()).not.toContain('sms.admin.mappings')
 
-    const sync = wrapper.findAll('button').find((button) => button.text() === '同步目录')!
+    const sync = wrapper.findAll('button').find((button) => button.text() === 'sms.admin.syncCatalog')!
     await sync.trigger('click')
     await flushPromises()
     expect(adminSMS.syncCatalog).toHaveBeenCalledWith('5sim')
