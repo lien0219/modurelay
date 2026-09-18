@@ -355,6 +355,16 @@ func (h *SMSHandler) Webhook(c *gin.Context) {
 	}
 	response.Success(c, gin.H{"accepted": true})
 }
+func (h *SMSHandler) Resend(c *gin.Context) {
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok { response.Unauthorized(c, "User not authenticated"); return }
+	if err := h.svc.ResendOrder(c.Request.Context(), subject.UserID, c.Param("id")); err != nil {
+		response.ErrorWithDetails(c,http.StatusUnprocessableEntity,err.Error(),"RESEND_REJECTED",nil)
+		return
+	}
+	response.Success(c, gin.H{"status":"active"})
+}
+
 func (h *SMSHandler) Finish(c *gin.Context) {
 	subject, ok := middleware.GetAuthSubjectFromContext(c)
 	if !ok { response.Unauthorized(c, "User not authenticated"); return }
