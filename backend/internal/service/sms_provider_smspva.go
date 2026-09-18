@@ -506,7 +506,43 @@ func (p *smsPVAProvider) Operators(ctx context.Context, countryCode, serviceCode
 			}
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].ProviderCost < out[j].ProviderCost })
+
+	var counts smsPVAEnvelope
+	if _, err := p.requestJSON(ctx, http.MethodGet, "activation/countnumbers/"+url.PathEscape(country), nil, &counts); err == nil {
+		var rows []struct {
+			Operator string `json:"operator"`
+			Services []struct {
+				Service string `json:"service"`
+				Total   int    `json:"total"`
+			} `json:"services"`
+		}
+		if json.Unmarshal(counts.Data, &rows) == nil {
+			for i := range out {
+				stock := 0
+				for _, row := range rows {
+					if !strings.EqualFold(row.Operator, out[i].Code) {
+						continue
+					}
+					for _, svc := range row.Services {
+						if strings.EqualFold(svc.Service, service) {
+							stock += svc.Total
+						}
+					}
+				}
+				out[i].Stock = stock
+				out[i].Available = stock > 0
+			}
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Available != out[j].Available {
+			return out[i].Available
+		}
+		if out[i].ProviderCost == out[j].ProviderCost {
+			return out[i].Name < out[j].Name
+		}
+		return out[i].ProviderCost < out[j].ProviderCost
+	})
 	return out, nil
 }
 
