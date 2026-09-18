@@ -49,8 +49,28 @@
         </div>
 
         <div class="grid gap-4 lg:grid-cols-3">
-          <div class="rounded-xl border border-gray-200 p-4 dark:border-dark-700"><p class="text-xs font-semibold uppercase tracking-wide text-gray-500">2 · {{ t('sms.user.service') }}</p><div class="mt-3 max-h-72 space-y-2 overflow-y-auto"><button v-for="option in serviceOptions" :key="String(option.value)" type="button" class="flex min-h-10 w-full items-center rounded-lg border px-3 text-left text-sm" :class="serviceCode === option.value ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-900/20' : 'border-gray-200 dark:border-dark-700'" @click="selectService(String(option.value))"><span class="min-w-0 truncate">{{ option.label }}</span></button><div v-if="!serviceOptions.length" class="py-8 text-center text-sm text-gray-400">当前渠道暂无可用平台</div></div></div>
-          <div class="rounded-xl border border-gray-200 p-4 dark:border-dark-700"><p class="text-xs font-semibold uppercase tracking-wide text-gray-500">3 · {{ t('sms.user.country') }}</p><div class="mt-3 max-h-72 space-y-2 overflow-y-auto"><button v-for="option in countryOptions" :key="String(option.value)" type="button" class="flex min-h-10 w-full items-center justify-between rounded-lg border px-3 text-left text-sm" :class="countryCode === option.value ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-900/20' : 'border-gray-200 dark:border-dark-700'" @click="countryCode = String(option.value)"><span class="truncate">{{ option.label }}</span><span class="text-xs text-gray-500">{{ countryCode === option.value ? t('sms.user.selected') : '' }}</span></button></div><p v-if="!serviceCode" class="mt-3 text-xs text-gray-500">{{ t('sms.user.selectService') }}</p></div>
+          <div class="rounded-xl border border-gray-200 p-4 dark:border-dark-700">
+            <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">2 · {{ t('sms.user.service') }}</p>
+            <div class="mt-3"><input v-model.trim="serviceKeyword" class="input h-10 w-full" placeholder="搜索网站 / APP / 平台" /></div>
+            <div class="mt-3 max-h-72 space-y-2 overflow-y-auto pr-1">
+              <button v-for="option in filteredServiceOptions" :key="String(option.value)" type="button" class="flex min-h-10 w-full items-center justify-between gap-3 rounded-lg border px-3 text-left text-sm" :class="serviceCode === option.value ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-900/20' : 'border-gray-200 dark:border-dark-700'" @click="selectService(String(option.value))">
+                <span class="min-w-0 truncate">{{ option.label }}</span><span class="shrink-0 font-mono text-[10px] text-gray-400">{{ option.value }}</span>
+              </button>
+              <div v-if="!filteredServiceOptions.length" class="py-8 text-center text-sm text-gray-400">当前渠道暂无匹配平台</div>
+            </div>
+          </div>
+          <div class="rounded-xl border border-gray-200 p-4 dark:border-dark-700">
+            <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">3 · {{ t('sms.user.country') }}</p>
+            <div class="mt-3"><input v-model.trim="countryKeyword" class="input h-10 w-full" placeholder="搜索国家 / 地区" :disabled="!serviceCode" /></div>
+            <div class="mt-3 max-h-72 space-y-2 overflow-y-auto pr-1">
+              <button v-for="option in filteredCountryOptions" :key="String(option.value)" type="button" class="flex min-h-11 w-full items-center justify-between gap-3 rounded-lg border px-3 text-left text-sm disabled:cursor-not-allowed disabled:opacity-45" :disabled="option.available === false" :class="countryCode === option.value ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-900/20' : 'border-gray-200 dark:border-dark-700'" @click="selectCountry(String(option.value))">
+                <span class="min-w-0"><span class="block truncate">{{ option.label }}</span><span v-if="option.stock != null" class="block text-[10px] text-gray-400">库存 {{ option.stock }}</span></span>
+                <span class="shrink-0 text-right"><span v-if="option.providerCost != null && option.providerCost > 0" class="block font-semibold tabular-nums text-orange-600">$ {{ option.providerCost.toFixed(4) }}</span><span v-if="countryCode === option.value" class="block text-[10px] text-gray-500">{{ t('sms.user.selected') }}</span></span>
+              </button>
+              <div v-if="serviceCode && !filteredCountryOptions.length" class="py-8 text-center text-sm text-gray-400">当前平台暂无匹配国家</div>
+            </div>
+            <p v-if="!serviceCode" class="mt-3 text-xs text-gray-500">{{ t('sms.user.selectService') }}</p>
+          </div>
           <div class="rounded-xl border border-gray-200 p-4 dark:border-dark-700"><p class="text-xs font-semibold uppercase tracking-wide text-gray-500">4 · {{ t('sms.user.purchase') }}</p><div class="mt-4 space-y-3"><p class="text-sm text-gray-600 dark:text-gray-300">{{ serviceLabel(serviceCode) }} · {{ countryLabel(countryCode) }}</p>
           <div v-if="productType === 'rental'" class="grid grid-cols-2 gap-2">
             <label class="block min-w-0"><span class="input-label">{{ t('sms.user.duration') }}</span><input v-model.number="durationValue" class="input h-[42px]" type="number" min="1" /></label>
@@ -137,6 +157,8 @@ const providers = ref<SMSProviderItem[]>([])
 const services = ref<SMSServiceItem[]>([])
 const providerCode = ref('')
 const countries = ref<SMSCountryItem[]>([])
+const serviceKeyword = ref('')
+const countryKeyword = ref('')
 const serviceCode = ref('')
 const countryCode = ref('US')
 const durationValue = ref(1)
@@ -162,7 +184,15 @@ const tabs = computed(() => [
 ])
 const quoteHint = computed(() => quotes.value.length ? t('sms.user.quoteHint') : t('sms.user.visibilityHint'))
 const serviceOptions = computed(() => services.value.map(item => ({ value: item.code, label: item.name, icon: item.icon || '' })))
-const countryOptions = computed(() => countries.value.map(item => ({ value: item.iso2, label: countryName(item) })))
+const filteredServiceOptions = computed(() => {
+  const q = serviceKeyword.value.toLowerCase()
+  return serviceOptions.value.filter(item => !q || item.label.toLowerCase().includes(q) || item.value.toLowerCase().includes(q))
+})
+const countryOptions = computed(() => countries.value.map(item => ({ value: item.iso2, label: countryName(item), stock: item.stock, providerCost: item.provider_cost, available: item.available })))
+const filteredCountryOptions = computed(() => {
+  const q = countryKeyword.value.toLowerCase()
+  return countryOptions.value.filter(item => !q || item.label.toLowerCase().includes(q) || item.value.toLowerCase().includes(q))
+})
 const durationUnitOptions = computed(() => [{ value: 'hour', label: t('sms.user.hour') }, { value: 'day', label: t('sms.user.day') }, { value: 'week', label: t('sms.user.week') }])
 const orderStatuses = ['pending', 'active', 'reconciling', 'provider_unknown', 'completed', 'cancelled', 'failed', 'refunded', 'expired']
 const orderStatusOptions = computed(() => orderStatuses.map(value => ({ value, label: statusLabel(value) })))
@@ -227,6 +257,8 @@ async function loadAll() {
 async function loadProviderCatalog() {
   services.value = []
   countries.value = []
+  serviceKeyword.value = ''
+  countryKeyword.value = ''
   serviceCode.value = ''
   countryCode.value = ''
   quotes.value = []
@@ -336,6 +368,13 @@ async function selectService(code: string) {
   if (code === serviceCode.value) return
   serviceCode.value = code
   await loadServiceCountries()
+}
+
+function selectCountry(code: string) {
+  const country = countries.value.find(item => item.iso2 === code)
+  if (!country || country.available === false) return
+  countryCode.value = code
+  quotes.value = []
 }
 
 async function loadServiceCountries() {
