@@ -8,11 +8,12 @@ const { adminSMS, showError, showSuccess } = vi.hoisted(() => ({
     providers: vi.fn(),
     channels: vi.fn(),
     stats: vi.fn(),
+    pricing: vi.fn(),
+    updatePricing: vi.fn(),
     updateProvider: vi.fn(),
     testProvider: vi.fn(),
-    providerMappings: vi.fn(),
-    updateProviderServiceMapping: vi.fn(),
-    updateProviderCountryMapping: vi.fn(),
+    syncCatalog: vi.fn(),
+    catalogSyncStatus: vi.fn(),
     updateChannel: vi.fn(),
     setEnabled: vi.fn(),
   },
@@ -37,10 +38,20 @@ describe('SMSManagementView', () => {
     }])
     adminSMS.channels.mockResolvedValue([])
     adminSMS.stats.mockResolvedValue({ feature_enabled: false, orders: 0 })
+    adminSMS.pricing.mockResolvedValue({
+      cost_multiplier: 1.3, fixed_markup: 0, unknown_grade_multiplier: 1,
+      unknown_grade_fixed_markup: 0, temporary_expiry_minutes: 10,
+      self_service_cancel_after_minutes: 1,
+      grade_multipliers: {}, grade_fixed_markups: {},
+    })
+    adminSMS.updatePricing.mockImplementation(async (value: unknown) => value)
     adminSMS.updateProvider.mockResolvedValue({ updated: true })
     adminSMS.testProvider.mockResolvedValue({ healthy: true, health_status: 'healthy', latency_ms: 12 })
-    adminSMS.providerMappings.mockResolvedValue({ items: [{ kind: 'service', target_id: 2, internal_code: 'openai', internal_name: 'OpenAI', provider_code: '', provider_name: '', temporary_supported: true, rental_supported: false, enabled: false }], total: 1, page: 1, page_size: 20, pages: 1 })
-    adminSMS.updateProviderServiceMapping.mockResolvedValue({ updated: true })
+    adminSMS.catalogSyncStatus.mockResolvedValue({
+      provider: '5sim', status: 'succeeded', duration_ms: 10,
+      service_count: 1200, country_count: 80, stale: false, source: 'provider',
+    })
+    adminSMS.syncCatalog.mockResolvedValue({ synced: true })
   })
 
   it('requires a credential before the first provider save', async () => {
@@ -85,25 +96,24 @@ describe('SMSManagementView', () => {
     expect(showSuccess).toHaveBeenCalledWith('sms.admin.testSuccess (12ms)')
   })
 
-  it('requires and saves an explicit provider service mapping', async () => {
+  it('shows provider-native catalog status instead of mapping configuration', async () => {
+    adminSMS.providers.mockResolvedValueOnce([{
+      id: 1, code: '5sim', name: '5SIM', base_url: 'https://5sim.net/v1',
+      health_status: 'healthy', enabled: true, credential_configured: true,
+      capabilities: {},
+    }])
     const wrapper = mount(SMSManagementView, {
-      global: { stubs: { AppLayout: { template: '<main><slot /></main>' }, Icon: true, Pagination: true } },
+      global: { stubs: { AppLayout: { template: '<main><slot /></main>' }, Icon: true } },
     })
     await flushPromises()
 
-    await wrapper.findAll('button').find((button) => button.text() === 'sms.admin.mappings')!.trigger('click')
-    await flushPromises()
-    const mappingInput = wrapper.findAll('input').find((input) => input.attributes('placeholder') === 'openai')!
-    const mappingEnabled = wrapper.findAll('input[type="checkbox"]').at(-1)!
-    await mappingEnabled.setValue(true)
-    const mappingSave = wrapper.findAll('button').filter((button) => button.text() === 'sms.admin.save').at(-1)!
-    await mappingSave.trigger('click')
-    expect(showError).toHaveBeenCalledWith('sms.admin.mappingCodeRequired')
-    expect(adminSMS.updateProviderServiceMapping).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('平台 1200')
+    expect(wrapper.text()).toContain('国家 80')
+    expect(wrapper.text()).not.toContain('sms.admin.mappings')
 
-    await mappingInput.setValue('openai-provider-code')
-    await mappingSave.trigger('click')
+    const sync = wrapper.findAll('button').find((button) => button.text() === '同步目录')!
+    await sync.trigger('click')
     await flushPromises()
-    expect(adminSMS.updateProviderServiceMapping).toHaveBeenCalledWith(1, 2, expect.objectContaining({ provider_code: 'openai-provider-code', enabled: true }))
+    expect(adminSMS.syncCatalog).toHaveBeenCalledWith('5sim')
   })
 })
