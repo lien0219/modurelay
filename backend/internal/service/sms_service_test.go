@@ -450,6 +450,10 @@ func TestSMSOrderExpiryUsesProviderValueOrSafeDefaults(t *testing.T) {
 	if got := smsOrderExpiresAt(now, "temporary", 0, "", &providerExpiry); !got.Equal(providerExpiry) {
 		t.Fatalf("provider expiry=%v, want %v", got, providerExpiry)
 	}
+	longProviderExpiry := now.Add(15 * time.Minute)
+	if got := smsOrderExpiresAt(now, "temporary", 0, "", &longProviderExpiry, 3*time.Minute); !got.Equal(now.Add(3 * time.Minute)) {
+		t.Fatalf("platform temporary expiry=%v, want %v", got, now.Add(3*time.Minute))
+	}
 	if got := smsOrderExpiresAt(now, "temporary", 0, "", nil); !got.Equal(now.Add(10 * time.Minute)) {
 		t.Fatalf("temporary expiry=%v", got)
 	}
@@ -567,18 +571,21 @@ func TestFiveSIMPurchaseFinishAndBanContracts(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		if strings.Contains(r.URL.Path, "/user/buy/activation/") {
-			_, _ = w.Write([]byte(`{"id":123,"phone":"+12025550123","expires":"2030-01-01T00:00:00Z"}`))
+			if got := r.URL.Query().Get("maxPrice"); got != "0.6" {
+				t.Errorf("maxPrice=%q want 0.6", got)
+			}
+			_, _ = w.Write([]byte(`{"id":123,"phone":"+12025550123","expires":"2030-01-01T00:00:00Z","price":0.55,"operator":"Virtual58"}`))
 		} else {
 			_, _ = w.Write([]byte(`{}`))
 		}
 	}))
 	defer server.Close()
 	p := providerFor("5sim", server.URL, "secret")
-	result, err := p.PurchaseTemporary(context.Background(), SMSPurchaseRequest{CountryCode: "usa", ServiceCode: "telegram", OperatorCode: "att"})
+	result, err := p.PurchaseTemporary(context.Background(), SMSPurchaseRequest{CountryCode: "usa", ServiceCode: "telegram", OperatorCode: "any", ProviderCostLimit: 0.6})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.ProviderOrderID != "123" || result.PhoneNumber != "+12025550123" {
+	if result.ProviderOrderID != "123" || result.PhoneNumber != "+12025550123" || result.ProviderCost != 0.55 || result.ProviderOperatorCode != "virtual58" {
 		t.Fatalf("unexpected purchase: %#v", result)
 	}
 	action, ok := p.(SMSOrderActionProvider)
@@ -591,7 +598,7 @@ func TestFiveSIMPurchaseFinishAndBanContracts(t *testing.T) {
 	if err = action.BanTemporary(context.Background(), "123"); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"/user/buy/activation/usa/att/telegram", "/user/finish/123", "/user/ban/123"}
+	want := []string{"/user/buy/activation/usa/any/telegram", "/user/finish/123", "/user/ban/123"}
 	if len(paths) != len(want) {
 		t.Fatalf("paths=%v", paths)
 	}
@@ -599,6 +606,26 @@ func TestFiveSIMPurchaseFinishAndBanContracts(t *testing.T) {
 		if paths[i] != want[i] {
 			t.Fatalf("path[%d]=%q want %q", i, paths[i], want[i])
 		}
+	}
+}
+
+
+func TestFiveSIMStatusReturnsActualCostAndOperator(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/user/check/123" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"PENDING","phone":"+12025550123","price":0.6,"operator":"Virtual58","sms":[]}`))
+	}))
+	defer server.Close()
+
+	result, err := providerFor("5sim", server.URL, "secret").GetTemporaryStatus(context.Background(), "123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.ProviderCost != 0.6 || result.ProviderOperatorCode != "virtual58" {
+		t.Fatalf("unexpected status actuals: %#v", result)
 	}
 }
 
