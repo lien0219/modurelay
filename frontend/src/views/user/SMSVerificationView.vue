@@ -76,6 +76,8 @@
             <label class="block min-w-0"><span class="input-label">{{ t('sms.user.duration') }}</span><input v-model.number="durationValue" class="input h-[42px]" type="number" min="1" /></label>
             <Select v-model="durationUnit" :label="t('sms.user.unit')" :options="durationUnitOptions" />
           </div>
+          <label v-if="currentProvider?.capabilities.supports_voice" class="block"><span class="input-label">验证码类型</span><select v-model.number="voiceMode" class="input h-[42px] w-full" @change="changeVoiceMode"><option v-for="item in voiceModeOptions" :key="item.value" :value="item.value">{{ item.label }}</option></select></label>
+          <label v-if="currentProvider?.capabilities.supports_operator_selection" class="block"><span class="input-label">运营商</span><select v-model="operatorCode" class="input h-[42px] w-full" @change="quotes = []; loadQuotes()"><option value="any">Any / 自动选择</option><option v-for="item in operators.filter(op => op.code !== 'any')" :key="item.code" :value="item.code" :disabled="item.available === false">{{ item.name }}<template v-if="item.stock != null"> · 库存 {{ item.stock }}</template></option></select></label>
           <label class="block"><span class="input-label">{{ t('sms.user.quantity') }}</span><input v-model.number="purchaseQuantity" class="input h-[42px] w-full" type="number" min="1" max="50" /></label><button type="button" class="btn btn-primary w-full" :disabled="!serviceCode || !countryCode || quoting" @click="loadQuotes">{{ quoting ? t('sms.user.quoting') : t('sms.user.getQuote') }}</button></div></div>
         </div>
 
@@ -120,7 +122,7 @@
             <thead class="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-dark-800"><tr><th class="px-4 py-3">{{ t('sms.user.order') }}</th><th class="px-4 py-3">{{ t('sms.user.service') }}</th><th class="px-4 py-3">{{ t('sms.user.country') }}</th><th class="px-4 py-3">{{ t('sms.user.phone') }}</th><th class="px-4 py-3">{{ t('sms.user.status') }}</th><th class="px-4 py-3">{{ t('sms.user.code') }}</th><th class="px-4 py-3">{{ t('sms.user.price') }}</th><th class="px-4 py-3">{{ t('sms.user.expiresIn') }}</th><th class="px-4 py-3">{{ t('sms.user.actions') }}</th></tr></thead>
             <tbody>
             <tr v-for="order in orders" :key="order.id" class="border-t border-gray-100 dark:border-dark-700">
-              <td class="px-4 py-3 font-mono text-xs">{{ order.id }}</td><td class="px-4 py-3">{{ serviceLabel(order.service_code) }}</td><td class="px-4 py-3">{{ countryLabel(order.country_code) }}</td><td class="px-4 py-3 font-mono">{{ order.phone_number || '-' }}</td><td class="px-4 py-3"><span class="badge" :class="statusClass(order.status)">{{ statusLabel(order.status) }}</span><span v-if="order.refund_status !== 'not_requested'" class="badge badge-warning ml-1">{{ refundLabel(order.refund_status) }}</span></td><td class="px-4 py-3"><div v-if="order.messages?.length" class="space-y-1"><div v-for="message in order.messages" :key="message.id"><code v-if="message.verification_code" class="font-mono font-semibold">{{ message.verification_code }}</code><span v-else class="text-gray-500">{{ message.message_text }}</span></div></div><span v-else>-</span></td><td class="px-4 py-3 tabular-nums">{{ order.price.toFixed(4) }}</td><td class="px-4 py-3 tabular-nums">{{ remainingLabel(order) }}</td><td class="px-4 py-3"><div class="flex min-w-max items-center gap-2"><button v-if="order.status === 'active' && order.capabilities?.supports_cancel !== false" type="button" class="btn btn-secondary btn-sm" @click="cancel(order.id)">{{ t('sms.user.cancel') }}</button><button v-if="order.status === 'active' && order.product_type === 'rental' && order.capabilities?.supports_extend" type="button" class="btn btn-secondary btn-sm" @click="extend(order.id)">{{ t('sms.user.extend') }}</button><button v-if="order.status === 'active' && order.product_type === 'temporary' && order.capabilities?.supports_refund !== false" type="button" class="btn btn-secondary btn-sm" @click="refund(order.id)">{{ t('sms.user.requestRefund') }}</button><button type="button" class="btn btn-secondary btn-sm" :disabled="refreshingId === order.id" :aria-label="t('common.refresh')" @click="refreshOrder(order.id)"><Icon name="refresh" size="sm" :class="refreshingId === order.id ? 'animate-spin' : ''" aria-hidden="true" /></button></div></td>
+              <td class="px-4 py-3 font-mono text-xs">{{ order.id }}</td><td class="px-4 py-3">{{ serviceLabel(order.service_code) }}</td><td class="px-4 py-3">{{ countryLabel(order.country_code) }}</td><td class="px-4 py-3 font-mono">{{ order.phone_number || '-' }}</td><td class="px-4 py-3"><span class="badge" :class="statusClass(order.status)">{{ statusLabel(order.status) }}</span><span v-if="order.refund_status !== 'not_requested'" class="badge badge-warning ml-1">{{ refundLabel(order.refund_status) }}</span></td><td class="px-4 py-3"><div v-if="order.messages?.length" class="space-y-1"><div v-for="message in order.messages" :key="message.id"><code v-if="message.verification_code" class="font-mono font-semibold">{{ message.verification_code }}</code><span v-else class="text-gray-500">{{ message.message_text }}</span></div></div><span v-else>-</span></td><td class="px-4 py-3 tabular-nums">{{ order.price.toFixed(4) }}</td><td class="px-4 py-3 tabular-nums">{{ remainingLabel(order) }}</td><td class="px-4 py-3"><div class="flex min-w-max items-center gap-2"><button v-if="order.status === 'active' && order.capabilities?.supports_cancel !== false" type="button" class="btn btn-secondary btn-sm" @click="cancel(order.id)">{{ t('sms.user.cancel') }}</button><button v-if="order.status === 'active' && order.product_type === 'rental' && order.capabilities?.supports_extend" type="button" class="btn btn-secondary btn-sm" @click="extend(order.id)">{{ t('sms.user.extend') }}</button><button v-if="order.status === 'active' && order.product_type === 'temporary' && order.capabilities?.supports_finish" type="button" class="btn btn-secondary btn-sm" @click="finish(order.id)">完成</button><button v-if="order.status === 'active' && order.product_type === 'temporary' && order.capabilities?.supports_ban" type="button" class="btn btn-secondary btn-sm" @click="ban(order.id)">封禁</button><button v-if="order.status === 'active' && order.product_type === 'temporary' && order.capabilities?.supports_refund !== false" type="button" class="btn btn-secondary btn-sm" @click="refund(order.id)">{{ t('sms.user.requestRefund') }}</button><button type="button" class="btn btn-secondary btn-sm" :disabled="refreshingId === order.id" :aria-label="t('common.refresh')" @click="refreshOrder(order.id)"><Icon name="refresh" size="sm" :class="refreshingId === order.id ? 'animate-spin' : ''" aria-hidden="true" /></button></div></td>
             </tr>
             </tbody>
           </table>
@@ -138,7 +140,7 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
-import { smsAPI, type SMSCountryItem, type SMSOrder, type SMSOrderPage, type SMSProviderItem, type SMSQuote, type SMSServiceItem } from '@/api/sms'
+import { smsAPI, type SMSCountryItem, type SMSOperatorItem, type SMSOrder, type SMSOrderPage, type SMSProviderItem, type SMSQuote, type SMSServiceItem } from '@/api/sms'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { useAppStore } from '@/stores'
 
@@ -150,6 +152,9 @@ const providers = ref<SMSProviderItem[]>([])
 const services = ref<SMSServiceItem[]>([])
 const providerCode = ref('')
 const countries = ref<SMSCountryItem[]>([])
+const operators = ref<SMSOperatorItem[]>([])
+const operatorCode = ref('any')
+const voiceMode = ref(0)
 const serviceKeyword = ref('')
 const countryKeyword = ref('')
 const serviceCode = ref('')
@@ -187,6 +192,11 @@ const filteredCountryOptions = computed(() => {
   return countryOptions.value.filter(item => !q || item.label.toLowerCase().includes(q) || item.value.toLowerCase().includes(q))
 })
 const durationUnitOptions = computed(() => [{ value: 'hour', label: t('sms.user.hour') }, { value: 'day', label: t('sms.user.day') }, { value: 'week', label: t('sms.user.week') }])
+const voiceModeOptions = [
+  { value: 0, label: '短信 SMS' },
+  { value: 1, label: '来电显示 Caller ID' },
+  { value: 2, label: '语音验证码 Voice' },
+]
 const orderStatuses = ['pending', 'active', 'reconciling', 'provider_unknown', 'completed', 'cancelled', 'failed', 'refunded', 'expired']
 const orderStatusOptions = computed(() => orderStatuses.map(value => ({ value, label: statusLabel(value) })))
 const serviceLabel = (code: string) => services.value.find(item => item.code === code)?.name || code
@@ -250,6 +260,9 @@ async function loadAll() {
 async function loadProviderCatalog() {
   services.value = []
   countries.value = []
+  operators.value = []
+  operatorCode.value = 'any'
+  voiceMode.value = 0
   serviceKeyword.value = ''
   countryKeyword.value = ''
   serviceCode.value = ''
@@ -282,7 +295,7 @@ async function loadQuotes() {
   if (!serviceCode.value || !countryCode.value) return
   quoting.value = true
   try {
-    quotes.value = await smsAPI.quotes({ provider: providerCode.value, service: serviceCode.value, country: countryCode.value, product_type: productType.value })
+    quotes.value = await smsAPI.quotes({ provider: providerCode.value, service: serviceCode.value, country: countryCode.value, product_type: productType.value, operator: operatorCode.value || 'any', voice_mode: voiceMode.value })
   } catch (error) {
     quotes.value = []
     appStore.showError(errorMessage(error, t('sms.user.errors.quote')))
@@ -322,7 +335,7 @@ async function purchase(quote: SMSQuote) {
   try {
     const key = `sms-${Date.now()}-${Math.random().toString(36).slice(2)}`
     const quantity = Math.min(50, Math.max(1, Number(purchaseQuantity.value) || 1))
-    const item = { channel_code: quote.channel_code, service_code: serviceCode.value, country_code: countryCode.value, product_type: productType.value, duration_value: productType.value === 'rental' ? durationValue.value : undefined, duration_unit: productType.value === 'rental' ? durationUnit.value : undefined, quote_id: quote.quote_id, expected_price: quote.sale_price }
+    const item = { channel_code: quote.channel_code, service_code: serviceCode.value, country_code: countryCode.value, product_type: productType.value, operator_code: operatorCode.value || 'any', voice_mode: voiceMode.value, duration_value: productType.value === 'rental' ? durationValue.value : undefined, duration_unit: productType.value === 'rental' ? durationUnit.value : undefined, quote_id: quote.quote_id, expected_price: quote.sale_price }
     if (quantity > 1) {
       const result = await smsAPI.purchaseBatch({ items: Array.from({ length: quantity }, () => item) }, key)
       if (result.partial_error) appStore.showError(result.partial_error)
@@ -347,6 +360,18 @@ async function cancel(id: string) {
   }
 }
 
+async function finish(id: string) {
+  if (!window.confirm('确认完成该接码订单？')) return
+  try { await smsAPI.finish(id); await loadOrders() }
+  catch (error) { appStore.showError(errorMessage(error, '完成订单失败')) }
+}
+
+async function ban(id: string) {
+  if (!window.confirm('确认封禁该号码并进入退款确认流程？')) return
+  try { await smsAPI.ban(id); await loadOrders() }
+  catch (error) { appStore.showError(errorMessage(error, '封禁号码失败')) }
+}
+
 async function refund(id: string) {
   if (!window.confirm(t('common.confirm'))) return
   try {
@@ -363,12 +388,34 @@ async function selectService(code: string) {
   await loadServiceCountries()
 }
 
-function selectCountry(code: string) {
+async function selectCountry(code: string) {
   const country = countries.value.find(item => item.iso2 === code)
   if (!country || country.available === false) return
   countryCode.value = code
   quotes.value = []
-  void loadQuotes()
+  await loadOperators()
+  await loadQuotes()
+}
+
+async function loadOperators() {
+  operators.value = []
+  operatorCode.value = 'any'
+  if (!providerCode.value || !serviceCode.value || !countryCode.value) return
+  if (!currentProvider.value?.capabilities.supports_operator_selection) return
+  try {
+    operators.value = await smsAPI.operators(providerCode.value, serviceCode.value, countryCode.value, voiceMode.value)
+    const any = operators.value.find(item => item.code === 'any')
+    operatorCode.value = any?.code || operators.value.find(item => item.available !== false)?.code || 'any'
+  } catch {
+    operators.value = []
+    operatorCode.value = 'any'
+  }
+}
+
+async function changeVoiceMode() {
+  quotes.value = []
+  await loadOperators()
+  if (countryCode.value) await loadQuotes()
 }
 
 async function loadServiceCountries() {
@@ -376,7 +423,11 @@ async function loadServiceCountries() {
   countryCode.value = ''
   quotes.value = []
   if (!serviceCode.value) return
-  try { countries.value = await smsAPI.serviceCountries(providerCode.value, serviceCode.value); countryCode.value = countries.value[0]?.iso2 || '' }
+  try {
+    countries.value = await smsAPI.serviceCountries(providerCode.value, serviceCode.value)
+    countryCode.value = countries.value.find(item => item.available !== false)?.iso2 || ''
+    await loadOperators()
+  }
   catch (error) { appStore.showError(errorMessage(error, t('sms.user.errors.unavailable'))) }
 }
 
