@@ -2792,7 +2792,7 @@ func (s *SMSService) reserveSMSPurchase(ctx context.Context, userID, channelID, 
 	defer func() { _ = tx.Rollback() }()
 	var orderID int64
 	price := selected.SalePrice
-	err = tx.QueryRowContext(ctx, `INSERT INTO sms_orders (user_id,channel_id,provider_id,service_id,country_id,product_type,status,operator_code,voice_mode,provider_cost_snapshot,sale_price_snapshot,success_rate_snapshot,success_rate_source_snapshot,success_rate_grade_snapshot,success_rate_multiplier_snapshot,idempotency_key,reserved_amount,settlement_status,reconciliation_action,reconcile_after) VALUES ($1,$2,$3,$4,$5,$6,'reconciling',$7,$8,$9,$10,$11,$12,$13,$14,$15,$10,'held',$16,NOW()+($17 * INTERVAL '1 second')) RETURNING id`, userID, channelID, providerID, serviceID, countryID, req.ProductType, requestedSMSOperator(req.OperatorCode), req.VoiceMode, selected.ProviderCost, price, selected.SuccessRate, selected.SuccessRateSource, selected.SuccessRateGrade, selected.GradeMultiplier, idempotencyKey, smsReconciliationPurchase, int(smsVerificationUnknownTimeout.Seconds())).Scan(&orderID)
+	err = tx.QueryRowContext(ctx, `INSERT INTO sms_orders (user_id,channel_id,provider_id,service_id,country_id,product_type,status,operator_code,voice_mode,provider_cost_snapshot,sale_price_snapshot,success_rate_snapshot,success_rate_source_snapshot,success_rate_grade_snapshot,success_rate_multiplier_snapshot,idempotency_key,reserved_amount,settlement_status,reconciliation_action,reconcile_after) VALUES ($1,$2,$3,$4,$5,$6,'pending',$7,$8,$9,$10,$11,$12,$13,$14,$15,$10,'held','',NULL) RETURNING id`, userID, channelID, providerID, serviceID, countryID, req.ProductType, requestedSMSOperator(req.OperatorCode), req.VoiceMode, selected.ProviderCost, price, selected.SuccessRate, selected.SuccessRateSource, selected.SuccessRateGrade, selected.GradeMultiplier, idempotencyKey).Scan(&orderID)
 	if err != nil {
 		return 0, err
 	}
@@ -2854,16 +2854,35 @@ func (s *SMSService) failSMSPurchase(ctx context.Context, orderID, userID int64,
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+
+	// A definitive purchase failure means the provider did not return an
+	// allocation. The platform may use a short-lived internal reservation to
+	// make balance/idempotency atomic, but it must not leave a user-visible
+	// "failed order" behind or keep any money frozen.
 	var amount float64
-	if err = tx.QueryRowContext(ctx, `UPDATE sms_orders SET status='failed',last_provider_error=$1,released_amount=reserved_amount,settlement_status='released',reconciliation_action='',reconciliation_attempts=0,reconcile_after=NULL,updated_at=NOW() WHERE id=$2 AND settlement_status='held' RETURNING reserved_amount`, reason, orderID).Scan(&amount); err != nil {
+	var providerOrderID string
+	if err = tx.QueryRowContext(ctx, `SELECT reserved_amount,provider_order_id FROM sms_orders WHERE id=$1 AND user_id=$2 AND settlement_status='held' FOR UPDATE`, orderID, userID).Scan(&amount, &providerOrderID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil
 		}
 		return err
 	}
+	if strings.TrimSpace(providerOrderID) != "" {
+		return errors.New("cannot discard SMS purchase after provider allocation was recorded")
+	}
 	if _, err = tx.ExecContext(ctx, `UPDATE users SET balance=balance+$1,frozen_balance=GREATEST(0,COALESCE(frozen_balance,0)-$1),updated_at=NOW() WHERE id=$2`, amount, userID); err != nil {
 		return err
 	}
+	// The quote was consumed only to protect this attempt. Delete the consumed
+	// snapshot together with the provisional order so the next click must obtain
+	// a fresh quote instead of retrying stale provider state.
+	if _, err = tx.ExecContext(ctx, `DELETE FROM sms_quotes WHERE consumed_order_id=$1`, orderID); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `DELETE FROM sms_orders WHERE id=$1 AND user_id=$2 AND settlement_status='held' AND provider_order_id=''`, orderID, userID); err != nil {
+		return err
+	}
+	_ = reason // returned to the caller immediately; failed provisional rows are intentionally not retained.
 	return tx.Commit()
 }
 
@@ -3482,7 +3501,7 @@ func (s *SMSService) ListOrders(ctx context.Context, userID int64, admin bool) (
 	q := `SELECT o.id,o.public_id::text,o.user_id,o.product_type,o.status,o.reconciliation_action,c.code,c.public_name,sv.code,co.iso2,o.phone_number,o.operator_code,o.voice_mode,o.sale_price_snapshot,o.success_rate_snapshot,o.success_rate_grade_snapshot,o.success_rate_source_snapshot,o.refund_status,o.refund_reason,o.expires_at,o.created_at,p.code,p.base_url,p.capabilities FROM sms_orders o JOIN sms_channels c ON c.id=o.channel_id JOIN sms_providers p ON p.id=o.provider_id JOIN sms_services sv ON sv.id=o.service_id JOIN sms_countries co ON co.id=o.country_id`
 	args := []any{}
 	if !admin {
-		q += ` WHERE o.user_id=$1`
+		q += ` WHERE o.user_id=$1 AND NOT (o.status='pending' AND o.provider_order_id='')`
 		args = append(args, userID)
 	}
 	q += ` ORDER BY o.created_at DESC LIMIT 100`
@@ -3531,7 +3550,7 @@ func (s *SMSService) ListUserOrdersPage(ctx context.Context, userID int64, page,
 	}
 	keyword = strings.TrimSpace(keyword)
 	status = strings.TrimSpace(status)
-	where := ` WHERE o.user_id=$1`
+	where := ` WHERE o.user_id=$1 AND NOT (o.status='pending' AND o.provider_order_id='')`
 	args := []any{userID}
 	if keyword != "" {
 		args = append(args, "%"+keyword+"%")
