@@ -315,6 +315,7 @@ export default {
     user: {
       description: '按服务与国家选择可用渠道，价格和库存来自实时报价。',
       channel: '渠道',
+      recentSuccess: '最近成功',
       unavailable: '暂未开放',
       serviceSearch: '搜索网站 / APP / 平台',
       countrySearch: '搜索国家 / 地区',
