@@ -78,10 +78,18 @@ func TestFiveSIMRentalIsFailClosed(t *testing.T) {
 	} else if items, err := catalog.CatalogServicesForProduct(context.Background(), "rental", 1, "day"); err != nil || len(items) != 0 {
 		t.Fatalf("rental services=%#v err=%v, want empty", items, err)
 	}
-	if countries, err := p.(SMSProductServiceCountryProvider).CountriesForServiceProduct(context.Background(), "openai", "rental", 1, "day"); err != nil || len(countries) != 0 {
+	countryProvider, ok := p.(SMSProductServiceCountryProvider)
+	if !ok {
+		t.Fatal("5SIM country catalog adapter missing")
+	}
+	if countries, err := countryProvider.CountriesForServiceProduct(context.Background(), "openai", "rental", 1, "day"); err != nil || len(countries) != 0 {
 		t.Fatalf("rental countries=%#v err=%v, want empty", countries, err)
 	}
-	if operators, err := p.(SMSProductOperatorProvider).OperatorsForProduct(context.Background(), "usa", "openai", "rental", 0, 1, "day"); err != nil || len(operators) != 0 {
+	operatorProvider, ok := p.(SMSProductOperatorProvider)
+	if !ok {
+		t.Fatal("5SIM operator catalog adapter missing")
+	}
+	if operators, err := operatorProvider.OperatorsForProduct(context.Background(), "usa", "openai", "rental", 0, 1, "day"); err != nil || len(operators) != 0 {
 		t.Fatalf("rental operators=%#v err=%v, want empty", operators, err)
 	}
 	if _, err := p.Quote(context.Background(), SMSQuoteRequest{CountryCode: "usa", ServiceCode: "openai", ProductType: "rental"}); !errors.Is(err, ErrSMSProviderUnavailable) {
@@ -473,7 +481,6 @@ func TestSMSQuoteLookupIsUserScopedAndRejectsConsumedQuote(t *testing.T) {
 		t.Fatal(err)
 	}
 }
-
 
 func TestSMSPricingSettingsDriveUnknownAndGradeFormulas(t *testing.T) {
 	pricing := SMSPricingSettings{
