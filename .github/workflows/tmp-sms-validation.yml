@@ -1,0 +1,52 @@
+name: Temporary SMS production validation
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - ".github/workflows/tmp-sms-validation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  backend-sms:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          cache: true
+          cache-dependency-path: backend/go.sum
+      - name: SMS service tests
+        working-directory: backend
+        run: go test ./internal/service -run 'SMS|FiveSIM' -count=1
+      - name: SMS handler and route tests
+        working-directory: backend
+        run: |
+          go test ./internal/handler -run SMS -count=1
+          go test ./internal/server/routes -run SMS -count=1
+          go test ./migrations -run SMS -count=1
+
+  frontend-sms:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.33.2
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Install
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+      - name: SMS frontend tests
+        working-directory: frontend
+        run: pnpm exec vitest run src/views/user/__tests__/SMSVerificationView.spec.ts src/views/admin/__tests__/SMSManagementView.spec.ts
+      - name: Production frontend build
+        working-directory: frontend
+        run: pnpm run build
