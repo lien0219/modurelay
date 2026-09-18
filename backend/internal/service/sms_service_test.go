@@ -182,9 +182,18 @@ func TestSMSProviderConnectionChecksAreReadOnly(t *testing.T) {
 
 func TestSMSPublicDTODoesNotExposeProviderFields(t *testing.T) {
 	payload, err := json.Marshal(struct {
-		Order   SMSOrder
-		Channel SMSPublicChannel
-	}{Order: SMSOrder{ID: "public", ChannelCode: "channel_1", Price: 1.2}, Channel: SMSPublicChannel{Code: "channel_1", ProviderCost: 0.8, GradeMultiplier: 1.2, GradeFixedMarkup: 0.1}})
+		Order    SMSOrder
+		Channel  SMSPublicChannel
+		Service  SMSSvcCatalogItem
+		Country  SMSCountryCatalogItem
+		Operator SMSOperatorOption
+	}{
+		Order:    SMSOrder{ID: "public", ChannelCode: "channel_1", Price: 1.2},
+		Channel:  SMSPublicChannel{Code: "channel_1", ProviderCost: 0.8, GradeMultiplier: 1.2, GradeFixedMarkup: 0.1},
+		Service:  SMSSvcCatalogItem{Code: "telegram", ProviderCost: 0.7},
+		Country:  SMSCountryCatalogItem{ISO2: "US", ProviderCost: 0.7},
+		Operator: SMSOperatorOption{Code: "any", ProviderCost: 0.7},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
