@@ -26,14 +26,14 @@ func (h *SMSHandler) Enabled(ctx context.Context) bool {
 }
 
 type smsQuoteRequest struct {
-	ProviderCode string `form:"provider" json:"provider_code"`
-	ServiceCode  string `form:"service" json:"service_code"`
-	CountryCode  string `form:"country" json:"country_code"`
-	ProductType  string `form:"product_type" json:"product_type"`
-	OperatorCode string `form:"operator" json:"operator_code"`
-	VoiceMode int `form:"voice_mode" json:"voice_mode"`
-	DurationValue int `form:"duration_value" json:"duration_value"`
-	DurationUnit string `form:"duration_unit" json:"duration_unit"`
+	ProviderCode  string `form:"provider" json:"provider_code"`
+	ServiceCode   string `form:"service" json:"service_code"`
+	CountryCode   string `form:"country" json:"country_code"`
+	ProductType   string `form:"product_type" json:"product_type"`
+	OperatorCode  string `form:"operator" json:"operator_code"`
+	VoiceMode     int    `form:"voice_mode" json:"voice_mode"`
+	DurationValue int    `form:"duration_value" json:"duration_value"`
+	DurationUnit  string `form:"duration_unit" json:"duration_unit"`
 }
 
 func (h *SMSHandler) Quotes(c *gin.Context) {
@@ -193,8 +193,8 @@ type smsPurchaseRequest struct {
 	ServiceCode   string   `json:"service_code"`
 	CountryCode   string   `json:"country_code"`
 	ProductType   string   `json:"product_type"`
-	OperatorCode string `json:"operator_code"`
-	VoiceMode int `json:"voice_mode"`
+	OperatorCode  string   `json:"operator_code"`
+	VoiceMode     int      `json:"voice_mode"`
 	DurationValue int      `json:"duration_value"`
 	DurationUnit  string   `json:"duration_unit"`
 	QuoteID       string   `json:"quote_id"`
@@ -357,31 +357,48 @@ func (h *SMSHandler) Webhook(c *gin.Context) {
 }
 func (h *SMSHandler) Resend(c *gin.Context) {
 	subject, ok := middleware.GetAuthSubjectFromContext(c)
-	if !ok { response.Unauthorized(c, "User not authenticated"); return }
-	if err := h.svc.ResendOrder(c.Request.Context(), subject.UserID, c.Param("id")); err != nil {
-		response.ErrorWithDetails(c,http.StatusUnprocessableEntity,err.Error(),"RESEND_REJECTED",nil)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
 		return
 	}
-	response.Success(c, gin.H{"status":"active"})
+	if err := h.svc.ResendOrder(c.Request.Context(), subject.UserID, c.Param("id")); err != nil {
+		response.ErrorWithDetails(c, http.StatusUnprocessableEntity, err.Error(), "RESEND_REJECTED", nil)
+		return
+	}
+	response.Success(c, gin.H{"status": "active"})
 }
 
 func (h *SMSHandler) Finish(c *gin.Context) {
 	subject, ok := middleware.GetAuthSubjectFromContext(c)
-	if !ok { response.Unauthorized(c, "User not authenticated"); return }
-	if err := h.svc.FinishOrder(c.Request.Context(), subject.UserID, c.Param("id")); err != nil {
-		if err == service.ErrSMSProviderUnknown { response.ErrorWithDetails(c,http.StatusAccepted,"The finish action is being reconciled","ORDER_RECONCILING",nil); return }
-		response.ErrorWithDetails(c,http.StatusUnprocessableEntity,err.Error(),"FINISH_REJECTED",nil); return
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
 	}
-	response.Success(c, gin.H{"status":"completed"})
+	if err := h.svc.FinishOrder(c.Request.Context(), subject.UserID, c.Param("id")); err != nil {
+		if err == service.ErrSMSProviderUnknown {
+			response.ErrorWithDetails(c, http.StatusAccepted, "The finish action is being reconciled", "ORDER_RECONCILING", nil)
+			return
+		}
+		response.ErrorWithDetails(c, http.StatusUnprocessableEntity, err.Error(), "FINISH_REJECTED", nil)
+		return
+	}
+	response.Success(c, gin.H{"status": "completed"})
 }
 func (h *SMSHandler) Ban(c *gin.Context) {
 	subject, ok := middleware.GetAuthSubjectFromContext(c)
-	if !ok { response.Unauthorized(c, "User not authenticated"); return }
-	if err := h.svc.BanOrder(c.Request.Context(), subject.UserID, c.Param("id")); err != nil {
-		if err == service.ErrSMSProviderUnknown { response.ErrorWithDetails(c,http.StatusAccepted,"The ban action is being reconciled","ORDER_RECONCILING",nil); return }
-		response.ErrorWithDetails(c,http.StatusUnprocessableEntity,err.Error(),"BAN_REJECTED",nil); return
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
 	}
-	response.Success(c, gin.H{"status":"reconciling"})
+	if err := h.svc.BanOrder(c.Request.Context(), subject.UserID, c.Param("id")); err != nil {
+		if err == service.ErrSMSProviderUnknown {
+			response.ErrorWithDetails(c, http.StatusAccepted, "The ban action is being reconciled", "ORDER_RECONCILING", nil)
+			return
+		}
+		response.ErrorWithDetails(c, http.StatusUnprocessableEntity, err.Error(), "BAN_REJECTED", nil)
+		return
+	}
+	response.Success(c, gin.H{"status": "reconciling"})
 }
 
 func (h *SMSHandler) Cancel(c *gin.Context) {
