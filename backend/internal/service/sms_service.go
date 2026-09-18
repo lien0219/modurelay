@@ -351,6 +351,22 @@ type httpSMSProvider struct {
 	credentialQueryParam  string
 }
 
+type smsProviderHTTPError struct {
+	Provider   string
+	StatusCode int
+	Detail     string
+}
+
+func (e *smsProviderHTTPError) Error() string {
+	if e == nil {
+		return "provider request failed"
+	}
+	if strings.TrimSpace(e.Detail) != "" {
+		return fmt.Sprintf("provider %s returned HTTP %d: %s", e.Provider, e.StatusCode, e.Detail)
+	}
+	return fmt.Sprintf("provider %s returned HTTP %d", e.Provider, e.StatusCode)
+}
+
 func (p *httpSMSProvider) Code() string                                         { return p.code }
 func (p *httpSMSProvider) Capabilities(context.Context) SMSProviderCapabilities { return p.cap }
 
@@ -443,10 +459,7 @@ func (p *httpSMSProvider) requestBytes(ctx context.Context, method, path string,
 		if len(detail) > 512 {
 			detail = detail[:512] + "..."
 		}
-		if detail != "" {
-			return nil, fmt.Errorf("provider %s returned HTTP %d: %s", p.code, resp.StatusCode, detail)
-		}
-		return nil, fmt.Errorf("provider %s returned HTTP %d", p.code, resp.StatusCode)
+		return nil, &smsProviderHTTPError{Provider: p.code, StatusCode: resp.StatusCode, Detail: detail}
 	}
 	return data, nil
 }
@@ -2581,14 +2594,14 @@ func (s *SMSService) Purchase(ctx context.Context, userID int64, req SMSPurchase
 			_, _ = s.db.ExecContext(context.Background(), `UPDATE sms_orders SET status='reconciling',reconciliation_action=$1,reconcile_after=NOW()+($2 * INTERVAL '1 second'),last_provider_error=$3 WHERE id=$4`, smsReconciliationPurchase, int(smsVerificationPollInterval.Seconds()), "provider timeout; purchase recovery required", orderID)
 			return nil, ErrSMSProviderUnknown
 		}
-		if settleErr := s.failSMSPurchase(ctx, orderID, userID, sanitizeProviderError(err).Error()); settleErr != nil {
+		if settleErr := s.failSMSPurchase(context.Background(), orderID, userID, providerErrorDiagnostic(err)); settleErr != nil {
 			return nil, settleErr
 		}
 		return nil, sanitizeProviderError(err)
 	}
 	if purchased == nil || strings.TrimSpace(purchased.ProviderOrderID) == "" {
 		err = errors.New("provider returned no order id")
-		if settleErr := s.failSMSPurchase(ctx, orderID, userID, sanitizeProviderError(err).Error()); settleErr != nil {
+		if settleErr := s.failSMSPurchase(context.Background(), orderID, userID, providerErrorDiagnostic(err)); settleErr != nil {
 			return nil, settleErr
 		}
 		return nil, sanitizeProviderError(err)
@@ -2876,11 +2889,59 @@ func isSMSProviderTimeout(err error) bool {
 	return errors.As(err, &netErr) && netErr.Timeout()
 }
 
+func providerErrorDiagnostic(err error) string {
+	if err == nil {
+		return ""
+	}
+	message := strings.TrimSpace(err.Error())
+	if len(message) > 512 {
+		message = message[:512] + "..."
+	}
+	return message
+}
+
 func sanitizeProviderError(err error) error {
 	if err == nil {
 		return nil
 	}
-	return apperrors.ServiceUnavailable("PROVIDER_UNAVAILABLE", "渠道暂时不可用，请稍后重试").WithCause(err)
+	var httpErr *smsProviderHTTPError
+	lower := strings.ToLower(strings.TrimSpace(err.Error()))
+	provider := "供应商"
+	if errors.As(err, &httpErr) && strings.EqualFold(httpErr.Provider, "5sim") {
+		provider = "5SIM"
+		lower = strings.ToLower(strings.TrimSpace(httpErr.Detail))
+	}
+	switch {
+	case strings.Contains(lower, "no free phones"):
+		return apperrors.Conflict("PROVIDER_NO_STOCK", provider+" 当前没有符合条件的可用号码，请刷新报价或更换国家/运营商").WithCause(err)
+	case strings.Contains(lower, "not enough user balance"):
+		return apperrors.ServiceUnavailable("PROVIDER_BALANCE_LOW", provider+" 供应商账户余额不足，请联系管理员").WithCause(err)
+	case strings.Contains(lower, "not enough rating"):
+		return apperrors.ServiceUnavailable("PROVIDER_RATING_LOW", provider+" 账号评分不足，暂时无法下单").WithCause(err)
+	case strings.Contains(lower, "api limit is 100 requests per second"),
+		strings.Contains(lower, "ip address limit is 100 requests per second"):
+		return apperrors.TooManyRequests("PROVIDER_RATE_LIMITED", provider+" API 请求过于频繁，请稍后重试").WithCause(err)
+	case strings.Contains(lower, "max price"), strings.Contains(lower, "price limit"):
+		return apperrors.Conflict("PROVIDER_PRICE_LIMIT", provider+" 当前号码价格已超过本次报价上限，请刷新报价后重试").WithCause(err)
+	case strings.Contains(lower, "bad country"), strings.Contains(lower, "country is incorrect"), strings.Contains(lower, "select country"):
+		return apperrors.ServiceUnavailable("PROVIDER_COUNTRY_INVALID", provider+" 国家参数暂不可用，请联系管理员检查渠道映射").WithCause(err)
+	case strings.Contains(lower, "bad operator"), strings.Contains(lower, "select operator"):
+		return apperrors.ServiceUnavailable("PROVIDER_OPERATOR_INVALID", provider+" 运营商参数暂不可用，请更换运营商或联系管理员").WithCause(err)
+	case strings.Contains(lower, "product is incorrect"), strings.Contains(lower, "no product"):
+		return apperrors.ServiceUnavailable("PROVIDER_SERVICE_INVALID", provider+" 服务参数暂不可用，请联系管理员检查渠道映射").WithCause(err)
+	}
+	if errors.As(err, &httpErr) {
+		switch httpErr.StatusCode {
+		case http.StatusUnauthorized, http.StatusForbidden:
+			return apperrors.ServiceUnavailable("PROVIDER_AUTH_FAILED", provider+" 认证失败，请联系管理员检查供应商凭证").WithCause(err)
+		case http.StatusTooManyRequests:
+			return apperrors.TooManyRequests("PROVIDER_RATE_LIMITED", provider+" API 请求过于频繁，请稍后重试").WithCause(err)
+		}
+		if httpErr.StatusCode >= 500 {
+			return apperrors.ServiceUnavailable("PROVIDER_UPSTREAM_ERROR", provider+" 服务暂时异常，请稍后重试").WithCause(err)
+		}
+	}
+	return apperrors.ServiceUnavailable("PROVIDER_UNAVAILABLE", provider+" 暂时无法完成本次下单，请刷新报价或稍后重试").WithCause(err)
 }
 func (s *SMSService) GetOrder(ctx context.Context, userID, orderID int64) (*SMSOrder, error) {
 	var o SMSOrder
@@ -3018,7 +3079,7 @@ func (s *SMSService) recoverUnknownSMSPurchase(ctx context.Context, id, userID i
 	}
 	recovered, err := recoveryProvider.RecoverTemporaryPurchase(ctx, req, createdAt)
 	if err != nil {
-		s.deferSMSReconciliation(ctx, id, sanitizeProviderError(err).Error(), false)
+		s.deferSMSReconciliation(ctx, id, providerErrorDiagnostic(err), false)
 		return false, err
 	}
 	if recovered == nil {
@@ -3047,7 +3108,7 @@ func (s *SMSService) pollSMSOrder(ctx context.Context, id int64, providerOrder, 
 		result, err = p.GetTemporaryStatus(ctx, providerOrder)
 	}
 	if err != nil {
-		s.deferSMSReconciliation(ctx, id, sanitizeProviderError(err).Error(), strings.TrimSpace(providerAPIKey(providerCode, credential, s.encryptor)) == "")
+		s.deferSMSReconciliation(ctx, id, providerErrorDiagnostic(err), strings.TrimSpace(providerAPIKey(providerCode, credential, s.encryptor)) == "")
 		return err
 	}
 	if result == nil {
