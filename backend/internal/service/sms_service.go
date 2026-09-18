@@ -443,7 +443,10 @@ func (p *httpSMSProvider) requestBytes(ctx context.Context, method, path string,
 type fiveSIMProvider struct{ *httpSMSProvider }
 
 func (p *fiveSIMProvider) Capabilities(context.Context) SMSProviderCapabilities {
-	return SMSProviderCapabilities{Temporary: true, Rental: true, Polling: true, Cancel: true, Refund: true, Finish: true, Ban: true, Voice: true, VoiceSMS: true, VoiceCall: true, OperatorSelection: true, ServiceSelection: true}
+	// 5SIM numbers are short-lived activation numbers. Do not expose them as
+	// platform rentals: the documented activation flow has no user-selected
+	// rental term, renewal lifecycle, or rental cancellation contract.
+	return SMSProviderCapabilities{Temporary: true, Rental: false, Polling: true, Cancel: true, Refund: true, Finish: true, Ban: true, Voice: true, VoiceSMS: true, VoiceCall: true, OperatorSelection: true, ServiceSelection: true}
 }
 
 func (p *fiveSIMProvider) Catalog(ctx context.Context) ([]SMSSvcCatalogItem, []SMSCountryCatalogItem, error) {
@@ -482,6 +485,9 @@ func (p *fiveSIMProvider) CatalogServices(ctx context.Context, _ []SMSCountryCat
 }
 
 func (p *fiveSIMProvider) CatalogServicesForProduct(ctx context.Context, productType string, _ int, _ string) ([]SMSSvcCatalogItem, error) {
+	if strings.EqualFold(strings.TrimSpace(productType), "rental") {
+		return []SMSSvcCatalogItem{}, nil
+	}
 	var products map[string]struct {
 		Category string  `json:"Category"`
 		Qty      int     `json:"Qty"`
@@ -491,9 +497,6 @@ func (p *fiveSIMProvider) CatalogServicesForProduct(ctx context.Context, product
 		return nil, err
 	}
 	wanted := "activation"
-	if strings.EqualFold(strings.TrimSpace(productType), "rental") {
-		wanted = "hosting"
-	}
 	out := make([]SMSSvcCatalogItem, 0, len(products))
 	for code, product := range products {
 		category := strings.ToLower(strings.TrimSpace(product.Category))
@@ -571,7 +574,10 @@ func (p *fiveSIMProvider) CountriesForService(ctx context.Context, serviceCode s
 	return p.CountriesForServiceProduct(ctx, serviceCode, "temporary", 0, "")
 }
 
-func (p *fiveSIMProvider) CountriesForServiceProduct(ctx context.Context, serviceCode, _ string, _ int, _ string) ([]SMSCountryCatalogItem, error) {
+func (p *fiveSIMProvider) CountriesForServiceProduct(ctx context.Context, serviceCode, productType string, _ int, _ string) ([]SMSCountryCatalogItem, error) {
+	if strings.EqualFold(strings.TrimSpace(productType), "rental") {
+		return []SMSCountryCatalogItem{}, nil
+	}
 	serviceCode = strings.ToLower(strings.TrimSpace(serviceCode))
 	if serviceCode == "" {
 		return nil, ErrSMSProviderUnavailable
@@ -627,6 +633,9 @@ func (p *fiveSIMProvider) TestConnection(ctx context.Context) error {
 }
 
 func (p *fiveSIMProvider) Quote(ctx context.Context, req SMSQuoteRequest) (*SMSProviderQuote, error) {
+	if strings.EqualFold(strings.TrimSpace(req.ProductType), "rental") {
+		return nil, ErrSMSProviderUnavailable
+	}
 	operator := strings.ToLower(strings.TrimSpace(req.OperatorCode))
 	if operator == "" {
 		operator = "any"
@@ -652,9 +661,6 @@ func (p *fiveSIMProvider) Quote(ctx context.Context, req SMSQuoteRequest) (*SMSP
 		return nil, ErrSMSProviderUnavailable
 	}
 	wanted := "activation"
-	if strings.EqualFold(req.ProductType, "rental") {
-		wanted = "hosting"
-	}
 	if category := strings.ToLower(strings.TrimSpace(product.Category)); category != "" && category != wanted {
 		return nil, ErrSMSProviderUnavailable
 	}
@@ -737,7 +743,10 @@ func (p *fiveSIMProvider) BanTemporary(ctx context.Context, id string) error {
 func (p *fiveSIMProvider) Operators(ctx context.Context, countryCode, serviceCode string, voiceMode int) ([]SMSOperatorOption, error) {
 	return p.OperatorsForProduct(ctx, countryCode, serviceCode, "temporary", voiceMode, 0, "")
 }
-func (p *fiveSIMProvider) OperatorsForProduct(ctx context.Context, countryCode, serviceCode, _ string, _ int, _ int, _ string) ([]SMSOperatorOption, error) {
+func (p *fiveSIMProvider) OperatorsForProduct(ctx context.Context, countryCode, serviceCode, productType string, _ int, _ int, _ string) ([]SMSOperatorOption, error) {
+	if strings.EqualFold(strings.TrimSpace(productType), "rental") {
+		return []SMSOperatorOption{}, nil
+	}
 	countryCode = strings.ToLower(strings.TrimSpace(countryCode))
 	serviceCode = strings.ToLower(strings.TrimSpace(serviceCode))
 	if countryCode == "" || serviceCode == "" {
@@ -780,37 +789,17 @@ func (p *fiveSIMProvider) OperatorsForProduct(ctx context.Context, countryCode, 
 	return out, nil
 }
 
-func (p *fiveSIMProvider) PurchaseRental(ctx context.Context, req SMSPurchaseRequest) (*SMSPurchaseResult, error) {
-	return p.buy(ctx, "hosting", req)
+func (p *fiveSIMProvider) PurchaseRental(context.Context, SMSPurchaseRequest) (*SMSPurchaseResult, error) {
+	return nil, ErrSMSProviderUnavailable
 }
-func (p *fiveSIMProvider) GetRentalStatus(ctx context.Context, id string) (*SMSStatusResult, error) {
-	result, err := p.GetTemporaryStatus(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	var inbox struct {
-		Data []struct {
-			Code string `json:"code"`
-			Text string `json:"text"`
-		} `json:"Data"`
-	}
-	if err := p.request(ctx, http.MethodGet, "user/sms/inbox/"+url.PathEscape(id), nil, nil, &inbox); err == nil {
-		for _, m := range inbox.Data {
-			if strings.TrimSpace(m.Text) != "" {
-				result.Messages = append(result.Messages, m.Text)
-			}
-			if strings.TrimSpace(m.Code) != "" {
-				result.Messages = append(result.Messages, m.Code)
-			}
-		}
-	}
-	return result, nil
+func (p *fiveSIMProvider) GetRentalStatus(context.Context, string) (*SMSStatusResult, error) {
+	return nil, ErrSMSProviderUnavailable
 }
 func (p *fiveSIMProvider) ExtendRental(context.Context, string, int, string) error {
-	return errors.New("5SIM hosting extension is not supported by the documented order API")
+	return ErrSMSProviderUnavailable
 }
 func (p *fiveSIMProvider) CancelRental(context.Context, string) error {
-	return errors.New("5SIM hosting cancellation is not supported by the documented order API")
+	return ErrSMSProviderUnavailable
 }
 
 type providerJSONResponse struct {
@@ -1658,6 +1647,9 @@ func (s *SMSService) ProviderServicesForProduct(ctx context.Context, providerCod
 	if productType == "" {
 		productType = "temporary"
 	}
+	if providerCode == "5sim" && productType == "rental" {
+		return []SMSSvcCatalogItem{}, nil
+	}
 	if providerCode == "5sim" || providerCode == "smspva" {
 		cacheKey := smsProviderCatalogCacheKey(providerCode, productType, durationValue, durationUnit)
 		if items, ok := cachedProviderServices(cacheKey); ok {
@@ -1911,6 +1903,9 @@ func (s *SMSService) CountriesForProviderServiceProduct(ctx context.Context, pro
 	if productType == "" {
 		productType = "temporary"
 	}
+	if providerCode == "5sim" && productType == "rental" {
+		return []SMSCountryCatalogItem{}, nil
+	}
 	cacheKey := smsProviderCountryCacheKey(providerCode, serviceCode, productType, durationValue, durationUnit)
 	if providerCode == "5sim" || providerCode == "smspva" {
 		if items, ok := cachedProviderCountries(cacheKey); ok {
@@ -1987,6 +1982,10 @@ func (s *SMSService) ensureProviderCatalogSelection(ctx context.Context, provide
 	providerCode = strings.ToLower(strings.TrimSpace(providerCode))
 	serviceCode = strings.ToLower(strings.TrimSpace(serviceCode))
 	countryCode = strings.ToUpper(strings.TrimSpace(countryCode))
+	productType = strings.ToLower(strings.TrimSpace(productType))
+	if providerCode == "5sim" && productType == "rental" {
+		return ErrSMSProviderUnavailable
+	}
 	if providerCode == "" || serviceCode == "" || countryCode == "" {
 		return nil
 	}
@@ -2105,6 +2104,10 @@ func (s *SMSService) ProviderOperatorsForProduct(ctx context.Context, providerCo
 	providerCode = strings.ToLower(strings.TrimSpace(providerCode))
 	serviceCode = strings.ToLower(strings.TrimSpace(serviceCode))
 	countryCode = strings.ToUpper(strings.TrimSpace(countryCode))
+	productType = strings.ToLower(strings.TrimSpace(productType))
+	if providerCode == "5sim" && productType == "rental" {
+		return []SMSOperatorOption{}, nil
+	}
 	if voiceMode < 0 || voiceMode > 2 {
 		return nil, errors.New("invalid voice mode")
 	}
@@ -2165,7 +2168,7 @@ func (s *SMSService) Quote(ctx context.Context, userID int64, req SMSQuoteReques
 	rows, err := s.db.QueryContext(ctx, `SELECT c.id,p.id,sv.id,co.id,c.code,c.public_name,c.role,p.code,p.base_url,p.credential_ref,
 		COALESCE(NULLIF(cs.provider_service_code,''),NULLIF(psm.provider_service_code,''),sv.code),
 		COALESCE(NULLIF(cc.provider_country_id,''),NULLIF(cc.provider_country_code,''),NULLIF(pcm.provider_country_id,''),NULLIF(pcm.provider_country_code,''),co.iso2),
-		CASE WHEN p.code IN ('5sim','smspva') THEN TRUE ELSE COALESCE((p.capabilities->>'supports_rental')::boolean,(p.capabilities->>'rental')::boolean,false) END
+		CASE WHEN p.code='smspva' THEN TRUE ELSE COALESCE((p.capabilities->>'supports_rental')::boolean,(p.capabilities->>'rental')::boolean,false) END
 		FROM sms_channels c
 		JOIN sms_providers p ON p.id=c.provider_id
 		JOIN sms_services sv ON sv.code=$1 AND sv.enabled
@@ -2371,6 +2374,9 @@ func (s *SMSService) Purchase(ctx context.Context, userID int64, req SMSPurchase
 	quote, quoteErr := s.loadQuote(ctx, userID, req.QuoteID)
 	if quoteErr != nil {
 		return nil, quoteErr
+	}
+	if quote.ProviderCode == "5sim" && quote.ProductType == "rental" {
+		return nil, ErrSMSProviderUnavailable
 	}
 	if quote.ProviderCode != "5sim" && quote.ProviderCode != "smspva" {
 		return nil, ErrSMSProviderUnavailable
