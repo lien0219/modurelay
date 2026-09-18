@@ -71,6 +71,8 @@ type SMSProviderCapabilities struct {
 	Cancel            bool `json:"supports_cancel"`
 	Refund            bool `json:"supports_refund"`
 	RefundStatus      bool `json:"supports_refund_status"`
+	Finish            bool `json:"supports_finish"`
+	Ban               bool `json:"supports_ban"`
 	Extend            bool `json:"supports_extend"`
 	Resend            bool `json:"supports_resend"`
 	Voice             bool `json:"supports_voice"`
@@ -341,6 +343,10 @@ func (p *httpSMSProvider) requestBytes(ctx context.Context, method, path string,
 }
 
 type fiveSIMProvider struct{ *httpSMSProvider }
+
+func (p *fiveSIMProvider) Capabilities(context.Context) SMSProviderCapabilities {
+	return SMSProviderCapabilities{Temporary:true, Polling:true, Cancel:true, Refund:true, Finish:true, Ban:true, OperatorSelection:true, ServiceSelection:true}
+}
 
 func (p *fiveSIMProvider) Catalog(ctx context.Context) ([]SMSSvcCatalogItem, []SMSCountryCatalogItem, error) {
 	// 5SIM exposes a read-only country catalog without credentials. Its keys are
@@ -2293,6 +2299,39 @@ func (s *SMSService) ProcessWebhook(ctx context.Context, providerCode string, pa
 	return s.convergeSMSProviderStatus(ctx, id, newStatus)
 }
 
+func (s *SMSService) FinishOrder(ctx context.Context, userID int64, publicID string) error {
+	var id int64
+	var providerOrder, providerCode, base, credential, status, productType string
+	if err := s.db.QueryRowContext(ctx, `SELECT o.id,o.provider_order_id,p.code,p.base_url,p.credential_ref,o.status,o.product_type FROM sms_orders o JOIN sms_providers p ON p.id=o.provider_id WHERE o.user_id=$1 AND o.public_id=$2::uuid`, userID, strings.TrimSpace(publicID)).Scan(&id,&providerOrder,&providerCode,&base,&credential,&status,&productType); err != nil { return err }
+	if status != "active" || productType != "temporary" || providerOrder == "" { return errors.New("order cannot be finished") }
+	p := providerFor(providerCode,base,providerAPIKey(providerCode,credential,s.encryptor))
+	action, ok := p.(SMSOrderActionProvider)
+	if !ok || !p.Capabilities(ctx).Finish { return errors.New("provider does not support finish") }
+	if err := action.FinishTemporary(ctx,providerOrder); err != nil {
+		if isSMSProviderTimeout(err) { s.deferSMSReconciliation(ctx,id,"provider finish timeout",false); return ErrSMSProviderUnknown }
+		return errors.New("channel refused finish")
+	}
+	if _,err:=s.db.ExecContext(ctx,`UPDATE sms_orders SET status='completed',updated_at=NOW() WHERE id=$1 AND status='active'`,id); err != nil { return err }
+	return s.captureSMSSettlement(ctx,id,userID)
+}
+
+func (s *SMSService) BanOrder(ctx context.Context, userID int64, publicID string) error {
+	var id int64
+	var providerOrder, providerCode, base, credential, status, productType string
+	if err := s.db.QueryRowContext(ctx, `SELECT o.id,o.provider_order_id,p.code,p.base_url,p.credential_ref,o.status,o.product_type FROM sms_orders o JOIN sms_providers p ON p.id=o.provider_id WHERE o.user_id=$1 AND o.public_id=$2::uuid`, userID, strings.TrimSpace(publicID)).Scan(&id,&providerOrder,&providerCode,&base,&credential,&status,&productType); err != nil { return err }
+	if status != "active" || productType != "temporary" || providerOrder == "" { return errors.New("order cannot be banned") }
+	p := providerFor(providerCode,base,providerAPIKey(providerCode,credential,s.encryptor))
+	action, ok := p.(SMSOrderActionProvider)
+	if !ok || !p.Capabilities(ctx).Ban { return errors.New("provider does not support ban") }
+	if err := action.BanTemporary(ctx,providerOrder); err != nil {
+		if isSMSProviderTimeout(err) { s.deferSMSReconciliation(ctx,id,"provider ban timeout",false); return ErrSMSProviderUnknown }
+		return errors.New("channel refused ban")
+	}
+	s.markProviderRefund(ctx,id,"pending","provider ban accepted; refund confirmation pending")
+	_,err:=s.db.ExecContext(ctx,`UPDATE sms_orders SET status='reconciling',refund_status='pending',reconciliation_action=$1,reconcile_after=NOW()+($2 * INTERVAL '1 second'),updated_at=NOW() WHERE id=$3`,smsReconciliationRefund,int(smsVerificationPollInterval.Seconds()),id)
+	return err
+}
+
 func (s *SMSService) CancelOrder(ctx context.Context, userID int64, publicID string) error {
 	var id int64
 	var providerOrder, providerCode, base, credential, status, productType string
@@ -2633,6 +2672,8 @@ func decodeCapabilities(raw []byte) SMSProviderCapabilities {
 		Cancel:            values["supports_cancel"] || values["cancel"],
 		Refund:            values["supports_refund"] || values["refund"],
 		RefundStatus:      values["supports_refund_status"] || values["refund_status"],
+		Finish:            values["supports_finish"] || values["finish"],
+		Ban:               values["supports_ban"] || values["ban"],
 		Extend:            values["supports_extend"] || values["extend"],
 		Resend:            values["supports_resend"] || values["resend"],
 		Voice:             values["supports_voice"] || values["voice"],
