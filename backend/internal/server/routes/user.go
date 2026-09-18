@@ -186,6 +186,7 @@ func RegisterUserRoutes(
 			sms.Use(smsFeatureGuard(h.SMS))
 			sms.GET("/services", h.SMS.Services)
 			sms.GET("/providers", h.SMS.Providers)
+			sms.GET("/recent-successes", h.SMS.RecentSuccesses)
 			sms.GET("/providers/:provider/services", h.SMS.ProviderServices)
 			sms.GET("/countries", h.SMS.Countries)
 			sms.GET("/providers/:provider/services/:service/countries", h.SMS.ServiceCountries)
