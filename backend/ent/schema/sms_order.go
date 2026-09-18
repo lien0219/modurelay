@@ -27,8 +27,6 @@ func (SmsOrder) Fields() []ent.Field {
 		field.String("status").MaxLen(32).Default("pending"),
 		field.String("provider_order_id").MaxLen(256).Default(""),
 		field.String("phone_number").MaxLen(64).Default(""),
-		field.String("operator_code").MaxLen(128).Default("any"),
-		field.Int("voice_mode").Default(0),
 		field.Float("provider_cost_snapshot").SchemaType(map[string]string{dialect.Postgres: "numeric(20,8)"}).Default(0),
 		field.Float("sale_price_snapshot").SchemaType(map[string]string{dialect.Postgres: "numeric(20,8)"}).Default(0),
 		field.Float("success_rate_snapshot").SchemaType(map[string]string{dialect.Postgres: "numeric(8,5)"}).Optional(),
