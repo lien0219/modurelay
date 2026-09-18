@@ -142,6 +142,7 @@ describe('VerificationRecordsView', () => {
     expect(wrapper.text()).toContain('EMAIL_GENERATION_FAILED')
     expect(wrapper.text()).toContain('internal provider response')
     expect(wrapper.text()).toContain('verificationRecords.columns.providerCost')
+    expect(wrapper.text()).toContain('verificationRecords.refundStatuses.released')
     expect(wrapper.get('table').classes()).toContain('min-w-[3300px]')
     expect(wrapper.text()).toContain('verificationRecords.summary.totalAmount')
     expect(wrapper.text()).toContain('verificationRecords.summary.totalCost')
