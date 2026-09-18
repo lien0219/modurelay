@@ -197,11 +197,15 @@ const durationUnitOptions = computed(() => {
   }
   return [{ value: 'hour', label: t('sms.user.hour') }, { value: 'day', label: t('sms.user.day') }, { value: 'week', label: t('sms.user.week') }]
 })
-const voiceModeOptions = [
-  { value: 0, label: '短信 SMS' },
-  { value: 1, label: '来电显示 Caller ID' },
-  { value: 2, label: '语音验证码 Voice' },
-]
+const voiceModeOptions = computed(() => {
+  const cap = currentProvider.value?.capabilities
+  if (!cap) return [{ value: 0, label: '短信 SMS' }]
+  const items: Array<{ value: number; label: string }> = []
+  if (cap.supports_voice_sms || !cap.supports_voice) items.push({ value: 0, label: '短信 SMS' })
+  if (cap.supports_voice_caller_id) items.push({ value: 1, label: '来电显示 Caller ID' })
+  if (cap.supports_voice_call) items.push({ value: 2, label: '语音验证码 Voice' })
+  return items.length ? items : [{ value: 0, label: '短信 SMS' }]
+})
 const orderStatuses = ['pending', 'active', 'reconciling', 'provider_unknown', 'completed', 'cancelled', 'failed', 'refunded', 'expired']
 const orderStatusOptions = computed(() => orderStatuses.map(value => ({ value, label: statusLabel(value) })))
 const serviceLabel = (code: string) => services.value.find(item => item.code === code)?.name || code
@@ -290,6 +294,7 @@ async function switchProvider(code: string) {
   providerCode.value = code
   productType.value = provider.capabilities.supports_temporary ? 'temporary' : 'rental'
   durationUnit.value = provider.code === 'smspva' ? 'week' : 'hour'
+  voiceMode.value = voiceModeOptions.value[0]?.value ?? 0
   activeTab.value = productType.value
   loading.value = true
   try {
