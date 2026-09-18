@@ -72,7 +72,7 @@
             <p v-if="!serviceCode" class="mt-3 text-xs text-gray-500">{{ t('sms.user.selectService') }}</p>
           </div>
           <div class="rounded-xl border border-gray-200 p-4 dark:border-dark-700"><p class="text-xs font-semibold uppercase tracking-wide text-gray-500">4 · {{ t('sms.user.purchase') }}</p><div class="mt-4 space-y-3"><p class="text-sm text-gray-600 dark:text-gray-300">{{ serviceLabel(serviceCode) }} · {{ countryLabel(countryCode) }}</p>
-          <div v-if="productType === 'rental'" class="grid grid-cols-2 gap-2">
+          <div v-if="productType === 'rental' && providerCode === 'smspva'" class="grid grid-cols-2 gap-2">
             <label class="block min-w-0"><span class="input-label">{{ t('sms.user.duration') }}</span><input v-model.number="durationValue" class="input h-[42px]" type="number" min="1" @change="reloadRentalCatalog" /></label>
             <Select v-model="durationUnit" :label="t('sms.user.unit')" :options="durationUnitOptions" @update:model-value="reloadRentalCatalog" />
           </div>
