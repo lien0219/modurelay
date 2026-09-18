@@ -82,6 +82,7 @@ type SMSProviderCapabilities struct {
 	VoiceCall         bool `json:"supports_voice_call"`
 	OperatorSelection bool `json:"supports_operator_selection"`
 	ServiceSelection  bool `json:"supports_service_selection"`
+	ConversionStats   bool `json:"supports_conversion_stats"`
 }
 
 // SMSPricingSettings is stored in the existing settings repository so admins
@@ -238,6 +239,7 @@ type SMSOperatorOption struct {
 	Name string `json:"name"`
 	Stock int `json:"stock,omitempty"`
 	ProviderCost float64 `json:"provider_cost,omitempty"`
+	ProviderRate float64 `json:"provider_rate,omitempty"`
 	Available bool `json:"available"`
 }
 
@@ -513,7 +515,7 @@ func (p *fiveSIMProvider) OperatorsForProduct(ctx context.Context, countryCode, 
 	}
 	var prices map[string]map[string]map[string]fiveSIMPricePoint
 	if err:=p.request(ctx,http.MethodGet,"guest/prices",url.Values{"country":{countryCode},"product":{serviceCode}},nil,&prices);err!=nil{return nil,err}
-	for _,products:=range prices{for product,operators:=range products{if !strings.EqualFold(product,serviceCode){continue};for code,point:=range operators{code=strings.ToLower(strings.TrimSpace(code));if code==""||code=="any"{continue};out=append(out,SMSOperatorOption{Code:code,Name:code,Stock:point.Count,ProviderCost:point.Cost,Available:point.Count>0})}}}
+	for _,products:=range prices{for product,operators:=range products{if !strings.EqualFold(product,serviceCode){continue};for code,point:=range operators{code=strings.ToLower(strings.TrimSpace(code));if code==""||code=="any"{continue};out=append(out,SMSOperatorOption{Code:code,Name:code,Stock:point.Count,ProviderCost:point.Cost,ProviderRate:point.Rate,Available:point.Count>0})}}}
 	sort.SliceStable(out,func(i,j int)bool{if out[i].Code=="any"{return true};if out[j].Code=="any"{return false};if out[i].ProviderCost==out[j].ProviderCost{return out[i].Name<out[j].Name};return out[i].ProviderCost<out[j].ProviderCost})
 	return out,nil
 }
@@ -1191,6 +1193,7 @@ type SMSCountryCatalogItem struct {
 	ProviderCode string `json:"provider_code,omitempty"`
 	Stock int `json:"stock,omitempty"`
 	ProviderCost float64 `json:"provider_cost,omitempty"`
+	ConversionRate float64 `json:"conversion_rate,omitempty"`
 	Available bool `json:"available"`
 }
 
@@ -2805,6 +2808,7 @@ func decodeCapabilities(raw []byte) SMSProviderCapabilities {
 		VoiceCall:         values["supports_voice_call"] || values["voice_call"],
 		OperatorSelection: values["supports_operator_selection"] || values["operator_selection"],
 		ServiceSelection:  values["supports_service_selection"] || values["service_selection"],
+		ConversionStats:   values["supports_conversion_stats"] || values["conversion_stats"],
 	}
 }
 
