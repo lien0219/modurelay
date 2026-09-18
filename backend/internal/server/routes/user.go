@@ -197,6 +197,7 @@ func RegisterUserRoutes(
 			sms.GET("/orders/:id", h.SMS.Order)
 			sms.POST("/orders/:id/cancel", h.SMS.Cancel)
 			sms.POST("/orders/:id/finish", h.SMS.Finish)
+			sms.POST("/orders/:id/resend", h.SMS.Resend)
 			sms.POST("/orders/:id/ban", h.SMS.Ban)
 			sms.GET("/orders/:id/refund-status", h.SMS.RefundStatus)
 			sms.POST("/orders/:id/refund", h.SMS.Refund)
