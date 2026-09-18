@@ -16,6 +16,7 @@ const { smsAPI, showError, showSuccess } = vi.hoisted(() => ({
     purchaseBatch: vi.fn(),
     cancel: vi.fn(),
     finish: vi.fn(),
+    resend: vi.fn(),
     ban: vi.fn(),
     refund: vi.fn(),
     extendRental: vi.fn(),
@@ -56,8 +57,12 @@ const capabilities = {
   supports_extend: true,
   supports_resend: false,
   supports_voice: true,
+  supports_voice_sms: true,
+  supports_voice_caller_id: true,
+  supports_voice_call: true,
   supports_operator_selection: true,
   supports_service_selection: true,
+  supports_conversion_stats: true,
 }
 
 const order = (status: string, id: string) => ({
