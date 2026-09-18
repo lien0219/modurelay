@@ -101,6 +101,13 @@ func (s *SMSService) reconcileSMSAction(ctx context.Context, id, userID int64, p
 		if providerOrder != "" {
 			return s.pollSMSOrder(ctx, id, providerOrder, providerCode, baseURL, credential, productType)
 		}
+		recovered, recoverErr := s.recoverUnknownSMSPurchase(ctx, id, userID, productType, providerCode, baseURL, credential)
+		if recoverErr != nil {
+			return recoverErr
+		}
+		if recovered {
+			return nil
+		}
 		if time.Since(updatedAt) >= smsVerificationUnknownTimeout {
 			return s.releaseSMSHold(ctx, id, userID, "failed", "provider result was not confirmed before reconciliation timeout")
 		}
