@@ -3285,6 +3285,10 @@ func (s *SMSService) ListChannelsAdmin(ctx context.Context) ([]SMSChannelAdmin, 
 	return out, rows.Err()
 }
 func (s *SMSService) UpdateChannel(ctx context.Context, id int64, enabled, visible, healthy bool, providerID *int64) error {
+	var channelCode string
+	if err := s.db.QueryRowContext(ctx, `SELECT code FROM sms_channels WHERE id=$1`, id).Scan(&channelCode); err != nil {
+		return err
+	}
 	var targetProviderCode string
 	if providerID != nil {
 		if err := s.db.QueryRowContext(ctx, `SELECT code FROM sms_providers WHERE id=$1`, *providerID).Scan(&targetProviderCode); err != nil {
@@ -3296,6 +3300,10 @@ func (s *SMSService) UpdateChannel(ctx context.Context, id int64, enabled, visib
 		}
 	}
 	targetProviderCode = strings.ToLower(strings.TrimSpace(targetProviderCode))
+	expectedProvider := map[string]string{"channel_1": "5sim", "channel_2": "smspva"}[strings.ToLower(strings.TrimSpace(channelCode))]
+	if expectedProvider != "" && targetProviderCode != expectedProvider {
+		return errors.New("production channel provider assignment is fixed")
+	}
 	if (enabled || visible || healthy) && targetProviderCode != "5sim" && targetProviderCode != "smspva" {
 		return errors.New("BETA provider channels cannot be enabled")
 	}
