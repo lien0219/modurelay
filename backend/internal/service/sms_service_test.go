@@ -80,7 +80,11 @@ func TestFiveSIMCountriesParseProductFilteredPricesShape(t *testing.T) {
 	defer server.Close()
 
 	p := providerFor("5sim", server.URL, "")
-	countries, err := p.(SMSProductServiceCountryProvider).CountriesForServiceProduct(context.Background(), "openai", "temporary", 0, "")
+	countryProvider, ok := p.(SMSProductServiceCountryProvider)
+	if !ok {
+		t.Fatal("5SIM provider does not implement product-specific country catalog")
+	}
+	countries, err := countryProvider.CountriesForServiceProduct(context.Background(), "openai", "temporary", 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}
