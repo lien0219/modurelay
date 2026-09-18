@@ -158,6 +158,50 @@
         </div>
       </section>
 
+      <section v-if="activeTab !== 'orders' && liveOrders.length" class="space-y-3">
+        <div v-for="order in liveOrders" :key="order.id" class="card p-5">
+          <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div class="min-w-0">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="badge" :class="statusClass(order.status)">{{ statusLabel(order.status) }}</span>
+                <span class="text-sm font-medium text-gray-900 dark:text-white">{{ serviceLabel(order.service_code) }}</span>
+                <span class="text-gray-300 dark:text-dark-600">·</span>
+                <span class="flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-300">
+                  <span :class="flagClass(order.country_code)" class="fi fis rounded-sm shadow-sm" aria-hidden="true"></span>
+                  {{ countryLabel(order.country_code) }}
+                </span>
+              </div>
+              <div class="mt-3 flex flex-wrap items-center gap-x-6 gap-y-3">
+                <div>
+                  <div class="text-xs text-gray-500">{{ t('sms.user.phone') }}</div>
+                  <div class="mt-1 flex items-center gap-2">
+                    <span class="font-mono text-base font-semibold text-gray-900 dark:text-white">{{ order.phone_number || '-' }}</span>
+                    <button v-if="order.phone_number" type="button" class="btn btn-secondary btn-sm" @click="copyText(order.phone_number)">{{ t('common.copy') }}</button>
+                  </div>
+                </div>
+                <div>
+                  <div class="text-xs text-gray-500">{{ t('sms.user.expiresIn') }}</div>
+                  <div class="mt-1 font-mono text-base font-semibold tabular-nums text-gray-900 dark:text-white">{{ remainingLabel(order) }}</div>
+                </div>
+                <div>
+                  <div class="text-xs text-gray-500">{{ t('sms.user.code') }}</div>
+                  <div v-if="latestVerificationCode(order)" class="mt-1 flex items-center gap-2">
+                    <code class="rounded bg-emerald-50 px-2 py-1 font-mono text-base font-bold text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">{{ latestVerificationCode(order) }}</code>
+                    <button type="button" class="btn btn-secondary btn-sm" @click="copyText(latestVerificationCode(order))">{{ t('common.copy') }}</button>
+                  </div>
+                  <div v-else class="mt-1 text-sm text-gray-400">{{ isOrderWaiting(order) ? t('sms.user.waitingForCode') : '-' }}</div>
+                </div>
+              </div>
+            </div>
+            <div class="flex shrink-0 flex-wrap gap-2">
+              <button v-if="order.status === 'active' && order.capabilities?.supports_cancel !== false" type="button" class="btn btn-secondary" @click="cancel(order.id)">{{ t('sms.user.cancel') }}</button>
+              <button v-if="order.status === 'active' && order.product_type === 'temporary' && order.capabilities?.supports_refund !== false" type="button" class="btn btn-secondary" @click="refund(order.id)">{{ t('sms.user.requestRefund') }}</button>
+              <button v-if="order.status === 'active' && order.product_type === 'temporary' && order.capabilities?.supports_resend" type="button" class="btn btn-secondary" @click="resend(order.id)">{{ t('sms.user.resend') }}</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section v-if="activeTab !== 'orders'" class="space-y-3">
         <div v-if="quoting" class="card p-8 text-center text-sm text-gray-500">{{ t('sms.user.checkingStock') }}</div>
         <div v-else-if="!quotes.length" class="card p-8 text-center text-sm text-gray-500">{{ serviceCode && countryCode ? t('sms.user.noChannel') : t('sms.user.chooseForQuote') }}</div>
@@ -196,13 +240,24 @@
             <thead class="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-dark-800"><tr><th class="px-4 py-3">{{ t('sms.user.order') }}</th><th class="px-4 py-3">{{ t('sms.user.channel') }}</th><th class="px-4 py-3">{{ t('sms.user.service') }}</th><th class="px-4 py-3">{{ t('sms.user.country') }}</th><th class="px-4 py-3">{{ t('sms.user.operator') }}</th><th class="px-4 py-3">{{ t('sms.user.phone') }}</th><th class="px-4 py-3">{{ t('sms.user.status') }}</th><th class="px-4 py-3">{{ t('sms.user.code') }}</th><th class="px-4 py-3">{{ t('sms.user.price') }}</th><th class="px-4 py-3">{{ t('sms.user.expiresIn') }}</th><th class="px-4 py-3">{{ t('sms.user.actions') }}</th></tr></thead>
             <tbody>
             <tr v-for="order in orders" :key="order.id" class="border-t border-gray-100 dark:border-dark-700">
-              <td class="px-4 py-3 font-mono text-xs">{{ order.id }}</td><td class="px-4 py-3">{{ order.channel_name || order.channel_code }}</td><td class="px-4 py-3">{{ serviceLabel(order.service_code) }}</td><td class="px-4 py-3">{{ countryLabel(order.country_code) }}</td><td class="px-4 py-3 font-mono text-xs">{{ order.operator_code || 'any' }}</td><td class="px-4 py-3"><div class="flex min-w-max items-center gap-2"><span class="font-mono">{{ order.phone_number || '-' }}</span><button v-if="order.phone_number" type="button" class="btn btn-secondary btn-sm" @click="copyText(order.phone_number)">{{ t('common.copy') }}</button></div></td><td class="px-4 py-3"><span class="badge" :class="statusClass(order.status)">{{ statusLabel(order.status) }}</span><span v-if="order.refund_status !== 'not_requested'" class="badge badge-warning ml-1">{{ refundLabel(order.refund_status) }}</span></td><td class="px-4 py-3"><div v-if="order.messages?.length" class="space-y-2"><div v-for="message in order.messages" :key="message.id" class="max-w-80"><div v-if="message.verification_code" class="flex items-center gap-2"><code class="font-mono font-semibold">{{ message.verification_code }}</code><button type="button" class="btn btn-secondary btn-sm" @click="copyText(message.verification_code)">{{ t('common.copy') }}</button></div><div class="mt-1 break-words text-xs text-gray-500">{{ message.message_text }}</div></div></div><span v-else>-</span></td><td class="px-4 py-3 tabular-nums">{{ order.price.toFixed(4) }}</td><td class="px-4 py-3 tabular-nums">{{ remainingLabel(order) }}</td><td class="px-4 py-3"><div class="flex min-w-max items-center gap-2"><button v-if="order.status === 'active' && (order.product_type === 'rental' ? order.capabilities?.supports_rental_cancel : order.capabilities?.supports_cancel !== false)" type="button" class="btn btn-secondary btn-sm" @click="cancel(order.id)">{{ t('sms.user.cancel') }}</button><button v-if="order.status === 'active' && order.product_type === 'rental' && order.capabilities?.supports_extend" type="button" class="btn btn-secondary btn-sm" @click="extend(order.id)">{{ t('sms.user.extend') }}</button><button v-if="order.status === 'active' && order.product_type === 'temporary' && order.capabilities?.supports_finish" type="button" class="btn btn-secondary btn-sm" @click="finish(order.id)">{{ t('sms.user.finish') }}</button><button v-if="order.status === 'active' && order.product_type === 'temporary' && order.capabilities?.supports_resend" type="button" class="btn btn-secondary btn-sm" @click="resend(order.id)">{{ t('sms.user.resend') }}</button><button v-if="order.status === 'active' && order.product_type === 'temporary' && order.capabilities?.supports_ban" type="button" class="btn btn-secondary btn-sm" @click="ban(order.id)">{{ t('sms.user.ban') }}</button><button v-if="order.status === 'active' && order.product_type === 'temporary' && order.capabilities?.supports_refund !== false" type="button" class="btn btn-secondary btn-sm" @click="refund(order.id)">{{ t('sms.user.requestRefund') }}</button><button type="button" class="btn btn-secondary btn-sm" :disabled="refreshingId === order.id" :aria-label="t('common.refresh')" @click="refreshOrder(order.id)"><Icon name="refresh" size="sm" :class="refreshingId === order.id ? 'animate-spin' : ''" aria-hidden="true" /></button></div></td>
+              <td class="px-4 py-3 font-mono text-xs">{{ order.id }}</td><td class="px-4 py-3">{{ order.channel_name || order.channel_code }}</td><td class="px-4 py-3">{{ serviceLabel(order.service_code) }}</td><td class="px-4 py-3">{{ countryLabel(order.country_code) }}</td><td class="px-4 py-3 font-mono text-xs">{{ order.operator_code || 'any' }}</td><td class="px-4 py-3"><div class="flex min-w-max items-center gap-2"><span class="font-mono">{{ order.phone_number || '-' }}</span><button v-if="order.phone_number" type="button" class="btn btn-secondary btn-sm" @click="copyText(order.phone_number)">{{ t('common.copy') }}</button></div></td><td class="px-4 py-3"><span class="badge" :class="statusClass(order.status)">{{ statusLabel(order.status) }}</span><span v-if="order.refund_status !== 'not_requested'" class="badge badge-warning ml-1">{{ refundLabel(order.refund_status) }}</span></td><td class="px-4 py-3"><div v-if="order.messages?.length" class="space-y-2"><div v-for="message in order.messages" :key="message.id" class="max-w-80"><div v-if="message.verification_code" class="flex items-center gap-2"><code class="font-mono font-semibold">{{ message.verification_code }}</code><button type="button" class="btn btn-secondary btn-sm" @click="copyText(message.verification_code)">{{ t('common.copy') }}</button></div><div class="mt-1 break-words text-xs text-gray-500">{{ message.message_text }}</div></div></div><span v-else>-</span></td><td class="px-4 py-3 tabular-nums">{{ order.price.toFixed(4) }}</td><td class="px-4 py-3 tabular-nums">{{ remainingLabel(order) }}</td><td class="px-4 py-3"><div class="flex min-w-max items-center gap-2"><button v-if="order.status === 'active' && (order.product_type === 'rental' ? order.capabilities?.supports_rental_cancel : order.capabilities?.supports_cancel !== false)" type="button" class="btn btn-secondary btn-sm" @click="cancel(order.id)">{{ t('sms.user.cancel') }}</button><button v-if="order.status === 'active' && order.product_type === 'rental' && order.capabilities?.supports_extend" type="button" class="btn btn-secondary btn-sm" @click="extend(order.id)">{{ t('sms.user.extend') }}</button><button v-if="order.status === 'active' && order.product_type === 'temporary' && order.capabilities?.supports_resend" type="button" class="btn btn-secondary btn-sm" @click="resend(order.id)">{{ t('sms.user.resend') }}</button><button v-if="order.status === 'active' && order.product_type === 'temporary' && order.capabilities?.supports_refund !== false" type="button" class="btn btn-secondary btn-sm" @click="refund(order.id)">{{ t('sms.user.requestRefund') }}</button><button type="button" class="btn btn-secondary btn-sm" :disabled="refreshingId === order.id" :aria-label="t('common.refresh')" @click="refreshOrder(order.id)"><Icon name="refresh" size="sm" :class="refreshingId === order.id ? 'animate-spin' : ''" aria-hidden="true" /></button></div></td>
             </tr>
             </tbody>
           </table>
         </div>
         <div v-if="orderPagination.total > 0" class="card overflow-hidden"><Pagination :page="orderPagination.page" :total="orderPagination.total" :page-size="orderPagination.pageSize" @update:page="changeOrderPage" @update:page-size="changeOrderPageSize" /></div>
       </section>
+
+      <ConfirmDialog
+        :show="confirmState.show"
+        :title="confirmState.title"
+        :message="confirmState.message"
+        :confirm-text="confirmState.confirmText"
+        :danger="confirmState.danger"
+        :confirming="confirmingAction"
+        @confirm="runConfirmedAction"
+        @cancel="closeConfirm"
+      />
     </div>
   </AppLayout>
 </template>
@@ -213,6 +268,7 @@ import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import Select from '@/components/common/Select.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { Icon as IconifyIcon } from '@iconify/vue'
 import { smsAPI, type SMSCountryItem, type SMSOperatorItem, type SMSOrder, type SMSOrderPage, type SMSProviderItem, type SMSQuote, type SMSRecentSuccessItem, type SMSServiceItem } from '@/api/sms'
@@ -238,6 +294,7 @@ const durationValue = ref(1)
 const durationUnit = ref('week')
 const quotes = ref<SMSQuote[]>([])
 const orders = ref<SMSOrder[]>([])
+const liveOrders = ref<SMSOrder[]>([])
 const recentSuccessItems = ref<SMSRecentSuccessItem[]>([])
 const loading = ref(false)
 const quoting = ref(false)
@@ -252,6 +309,8 @@ const refreshingId = ref('')
 const orderPagination = reactive({ page: 1, pageSize: getPersistedPageSize(20), total: 0 })
 const orderDraft = reactive({ keyword: '', status: '' })
 const orderFilters = reactive({ keyword: '', status: '' })
+const confirmState = reactive({ show: false, title: '', message: '', confirmText: '', danger: false, action: null as null | (() => Promise<void>) })
+const confirmingAction = ref(false)
 let pollTimer: number | undefined
 let countdownTimer: number | undefined
 let serviceSearchTimer: number | undefined
@@ -295,6 +354,9 @@ function errorMessage(error: unknown, fallback: string) {
   if (candidate?.code === 'INSUFFICIENT_STOCK') return t('sms.user.errors.insufficientStock')
   return candidate?.message || fallback
 }
+const isOrderWaiting = (order: SMSOrder) => ['active', 'provider_unknown', 'reconciling'].includes(order.status)
+const latestVerificationCode = (order: SMSOrder) => [...(order.messages || [])].reverse().find(message => message.verification_code)?.verification_code || ''
+
 const remainingLabel = (order: SMSOrder) => {
   const seconds = Math.max(0, order.remaining_seconds ?? (order.expires_at ? Math.floor((new Date(order.expires_at).getTime() - Date.now()) / 1000) : 0))
   if (seconds <= 0) return ['active', 'provider_unknown'].includes(order.status) ? t('sms.user.refundProcessing') : '-'
@@ -304,6 +366,7 @@ const remainingLabel = (order: SMSOrder) => {
 
 function refreshCountdowns() {
   orders.value = orders.value.map(order => ({ ...order }))
+  liveOrders.value = liveOrders.value.map(order => ({ ...order }))
 }
 
 function englishCountryName(iso2: string) {
@@ -539,7 +602,6 @@ async function loadOrders() {
       orderPagination.page = result.page
       orderPagination.pageSize = result.page_size
     }
-    await refreshActiveOrders()
   } catch (error) {
     appStore.showError(errorMessage(error, t('sms.user.errors.orders')))
   } finally {
@@ -560,11 +622,14 @@ async function purchase(quote: SMSQuote) {
     const item = { channel_code: quote.channel_code, service_code: serviceCode.value, country_code: countryCode.value, product_type: productType.value, operator_code: operatorCode.value || 'any', voice_mode: voiceMode.value, duration_value: productType.value === 'rental' ? durationValue.value : undefined, duration_unit: productType.value === 'rental' ? durationUnit.value : undefined, quote_id: quote.quote_id, expected_price: quote.sale_price }
     if (quantity > 1) {
       const result = await smsAPI.purchaseBatch({ items: Array.from({ length: quantity }, () => item) }, key)
+      liveOrders.value = [...result.items, ...liveOrders.value.filter(existing => !result.items.some(item => item.id === existing.id))]
       if (result.partial_error) appStore.showError(result.partial_error)
+    } else {
+      const order = await smsAPI.purchase(item, key)
+      liveOrders.value = [order, ...liveOrders.value.filter(existing => existing.id !== order.id)]
     }
-    else await smsAPI.purchase(item, key)
-    activeTab.value = 'orders'
-    await loadOrders()
+    quotes.value = []
+    appStore.showSuccess(t('sms.user.purchaseSuccess'))
   } catch (error) {
     appStore.showError(errorMessage(error, t('sms.user.errors.purchase')))
   } finally {
@@ -572,14 +637,49 @@ async function purchase(quote: SMSQuote) {
   }
 }
 
-async function cancel(id: string) {
-  if (!window.confirm(t('common.confirm'))) return
+function askConfirm(options: { title: string; message: string; confirmText?: string; danger?: boolean; action: () => Promise<void> }) {
+  confirmState.title = options.title
+  confirmState.message = options.message
+  confirmState.confirmText = options.confirmText || t('common.confirm')
+  confirmState.danger = options.danger ?? false
+  confirmState.action = options.action
+  confirmState.show = true
+}
+
+function closeConfirm() {
+  if (confirmingAction.value) return
+  confirmState.show = false
+  confirmState.action = null
+}
+
+async function runConfirmedAction() {
+  if (!confirmState.action || confirmingAction.value) return
+  confirmingAction.value = true
   try {
-    await smsAPI.cancel(id)
-    await loadOrders()
-  } catch (error) {
-    appStore.showError(errorMessage(error, t('sms.user.errors.cancel')))
+    await confirmState.action()
+    confirmState.show = false
+    confirmState.action = null
+  } finally {
+    confirmingAction.value = false
   }
+}
+
+function cancel(id: string) {
+  askConfirm({
+    title: t('sms.user.cancelConfirmTitle'),
+    message: t('sms.user.cancelConfirmMessage'),
+    confirmText: t('sms.user.cancel'),
+    danger: true,
+    action: async () => {
+      try {
+        await smsAPI.cancel(id)
+        await refreshOrder(id)
+      } catch (error) {
+        await refreshOrder(id)
+        appStore.showError(errorMessage(error, t('sms.user.errors.cancel')))
+      }
+    },
+  })
 }
 
 async function copyText(value?: string) {
@@ -597,26 +697,24 @@ async function resend(id: string) {
   catch (error) { appStore.showError(errorMessage(error, t('sms.user.resendFailed'))) }
 }
 
-async function finish(id: string) {
-  if (!window.confirm(t('sms.user.finishConfirm'))) return
-  try { await smsAPI.finish(id); await loadOrders() }
-  catch (error) { appStore.showError(errorMessage(error, t('sms.user.finishFailed'))) }
-}
 
-async function ban(id: string) {
-  if (!window.confirm(t('sms.user.banConfirm'))) return
-  try { await smsAPI.ban(id); await loadOrders() }
-  catch (error) { appStore.showError(errorMessage(error, t('sms.user.banFailed'))) }
-}
 
-async function refund(id: string) {
-  if (!window.confirm(t('common.confirm'))) return
-  try {
-    await smsAPI.refund(id)
-    await loadOrders()
-  } catch (error) {
-    appStore.showError(errorMessage(error, t('sms.user.errors.refund')))
-  }
+function refund(id: string) {
+  askConfirm({
+    title: t('sms.user.refundConfirmTitle'),
+    message: t('sms.user.refundConfirmMessage'),
+    confirmText: t('sms.user.requestRefund'),
+    danger: true,
+    action: async () => {
+      try {
+        await smsAPI.refund(id)
+        await refreshOrder(id)
+      } catch (error) {
+        await refreshOrder(id)
+        appStore.showError(errorMessage(error, t('sms.user.errors.refund')))
+      }
+    },
+  })
 }
 
 async function selectService(code: string) {
@@ -711,25 +809,32 @@ async function extend(id: string) {
   }
 }
 
+function replaceOrder(updated: SMSOrder) {
+  const orderIndex = orders.value.findIndex(item => item.id === updated.id)
+  if (orderIndex >= 0) orders.value[orderIndex] = updated
+  const liveIndex = liveOrders.value.findIndex(item => item.id === updated.id)
+  if (liveIndex >= 0) liveOrders.value[liveIndex] = updated
+}
+
 async function refreshOrder(id: string) {
   refreshingId.value = id
   try {
     const updated = await smsAPI.order(id)
-    const index = orders.value.findIndex((item) => item.id === id)
-    if (index >= 0) orders.value[index] = updated
+    replaceOrder(updated)
   } finally {
     refreshingId.value = ''
   }
 }
 
-async function refreshActiveOrders() {
-  const activeOrders = orders.value.filter(order => ['active', 'provider_unknown', 'reconciling'].includes(order.status)).slice(0, 20)
-  if (!activeOrders.length) return
-  const updates = await Promise.allSettled(activeOrders.map(order => smsAPI.order(order.id)))
-  updates.forEach((result, index) => {
-    if (result.status !== 'fulfilled' || !result.value) return
-    const orderIndex = orders.value.findIndex(item => item.id === activeOrders[index].id)
-    if (orderIndex >= 0) orders.value[orderIndex] = result.value
+async function refreshWaitingOrders() {
+  const candidates = [...liveOrders.value, ...(activeTab.value === 'orders' ? orders.value : [])]
+    .filter(isOrderWaiting)
+    .filter((order, index, items) => items.findIndex(item => item.id === order.id) === index)
+    .slice(0, 20)
+  if (!candidates.length) return
+  const updates = await Promise.allSettled(candidates.map(order => smsAPI.order(order.id)))
+  updates.forEach(result => {
+    if (result.status === 'fulfilled' && result.value) replaceOrder(result.value)
   })
 }
 
@@ -738,8 +843,8 @@ onMounted(() => {
   loadAll()
   countdownTimer = window.setInterval(refreshCountdowns, 1000)
   pollTimer = window.setInterval(() => {
-    if (activeTab.value === 'orders') void loadOrders()
-  }, 10000)
+    void refreshWaitingOrders()
+  }, 3000)
 })
 
 onBeforeUnmount(() => {
