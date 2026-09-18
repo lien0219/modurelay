@@ -1266,7 +1266,7 @@ func (s *SMSService) ProviderServicesForProduct(ctx context.Context, providerCod
 	providerCode = strings.ToLower(strings.TrimSpace(providerCode))
 	productType = strings.ToLower(strings.TrimSpace(productType))
 	if productType == "" { productType = "temporary" }
-	rows, snapshotErr := s.db.QueryContext(ctx, `SELECT c.provider_service_code,c.provider_service_name,c.category FROM sms_provider_catalog_services c JOIN sms_providers p ON p.id=c.provider_id WHERE p.code=$1 AND p.enabled AND c.enabled ORDER BY c.provider_service_code`, providerCode)
+	rows, snapshotErr := s.db.QueryContext(ctx, `SELECT c.provider_service_code,c.provider_service_name,c.category FROM sms_provider_catalog_services c JOIN sms_providers p ON p.id=c.provider_id WHERE p.code=$1 AND p.enabled AND c.enabled AND (($2='rental' AND lower(c.category)='rental') OR ($2<>'rental' AND lower(c.category)<>'rental')) ORDER BY c.provider_service_code`, providerCode, productType)
 	if snapshotErr == nil { defer func() { _ = rows.Close() }(); items := make([]SMSSvcCatalogItem, 0); for rows.Next() { var item SMSSvcCatalogItem; if scanErr := rows.Scan(&item.Code, &item.Name, &item.Category); scanErr != nil { return nil, scanErr }; item.ProviderCode = item.Code; items = append(items, item) }; if rows.Err() != nil { return nil, rows.Err() }; if len(items)>0 { return items,nil } }
 	var base, credential string
 	if err := s.db.QueryRowContext(ctx, `SELECT base_url,credential_ref FROM sms_providers WHERE code=$1 AND enabled`, providerCode).Scan(&base,&credential); err != nil { return nil, err }
