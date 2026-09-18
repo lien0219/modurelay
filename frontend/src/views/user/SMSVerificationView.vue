@@ -65,7 +65,7 @@
             <div class="mt-3 max-h-72 space-y-2 overflow-y-auto pr-1">
               <button v-for="option in filteredCountryOptions" :key="String(option.value)" type="button" class="flex min-h-11 w-full items-center justify-between gap-3 rounded-lg border px-3 text-left text-sm disabled:cursor-not-allowed disabled:opacity-45" :disabled="option.available === false" :class="countryCode === option.value ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-900/20' : 'border-gray-200 dark:border-dark-700'" @click="selectCountry(String(option.value))">
                 <span class="min-w-0"><span class="block truncate">{{ option.label }}</span><span v-if="option.stock != null" class="block text-[10px] text-gray-400">库存 {{ option.stock }}</span></span>
-                <span class="shrink-0 text-right"><span v-if="option.providerCost != null && option.providerCost > 0" class="block font-semibold tabular-nums text-orange-600">$ {{ option.providerCost.toFixed(4) }}</span><span v-if="countryCode === option.value" class="block text-[10px] text-gray-500">{{ t('sms.user.selected') }}</span></span>
+                <span class="shrink-0 text-right"><span v-if="countryCode === option.value" class="block text-[10px] text-gray-500">{{ t('sms.user.selected') }}</span></span>
               </button>
               <div v-if="serviceCode && !filteredCountryOptions.length" class="py-8 text-center text-sm text-gray-400">当前平台暂无匹配国家</div>
             </div>
@@ -375,9 +375,11 @@ function selectCountry(code: string) {
   if (!country || country.available === false) return
   countryCode.value = code
   quotes.value = []
+  void loadQuotes()
 }
 
 async function loadServiceCountries() {
+  countryKeyword.value = ''
   countryCode.value = ''
   quotes.value = []
   if (!serviceCode.value) return
