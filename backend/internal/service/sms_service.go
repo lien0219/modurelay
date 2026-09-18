@@ -2537,7 +2537,7 @@ func resolveSMSCapabilities(providerCode, baseURL string, raw []byte) SMSProvide
 }
 
 func (s *SMSService) ListProviders(ctx context.Context) ([]SMSProviderAdmin, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id,code,name,base_url,enabled,health_status,credential_ref,capabilities FROM sms_providers ORDER BY id`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id,code,name,base_url,enabled,health_status,credential_ref,capabilities FROM sms_providers ORDER BY CASE code WHEN '5sim' THEN 1 WHEN 'smspva' THEN 2 ELSE 100 END,id`)
 	if err != nil {
 		return nil, err
 	}
@@ -2603,6 +2603,10 @@ func (s *SMSService) UpdateProvider(ctx context.Context, id int64, enabled bool,
 	if err := s.db.QueryRowContext(ctx, `SELECT code,credential_ref FROM sms_providers WHERE id=$1`, id).Scan(&code, &existingCredential); err != nil {
 		return err
 	}
+	code = strings.ToLower(strings.TrimSpace(code))
+	if enabled && code != "5sim" && code != "smspva" {
+		return errors.New("provider is BETA and cannot be enabled")
+	}
 	baseURL = strings.TrimSpace(baseURL)
 	if baseURL != "" {
 		u, err := url.Parse(baseURL)
@@ -2651,6 +2655,20 @@ func (s *SMSService) ListChannelsAdmin(ctx context.Context) ([]SMSChannelAdmin, 
 	return out, rows.Err()
 }
 func (s *SMSService) UpdateChannel(ctx context.Context, id int64, enabled, visible, healthy bool, providerID *int64) error {
+	var targetProviderCode string
+	if providerID != nil {
+		if err := s.db.QueryRowContext(ctx, `SELECT code FROM sms_providers WHERE id=$1`, *providerID).Scan(&targetProviderCode); err != nil {
+			return errors.New("provider not found")
+		}
+	} else {
+		if err := s.db.QueryRowContext(ctx, `SELECT p.code FROM sms_channels c JOIN sms_providers p ON p.id=c.provider_id WHERE c.id=$1`, id).Scan(&targetProviderCode); err != nil {
+			return err
+		}
+	}
+	targetProviderCode = strings.ToLower(strings.TrimSpace(targetProviderCode))
+	if (enabled || visible || healthy) && targetProviderCode != "5sim" && targetProviderCode != "smspva" {
+		return errors.New("BETA provider channels cannot be enabled")
+	}
 	if providerID != nil {
 		var exists bool
 		if err := s.db.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM sms_providers WHERE id=$1)`, *providerID).Scan(&exists); err != nil {
