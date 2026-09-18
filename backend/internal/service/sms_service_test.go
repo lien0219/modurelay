@@ -106,7 +106,7 @@ func TestFiveSIMRecoversTimedOutPurchaseFromOrderHistory(t *testing.T) {
 		if r.URL.Path != "/user/orders" {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
-		if r.URL.Query().Get("category") != "activation" || r.URL.Query().Get("limit") != "25" || r.URL.Query().Get("reverse") != "true" {
+		if r.URL.Query().Get("category") != "activation" || r.URL.Query().Get("limit") != "50" || r.URL.Query().Get("reverse") != "true" {
 			t.Fatalf("unexpected history query: %s", r.URL.RawQuery)
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -144,7 +144,11 @@ func TestFiveSIMRecoveryRejectsAmbiguousMatches(t *testing.T) {
 	}))
 	defer server.Close()
 
-	recovery := providerFor("5sim", server.URL, "secret").(SMSPurchaseRecoveryProvider)
+	p := providerFor("5sim", server.URL, "secret")
+	recovery, ok := p.(SMSPurchaseRecoveryProvider)
+	if !ok {
+		t.Fatal("5SIM purchase recovery adapter missing")
+	}
 	if _, err := recovery.RecoverTemporaryPurchase(context.Background(), SMSPurchaseRequest{ServiceCode: "openai", CountryCode: "usa", OperatorCode: "any", ProviderCostLimit: 0.05}, startedAt); err == nil {
 		t.Fatal("ambiguous 5SIM recovery must fail closed")
 	}
@@ -725,7 +729,6 @@ func TestFiveSIMPurchaseFinishAndBanContracts(t *testing.T) {
 		}
 	}
 }
-
 
 func TestFiveSIMStatusReturnsActualCostAndOperator(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
