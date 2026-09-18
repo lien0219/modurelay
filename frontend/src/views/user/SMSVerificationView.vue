@@ -64,7 +64,7 @@
             <div class="mt-3"><input v-model.trim="countryKeyword" class="input h-10 w-full" placeholder="搜索国家 / 地区" :disabled="!serviceCode" /></div>
             <div class="mt-3 max-h-72 space-y-2 overflow-y-auto pr-1">
               <button v-for="option in filteredCountryOptions" :key="String(option.value)" type="button" class="flex min-h-11 w-full items-center justify-between gap-3 rounded-lg border px-3 text-left text-sm disabled:cursor-not-allowed disabled:opacity-45" :disabled="option.available === false" :class="countryCode === option.value ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-900/20' : 'border-gray-200 dark:border-dark-700'" @click="selectCountry(String(option.value))">
-                <span class="min-w-0"><span class="block truncate">{{ option.label }}</span><span v-if="option.stock != null" class="block text-[10px] text-gray-400">库存 {{ option.stock }}</span></span>
+                <span class="min-w-0"><span class="block truncate">{{ option.label }}</span><span v-if="option.stock != null" class="block text-[10px] text-gray-400">库存 {{ option.stock }}<template v-if="option.conversionRate != null && option.conversionRate > 0"> · 转化指标 {{ option.conversionRate }}</template></span></span>
                 <span class="shrink-0 text-right"><span v-if="countryCode === option.value" class="block text-[10px] text-gray-500">{{ t('sms.user.selected') }}</span></span>
               </button>
               <div v-if="serviceCode && !filteredCountryOptions.length" class="py-8 text-center text-sm text-gray-400">当前平台暂无匹配国家</div>
@@ -77,7 +77,7 @@
             <Select v-model="durationUnit" :label="t('sms.user.unit')" :options="durationUnitOptions" @update:model-value="reloadRentalCatalog" />
           </div>
           <label v-if="currentProvider?.capabilities.supports_voice" class="block"><span class="input-label">验证码类型</span><select v-model.number="voiceMode" class="input h-[42px] w-full" @change="changeVoiceMode"><option v-for="item in voiceModeOptions" :key="item.value" :value="item.value">{{ item.label }}</option></select></label>
-          <label v-if="currentProvider?.capabilities.supports_operator_selection" class="block"><span class="input-label">运营商</span><select v-model="operatorCode" class="input h-[42px] w-full" @change="quotes = []; loadQuotes()"><option value="any">Any / 自动选择</option><option v-for="item in operators.filter(op => op.code !== 'any')" :key="item.code" :value="item.code" :disabled="item.available === false">{{ item.name }}{{ item.stock != null ? ` · 库存 ${item.stock}` : '' }}</option></select></label>
+          <label v-if="currentProvider?.capabilities.supports_operator_selection" class="block"><span class="input-label">运营商</span><select v-model="operatorCode" class="input h-[42px] w-full" @change="quotes = []; loadQuotes()"><option value="any">Any / 自动选择</option><option v-for="item in operators.filter(op => op.code !== 'any')" :key="item.code" :value="item.code" :disabled="item.available === false">{{ item.name }}{{ item.stock != null ? ` · 库存 ${item.stock}` : '' }}{{ item.provider_rate != null && item.provider_rate > 0 ? ` · 成功率指标 ${item.provider_rate}` : '' }}</option></select></label>
           <label class="block"><span class="input-label">{{ t('sms.user.quantity') }}</span><input v-model.number="purchaseQuantity" class="input h-[42px] w-full" type="number" min="1" max="50" /></label><button type="button" class="btn btn-primary w-full" :disabled="!serviceCode || !countryCode || quoting" @click="loadQuotes">{{ quoting ? t('sms.user.quoting') : t('sms.user.getQuote') }}</button></div></div>
         </div>
 
@@ -186,7 +186,7 @@ const filteredServiceOptions = computed(() => {
   const q = serviceKeyword.value.toLowerCase()
   return serviceOptions.value.filter(item => !q || item.label.toLowerCase().includes(q) || item.value.toLowerCase().includes(q))
 })
-const countryOptions = computed(() => countries.value.map(item => ({ value: item.iso2, label: countryName(item), stock: item.stock, providerCost: item.provider_cost, available: item.available })))
+const countryOptions = computed(() => countries.value.map(item => ({ value: item.iso2, label: countryName(item), stock: item.stock, providerCost: item.provider_cost, conversionRate: item.conversion_rate, available: item.available })))
 const filteredCountryOptions = computed(() => {
   const q = countryKeyword.value.toLowerCase()
   return countryOptions.value.filter(item => !q || item.label.toLowerCase().includes(q) || item.value.toLowerCase().includes(q))
