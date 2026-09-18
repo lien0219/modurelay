@@ -226,15 +226,16 @@ type SMSProviderQuote struct {
 	EstimatedDeliverySeconds int             `json:"estimated_delivery_seconds"`
 }
 type SMSPurchaseRequest struct {
-	ChannelCode   string `json:"channel_code"`
-	ServiceCode   string `json:"service_code"`
-	CountryCode   string `json:"country_code"`
-	ProductType   string `json:"product_type"`
-	OperatorCode  string `json:"operator_code,omitempty"`
-	VoiceMode     int    `json:"voice_mode,omitempty"`
-	DurationValue int    `json:"duration_value,omitempty"`
-	DurationUnit  string `json:"duration_unit,omitempty"`
-	QuoteID       string `json:"quote_id,omitempty"`
+	ChannelCode       string  `json:"channel_code"`
+	ServiceCode       string  `json:"service_code"`
+	CountryCode       string  `json:"country_code"`
+	ProductType       string  `json:"product_type"`
+	OperatorCode      string  `json:"operator_code,omitempty"`
+	VoiceMode         int     `json:"voice_mode,omitempty"`
+	DurationValue     int     `json:"duration_value,omitempty"`
+	DurationUnit      string  `json:"duration_unit,omitempty"`
+	QuoteID           string  `json:"quote_id,omitempty"`
+	ProviderCostLimit float64 `json:"-"`
 }
 
 // CloneQuote creates an independent consumable quote for a batch item. The
@@ -261,16 +262,20 @@ type SMSMessage struct {
 	ReceivedAt       time.Time `json:"received_at"`
 }
 type SMSPurchaseResult struct {
-	ProviderOrderID string         `json:"provider_order_id"`
-	PhoneNumber     string         `json:"phone_number"`
-	ExpiresAt       *time.Time     `json:"expires_at,omitempty"`
-	Metadata        map[string]any `json:"metadata,omitempty"`
+	ProviderOrderID     string         `json:"provider_order_id"`
+	PhoneNumber         string         `json:"phone_number"`
+	ExpiresAt           *time.Time     `json:"expires_at,omitempty"`
+	Metadata            map[string]any `json:"metadata,omitempty"`
+	ProviderCost        float64        `json:"-"`
+	ProviderOperatorCode string        `json:"-"`
 }
 type SMSStatusResult struct {
-	Status      string         `json:"status"`
-	PhoneNumber string         `json:"phone_number"`
-	Messages    []string       `json:"messages,omitempty"`
-	Metadata    map[string]any `json:"metadata,omitempty"`
+	Status               string         `json:"status"`
+	PhoneNumber          string         `json:"phone_number"`
+	Messages             []string       `json:"messages,omitempty"`
+	Metadata             map[string]any `json:"metadata,omitempty"`
+	ProviderCost         float64        `json:"-"`
+	ProviderOperatorCode string         `json:"-"`
 }
 
 type SMSProvider interface {
@@ -662,9 +667,11 @@ func (p *fiveSIMProvider) PurchaseTemporary(ctx context.Context, req SMSPurchase
 
 func (p *fiveSIMProvider) buy(ctx context.Context, category string, req SMSPurchaseRequest) (*SMSPurchaseResult, error) {
 	var out struct {
-		ID      any       `json:"id"`
-		Phone   string    `json:"phone"`
-		Expires time.Time `json:"expires"`
+		ID       any       `json:"id"`
+		Phone    string    `json:"phone"`
+		Expires  time.Time `json:"expires"`
+		Price    float64   `json:"price"`
+		Operator string    `json:"operator"`
 	}
 	operator := strings.ToLower(strings.TrimSpace(req.OperatorCode))
 	if operator == "" {
@@ -675,6 +682,9 @@ func (p *fiveSIMProvider) buy(ctx context.Context, category string, req SMSPurch
 	if category == "activation" && req.VoiceMode == 2 {
 		query.Set("voice", "1")
 	}
+	if operator == "any" && req.ProviderCostLimit > 0 {
+		query.Set("maxPrice", strconv.FormatFloat(req.ProviderCostLimit, 'f', -1, 64))
+	}
 	if err := p.request(ctx, http.MethodGet, path, query, nil, &out); err != nil {
 		return nil, err
 	}
@@ -682,14 +692,16 @@ func (p *fiveSIMProvider) buy(ctx context.Context, category string, req SMSPurch
 	if id == "" || id == "<nil>" {
 		return nil, errors.New("5SIM returned no order id")
 	}
-	return &SMSPurchaseResult{ProviderOrderID: id, PhoneNumber: out.Phone, ExpiresAt: &out.Expires}, nil
+	return &SMSPurchaseResult{ProviderOrderID: id, PhoneNumber: out.Phone, ExpiresAt: &out.Expires, ProviderCost: out.Price, ProviderOperatorCode: strings.ToLower(strings.TrimSpace(out.Operator))}, nil
 }
 
 func (p *fiveSIMProvider) GetTemporaryStatus(ctx context.Context, id string) (*SMSStatusResult, error) {
 	var out struct {
-		Status string `json:"status"`
-		Phone  string `json:"phone"`
-		SMS    []struct {
+		Status   string  `json:"status"`
+		Phone    string  `json:"phone"`
+		Price    float64 `json:"price"`
+		Operator string  `json:"operator"`
+		SMS      []struct {
 			Code string `json:"code"`
 			Text string `json:"text"`
 		} `json:"sms"`
@@ -706,7 +718,7 @@ func (p *fiveSIMProvider) GetTemporaryStatus(ctx context.Context, id string) (*S
 			msgs = append(msgs, m.Code)
 		}
 	}
-	return &SMSStatusResult{Status: strings.ToLower(out.Status), PhoneNumber: out.Phone, Messages: msgs}, nil
+	return &SMSStatusResult{Status: strings.ToLower(out.Status), PhoneNumber: out.Phone, Messages: msgs, ProviderCost: out.Price, ProviderOperatorCode: strings.ToLower(strings.TrimSpace(out.Operator))}, nil
 }
 func (p *fiveSIMProvider) CancelTemporary(ctx context.Context, id string) error {
 	return p.request(ctx, http.MethodGet, "user/cancel/"+url.PathEscape(id), nil, nil, nil)
@@ -2441,6 +2453,7 @@ func (s *SMSService) Purchase(ctx context.Context, userID int64, req SMSPurchase
 	purchaseReq.QuoteID = ""
 	purchaseReq.OperatorCode = quote.OperatorCode
 	purchaseReq.VoiceMode = quote.VoiceMode
+	purchaseReq.ProviderCostLimit = quote.ProviderCost
 	if selected.ProviderServiceCode != "" {
 		purchaseReq.ServiceCode = selected.ProviderServiceCode
 	}
@@ -2474,7 +2487,7 @@ func (s *SMSService) Purchase(ctx context.Context, userID int64, req SMSPurchase
 	}
 	pricing, _ := s.GetPricingSettings(ctx)
 	expiresAt := smsOrderExpiresAt(time.Now(), req.ProductType, req.DurationValue, req.DurationUnit, purchased.ExpiresAt, time.Duration(pricing.TemporaryExpiryMinutes)*time.Minute)
-	if err = s.activateSMSOrder(ctx, orderID, userID, purchased.ProviderOrderID, purchased.PhoneNumber, expiresAt); err != nil {
+	if err = s.activateSMSOrder(ctx, orderID, userID, purchased.ProviderOrderID, purchased.PhoneNumber, expiresAt, purchased.ProviderCost, purchased.ProviderOperatorCode); err != nil {
 		return nil, err
 	}
 	return s.GetOrder(ctx, userID, orderID)
@@ -2650,8 +2663,14 @@ func requestedSMSOperator(value string) string {
 }
 
 func smsOrderExpiresAt(now time.Time, productType string, durationValue int, durationUnit string, providerExpiry *time.Time, temporaryExpiries ...time.Duration) *time.Time {
-	if providerExpiry != nil && !providerExpiry.IsZero() && providerExpiry.After(now) {
-		return providerExpiry
+	if productType == "rental" {
+		if providerExpiry != nil && !providerExpiry.IsZero() && providerExpiry.After(now) {
+			return providerExpiry
+		}
+		if duration, ok := rentalDuration(durationValue, durationUnit); ok {
+			return smsPtrTime(now.Add(duration))
+		}
+		return smsPtrTime(now.Add(24 * time.Hour))
 	}
 	ttl := 10 * time.Minute
 	if len(temporaryExpiries) > 0 {
@@ -2660,14 +2679,11 @@ func smsOrderExpiresAt(now time.Time, productType string, durationValue int, dur
 	if ttl <= 0 {
 		ttl = 10 * time.Minute
 	}
-	if productType == "rental" {
-		if duration, ok := rentalDuration(durationValue, durationUnit); ok {
-			ttl = duration
-		} else {
-			ttl = 24 * time.Hour
-		}
+	platformExpiry := now.Add(ttl)
+	if providerExpiry != nil && !providerExpiry.IsZero() && providerExpiry.After(now) && providerExpiry.Before(platformExpiry) {
+		return providerExpiry
 	}
-	return smsPtrTime(now.Add(ttl))
+	return &platformExpiry
 }
 
 func (s *SMSService) failSMSPurchase(ctx context.Context, orderID, userID int64, reason string) error {
@@ -2722,14 +2738,14 @@ func (s *SMSService) returnSMSBalance(ctx context.Context, orderID, userID int64
 	return tx.Commit()
 }
 
-func (s *SMSService) activateSMSOrder(ctx context.Context, orderID, userID int64, providerOrderID, phoneNumber string, expiresAt *time.Time) error {
+func (s *SMSService) activateSMSOrder(ctx context.Context, orderID, userID int64, providerOrderID, phoneNumber string, expiresAt *time.Time, providerCost float64, providerOperatorCode string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
 	var amount float64
-	if err = tx.QueryRowContext(ctx, `UPDATE sms_orders SET status='active',provider_order_id=$1,phone_number=$2,expires_at=$3,captured_amount=reserved_amount,settlement_status='captured',reconciliation_action='',reconciliation_attempts=0,reconcile_after=NULL,updated_at=NOW() WHERE id=$4 AND settlement_status='held' RETURNING reserved_amount`, providerOrderID, phoneNumber, expiresAt, orderID).Scan(&amount); err != nil {
+	if err = tx.QueryRowContext(ctx, `UPDATE sms_orders SET status='active',provider_order_id=$1,phone_number=$2,expires_at=$3,provider_cost_snapshot=CASE WHEN $4>0 THEN $4 ELSE provider_cost_snapshot END,operator_code=COALESCE(NULLIF($5,''),operator_code),captured_amount=reserved_amount,settlement_status='captured',reconciliation_action='',reconciliation_attempts=0,reconcile_after=NULL,updated_at=NOW() WHERE id=$6 AND settlement_status='held' RETURNING reserved_amount`, providerOrderID, phoneNumber, expiresAt, providerCost, strings.TrimSpace(providerOperatorCode), orderID).Scan(&amount); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return errors.New("sms order settlement is no longer pending")
 		}
@@ -2885,6 +2901,9 @@ func (s *SMSService) pollSMSOrder(ctx context.Context, id int64, providerOrder, 
 	if result == nil {
 		return nil
 	}
+	if err := s.updateSMSProviderActuals(ctx, id, result.ProviderCost, result.ProviderOperatorCode); err != nil {
+		return err
+	}
 	newStatus := smsStatusFromProvider(result)
 	if productType == "rental" && newStatus == "completed" {
 		newStatus = "active"
@@ -2905,6 +2924,15 @@ func (s *SMSService) pollSMSOrder(ctx context.Context, id int64, providerOrder, 
 		_, _ = s.db.ExecContext(ctx, `INSERT INTO sms_messages(order_id,message_text,verification_code) SELECT $1,$2,$3 WHERE NOT EXISTS (SELECT 1 FROM sms_messages WHERE order_id=$1 AND message_text=$2)`, id, message, extractSMSCode(message))
 	}
 	return s.convergeSMSProviderStatus(ctx, id, newStatus)
+}
+
+func (s *SMSService) updateSMSProviderActuals(ctx context.Context, id int64, providerCost float64, providerOperatorCode string) error {
+	providerOperatorCode = strings.ToLower(strings.TrimSpace(providerOperatorCode))
+	if providerCost <= 0 && providerOperatorCode == "" {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `UPDATE sms_orders SET provider_cost_snapshot=CASE WHEN $1>0 THEN $1 ELSE provider_cost_snapshot END,operator_code=COALESCE(NULLIF($2,''),operator_code),updated_at=NOW() WHERE id=$3`, providerCost, providerOperatorCode, id)
+	return err
 }
 
 func (s *SMSService) convergeSMSProviderStatus(ctx context.Context, id int64, status string) error {
@@ -3095,6 +3123,9 @@ func (s *SMSService) reconcileTemporaryRefundState(ctx context.Context, p SMSPro
 	if err != nil || result == nil {
 		return false, nil
 	}
+	if err := s.updateSMSProviderActuals(ctx, id, result.ProviderCost, result.ProviderOperatorCode); err != nil {
+		return true, err
+	}
 	state := smsStatusFromProvider(result)
 	switch state {
 	case "cancelled", "expired":
@@ -3118,7 +3149,7 @@ func (s *SMSService) CancelOrder(ctx context.Context, userID int64, publicID str
 	if status != "active" {
 		return errors.New("order cannot be cancelled")
 	}
-	if productType == "temporary" && providerCode != "5sim" {
+	if productType == "temporary" {
 		pricing, pricingErr := s.GetPricingSettings(ctx)
 		if pricingErr != nil {
 			return pricingErr
@@ -3305,14 +3336,12 @@ func (s *SMSService) RequestRefund(ctx context.Context, userID int64, orderPubli
 	if productType == "rental" {
 		return errors.New("rental refunds are unavailable for this channel")
 	}
-	if providerCode != "5sim" {
-		pricing, pricingErr := s.GetPricingSettings(ctx)
-		if pricingErr != nil {
-			return pricingErr
-		}
-		if wait := time.Duration(pricing.SelfServiceCancelAfterMinutes) * time.Minute; wait > 0 && time.Now().Before(createdAt.Add(wait)) {
-			return ErrSMSCancelTooEarly
-		}
+	pricing, pricingErr := s.GetPricingSettings(ctx)
+	if pricingErr != nil {
+		return pricingErr
+	}
+	if wait := time.Duration(pricing.SelfServiceCancelAfterMinutes) * time.Minute; wait > 0 && time.Now().Before(createdAt.Add(wait)) {
+		return ErrSMSCancelTooEarly
 	}
 	key := providerAPIKey(providerCode, cred, s.encryptor)
 	p := providerFor(providerCode, base, key)
