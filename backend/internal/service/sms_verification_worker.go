@@ -121,29 +121,28 @@ func (s *SMSService) reconcileSMSAction(ctx context.Context, id, userID int64, p
 	var err error
 	switch action {
 	case smsReconciliationCancel:
-		if !provider.Capabilities(ctx).Cancel {
-			return s.markSMSClosed(ctx, id, "cancelled", "rejected", "provider does not support cancellation; administrator review is required")
-		}
 		if productType == "rental" {
-			err = provider.CancelRental(ctx, providerOrder)
-		} else {
-			err = provider.CancelTemporary(ctx, providerOrder)
-		}
-		if err == nil {
-			if productType == "temporary" {
-				if !provider.Capabilities(ctx).Refund {
-					return s.markSMSClosed(ctx, id, "cancelled", "rejected", "provider does not support refunds; administrator review is required")
-				}
-				err = provider.RequestTemporaryRefund(ctx, providerOrder)
-				if err != nil {
-					s.deferSMSReconciliation(ctx, id, sanitizeProviderError(err).Error(), false)
-					return err
-				}
-				s.markProviderRefund(ctx, id, "succeeded", "")
-			} else {
-				return s.markSMSClosed(ctx, id, "cancelled", "rejected", "provider does not support rental refunds")
+			if !provider.Capabilities(ctx).RentalCancel {
+				return s.markSMSClosed(ctx, id, "cancelled", "rejected", "provider does not support rental cancellation")
 			}
+			err = provider.CancelRental(ctx, providerOrder)
+			if err == nil {
+				return s.markSMSClosed(ctx, id, "cancelled", "rejected", "provider rental cancellation confirmed")
+			}
+			break
+		}
+		if !provider.Capabilities(ctx).Refund {
+			return s.markSMSClosed(ctx, id, "cancelled", "rejected", "provider does not support refunds; administrator review is required")
+		}
+		// Temporary refund-capable providers such as 5SIM use cancellation itself
+		// as the refund operation. Mutate the provider exactly once.
+		err = provider.RequestTemporaryRefund(ctx, providerOrder)
+		if err == nil {
+			s.markProviderRefund(ctx, id, "succeeded", "")
 			return s.refundSMSCapture(ctx, id, userID, "cancelled", "provider cancellation and refund confirmed during reconciliation")
+		}
+		if handled, reconcileErr := s.reconcileTemporaryRefundState(ctx, provider, id, userID, providerOrder, "cancelled"); handled {
+			return reconcileErr
 		}
 	case smsReconciliationRefund:
 		if productType != "temporary" {
@@ -157,11 +156,14 @@ func (s *SMSService) reconcileSMSAction(ctx context.Context, id, userID int64, p
 			s.markProviderRefund(ctx, id, "succeeded", "")
 			return s.refundSMSCapture(ctx, id, userID, "refunded", "provider refund confirmed during reconciliation")
 		}
-	case smsReconciliationExpire:
-		if !provider.Capabilities(ctx).Cancel {
-			return s.markSMSExpired(ctx, id, "rejected", "provider does not support cancellation; administrator review is required")
+		if handled, reconcileErr := s.reconcileTemporaryRefundState(ctx, provider, id, userID, providerOrder, "refunded"); handled {
+			return reconcileErr
 		}
+	case smsReconciliationExpire:
 		if productType == "rental" {
+			if !provider.Capabilities(ctx).RentalCancel {
+				return s.markSMSExpired(ctx, id, "rejected", "provider does not support rental cancellation")
+			}
 			err = provider.CancelRental(ctx, providerOrder)
 			if err == nil {
 				return s.markSMSExpired(ctx, id, "not_requested", "rental expired")
@@ -170,13 +172,16 @@ func (s *SMSService) reconcileSMSAction(ctx context.Context, id, userID int64, p
 			if !provider.Capabilities(ctx).Refund {
 				return s.markSMSExpired(ctx, id, "rejected", "provider does not support refunds; administrator review is required")
 			}
-			err = provider.CancelTemporary(ctx, providerOrder)
-			if err == nil {
-				err = provider.RequestTemporaryRefund(ctx, providerOrder)
-			}
+			// 5SIM cancellation already produces the refund. Calling Cancel and then
+			// RequestTemporaryRefund would hit the same endpoint twice and can turn
+			// a successful provider refund into a false platform rejection.
+			err = provider.RequestTemporaryRefund(ctx, providerOrder)
 			if err == nil {
 				s.markProviderRefund(ctx, id, "succeeded", "")
 				return s.refundSMSCapture(ctx, id, userID, "refunded", "provider expiry refund confirmed during reconciliation")
+			}
+			if handled, reconcileErr := s.reconcileTemporaryRefundState(ctx, provider, id, userID, providerOrder, "refunded"); handled {
+				return reconcileErr
 			}
 		}
 	default:
@@ -197,22 +202,6 @@ func (s *SMSService) expireSMSOrder(ctx context.Context, id, userID int64, produ
 		_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET status='reconciling',reconciliation_action=$1,reconcile_after=NOW()+($2 * INTERVAL '1 second'),last_provider_error=$3,updated_at=NOW() WHERE id=$4 AND status IN ('active','provider_unknown')`, smsReconciliationExpire, 300, "provider adapter is unavailable during expiry reconciliation", id)
 		return ErrSMSProviderUnavailable
 	}
-	if !provider.Capabilities(ctx).Cancel {
-		return s.markSMSExpired(ctx, id, "rejected", "provider does not support cancellation; administrator review is required")
-	}
-	var cancelErr error
-	if productType == "rental" {
-		cancelErr = provider.CancelRental(ctx, providerOrder)
-	} else {
-		cancelErr = provider.CancelTemporary(ctx, providerOrder)
-	}
-	if cancelErr != nil {
-		if isSMSProviderTimeout(cancelErr) {
-			_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET status='reconciling',reconciliation_action=$1,reconcile_after=NOW()+($2 * INTERVAL '1 second'),last_provider_error=$3,updated_at=NOW() WHERE id=$4 AND status IN ('active','provider_unknown')`, smsReconciliationExpire, int(smsVerificationPollInterval.Seconds()), "provider cancellation timed out", id)
-			return ErrSMSProviderUnknown
-		}
-		return s.markSMSExpired(ctx, id, "rejected", "provider did not confirm cancellation")
-	}
 	if productType == "temporary" {
 		if !provider.Capabilities(ctx).Refund {
 			return s.markSMSExpired(ctx, id, "rejected", "provider does not support refunds; administrator review is required")
@@ -222,11 +211,26 @@ func (s *SMSService) expireSMSOrder(ctx context.Context, id, userID int64, produ
 			s.markProviderRefund(ctx, id, "succeeded", "")
 			return s.refundSMSCapture(ctx, id, userID, "refunded", "no SMS received before order expiry")
 		}
+		if handled, reconcileErr := s.reconcileTemporaryRefundState(ctx, provider, id, userID, providerOrder, "refunded"); handled {
+			return reconcileErr
+		}
 		if isSMSProviderTimeout(refundErr) {
 			_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET status='reconciling',refund_status='pending',reconciliation_action=$1,reconcile_after=NOW()+($2 * INTERVAL '1 second'),refund_reason=$3,updated_at=NOW() WHERE id=$4 AND status IN ('active','provider_unknown')`, smsReconciliationExpire, int(smsVerificationPollInterval.Seconds()), "provider refund is being confirmed", id)
 			return ErrSMSRefundPending
 		}
-		return s.markSMSExpired(ctx, id, "rejected", "provider cancellation succeeded but refund was unavailable")
+		_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET status='reconciling',refund_status='pending',reconciliation_action=$1,reconcile_after=NOW()+($2 * INTERVAL '1 second'),refund_reason=$3,updated_at=NOW() WHERE id=$4 AND status IN ('active','provider_unknown')`, smsReconciliationExpire, int(smsVerificationPollInterval.Seconds()), "provider cancellation/refund requires confirmation", id)
+		return ErrSMSRefundPending
+	}
+	if !provider.Capabilities(ctx).RentalCancel {
+		return s.markSMSExpired(ctx, id, "rejected", "provider does not support rental cancellation")
+	}
+	cancelErr := provider.CancelRental(ctx, providerOrder)
+	if cancelErr != nil {
+		if isSMSProviderTimeout(cancelErr) {
+			_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET status='reconciling',reconciliation_action=$1,reconcile_after=NOW()+($2 * INTERVAL '1 second'),last_provider_error=$3,updated_at=NOW() WHERE id=$4 AND status IN ('active','provider_unknown')`, smsReconciliationExpire, int(smsVerificationPollInterval.Seconds()), "provider cancellation timed out", id)
+			return ErrSMSProviderUnknown
+		}
+		return s.markSMSExpired(ctx, id, "rejected", "provider did not confirm rental cancellation")
 	}
 	return s.markSMSExpired(ctx, id, "not_requested", "rental expired")
 }
