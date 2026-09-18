@@ -10,6 +10,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"sort"
+	"strconv"
 
 	"github.com/shopspring/decimal"
 )
@@ -26,14 +28,8 @@ type smsPVAEnvelope struct {
 
 func (p *smsPVAProvider) Capabilities(context.Context) SMSProviderCapabilities {
 	return SMSProviderCapabilities{
-		Temporary:        true,
-		Polling:          true,
-		Cancel:           true,
-		Refund:           true,
-		Resend:           true,
-		Voice:            true,
-		OperatorSelection: true,
-		ServiceSelection: true,
+		Temporary: true, Rental: true, Polling: true, Cancel: true, Refund: true,
+		Voice: true, OperatorSelection: true, ServiceSelection: true, Extend: true,
 	}
 }
 
@@ -198,6 +194,27 @@ func (p *smsPVAProvider) CountriesForService(ctx context.Context, serviceCode st
 	return out, nil
 }
 
+func (p *smsPVAProvider) Operators(ctx context.Context, countryCode, serviceCode string, voiceMode int) ([]SMSOperatorOption, error) {
+	country := strings.ToUpper(strings.TrimSpace(countryCode))
+	service := strings.ToLower(strings.TrimSpace(serviceCode))
+	voice := strconv.Itoa(voiceMode)
+	if voiceMode < 0 || voiceMode > 2 { voice = "0" }
+	var env smsPVAEnvelope
+	if _, err := p.requestJSON(ctx, http.MethodGet, "activation/serviceprice/"+url.PathEscape(country)+"/"+url.PathEscape(service), url.Values{"voice":{voice}}, &env); err != nil { return nil, err }
+	var data struct { PriceByOperators map[string]json.RawMessage `json:"priceByOperators"` }
+	if err := json.Unmarshal(env.Data,&data); err != nil { return nil, err }
+	out:=make([]SMSOperatorOption,0,len(data.PriceByOperators)+1)
+	for code, raw := range data.PriceByOperators { if price,ok:=jsonNumber(raw); ok { out=append(out,SMSOperatorOption{Code:code,Name:code,ProviderCost:price,Available:true}) } }
+	if len(out)==0 {
+		var ops smsPVAEnvelope
+		if _,err:=p.requestJSON(ctx,http.MethodGet,"activation/operators/"+url.PathEscape(country),nil,&ops); err==nil {
+			var d struct{ Operators []string `json:"operators"` }; if json.Unmarshal(ops.Data,&d)==nil { for _,code:=range d.Operators { out=append(out,SMSOperatorOption{Code:code,Name:code,Available:true}) } }
+		}
+	}
+	sort.Slice(out,func(i,j int)bool{return out[i].ProviderCost<out[j].ProviderCost})
+	return out,nil
+}
+
 func (p *smsPVAProvider) TestConnection(ctx context.Context) error {
 	var env smsPVAEnvelope
 	if _, err := p.requestJSON(ctx, http.MethodGet, "activation/userinfo", nil, &env); err != nil {
@@ -218,7 +235,9 @@ func (p *smsPVAProvider) Quote(ctx context.Context, req SMSQuoteRequest) (*SMSPr
 
 	var env smsPVAEnvelope
 	path := "activation/serviceprice/" + url.PathEscape(country) + "/" + url.PathEscape(service)
-	if _, err := p.requestJSON(ctx, http.MethodGet, path, url.Values{"voice": {"0"}}, &env); err != nil {
+	voice := strconv.Itoa(req.VoiceMode)
+	if req.VoiceMode < 0 || req.VoiceMode > 2 { voice = "0" }
+	if _, err := p.requestJSON(ctx, http.MethodGet, path, url.Values{"voice": {voice}}, &env); err != nil {
 		return nil, err
 	}
 	var data struct {
@@ -268,7 +287,10 @@ func (p *smsPVAProvider) Quote(ctx context.Context, req SMSQuoteRequest) (*SMSPr
 func (p *smsPVAProvider) PurchaseTemporary(ctx context.Context, req SMSPurchaseRequest) (*SMSPurchaseResult, error) {
 	var env smsPVAEnvelope
 	path := "activation/number/" + url.PathEscape(strings.ToUpper(req.CountryCode)) + "/" + url.PathEscape(strings.ToLower(req.ServiceCode))
-	if _, err := p.requestJSON(ctx, http.MethodGet, path, url.Values{"voice": {"0"}}, &env); err != nil {
+	if op := strings.TrimSpace(req.OperatorCode); op != "" && !strings.EqualFold(op, "any") { path += "/" + url.PathEscape(op) }
+	voice := strconv.Itoa(req.VoiceMode)
+	if req.VoiceMode < 0 || req.VoiceMode > 2 { voice = "0" }
+	if _, err := p.requestJSON(ctx, http.MethodGet, path, url.Values{"voice": {voice}}, &env); err != nil {
 		return nil, err
 	}
 
