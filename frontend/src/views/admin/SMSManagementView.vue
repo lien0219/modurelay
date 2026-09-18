@@ -80,6 +80,7 @@
                 <th class="px-5 py-3">{{ t('sms.admin.baseUrl') }}</th>
                 <th class="px-5 py-3">{{ t('sms.admin.credential') }}</th>
                 <th class="px-5 py-3">{{ t('sms.admin.health') }}</th>
+                <th class="px-5 py-3">目录同步</th>
                 <th class="px-5 py-3">{{ t('sms.admin.enabled') }}</th>
                 <th class="px-5 py-3">{{ t('sms.admin.action') }}</th>
               </tr>
@@ -108,6 +109,18 @@
                   <input v-model="credentialDrafts[provider.id]" type="password" :disabled="isBetaProvider(provider)" autocomplete="new-password" class="input min-w-52" :placeholder="t('sms.admin.credentialPlaceholder')" :aria-label="`${t('sms.admin.credential')} - ${provider.name}`" />
                 </td>
                 <td class="px-5 py-3"><span class="badge" :class="provider.health_status === 'healthy' ? 'badge-success' : 'badge-warning'">{{ healthLabel(provider.health_status) }}</span></td>
+                <td class="px-5 py-3">
+                  <div v-if="!isBetaProvider(provider)" class="min-w-48 space-y-1 text-xs text-gray-500 dark:text-gray-400">
+                    <div class="flex items-center gap-2">
+                      <span class="badge" :class="catalogStatus[provider.code]?.status === 'succeeded' && !catalogStatus[provider.code]?.stale ? 'badge-success' : 'badge-warning'">{{ catalogStatus[provider.code]?.status || 'never' }}</span>
+                      <button type="button" class="btn btn-secondary btn-sm" :disabled="syncingProviderCode === provider.code || !provider.enabled" @click="syncCatalog(provider)">{{ syncingProviderCode === provider.code ? '同步中' : '同步目录' }}</button>
+                    </div>
+                    <div>平台 {{ catalogStatus[provider.code]?.service_count ?? 0 }} · 国家 {{ catalogStatus[provider.code]?.country_count ?? 0 }}</div>
+                    <div v-if="catalogStatus[provider.code]?.last_success_at">最近成功 {{ formatDate(catalogStatus[provider.code]?.last_success_at) }}</div>
+                    <div v-if="catalogStatus[provider.code]?.failure_reason" class="max-w-64 truncate text-red-500" :title="catalogStatus[provider.code]?.failure_reason">{{ catalogStatus[provider.code]?.failure_reason }}</div>
+                  </div>
+                  <span v-else class="text-xs text-gray-400">BETA 暂停同步</span>
+                </td>
                 <td class="px-5 py-3"><input v-model="provider.enabled" type="checkbox" :disabled="isBetaProvider(provider)" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" :aria-label="t('sms.admin.providerEnabled', { name: provider.name })" @change="saveProvider(provider)" /></td>
                 <td class="px-5 py-3"><div class="flex min-w-max flex-wrap gap-2"><button type="button" class="btn btn-secondary btn-sm" :disabled="isBetaProvider(provider)" @click="saveProvider(provider)">{{ t('sms.admin.save') }}</button><button v-if="supportsTestConnection(provider)" type="button" class="btn btn-secondary btn-sm" :disabled="testingProviderId === provider.id || isBetaProvider(provider)" :aria-busy="testingProviderId === provider.id" :title="t('sms.admin.testRequestNotice')" @click="testProvider(provider)">{{ testingProviderId === provider.id ? t('sms.admin.testing') : t('sms.admin.testConnection') }}</button></div></td>
               </tr>
@@ -155,7 +168,7 @@ import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import adminSMS from '@/api/admin/sms'
-import type { SMSChannelAdmin, SMSPricingSettings, SMSProviderAdmin } from '@/api/admin/sms'
+import type { SMSCatalogSyncStatus, SMSChannelAdmin, SMSPricingSettings, SMSProviderAdmin } from '@/api/admin/sms'
 import { useAppStore } from '@/stores'
 
 const { t } = useI18n()
@@ -167,6 +180,8 @@ const enabled = ref(false)
 const loading = ref(false)
 const savingEnabled = ref(false)
 const testingProviderId = ref<number | null>(null)
+const syncingProviderCode = ref('')
+const catalogStatus = ref<Record<string, SMSCatalogSyncStatus | undefined>>({})
 const credentialDrafts = ref<Record<number, string>>({})
 const pricing = ref<SMSPricingSettings>({ cost_multiplier: 1.3, fixed_markup: 0, unknown_grade_multiplier: 1, unknown_grade_fixed_markup: 0, temporary_expiry_minutes: 10, self_service_cancel_after_minutes: 1, grade_multipliers: { S: 1, A: 1, B: 1, C: 1, D: 1 }, grade_fixed_markups: { S: 0, A: 0, B: 0, C: 0, D: 0 } })
 const pricingSaving = ref(false)
@@ -231,6 +246,11 @@ async function load() {
       : Promise.resolve(pricing.value)
     const [nextProviders, nextChannels, nextStats, nextPricing] = await Promise.all([adminSMS.providers(), adminSMS.channels(), adminSMS.stats(), pricingRequest])
     providers.value = nextProviders
+    const statuses = await Promise.all(nextProviders.filter(provider => !isBetaProvider(provider)).map(async provider => {
+      try { return [provider.code, await adminSMS.catalogSyncStatus(provider.code)] as const }
+      catch { return [provider.code, undefined] as const }
+    }))
+    catalogStatus.value = Object.fromEntries(statuses)
     credentialDrafts.value = Object.fromEntries(nextProviders.map((provider) => [provider.id, '']))
     channels.value = nextChannels
     stats.value = nextStats
@@ -295,6 +315,26 @@ async function testProvider(provider: SMSProviderAdmin) {
     appStore.showError(errorMessage(error, t('sms.admin.testFailed')))
   } finally {
     testingProviderId.value = null
+  }
+}
+
+function formatDate(value?: string) {
+  if (!value) return '-'
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString()
+}
+
+async function syncCatalog(provider: SMSProviderAdmin) {
+  if (isBetaProvider(provider) || !provider.enabled) return
+  syncingProviderCode.value = provider.code
+  try {
+    await adminSMS.syncCatalog(provider.code)
+    catalogStatus.value[provider.code] = await adminSMS.catalogSyncStatus(provider.code)
+    appStore.showSuccess('供应商目录同步完成')
+  } catch (error) {
+    appStore.showError(errorMessage(error, '供应商目录同步失败'))
+  } finally {
+    syncingProviderCode.value = ''
   }
 }
 
