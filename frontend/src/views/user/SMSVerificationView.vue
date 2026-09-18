@@ -502,11 +502,16 @@ function refundLabel(status: string) {
 }
 
 async function extend(id: string) {
-  const raw = window.prompt('请输入续租周数', '1')
-  const weeks = Number(raw)
-  if (!Number.isInteger(weeks) || weeks <= 0) return
+  const unit = (window.prompt('请输入续租单位：day / week / month', 'week') || '').trim().toLowerCase()
+  if (!['day', 'week', 'month'].includes(unit)) {
+    appStore.showError('续租单位仅支持 day、week 或 month')
+    return
+  }
+  const raw = window.prompt(`请输入续租数量（单位：${unit}）`, '1')
+  const value = Number(raw)
+  if (!Number.isInteger(value) || value <= 0) return
   try {
-    await smsAPI.extendRental(id, { duration_value: weeks, duration_unit: 'week' }, `sms-renew-${id}-${Date.now()}`)
+    await smsAPI.extendRental(id, { duration_value: value, duration_unit: unit }, `sms-renew-${id}-${Date.now()}`)
     await loadOrders()
   } catch (error) {
     appStore.showError(errorMessage(error, t('sms.user.errors.extend')))
