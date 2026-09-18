@@ -1346,7 +1346,7 @@ type SMSCountryCatalogItem struct {
 	NameEN         string  `json:"name_en,omitempty"`
 	ProviderCode   string  `json:"provider_code,omitempty"`
 	Stock          int     `json:"stock,omitempty"`
-	ProviderCost   float64 `json:"provider_cost,omitempty"`
+	ProviderCost   float64 `json:"-"`
 	ConversionRate float64 `json:"conversion_rate,omitempty"`
 	Available      bool    `json:"available"`
 }
