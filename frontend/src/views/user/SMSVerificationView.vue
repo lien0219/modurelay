@@ -163,7 +163,7 @@
           <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div class="min-w-0">
               <div class="flex flex-wrap items-center gap-2">
-                <span class="badge" :class="statusClass(order.status)">{{ statusLabel(order.status) }}</span>
+                <span class="badge" :class="statusClass(order.status)">{{ statusLabel(order.status, order.reconciliation_action) }}</span>
                 <span class="text-sm font-medium text-gray-900 dark:text-white">{{ serviceLabel(order.service_code) }}</span>
                 <span class="text-gray-300 dark:text-dark-600">·</span>
                 <span class="flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-300">
@@ -194,8 +194,8 @@
               </div>
             </div>
             <div class="flex shrink-0 flex-wrap gap-2">
-              <button v-if="order.status === 'active' && order.capabilities?.supports_cancel !== false" type="button" class="btn btn-secondary" @click="cancel(order.id)">{{ t('sms.user.cancel') }}</button>
-              <button v-if="order.status === 'active' && order.product_type === 'temporary' && order.capabilities?.supports_refund !== false" type="button" class="btn btn-secondary" @click="refund(order.id)">{{ t('sms.user.requestRefund') }}</button>
+              <button v-if="(order.status === 'active' || (order.status === 'reconciling' && order.reconciliation_action === 'purchase')) && order.capabilities?.supports_cancel !== false" type="button" class="btn btn-secondary" @click="cancel(order.id)">{{ t('sms.user.cancel') }}</button>
+              <button v-if="(order.status === 'active' || (order.status === 'reconciling' && order.reconciliation_action === 'purchase')) && order.product_type === 'temporary' && order.capabilities?.supports_refund !== false" type="button" class="btn btn-secondary" @click="refund(order.id)">{{ t('sms.user.requestRefund') }}</button>
               <button v-if="order.status === 'active' && order.product_type === 'temporary' && order.capabilities?.supports_resend" type="button" class="btn btn-secondary" @click="resend(order.id)">{{ t('sms.user.resend') }}</button>
             </div>
           </div>
@@ -240,7 +240,7 @@
             <thead class="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-dark-800"><tr><th class="px-4 py-3">{{ t('sms.user.order') }}</th><th class="px-4 py-3">{{ t('sms.user.channel') }}</th><th class="px-4 py-3">{{ t('sms.user.service') }}</th><th class="px-4 py-3">{{ t('sms.user.country') }}</th><th class="px-4 py-3">{{ t('sms.user.operator') }}</th><th class="px-4 py-3">{{ t('sms.user.phone') }}</th><th class="px-4 py-3">{{ t('sms.user.status') }}</th><th class="px-4 py-3">{{ t('sms.user.code') }}</th><th class="px-4 py-3">{{ t('sms.user.price') }}</th><th class="px-4 py-3">{{ t('sms.user.expiresIn') }}</th><th class="px-4 py-3">{{ t('sms.user.actions') }}</th></tr></thead>
             <tbody>
             <tr v-for="order in orders" :key="order.id" class="border-t border-gray-100 dark:border-dark-700">
-              <td class="px-4 py-3"><div class="flex min-w-max items-center gap-2"><span class="font-mono text-xs">{{ order.id }}</span><button type="button" class="btn btn-secondary btn-sm" :title="t('common.copy')" :aria-label="`${t('common.copy')} ${order.id}`" @click="copyText(order.id)"><Icon name="copy" size="xs" aria-hidden="true" /></button></div></td><td class="px-4 py-3">{{ order.channel_name || order.channel_code }}</td><td class="px-4 py-3"><div class="flex min-w-max items-center gap-2"><span class="relative flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-md bg-gray-100 text-xs font-semibold text-gray-500 dark:bg-dark-700 dark:text-gray-300"><span>{{ serviceLabel(order.service_code).slice(0, 1).toUpperCase() }}</span><IconifyIcon v-if="serviceLogo(order.service_code, serviceLabel(order.service_code))" :icon="serviceLogo(order.service_code, serviceLabel(order.service_code))" class="absolute inset-0 m-auto h-5 w-5 bg-gray-100 dark:bg-dark-700" /></span><span>{{ serviceLabel(order.service_code) }}</span></div></td><td class="px-4 py-3"><div class="flex min-w-max items-center gap-2"><span :class="flagClass(order.country_code)" class="fi fis rounded-sm shadow-sm" aria-hidden="true"></span><span>{{ countryLabel(order.country_code) }}</span></div></td><td class="px-4 py-3 font-mono text-xs">{{ order.operator_code || 'any' }}</td><td class="px-4 py-3"><div class="flex min-w-max items-center gap-2"><span class="font-mono">{{ order.phone_number || '-' }}</span><button v-if="order.phone_number" type="button" class="btn btn-secondary btn-sm" @click="copyText(order.phone_number)">{{ t('common.copy') }}</button></div></td><td class="px-4 py-3"><span class="badge" :class="statusClass(order.status)">{{ statusLabel(order.status) }}</span><span v-if="order.refund_status !== 'not_requested'" class="badge badge-warning ml-1">{{ refundLabel(order.refund_status) }}</span></td><td class="px-4 py-3"><div v-if="order.messages?.length" class="space-y-2"><div v-for="message in order.messages" :key="message.id" class="max-w-80"><div v-if="message.verification_code" class="flex items-center gap-2"><code class="font-mono font-semibold">{{ message.verification_code }}</code><button type="button" class="btn btn-secondary btn-sm" @click="copyText(message.verification_code)">{{ t('common.copy') }}</button></div><div class="mt-1 break-words text-xs text-gray-500">{{ message.message_text }}</div></div></div><span v-else>-</span></td><td class="px-4 py-3 tabular-nums">{{ order.price.toFixed(4) }}</td><td class="px-4 py-3 tabular-nums">{{ remainingLabel(order) }}</td><td class="px-4 py-3"><div class="flex min-w-max items-center gap-2"><button v-if="order.status === 'active' && (order.product_type === 'rental' ? order.capabilities?.supports_rental_cancel : order.capabilities?.supports_cancel !== false)" type="button" class="btn btn-secondary btn-sm" @click="cancel(order.id)">{{ t('sms.user.cancel') }}</button><button v-if="order.status === 'active' && order.product_type === 'rental' && order.capabilities?.supports_extend" type="button" class="btn btn-secondary btn-sm" @click="extend(order.id)">{{ t('sms.user.extend') }}</button><button v-if="order.status === 'active' && order.product_type === 'temporary' && order.capabilities?.supports_resend" type="button" class="btn btn-secondary btn-sm" @click="resend(order.id)">{{ t('sms.user.resend') }}</button><button v-if="order.status === 'active' && order.product_type === 'temporary' && order.capabilities?.supports_refund !== false" type="button" class="btn btn-secondary btn-sm" @click="refund(order.id)">{{ t('sms.user.requestRefund') }}</button><button type="button" class="btn btn-secondary btn-sm" :disabled="refreshingId === order.id" :aria-label="t('common.refresh')" @click="refreshOrder(order.id)"><Icon name="refresh" size="sm" :class="refreshingId === order.id ? 'animate-spin' : ''" aria-hidden="true" /></button></div></td>
+              <td class="px-4 py-3"><div class="flex min-w-max items-center gap-2"><span class="font-mono text-xs">{{ order.id }}</span><button type="button" class="btn btn-secondary btn-sm" :title="t('common.copy')" :aria-label="`${t('common.copy')} ${order.id}`" @click="copyText(order.id)"><Icon name="copy" size="xs" aria-hidden="true" /></button></div></td><td class="px-4 py-3">{{ order.channel_name || order.channel_code }}</td><td class="px-4 py-3"><div class="flex min-w-max items-center gap-2"><span class="relative flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-md bg-gray-100 text-xs font-semibold text-gray-500 dark:bg-dark-700 dark:text-gray-300"><span>{{ serviceLabel(order.service_code).slice(0, 1).toUpperCase() }}</span><IconifyIcon v-if="serviceLogo(order.service_code, serviceLabel(order.service_code))" :icon="serviceLogo(order.service_code, serviceLabel(order.service_code))" class="absolute inset-0 m-auto h-5 w-5 bg-gray-100 dark:bg-dark-700" /></span><span>{{ serviceLabel(order.service_code) }}</span></div></td><td class="px-4 py-3"><div class="flex min-w-max items-center gap-2"><span :class="flagClass(order.country_code)" class="fi fis rounded-sm shadow-sm" aria-hidden="true"></span><span>{{ countryLabel(order.country_code) }}</span></div></td><td class="px-4 py-3 font-mono text-xs">{{ order.operator_code || 'any' }}</td><td class="px-4 py-3"><div class="flex min-w-max items-center gap-2"><span class="font-mono">{{ order.phone_number || '-' }}</span><button v-if="order.phone_number" type="button" class="btn btn-secondary btn-sm" @click="copyText(order.phone_number)">{{ t('common.copy') }}</button></div></td><td class="px-4 py-3"><span class="badge" :class="statusClass(order.status)">{{ statusLabel(order.status, order.reconciliation_action) }}</span><span v-if="order.refund_status !== 'not_requested'" class="badge badge-warning ml-1">{{ refundLabel(order.refund_status) }}</span></td><td class="px-4 py-3"><div v-if="order.messages?.length" class="space-y-2"><div v-for="message in order.messages" :key="message.id" class="max-w-80"><div v-if="message.verification_code" class="flex items-center gap-2"><code class="font-mono font-semibold">{{ message.verification_code }}</code><button type="button" class="btn btn-secondary btn-sm" @click="copyText(message.verification_code)">{{ t('common.copy') }}</button></div><div class="mt-1 break-words text-xs text-gray-500">{{ message.message_text }}</div></div></div><span v-else>-</span></td><td class="px-4 py-3 tabular-nums">{{ order.price.toFixed(4) }}</td><td class="px-4 py-3 tabular-nums">{{ remainingLabel(order) }}</td><td class="px-4 py-3"><div class="flex min-w-max items-center gap-2"><button v-if="(order.status === 'active' || (order.status === 'reconciling' && order.reconciliation_action === 'purchase')) && (order.product_type === 'rental' ? order.capabilities?.supports_rental_cancel : order.capabilities?.supports_cancel !== false)" type="button" class="btn btn-secondary btn-sm" @click="cancel(order.id)">{{ t('sms.user.cancel') }}</button><button v-if="order.status === 'active' && order.product_type === 'rental' && order.capabilities?.supports_extend" type="button" class="btn btn-secondary btn-sm" @click="extend(order.id)">{{ t('sms.user.extend') }}</button><button v-if="order.status === 'active' && order.product_type === 'temporary' && order.capabilities?.supports_resend" type="button" class="btn btn-secondary btn-sm" @click="resend(order.id)">{{ t('sms.user.resend') }}</button><button v-if="(order.status === 'active' || (order.status === 'reconciling' && order.reconciliation_action === 'purchase')) && order.product_type === 'temporary' && order.capabilities?.supports_refund !== false" type="button" class="btn btn-secondary btn-sm" @click="refund(order.id)">{{ t('sms.user.requestRefund') }}</button><button type="button" class="btn btn-secondary btn-sm" :disabled="refreshingId === order.id" :aria-label="t('common.refresh')" @click="refreshOrder(order.id)"><Icon name="refresh" size="sm" :class="refreshingId === order.id ? 'animate-spin' : ''" aria-hidden="true" /></button></div></td>
             </tr>
             </tbody>
           </table>
@@ -273,10 +273,11 @@ import Icon from '@/components/icons/Icon.vue'
 import { Icon as IconifyIcon } from '@iconify/vue'
 import { smsAPI, type SMSCountryItem, type SMSOperatorItem, type SMSOrder, type SMSOrderPage, type SMSProviderItem, type SMSQuote, type SMSRecentSuccessItem, type SMSServiceItem } from '@/api/sms'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
-import { useAppStore } from '@/stores'
+import { useAppStore, useAuthStore } from '@/stores'
 
 const { locale, t } = useI18n()
 const appStore = useAppStore()
+const authStore = useAuthStore()
 const productType = ref<'temporary' | 'rental'>('temporary')
 const activeTab = ref<'temporary' | 'rental' | 'orders'>('temporary')
 const providers = ref<SMSProviderItem[]>([])
@@ -439,7 +440,8 @@ function serviceLogo(code: string, name = '') {
   return logos.find(([pattern]) => pattern.test(key))?.[1] || ''
 }
 
-function statusLabel(status: string) {
+function statusLabel(status: string, reconciliationAction?: string) {
+  if (status === 'reconciling' && reconciliationAction === 'purchase') return t('sms.user.statuses.confirmingPurchase')
   const labels: Record<string, string> = {
     pending: t('sms.user.statuses.pending'),
     active: t('sms.user.statuses.waitingSms'),
@@ -652,8 +654,11 @@ async function purchase(quote: SMSQuote) {
     }
     ensureOrderPolling()
     quotes.value = []
+    await authStore.refreshUser().catch(() => undefined)
     appStore.showSuccess(t('sms.user.purchaseSuccess'))
   } catch (error) {
+    await authStore.refreshUser().catch(() => undefined)
+    void loadOrders()
     appStore.showError(errorMessage(error, t('sms.user.errors.purchase')))
   } finally {
     purchasing.value = false
@@ -697,8 +702,10 @@ function cancel(id: string) {
       try {
         await smsAPI.cancel(id)
         await refreshOrder(id)
+        await authStore.refreshUser().catch(() => undefined)
       } catch (error) {
         await refreshOrder(id)
+        await authStore.refreshUser().catch(() => undefined)
         appStore.showError(errorMessage(error, t('sms.user.errors.cancel')))
       }
     },
@@ -732,8 +739,10 @@ function refund(id: string) {
       try {
         await smsAPI.refund(id)
         await refreshOrder(id)
+        await authStore.refreshUser().catch(() => undefined)
       } catch (error) {
         await refreshOrder(id)
+        await authStore.refreshUser().catch(() => undefined)
         appStore.showError(errorMessage(error, t('sms.user.errors.refund')))
       }
     },
