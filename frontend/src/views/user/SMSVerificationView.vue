@@ -11,6 +11,23 @@
         </button>
       </header>
 
+      <div v-if="recentSuccessItems.length" class="flex min-h-11 items-center gap-3 overflow-hidden rounded-xl border border-gray-200 bg-white/70 px-3 py-2 dark:border-dark-700 dark:bg-dark-800/60">
+        <span class="flex shrink-0 items-center gap-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+          <Icon name="checkCircle" size="sm" aria-hidden="true" />
+          {{ t('sms.user.recentSuccess') }}
+        </span>
+        <div class="min-w-0 flex-1 overflow-hidden">
+          <div class="sms-success-track flex w-max items-center gap-2">
+            <div v-for="(item, index) in recentSuccessLoop" :key="`${index}-${item.username}-${item.phone}`" class="flex shrink-0 items-center gap-2 rounded-lg border border-gray-100 bg-gray-50/80 px-3 py-1.5 text-xs text-gray-600 dark:border-dark-700 dark:bg-dark-900/60 dark:text-gray-300">
+              <span class="font-medium text-gray-800 dark:text-gray-100">{{ item.username }}</span>
+              <span :class="flagClass(item.country_code)" class="fi fis rounded-sm shadow-sm" aria-hidden="true"></span>
+              <span>{{ displayRegionName(item.country_code) }}</span>
+              <span class="font-mono text-gray-500">{{ item.phone }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="flex gap-2 border-b border-gray-200 dark:border-dark-700" role="tablist" :aria-label="t('nav.smsService')">
         <button v-for="tab in tabs" :key="tab.value" type="button" class="border-b-2 px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-40" :disabled="tab.disabled" :class="productType === tab.value && activeTab !== 'orders' ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500'" role="tab" :aria-selected="productType === tab.value && activeTab !== 'orders'" @click="switchProductType(tab.value)">{{ tab.label }}</button>
         <button type="button" class="border-b-2 px-3 py-2 text-sm font-medium" :class="activeTab === 'orders' ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500'" role="tab" :aria-selected="activeTab === 'orders'" @click="activeTab = 'orders'; loadOrders()">{{ t('sms.user.orders') }}</button>
@@ -45,16 +62,16 @@
           </div>
         </div>
 
-        <div class="grid gap-4 lg:grid-cols-3">
+        <div class="grid items-start gap-4 lg:grid-cols-3">
           <div class="rounded-xl border border-gray-200 p-4 dark:border-dark-700">
             <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">2 · {{ t('sms.user.service') }}</p>
             <div class="mt-3"><input v-model.trim="serviceKeyword" class="input h-10 w-full" :placeholder="t('sms.user.serviceSearch')" /></div>
             <div class="mt-3 max-h-[390px] space-y-2 overflow-y-auto pr-1">
               <button v-for="option in filteredServiceOptions" :key="String(option.value)" type="button" class="flex min-h-14 w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left text-sm transition" :class="serviceCode === option.value ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-900/20' : 'border-gray-200 hover:border-primary-300 dark:border-dark-700'" @click="selectService(String(option.value))">
                 <span class="flex min-w-0 items-center gap-3">
-                  <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-base font-semibold text-gray-600 dark:bg-dark-700 dark:text-gray-200">
-                    <IconifyIcon v-if="option.logo" :icon="option.logo" class="h-6 w-6" />
-                    <span v-else>{{ option.label.slice(0, 1).toUpperCase() }}</span>
+                  <span class="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-gray-100 text-base font-semibold text-gray-500 dark:bg-dark-700 dark:text-gray-300">
+                    <span>{{ option.label.slice(0, 1).toUpperCase() }}</span>
+                    <IconifyIcon v-if="option.logo" :icon="option.logo" class="absolute inset-0 m-auto h-6 w-6 bg-gray-100 dark:bg-dark-700" />
                   </span>
                   <span class="min-w-0">
                     <span class="block truncate font-medium">{{ option.label }}</span>
@@ -78,7 +95,7 @@
             <div class="mt-3 max-h-[390px] space-y-2 overflow-y-auto pr-1">
               <button v-for="option in filteredCountryOptions" :key="String(option.value)" type="button" class="flex min-h-14 w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left text-sm disabled:cursor-not-allowed disabled:opacity-45" :disabled="option.available === false" :class="countryCode === option.value ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-900/20' : 'border-gray-200 hover:border-primary-300 dark:border-dark-700'" @click="selectCountry(String(option.value))">
                 <span class="flex min-w-0 items-center gap-3">
-                  <span class="text-2xl leading-none" aria-hidden="true">{{ flagEmoji(String(option.value)) }}</span>
+                  <span :class="flagClass(String(option.value))" class="fi fis shrink-0 rounded-sm shadow-sm" aria-hidden="true"></span>
                   <span class="min-w-0">
                     <span class="block truncate font-medium">{{ option.label }}</span>
                     <span class="block text-[11px] text-gray-400">{{ option.value }}<template v-if="option.stock != null"> · {{ t('sms.user.numbersAvailable', { count: option.stock.toLocaleString() }) }}</template></span>
@@ -100,9 +117,9 @@
                 <div class="flex items-center justify-between gap-3">
                   <span class="text-xs text-gray-500">{{ t('sms.user.selectedService') }}</span>
                   <span class="flex min-w-0 items-center gap-2 font-medium text-gray-900 dark:text-white">
-                    <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-white dark:bg-dark-700">
-                      <IconifyIcon v-if="selectedServiceLogo" :icon="selectedServiceLogo" class="h-5 w-5" />
-                      <span v-else>{{ serviceLabel(serviceCode).slice(0, 1).toUpperCase() }}</span>
+                    <span class="relative flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg bg-white text-xs font-semibold text-gray-500 dark:bg-dark-700 dark:text-gray-300">
+                      <span>{{ serviceLabel(serviceCode).slice(0, 1).toUpperCase() }}</span>
+                      <IconifyIcon v-if="selectedServiceLogo" :icon="selectedServiceLogo" class="absolute inset-0 m-auto h-5 w-5 bg-white dark:bg-dark-700" />
                     </span>
                     <span class="max-w-44 truncate">{{ serviceLabel(serviceCode) || '-' }}</span>
                   </span>
@@ -110,7 +127,7 @@
                 <div class="border-t border-gray-200 dark:border-dark-700"></div>
                 <div class="flex items-center justify-between gap-3">
                   <span class="text-xs text-gray-500">{{ t('sms.user.selectedCountry') }}</span>
-                  <span class="flex items-center gap-2 font-medium text-gray-900 dark:text-white"><span class="text-xl">{{ flagEmoji(countryCode) }}</span>{{ countryLabel(countryCode) || '-' }}</span>
+                  <span class="flex items-center gap-2 font-medium text-gray-900 dark:text-white"><span v-if="countryCode" :class="flagClass(countryCode)" class="fi fis rounded-sm shadow-sm" aria-hidden="true"></span>{{ countryLabel(countryCode) || '-' }}</span>
                 </div>
               </div>
 
@@ -198,7 +215,7 @@ import Pagination from '@/components/common/Pagination.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { Icon as IconifyIcon } from '@iconify/vue'
-import { smsAPI, type SMSCountryItem, type SMSOperatorItem, type SMSOrder, type SMSOrderPage, type SMSProviderItem, type SMSQuote, type SMSServiceItem } from '@/api/sms'
+import { smsAPI, type SMSCountryItem, type SMSOperatorItem, type SMSOrder, type SMSOrderPage, type SMSProviderItem, type SMSQuote, type SMSRecentSuccessItem, type SMSServiceItem } from '@/api/sms'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { useAppStore } from '@/stores'
 
@@ -221,12 +238,13 @@ const durationValue = ref(1)
 const durationUnit = ref('week')
 const quotes = ref<SMSQuote[]>([])
 const orders = ref<SMSOrder[]>([])
+const recentSuccessItems = ref<SMSRecentSuccessItem[]>([])
 const loading = ref(false)
 const quoting = ref(false)
 const servicesLoading = ref(false)
 const countriesLoading = ref(false)
-const servicePagination = reactive({ page: 1, pageSize: 50, total: 0, hasMore: false })
-const countryPagination = reactive({ page: 1, pageSize: 50, total: 0, hasMore: false })
+const servicePagination = reactive({ page: 1, pageSize: 20, total: 0, hasMore: false })
+const countryPagination = reactive({ page: 1, pageSize: 20, total: 0, hasMore: false })
 const ordersLoading = ref(false)
 const purchasing = ref(false)
 const purchaseQuantity = ref(1)
@@ -247,6 +265,7 @@ const tabs = computed(() => [
 const selectedService = computed(() => services.value.find(item => item.code === serviceCode.value))
 const selectedServiceLogo = computed(() => serviceLogo(selectedService.value?.code || '', selectedService.value?.name || ''))
 const bestQuote = computed(() => [...quotes.value].sort((a, b) => a.sale_price - b.sale_price)[0])
+const recentSuccessLoop = computed(() => recentSuccessItems.value.length ? [...recentSuccessItems.value, ...recentSuccessItems.value] : [])
 const serviceOptions = computed(() => services.value.map(item => ({ value: item.code, label: item.name || item.code, logo: item.icon || serviceLogo(item.code, item.name), stock: item.stock, startingPrice: item.starting_price })))
 const filteredServiceOptions = computed(() => serviceOptions.value)
 const countryOptions = computed(() => countries.value.map(item => ({ value: item.iso2, label: countryName(item), stock: item.stock, startingPrice: item.starting_price, conversionRate: item.conversion_rate, available: item.available })))
@@ -300,10 +319,18 @@ function countryName(country: SMSCountryItem) {
   }
 }
 
-function flagEmoji(iso2: string) {
+function flagClass(iso2: string) {
+  const code = String(iso2 || '').trim().toLowerCase()
+  return /^[a-z]{2}$/.test(code) ? `fi-${code}` : 'fi-un'
+}
+
+function displayRegionName(iso2: string) {
   const code = String(iso2 || '').toUpperCase()
-  if (!/^[A-Z]{2}$/.test(code)) return '🌐'
-  return String.fromCodePoint(...[...code].map(char => 127397 + char.charCodeAt(0)))
+  try {
+    return new Intl.DisplayNames([String(locale.value || 'en')], { type: 'region' }).of(code) || code
+  } catch {
+    return code
+  }
 }
 
 function formatPrice(value: number) {
@@ -313,11 +340,18 @@ function formatPrice(value: number) {
 function serviceLogo(code: string, name = '') {
   const key = `${code} ${name}`.toLowerCase()
   const logos: Array<[RegExp, string]> = [
-    [/amazon/, 'logos:amazon-icon'], [/facebook|meta/, 'logos:facebook'], [/telegram/, 'logos:telegram'],
-    [/whatsapp/, 'logos:whatsapp-icon'], [/google|youtube/, 'logos:google-icon'], [/microsoft/, 'logos:microsoft-icon'],
+    [/amazon/, 'logos:amazon'], [/apple|icloud/, 'logos:apple'], [/discord/, 'logos:discord-icon'],
+    [/facebook|messenger|meta/, 'logos:facebook'], [/telegram/, 'logos:telegram'], [/whatsapp/, 'logos:whatsapp-icon'],
+    [/google|gmail|youtube/, 'logos:google-icon'], [/microsoft|outlook|hotmail|office/, 'logos:microsoft-icon'],
     [/openai|chatgpt/, 'simple-icons:openai'], [/instagram|threads/, 'skill-icons:instagram'],
-    [/apple/, 'logos:apple'], [/discord/, 'logos:discord-icon'], [/ebay/, 'logos:ebay'], [/paypal/, 'logos:paypal'],
-    [/tiktok/, 'logos:tiktok-icon'], [/twitter|\bx\b/, 'simple-icons:x'],
+    [/ebay/, 'logos:ebay'], [/paypal/, 'logos:paypal'], [/tiktok/, 'logos:tiktok-icon'],
+    [/twitter|\bx\b/, 'simple-icons:x'], [/linkedin/, 'logos:linkedin-icon'], [/uber/, 'logos:uber'],
+    [/airbnb/, 'logos:airbnb-icon'], [/netflix/, 'logos:netflix-icon'], [/spotify/, 'logos:spotify-icon'],
+    [/github/, 'logos:github-icon'], [/yahoo/, 'logos:yahoo'], [/snapchat/, 'logos:snapchat-icon'],
+    [/steam/, 'logos:steam'], [/twitch/, 'logos:twitch'], [/reddit/, 'logos:reddit-icon'],
+    [/wechat|weixin/, 'logos:wechat-icon'], [/line/, 'logos:line'], [/coinbase/, 'logos:coinbase'],
+    [/binance/, 'logos:binance'], [/aliexpress/, 'simple-icons:aliexpress'], [/booking/, 'simple-icons:bookingdotcom'],
+    [/doordash/, 'simple-icons:doordash'], [/grab/, 'simple-icons:grab'], [/viber/, 'simple-icons:viber'],
   ]
   return logos.find(([pattern]) => pattern.test(key))?.[1] || ''
 }
@@ -339,6 +373,15 @@ function statusLabel(status: string) {
 
 function statusClass(status: string) {
   return status === 'completed' || status === 'refunded' ? 'badge-success' : status === 'failed' ? 'badge-danger' : status === 'cancelled' ? 'badge-gray' : 'badge-info'
+}
+
+async function loadRecentSuccesses() {
+  try {
+    const feed = await smsAPI.recentSuccesses()
+    recentSuccessItems.value = feed.items || []
+  } catch {
+    recentSuccessItems.value = []
+  }
 }
 
 async function loadAll() {
@@ -691,6 +734,7 @@ async function refreshActiveOrders() {
 }
 
 onMounted(() => {
+  void loadRecentSuccesses()
   loadAll()
   countdownTimer = window.setInterval(refreshCountdowns, 1000)
   pollTimer = window.setInterval(() => {
@@ -705,4 +749,20 @@ onBeforeUnmount(() => {
   if (countrySearchTimer) window.clearTimeout(countrySearchTimer)
 })
 </script>
+
+<style scoped>
+.sms-success-track {
+  animation: sms-success-marquee 38s linear infinite;
+}
+.sms-success-track:hover {
+  animation-play-state: paused;
+}
+@keyframes sms-success-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sms-success-track { animation: none; }
+}
+</style>
 
