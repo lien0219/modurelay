@@ -1328,6 +1328,57 @@ func (s *SMSService) ListCountries(ctx context.Context) ([]SMSCountryCatalogItem
 	return out, rows.Err()
 }
 
+
+func (s *SMSService) ensureProviderCatalogSelection(ctx context.Context, providerCode, serviceCode, countryCode, productType string) error {
+	providerCode = strings.ToLower(strings.TrimSpace(providerCode))
+	serviceCode = strings.ToLower(strings.TrimSpace(serviceCode))
+	countryCode = strings.ToUpper(strings.TrimSpace(countryCode))
+	if providerCode == "" || serviceCode == "" || countryCode == "" {
+		return nil
+	}
+
+	var providerID int64
+	var rawCapabilities []byte
+	if err := s.db.QueryRowContext(ctx, `SELECT id,capabilities FROM sms_providers WHERE code=$1 AND enabled`, providerCode).Scan(&providerID, &rawCapabilities); err != nil {
+		return err
+	}
+	capabilities := decodeCapabilities(rawCapabilities)
+	rentalSupported := productType == "rental" && capabilities.Rental
+
+	var providerServiceCode, providerServiceName, category string
+	err := s.db.QueryRowContext(ctx, `SELECT provider_service_code,provider_service_name,category FROM sms_provider_catalog_services WHERE provider_id=$1 AND lower(provider_service_code)=lower($2) AND enabled ORDER BY observed_at DESC LIMIT 1`, providerID, serviceCode).Scan(&providerServiceCode, &providerServiceName, &category)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) { return err }
+	if providerServiceCode == "" { providerServiceCode = serviceCode }
+	if providerServiceName == "" { providerServiceName = serviceCode }
+	if category == "" { category = "other" }
+
+	var serviceID int64
+	if err := s.db.QueryRowContext(ctx, `INSERT INTO sms_services(code,name,category,enabled) VALUES($1,$2,$3,TRUE)
+		ON CONFLICT(code) DO UPDATE SET name=CASE WHEN sms_services.name='' THEN EXCLUDED.name ELSE sms_services.name END, enabled=TRUE
+		RETURNING id`, serviceCode, providerServiceName, category).Scan(&serviceID); err != nil { return err }
+	if _, err := s.db.ExecContext(ctx, `INSERT INTO sms_provider_service_mappings(provider_id,service_id,provider_service_code,provider_service_name,temporary_supported,rental_supported,enabled)
+		VALUES($1,$2,$3,$4,TRUE,$5,TRUE)
+		ON CONFLICT(provider_id,service_id) DO UPDATE SET provider_service_code=EXCLUDED.provider_service_code,provider_service_name=EXCLUDED.provider_service_name,temporary_supported=TRUE,rental_supported=EXCLUDED.rental_supported,enabled=TRUE`,
+		providerID, serviceID, providerServiceCode, providerServiceName, rentalSupported); err != nil { return err }
+
+	var providerCountryID, providerCountryCode, nameZH, nameEN string
+	err = s.db.QueryRowContext(ctx, `SELECT provider_country_id,provider_country_code,name_zh,name_en FROM sms_provider_catalog_countries WHERE provider_id=$1 AND upper(iso2)=upper($2) AND enabled ORDER BY observed_at DESC LIMIT 1`, providerID, countryCode).Scan(&providerCountryID, &providerCountryCode, &nameZH, &nameEN)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) { return err }
+	if providerCountryID == "" { providerCountryID = countryCode }
+	if providerCountryCode == "" { providerCountryCode = countryCode }
+	if nameEN == "" { nameEN = countryCode }
+
+	var countryID int64
+	if err := s.db.QueryRowContext(ctx, `INSERT INTO sms_countries(iso2,name_zh,name_en,enabled) VALUES($1,$2,$3,TRUE)
+		ON CONFLICT(iso2) DO UPDATE SET name_zh=COALESCE(NULLIF(sms_countries.name_zh,''),EXCLUDED.name_zh),name_en=COALESCE(NULLIF(sms_countries.name_en,''),EXCLUDED.name_en),enabled=TRUE
+		RETURNING id`, countryCode, nameZH, nameEN).Scan(&countryID); err != nil { return err }
+	_, err = s.db.ExecContext(ctx, `INSERT INTO sms_provider_country_mappings(provider_id,country_id,provider_country_id,provider_country_code)
+		VALUES($1,$2,$3,$4)
+		ON CONFLICT(provider_id,country_id) DO UPDATE SET provider_country_id=EXCLUDED.provider_country_id,provider_country_code=EXCLUDED.provider_country_code`,
+		providerID, countryID, providerCountryID, providerCountryCode)
+	return err
+}
+
 func (s *SMSService) Quote(ctx context.Context, userID int64, req SMSQuoteRequest) ([]SMSPublicChannel, error) {
 	if !s.Enabled(ctx) {
 		return nil, ErrSMSFeatureDisabled
@@ -1337,6 +1388,11 @@ func (s *SMSService) Quote(ctx context.Context, userID int64, req SMSQuoteReques
 	req.CountryCode = strings.ToUpper(strings.TrimSpace(req.CountryCode))
 	if req.ProductType != "temporary" && req.ProductType != "rental" {
 		return nil, errors.New("invalid product type")
+	}
+	if req.ProviderCode != "" {
+		if err := s.ensureProviderCatalogSelection(ctx, req.ProviderCode, req.ServiceCode, req.CountryCode, req.ProductType); err != nil {
+			return nil, err
+		}
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT c.id,p.id,sv.id,co.id,c.code,c.public_name,c.role,p.code,p.base_url,p.credential_ref,
 		psm.provider_service_code,
