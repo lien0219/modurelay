@@ -6,6 +6,7 @@ import SMSVerificationView from '../SMSVerificationView.vue'
 const { smsAPI, showError, showSuccess } = vi.hoisted(() => ({
   smsAPI: {
     providers: vi.fn(),
+    recentSuccesses: vi.fn(),
     providerServices: vi.fn(),
     providerServicesPage: vi.fn(),
     serviceCountries: vi.fn(),
@@ -86,14 +87,15 @@ const order = (status: string, id: string) => ({
 describe('SMSVerificationView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    smsAPI.recentSuccesses.mockResolvedValue({ source: 'mock', real_success_count: 0, items: [{ username: 'te***', country_code: 'US', phone: '+120****123' }] })
     smsAPI.providers.mockResolvedValue([
       { code: '5sim', name: '5SIM', beta: false, selectable: true, capabilities },
       { code: 'smspool', name: 'SMSPool', beta: true, selectable: false, capabilities },
     ])
     smsAPI.providerServices.mockResolvedValue([{ code: 'openai', name: 'OpenAI' }])
-    smsAPI.providerServicesPage.mockResolvedValue({ items: [{ code: 'openai', name: 'OpenAI', stock: 10, starting_price: 0.5 }], total: 1, page: 1, page_size: 50, pages: 1, has_more: false })
+    smsAPI.providerServicesPage.mockResolvedValue({ items: [{ code: 'openai', name: 'OpenAI', stock: 10, starting_price: 0.5 }], total: 1, page: 1, page_size: 20, pages: 1, has_more: false })
     smsAPI.serviceCountries.mockResolvedValue([{ iso2: 'US', name_zh: '美国', name_en: 'United States', stock: 10, available: true }])
-    smsAPI.serviceCountriesPage.mockResolvedValue({ items: [{ iso2: 'US', name_zh: '美国', name_en: 'United States', stock: 10, starting_price: 0.5, available: true }], total: 1, page: 1, page_size: 50, pages: 1, has_more: false })
+    smsAPI.serviceCountriesPage.mockResolvedValue({ items: [{ iso2: 'US', name_zh: '美国', name_en: 'United States', stock: 10, starting_price: 0.5, available: true }], total: 1, page: 1, page_size: 20, pages: 1, has_more: false })
     smsAPI.operators.mockResolvedValue([{ code: 'any', name: 'Any / 自动选择', stock: 10, available: true }])
     smsAPI.quotes.mockResolvedValue([])
     smsAPI.orders.mockResolvedValue({
