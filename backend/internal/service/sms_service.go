@@ -252,6 +252,9 @@ type SMSOrderActionProvider interface {
 	FinishTemporary(context.Context, string) error
 	BanTemporary(context.Context, string) error
 }
+type SMSResendProvider interface {
+	ResendTemporary(context.Context, string) error
+}
 
 type smsProviderHealthChecker interface {
 	TestConnection(context.Context) error
@@ -2395,6 +2398,18 @@ func (s *SMSService) ProcessWebhook(ctx context.Context, providerCode string, pa
 		_, _ = s.db.ExecContext(ctx, `INSERT INTO sms_messages(order_id,message_text,verification_code) SELECT $1,$2,$3 WHERE NOT EXISTS (SELECT 1 FROM sms_messages WHERE order_id=$1 AND message_text=$2)`, id, message, extractSMSCode(message))
 	}
 	return s.convergeSMSProviderStatus(ctx, id, newStatus)
+}
+
+func (s *SMSService) ResendOrder(ctx context.Context, userID int64, publicID string) error {
+	var providerOrder, providerCode, base, credential, status, productType string
+	if err := s.db.QueryRowContext(ctx, `SELECT o.provider_order_id,p.code,p.base_url,p.credential_ref,o.status,o.product_type FROM sms_orders o JOIN sms_providers p ON p.id=o.provider_id WHERE o.user_id=$1 AND o.public_id=$2::uuid`, userID, strings.TrimSpace(publicID)).Scan(&providerOrder,&providerCode,&base,&credential,&status,&productType); err != nil { return err }
+	if status != "active" || productType != "temporary" || providerOrder == "" { return errors.New("order cannot request another SMS") }
+	p := providerFor(providerCode,base,providerAPIKey(providerCode,credential,s.encryptor))
+	resender, ok := p.(SMSResendProvider)
+	if !ok || !p.Capabilities(ctx).Resend { return errors.New("provider does not support another SMS") }
+	if err := resender.ResendTemporary(ctx,providerOrder); err != nil { return sanitizeProviderError(err) }
+	_, _ = s.db.ExecContext(ctx, `DELETE FROM sms_messages WHERE order_id=(SELECT id FROM sms_orders WHERE user_id=$1 AND public_id=$2::uuid)`, userID, strings.TrimSpace(publicID))
+	return nil
 }
 
 func (s *SMSService) FinishOrder(ctx context.Context, userID int64, publicID string) error {
