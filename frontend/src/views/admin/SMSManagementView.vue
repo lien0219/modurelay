@@ -133,13 +133,13 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="channel in channels" :key="channel.id" class="border-t border-gray-100 dark:border-dark-700">
-                <td class="px-5 py-3 font-medium text-gray-900 dark:text-white"><span>{{ channel.public_name }}</span> <span class="font-mono text-xs text-gray-500">{{ channel.code }}</span></td>
-                <td class="px-5 py-3"><select v-model="channel.provider_id" class="input" :aria-label="`${t('sms.admin.providers')} - ${channel.public_name}`"><option v-for="provider in providers" :key="provider.id" :value="provider.id">{{ provider.name }}</option></select></td>
+              <tr v-for="channel in channels" :key="channel.id" class="border-t border-gray-100 dark:border-dark-700" :class="isBetaChannel(channel) ? 'bg-gray-50/70 opacity-55 grayscale dark:bg-dark-800/50' : ''">
+                <td class="px-5 py-3 font-medium text-gray-900 dark:text-white"><span>{{ channel.public_name }}</span> <span class="font-mono text-xs text-gray-500">{{ channel.code }}</span> <span v-if="isBetaChannel(channel)" class="ml-1 rounded bg-gray-200 px-2 py-0.5 text-[10px] font-bold tracking-wider text-gray-600 dark:bg-dark-600 dark:text-gray-300">BETA</span></td>
+                <td class="px-5 py-3"><select v-model="channel.provider_id" class="input" :disabled="isBetaChannel(channel)" :aria-label="`${t('sms.admin.providers')} - ${channel.public_name}`"><option v-for="provider in providers" :key="provider.id" :value="provider.id">{{ provider.name }}</option></select></td>
                 <td class="px-5 py-3">{{ roleLabel(channel.role) }}</td>
-                <td class="px-5 py-3"><input v-model="channel.visible" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" :aria-label="t('sms.admin.channelVisible', { name: channel.public_name })" @change="saveChannel(channel)" /></td>
-                <td class="px-5 py-3"><input v-model="channel.healthy" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" :aria-label="t('sms.admin.channelHealthy', { name: channel.public_name })" @change="saveChannel(channel)" /></td>
-                <td class="px-5 py-3"><input v-model="channel.enabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" :aria-label="t('sms.admin.channelEnabled', { name: channel.public_name })" @change="saveChannel(channel)" /></td>
+                <td class="px-5 py-3"><input v-model="channel.visible" type="checkbox" :disabled="isBetaChannel(channel)" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" :aria-label="t('sms.admin.channelVisible', { name: channel.public_name })" @change="saveChannel(channel)" /></td>
+                <td class="px-5 py-3"><input v-model="channel.healthy" type="checkbox" :disabled="isBetaChannel(channel)" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" :aria-label="t('sms.admin.channelHealthy', { name: channel.public_name })" @change="saveChannel(channel)" /></td>
+                <td class="px-5 py-3"><input v-model="channel.enabled" type="checkbox" :disabled="isBetaChannel(channel)" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" :aria-label="t('sms.admin.channelEnabled', { name: channel.public_name })" @change="saveChannel(channel)" /></td>
               </tr>
             </tbody>
           </table>
@@ -193,6 +193,11 @@ function providerPortalUrl(provider: SMSProviderAdmin) {
 
 function isBetaProvider(provider: SMSProviderAdmin) {
   return !['5sim', 'smspva'].includes(provider.code.toLowerCase())
+}
+
+function isBetaChannel(channel: SMSChannelAdmin) {
+  const provider = providers.value.find(item => item.id === channel.provider_id)
+  return !provider || isBetaProvider(provider)
 }
 
 function supportsTestConnection(provider: SMSProviderAdmin) {
@@ -294,6 +299,7 @@ async function testProvider(provider: SMSProviderAdmin) {
 }
 
 async function saveChannel(channel: SMSChannelAdmin) {
+  if (isBetaChannel(channel)) return
   try {
     await adminSMS.updateChannel(channel.id, { enabled: channel.enabled, visible: channel.visible, healthy: channel.healthy, provider_id: channel.provider_id })
     await load()
