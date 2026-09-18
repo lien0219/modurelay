@@ -13,13 +13,13 @@ export interface SMSOrderPage { items: SMSOrder[]; total: number; page: number; 
 
 export const smsAPI = {
   providers: () => apiClient.get<SMSProviderItem[]>('/sms/providers').then(r => r.data),
-  providerServices: (provider: string) => apiClient.get<SMSServiceItem[]>(`/sms/providers/${encodeURIComponent(provider)}/services`).then(r => r.data),
-  providerServicesPage: (provider: string, params: { page: number; page_size: number; keyword?: string }) => apiClient.get<SMSCatalogPage<SMSServiceItem>>(`/sms/providers/${encodeURIComponent(provider)}/services`, { params }).then(r => r.data),
+  providerServices: (provider: string, params?: { product_type?: 'temporary' | 'rental'; duration_value?: number; duration_unit?: string }) => apiClient.get<SMSServiceItem[]>(`/sms/providers/${encodeURIComponent(provider)}/services`, { params }).then(r => r.data),
+  providerServicesPage: (provider: string, params: { page: number; page_size: number; keyword?: string; product_type?: 'temporary' | 'rental'; duration_value?: number; duration_unit?: string }) => apiClient.get<SMSCatalogPage<SMSServiceItem>>(`/sms/providers/${encodeURIComponent(provider)}/services`, { params }).then(r => r.data),
   services: () => apiClient.get<SMSServiceItem[]>('/sms/services').then(r => r.data),
   countries: () => apiClient.get<SMSCountryItem[]>('/sms/countries').then(r => r.data),
-  serviceCountries: (provider: string, service: string) => apiClient.get<SMSCountryItem[]>(`/sms/providers/${encodeURIComponent(provider)}/services/${encodeURIComponent(service)}/countries`).then(r => r.data),
+  serviceCountries: (provider: string, service: string, params?: { product_type?: 'temporary' | 'rental'; duration_value?: number; duration_unit?: string }) => apiClient.get<SMSCountryItem[]>(`/sms/providers/${encodeURIComponent(provider)}/services/${encodeURIComponent(service)}/countries`, { params }).then(r => r.data),
   serviceCountriesPage: (provider: string, service: string, params: { page: number; page_size: number; keyword?: string }) => apiClient.get<SMSCatalogPage<SMSCountryItem>>(`/sms/providers/${encodeURIComponent(provider)}/services/${encodeURIComponent(service)}/countries`, { params }).then(r => r.data),
-  operators: (provider: string, service: string, country: string, voiceMode = 0) => apiClient.get<SMSOperatorItem[]>(`/sms/providers/${encodeURIComponent(provider)}/services/${encodeURIComponent(service)}/countries/${encodeURIComponent(country)}/operators`, { params: { voice_mode: voiceMode } }).then(r => r.data),
+  operators: (provider: string, service: string, country: string, params?: { voice_mode?: number; product_type?: 'temporary' | 'rental'; duration_value?: number; duration_unit?: string }) => apiClient.get<SMSOperatorItem[]>(`/sms/providers/${encodeURIComponent(provider)}/services/${encodeURIComponent(service)}/countries/${encodeURIComponent(country)}/operators`, { params }).then(r => r.data),
   quotes: (params: { provider?: string; service: string; country: string; product_type: 'temporary' | 'rental'; operator?: string; voice_mode?: number; duration_value?: number; duration_unit?: string }) => apiClient.get<SMSQuote[]>('/sms/quotes', { params }).then(r => r.data),
   orders: (params: { page: number; page_size: number; keyword?: string; status?: string }) => apiClient.get<SMSOrderPage>('/sms/orders', { params }).then(r => r.data),
   order: (id: string) => apiClient.get<SMSOrder>(`/sms/orders/${encodeURIComponent(id)}`).then(r => r.data),
