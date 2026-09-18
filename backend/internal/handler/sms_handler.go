@@ -284,6 +284,8 @@ func (h *SMSHandler) Purchase(c *gin.Context) {
 			response.ErrorWithDetails(c, http.StatusPaymentRequired, "Insufficient balance", "INSUFFICIENT_BALANCE", nil)
 		case service.ErrSMSInsufficientStock:
 			response.ErrorWithDetails(c, http.StatusConflict, "The selected channel does not have enough stock", "INSUFFICIENT_STOCK", nil)
+		case service.ErrSMSProviderUnavailable:
+			response.ErrorWithDetails(c, http.StatusServiceUnavailable, "The selected channel is temporarily unavailable", "PROVIDER_UNAVAILABLE", nil)
 		case service.ErrSMSPriceChanged:
 			response.ErrorWithDetails(c, http.StatusConflict, "The quote changed; please confirm again", "PRICE_CHANGED", nil)
 		case service.ErrSMSQuoteInvalid, service.ErrSMSQuoteExpired:
@@ -324,6 +326,8 @@ func (h *SMSHandler) PurchaseBatch(c *gin.Context) {
 			response.ErrorWithDetails(c, http.StatusPaymentRequired, "Insufficient balance", "INSUFFICIENT_BALANCE", nil)
 		case service.ErrSMSInsufficientStock:
 			response.ErrorWithDetails(c, http.StatusConflict, "The selected channel does not have enough stock", "INSUFFICIENT_STOCK", nil)
+		case service.ErrSMSProviderUnavailable:
+			response.ErrorWithDetails(c, http.StatusServiceUnavailable, "The selected channel is temporarily unavailable", "PROVIDER_UNAVAILABLE", nil)
 		case service.ErrSMSPriceChanged:
 			response.ErrorWithDetails(c, http.StatusConflict, "The quote changed; please confirm again", "PRICE_CHANGED", nil)
 		case service.ErrSMSQuoteInvalid, service.ErrSMSQuoteExpired:
