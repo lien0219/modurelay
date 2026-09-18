@@ -77,6 +77,9 @@ type SMSProviderCapabilities struct {
 	Extend            bool `json:"supports_extend"`
 	Resend            bool `json:"supports_resend"`
 	Voice             bool `json:"supports_voice"`
+	VoiceSMS          bool `json:"supports_voice_sms"`
+	VoiceCallerID     bool `json:"supports_voice_caller_id"`
+	VoiceCall         bool `json:"supports_voice_call"`
 	OperatorSelection bool `json:"supports_operator_selection"`
 	ServiceSelection  bool `json:"supports_service_selection"`
 }
@@ -357,7 +360,7 @@ func (p *httpSMSProvider) requestBytes(ctx context.Context, method, path string,
 type fiveSIMProvider struct{ *httpSMSProvider }
 
 func (p *fiveSIMProvider) Capabilities(context.Context) SMSProviderCapabilities {
-	return SMSProviderCapabilities{Temporary:true, Rental:true, Polling:true, Cancel:true, Refund:true, Finish:true, Ban:true, OperatorSelection:true, ServiceSelection:true}
+	return SMSProviderCapabilities{Temporary:true, Rental:true, Polling:true, Cancel:true, Refund:true, Finish:true, Ban:true, Voice:true, VoiceSMS:true, VoiceCall:true, OperatorSelection:true, ServiceSelection:true}
 }
 
 func (p *fiveSIMProvider) Catalog(ctx context.Context) ([]SMSSvcCatalogItem, []SMSCountryCatalogItem, error) {
@@ -452,6 +455,7 @@ func (p *fiveSIMProvider) TestConnection(ctx context.Context) error {
 
 func (p *fiveSIMProvider) Quote(ctx context.Context, req SMSQuoteRequest) (*SMSProviderQuote, error) {
 	operator := strings.ToLower(strings.TrimSpace(req.OperatorCode)); if operator == "" { operator = "any" }
+	if req.VoiceMode == 1 || req.VoiceMode < 0 || req.VoiceMode > 2 { return nil, ErrSMSProviderUnavailable }
 	country := strings.ToLower(strings.TrimSpace(req.CountryCode))
 	serviceCode := strings.ToLower(strings.TrimSpace(req.ServiceCode))
 	if country==""||serviceCode==""{return nil,ErrSMSProviderUnavailable}
@@ -471,7 +475,9 @@ func (p *fiveSIMProvider) buy(ctx context.Context, category string, req SMSPurch
 	var out struct{ID any `json:"id"`;Phone string `json:"phone"`;Expires time.Time `json:"expires"`}
 	operator:=strings.ToLower(strings.TrimSpace(req.OperatorCode));if operator==""{operator="any"}
 	path:="user/buy/"+category+"/"+url.PathEscape(strings.ToLower(req.CountryCode))+"/"+url.PathEscape(operator)+"/"+url.PathEscape(strings.ToLower(req.ServiceCode))
-	if err:=p.request(ctx,http.MethodGet,path,nil,nil,&out);err!=nil{return nil,err}
+	query := url.Values{}
+	if category == "activation" && req.VoiceMode == 2 { query.Set("voice", "1") }
+	if err:=p.request(ctx,http.MethodGet,path,query,nil,&out);err!=nil{return nil,err}
 	id:=fmt.Sprint(out.ID);if id==""||id=="<nil>"{return nil,errors.New("5SIM returned no order id")}
 	return &SMSPurchaseResult{ProviderOrderID:id,PhoneNumber:out.Phone,ExpiresAt:&out.Expires},nil
 }
@@ -2779,6 +2785,9 @@ func decodeCapabilities(raw []byte) SMSProviderCapabilities {
 		Extend:            values["supports_extend"] || values["extend"],
 		Resend:            values["supports_resend"] || values["resend"],
 		Voice:             values["supports_voice"] || values["voice"],
+		VoiceSMS:          values["supports_voice_sms"] || values["voice_sms"],
+		VoiceCallerID:     values["supports_voice_caller_id"] || values["voice_caller_id"],
+		VoiceCall:         values["supports_voice_call"] || values["voice_call"],
 		OperatorSelection: values["supports_operator_selection"] || values["operator_selection"],
 		ServiceSelection:  values["supports_service_selection"] || values["service_selection"],
 	}
