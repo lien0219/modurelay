@@ -1202,18 +1202,19 @@ func (s *SMSService) ListServices(ctx context.Context) ([]SMSSvcCatalogItem, err
 }
 
 func (s *SMSService) ListPublicProviders(ctx context.Context) ([]SMSPublicProvider, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT code,name,base_url,enabled,capabilities FROM sms_providers ORDER BY CASE code WHEN '5sim' THEN 1 WHEN 'smspva' THEN 2 ELSE 100 END,id`)
+	rows, err := s.db.QueryContext(ctx, `SELECT p.code,p.name,p.base_url,p.enabled,p.health_status,p.credential_ref,p.capabilities,EXISTS(SELECT 1 FROM sms_channels c WHERE c.provider_id=p.id AND c.enabled AND c.visible AND c.healthy) FROM sms_providers p ORDER BY CASE p.code WHEN '5sim' THEN 1 WHEN 'smspva' THEN 2 ELSE 100 END,p.id`)
 	if err != nil { return nil, err }
 	defer func() { _ = rows.Close() }()
 	out := []SMSPublicProvider{}
 	for rows.Next() {
 		var item SMSPublicProvider
-		var enabled bool
-		var baseURL string
+		var enabled, channelReady bool
+		var baseURL, healthStatus, credentialRef string
 		var raw []byte
-		if err := rows.Scan(&item.Code,&item.Name,&baseURL,&enabled,&raw); err != nil { return nil, err }
+		if err := rows.Scan(&item.Code,&item.Name,&baseURL,&enabled,&healthStatus,&credentialRef,&raw,&channelReady); err != nil { return nil, err }
 		item.Beta = item.Code != "5sim" && item.Code != "smspva"
-		item.Selectable = enabled && !item.Beta
+		credentialReady := providerAPIKey(item.Code, credentialRef, s.encryptor) != ""
+		item.Selectable = enabled && !item.Beta && strings.EqualFold(healthStatus, "healthy") && credentialReady && channelReady
 		item.Capabilities = resolveSMSCapabilities(item.Code, baseURL, raw)
 		out = append(out,item)
 	}
