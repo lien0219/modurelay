@@ -460,8 +460,14 @@ func TestFiveSIMOperatorsUsePricesEndpoint(t *testing.T) {
 	}))
 	defer server.Close()
 	provider := providerFor("5sim", server.URL, "")
-	ops, err := provider.(SMSProductOperatorProvider).OperatorsForProduct(context.Background(), "usa", "telegram", "temporary", 0, 0, "")
-	if err != nil { t.Fatal(err) }
+	operatorProvider, ok := provider.(SMSProductOperatorProvider)
+	if !ok {
+		t.Fatal("5SIM provider does not implement product operator catalog")
+	}
+	ops, err := operatorProvider.OperatorsForProduct(context.Background(), "usa", "telegram", "temporary", 0, 0, "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(ops) != 3 || ops[0].Code != "any" {
 		t.Fatalf("unexpected operators: %#v", ops)
 	}
@@ -484,9 +490,16 @@ func TestFiveSIMPurchaseFinishAndBanContracts(t *testing.T) {
 	result, err := p.PurchaseTemporary(context.Background(), SMSPurchaseRequest{CountryCode:"usa", ServiceCode:"telegram", OperatorCode:"att"})
 	if err != nil { t.Fatal(err) }
 	if result.ProviderOrderID != "123" || result.PhoneNumber != "+12025550123" { t.Fatalf("unexpected purchase: %#v", result) }
-	action := p.(SMSOrderActionProvider)
-	if err = action.FinishTemporary(context.Background(), "123"); err != nil { t.Fatal(err) }
-	if err = action.BanTemporary(context.Background(), "123"); err != nil { t.Fatal(err) }
+	action, ok := p.(SMSOrderActionProvider)
+	if !ok {
+		t.Fatal("5SIM provider does not implement order actions")
+	}
+	if err = action.FinishTemporary(context.Background(), "123"); err != nil {
+		t.Fatal(err)
+	}
+	if err = action.BanTemporary(context.Background(), "123"); err != nil {
+		t.Fatal(err)
+	}
 	want := []string{"/user/buy/activation/usa/att/telegram", "/user/finish/123", "/user/ban/123"}
 	if len(paths) != len(want) { t.Fatalf("paths=%v", paths) }
 	for i := range want { if paths[i] != want[i] { t.Fatalf("path[%d]=%q want %q", i, paths[i], want[i]) } }
