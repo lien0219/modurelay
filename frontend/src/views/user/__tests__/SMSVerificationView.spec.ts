@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import SMSVerificationView from '../SMSVerificationView.vue'
 
-const { smsAPI, showError, showSuccess } = vi.hoisted(() => ({
+const { smsAPI, showError, showSuccess, refreshUser } = vi.hoisted(() => ({
   smsAPI: {
     providers: vi.fn(),
     recentSuccesses: vi.fn(),
@@ -26,15 +26,17 @@ const { smsAPI, showError, showSuccess } = vi.hoisted(() => ({
   },
   showError: vi.fn(),
   showSuccess: vi.fn(),
+  refreshUser: vi.fn(),
 }))
 
 vi.mock('@/api/sms', () => ({ smsAPI }))
-vi.mock('@/stores', () => ({ useAppStore: () => ({ showError, showSuccess }) }))
+vi.mock('@/stores', () => ({ useAppStore: () => ({ showError, showSuccess }), useAuthStore: () => ({ refreshUser }) }))
 vi.mock('vue-i18n', async (importOriginal) => {
   const actual = await importOriginal<typeof import('vue-i18n')>()
   const messages: Record<string, string> = {
     'sms.user.statuses.pending': '等待处理',
     'sms.user.statuses.expired': '已过期',
+    'sms.user.statuses.confirmingPurchase': '正在确认下单',
     'sms.user.statuses.unknown': '未知状态',
   }
   return {
@@ -87,6 +89,7 @@ const order = (status: string, id: string) => ({
 describe('SMSVerificationView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    refreshUser.mockResolvedValue({})
     smsAPI.recentSuccesses.mockResolvedValue({ source: 'mock', real_success_count: 0, items: [{ username: 'te***', country_code: 'US', phone: '+120****123' }] })
     smsAPI.providers.mockResolvedValue([
       { code: '5sim', name: '5SIM', beta: false, selectable: true, capabilities },
@@ -155,6 +158,33 @@ describe('SMSVerificationView', () => {
     expect(wrapper.find('.fi-us').exists()).toBe(true)
     expect(wrapper.text()).toContain('OpenAI')
     expect(wrapper.text()).toContain('美国')
+    wrapper.unmount()
+  })
+
+  it('labels purchase reconciliation as confirming purchase', async () => {
+    smsAPI.orders.mockResolvedValue({
+      items: [{ ...order('reconciling', 'sms-recovery'), reconciliation_action: 'purchase' }],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+    const wrapper = mount(SMSVerificationView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<main><slot /></main>' },
+          Icon: true,
+          Pagination: true,
+          Select: true,
+          ConfirmDialog: true,
+        },
+      },
+    })
+    await flushPromises()
+    const ordersTab = wrapper.findAll('[role="tab"]').find(tab => tab.text() === 'sms.user.orders')
+    await ordersTab!.trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('正在确认下单')
     wrapper.unmount()
   })
 
