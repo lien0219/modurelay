@@ -1489,8 +1489,11 @@ func (s *SMSService) ProviderServicesForProduct(ctx context.Context, providerCod
 		if productCatalog, ok := provider.(SMSProductServiceCatalogProvider); ok {
 			items, err := productCatalog.CatalogServicesForProduct(ctx, productType, durationValue, durationUnit)
 			if err == nil && len(items) > 0 {
-				items, _ = s.persistProviderServices(ctx, providerCode, items)
-				return s.decorateServiceStartingPrices(ctx, items), nil
+				persisted, persistErr := s.persistProviderServices(ctx, providerCode, items)
+				if persistErr != nil {
+					return nil, persistErr
+				}
+				return s.decorateServiceStartingPrices(ctx, persisted), nil
 			}
 		}
 	}
