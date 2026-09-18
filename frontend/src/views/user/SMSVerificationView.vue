@@ -186,7 +186,7 @@ const filteredServiceOptions = computed(() => {
   const q = serviceKeyword.value.toLowerCase()
   return serviceOptions.value.filter(item => !q || item.label.toLowerCase().includes(q) || item.value.toLowerCase().includes(q))
 })
-const countryOptions = computed(() => countries.value.map(item => ({ value: item.iso2, label: countryName(item), stock: item.stock, providerCost: item.provider_cost, conversionRate: item.conversion_rate, available: item.available })))
+const countryOptions = computed(() => countries.value.map(item => ({ value: item.iso2, label: countryName(item), stock: item.stock, conversionRate: item.conversion_rate, available: item.available })))
 const filteredCountryOptions = computed(() => {
   const q = countryKeyword.value.toLowerCase()
   return countryOptions.value.filter(item => !q || item.label.toLowerCase().includes(q) || item.value.toLowerCase().includes(q))
