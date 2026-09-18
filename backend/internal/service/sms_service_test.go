@@ -96,7 +96,12 @@ func TestFiveSIMCatalogParsesGuestCountries(t *testing.T) {
 	}))
 	defer server.Close()
 
-	services, countries, err := providerFor("5sim", server.URL, "").(SMSCatalogProvider).Catalog(context.Background())
+	provider := providerFor("5sim", server.URL, "")
+	catalog, ok := provider.(SMSCatalogProvider)
+	if !ok {
+		t.Fatal("5SIM provider does not implement SMSCatalogProvider")
+	}
+	services, countries, err := catalog.Catalog(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
