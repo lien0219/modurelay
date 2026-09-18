@@ -1438,11 +1438,61 @@ func (s *SMSService) ProviderServices(ctx context.Context, providerCode string) 
 	return s.ProviderServicesForProduct(ctx, providerCode, "temporary", 0, "")
 }
 
+func (s *SMSService) decorateServiceStartingPrices(ctx context.Context, items []SMSSvcCatalogItem) []SMSSvcCatalogItem {
+	pricing, err := s.GetPricingSettings(ctx)
+	if err != nil {
+		return items
+	}
+	for i := range items {
+		if items[i].ProviderCost <= 0 {
+			continue
+		}
+		price := decimal.NewFromFloat(items[i].ProviderCost).
+			Mul(decimal.NewFromFloat(pricing.CostMultiplier)).
+			Mul(decimal.NewFromFloat(pricing.UnknownGradeMultiplier)).
+			Add(decimal.NewFromFloat(pricing.UnknownGradeFixedMarkup + pricing.FixedMarkup))
+		items[i].StartingPrice = quantize(price)
+	}
+	return items
+}
+
+func (s *SMSService) decorateCountryStartingPrices(ctx context.Context, items []SMSCountryCatalogItem) []SMSCountryCatalogItem {
+	pricing, err := s.GetPricingSettings(ctx)
+	if err != nil {
+		return items
+	}
+	for i := range items {
+		if items[i].ProviderCost <= 0 {
+			continue
+		}
+		price := decimal.NewFromFloat(items[i].ProviderCost).
+			Mul(decimal.NewFromFloat(pricing.CostMultiplier)).
+			Mul(decimal.NewFromFloat(pricing.UnknownGradeMultiplier)).
+			Add(decimal.NewFromFloat(pricing.UnknownGradeFixedMarkup + pricing.FixedMarkup))
+		items[i].StartingPrice = quantize(price)
+	}
+	return items
+}
+
 func (s *SMSService) ProviderServicesForProduct(ctx context.Context, providerCode, productType string, durationValue int, durationUnit string) ([]SMSSvcCatalogItem, error) {
 	providerCode = strings.ToLower(strings.TrimSpace(providerCode))
 	productType = strings.ToLower(strings.TrimSpace(productType))
 	if productType == "" {
 		productType = "temporary"
+	}
+	if providerCode == "5sim" || providerCode == "smspva" {
+		var base, credential string
+		if err := s.db.QueryRowContext(ctx, `SELECT base_url,credential_ref FROM sms_providers WHERE code=$1 AND enabled`, providerCode).Scan(&base, &credential); err != nil {
+			return nil, err
+		}
+		provider := providerFor(providerCode, base, providerAPIKey(providerCode, credential, s.encryptor))
+		if productCatalog, ok := provider.(SMSProductServiceCatalogProvider); ok {
+			items, err := productCatalog.CatalogServicesForProduct(ctx, productType, durationValue, durationUnit)
+			if err == nil && len(items) > 0 {
+				items, _ = s.persistProviderServices(ctx, providerCode, items)
+				return s.decorateServiceStartingPrices(ctx, items), nil
+			}
+		}
 	}
 	rows, snapshotErr := s.db.QueryContext(ctx, `SELECT c.provider_service_code,c.provider_service_name,c.category FROM sms_provider_catalog_services c JOIN sms_providers p ON p.id=c.provider_id WHERE p.code=$1 AND p.enabled AND c.enabled AND (($2='rental' AND lower(c.category)='rental') OR ($2<>'rental' AND lower(c.category)<>'rental')) ORDER BY c.provider_service_code`, providerCode, productType)
 	if snapshotErr == nil {
@@ -1460,7 +1510,7 @@ func (s *SMSService) ProviderServicesForProduct(ctx context.Context, providerCod
 			return nil, rows.Err()
 		}
 		if len(items) > 0 {
-			return items, nil
+			return s.decorateServiceStartingPrices(ctx, items), nil
 		}
 	}
 	var base, credential string
@@ -1471,7 +1521,11 @@ func (s *SMSService) ProviderServicesForProduct(ctx context.Context, providerCod
 	if productCatalog, ok := provider.(SMSProductServiceCatalogProvider); ok {
 		items, err := productCatalog.CatalogServicesForProduct(ctx, productType, durationValue, durationUnit)
 		if err == nil && len(items) > 0 {
-			return s.persistProviderServices(ctx, providerCode, items)
+			persisted, persistErr := s.persistProviderServices(ctx, providerCode, items)
+			if persistErr != nil {
+				return nil, persistErr
+			}
+			return s.decorateServiceStartingPrices(ctx, persisted), nil
 		}
 		if err != nil && productType == "rental" {
 			return nil, err
@@ -1487,7 +1541,11 @@ func (s *SMSService) ProviderServicesForProduct(ctx context.Context, providerCod
 			if err != nil {
 				return nil, err
 			}
-			return s.persistProviderServices(ctx, providerCode, items)
+			persisted, persistErr := s.persistProviderServices(ctx, providerCode, items)
+			if persistErr != nil {
+				return nil, persistErr
+			}
+			return s.decorateServiceStartingPrices(ctx, persisted), nil
 		}
 	}
 	return s.ListServices(ctx)
@@ -1674,7 +1732,7 @@ func (s *SMSService) CountriesForProviderServiceProduct(ctx context.Context, pro
 	provider := providerFor(providerCode, base, providerAPIKey(providerCode, credential, s.encryptor))
 	if p, ok := provider.(SMSProductServiceCountryProvider); ok {
 		if items, err := p.CountriesForServiceProduct(ctx, serviceCode, productType, durationValue, durationUnit); err == nil {
-			return items, nil
+			return s.decorateCountryStartingPrices(ctx, items), nil
 		} else if productType == "rental" {
 			return nil, err
 		}
@@ -1684,7 +1742,7 @@ func (s *SMSService) CountriesForProviderServiceProduct(ctx context.Context, pro
 			// This live service-specific result is authoritative. A provider-wide
 			// country snapshot cannot tell whether a particular app is available
 			// in a country, so it must not override this list.
-			return items, nil
+			return s.decorateCountryStartingPrices(ctx, items), nil
 		}
 	}
 
