@@ -204,8 +204,8 @@ func (p *smsPVAProvider) CatalogServicesForProduct(ctx context.Context, productT
 	if err := json.Unmarshal(env.Data, &rows); err != nil { return nil, err }
 	out := make([]SMSSvcCatalogItem,0,len(rows))
 	for _, row := range rows {
-		code := firstString(row, "service", "code", "opt")
-		name := firstString(row, "name", "title", "service_name")
+		code := smsPVAFirstString(row, "service", "code", "opt")
+		name := smsPVAFirstString(row, "name", "title", "service_name")
 		code = strings.ToLower(strings.TrimSpace(code))
 		if code == "" { continue }
 		if name == "" { name = code }
@@ -231,7 +231,7 @@ func (p *smsPVAProvider) CatalogServicesForProduct(ctx context.Context, productT
 	return out,nil
 }
 
-func firstString(row map[string]any, keys ...string) string {
+func smsPVAFirstString(row map[string]any, keys ...string) string {
 	for _, key := range keys { if value,ok:=row[key].(string);ok && strings.TrimSpace(value)!=""{return value} }
 	return ""
 }
