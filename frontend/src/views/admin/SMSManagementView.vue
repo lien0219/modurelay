@@ -112,14 +112,14 @@
                 <td class="px-5 py-3">
                   <div v-if="!isBetaProvider(provider)" class="min-w-48 space-y-1 text-xs text-gray-500 dark:text-gray-400">
                     <div class="flex items-center gap-2">
-                      <span class="badge" :class="catalogStatus[provider.code]?.status === 'succeeded' && !catalogStatus[provider.code]?.stale ? 'badge-success' : 'badge-warning'">{{ catalogStatus[provider.code]?.status || 'never' }}</span>
-                      <button type="button" class="btn btn-secondary btn-sm" :disabled="syncingProviderCode === provider.code || !provider.enabled" @click="syncCatalog(provider)">{{ syncingProviderCode === provider.code ? '同步中' : '同步目录' }}</button>
+                      <span class="badge" :class="catalogStatus[provider.code]?.status === 'succeeded' && !catalogStatus[provider.code]?.stale ? 'badge-success' : 'badge-warning'">{{ catalogStatusLabel(catalogStatus[provider.code]?.status) }}</span>
+                      <button type="button" class="btn btn-secondary btn-sm" :disabled="syncingProviderCode === provider.code || !provider.enabled" @click="syncCatalog(provider)">{{ syncingProviderCode === provider.code ? t('sms.admin.syncingCatalog') : t('sms.admin.syncCatalog') }}</button>
                     </div>
-                    <div>平台 {{ catalogStatus[provider.code]?.service_count ?? 0 }} · 国家 {{ catalogStatus[provider.code]?.country_count ?? 0 }}</div>
-                    <div v-if="catalogStatus[provider.code]?.last_success_at">最近成功 {{ formatDate(catalogStatus[provider.code]?.last_success_at) }}</div>
+                    <div>{{ t('sms.admin.catalogStats', { services: catalogStatus[provider.code]?.service_count ?? 0, countries: catalogStatus[provider.code]?.country_count ?? 0 }) }}</div>
+                    <div v-if="catalogStatus[provider.code]?.last_success_at">{{ t('sms.admin.catalogLastSuccess', { time: formatDate(catalogStatus[provider.code]?.last_success_at) }) }}</div>
                     <div v-if="catalogStatus[provider.code]?.failure_reason" class="max-w-64 truncate text-red-500" :title="catalogStatus[provider.code]?.failure_reason">{{ catalogStatus[provider.code]?.failure_reason }}</div>
                   </div>
-                  <span v-else class="text-xs text-gray-400">BETA 暂停同步</span>
+                  <span v-else class="text-xs text-gray-400">{{ t('sms.admin.catalogBetaPaused') }}</span>
                 </td>
                 <td class="px-5 py-3"><input v-model="provider.enabled" type="checkbox" :disabled="isBetaProvider(provider)" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" :aria-label="t('sms.admin.providerEnabled', { name: provider.name })" @change="saveProvider(provider)" /></td>
                 <td class="px-5 py-3"><div class="flex min-w-max flex-wrap gap-2"><button type="button" class="btn btn-secondary btn-sm" :disabled="isBetaProvider(provider)" @click="saveProvider(provider)">{{ t('sms.admin.save') }}</button><button v-if="supportsTestConnection(provider)" type="button" class="btn btn-secondary btn-sm" :disabled="testingProviderId === provider.id || isBetaProvider(provider)" :aria-busy="testingProviderId === provider.id" :title="t('sms.admin.testRequestNotice')" @click="testProvider(provider)">{{ testingProviderId === provider.id ? t('sms.admin.testing') : t('sms.admin.testConnection') }}</button></div></td>
@@ -218,6 +218,11 @@ function isBetaChannel(channel: SMSChannelAdmin) {
 function providerName(providerId?: number) {
   if (providerId == null) return '-'
   return providers.value.find(item => item.id === providerId)?.name || '-'
+}
+
+function catalogStatusLabel(status?: string) {
+  const normalized = status || 'never'
+  return t(`sms.admin.catalogStatus.${normalized}`)
 }
 
 function supportsTestConnection(provider: SMSProviderAdmin) {
