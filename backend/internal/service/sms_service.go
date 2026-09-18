@@ -262,12 +262,12 @@ type SMSMessage struct {
 	ReceivedAt       time.Time `json:"received_at"`
 }
 type SMSPurchaseResult struct {
-	ProviderOrderID     string         `json:"provider_order_id"`
-	PhoneNumber         string         `json:"phone_number"`
-	ExpiresAt           *time.Time     `json:"expires_at,omitempty"`
-	Metadata            map[string]any `json:"metadata,omitempty"`
-	ProviderCost        float64        `json:"-"`
-	ProviderOperatorCode string        `json:"-"`
+	ProviderOrderID      string         `json:"provider_order_id"`
+	PhoneNumber          string         `json:"phone_number"`
+	ExpiresAt            *time.Time     `json:"expires_at,omitempty"`
+	Metadata             map[string]any `json:"metadata,omitempty"`
+	ProviderCost         float64        `json:"-"`
+	ProviderOperatorCode string         `json:"-"`
 }
 type SMSStatusResult struct {
 	Status               string         `json:"status"`
