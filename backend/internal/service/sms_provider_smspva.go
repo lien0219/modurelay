@@ -89,10 +89,14 @@ func (p *smsPVAProvider) requestJSON(ctx context.Context, method, path string, q
 }
 
 func (p *smsPVAProvider) rentalRequestJSON(ctx context.Context, query url.Values, out *smsPVARentalEnvelope) error {
-	if strings.TrimSpace(p.apiKey) == "" { return ErrSMSProviderCredentialMissing }
 	if query == nil { query = url.Values{} }
-	query.Set("apikey", p.apiKey)
-	target := "https://smspva.com/api/rent.php?" + query.Encode()
+	if strings.TrimSpace(p.apiKey) != "" { query.Set("apikey", p.apiKey) }
+	base := strings.TrimRight(p.baseURL, "/")
+	targetBase := "https://smspva.com/api/rent.php"
+	if u, err := url.Parse(base); err == nil && u.Host != "" && !strings.Contains(strings.ToLower(u.Host), "smspva.com") {
+		targetBase = base + "/api/rent.php"
+	}
+	target := targetBase + "?" + query.Encode()
 	req, err := http.NewRequestWithContext(ctx,http.MethodGet,target,nil)
 	if err != nil { return err }
 	req.Header.Set("Accept","application/json")
@@ -112,8 +116,19 @@ func smsPVARentalPeriod(value int, unit string) (string,int,int,error) {
 	switch strings.ToLower(strings.TrimSpace(unit)) {
 	case "", "week": return "week", value, value*7, nil
 	case "month": return "month", value, value*30, nil
-	case "day": return "day", value, value, nil
-	default: return "",0,0,errors.New("SMSPVA rental duration must use day, week, or month")
+	default: return "",0,0,errors.New("SMSPVA rental purchase duration must use week or month")
+	}
+}
+
+func smsPVARentalExtensionPeriod(value int, unit string) (string,int,error) {
+	if value <= 0 { return "",0,errors.New("rental extension duration must be positive") }
+	switch strings.ToLower(strings.TrimSpace(unit)) {
+	case "week": return "week",value,nil
+	case "month": return "month",value,nil
+	case "day":
+		if value > 6 { return "",0,errors.New("SMSPVA daily max extension is 6 days") }
+		return "day",value,nil
+	default: return "",0,errors.New("SMSPVA rental extension must use day, week, or month")
 	}
 }
 
@@ -178,6 +193,84 @@ func (p *smsPVAProvider) Catalog(ctx context.Context) ([]SMSSvcCatalogItem, []SM
 func (p *smsPVAProvider) CatalogServices(ctx context.Context, _ []SMSCountryCatalogItem) ([]SMSSvcCatalogItem, error) {
 	services, _, err := p.Catalog(ctx)
 	return services, err
+}
+
+func (p *smsPVAProvider) CatalogServicesForProduct(ctx context.Context, productType string, durationValue int, durationUnit string) ([]SMSSvcCatalogItem, error) {
+	if !strings.EqualFold(strings.TrimSpace(productType), "rental") { return p.CatalogServices(ctx, nil) }
+	var env smsPVARentalEnvelope
+	if err := p.rentalRequestJSON(ctx, url.Values{"method":{"get_default_services"}}, &env); err != nil { return nil, err }
+	var rows []map[string]any
+	if err := json.Unmarshal(env.Data, &rows); err != nil { return nil, err }
+	out := make([]SMSSvcCatalogItem,0,len(rows))
+	for _, row := range rows {
+		code := firstString(row, "service", "code", "opt")
+		name := firstString(row, "name", "title", "service_name")
+		code = strings.ToLower(strings.TrimSpace(code))
+		if code == "" { continue }
+		if name == "" { name = code }
+		out = append(out, SMSSvcCatalogItem{Code:code,Name:name,ProviderCode:code,Category:"rental",Available:true})
+	}
+	if len(out) == 0 {
+		// Some deployments return sparse default-service metadata. Build the
+		// catalog from the provider's country data without fabricating service IDs.
+		countries, err := p.rentalCountries(ctx)
+		if err != nil { return nil, err }
+		seen:=map[string]SMSSvcCatalogItem{}
+		for _, country := range countries {
+			dtype,dcount,_,_:=smsPVARentalPeriod(durationValue,durationUnit)
+			var data smsPVARentalEnvelope
+			if err:=p.rentalRequestJSON(ctx,url.Values{"method":{"getdata"},"country":{country.ProviderCode},"dtype":{dtype},"dcount":{strconv.Itoa(dcount)},"extend":{"1"}},&data);err!=nil{continue}
+			var payload struct{ Services []struct{ Name string `json:"name"`; Service string `json:"service"`; PriceDay json.RawMessage `json:"price_day"`; Count int `json:"count"` } `json:"services"` }
+			if json.Unmarshal(data.Data,&payload)!=nil{continue}
+			for _,svc:=range payload.Services{code:=strings.ToLower(strings.TrimSpace(svc.Service));if code==""{continue};name:=strings.TrimSpace(svc.Name);if name==""{name=code};seen[code]=SMSSvcCatalogItem{Code:code,Name:name,ProviderCode:code,Category:"rental",Available:svc.Count>0}}
+		}
+		for _,item:=range seen{out=append(out,item)}
+	}
+	sort.Slice(out,func(i,j int)bool{return out[i].Name<out[j].Name})
+	return out,nil
+}
+
+func firstString(row map[string]any, keys ...string) string {
+	for _, key := range keys { if value,ok:=row[key].(string);ok && strings.TrimSpace(value)!=""{return value} }
+	return ""
+}
+
+func (p *smsPVAProvider) rentalCountries(ctx context.Context) ([]SMSCountryCatalogItem,error) {
+	var env smsPVARentalEnvelope
+	if err:=p.rentalRequestJSON(ctx,url.Values{"method":{"getcountries"}},&env);err!=nil {
+		// The provider currently has deployments that return status=0 while still
+		// carrying a valid public country list. Retry through the raw endpoint.
+		if env.Data==nil{return nil,err}
+	}
+	var rows []struct{Name string `json:"name"`; Code string `json:"code"`}
+	if err:=json.Unmarshal(env.Data,&rows);err!=nil{return nil,err}
+	out:=make([]SMSCountryCatalogItem,0,len(rows));for _,row:=range rows{code:=strings.ToUpper(strings.TrimSpace(row.Code));if code==""{continue};out=append(out,SMSCountryCatalogItem{ISO2:code,ProviderCode:code,NameEN:strings.TrimSpace(row.Name),Available:true})}
+	return out,nil
+}
+
+func (p *smsPVAProvider) CountriesForServiceProduct(ctx context.Context, serviceCode, productType string, durationValue int, durationUnit string) ([]SMSCountryCatalogItem, error) {
+	if !strings.EqualFold(strings.TrimSpace(productType), "rental") { return p.CountriesForService(ctx,serviceCode) }
+	dtype,dcount,_,err:=smsPVARentalPeriod(durationValue,durationUnit);if err!=nil{return nil,err}
+	var env smsPVARentalEnvelope
+	if err:=p.rentalRequestJSON(ctx,url.Values{"method":{"get_country_by_service"},"service":{strings.ToLower(strings.TrimSpace(serviceCode))},"dtype":{dtype},"dcount":{strconv.Itoa(dcount)}},&env);err!=nil{return nil,err}
+	var rows []struct{Name string `json:"name"`; Code string `json:"code"`}
+	if err:=json.Unmarshal(env.Data,&rows);err!=nil{return nil,err}
+	out:=make([]SMSCountryCatalogItem,0,len(rows))
+	for _,row:=range rows{code:=strings.ToUpper(strings.TrimSpace(row.Code));if code==""{continue};out=append(out,SMSCountryCatalogItem{ISO2:code,ProviderCode:code,NameEN:strings.TrimSpace(row.Name),Available:true})}
+	return out,nil
+}
+
+func (p *smsPVAProvider) OperatorsForProduct(ctx context.Context, countryCode, serviceCode, productType string, voiceMode, durationValue int, durationUnit string) ([]SMSOperatorOption,error) {
+	if !strings.EqualFold(strings.TrimSpace(productType),"rental"){return p.Operators(ctx,countryCode,serviceCode,voiceMode)}
+	dtype,dcount,_,err:=smsPVARentalPeriod(durationValue,durationUnit);if err!=nil{return nil,err}
+	var env smsPVARentalEnvelope
+	if err:=p.rentalRequestJSON(ctx,url.Values{"method":{"getdataWithProviders"},"country":{strings.ToUpper(strings.TrimSpace(countryCode))},"dtype":{dtype},"dcount":{strconv.Itoa(dcount)},"extend":{"1"}},&env);err!=nil{return nil,err}
+	var data struct{Services []struct{Service string `json:"service"`;PriceDay json.RawMessage `json:"price_day"`;Count map[string]int `json:"count"`} `json:"services"`}
+	if err:=json.Unmarshal(env.Data,&data);err!=nil{return nil,err}
+	out:=[]SMSOperatorOption{}
+	for _,svc:=range data.Services{if !strings.EqualFold(svc.Service,serviceCode){continue};price,_:=jsonNumber(svc.PriceDay);for op,count:=range svc.Count{out=append(out,SMSOperatorOption{Code:op,Name:op,Stock:count,ProviderCost:price,Available:count>0})}}
+	sort.Slice(out,func(i,j int)bool{if out[i].Stock==out[j].Stock{return out[i].Name<out[j].Name};return out[i].Stock>out[j].Stock})
+	return out,nil
 }
 
 func (p *smsPVAProvider) CountriesForService(ctx context.Context, serviceCode string) ([]SMSCountryCatalogItem, error) {
@@ -447,7 +540,7 @@ func (p *smsPVAProvider) GetRentalStatus(ctx context.Context, id string) (*SMSSt
 }
 
 func (p *smsPVAProvider) ExtendRental(ctx context.Context, id string, value int, unit string) error {
-	dtype,dcount,_,err:=smsPVARentalPeriod(value,unit); if err!=nil{return err}
+	dtype,dcount,err:=smsPVARentalExtensionPeriod(value,unit); if err!=nil{return err}
 	method:="prolong"; if dtype=="day" { method="prolong_max" }
 	var env smsPVARentalEnvelope
 	return p.rentalRequestJSON(ctx,url.Values{"method":{method},"id":{strings.TrimSpace(id)},"dtype":{dtype},"dcount":{strconv.Itoa(dcount)}},&env)
