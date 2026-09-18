@@ -131,6 +131,33 @@ describe('SMSVerificationView', () => {
     wrapper.unmount()
   })
 
+
+  it('shows copyable order ids with service and country icons', async () => {
+    const wrapper = mount(SMSVerificationView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<main><slot /></main>' },
+          Icon: true,
+          Pagination: true,
+          Select: true,
+          ConfirmDialog: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    const ordersTab = wrapper.findAll('[role="tab"]').find(tab => tab.text() === 'sms.user.orders')
+    expect(ordersTab).toBeDefined()
+    await ordersTab!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[aria-label="common.copy sms-1"]').exists()).toBe(true)
+    expect(wrapper.find('.fi-us').exists()).toBe(true)
+    expect(wrapper.text()).toContain('OpenAI')
+    expect(wrapper.text()).toContain('美国')
+    wrapper.unmount()
+  })
+
   it('localizes pending and expired order statuses without raw enum fallback', async () => {
     const wrapper = mount(SMSVerificationView, {
       global: {
