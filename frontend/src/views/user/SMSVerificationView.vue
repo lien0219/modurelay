@@ -350,9 +350,19 @@ const orderStatusOptions = computed(() => orderStatuses.map(value => ({ value, l
 const serviceLabel = (code: string) => services.value.find(item => item.code === code)?.name || code
 const countryLabel = (code: string) => { const item = countries.value.find(country => country.iso2 === code); return item ? countryName(item) : code }
 function errorMessage(error: unknown, fallback: string) {
-  const candidate = error as { message?: string; code?: string }
-  if (candidate?.code === 'CANCEL_TOO_EARLY') return t('sms.user.errors.cancelTooEarly')
-  if (candidate?.code === 'INSUFFICIENT_STOCK') return t('sms.user.errors.insufficientStock')
+  const candidate = error as { message?: string; code?: string | number; reason?: string }
+  const reason = candidate?.reason || (typeof candidate?.code === 'string' ? candidate.code : '')
+  if (reason === 'CANCEL_TOO_EARLY') return t('sms.user.errors.cancelTooEarly')
+  if (reason === 'INSUFFICIENT_STOCK') return t('sms.user.errors.insufficientStock')
+  if (reason === 'PROVIDER_NO_STOCK') return t('sms.user.errors.providerNoStock')
+  if (reason === 'PROVIDER_PRICE_LIMIT') return t('sms.user.errors.providerPriceLimit')
+  if (reason === 'PROVIDER_BALANCE_LOW') return t('sms.user.errors.providerBalanceLow')
+  if (reason === 'PROVIDER_RATE_LIMITED') return t('sms.user.errors.providerRateLimited')
+  if (reason === 'PROVIDER_AUTH_FAILED') return t('sms.user.errors.providerAuthFailed')
+  if (reason === 'PROVIDER_COUNTRY_INVALID') return t('sms.user.errors.providerCountryInvalid')
+  if (reason === 'PROVIDER_OPERATOR_INVALID') return t('sms.user.errors.providerOperatorInvalid')
+  if (reason === 'PROVIDER_SERVICE_INVALID') return t('sms.user.errors.providerServiceInvalid')
+  if (reason === 'PROVIDER_UPSTREAM_ERROR') return t('sms.user.errors.providerUpstreamError')
   return candidate?.message || fallback
 }
 const isOrderWaiting = (order: SMSOrder) => ['active', 'provider_unknown', 'reconciling'].includes(order.status)
