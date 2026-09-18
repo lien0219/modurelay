@@ -56,6 +56,79 @@ var smsCatalogCache struct {
 	expiresAt time.Time
 }
 
+type smsProviderServiceCacheEntry struct {
+	items     []SMSSvcCatalogItem
+	expiresAt time.Time
+}
+
+type smsProviderCountryCacheEntry struct {
+	items     []SMSCountryCatalogItem
+	expiresAt time.Time
+}
+
+var smsProviderServiceCache = struct {
+	sync.RWMutex
+	items map[string]smsProviderServiceCacheEntry
+}{items: map[string]smsProviderServiceCacheEntry{}}
+
+var smsProviderCountryCache = struct {
+	sync.RWMutex
+	items map[string]smsProviderCountryCacheEntry
+}{items: map[string]smsProviderCountryCacheEntry{}}
+
+const (
+	smsProviderServiceCacheTTL = 2 * time.Minute
+	smsProviderCountryCacheTTL = 45 * time.Second
+)
+
+func smsProviderCatalogCacheKey(providerCode, productType string, durationValue int, durationUnit string) string {
+	return strings.ToLower(strings.TrimSpace(providerCode)) + "|" +
+		strings.ToLower(strings.TrimSpace(productType)) + "|" +
+		strconv.Itoa(durationValue) + "|" + strings.ToLower(strings.TrimSpace(durationUnit))
+}
+
+func smsProviderCountryCacheKey(providerCode, serviceCode, productType string, durationValue int, durationUnit string) string {
+	return smsProviderCatalogCacheKey(providerCode, productType, durationValue, durationUnit) + "|" + strings.ToLower(strings.TrimSpace(serviceCode))
+}
+
+func cachedProviderServices(key string) ([]SMSSvcCatalogItem, bool) {
+	smsProviderServiceCache.RLock()
+	entry, ok := smsProviderServiceCache.items[key]
+	smsProviderServiceCache.RUnlock()
+	if !ok || time.Now().After(entry.expiresAt) {
+		return nil, false
+	}
+	return append([]SMSSvcCatalogItem(nil), entry.items...), true
+}
+
+func cacheProviderServices(key string, items []SMSSvcCatalogItem) {
+	smsProviderServiceCache.Lock()
+	smsProviderServiceCache.items[key] = smsProviderServiceCacheEntry{
+		items:     append([]SMSSvcCatalogItem(nil), items...),
+		expiresAt: time.Now().Add(smsProviderServiceCacheTTL),
+	}
+	smsProviderServiceCache.Unlock()
+}
+
+func cachedProviderCountries(key string) ([]SMSCountryCatalogItem, bool) {
+	smsProviderCountryCache.RLock()
+	entry, ok := smsProviderCountryCache.items[key]
+	smsProviderCountryCache.RUnlock()
+	if !ok || time.Now().After(entry.expiresAt) {
+		return nil, false
+	}
+	return append([]SMSCountryCatalogItem(nil), entry.items...), true
+}
+
+func cacheProviderCountries(key string, items []SMSCountryCatalogItem) {
+	smsProviderCountryCache.Lock()
+	smsProviderCountryCache.items[key] = smsProviderCountryCacheEntry{
+		items:     append([]SMSCountryCatalogItem(nil), items...),
+		expiresAt: time.Now().Add(smsProviderCountryCacheTTL),
+	}
+	smsProviderCountryCache.Unlock()
+}
+
 const (
 	smsReconciliationPurchase = "purchase"
 	smsReconciliationCancel   = "cancel"
@@ -1360,6 +1433,99 @@ type SMSOrderPage struct {
 	Pages    int        `json:"pages"`
 }
 
+type SMSRecentSuccessItem struct {
+	Username    string `json:"username"`
+	CountryCode string `json:"country_code"`
+	Phone       string `json:"phone"`
+}
+
+type SMSRecentSuccessFeed struct {
+	Source           string                 `json:"source"`
+	RealSuccessCount int64                  `json:"real_success_count"`
+	Items            []SMSRecentSuccessItem `json:"items"`
+}
+
+func maskSMSFeedIdentity(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "user***"
+	}
+	if at := strings.Index(value, "@"); at > 0 {
+		value = value[:at]
+	}
+	runes := []rune(value)
+	if len(runes) <= 2 {
+		return string(runes[:1]) + "***"
+	}
+	return string(runes[:2]) + "***"
+}
+
+func maskSMSFeedPhone(value string) string {
+	value = strings.TrimSpace(value)
+	runes := []rune(value)
+	if len(runes) <= 7 {
+		return "***"
+	}
+	return string(runes[:4]) + "****" + string(runes[len(runes)-3:])
+}
+
+func mockSMSRecentSuccesses() []SMSRecentSuccessItem {
+	return []SMSRecentSuccessItem{
+		{Username: "al***", CountryCode: "US", Phone: "+120****728"},
+		{Username: "mi***", CountryCode: "GB", Phone: "+447****391"},
+		{Username: "sa***", CountryCode: "DE", Phone: "+491****526"},
+		{Username: "ke***", CountryCode: "CA", Phone: "+160****844"},
+		{Username: "yu***", CountryCode: "JP", Phone: "+819****317"},
+		{Username: "an***", CountryCode: "AR", Phone: "+549****682"},
+		{Username: "ro***", CountryCode: "BR", Phone: "+551****405"},
+		{Username: "le***", CountryCode: "FR", Phone: "+336****971"},
+		{Username: "ch***", CountryCode: "AU", Phone: "+614****238"},
+		{Username: "no***", CountryCode: "NL", Phone: "+316****114"},
+		{Username: "ma***", CountryCode: "ES", Phone: "+346****559"},
+		{Username: "ha***", CountryCode: "SG", Phone: "+658****620"},
+	}
+}
+
+func (s *SMSService) RecentSuccesses(ctx context.Context) (*SMSRecentSuccessFeed, error) {
+	var total int64
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sms_orders WHERE status='completed' AND phone_number<>''`).Scan(&total); err != nil {
+		return nil, err
+	}
+	if total <= 50 {
+		return &SMSRecentSuccessFeed{Source: "mock", RealSuccessCount: total, Items: mockSMSRecentSuccesses()}, nil
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT COALESCE(NULLIF(u.username,''),u.email),co.iso2,o.phone_number
+		FROM sms_orders o
+		JOIN users u ON u.id=o.user_id
+		JOIN sms_countries co ON co.id=o.country_id
+		WHERE o.status='completed' AND o.phone_number<>''
+		ORDER BY o.updated_at DESC
+		LIMIT 30`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	items := make([]SMSRecentSuccessItem, 0, 30)
+	for rows.Next() {
+		var username, countryCode, phone string
+		if err := rows.Scan(&username, &countryCode, &phone); err != nil {
+			return nil, err
+		}
+		items = append(items, SMSRecentSuccessItem{
+			Username:    maskSMSFeedIdentity(username),
+			CountryCode: strings.ToUpper(strings.TrimSpace(countryCode)),
+			Phone:       maskSMSFeedPhone(phone),
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(items) == 0 {
+		return &SMSRecentSuccessFeed{Source: "mock", RealSuccessCount: total, Items: mockSMSRecentSuccesses()}, nil
+	}
+	return &SMSRecentSuccessFeed{Source: "real", RealSuccessCount: total, Items: items}, nil
+}
+
 type SMSSvcCatalogItem struct {
 	Code          string  `json:"code"`
 	Name          string  `json:"name"`
@@ -1481,6 +1647,10 @@ func (s *SMSService) ProviderServicesForProduct(ctx context.Context, providerCod
 		productType = "temporary"
 	}
 	if providerCode == "5sim" || providerCode == "smspva" {
+		cacheKey := smsProviderCatalogCacheKey(providerCode, productType, durationValue, durationUnit)
+		if items, ok := cachedProviderServices(cacheKey); ok {
+			return s.decorateServiceStartingPrices(ctx, items), nil
+		}
 		var base, credential string
 		if err := s.db.QueryRowContext(ctx, `SELECT base_url,credential_ref FROM sms_providers WHERE code=$1 AND enabled`, providerCode).Scan(&base, &credential); err != nil {
 			return nil, err
@@ -1493,6 +1663,7 @@ func (s *SMSService) ProviderServicesForProduct(ctx context.Context, providerCod
 				if persistErr != nil {
 					return nil, persistErr
 				}
+				cacheProviderServices(cacheKey, persisted)
 				return s.decorateServiceStartingPrices(ctx, persisted), nil
 			}
 		}
@@ -1728,6 +1899,12 @@ func (s *SMSService) CountriesForProviderServiceProduct(ctx context.Context, pro
 	if productType == "" {
 		productType = "temporary"
 	}
+	cacheKey := smsProviderCountryCacheKey(providerCode, serviceCode, productType, durationValue, durationUnit)
+	if providerCode == "5sim" || providerCode == "smspva" {
+		if items, ok := cachedProviderCountries(cacheKey); ok {
+			return s.decorateCountryStartingPrices(ctx, items), nil
+		}
+	}
 	var base, credential string
 	if err := s.db.QueryRowContext(ctx, `SELECT base_url,credential_ref FROM sms_providers WHERE code=$1 AND enabled`, providerCode).Scan(&base, &credential); err != nil {
 		return nil, err
@@ -1735,6 +1912,9 @@ func (s *SMSService) CountriesForProviderServiceProduct(ctx context.Context, pro
 	provider := providerFor(providerCode, base, providerAPIKey(providerCode, credential, s.encryptor))
 	if p, ok := provider.(SMSProductServiceCountryProvider); ok {
 		if items, err := p.CountriesForServiceProduct(ctx, serviceCode, productType, durationValue, durationUnit); err == nil {
+			if providerCode == "5sim" || providerCode == "smspva" {
+				cacheProviderCountries(cacheKey, items)
+			}
 			return s.decorateCountryStartingPrices(ctx, items), nil
 		} else if productType == "rental" {
 			return nil, err
@@ -1745,6 +1925,9 @@ func (s *SMSService) CountriesForProviderServiceProduct(ctx context.Context, pro
 			// This live service-specific result is authoritative. A provider-wide
 			// country snapshot cannot tell whether a particular app is available
 			// in a country, so it must not override this list.
+			if providerCode == "5sim" || providerCode == "smspva" {
+				cacheProviderCountries(cacheKey, items)
+			}
 			return s.decorateCountryStartingPrices(ctx, items), nil
 		}
 	}
