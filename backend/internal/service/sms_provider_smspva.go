@@ -8,10 +8,10 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strings"
-	"time"
 	"sort"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/shopspring/decimal"
 )
@@ -24,6 +24,12 @@ type smsPVAEnvelope struct {
 	StatusCode int             `json:"statusCode"`
 	Data       json.RawMessage `json:"data"`
 	Error      json.RawMessage `json:"error"`
+}
+
+type smsPVARentalEnvelope struct {
+	Status int             `json:"status"`
+	Data   json.RawMessage `json:"data"`
+	Msg    string          `json:"msg"`
 }
 
 func (p *smsPVAProvider) Capabilities(context.Context) SMSProviderCapabilities {
@@ -80,6 +86,35 @@ func (p *smsPVAProvider) requestJSON(ctx context.Context, method, path string, q
 		}
 	}
 	return resp.StatusCode, nil
+}
+
+func (p *smsPVAProvider) rentalRequestJSON(ctx context.Context, query url.Values, out *smsPVARentalEnvelope) error {
+	if strings.TrimSpace(p.apiKey) == "" { return ErrSMSProviderCredentialMissing }
+	if query == nil { query = url.Values{} }
+	query.Set("apikey", p.apiKey)
+	target := "https://smspva.com/api/rent.php?" + query.Encode()
+	req, err := http.NewRequestWithContext(ctx,http.MethodGet,target,nil)
+	if err != nil { return err }
+	req.Header.Set("Accept","application/json")
+	resp, err := p.client.Do(req)
+	if err != nil { return fmt.Errorf("provider smspva rental request: %w",err) }
+	defer func(){ _ = resp.Body.Close() }()
+	body, err := io.ReadAll(io.LimitReader(resp.Body,2<<20))
+	if err != nil { return err }
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 { return fmt.Errorf("provider smspva rental returned HTTP %d",resp.StatusCode) }
+	if err := json.Unmarshal(body,out); err != nil { return fmt.Errorf("provider smspva rental returned invalid response: %w",err) }
+	if out.Status != 1 { if strings.TrimSpace(out.Msg)!="" { return errors.New(out.Msg) }; return ErrSMSProviderUnavailable }
+	return nil
+}
+
+func smsPVARentalPeriod(value int, unit string) (string,int,int,error) {
+	if value <= 0 { value = 1 }
+	switch strings.ToLower(strings.TrimSpace(unit)) {
+	case "", "week": return "week", value, value*7, nil
+	case "month": return "month", value, value*30, nil
+	case "day": return "day", value, value, nil
+	default: return "",0,0,errors.New("SMSPVA rental duration must use day, week, or month")
+	}
 }
 
 func (p *smsPVAProvider) Catalog(ctx context.Context) ([]SMSSvcCatalogItem, []SMSCountryCatalogItem, error) {
@@ -229,8 +264,24 @@ func (p *smsPVAProvider) TestConnection(ctx context.Context) error {
 func (p *smsPVAProvider) Quote(ctx context.Context, req SMSQuoteRequest) (*SMSProviderQuote, error) {
 	country := strings.ToUpper(strings.TrimSpace(req.CountryCode))
 	service := strings.ToLower(strings.TrimSpace(req.ServiceCode))
-	if country == "" || service == "" {
-		return nil, ErrSMSProviderUnavailable
+	if country == "" || service == "" { return nil, ErrSMSProviderUnavailable }
+	if strings.EqualFold(req.ProductType,"rental") {
+		dtype,dcount,days,err := smsPVARentalPeriod(req.DurationValue,req.DurationUnit)
+		if err != nil { return nil,err }
+		var env smsPVARentalEnvelope
+		q:=url.Values{"method":{"getdataWithProviders"},"country":{country},"dtype":{dtype},"dcount":{strconv.Itoa(dcount)},"extend":{"1"}}
+		if err:=p.rentalRequestJSON(ctx,q,&env); err!=nil { return nil,err }
+		var data struct{ Services []struct{ Service string `json:"service"`; PriceDay json.RawMessage `json:"price_day"`; TotalCount int `json:"totalCount"`; Count map[string]int `json:"count"` } `json:"services"` }
+		if err:=json.Unmarshal(env.Data,&data); err!=nil { return nil,err }
+		for _,item:=range data.Services {
+			if !strings.EqualFold(item.Service,service) { continue }
+			priceDay,ok:=jsonNumber(item.PriceDay); if !ok || priceDay<=0 { return nil,ErrSMSProviderUnavailable }
+			stock:=item.TotalCount
+			if op:=strings.TrimSpace(req.OperatorCode); op!="" && !strings.EqualFold(op,"any") { stock=item.Count[op] }
+			if stock<=0 { return nil,ErrSMSProviderUnavailable }
+			return &SMSProviderQuote{Cost:decimal.NewFromFloat(priceDay*float64(days)),Currency:"USD",Stock:stock,ExpiresAt:time.Now().Add(30*time.Second),EstimatedDeliverySeconds:90},nil
+		}
+		return nil,ErrSMSProviderUnavailable
 	}
 
 	var env smsPVAEnvelope
@@ -372,20 +423,39 @@ func (p *smsPVAProvider) RequestTemporaryRefund(ctx context.Context, id string) 
 	return p.CancelTemporary(ctx, id)
 }
 
-func (p *smsPVAProvider) PurchaseRental(context.Context, SMSPurchaseRequest) (*SMSPurchaseResult, error) {
-	return nil, errors.New("SMSPVA rental is not enabled in this purchase flow yet")
+func (p *smsPVAProvider) PurchaseRental(ctx context.Context, req SMSPurchaseRequest) (*SMSPurchaseResult, error) {
+	dtype,dcount,_,err:=smsPVARentalPeriod(req.DurationValue,req.DurationUnit); if err!=nil{return nil,err}
+	q:=url.Values{"method":{"create"},"dtype":{dtype},"dcount":{strconv.Itoa(dcount)},"country":{strings.ToUpper(strings.TrimSpace(req.CountryCode))},"service":{strings.ToLower(strings.TrimSpace(req.ServiceCode))}}
+	if op:=strings.TrimSpace(req.OperatorCode); op!="" && !strings.EqualFold(op,"any"){q.Set("provider",op)}
+	var env smsPVARentalEnvelope
+	if err:=p.rentalRequestJSON(ctx,q,&env);err!=nil{return nil,err}
+	var data struct{ ID json.RawMessage `json:"id"`; Phone string `json:"pnumber"`; Until int64 `json:"until"` }
+	if err:=json.Unmarshal(env.Data,&data);err!=nil{return nil,err}
+	id:=rawString(data.ID); if id=="" { return nil,errors.New("SMSPVA rental returned no order id") }
+	var expires *time.Time
+	if data.Until>0 { t:=time.Unix(data.Until,0); expires=&t }
+	return &SMSPurchaseResult{ProviderOrderID:id,PhoneNumber:data.Phone,ExpiresAt:expires},nil
 }
 
-func (p *smsPVAProvider) GetRentalStatus(context.Context, string) (*SMSStatusResult, error) {
-	return nil, errors.New("SMSPVA rental is not enabled in this purchase flow yet")
+func (p *smsPVAProvider) GetRentalStatus(ctx context.Context, id string) (*SMSStatusResult, error) {
+	var env smsPVARentalEnvelope
+	if err:=p.rentalRequestJSON(ctx,url.Values{"method":{"sms"},"id":{strings.TrimSpace(id)}},&env);err!=nil{return nil,err}
+	var data struct{ SMSList []struct{ Text string `json:"text"` } `json:"SmsList"`; OtherSMS []any `json:"OtherSms"` }
+	if err:=json.Unmarshal(env.Data,&data);err!=nil{return nil,err}
+	messages:=make([]string,0,len(data.SMSList)); for _,m:=range data.SMSList { if strings.TrimSpace(m.Text)!="" { messages=append(messages,m.Text) } }
+	return &SMSStatusResult{Status:"active",Messages:messages},nil
 }
 
-func (p *smsPVAProvider) ExtendRental(context.Context, string, int, string) error {
-	return errors.New("SMSPVA rental is not enabled in this purchase flow yet")
+func (p *smsPVAProvider) ExtendRental(ctx context.Context, id string, value int, unit string) error {
+	dtype,dcount,_,err:=smsPVARentalPeriod(value,unit); if err!=nil{return err}
+	method:="prolong"; if dtype=="day" { method="prolong_max" }
+	var env smsPVARentalEnvelope
+	return p.rentalRequestJSON(ctx,url.Values{"method":{method},"id":{strings.TrimSpace(id)},"dtype":{dtype},"dcount":{strconv.Itoa(dcount)}},&env)
 }
 
-func (p *smsPVAProvider) CancelRental(context.Context, string) error {
-	return errors.New("SMSPVA rental is not enabled in this purchase flow yet")
+func (p *smsPVAProvider) CancelRental(ctx context.Context, id string) error {
+	var env smsPVARentalEnvelope
+	return p.rentalRequestJSON(ctx,url.Values{"method":{"delete"},"id":{strings.TrimSpace(id)}},&env)
 }
 
 func rawString(v json.RawMessage) string {
