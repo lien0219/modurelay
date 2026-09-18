@@ -358,7 +358,9 @@ const isOrderWaiting = (order: SMSOrder) => ['active', 'provider_unknown', 'reco
 const latestVerificationCode = (order: SMSOrder) => [...(order.messages || [])].reverse().find(message => message.verification_code)?.verification_code || ''
 
 const remainingLabel = (order: SMSOrder) => {
-  const seconds = Math.max(0, order.remaining_seconds ?? (order.expires_at ? Math.floor((new Date(order.expires_at).getTime() - Date.now()) / 1000) : 0))
+  const seconds = Math.max(0, order.expires_at
+    ? Math.floor((new Date(order.expires_at).getTime() - Date.now()) / 1000)
+    : (order.remaining_seconds ?? 0))
   if (seconds <= 0) return ['active', 'provider_unknown'].includes(order.status) ? t('sms.user.refundProcessing') : '-'
   const minutes = Math.floor(seconds / 60)
   return `${minutes}:${String(seconds % 60).padStart(2, '0')}`
