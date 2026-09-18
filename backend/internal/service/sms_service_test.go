@@ -352,6 +352,49 @@ func TestSMSCaptureIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestSMS5SIMRefundReconciliationCallsCancelOnlyOnce(t *testing.T) {
+	var cancelCalls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/user/cancel/order-1" {
+			t.Fatalf("unexpected provider path: %s", r.URL.Path)
+		}
+		cancelCalls++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer server.Close()
+	t.Setenv("SMS_5SIM_API_KEY", "secret")
+
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectExec(`UPDATE sms_orders SET provider_refund_status=\$1`).
+		WithArgs("succeeded", "", int64(11)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectBegin()
+	mock.ExpectQuery(`UPDATE sms_orders SET status=\$1.*settlement_status='captured'.*RETURNING reserved_amount`).
+		WithArgs("refunded", "approved", "provider refund confirmed during reconciliation", "refunded", int64(11)).
+		WillReturnRows(sqlmock.NewRows([]string{"reserved_amount"}).AddRow(0.75))
+	mock.ExpectExec(`UPDATE users SET balance=balance\+\$1,updated_at`).
+		WithArgs(0.75, int64(7)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	svc := &SMSService{db: db}
+	if err := svc.reconcileSMSAction(context.Background(), 11, 7, "temporary", "order-1", "5sim", server.URL, "env:SMS_5SIM_API_KEY", "captured", smsReconciliationRefund, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if cancelCalls != 1 {
+		t.Fatalf("5SIM cancellation/refund endpoint called %d times, want 1", cancelCalls)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestSMSRefundCaptureIsIdempotent(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
