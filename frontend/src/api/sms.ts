@@ -1,12 +1,12 @@
 import { apiClient } from './client'
 
-export interface SMSServiceItem { code: string; name: string; icon?: string; category?: string; description?: string; provider_code?: string; stock?: number; provider_cost?: number; available?: boolean }
+export interface SMSServiceItem { code: string; name: string; icon?: string; category?: string; description?: string; provider_code?: string; stock?: number; available?: boolean }
 export interface SMSCatalogPage<T> { items: T[]; total: number; page: number; page_size: number; pages: number; has_more: boolean; catalog_stale?: boolean; catalog_observed_at?: string }
 export interface SMSProviderItem { code: string; name: string; beta: boolean; selectable: boolean; capabilities: SMSCapabilities }
-export interface SMSCountryItem { iso2: string; iso3?: string; calling_code?: string; name_zh?: string; name_en?: string; provider_code?: string; stock?: number; provider_cost?: number; conversion_rate?: number; available?: boolean }
+export interface SMSCountryItem { iso2: string; iso3?: string; calling_code?: string; name_zh?: string; name_en?: string; provider_code?: string; stock?: number; conversion_rate?: number; available?: boolean }
 export interface SMSCapabilities { supports_temporary: boolean; supports_rental: boolean; supports_rental_cancel: boolean; supports_webhook: boolean; supports_polling: boolean; supports_cancel: boolean; supports_refund: boolean; supports_refund_status: boolean; supports_finish: boolean; supports_ban: boolean; supports_extend: boolean; supports_resend: boolean; supports_voice: boolean; supports_voice_sms: boolean; supports_voice_caller_id: boolean; supports_voice_call: boolean; supports_operator_selection: boolean; supports_service_selection: boolean; supports_conversion_stats: boolean }
 export interface SMSQuote { channel_code: string; public_name: string; channel_role: string; sale_price: number; stock: number; success_rate?: number; success_rate_grade?: string; success_rate_source: string; estimated_delivery_seconds: number; capabilities: SMSCapabilities; quote_id: string; quote_expires_at: string }
-export interface SMSOperatorItem { code: string; name: string; stock?: number; provider_cost?: number; provider_rate?: number; available: boolean }
+export interface SMSOperatorItem { code: string; name: string; stock?: number; provider_rate?: number; available: boolean }
 export interface SMSMessage { id: number; message_text: string; verification_code?: string; received_at: string }
 export interface SMSOrder { id: string; product_type: 'temporary' | 'rental'; status: string; channel_code: string; channel_name: string; service_code: string; country_code: string; phone_number?: string; operator_code?: string; voice_mode?: number; price: number; success_rate?: number; success_rate_grade?: string; success_rate_source: string; refund_status: string; refund_reason?: string; capabilities?: SMSCapabilities; messages?: SMSMessage[]; expires_at?: string; remaining_seconds?: number; created_at: string }
 export interface SMSOrderPage { items: SMSOrder[]; total: number; page: number; page_size: number; pages: number }
