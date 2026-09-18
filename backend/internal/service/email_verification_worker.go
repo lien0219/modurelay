@@ -94,6 +94,7 @@ func (w *EmailVerificationWorker) runOnce() {
 		slog.Warn("email message retention cleanup failed", "error", err)
 	}
 	if w.sms != nil {
+		w.sms.SyncDueCatalogs(ctx)
 		if err := w.sms.Reconcile(ctx); err != nil {
 			slog.Warn("sms verification reconciliation cycle failed", "error", err)
 		}

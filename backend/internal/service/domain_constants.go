@@ -509,6 +509,10 @@ const (
 	// SettingKeySMSServiceEnabled controls the user-facing SMS Verification module.
 	// It is opt-in and defaults to false until providers are configured.
 	SettingKeySMSServiceEnabled = "sms_service_enabled"
+	// SettingKeySMSPricingSettings stores administrator-controlled SMS pricing
+	// policy. Provider costs remain provider-owned; these values control only
+	// the platform-facing sale price.
+	SettingKeySMSPricingSettings = "sms_pricing_settings"
 	// SettingKeyEmailServiceEnabled controls the user-facing temporary email module.
 	// It is opt-in and defaults to false until an email provider/channel is configured.
 	SettingKeyEmailServiceEnabled = "email_service_enabled"

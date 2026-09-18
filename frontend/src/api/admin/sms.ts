@@ -1,5 +1,6 @@
 import { apiClient } from '../client'
 import type { SMSCapabilities, SMSOrder } from '../sms'
+export interface SMSPricingSettings { cost_multiplier: number; fixed_markup: number; unknown_grade_multiplier: number; unknown_grade_fixed_markup: number; temporary_expiry_minutes: number; self_service_cancel_after_minutes: number; grade_multipliers: Record<string, number>; grade_fixed_markups: Record<string, number> }
 
 export interface SMSProviderAdmin { id: number; code: string; name: string; base_url: string; health_status: string; enabled: boolean; credential_configured: boolean; credential_ref?: string; capabilities: SMSCapabilities }
 export interface SMSChannelAdmin { id: number; code: string; public_name: string; role: string; provider_code: string; provider_id?: number; enabled: boolean; visible: boolean; healthy: boolean; sort_order: number }
@@ -17,5 +18,7 @@ const smsAdminAPI = {
   stats: () => apiClient.get<Record<string, number | boolean>>('/admin/sms/stats').then(r => r.data),
   orders: () => apiClient.get<SMSOrder[]>('/admin/sms/orders').then(r => r.data),
   setEnabled: (enabled: boolean) => apiClient.put('/admin/sms/settings', { enabled }).then(r => r.data as { enabled: boolean }),
+  pricing: () => apiClient.get<SMSPricingSettings>('/admin/sms/pricing').then(r => r.data),
+  updatePricing: (payload: SMSPricingSettings) => apiClient.put<SMSPricingSettings>('/admin/sms/pricing', payload).then(r => r.data),
 }
 export default smsAdminAPI

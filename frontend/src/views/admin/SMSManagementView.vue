@@ -38,6 +38,28 @@
         </label>
       </section>
 
+      <section class="card space-y-4 p-5">
+        <div>
+          <h2 class="font-semibold text-gray-900 dark:text-white">{{ t('sms.admin.pricingTitle') }}</h2>
+          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('sms.admin.pricingDescription') }}</p>
+        </div>
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <label class="block"><span class="input-label">{{ t('sms.admin.costMultiplier') }}</span><input v-model.number="pricing.cost_multiplier" class="input" type="number" min="0.01" step="0.01" /></label>
+          <label class="block"><span class="input-label">{{ t('sms.admin.fixedMarkup') }}</span><input v-model.number="pricing.fixed_markup" class="input" type="number" min="0" step="0.0001" /></label>
+          <label class="block"><span class="input-label">{{ t('sms.admin.unknownGradeMultiplier') }}</span><input v-model.number="pricing.unknown_grade_multiplier" class="input" type="number" min="0.01" step="0.01" /></label>
+          <label class="block"><span class="input-label">{{ t('sms.admin.unknownGradeFixedMarkup') }}</span><input v-model.number="pricing.unknown_grade_fixed_markup" class="input" type="number" min="0" step="0.0001" /></label>
+          <label class="block"><span class="input-label">{{ t('sms.admin.temporaryExpiryMinutes') }}</span><input v-model.number="pricing.temporary_expiry_minutes" class="input" type="number" min="1" max="1440" step="1" /></label>
+          <label class="block"><span class="input-label">{{ t('sms.admin.cancelAfterMinutes') }}</span><input v-model.number="pricing.self_service_cancel_after_minutes" class="input" type="number" min="0" max="1440" step="1" /></label>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="min-w-[560px] text-left text-sm">
+            <thead class="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-dark-800"><tr><th class="px-3 py-2">{{ t('sms.admin.successGrade') }}</th><th class="px-3 py-2">{{ t('sms.admin.gradeMultiplier') }}</th><th class="px-3 py-2">{{ t('sms.admin.gradeFixedMarkup') }}</th></tr></thead>
+            <tbody><tr v-for="grade in successGrades" :key="grade" class="border-t border-gray-100 dark:border-dark-700"><td class="px-3 py-2 font-semibold">{{ grade }}</td><td class="px-3 py-2"><input v-model.number="pricing.grade_multipliers[grade]" class="input max-w-48" type="number" min="0.01" step="0.01" /></td><td class="px-3 py-2"><input v-model.number="pricing.grade_fixed_markups[grade]" class="input max-w-48" type="number" min="0" step="0.0001" /></td></tr></tbody>
+          </table>
+        </div>
+        <div class="flex justify-end"><button type="button" class="btn btn-primary" :disabled="pricingSaving" @click="savePricing">{{ pricingSaving ? t('sms.admin.saving') : t('sms.admin.savePricing') }}</button></div>
+      </section>
+
       <section class="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <div v-for="item in statItems" :key="item.key" class="card p-4">
           <div class="text-xs uppercase tracking-wide text-gray-500">{{ item.label }}</div>
@@ -179,7 +201,7 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import adminSMS from '@/api/admin/sms'
-import type { SMSChannelAdmin, SMSProviderAdmin, SMSProviderMappingAdmin, SMSProviderMappingPage } from '@/api/admin/sms'
+import type { SMSChannelAdmin, SMSPricingSettings, SMSProviderAdmin, SMSProviderMappingAdmin, SMSProviderMappingPage } from '@/api/admin/sms'
 import { useAppStore } from '@/stores'
 
 const { t } = useI18n()
@@ -197,6 +219,9 @@ const mappingKind = ref<'service' | 'country'>('service')
 const mappingKeyword = ref('')
 const mappingLoading = ref(false)
 const mappingPage = ref<SMSProviderMappingPage>({ items: [], total: 0, page: 1, page_size: 20, pages: 1 })
+const pricing = ref<SMSPricingSettings>({ cost_multiplier: 1.3, fixed_markup: 0, unknown_grade_multiplier: 1, unknown_grade_fixed_markup: 0, temporary_expiry_minutes: 10, self_service_cancel_after_minutes: 1, grade_multipliers: { S: 1, A: 1, B: 1, C: 1, D: 1 }, grade_fixed_markups: { S: 0, A: 0, B: 0, C: 0, D: 0 } })
+const pricingSaving = ref(false)
+const successGrades = ['S', 'A', 'B', 'C', 'D']
 
 const providerPortals: Record<string, string> = {
   '5sim': 'https://5sim.net/',
@@ -242,16 +267,32 @@ function roleLabel(role: string) {
 async function load() {
   loading.value = true
   try {
-    const [nextProviders, nextChannels, nextStats] = await Promise.all([adminSMS.providers(), adminSMS.channels(), adminSMS.stats()])
+    const pricingRequest = typeof adminSMS.pricing === 'function'
+      ? Promise.resolve(adminSMS.pricing()).then((value) => value || pricing.value).catch(() => pricing.value)
+      : Promise.resolve(pricing.value)
+    const [nextProviders, nextChannels, nextStats, nextPricing] = await Promise.all([adminSMS.providers(), adminSMS.channels(), adminSMS.stats(), pricingRequest])
     providers.value = nextProviders
     credentialDrafts.value = Object.fromEntries(nextProviders.map((provider) => [provider.id, '']))
     channels.value = nextChannels
     stats.value = nextStats
     enabled.value = Boolean(stats.value.feature_enabled)
+    pricing.value = { ...pricing.value, ...nextPricing, grade_multipliers: { ...pricing.value.grade_multipliers, ...nextPricing.grade_multipliers }, grade_fixed_markups: { ...pricing.value.grade_fixed_markups, ...nextPricing.grade_fixed_markups } }
   } catch (error) {
     appStore.showError(errorMessage(error, t('sms.user.errors.unavailable')))
   } finally {
     loading.value = false
+  }
+}
+
+async function savePricing() {
+  pricingSaving.value = true
+  try {
+    pricing.value = await adminSMS.updatePricing(pricing.value)
+    appStore.showSuccess(t('sms.admin.pricingSaved'))
+  } catch (error) {
+    appStore.showError(errorMessage(error, t('sms.admin.pricingSaveFailed')))
+  } finally {
+    pricingSaving.value = false
   }
 }
 

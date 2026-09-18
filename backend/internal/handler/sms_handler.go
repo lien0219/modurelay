@@ -60,20 +60,34 @@ func (h *SMSHandler) Quotes(c *gin.Context) {
 }
 
 func (h *SMSHandler) Services(c *gin.Context) {
-	items, err := h.svc.ListServices(c.Request.Context())
+	items, _, err := h.svc.ProviderCatalog(c.Request.Context())
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
 	response.Success(c, items)
 }
+func (h *SMSHandler) Providers(c *gin.Context) { items, err := h.svc.ListPublicProviders(c.Request.Context()); if err != nil { response.ErrorFrom(c, err); return }; response.Success(c, items) }
+func (h *SMSHandler) ProviderServices(c *gin.Context) {
+ items, err := h.svc.ProviderServices(c.Request.Context(), c.Param("provider")); if err != nil { response.ErrorFrom(c, err); return }
+ if c.Query("page") == "" && c.Query("page_size") == "" && c.Query("keyword") == "" { response.Success(c, items); return }
+ page,size:=response.ParsePagination(c); keyword:=strings.ToLower(strings.TrimSpace(c.Query("keyword"))); filtered:=make([]service.SMSSvcCatalogItem,0,len(items)); for _,item:=range items { if keyword=="" || strings.Contains(strings.ToLower(item.Code),keyword) || strings.Contains(strings.ToLower(item.Name),keyword) { filtered=append(filtered,item) } }; start:=(page-1)*size; if start>len(filtered){start=len(filtered)}; end:=start+size;if end>len(filtered){end=len(filtered)}; pages:=(len(filtered)+size-1)/size; response.Success(c,gin.H{"items":filtered[start:end],"total":len(filtered),"page":page,"page_size":size,"pages":pages,"has_more":end<len(filtered)})
+}
 func (h *SMSHandler) Countries(c *gin.Context) {
-	items, err := h.svc.ListCountries(c.Request.Context())
+	_, items, err := h.svc.ProviderCatalog(c.Request.Context())
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
 	response.Success(c, items)
+}
+
+func (h *SMSHandler) ServiceCountries(c *gin.Context) {
+	serviceCode := strings.ToLower(strings.TrimSpace(c.Param("service")))
+	items, err := h.svc.CountriesForProviderService(c.Request.Context(), c.Param("provider"), serviceCode)
+	if err != nil { response.ErrorFrom(c, err); return }
+	if c.Query("page") == "" && c.Query("page_size") == "" && c.Query("keyword") == "" { response.Success(c, items); return }
+	page,size:=response.ParsePagination(c); keyword:=strings.ToLower(strings.TrimSpace(c.Query("keyword"))); filtered:=make([]service.SMSCountryCatalogItem,0,len(items)); for _,item:=range items { if keyword=="" || strings.Contains(strings.ToLower(item.ISO2),keyword) || strings.Contains(strings.ToLower(item.NameEN),keyword) || strings.Contains(strings.ToLower(item.NameZH),keyword) { filtered=append(filtered,item) } }; start:=(page-1)*size;if start>len(filtered){start=len(filtered)};end:=start+size;if end>len(filtered){end=len(filtered)};pages:=(len(filtered)+size-1)/size;response.Success(c,gin.H{"items":filtered[start:end],"total":len(filtered),"page":page,"page_size":size,"pages":pages,"has_more":end<len(filtered)})
 }
 
 type smsPurchaseRequest struct {
@@ -112,6 +126,8 @@ func (h *SMSHandler) Purchase(c *gin.Context) {
 			response.ErrorWithDetails(c, http.StatusNotFound, "SMS Verification is unavailable", "FEATURE_DISABLED", nil)
 		case service.ErrSMSInsufficientBalance:
 			response.ErrorWithDetails(c, http.StatusPaymentRequired, "Insufficient balance", "INSUFFICIENT_BALANCE", nil)
+		case service.ErrSMSInsufficientStock:
+			response.ErrorWithDetails(c, http.StatusConflict, "The selected channel does not have enough stock", "INSUFFICIENT_STOCK", nil)
 		case service.ErrSMSPriceChanged:
 			response.ErrorWithDetails(c, http.StatusConflict, "The quote changed; please confirm again", "PRICE_CHANGED", nil)
 		case service.ErrSMSQuoteInvalid, service.ErrSMSQuoteExpired:
@@ -124,6 +140,49 @@ func (h *SMSHandler) Purchase(c *gin.Context) {
 		return
 	}
 	response.Success(c, order)
+}
+
+func (h *SMSHandler) PurchaseBatch(c *gin.Context) {
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	var req struct {
+		Items []smsPurchaseRequest `json:"items"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || len(req.Items) == 0 {
+		response.BadRequest(c, "items are required")
+		return
+	}
+	items := make([]service.SMSPurchaseRequest, 0, len(req.Items))
+	prices := make([]*float64, 0, len(req.Items))
+	for _, item := range req.Items {
+		items = append(items, service.SMSPurchaseRequest{ChannelCode: strings.TrimSpace(item.ChannelCode), ServiceCode: strings.ToLower(strings.TrimSpace(item.ServiceCode)), CountryCode: strings.ToUpper(strings.TrimSpace(item.CountryCode)), ProductType: item.ProductType, DurationValue: item.DurationValue, DurationUnit: item.DurationUnit, QuoteID: strings.TrimSpace(item.QuoteID)})
+		prices = append(prices, item.ExpectedPrice)
+	}
+	orders, err := h.svc.PurchaseBatch(c.Request.Context(), subject.UserID, items, c.GetHeader("Idempotency-Key"), prices)
+	if err != nil && len(orders) == 0 {
+		switch err {
+		case service.ErrSMSInsufficientBalance:
+			response.ErrorWithDetails(c, http.StatusPaymentRequired, "Insufficient balance", "INSUFFICIENT_BALANCE", nil)
+		case service.ErrSMSInsufficientStock:
+			response.ErrorWithDetails(c, http.StatusConflict, "The selected channel does not have enough stock", "INSUFFICIENT_STOCK", nil)
+		case service.ErrSMSPriceChanged:
+			response.ErrorWithDetails(c, http.StatusConflict, "The quote changed; please confirm again", "PRICE_CHANGED", nil)
+		case service.ErrSMSQuoteInvalid, service.ErrSMSQuoteExpired:
+			response.ErrorWithDetails(c, http.StatusConflict, "The quote is no longer valid; please request a new quote", "QUOTE_EXPIRED", nil)
+		default:
+			response.ErrorFrom(c, err)
+		}
+		return
+	}
+	response.Success(c, gin.H{"items": orders, "partial_error": func() string {
+		if err != nil {
+			return err.Error()
+		}
+		return ""
+	}()})
 }
 func (h *SMSHandler) Orders(c *gin.Context) {
 	subject, ok := middleware.GetAuthSubjectFromContext(c)
@@ -182,6 +241,10 @@ func (h *SMSHandler) Webhook(c *gin.Context) {
 		response.BadRequest(c, "invalid webhook payload")
 		return
 	}
+	if strings.TrimSpace(payload.OrderID) == "" {
+		response.BadRequest(c, "provider_order_id is required")
+		return
+	}
 	messages := append([]string(nil), payload.Messages...)
 	if payload.Message != "" {
 		messages = append(messages, payload.Message)
@@ -199,6 +262,10 @@ func (h *SMSHandler) Cancel(c *gin.Context) {
 		return
 	}
 	if err := h.svc.CancelOrder(c.Request.Context(), subject.UserID, c.Param("id")); err != nil {
+		if err == service.ErrSMSCancelTooEarly {
+			response.ErrorWithDetails(c, http.StatusUnprocessableEntity, "Please wait until the configured cancellation window before cancelling this order", "CANCEL_TOO_EARLY", nil)
+			return
+		}
 		if err == service.ErrSMSProviderUnknown {
 			response.ErrorWithDetails(c, http.StatusAccepted, "The cancellation is being reconciled", "ORDER_RECONCILING", nil)
 			return
@@ -215,6 +282,10 @@ func (h *SMSHandler) Refund(c *gin.Context) {
 		return
 	}
 	if err := h.svc.RequestRefund(c.Request.Context(), subject.UserID, c.Param("id")); err != nil {
+		if err == service.ErrSMSCancelTooEarly {
+			response.ErrorWithDetails(c, http.StatusUnprocessableEntity, "Please wait until the configured cancellation window before requesting a refund", "CANCEL_TOO_EARLY", nil)
+			return
+		}
 		if err == service.ErrSMSRefundPending {
 			response.ErrorWithDetails(c, http.StatusAccepted, "The channel refund is being processed", "REFUND_PENDING", nil)
 			return
@@ -319,6 +390,15 @@ func (h *SMSHandler) AdminProviderTest(c *gin.Context) {
 		return
 	}
 	response.Success(c, result)
+}
+
+func (h *SMSHandler) AdminCatalogSync(c *gin.Context) {
+    provider := strings.TrimSpace(c.Param("provider"))
+    if err := h.svc.SyncProviderCatalog(c.Request.Context(), provider); err != nil { response.ErrorFrom(c, err); return }
+    response.Success(c, gin.H{"synced": true})
+}
+func (h *SMSHandler) AdminCatalogSyncStatus(c *gin.Context) {
+    status, err := h.svc.CatalogSyncStatus(c.Request.Context(), c.Param("provider")); if err != nil { response.ErrorFrom(c, err); return }; response.Success(c, status)
 }
 func (h *SMSHandler) AdminProviderMappings(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
@@ -439,4 +519,30 @@ func (h *SMSHandler) AdminToggle(c *gin.Context) {
 		return
 	}
 	response.Success(c, gin.H{"enabled": req.Enabled})
+}
+
+func (h *SMSHandler) AdminPricing(c *gin.Context) {
+	settings, err := h.svc.GetPricingSettings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, settings)
+}
+
+func (h *SMSHandler) AdminPricingUpdate(c *gin.Context) {
+	var settings service.SMSPricingSettings
+	if err := c.ShouldBindJSON(&settings); err != nil {
+		response.BadRequest(c, "invalid SMS pricing settings")
+		return
+	}
+	if err := h.svc.SetPricingSettings(c.Request.Context(), settings); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	if saved, err := h.svc.GetPricingSettings(c.Request.Context()); err == nil {
+		response.Success(c, saved)
+		return
+	}
+	response.Success(c, settings)
 }

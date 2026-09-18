@@ -33,6 +33,16 @@ func TestSMSProviderCapabilitiesAreSeparated(t *testing.T) {
 	}
 }
 
+func TestSMSOrderCapabilitiesPreferRegisteredAdapter(t *testing.T) {
+	if got := resolveSMSCapabilities("pingme", "https://example.invalid", []byte(`{}`)); !got.Extend || !got.Rental {
+		t.Fatalf("PingMe adapter capabilities = %#v", got)
+	}
+	fallback := resolveSMSCapabilities("custom", "https://example.invalid", []byte(`{"supports_cancel":true}`))
+	if !fallback.Cancel {
+		t.Fatalf("unknown provider should use stored capabilities: %#v", fallback)
+	}
+}
+
 func TestSMSActivateUsesRealActionContract(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("api_key") != "secret" || r.URL.Query().Get("action") != "getPrices" {
@@ -49,6 +59,49 @@ func TestSMSActivateUsesRealActionContract(t *testing.T) {
 	}
 	if quote.Stock != 4 || quote.Cost.String() != "0.8" {
 		t.Fatalf("unexpected quote: %#v", quote)
+	}
+}
+
+func TestFiveSIMQuoteParsesCurrentGuestResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/guest/products/usa/any/telegram" {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			return
+		}
+		if r.Header.Get("Authorization") != "" {
+			t.Errorf("guest quote must not require bearer auth")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"Category":"activation","Qty":93849,"Price":0.77}`))
+	}))
+	defer server.Close()
+
+	quote, err := providerFor("5sim", server.URL, "").Quote(context.Background(), SMSQuoteRequest{ServiceCode: "telegram", CountryCode: "usa", ProductType: "temporary"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if quote.Stock != 93849 || quote.Cost.String() != "0.77" {
+		t.Fatalf("unexpected quote: %#v", quote)
+	}
+}
+
+func TestFiveSIMCatalogParsesGuestCountries(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/guest/countries" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"usa":{"iso":{"us":1},"text_en":"USA"}}`))
+	}))
+	defer server.Close()
+
+	services, countries, err := providerFor("5sim", server.URL, "").(SMSCatalogProvider).Catalog(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(services) != 0 || len(countries) != 1 || countries[0].ISO2 != "US" {
+		t.Fatalf("unexpected catalog: services=%#v countries=%#v", services, countries)
 	}
 }
 
@@ -144,6 +197,33 @@ func TestSMSUnknownProviderStatesDoNotBecomeSuccess(t *testing.T) {
 	}
 	if got := normalizeSMSStatus("provider_timeout"); got != "provider_unknown" {
 		t.Fatalf("unknown status = %q", got)
+	}
+	if got := normalizeSMSStatus("canceled"); got != "cancelled" {
+		t.Fatalf("canceled status = %q", got)
+	}
+}
+
+func TestSMSProviderTerminalStateNeedsVerificationCode(t *testing.T) {
+	if got := smsStatusFromProvider(&SMSStatusResult{Status: "completed"}); got != "active" {
+		t.Fatalf("terminal provider state without a code = %q, want active", got)
+	}
+	if got := smsStatusFromProvider(&SMSStatusResult{Status: "completed", Messages: []string{"Your code is 482913"}}); got != "completed" {
+		t.Fatalf("provider message with a code = %q, want completed", got)
+	}
+	if got := smsStatusFromProvider(nil); got != "provider_unknown" {
+		t.Fatalf("nil provider result = %q, want provider_unknown", got)
+	}
+}
+
+func TestSMSCodeExtractionHandlesPunctuationAndRejectsLongNumbers(t *testing.T) {
+	if got := extractSMSCode("验证码：482913"); got != "482913" {
+		t.Fatalf("Chinese punctuation code = %q", got)
+	}
+	if got := extractSMSCode("Your code is 482913."); got != "482913" {
+		t.Fatalf("punctuated code = %q", got)
+	}
+	if got := extractSMSCode("Reference 123456789"); got != "" {
+		t.Fatalf("long numeric reference = %q, want no code", got)
 	}
 }
 

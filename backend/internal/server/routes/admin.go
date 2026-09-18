@@ -168,6 +168,8 @@ func registerSMSAdminRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	sms.GET("/providers", h.SMS.AdminProviders)
 	sms.PUT("/providers/:id", h.SMS.AdminProviderUpdate)
 	sms.POST("/providers/:id/test", h.SMS.AdminProviderTest)
+	sms.POST("/catalog-sync/:provider", h.SMS.AdminCatalogSync)
+	sms.GET("/catalog-sync/:provider/status", h.SMS.AdminCatalogSyncStatus)
 	sms.GET("/providers/:id/mappings", h.SMS.AdminProviderMappings)
 	sms.PUT("/providers/:id/service-mappings/:service_id", h.SMS.AdminProviderServiceMappingUpdate)
 	sms.PUT("/providers/:id/country-mappings/:country_id", h.SMS.AdminProviderCountryMappingUpdate)
@@ -176,6 +178,8 @@ func registerSMSAdminRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	sms.GET("/stats", h.SMS.AdminStats)
 	sms.GET("/orders", h.SMS.AdminOrders)
 	sms.PUT("/settings", h.SMS.AdminToggle)
+	sms.GET("/pricing", h.SMS.AdminPricing)
+	sms.PUT("/pricing", h.SMS.AdminPricingUpdate)
 }
 
 func registerPlanCatalogRoutes(admin *gin.RouterGroup, h *handler.Handlers) {

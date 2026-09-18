@@ -17,20 +17,16 @@
         <button type="button" class="border-b-2 px-3 py-2 text-sm font-medium" :class="activeTab === 'orders' ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500'" role="tab" :aria-selected="activeTab === 'orders'" @click="activeTab = 'orders'; loadOrders()">{{ t('sms.user.orders') }}</button>
       </div>
 
-      <section v-if="activeTab !== 'orders'" class="card space-y-4 p-5">
-        <div class="grid gap-4 sm:grid-cols-3">
-          <Select v-model="serviceCode" :label="t('sms.user.service')" :options="serviceOptions" :placeholder="t('sms.user.selectService')" searchable>
-            <template #selected="{ option }"><VerificationIdentity v-if="option" kind="platform" :code="String(option.value)" :label="String(option.label)" :icon="String(option.icon || '')" :show-code="false" /><span v-else>{{ t('sms.user.selectService') }}</span></template>
-            <template #option="{ option }"><VerificationIdentity kind="platform" :code="String(option.value)" :label="String(option.label)" :icon="String(option.icon || '')" /></template>
-          </Select>
-          <Select v-model="countryCode" :label="t('sms.user.country')" :options="countryOptions" :placeholder="t('sms.user.selectCountry')" searchable>
-            <template #selected="{ option }"><VerificationIdentity v-if="option" kind="country" :code="String(option.value)" :label="String(option.label)" :show-code="false" /><span v-else>{{ t('sms.user.selectCountry') }}</span></template>
-            <template #option="{ option }"><VerificationIdentity kind="country" :code="String(option.value)" :label="String(option.label)" /></template>
-          </Select>
+      <section v-if="activeTab !== 'orders'" class="card space-y-5 p-5">
+        <div class="sms-step-grid grid gap-4 lg:grid-cols-3">
+          <div class="rounded-xl border border-gray-200 p-4 dark:border-dark-700"><p class="text-xs font-semibold uppercase tracking-wide text-gray-500">1 · {{ t('sms.user.service') }}</p><div class="mt-3 max-h-64 space-y-2 overflow-y-auto"><button v-for="option in serviceOptions.slice(0, 60)" :key="String(option.value)" type="button" class="flex min-h-10 w-full items-center rounded-lg border px-3 text-left text-sm" :class="serviceCode === option.value ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-900/20' : 'border-gray-200 dark:border-dark-700'" @click="serviceCode = String(option.value)"><span class="min-w-0 truncate">{{ option.label }}</span></button></div><p v-if="serviceOptions.length > 60" class="mt-2 text-xs text-gray-500">{{ serviceOptions.length - 60 }} more — use search below</p></div>
+          <div class="rounded-xl border border-gray-200 p-4 dark:border-dark-700"><p class="text-xs font-semibold uppercase tracking-wide text-gray-500">2 · {{ t('sms.user.country') }}</p><div class="mt-3 max-h-64 space-y-2 overflow-y-auto"><button v-for="option in countryOptions" :key="String(option.value)" type="button" class="flex min-h-10 w-full items-center justify-between rounded-lg border px-3 text-left text-sm" :class="countryCode === option.value ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-900/20' : 'border-gray-200 dark:border-dark-700'" @click="countryCode = String(option.value)"><span class="truncate">{{ option.label }}</span><span class="text-xs text-gray-500">{{ countryCode === option.value ? t('sms.user.selected') : '' }}</span></button></div><p v-if="!serviceCode" class="mt-3 text-xs text-gray-500">{{ t('sms.user.selectService') }}</p></div>
+          <div class="rounded-xl border border-gray-200 p-4 dark:border-dark-700"><p class="text-xs font-semibold uppercase tracking-wide text-gray-500">3 · {{ t('sms.user.purchase') }}</p><div class="mt-4 space-y-3"><p class="text-sm text-gray-600 dark:text-gray-300">{{ serviceLabel(serviceCode) }} · {{ countryLabel(countryCode) }}</p>
           <div v-if="productType === 'rental'" class="grid grid-cols-2 gap-2">
             <label class="block min-w-0"><span class="input-label">{{ t('sms.user.duration') }}</span><input v-model.number="durationValue" class="input h-[42px]" type="number" min="1" /></label>
             <Select v-model="durationUnit" :label="t('sms.user.unit')" :options="durationUnitOptions" />
           </div>
+          <label class="block"><span class="input-label">{{ t('sms.user.quantity') }}</span><input v-model.number="purchaseQuantity" class="input h-[42px] w-full" type="number" min="1" max="50" /></label><button type="button" class="btn btn-primary w-full" :disabled="!serviceCode || !countryCode || quoting" @click="loadQuotes">{{ quoting ? t('sms.user.quoting') : t('sms.user.getQuote') }}</button></div></div>
         </div>
         <div class="flex flex-wrap items-center justify-between gap-3">
           <span class="text-xs text-gray-500 dark:text-gray-400">{{ quoteHint }}</span>
@@ -41,6 +37,10 @@
       <section v-if="activeTab !== 'orders'" class="space-y-3">
         <div v-if="quoting" class="card p-8 text-center text-sm text-gray-500">{{ t('sms.user.checkingStock') }}</div>
         <div v-else-if="!quotes.length" class="card p-8 text-center text-sm text-gray-500">{{ serviceCode && countryCode ? t('sms.user.noChannel') : t('sms.user.chooseForQuote') }}</div>
+        <div class="card flex flex-wrap items-end gap-3 p-4">
+          <label class="block"><span class="input-label">{{ t('sms.user.quantity') }}</span><input v-model.number="purchaseQuantity" class="input h-[42px] w-28" type="number" min="1" max="50" /></label>
+          <span class="text-xs text-gray-500">{{ t('sms.user.batchPurchaseHint') }}</span>
+        </div>
         <div v-for="quote in quotes" :key="quote.quote_id" class="card flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
           <div class="min-w-0">
             <div class="flex flex-wrap items-center gap-2">
@@ -52,11 +52,13 @@
               <span>{{ t('sms.user.eta') }}: {{ quote.estimated_delivery_seconds }}{{ t('sms.user.seconds') }}</span>
               <span v-if="quote.success_rate != null">{{ t('sms.user.successRate') }}: {{ Math.round(quote.success_rate * 100) }}%{{ t('sms.user.separator') }}{{ quote.success_rate_grade || '-' }}</span>
               <span v-else>{{ t('sms.user.insufficientSuccessData') }}</span>
+              <span>{{ quote.capabilities.supports_cancel ? t('sms.user.capabilities.cancel') : t('sms.user.capabilities.noCancel') }}</span>
+              <span>{{ quote.capabilities.supports_refund ? t('sms.user.capabilities.refund') : t('sms.user.capabilities.noRefund') }}</span>
             </div>
           </div>
           <div class="flex items-center justify-between gap-4 sm:justify-end">
             <div class="text-right"><div class="text-lg font-semibold tabular-nums text-gray-900 dark:text-white">{{ quote.sale_price.toFixed(4) }}</div><div class="text-xs text-gray-500">{{ t('sms.user.currency') }}</div></div>
-            <button type="button" class="btn btn-primary" :disabled="purchasing" @click="purchase(quote)">{{ purchasing ? t('sms.user.processing') : t('sms.user.purchase') }}</button>
+            <button type="button" class="btn btn-primary" :disabled="purchasing" @click="purchase(quote)">{{ purchasing ? t('sms.user.processing') : purchaseQuantity > 1 ? t('sms.user.batchPurchase') : t('sms.user.purchase') }}</button>
           </div>
         </div>
       </section>
@@ -69,26 +71,15 @@
         </form>
         <div v-if="ordersLoading" class="card p-8 text-center text-sm text-gray-500">{{ t('sms.user.loading') }}</div>
         <div v-else-if="!orders.length" class="card p-8 text-center text-sm text-gray-500">{{ t('sms.user.noOrders') }}</div>
-        <div v-for="order in orders" :key="order.id" class="card flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
-          <div class="min-w-0">
-            <div class="flex flex-wrap items-center gap-2"><span class="font-mono text-sm text-gray-900 dark:text-white">{{ order.id }}</span><span class="badge" :class="statusClass(order.status)">{{ statusLabel(order.status) }}</span><span v-if="order.refund_status !== 'not_requested'" class="badge badge-warning">{{ refundLabel(order.refund_status) }}</span></div>
-            <div class="mt-2 flex flex-wrap items-center gap-4 text-sm text-gray-500"><VerificationIdentity kind="platform" :code="order.service_code" :label="serviceLabel(order.service_code)" :show-code="false" /><VerificationIdentity kind="country" :code="order.country_code" :label="countryLabel(order.country_code)" :show-code="false" /><span>{{ order.channel_name }}{{ t('sms.user.separator') }}{{ productTypeLabel(order.product_type) }}</span></div>
-            <p v-if="order.phone_number" class="mt-1 font-mono text-sm text-gray-800 dark:text-gray-200">{{ order.phone_number }}</p>
-            <div v-if="order.messages?.length" class="mt-3 space-y-2 border-t border-gray-200 pt-3 dark:border-dark-700">
-              <div v-for="message in order.messages" :key="message.id" class="flex flex-wrap items-center gap-2 text-sm">
-                <span class="min-w-0 [overflow-wrap:anywhere] text-gray-500 dark:text-gray-400">{{ message.message_text }}</span>
-                <code v-if="message.verification_code" class="rounded bg-gray-100 px-2 py-1 font-mono font-semibold text-gray-900 dark:bg-dark-700 dark:text-white">{{ message.verification_code }}</code>
-                <time class="text-xs text-gray-400">{{ new Date(message.received_at).toLocaleTimeString() }}</time>
-              </div>
-            </div>
-            <p v-if="order.refund_reason" class="mt-1 text-xs text-amber-700 dark:text-amber-300">{{ order.refund_reason }}</p>
-          </div>
-          <div class="flex items-center gap-2">
-            <button v-if="order.status === 'active'" type="button" class="btn btn-secondary btn-sm" @click="cancel(order.id)">{{ t('sms.user.cancel') }}</button>
-            <button v-if="order.status === 'active' && order.product_type === 'rental'" type="button" class="btn btn-secondary btn-sm" @click="extend(order.id)">{{ t('sms.user.extend') }}</button>
-            <button v-if="order.status === 'active' && order.product_type === 'temporary'" type="button" class="btn btn-secondary btn-sm" @click="refund(order.id)">{{ t('sms.user.requestRefund') }}</button>
-            <button type="button" class="btn btn-secondary btn-sm" :disabled="refreshingId === order.id" :title="t('common.refresh')" :aria-label="t('common.refresh')" @click="refreshOrder(order.id)"><Icon name="refresh" size="sm" :class="refreshingId === order.id ? 'animate-spin' : ''" aria-hidden="true" /></button>
-          </div>
+        <div v-else class="card overflow-x-auto">
+          <table class="min-w-[980px] w-full text-left text-sm">
+            <thead class="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-dark-800"><tr><th class="px-4 py-3">{{ t('sms.user.order') }}</th><th class="px-4 py-3">{{ t('sms.user.service') }}</th><th class="px-4 py-3">{{ t('sms.user.country') }}</th><th class="px-4 py-3">{{ t('sms.user.phone') }}</th><th class="px-4 py-3">{{ t('sms.user.status') }}</th><th class="px-4 py-3">{{ t('sms.user.code') }}</th><th class="px-4 py-3">{{ t('sms.user.price') }}</th><th class="px-4 py-3">{{ t('sms.user.expiresIn') }}</th><th class="px-4 py-3">{{ t('sms.user.actions') }}</th></tr></thead>
+            <tbody>
+            <tr v-for="order in orders" :key="order.id" class="border-t border-gray-100 dark:border-dark-700">
+              <td class="px-4 py-3 font-mono text-xs">{{ order.id }}</td><td class="px-4 py-3">{{ serviceLabel(order.service_code) }}</td><td class="px-4 py-3">{{ countryLabel(order.country_code) }}</td><td class="px-4 py-3 font-mono">{{ order.phone_number || '-' }}</td><td class="px-4 py-3"><span class="badge" :class="statusClass(order.status)">{{ statusLabel(order.status) }}</span><span v-if="order.refund_status !== 'not_requested'" class="badge badge-warning ml-1">{{ refundLabel(order.refund_status) }}</span></td><td class="px-4 py-3"><div v-if="order.messages?.length" class="space-y-1"><div v-for="message in order.messages" :key="message.id"><code v-if="message.verification_code" class="font-mono font-semibold">{{ message.verification_code }}</code><span v-else class="text-gray-500">{{ message.message_text }}</span></div></div><span v-else>-</span></td><td class="px-4 py-3 tabular-nums">{{ order.price.toFixed(4) }}</td><td class="px-4 py-3 tabular-nums">{{ remainingLabel(order) }}</td><td class="px-4 py-3"><div class="flex min-w-max items-center gap-2"><button v-if="order.status === 'active' && order.capabilities?.supports_cancel !== false" type="button" class="btn btn-secondary btn-sm" @click="cancel(order.id)">{{ t('sms.user.cancel') }}</button><button v-if="order.status === 'active' && order.product_type === 'rental' && order.capabilities?.supports_extend" type="button" class="btn btn-secondary btn-sm" @click="extend(order.id)">{{ t('sms.user.extend') }}</button><button v-if="order.status === 'active' && order.product_type === 'temporary' && order.capabilities?.supports_refund !== false" type="button" class="btn btn-secondary btn-sm" @click="refund(order.id)">{{ t('sms.user.requestRefund') }}</button><button type="button" class="btn btn-secondary btn-sm" :disabled="refreshingId === order.id" :aria-label="t('common.refresh')" @click="refreshOrder(order.id)"><Icon name="refresh" size="sm" :class="refreshingId === order.id ? 'animate-spin' : ''" aria-hidden="true" /></button></div></td>
+            </tr>
+            </tbody>
+          </table>
         </div>
         <div v-if="orderPagination.total > 0" class="card overflow-hidden"><Pagination :page="orderPagination.page" :total="orderPagination.total" :page-size="orderPagination.pageSize" @update:page="changeOrderPage" @update:page-size="changeOrderPageSize" /></div>
       </section>
@@ -97,13 +88,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
-import VerificationIdentity from '@/components/verification/VerificationIdentity.vue'
 import { smsAPI, type SMSCountryItem, type SMSOrder, type SMSOrderPage, type SMSQuote, type SMSServiceItem } from '@/api/sms'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { useAppStore } from '@/stores'
@@ -113,6 +103,7 @@ const appStore = useAppStore()
 const productType = ref<'temporary' | 'rental'>('temporary')
 const activeTab = ref<'temporary' | 'rental' | 'orders'>('temporary')
 const services = ref<SMSServiceItem[]>([])
+const providerCode = ref('5sim')
 const countries = ref<SMSCountryItem[]>([])
 const serviceCode = ref('')
 const countryCode = ref('US')
@@ -124,11 +115,13 @@ const loading = ref(false)
 const quoting = ref(false)
 const ordersLoading = ref(false)
 const purchasing = ref(false)
+const purchaseQuantity = ref(1)
 const refreshingId = ref('')
 const orderPagination = reactive({ page: 1, pageSize: getPersistedPageSize(20), total: 0 })
 const orderDraft = reactive({ keyword: '', status: '' })
 const orderFilters = reactive({ keyword: '', status: '' })
-let timer: number | undefined
+let pollTimer: number | undefined
+let countdownTimer: number | undefined
 
 const tabs = computed(() => [
   { value: 'temporary' as const, label: t('sms.user.temporary') },
@@ -142,6 +135,22 @@ const orderStatuses = ['pending', 'active', 'reconciling', 'provider_unknown', '
 const orderStatusOptions = computed(() => orderStatuses.map(value => ({ value, label: statusLabel(value) })))
 const serviceLabel = (code: string) => services.value.find(item => item.code === code)?.name || code
 const countryLabel = (code: string) => { const item = countries.value.find(country => country.iso2 === code); return item ? countryName(item) : code }
+function errorMessage(error: unknown, fallback: string) {
+  const candidate = error as { message?: string; code?: string }
+  if (candidate?.code === 'CANCEL_TOO_EARLY') return t('sms.user.errors.cancelTooEarly')
+  if (candidate?.code === 'INSUFFICIENT_STOCK') return t('sms.user.errors.insufficientStock')
+  return candidate?.message || fallback
+}
+const remainingLabel = (order: SMSOrder) => {
+  const seconds = Math.max(0, order.remaining_seconds ?? (order.expires_at ? Math.floor((new Date(order.expires_at).getTime() - Date.now()) / 1000) : 0))
+  if (seconds <= 0) return ['active', 'provider_unknown'].includes(order.status) ? t('sms.user.refundProcessing') : '-'
+  const minutes = Math.floor(seconds / 60)
+  return `${minutes}:${String(seconds % 60).padStart(2, '0')}`
+}
+
+function refreshCountdowns() {
+  orders.value = orders.value.map(order => ({ ...order }))
+}
 
 function countryName(country: SMSCountryItem) {
   return locale.value.startsWith('zh') ? country.name_zh || country.name_en || country.iso2 : country.name_en || country.name_zh || country.iso2
@@ -162,41 +171,20 @@ function statusLabel(status: string) {
   return labels[status] || t('sms.user.statuses.unknown')
 }
 
-function productTypeLabel(type: SMSOrder['product_type']) {
-  return type === 'rental' ? t('sms.user.productTypes.rental') : t('sms.user.productTypes.temporary')
-}
-
 function statusClass(status: string) {
   return status === 'completed' || status === 'refunded' ? 'badge-success' : status === 'failed' ? 'badge-danger' : status === 'cancelled' ? 'badge-gray' : 'badge-info'
-}
-
-function refundLabel(status: string) {
-  const labels: Record<string, string> = { approved: t('sms.user.refunds.approved'), rejected: t('sms.user.refunds.rejected'), pending: t('sms.user.refunds.pending') }
-  return labels[status] || status
-}
-
-async function extend(id: string) {
-  const raw = window.prompt(t('sms.user.hoursToExtend'), '1')
-  const hours = Number(raw)
-  if (!Number.isFinite(hours) || hours <= 0) return
-  try {
-    await smsAPI.extendRental(id, { duration_value: hours, duration_unit: 'hour' }, `sms-renew-${id}-${Date.now()}`)
-    await loadOrders()
-  } catch (error) {
-    appStore.showError((error as { message?: string }).message || t('sms.user.errors.extend'))
-  }
 }
 
 async function loadAll() {
   loading.value = true
   try {
-    const [nextServices, nextCountries] = await Promise.all([smsAPI.services(), smsAPI.countries()])
+    const nextServices = await smsAPI.providerServices(providerCode.value)
     services.value = nextServices
-    countries.value = nextCountries
     if (!serviceCode.value) serviceCode.value = services.value[0]?.code || ''
+    await loadServiceCountries()
     await loadQuotes()
   } catch (error) {
-    appStore.showError((error as { message?: string }).message || t('sms.user.errors.unavailable'))
+    appStore.showError(errorMessage(error, t('sms.user.errors.unavailable')))
   } finally {
     loading.value = false
   }
@@ -209,7 +197,7 @@ async function loadQuotes() {
     quotes.value = await smsAPI.quotes({ service: serviceCode.value, country: countryCode.value, product_type: productType.value })
   } catch (error) {
     quotes.value = []
-    appStore.showError((error as { message?: string }).message || t('sms.user.errors.quote'))
+    appStore.showError(errorMessage(error, t('sms.user.errors.quote')))
   } finally {
     quoting.value = false
   }
@@ -230,7 +218,7 @@ async function loadOrders() {
     }
     await refreshActiveOrders()
   } catch (error) {
-    appStore.showError((error as { message?: string }).message || t('sms.user.errors.orders'))
+    appStore.showError(errorMessage(error, t('sms.user.errors.orders')))
   } finally {
     ordersLoading.value = false
   }
@@ -245,31 +233,64 @@ async function purchase(quote: SMSQuote) {
   purchasing.value = true
   try {
     const key = `sms-${Date.now()}-${Math.random().toString(36).slice(2)}`
-    await smsAPI.purchase({ channel_code: quote.channel_code, service_code: serviceCode.value, country_code: countryCode.value, product_type: productType.value, duration_value: productType.value === 'rental' ? durationValue.value : undefined, duration_unit: productType.value === 'rental' ? durationUnit.value : undefined, quote_id: quote.quote_id, expected_price: quote.sale_price }, key)
+    const quantity = Math.min(50, Math.max(1, Number(purchaseQuantity.value) || 1))
+    const item = { channel_code: quote.channel_code, service_code: serviceCode.value, country_code: countryCode.value, product_type: productType.value, duration_value: productType.value === 'rental' ? durationValue.value : undefined, duration_unit: productType.value === 'rental' ? durationUnit.value : undefined, quote_id: quote.quote_id, expected_price: quote.sale_price }
+    if (quantity > 1) {
+      const result = await smsAPI.purchaseBatch({ items: Array.from({ length: quantity }, () => item) }, key)
+      if (result.partial_error) appStore.showError(result.partial_error)
+    }
+    else await smsAPI.purchase(item, key)
     activeTab.value = 'orders'
     await loadOrders()
   } catch (error) {
-    appStore.showError((error as { message?: string }).message || t('sms.user.errors.purchase'))
+    appStore.showError(errorMessage(error, t('sms.user.errors.purchase')))
   } finally {
     purchasing.value = false
   }
 }
 
 async function cancel(id: string) {
+  if (!window.confirm(t('common.confirm'))) return
   try {
     await smsAPI.cancel(id)
     await loadOrders()
   } catch (error) {
-    appStore.showError((error as { message?: string }).message || t('sms.user.errors.cancel'))
+    appStore.showError(errorMessage(error, t('sms.user.errors.cancel')))
   }
 }
 
 async function refund(id: string) {
+  if (!window.confirm(t('common.confirm'))) return
   try {
     await smsAPI.refund(id)
     await loadOrders()
   } catch (error) {
-    appStore.showError((error as { message?: string }).message || t('sms.user.errors.refund'))
+    appStore.showError(errorMessage(error, t('sms.user.errors.refund')))
+  }
+}
+
+async function loadServiceCountries() {
+  countryCode.value = ''
+  quotes.value = []
+  if (!serviceCode.value) return
+  try { countries.value = await smsAPI.serviceCountries(providerCode.value, serviceCode.value); countryCode.value = countries.value[0]?.iso2 || '' }
+  catch (error) { appStore.showError(errorMessage(error, t('sms.user.errors.unavailable'))) }
+}
+
+function refundLabel(status: string) {
+  const labels: Record<string, string> = { approved: t('sms.user.refunds.approved'), rejected: t('sms.user.refunds.rejected'), pending: t('sms.user.refunds.pending') }
+  return labels[status] || status
+}
+
+async function extend(id: string) {
+  const raw = window.prompt(t('sms.user.hoursToExtend'), '1')
+  const hours = Number(raw)
+  if (!Number.isFinite(hours) || hours <= 0) return
+  try {
+    await smsAPI.extendRental(id, { duration_value: hours, duration_unit: 'hour' }, `sms-renew-${id}-${Date.now()}`)
+    await loadOrders()
+  } catch (error) {
+    appStore.showError(errorMessage(error, t('sms.user.errors.extend')))
   }
 }
 
@@ -297,12 +318,20 @@ async function refreshActiveOrders() {
 
 onMounted(() => {
   loadAll()
-  timer = window.setInterval(() => {
-    if (activeTab.value === 'orders') loadOrders()
+  countdownTimer = window.setInterval(refreshCountdowns, 1000)
+  pollTimer = window.setInterval(() => {
+    if (activeTab.value === 'orders') void loadOrders()
   }, 10000)
 })
 
+watch(serviceCode, () => { void loadServiceCountries() })
+
 onBeforeUnmount(() => {
-  if (timer) window.clearInterval(timer)
+  if (pollTimer) window.clearInterval(pollTimer)
+  if (countdownTimer) window.clearInterval(countdownTimer)
 })
 </script>
+
+<style scoped>
+.sms-step-grid > :first-child :deep(.mt-3) { display: none; }
+</style>
