@@ -7,7 +7,9 @@ const { smsAPI, showError, showSuccess } = vi.hoisted(() => ({
   smsAPI: {
     providers: vi.fn(),
     providerServices: vi.fn(),
+    providerServicesPage: vi.fn(),
     serviceCountries: vi.fn(),
+    serviceCountriesPage: vi.fn(),
     operators: vi.fn(),
     quotes: vi.fn(),
     orders: vi.fn(),
@@ -89,7 +91,9 @@ describe('SMSVerificationView', () => {
       { code: 'smspool', name: 'SMSPool', beta: true, selectable: false, capabilities },
     ])
     smsAPI.providerServices.mockResolvedValue([{ code: 'openai', name: 'OpenAI' }])
+    smsAPI.providerServicesPage.mockResolvedValue({ items: [{ code: 'openai', name: 'OpenAI', stock: 10, starting_price: 0.5 }], total: 1, page: 1, page_size: 50, pages: 1, has_more: false })
     smsAPI.serviceCountries.mockResolvedValue([{ iso2: 'US', name_zh: '美国', name_en: 'United States', stock: 10, available: true }])
+    smsAPI.serviceCountriesPage.mockResolvedValue({ items: [{ iso2: 'US', name_zh: '美国', name_en: 'United States', stock: 10, starting_price: 0.5, available: true }], total: 1, page: 1, page_size: 50, pages: 1, has_more: false })
     smsAPI.operators.mockResolvedValue([{ code: 'any', name: 'Any / 自动选择', stock: 10, available: true }])
     smsAPI.quotes.mockResolvedValue([])
     smsAPI.orders.mockResolvedValue({
@@ -115,10 +119,11 @@ describe('SMSVerificationView', () => {
     })
     await flushPromises()
 
-    expect(smsAPI.providerServices).toHaveBeenCalledWith('5sim', expect.objectContaining({ product_type: 'temporary' }))
-    expect(smsAPI.serviceCountries).toHaveBeenCalledWith('5sim', 'openai', expect.objectContaining({ product_type: 'temporary' }))
+    expect(smsAPI.providerServicesPage).toHaveBeenCalledWith('5sim', expect.objectContaining({ product_type: 'temporary', page: 1 }))
+    expect(smsAPI.serviceCountriesPage).toHaveBeenCalledWith('5sim', 'openai', expect.objectContaining({ product_type: 'temporary', page: 1 }))
     expect(wrapper.text()).toContain('OpenAI')
-    expect(wrapper.text()).toContain('SMSPool')
+    expect(wrapper.text()).not.toContain('5SIM')
+    expect(wrapper.text()).not.toContain('SMSPool')
     expect(wrapper.text()).toContain('BETA')
     wrapper.unmount()
   })
