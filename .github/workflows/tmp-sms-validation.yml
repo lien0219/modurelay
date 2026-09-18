@@ -1,5 +1,5 @@
 name: Temporary SMS production validation
-# validation rerun after production fixes
+# validation rerun after final SMS hardening
 
 on:
   push:
