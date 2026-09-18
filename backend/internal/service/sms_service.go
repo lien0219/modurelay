@@ -129,9 +129,10 @@ func normalizeSMSPricingGradeMaps(settings *SMSPricingSettings) {
 }
 
 type SMSQuoteRequest struct {
-	ServiceCode string `json:"service_code"`
-	CountryCode string `json:"country_code"`
-	ProductType string `json:"product_type"`
+	ProviderCode string `json:"provider_code,omitempty"`
+	ServiceCode  string `json:"service_code"`
+	CountryCode  string `json:"country_code"`
+	ProductType  string `json:"product_type"`
 }
 type SMSProviderQuote struct {
 	Cost                     decimal.Decimal `json:"cost"`
@@ -938,8 +939,10 @@ func providerFor(code, baseURL, apiKey string) SMSProvider {
 	switch code {
 	case "5sim":
 		return &fiveSIMProvider{p}
+	case "smspva":
+		return &smsPVAProvider{httpSMSProvider: p}
 	case "smspool":
-		// SMSPool authenticates with the key query parameter, not Bearer auth.
+		// Legacy/BETA provider kept for compatibility but not user-selectable.
 		p.credentialQueryParam = "key"
 		return &smsPoolProvider{providerJSONAdapter: &providerJSONAdapter{httpSMSProvider: p}}
 	case "sms_activate":
@@ -1139,8 +1142,10 @@ type SMSSvcCatalogItem struct {
 	Available bool `json:"available"`
 }
 type SMSPublicProvider struct {
-	Code string `json:"code"`
-	Name string `json:"name"`
+	Code         string                  `json:"code"`
+	Name         string                  `json:"name"`
+	Beta         bool                    `json:"beta"`
+	Selectable   bool                    `json:"selectable"`
 	Capabilities SMSProviderCapabilities `json:"capabilities"`
 }
 type SMSCountryCatalogItem struct {
@@ -1173,10 +1178,20 @@ func (s *SMSService) ListServices(ctx context.Context) ([]SMSSvcCatalogItem, err
 }
 
 func (s *SMSService) ListPublicProviders(ctx context.Context) ([]SMSPublicProvider, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT code,name,capabilities FROM sms_providers WHERE enabled ORDER BY id`)
-	if err != nil { return nil, err }; defer rows.Close()
+	rows, err := s.db.QueryContext(ctx, `SELECT code,name,enabled,capabilities FROM sms_providers ORDER BY CASE code WHEN '5sim' THEN 1 WHEN 'smspva' THEN 2 ELSE 100 END,id`)
+	if err != nil { return nil, err }
+	defer rows.Close()
 	out := []SMSPublicProvider{}
-	for rows.Next() { var item SMSPublicProvider; var raw []byte; if err := rows.Scan(&item.Code,&item.Name,&raw); err != nil { return nil, err }; item.Capabilities = decodeCapabilities(raw); out = append(out,item) }
+	for rows.Next() {
+		var item SMSPublicProvider
+		var enabled bool
+		var raw []byte
+		if err := rows.Scan(&item.Code,&item.Name,&enabled,&raw); err != nil { return nil, err }
+		item.Beta = item.Code != "5sim" && item.Code != "smspva"
+		item.Selectable = enabled && !item.Beta
+		item.Capabilities = decodeCapabilities(raw)
+		out = append(out,item)
+	}
 	return out, rows.Err()
 }
 
@@ -1317,6 +1332,7 @@ func (s *SMSService) Quote(ctx context.Context, userID int64, req SMSQuoteReques
 	if !s.Enabled(ctx) {
 		return nil, ErrSMSFeatureDisabled
 	}
+	req.ProviderCode = strings.ToLower(strings.TrimSpace(req.ProviderCode))
 	req.ServiceCode = strings.ToLower(strings.TrimSpace(req.ServiceCode))
 	req.CountryCode = strings.ToUpper(strings.TrimSpace(req.CountryCode))
 	if req.ProductType != "temporary" && req.ProductType != "rental" {
@@ -1334,7 +1350,8 @@ func (s *SMSService) Quote(ctx context.Context, userID int64, req SMSQuoteReques
 			AND (($3='temporary' AND psm.temporary_supported) OR ($3='rental' AND psm.rental_supported))
 		JOIN sms_provider_country_mappings pcm ON pcm.provider_id=p.id AND pcm.country_id=co.id
 			AND COALESCE(NULLIF(pcm.provider_country_id,''),NULLIF(pcm.provider_country_code,'')) IS NOT NULL
-		WHERE c.enabled AND c.visible AND c.healthy AND p.enabled`, req.ServiceCode, req.CountryCode, req.ProductType)
+		WHERE c.enabled AND c.visible AND c.healthy AND p.enabled
+		  AND ($4='' OR p.code=$4)`, req.ServiceCode, req.CountryCode, req.ProductType, req.ProviderCode)
 	if err != nil {
 		return nil, err
 	}
