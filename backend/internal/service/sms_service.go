@@ -1460,7 +1460,7 @@ func (s *SMSService) ListCountries(ctx context.Context) ([]SMSCountryCatalogItem
 }
 
 
-func (s *SMSService) ensureProviderCatalogSelection(ctx context.Context, providerCode, serviceCode, countryCode, productType string) error {
+func (s *SMSService) ensureProviderCatalogSelection(ctx context.Context, providerCode, serviceCode, countryCode, productType string, durationValue int, durationUnit string) error {
 	providerCode = strings.ToLower(strings.TrimSpace(providerCode))
 	serviceCode = strings.ToLower(strings.TrimSpace(serviceCode))
 	countryCode = strings.ToUpper(strings.TrimSpace(countryCode))
@@ -1498,9 +1498,17 @@ func (s *SMSService) ensureProviderCatalogSelection(ctx context.Context, provide
 	var providerCountryID, providerCountryCode, nameZH, nameEN string
 	if providerCode == "5sim" || providerCode == "smspva" {
 		provider := providerFor(providerCode, providerBaseURL, providerAPIKey(providerCode, providerCredential, s.encryptor))
-		if countryProvider, ok := provider.(SMSServiceCountryProvider); ok {
-			liveCountries, liveErr := countryProvider.CountriesForService(ctx, serviceCode)
-			if liveErr != nil { return liveErr }
+		var liveCountries []SMSCountryCatalogItem
+		var liveErr error
+		if countryProvider, ok := provider.(SMSProductServiceCountryProvider); ok {
+			liveCountries, liveErr = countryProvider.CountriesForServiceProduct(ctx, serviceCode, productType, durationValue, durationUnit)
+		} else if countryProvider, ok := provider.(SMSServiceCountryProvider); ok {
+			liveCountries, liveErr = countryProvider.CountriesForService(ctx, serviceCode)
+		} else {
+			liveErr = ErrSMSProviderUnavailable
+		}
+		if liveErr != nil { return liveErr }
+		{
 			for _, live := range liveCountries {
 				if !strings.EqualFold(live.ISO2, countryCode) { continue }
 				providerCountryID = strings.TrimSpace(live.ProviderCode)
@@ -1574,7 +1582,7 @@ func (s *SMSService) Quote(ctx context.Context, userID int64, req SMSQuoteReques
 		return nil, errors.New("invalid product type")
 	}
 	if req.ProviderCode != "" {
-		if err := s.ensureProviderCatalogSelection(ctx, req.ProviderCode, req.ServiceCode, req.CountryCode, req.ProductType); err != nil {
+		if err := s.ensureProviderCatalogSelection(ctx, req.ProviderCode, req.ServiceCode, req.CountryCode, req.ProductType, req.DurationValue, req.DurationUnit); err != nil {
 			return nil, err
 		}
 	}
