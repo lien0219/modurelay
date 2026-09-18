@@ -1539,6 +1539,8 @@ func (s *SMSService) Quote(ctx context.Context, userID int64, req SMSQuoteReques
 	req.ServiceCode = strings.ToLower(strings.TrimSpace(req.ServiceCode))
 	req.CountryCode = strings.ToUpper(strings.TrimSpace(req.CountryCode))
 	req.OperatorCode = strings.ToLower(strings.TrimSpace(req.OperatorCode))
+	req.ProductType = strings.ToLower(strings.TrimSpace(req.ProductType))
+	req.DurationUnit = strings.ToLower(strings.TrimSpace(req.DurationUnit))
 	if req.OperatorCode == "" { req.OperatorCode = "any" }
 	if req.VoiceMode < 0 || req.VoiceMode > 2 { return nil, errors.New("invalid voice mode") }
 	if req.ProductType != "temporary" && req.ProductType != "rental" {
@@ -1552,7 +1554,7 @@ func (s *SMSService) Quote(ctx context.Context, userID int64, req SMSQuoteReques
 	rows, err := s.db.QueryContext(ctx, `SELECT c.id,p.id,sv.id,co.id,c.code,c.public_name,c.role,p.code,p.base_url,p.credential_ref,
 		COALESCE(NULLIF(cs.provider_service_code,''),NULLIF(psm.provider_service_code,''),sv.code),
 		COALESCE(NULLIF(cc.provider_country_id,''),NULLIF(cc.provider_country_code,''),NULLIF(pcm.provider_country_id,''),NULLIF(pcm.provider_country_code,''),co.iso2),
-		COALESCE((p.capabilities->>'supports_rental')::boolean,(p.capabilities->>'rental')::boolean,false)
+		CASE WHEN p.code IN ('5sim','smspva') THEN TRUE ELSE COALESCE((p.capabilities->>'supports_rental')::boolean,(p.capabilities->>'rental')::boolean,false) END
 		FROM sms_channels c
 		JOIN sms_providers p ON p.id=c.provider_id
 		JOIN sms_services sv ON sv.code=$1 AND sv.enabled
