@@ -62,6 +62,33 @@ func TestSMSActivateUsesRealActionContract(t *testing.T) {
 	}
 }
 
+func TestFiveSIMCountriesParseProductFilteredPricesShape(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/guest/prices":
+			if r.URL.Query().Get("product") != "openai" {
+				t.Fatalf("unexpected query: %s", r.URL.RawQuery)
+			}
+			_, _ = w.Write([]byte(`{"openai":{"usa":{"att":{"cost":0.5,"count":4,"rate":95},"tmobile":{"cost":0.7,"count":3,"rate":90}}}}`))
+		case "/guest/countries":
+			_, _ = w.Write([]byte(`{"usa":{"iso":{"us":1},"text_en":"United States"}}`))
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	p := providerFor("5sim", server.URL, "")
+	countries, err := p.(SMSProductServiceCountryProvider).CountriesForServiceProduct(context.Background(), "openai", "temporary", 0, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(countries) != 1 || countries[0].ISO2 != "US" || countries[0].Stock != 7 || countries[0].ProviderCost != 0.5 {
+		t.Fatalf("unexpected countries: %#v", countries)
+	}
+}
+
 func TestFiveSIMQuoteParsesCurrentGuestResponse(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet || r.URL.Path != "/guest/products/usa/any" {
