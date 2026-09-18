@@ -66,7 +66,7 @@ func (p *smsPVAProvider) requestJSON(ctx context.Context, method, path string, q
 
 func (p *smsPVAProvider) Catalog(ctx context.Context) ([]SMSSvcCatalogItem, []SMSCountryCatalogItem, error) {
 	var env smsPVAEnvelope
-	if _, err := p.requestJSON(ctx, http.MethodGet, "activation/servicesprices", nil, &env); err != nil { return nil, nil, err }
+	if _, err := p.requestJSON(ctx, http.MethodGet, "activation/servicesprices", url.Values{"voice":{"0"}}, &env); err != nil { return nil, nil, err }
 	if env.StatusCode != 0 && env.StatusCode != 200 { return nil, nil, ErrSMSProviderUnavailable }
 	var rows []struct {
 		Service string          `json:"service"`
@@ -104,22 +104,31 @@ func (p *smsPVAProvider) CatalogServices(ctx context.Context, _ []SMSCountryCata
 func (p *smsPVAProvider) CountriesForService(ctx context.Context, serviceCode string) ([]SMSCountryCatalogItem, error) {
 	serviceCode = strings.ToLower(strings.TrimSpace(serviceCode))
 	var env smsPVAEnvelope
-	if _, err := p.requestJSON(ctx, http.MethodGet, "activation/servicesprices", nil, &env); err != nil { return nil, err }
-	var rows []struct {
-		Service string        `json:"service"`
-		Country string        `json:"country"`
-		Price   json.RawMessage `json:"price"`
+	if _, err := p.requestJSON(ctx, http.MethodGet, "activation/serviceprices/"+url.PathEscape(serviceCode), url.Values{"voice":{"0"}}, &env); err != nil { return nil, err }
+	var data struct {
+		ServiceCode string `json:"scode"`
+		ServiceName string `json:"sname"`
+		Countries []struct {
+			Code string `json:"ccode"`
+			Name string `json:"cname"`
+			Operators []struct {
+				Price json.RawMessage `json:"price"`
+				Count int `json:"count"`
+			} `json:"opers"`
+		} `json:"clist"`
 	}
-	if err := json.Unmarshal(env.Data, &rows); err != nil { return nil, err }
-	seen := map[string]bool{}
-	out := make([]SMSCountryCatalogItem, 0)
-	for _, row := range rows {
-		if strings.ToLower(strings.TrimSpace(row.Service)) != serviceCode { continue }
-		country := strings.ToUpper(strings.TrimSpace(row.Country))
-		if len(country) != 2 || seen[country] { continue }
-		seen[country] = true
-		cost, _ := jsonNumber(row.Price)
-		out = append(out, SMSCountryCatalogItem{ISO2: country, ProviderCode: country, NameEN: country, ProviderCost: cost, Available: true})
+	if err := json.Unmarshal(env.Data, &data); err != nil { return nil, err }
+	out := make([]SMSCountryCatalogItem, 0, len(data.Countries))
+	for _, country := range data.Countries {
+		code := strings.ToUpper(strings.TrimSpace(country.Code))
+		if code == "" { continue }
+		stock := 0
+		minPrice := 0.0
+		for _, operator := range country.Operators {
+			stock += operator.Count
+			if price, ok := jsonNumber(operator.Price); ok && price > 0 && (minPrice == 0 || price < minPrice) { minPrice = price }
+		}
+		out = append(out, SMSCountryCatalogItem{ISO2: code, ProviderCode: code, NameEN: strings.TrimSpace(country.Name), Stock: stock, ProviderCost: minPrice, Available: stock > 0})
 	}
 	return out, nil
 }
