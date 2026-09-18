@@ -315,6 +315,7 @@ export default {
     user: {
       description: 'Choose a service and country; price and stock come from a live quote.',
       channel: 'Channel',
+      recentSuccess: 'Recent successes',
       unavailable: 'Not available yet',
       serviceSearch: 'Search website / app / platform',
       countrySearch: 'Search country / region',
