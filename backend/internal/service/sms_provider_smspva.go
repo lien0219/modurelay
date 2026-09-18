@@ -35,7 +35,8 @@ type smsPVARentalEnvelope struct {
 func (p *smsPVAProvider) Capabilities(context.Context) SMSProviderCapabilities {
 	return SMSProviderCapabilities{
 		Temporary: true, Rental: true, RentalCancel: true, Polling: true, Cancel: true, Refund: true,
-		Voice: true, OperatorSelection: true, ServiceSelection: true, Extend: true,
+		Voice: true, VoiceSMS: true, VoiceCallerID: true, VoiceCall: true,
+		OperatorSelection: true, ServiceSelection: true, Extend: true,
 	}
 }
 
