@@ -246,6 +246,9 @@ func TestSMSUnknownProviderStatesDoNotBecomeSuccess(t *testing.T) {
 	if got := normalizeSMSStatus("canceled"); got != "cancelled" {
 		t.Fatalf("canceled status = %q", got)
 	}
+	if got := normalizeSMSStatus("TIMEOUT"); got != "expired" {
+		t.Fatalf("5SIM timeout status = %q, want expired", got)
+	}
 }
 
 func TestSMSProviderTerminalStateNeedsVerificationCode(t *testing.T) {
