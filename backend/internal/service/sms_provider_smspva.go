@@ -35,6 +35,7 @@ type smsPVARentalEnvelope struct {
 func (p *smsPVAProvider) Capabilities(context.Context) SMSProviderCapabilities {
 	return SMSProviderCapabilities{
 		Temporary: true, Rental: true, RentalCancel: true, Polling: true, Cancel: true, Refund: true,
+		Finish: true, Resend: true,
 		Voice: true, VoiceSMS: true, VoiceCallerID: true, VoiceCall: true,
 		OperatorSelection: true, ServiceSelection: true, Extend: true,
 	}
@@ -516,6 +517,19 @@ func (p *smsPVAProvider) CancelTemporary(ctx context.Context, id string) error {
 func (p *smsPVAProvider) RequestTemporaryRefund(ctx context.Context, id string) error {
 	return p.CancelTemporary(ctx, id)
 }
+func (p *smsPVAProvider) ResendTemporary(ctx context.Context, id string) error {
+	var env smsPVAEnvelope
+	_, err := p.requestJSON(ctx, http.MethodPut, "activation/clearsms/"+url.PathEscape(strings.TrimSpace(id)), nil, &env)
+	return err
+}
+func (p *smsPVAProvider) FinishTemporary(ctx context.Context, id string) error {
+	var env smsPVAEnvelope
+	_, err := p.requestJSON(ctx, http.MethodPut, "activation/stopsms/"+url.PathEscape(strings.TrimSpace(id)), nil, &env)
+	return err
+}
+func (p *smsPVAProvider) BanTemporary(context.Context, string) error {
+	return errors.New("SMSPVA does not expose a ban operation")
+}
 
 func (p *smsPVAProvider) PurchaseRental(ctx context.Context, req SMSPurchaseRequest) (*SMSPurchaseResult, error) {
 	dtype,dcount,_,err:=smsPVARentalPeriod(req.DurationValue,req.DurationUnit); if err!=nil{return nil,err}
@@ -528,10 +542,17 @@ func (p *smsPVAProvider) PurchaseRental(ctx context.Context, req SMSPurchaseRequ
 	id:=rawString(data.ID); if id=="" { return nil,errors.New("SMSPVA rental returned no order id") }
 	var expires *time.Time
 	if data.Until>0 { t:=time.Unix(data.Until,0); expires=&t }
+	// Rental numbers must be activated before SMS can be delivered. Activation
+	// is retried by status polling as well, because providers may transiently
+	// reject the immediate post-create activation call.
+	var activation smsPVARentalEnvelope
+	_ = p.rentalRequestJSON(ctx,url.Values{"method":{"activate"},"id":{id}},&activation)
 	return &SMSPurchaseResult{ProviderOrderID:id,PhoneNumber:data.Phone,ExpiresAt:expires},nil
 }
 
 func (p *smsPVAProvider) GetRentalStatus(ctx context.Context, id string) (*SMSStatusResult, error) {
+	var activation smsPVARentalEnvelope
+	_ = p.rentalRequestJSON(ctx,url.Values{"method":{"activate"},"id":{strings.TrimSpace(id)}},&activation)
 	var env smsPVARentalEnvelope
 	if err:=p.rentalRequestJSON(ctx,url.Values{"method":{"sms"},"id":{strings.TrimSpace(id)}},&env);err!=nil{return nil,err}
 	var data struct{ SMSList []struct{ Text string `json:"text"` } `json:"SmsList"`; OtherSMS []any `json:"OtherSms"` }
