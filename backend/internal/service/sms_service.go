@@ -389,179 +389,140 @@ func (p *fiveSIMProvider) Catalog(ctx context.Context) ([]SMSSvcCatalogItem, []S
 	return nil, countries, nil
 }
 
-func (p *fiveSIMProvider) CatalogServices(ctx context.Context, countries []SMSCountryCatalogItem) ([]SMSSvcCatalogItem, error) {
-	servicesByCode := map[string]SMSSvcCatalogItem{}
-	for _, country := range countries {
-		if country.ProviderCode == "" { continue }
-		var products map[string]struct { Category string `json:"Category"`; Qty int `json:"Qty"`; Price float64 `json:"Price"` }
-		if err := p.request(ctx, http.MethodGet, "guest/products/"+url.PathEscape(country.ProviderCode)+"/any", nil, nil, &products); err != nil { continue }
-		for code, product := range products {
-			code = strings.ToLower(strings.TrimSpace(code)); if code == "" { continue }
-			category := strings.ToLower(strings.TrimSpace(product.Category)); if category == "" { category = "other" }
-			servicesByCode[code] = SMSSvcCatalogItem{Code: code, Name: code, Category: category, ProviderCode: code}
-		}
+func (p *fiveSIMProvider) CatalogServices(ctx context.Context, _ []SMSCountryCatalogItem) ([]SMSSvcCatalogItem, error) {
+	return p.CatalogServicesForProduct(ctx, "temporary", 0, "")
+}
+
+func (p *fiveSIMProvider) CatalogServicesForProduct(ctx context.Context, productType string, _ int, _ string) ([]SMSSvcCatalogItem, error) {
+	var products map[string]struct {
+		Category string `json:"Category"`
+		Qty      int    `json:"Qty"`
+		Price    float64 `json:"Price"`
 	}
-	services := make([]SMSSvcCatalogItem, 0, len(servicesByCode)); for _, item := range servicesByCode { services = append(services, item) }
-	return services, nil
+	if err := p.request(ctx, http.MethodGet, "guest/products/any/any", nil, nil, &products); err != nil { return nil, err }
+	wanted := "activation"
+	if strings.EqualFold(strings.TrimSpace(productType), "rental") { wanted = "hosting" }
+	out := make([]SMSSvcCatalogItem,0,len(products))
+	for code, product := range products {
+		category := strings.ToLower(strings.TrimSpace(product.Category))
+		if category != wanted { continue }
+		code = strings.ToLower(strings.TrimSpace(code)); if code == "" { continue }
+		out = append(out, SMSSvcCatalogItem{Code:code,Name:code,Category:category,ProviderCode:code,Stock:product.Qty,ProviderCost:product.Price,Available:product.Qty>0})
+	}
+	sort.Slice(out,func(i,j int)bool{return out[i].Code<out[j].Code})
+	return out,nil
+}
+
+type fiveSIMPricePoint struct {
+	Cost  float64 `json:"cost"`
+	Count int     `json:"count"`
+	Rate  float64 `json:"rate"`
 }
 
 func (p *fiveSIMProvider) CountriesForService(ctx context.Context, serviceCode string) ([]SMSCountryCatalogItem, error) {
-	var payload map[string]struct { ISO map[string]int `json:"iso"`; NameEN string `json:"text_en"` }
-	if err := p.request(ctx, http.MethodGet, "guest/countries", nil, nil, &payload); err != nil { return nil, err }
-	result := make([]SMSCountryCatalogItem, 0)
-	for slug, country := range payload {
-		var iso2 string; for iso := range country.ISO { iso2 = strings.ToUpper(strings.TrimSpace(iso)); break }; if iso2 == "" { continue }
-		var products map[string]struct { Qty int `json:"Qty"`; Price float64 `json:"Price"` }
-		if err := p.request(ctx, http.MethodGet, "guest/products/"+url.PathEscape(slug)+"/any", nil, nil, &products); err != nil { continue }
-		if product, ok := products[strings.ToLower(strings.TrimSpace(serviceCode))]; ok { result = append(result, SMSCountryCatalogItem{ISO2: iso2, ProviderCode: slug, NameEN: strings.TrimSpace(country.NameEN), Stock: product.Qty, ProviderCost: product.Price, Available: product.Qty > 0}) }
+	return p.CountriesForServiceProduct(ctx, serviceCode, "temporary", 0, "")
+}
+
+func (p *fiveSIMProvider) CountriesForServiceProduct(ctx context.Context, serviceCode, _ string, _ int, _ string) ([]SMSCountryCatalogItem, error) {
+	serviceCode = strings.ToLower(strings.TrimSpace(serviceCode))
+	if serviceCode == "" { return nil, ErrSMSProviderUnavailable }
+	var prices map[string]map[string]map[string]fiveSIMPricePoint
+	if err := p.request(ctx,http.MethodGet,"guest/prices",url.Values{"product":{serviceCode}},nil,&prices);err!=nil{return nil,err}
+	var countryMeta map[string]struct{ISO map[string]int `json:"iso"`;NameEN string `json:"text_en"`}
+	if err:=p.request(ctx,http.MethodGet,"guest/countries",nil,nil,&countryMeta);err!=nil{return nil,err}
+	out:=[]SMSCountryCatalogItem{}
+	for slug, products := range prices {
+		operators,ok:=products[serviceCode];if !ok{continue}
+		stock:=0;minCost:=0.0
+		for _,point:=range operators{stock+=point.Count;if point.Count>0&&point.Cost>0&&(minCost==0||point.Cost<minCost){minCost=point.Cost}}
+		meta,ok:=countryMeta[slug];if !ok{continue}
+		iso2:="";for iso:=range meta.ISO{iso2=strings.ToUpper(strings.TrimSpace(iso));break};if iso2==""{continue}
+		out=append(out,SMSCountryCatalogItem{ISO2:iso2,ProviderCode:slug,NameEN:strings.TrimSpace(meta.NameEN),Stock:stock,ProviderCost:minCost,Available:stock>0})
 	}
-	sort.Slice(result, func(i,j int) bool { return result[i].ISO2 < result[j].ISO2 }); return result, nil
+	sort.Slice(out,func(i,j int)bool{return out[i].ISO2<out[j].ISO2})
+	return out,nil
 }
 
 func (p *fiveSIMProvider) TestConnection(ctx context.Context) error {
 	var out map[string]any
-	if err := p.request(ctx, http.MethodGet, "user/profile", nil, nil, &out); err != nil {
-		return err
-	}
-	if providerResponseHasError(out) {
-		return errors.New("5SIM credential was rejected")
-	}
+	if err := p.request(ctx, http.MethodGet, "user/profile", nil, nil, &out); err != nil { return err }
+	if providerResponseHasError(out) { return errors.New("5SIM credential was rejected") }
 	return nil
 }
 
 func (p *fiveSIMProvider) Quote(ctx context.Context, req SMSQuoteRequest) (*SMSProviderQuote, error) {
-	operator := strings.ToLower(strings.TrimSpace(req.OperatorCode))
-	if operator == "" { operator = "any" }
-	path := "guest/products/" + url.PathEscape(strings.ToLower(req.CountryCode)) + "/" + url.PathEscape(operator) + "/" + url.PathEscape(req.ServiceCode)
-	body, err := p.requestBytes(ctx, http.MethodGet, path, nil, nil)
-	if err != nil {
-		return nil, err
-	}
-	// Current 5SIM responses are a single object such as
-	// {"Category":"activation","Qty":93849,"Price":0.77}. Keep a
-	// compatibility fallback for older nested responses seen in deployments.
-	var direct struct {
-		Cost  float64 `json:"price"`
-		Stock int     `json:"qty"`
-	}
-	if json.Unmarshal(body, &direct) == nil && direct.Cost > 0 {
-		stock := direct.Stock
-		if stock <= 0 {
-			stock = 1
-		}
-		return &SMSProviderQuote{Cost: decimal.NewFromFloat(direct.Cost), Currency: "USD", Stock: stock, ExpiresAt: time.Now().Add(30 * time.Second), EstimatedDeliverySeconds: 90}, nil
-	}
-	var nested map[string]struct {
-		Cost  float64 `json:"cost"`
-		Count int     `json:"count"`
-	}
-	if json.Unmarshal(body, &nested) == nil {
-		for _, value := range nested {
-			if value.Cost > 0 {
-				stock := value.Count
-				if stock <= 0 {
-					stock = 1
-				}
-				return &SMSProviderQuote{Cost: decimal.NewFromFloat(value.Cost), Currency: "USD", Stock: stock, ExpiresAt: time.Now().Add(30 * time.Second), EstimatedDeliverySeconds: 90}, nil
-			}
-		}
-	}
-	var legacy map[string]map[string]map[string]struct {
-		Cost  float64 `json:"cost"`
-		Count int     `json:"count"`
-	}
-	if json.Unmarshal(body, &legacy) == nil {
-		for _, services := range legacy {
-			for _, products := range services {
-				for _, value := range products {
-					if value.Cost <= 0 {
-						continue
-					}
-					stock := value.Count
-					if stock <= 0 {
-						stock = 1
-					}
-					return &SMSProviderQuote{Cost: decimal.NewFromFloat(value.Cost), Currency: "USD", Stock: stock, ExpiresAt: time.Now().Add(30 * time.Second), EstimatedDeliverySeconds: 90}, nil
-				}
-			}
-		}
-	}
-	return nil, ErrSMSProviderUnavailable
+	operator := strings.ToLower(strings.TrimSpace(req.OperatorCode)); if operator == "" { operator = "any" }
+	country := strings.ToLower(strings.TrimSpace(req.CountryCode))
+	serviceCode := strings.ToLower(strings.TrimSpace(req.ServiceCode))
+	if country==""||serviceCode==""{return nil,ErrSMSProviderUnavailable}
+	var products map[string]struct{Category string `json:"Category"`;Qty int `json:"Qty"`;Price float64 `json:"Price"`}
+	if err:=p.request(ctx,http.MethodGet,"guest/products/"+url.PathEscape(country)+"/"+url.PathEscape(operator),nil,nil,&products);err!=nil{return nil,err}
+	product,ok:=products[serviceCode];if !ok||product.Price<=0||product.Qty<=0{return nil,ErrSMSProviderUnavailable}
+	wanted:="activation";if strings.EqualFold(req.ProductType,"rental"){wanted="hosting"}
+	if category:=strings.ToLower(strings.TrimSpace(product.Category));category!=""&&category!=wanted{return nil,ErrSMSProviderUnavailable}
+	return &SMSProviderQuote{Cost:decimal.NewFromFloat(product.Price),Currency:"USD",Stock:product.Qty,ExpiresAt:time.Now().Add(30*time.Second),EstimatedDeliverySeconds:90},nil
 }
+
 func (p *fiveSIMProvider) PurchaseTemporary(ctx context.Context, req SMSPurchaseRequest) (*SMSPurchaseResult, error) {
-	var out struct {
-		ID      any       `json:"id"`
-		Phone   string    `json:"phone"`
-		Expires time.Time `json:"expires"`
-	}
-	operator := strings.ToLower(strings.TrimSpace(req.OperatorCode))
-	if operator == "" { operator = "any" }
-	err := p.request(ctx, http.MethodGet, "user/buy/activation/"+url.PathEscape(strings.ToLower(req.CountryCode))+"/"+url.PathEscape(operator)+"/"+url.PathEscape(req.ServiceCode), nil, nil, &out)
-	if err != nil {
-		return nil, err
-	}
-	return &SMSPurchaseResult{ProviderOrderID: fmt.Sprint(out.ID), PhoneNumber: out.Phone, ExpiresAt: &out.Expires}, nil
+	return p.buy(ctx,"activation",req)
 }
+
+func (p *fiveSIMProvider) buy(ctx context.Context, category string, req SMSPurchaseRequest) (*SMSPurchaseResult,error) {
+	var out struct{ID any `json:"id"`;Phone string `json:"phone"`;Expires time.Time `json:"expires"`}
+	operator:=strings.ToLower(strings.TrimSpace(req.OperatorCode));if operator==""{operator="any"}
+	path:="user/buy/"+category+"/"+url.PathEscape(strings.ToLower(req.CountryCode))+"/"+url.PathEscape(operator)+"/"+url.PathEscape(strings.ToLower(req.ServiceCode))
+	if err:=p.request(ctx,http.MethodGet,path,nil,nil,&out);err!=nil{return nil,err}
+	id:=fmt.Sprint(out.ID);if id==""||id=="<nil>"{return nil,errors.New("5SIM returned no order id")}
+	return &SMSPurchaseResult{ProviderOrderID:id,PhoneNumber:out.Phone,ExpiresAt:&out.Expires},nil
+}
+
 func (p *fiveSIMProvider) GetTemporaryStatus(ctx context.Context, id string) (*SMSStatusResult, error) {
-	var out struct {
-		Status string `json:"status"`
-		Phone  string `json:"phone"`
-		SMS    []struct {
-			Code string `json:"code"`
-			Text string `json:"text"`
-		} `json:"sms"`
-	}
-	err := p.request(ctx, http.MethodGet, "user/check/"+url.PathEscape(id), nil, nil, &out)
-	if err != nil {
-		return nil, err
-	}
-	msgs := make([]string, 0, len(out.SMS))
-	for _, m := range out.SMS {
-		msgs = append(msgs, m.Text)
-		if m.Code != "" {
-			msgs = append(msgs, m.Code)
-		}
-	}
-	return &SMSStatusResult{Status: strings.ToLower(out.Status), PhoneNumber: out.Phone, Messages: msgs}, nil
+	var out struct{Status string `json:"status"`;Phone string `json:"phone"`;SMS []struct{Code string `json:"code"`;Text string `json:"text"`} `json:"sms"`}
+	if err:=p.request(ctx,http.MethodGet,"user/check/"+url.PathEscape(id),nil,nil,&out);err!=nil{return nil,err}
+	msgs:=make([]string,0,len(out.SMS)*2)
+	for _,m:=range out.SMS{if strings.TrimSpace(m.Text)!=""{msgs=append(msgs,m.Text)};if strings.TrimSpace(m.Code)!=""{msgs=append(msgs,m.Code)}}
+	return &SMSStatusResult{Status:strings.ToLower(out.Status),PhoneNumber:out.Phone,Messages:msgs},nil
 }
-func (p *fiveSIMProvider) CancelTemporary(ctx context.Context, id string) error {
-	return p.request(ctx, http.MethodGet, "user/cancel/"+url.PathEscape(id), nil, nil, nil)
-}
+func (p *fiveSIMProvider) CancelTemporary(ctx context.Context, id string) error { return p.request(ctx,http.MethodGet,"user/cancel/"+url.PathEscape(id),nil,nil,nil) }
 func (p *fiveSIMProvider) RequestTemporaryRefund(ctx context.Context, id string) error {
-	return p.request(ctx, http.MethodGet, "user/cancel/"+url.PathEscape(id), nil, nil, nil)
+	// 5SIM cancellation is itself the provider refund operation. CancelOrder
+	// calls CancelTemporary first, so a second provider mutation must not occur.
+	return nil
 }
-func (p *fiveSIMProvider) FinishTemporary(ctx context.Context, id string) error {
-	return p.request(ctx, http.MethodGet, "user/finish/"+url.PathEscape(id), nil, nil, nil)
-}
-func (p *fiveSIMProvider) BanTemporary(ctx context.Context, id string) error {
-	return p.request(ctx, http.MethodGet, "user/ban/"+url.PathEscape(id), nil, nil, nil)
-}
+func (p *fiveSIMProvider) FinishTemporary(ctx context.Context, id string) error { return p.request(ctx,http.MethodGet,"user/finish/"+url.PathEscape(id),nil,nil,nil) }
+func (p *fiveSIMProvider) BanTemporary(ctx context.Context, id string) error { return p.request(ctx,http.MethodGet,"user/ban/"+url.PathEscape(id),nil,nil,nil) }
+
 func (p *fiveSIMProvider) Operators(ctx context.Context, countryCode, serviceCode string, voiceMode int) ([]SMSOperatorOption, error) {
-	countryCode = strings.ToLower(strings.TrimSpace(countryCode))
-	serviceCode = strings.ToLower(strings.TrimSpace(serviceCode))
-	if countryCode == "" || serviceCode == "" { return nil, ErrSMSProviderUnavailable }
-	var all map[string]map[string]struct { Category string `json:"Category"`; Qty int `json:"Qty"`; Price float64 `json:"Price"` }
-	if err := p.request(ctx, http.MethodGet, "guest/products/"+url.PathEscape(countryCode)+"/any", nil, nil, &all); err != nil { return nil, err }
-	// The provider's public product endpoint exposes the aggregate Any option.
-	// Keep it first; deployments with operator-specific catalog support can add
-	// concrete operator rows without changing the public API.
-	if product, ok := all[serviceCode]; ok {
-		return []SMSOperatorOption{{Code:"any", Name:"Any / 自动选择", Stock:product.Qty, ProviderCost:product.Price, Available:product.Qty>0}}, nil
+	return p.OperatorsForProduct(ctx,countryCode,serviceCode,"temporary",voiceMode,0,"")
+}
+func (p *fiveSIMProvider) OperatorsForProduct(ctx context.Context, countryCode, serviceCode, _ string, _ int, _ int, _ string) ([]SMSOperatorOption,error) {
+	countryCode=strings.ToLower(strings.TrimSpace(countryCode));serviceCode=strings.ToLower(strings.TrimSpace(serviceCode))
+	if countryCode==""||serviceCode==""{return nil,ErrSMSProviderUnavailable}
+	out:=[]SMSOperatorOption{}
+	var aggregate map[string]struct{Category string `json:"Category"`;Qty int `json:"Qty"`;Price float64 `json:"Price"`}
+	if err:=p.request(ctx,http.MethodGet,"guest/products/"+url.PathEscape(countryCode)+"/any",nil,nil,&aggregate);err==nil{
+		if item,ok:=aggregate[serviceCode];ok{out=append(out,SMSOperatorOption{Code:"any",Name:"Any / 自动选择",Stock:item.Qty,ProviderCost:item.Price,Available:item.Qty>0})}
 	}
-	return []SMSOperatorOption{{Code:"any", Name:"Any / 自动选择", Available:true}}, nil
+	var prices map[string]map[string]map[string]fiveSIMPricePoint
+	if err:=p.request(ctx,http.MethodGet,"guest/prices",url.Values{"country":{countryCode},"product":{serviceCode}},nil,&prices);err!=nil{return nil,err}
+	for _,products:=range prices{for product,operators:=range products{if !strings.EqualFold(product,serviceCode){continue};for code,point:=range operators{code=strings.ToLower(strings.TrimSpace(code));if code==""||code=="any"{continue};out=append(out,SMSOperatorOption{Code:code,Name:code,Stock:point.Count,ProviderCost:point.Cost,Available:point.Count>0})}}}
+	sort.SliceStable(out,func(i,j int)bool{if out[i].Code=="any"{return true};if out[j].Code=="any"{return false};if out[i].ProviderCost==out[j].ProviderCost{return out[i].Name<out[j].Name};return out[i].ProviderCost<out[j].ProviderCost})
+	return out,nil
 }
-func (p *fiveSIMProvider) PurchaseRental(context.Context, SMSPurchaseRequest) (*SMSPurchaseResult, error) {
-	return nil, errors.New("rental is not supported by this provider")
+
+func (p *fiveSIMProvider) PurchaseRental(ctx context.Context, req SMSPurchaseRequest) (*SMSPurchaseResult, error) {
+	return p.buy(ctx,"hosting",req)
 }
-func (p *fiveSIMProvider) GetRentalStatus(context.Context, string) (*SMSStatusResult, error) {
-	return nil, errors.New("rental is not supported by this provider")
+func (p *fiveSIMProvider) GetRentalStatus(ctx context.Context, id string) (*SMSStatusResult, error) {
+	result,err:=p.GetTemporaryStatus(ctx,id);if err!=nil{return nil,err}
+	var inbox struct{Data []struct{Code string `json:"code"`;Text string `json:"text"`} `json:"Data"`}
+	if err:=p.request(ctx,http.MethodGet,"user/sms/inbox/"+url.PathEscape(id),nil,nil,&inbox);err==nil{
+		for _,m:=range inbox.Data{if strings.TrimSpace(m.Text)!=""{result.Messages=append(result.Messages,m.Text)};if strings.TrimSpace(m.Code)!=""{result.Messages=append(result.Messages,m.Code)}}
+	}
+	return result,nil
 }
-func (p *fiveSIMProvider) ExtendRental(context.Context, string, int, string) error {
-	return errors.New("rental is not supported by this provider")
-}
-func (p *fiveSIMProvider) CancelRental(context.Context, string) error {
-	return errors.New("rental is not supported by this provider")
-}
+func (p *fiveSIMProvider) ExtendRental(context.Context, string, int, string) error { return errors.New("5SIM hosting extension is not supported by the documented order API") }
+func (p *fiveSIMProvider) CancelRental(context.Context, string) error { return errors.New("5SIM hosting cancellation is not supported by the documented order API") }
 
 type providerJSONResponse struct {
 	ID        string         `json:"id"`
