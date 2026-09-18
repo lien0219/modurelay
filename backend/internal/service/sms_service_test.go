@@ -15,7 +15,7 @@ import (
 )
 
 func TestSMSProviderCapabilitiesAreSeparated(t *testing.T) {
-	for _, code := range []string{"5sim", "smspool", "sms_activate", "onlinesim", "pingme"} {
+	for _, code := range []string{"5sim", "smspva", "smspool", "sms_activate", "onlinesim", "pingme"} {
 		provider := providerFor(code, "https://example.invalid", "test-key")
 		if provider == nil {
 			t.Fatalf("provider %s was not registered", code)
@@ -24,10 +24,10 @@ func TestSMSProviderCapabilitiesAreSeparated(t *testing.T) {
 		if !cap.Temporary {
 			t.Fatalf("provider %s must support temporary numbers", code)
 		}
-		if (code == "5sim" || code == "smspool" || code == "sms_activate") && cap.Rental {
+		if (code == "smspool" || code == "sms_activate") && cap.Rental {
 			t.Fatalf("provider %s must not advertise rental", code)
 		}
-		if (code == "onlinesim" || code == "pingme") && !cap.Rental {
+		if (code == "5sim" || code == "smspva" || code == "onlinesim" || code == "pingme") && !cap.Rental {
 			t.Fatalf("provider %s must advertise its configured rental capability", code)
 		}
 	}
@@ -64,7 +64,7 @@ func TestSMSActivateUsesRealActionContract(t *testing.T) {
 
 func TestFiveSIMQuoteParsesCurrentGuestResponse(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet || r.URL.Path != "/guest/products/usa/any/telegram" {
+		if r.Method != http.MethodGet || r.URL.Path != "/guest/products/usa/any" {
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 			return
 		}
@@ -72,11 +72,11 @@ func TestFiveSIMQuoteParsesCurrentGuestResponse(t *testing.T) {
 			t.Errorf("guest quote must not require bearer auth")
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"Category":"activation","Qty":93849,"Price":0.77}`))
+		_, _ = w.Write([]byte(`{"telegram":{"Category":"activation","Qty":93849,"Price":0.77}}`))
 	}))
 	defer server.Close()
 
-	quote, err := providerFor("5sim", server.URL, "").Quote(context.Background(), SMSQuoteRequest{ServiceCode: "telegram", CountryCode: "usa", ProductType: "temporary"})
+	quote, err := providerFor("5sim", server.URL, "").Quote(context.Background(), SMSQuoteRequest{ServiceCode: "telegram", CountryCode: "usa", ProductType: "temporary", OperatorCode: "any"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -393,7 +393,7 @@ func TestSMSReservationConsumesQuoteAndFreezesBalanceInOneTransaction(t *testing
 	defer func() { _ = db.Close() }()
 	mock.ExpectBegin()
 	mock.ExpectQuery(`INSERT INTO sms_orders .* RETURNING id`).
-		WithArgs(int64(7), int64(1), int64(2), int64(3), int64(4), "temporary", .4, .6, nil, "unavailable", "", 1.0, "idem-1", smsReconciliationPurchase, int(smsVerificationUnknownTimeout.Seconds())).
+		WithArgs(int64(7), int64(1), int64(2), int64(3), int64(4), "temporary", "any", 0, .4, .6, nil, "unavailable", "", 1.0, "idem-1", smsReconciliationPurchase, int(smsVerificationUnknownTimeout.Seconds())).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(int64(15)))
 	mock.ExpectExec(`UPDATE sms_quotes SET consumed_at=NOW\(\),consumed_order_id=\$1`).
 		WithArgs(int64(15), "quote-15", int64(7)).
@@ -440,4 +440,115 @@ func TestSMSReservationRollsBackWhenQuoteWasAlreadyConsumed(t *testing.T) {
 	if err = mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
 	}
+}
+
+
+func TestFiveSIMOperatorsUsePricesEndpoint(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/guest/products/usa/any":
+			_, _ = w.Write([]byte(`{"telegram":{"Category":"activation","Qty":10,"Price":0.8}}`))
+		case "/guest/prices":
+			if r.URL.Query().Get("country") != "usa" || r.URL.Query().Get("product") != "telegram" {
+				t.Errorf("unexpected prices query: %s", r.URL.RawQuery)
+			}
+			_, _ = w.Write([]byte(`{"usa":{"telegram":{"att":{"cost":0.9,"count":4,"rate":95},"tmobile":{"cost":1.1,"count":2,"rate":91}}}}`))
+		default:
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	provider := providerFor("5sim", server.URL, "")
+	ops, err := provider.(SMSProductOperatorProvider).OperatorsForProduct(context.Background(), "usa", "telegram", "temporary", 0, 0, "")
+	if err != nil { t.Fatal(err) }
+	if len(ops) != 3 || ops[0].Code != "any" {
+		t.Fatalf("unexpected operators: %#v", ops)
+	}
+}
+
+func TestFiveSIMPurchaseFinishAndBanContracts(t *testing.T) {
+	var paths []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		if r.Header.Get("Authorization") != "Bearer secret" { t.Errorf("missing bearer token") }
+		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(r.URL.Path, "/user/buy/activation/") {
+			_, _ = w.Write([]byte(`{"id":123,"phone":"+12025550123","expires":"2030-01-01T00:00:00Z"}`))
+		} else {
+			_, _ = w.Write([]byte(`{}`))
+		}
+	}))
+	defer server.Close()
+	p := providerFor("5sim", server.URL, "secret")
+	result, err := p.PurchaseTemporary(context.Background(), SMSPurchaseRequest{CountryCode:"usa", ServiceCode:"telegram", OperatorCode:"att"})
+	if err != nil { t.Fatal(err) }
+	if result.ProviderOrderID != "123" || result.PhoneNumber != "+12025550123" { t.Fatalf("unexpected purchase: %#v", result) }
+	action := p.(SMSOrderActionProvider)
+	if err = action.FinishTemporary(context.Background(), "123"); err != nil { t.Fatal(err) }
+	if err = action.BanTemporary(context.Background(), "123"); err != nil { t.Fatal(err) }
+	want := []string{"/user/buy/activation/usa/att/telegram", "/user/finish/123", "/user/ban/123"}
+	if len(paths) != len(want) { t.Fatalf("paths=%v", paths) }
+	for i := range want { if paths[i] != want[i] { t.Fatalf("path[%d]=%q want %q", i, paths[i], want[i]) } }
+}
+
+func TestSMSPVAPurchaseCarriesOperatorAndVoice(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/activation/number/US/telegram/att" { t.Errorf("path=%s", r.URL.Path) }
+		if r.URL.Query().Get("voice") != "2" { t.Errorf("voice=%s", r.URL.Query().Get("voice")) }
+		if r.Header.Get("apikey") != "secret" { t.Errorf("missing apikey header") }
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"statusCode":200,"data":{"orderId":"77","phoneNumber":"+12025550199","orderExpireIn":600}}`))
+	}))
+	defer server.Close()
+	p := providerFor("smspva", server.URL, "secret")
+	got, err := p.PurchaseTemporary(context.Background(), SMSPurchaseRequest{CountryCode:"US", ServiceCode:"telegram", OperatorCode:"att", VoiceMode:2})
+	if err != nil { t.Fatal(err) }
+	if got.ProviderOrderID != "77" || got.PhoneNumber != "+12025550199" { t.Fatalf("unexpected purchase: %#v", got) }
+}
+
+func TestSMSPVARentalLifecycleUsesOfficialRentContract(t *testing.T) {
+	var methods []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/rent.php" { t.Errorf("path=%s", r.URL.Path) }
+		if r.URL.Query().Get("apikey") != "secret" { t.Errorf("missing rental apikey") }
+		methods = append(methods, r.URL.Query().Get("method"))
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Query().Get("method") {
+		case "create":
+			if r.URL.Query().Get("dtype") != "week" || r.URL.Query().Get("dcount") != "1" || r.URL.Query().Get("provider") != "att" {
+				t.Errorf("unexpected create query: %s", r.URL.RawQuery)
+			}
+			_, _ = w.Write([]byte(`{"status":1,"data":{"id":"501","pnumber":"+12025550001","until":1893456000}}`))
+		case "sms":
+			_, _ = w.Write([]byte(`{"status":1,"data":{"SmsList":[{"text":"Your code is 482913"}],"OtherSms":[]}}`))
+		case "prolong":
+			_, _ = w.Write([]byte(`{"status":1,"data":{}}`))
+		case "delete":
+			_, _ = w.Write([]byte(`{"status":1,"data":{}}`))
+		default:
+			t.Errorf("unexpected method: %s", r.URL.Query().Get("method"))
+		}
+	}))
+	defer server.Close()
+	p := providerFor("smspva", server.URL, "secret")
+	order, err := p.PurchaseRental(context.Background(), SMSPurchaseRequest{CountryCode:"US", ServiceCode:"telegram", OperatorCode:"att", DurationValue:1, DurationUnit:"week"})
+	if err != nil { t.Fatal(err) }
+	if order.ProviderOrderID != "501" { t.Fatalf("order=%#v", order) }
+	status, err := p.GetRentalStatus(context.Background(), "501")
+	if err != nil { t.Fatal(err) }
+	if len(status.Messages) != 1 || status.Messages[0] != "Your code is 482913" { t.Fatalf("status=%#v", status) }
+	if err = p.ExtendRental(context.Background(), "501", 1, "week"); err != nil { t.Fatal(err) }
+	if err = p.CancelRental(context.Background(), "501"); err != nil { t.Fatal(err) }
+	want := []string{"create","sms","prolong","delete"}
+	if len(methods) != len(want) { t.Fatalf("methods=%v", methods) }
+	for i := range want { if methods[i] != want[i] { t.Fatalf("method[%d]=%q want %q",i,methods[i],want[i]) } }
+}
+
+func TestSMSPVARentalPeriodValidation(t *testing.T) {
+	if _,_,_,err:=smsPVARentalPeriod(1,"hour"); err==nil { t.Fatal("hour rental purchase must be rejected") }
+	if kind,count,days,err:=smsPVARentalPeriod(2,"week"); err!=nil || kind!="week" || count!=2 || days!=14 {
+		t.Fatalf("period=%q %d %d err=%v",kind,count,days,err)
+	}
+	if _,_,err:=smsPVARentalExtensionPeriod(7,"day"); err==nil { t.Fatal("daily extension above six days must fail") }
 }
