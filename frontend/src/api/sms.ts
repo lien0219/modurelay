@@ -27,6 +27,7 @@ export const smsAPI = {
   purchaseBatch: (payload: { items: Array<{ channel_code: string; service_code: string; country_code: string; product_type: 'temporary' | 'rental'; operator_code?: string; voice_mode?: number; duration_value?: number; duration_unit?: string; quote_id: string; expected_price: number }> }, idempotencyKey: string) => apiClient.post<{ items: SMSOrder[]; partial_error?: string }>('/sms/orders/batch', payload, { headers: { 'Idempotency-Key': idempotencyKey } }).then(r => r.data),
   cancel: (id: string) => apiClient.post(`/sms/orders/${encodeURIComponent(id)}/cancel`).then(r => r.data),
   finish: (id: string) => apiClient.post(`/sms/orders/${encodeURIComponent(id)}/finish`).then(r => r.data),
+  resend: (id: string) => apiClient.post(`/sms/orders/${encodeURIComponent(id)}/resend`).then(r => r.data),
   ban: (id: string) => apiClient.post(`/sms/orders/${encodeURIComponent(id)}/ban`).then(r => r.data),
   refund: (id: string) => apiClient.post(`/sms/orders/${encodeURIComponent(id)}/refund`).then(r => r.data),
   refundStatus: (id: string) => apiClient.get<{ status: string; reason?: string }>(`/sms/orders/${encodeURIComponent(id)}/refund-status`).then(r => r.data),
