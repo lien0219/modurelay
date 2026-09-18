@@ -1036,7 +1036,7 @@ func (s *SMSService) GetPricingSettings(ctx context.Context) (SMSPricingSettings
 	if len(settings.GradeMultipliers) == 0 && s.db != nil {
 		rows, queryErr := s.db.QueryContext(ctx, `SELECT grade,multiplier,fixed_markup FROM sms_success_rate_rules WHERE enabled`)
 		if queryErr == nil {
-			defer rows.Close()
+			defer func() { _ = rows.Close() }()
 			for rows.Next() {
 				var grade string
 				var multiplier, fixed float64
@@ -1180,7 +1180,7 @@ func (s *SMSService) ListServices(ctx context.Context) ([]SMSSvcCatalogItem, err
 func (s *SMSService) ListPublicProviders(ctx context.Context) ([]SMSPublicProvider, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT code,name,enabled,capabilities FROM sms_providers ORDER BY CASE code WHEN '5sim' THEN 1 WHEN 'smspva' THEN 2 ELSE 100 END,id`)
 	if err != nil { return nil, err }
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := []SMSPublicProvider{}
 	for rows.Next() {
 		var item SMSPublicProvider
@@ -1198,7 +1198,7 @@ func (s *SMSService) ListPublicProviders(ctx context.Context) ([]SMSPublicProvid
 func (s *SMSService) ProviderServices(ctx context.Context, providerCode string) ([]SMSSvcCatalogItem, error) {
 	providerCode = strings.ToLower(strings.TrimSpace(providerCode))
 	rows, snapshotErr := s.db.QueryContext(ctx, `SELECT c.provider_service_code,c.provider_service_name,c.category FROM sms_provider_catalog_services c JOIN sms_providers p ON p.id=c.provider_id WHERE p.code=$1 AND p.enabled AND c.enabled ORDER BY c.provider_service_code`, providerCode)
-	if snapshotErr == nil { defer rows.Close(); items := make([]SMSSvcCatalogItem, 0); for rows.Next() { var item SMSSvcCatalogItem; if scanErr := rows.Scan(&item.Code, &item.Name, &item.Category); scanErr != nil { return nil, scanErr }; item.ProviderCode = item.Code; items = append(items, item) }; if rows.Err() != nil { return nil, rows.Err() }; if len(items)>0 { return items,nil } }
+	if snapshotErr == nil { defer func() { _ = rows.Close() }(); items := make([]SMSSvcCatalogItem, 0); for rows.Next() { var item SMSSvcCatalogItem; if scanErr := rows.Scan(&item.Code, &item.Name, &item.Category); scanErr != nil { return nil, scanErr }; item.ProviderCode = item.Code; items = append(items, item) }; if rows.Err() != nil { return nil, rows.Err() }; if len(items)>0 { return items,nil } }
 	var base, credential string
 	if err := s.db.QueryRowContext(ctx, `SELECT base_url,credential_ref FROM sms_providers WHERE code=$1 AND enabled`, providerCode).Scan(&base,&credential); err != nil { return nil, err }
 	provider := providerFor(providerCode,base,providerAPIKey(providerCode,credential,s.encryptor)); if catalog,ok := provider.(SMSCatalogProvider); ok { _, countries, err := catalog.Catalog(ctx); if err != nil { return nil, err }; if serviceCatalog,ok := provider.(SMSServiceCatalogProvider); ok { items, err := serviceCatalog.CatalogServices(ctx,countries); if err != nil { return nil, err }; var providerID int64; if s.db.QueryRowContext(ctx, `SELECT id FROM sms_providers WHERE code=$1`, providerCode).Scan(&providerID) == nil { for _, item := range items { var serviceID int64; if s.db.QueryRowContext(ctx, `INSERT INTO sms_services(code,name,category,enabled) VALUES ($1,$2,$3,TRUE) ON CONFLICT (code) DO UPDATE SET name=EXCLUDED.name,category=EXCLUDED.category RETURNING id`,item.Code,item.Name,item.Category).Scan(&serviceID) == nil { _, _ = s.db.ExecContext(ctx, `INSERT INTO sms_provider_service_mappings(provider_id,service_id,provider_service_code,provider_service_name,temporary_supported,rental_supported,enabled) VALUES ($1,$2,$3,$4,TRUE,FALSE,TRUE) ON CONFLICT (provider_id,service_id) DO UPDATE SET provider_service_code=EXCLUDED.provider_service_code,provider_service_name=EXCLUDED.provider_service_name,enabled=TRUE`,providerID,serviceID,item.ProviderCode,item.Name) } } }; return items,nil } }
@@ -1233,7 +1233,7 @@ func (s *SMSService) ProviderCatalog(ctx context.Context) ([]SMSSvcCatalogItem, 
 	if err != nil {
 		return nil, nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	// Administrator mappings remain visible as the fallback for providers that
 	// do not expose a catalog endpoint.
 	services := make(map[string]SMSSvcCatalogItem, len(fallbackServices))
@@ -1298,7 +1298,7 @@ func (s *SMSService) ProviderCatalog(ctx context.Context) ([]SMSSvcCatalogItem, 
 
 func (s *SMSService) CountriesForService(ctx context.Context, serviceCode string) ([]SMSCountryCatalogItem, error) {
 	serviceCode = strings.ToLower(strings.TrimSpace(serviceCode)); if serviceCode == "" { return s.ListCountries(ctx) }
-	rows, err := s.db.QueryContext(ctx, `SELECT code,base_url,credential_ref FROM sms_providers WHERE enabled ORDER BY id`); if err != nil { return nil, err }; defer rows.Close()
+	rows, err := s.db.QueryContext(ctx, `SELECT code,base_url,credential_ref FROM sms_providers WHERE enabled ORDER BY id`); if err != nil { return nil, err }; defer func() { _ = rows.Close() }()
 	for rows.Next() { var code,base,credential string; if err := rows.Scan(&code,&base,&credential); err != nil { return nil, err }; provider := providerFor(code,base,providerAPIKey(code,credential,s.encryptor)); if p,ok := provider.(SMSServiceCountryProvider); ok { if out,e := p.CountriesForService(ctx,serviceCode); e == nil && len(out)>0 { var providerID int64; if s.db.QueryRowContext(ctx, `SELECT id FROM sms_providers WHERE code=$1`, code).Scan(&providerID) == nil { for _, country := range out { var countryID int64; if s.db.QueryRowContext(ctx, `INSERT INTO sms_countries(iso2,name_en,enabled) VALUES ($1,$2,TRUE) ON CONFLICT (iso2) DO UPDATE SET name_en=COALESCE(NULLIF(EXCLUDED.name_en,''),sms_countries.name_en) RETURNING id`, country.ISO2,country.NameEN).Scan(&countryID) == nil { _, _ = s.db.ExecContext(ctx, `INSERT INTO sms_provider_country_mappings(provider_id,country_id,provider_country_id,provider_country_code) VALUES ($1,$2,$3,$4) ON CONFLICT (provider_id,country_id) DO UPDATE SET provider_country_id=EXCLUDED.provider_country_id,provider_country_code=EXCLUDED.provider_country_code`,providerID,countryID,country.ProviderCode,country.ProviderCode) } } }; return out,nil } } }
 	return []SMSCountryCatalogItem{}, nil
 }
@@ -1323,7 +1323,7 @@ func (s *SMSService) CountriesForProviderService(ctx context.Context, providerCo
 	// service-specific country list.
 	rows, snapshotErr := s.db.QueryContext(ctx, `SELECT c.iso2,c.provider_country_id,c.provider_country_code,c.name_zh,c.name_en FROM sms_provider_catalog_countries c JOIN sms_providers p ON p.id=c.provider_id WHERE p.code=$1 AND p.enabled AND c.enabled ORDER BY c.name_en`, providerCode)
 	if snapshotErr != nil { return nil, snapshotErr }
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items:=make([]SMSCountryCatalogItem,0)
 	for rows.Next(){
 		var item SMSCountryCatalogItem
