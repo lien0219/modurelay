@@ -503,11 +503,11 @@ function refundLabel(status: string) {
 }
 
 async function extend(id: string) {
-  const raw = window.prompt(t('sms.user.hoursToExtend'), '1')
-  const hours = Number(raw)
-  if (!Number.isFinite(hours) || hours <= 0) return
+  const raw = window.prompt('请输入续租周数', '1')
+  const weeks = Number(raw)
+  if (!Number.isInteger(weeks) || weeks <= 0) return
   try {
-    await smsAPI.extendRental(id, { duration_value: hours, duration_unit: 'hour' }, `sms-renew-${id}-${Date.now()}`)
+    await smsAPI.extendRental(id, { duration_value: weeks, duration_unit: 'week' }, `sms-renew-${id}-${Date.now()}`)
     await loadOrders()
   } catch (error) {
     appStore.showError(errorMessage(error, t('sms.user.errors.extend')))
