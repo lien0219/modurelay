@@ -578,38 +578,59 @@ func (p *smsPVAProvider) Quote(ctx context.Context, req SMSQuoteRequest) (*SMSPr
 		return nil, err
 	}
 	var data struct {
-		Price json.RawMessage `json:"price"`
+		Price            json.RawMessage            `json:"price"`
+		PriceByOperators map[string]json.RawMessage `json:"priceByOperators"`
 	}
 	if err := json.Unmarshal(env.Data, &data); err != nil {
 		return nil, err
 	}
 	price, ok := jsonNumber(data.Price)
+	selectedOperator := strings.TrimSpace(req.OperatorCode)
+	if selectedOperator != "" && !strings.EqualFold(selectedOperator, "any") {
+		operatorPrice, found := data.PriceByOperators[selectedOperator]
+		if !found {
+			for code, raw := range data.PriceByOperators {
+				if strings.EqualFold(code, selectedOperator) {
+					operatorPrice = raw
+					found = true
+					break
+				}
+			}
+		}
+		if !found {
+			return nil, ErrSMSProviderUnavailable
+		}
+		price, ok = jsonNumber(operatorPrice)
+	}
 	if !ok || price <= 0 {
 		return nil, ErrSMSProviderUnavailable
 	}
 
-	stock := 1
+	stock := 0
 	var counts smsPVAEnvelope
 	if _, err := p.requestJSON(ctx, http.MethodGet, "activation/countnumbers/"+url.PathEscape(country), nil, &counts); err == nil {
 		var operators []struct {
+			Operator string `json:"operator"`
 			Services []struct {
 				Service string `json:"service"`
 				Total   int    `json:"total"`
 			} `json:"services"`
 		}
 		if json.Unmarshal(counts.Data, &operators) == nil {
-			total := 0
 			for _, operator := range operators {
+				if selectedOperator != "" && !strings.EqualFold(selectedOperator, "any") && !strings.EqualFold(operator.Operator, selectedOperator) {
+					continue
+				}
 				for _, svc := range operator.Services {
 					if strings.EqualFold(svc.Service, service) {
-						total += svc.Total
+						stock += svc.Total
 					}
 				}
 			}
-			if total > 0 {
-				stock = total
-			}
 		}
+	}
+	if stock <= 0 {
+		return nil, ErrSMSProviderUnavailable
 	}
 
 	return &SMSProviderQuote{
