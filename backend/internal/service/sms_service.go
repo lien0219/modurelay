@@ -1844,7 +1844,7 @@ func (s *SMSService) Quote(ctx context.Context, userID int64, req SMSQuoteReques
 	req.ProviderCode = strings.ToLower(strings.TrimSpace(req.ProviderCode))
 	req.ServiceCode = strings.ToLower(strings.TrimSpace(req.ServiceCode))
 	req.CountryCode = strings.ToUpper(strings.TrimSpace(req.CountryCode))
-	req.OperatorCode = strings.ToLower(strings.TrimSpace(req.OperatorCode))
+	req.OperatorCode = strings.TrimSpace(req.OperatorCode)
 	req.ProductType = strings.ToLower(strings.TrimSpace(req.ProductType))
 	req.DurationUnit = strings.ToLower(strings.TrimSpace(req.DurationUnit))
 	if req.OperatorCode == "" {
@@ -2077,7 +2077,7 @@ func (s *SMSService) Purchase(ctx context.Context, userID int64, req SMSPurchase
 	if quote.ServiceCode != req.ServiceCode || quote.CountryCode != req.CountryCode || quote.ProductType != req.ProductType {
 		return nil, ErrSMSQuoteInvalid
 	}
-	requestedOperator := strings.ToLower(strings.TrimSpace(req.OperatorCode))
+	requestedOperator := strings.TrimSpace(req.OperatorCode)
 	if requestedOperator == "" {
 		requestedOperator = "any"
 	}
@@ -2350,7 +2350,7 @@ func (s *SMSService) reserveSMSPurchase(ctx context.Context, userID, channelID, 
 }
 
 func requestedSMSOperator(value string) string {
-	value = strings.ToLower(strings.TrimSpace(value))
+	value = strings.TrimSpace(value)
 	if value == "" {
 		return "any"
 	}
