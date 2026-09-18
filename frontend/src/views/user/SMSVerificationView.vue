@@ -355,6 +355,24 @@ function errorMessage(error: unknown, fallback: string) {
   return candidate?.message || fallback
 }
 const isOrderWaiting = (order: SMSOrder) => ['active', 'provider_unknown', 'reconciling'].includes(order.status)
+const pollingCandidates = () => [...liveOrders.value, ...(activeTab.value === 'orders' ? orders.value : [])]
+  .filter(isOrderWaiting)
+  .filter((order, index, items) => items.findIndex(item => item.id === order.id) === index)
+  .slice(0, 20)
+
+function stopOrderPolling() {
+  if (pollTimer) window.clearTimeout(pollTimer)
+  pollTimer = undefined
+}
+
+function ensureOrderPolling() {
+  if (pollTimer || pollingCandidates().length === 0) return
+  pollTimer = window.setTimeout(async () => {
+    pollTimer = undefined
+    await refreshWaitingOrders()
+    ensureOrderPolling()
+  }, 3000)
+}
 const latestVerificationCode = (order: SMSOrder) => [...(order.messages || [])].reverse().find(message => message.verification_code)?.verification_code || ''
 
 const remainingLabel = (order: SMSOrder) => {
@@ -604,6 +622,8 @@ async function loadOrders() {
       orderPagination.page = result.page
       orderPagination.pageSize = result.page_size
     }
+    if (pollingCandidates().length > 0) ensureOrderPolling()
+    else stopOrderPolling()
   } catch (error) {
     appStore.showError(errorMessage(error, t('sms.user.errors.orders')))
   } finally {
@@ -630,6 +650,7 @@ async function purchase(quote: SMSQuote) {
       const order = await smsAPI.purchase(item, key)
       liveOrders.value = [order, ...liveOrders.value.filter(existing => existing.id !== order.id)]
     }
+    ensureOrderPolling()
     quotes.value = []
     appStore.showSuccess(t('sms.user.purchaseSuccess'))
   } catch (error) {
@@ -816,6 +837,7 @@ function replaceOrder(updated: SMSOrder) {
   if (orderIndex >= 0) orders.value[orderIndex] = updated
   const liveIndex = liveOrders.value.findIndex(item => item.id === updated.id)
   if (liveIndex >= 0) liveOrders.value[liveIndex] = updated
+  if (pollingCandidates().length === 0) stopOrderPolling()
 }
 
 async function refreshOrder(id: string) {
@@ -829,11 +851,11 @@ async function refreshOrder(id: string) {
 }
 
 async function refreshWaitingOrders() {
-  const candidates = [...liveOrders.value, ...(activeTab.value === 'orders' ? orders.value : [])]
-    .filter(isOrderWaiting)
-    .filter((order, index, items) => items.findIndex(item => item.id === order.id) === index)
-    .slice(0, 20)
-  if (!candidates.length) return
+  const candidates = pollingCandidates()
+  if (!candidates.length) {
+    stopOrderPolling()
+    return
+  }
   const updates = await Promise.allSettled(candidates.map(order => smsAPI.order(order.id)))
   updates.forEach(result => {
     if (result.status === 'fulfilled' && result.value) replaceOrder(result.value)
@@ -844,13 +866,10 @@ onMounted(() => {
   void loadRecentSuccesses()
   loadAll()
   countdownTimer = window.setInterval(refreshCountdowns, 1000)
-  pollTimer = window.setInterval(() => {
-    void refreshWaitingOrders()
-  }, 3000)
 })
 
 onBeforeUnmount(() => {
-  if (pollTimer) window.clearInterval(pollTimer)
+  stopOrderPolling()
   if (countdownTimer) window.clearInterval(countdownTimer)
   if (serviceSearchTimer) window.clearTimeout(serviceSearchTimer)
   if (countrySearchTimer) window.clearTimeout(countrySearchTimer)
