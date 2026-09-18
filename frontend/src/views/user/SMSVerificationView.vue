@@ -73,8 +73,8 @@
           </div>
           <div class="rounded-xl border border-gray-200 p-4 dark:border-dark-700"><p class="text-xs font-semibold uppercase tracking-wide text-gray-500">4 · {{ t('sms.user.purchase') }}</p><div class="mt-4 space-y-3"><p class="text-sm text-gray-600 dark:text-gray-300">{{ serviceLabel(serviceCode) }} · {{ countryLabel(countryCode) }}</p>
           <div v-if="productType === 'rental'" class="grid grid-cols-2 gap-2">
-            <label class="block min-w-0"><span class="input-label">{{ t('sms.user.duration') }}</span><input v-model.number="durationValue" class="input h-[42px]" type="number" min="1" /></label>
-            <Select v-model="durationUnit" :label="t('sms.user.unit')" :options="durationUnitOptions" />
+            <label class="block min-w-0"><span class="input-label">{{ t('sms.user.duration') }}</span><input v-model.number="durationValue" class="input h-[42px]" type="number" min="1" @change="reloadRentalCatalog" /></label>
+            <Select v-model="durationUnit" :label="t('sms.user.unit')" :options="durationUnitOptions" @update:model-value="reloadRentalCatalog" />
           </div>
           <label v-if="currentProvider?.capabilities.supports_voice" class="block"><span class="input-label">验证码类型</span><select v-model.number="voiceMode" class="input h-[42px] w-full" @change="changeVoiceMode"><option v-for="item in voiceModeOptions" :key="item.value" :value="item.value">{{ item.label }}</option></select></label>
           <label v-if="currentProvider?.capabilities.supports_operator_selection" class="block"><span class="input-label">运营商</span><select v-model="operatorCode" class="input h-[42px] w-full" @change="quotes = []; loadQuotes()"><option value="any">Any / 自动选择</option><option v-for="item in operators.filter(op => op.code !== 'any')" :key="item.code" :value="item.code" :disabled="item.available === false">{{ item.name }}{{ item.stock != null ? ` · 库存 ${item.stock}` : '' }}</option></select></label>
@@ -274,7 +274,11 @@ async function loadProviderCatalog() {
   countryCode.value = ''
   quotes.value = []
   if (!providerCode.value) return
-  const nextServices = await smsAPI.providerServices(providerCode.value)
+  const nextServices = await smsAPI.providerServices(providerCode.value, {
+    product_type: productType.value,
+    duration_value: productType.value === 'rental' ? durationValue.value : undefined,
+    duration_unit: productType.value === 'rental' ? durationUnit.value : undefined,
+  })
   services.value = nextServices
   serviceCode.value = services.value[0]?.code || ''
   await loadServiceCountries()
@@ -304,7 +308,7 @@ async function switchProductType(type: 'temporary' | 'rental') {
     durationUnit.value = 'week'
   }
   quotes.value = []
-  await loadServiceCountries()
+  await loadProviderCatalog()
   if (serviceCode.value && countryCode.value) await loadQuotes()
 }
 
@@ -429,13 +433,25 @@ async function loadOperators() {
   if (!providerCode.value || !serviceCode.value || !countryCode.value) return
   if (!currentProvider.value?.capabilities.supports_operator_selection) return
   try {
-    operators.value = await smsAPI.operators(providerCode.value, serviceCode.value, countryCode.value, voiceMode.value)
+    operators.value = await smsAPI.operators(providerCode.value, serviceCode.value, countryCode.value, {
+      voice_mode: voiceMode.value,
+      product_type: productType.value,
+      duration_value: productType.value === 'rental' ? durationValue.value : undefined,
+      duration_unit: productType.value === 'rental' ? durationUnit.value : undefined,
+    })
     const any = operators.value.find(item => item.code === 'any')
     operatorCode.value = any?.code || operators.value.find(item => item.available !== false)?.code || 'any'
   } catch {
     operators.value = []
     operatorCode.value = 'any'
   }
+}
+
+async function reloadRentalCatalog() {
+  if (productType.value !== 'rental') return
+  quotes.value = []
+  await loadProviderCatalog()
+  if (serviceCode.value && countryCode.value) await loadQuotes()
 }
 
 async function changeVoiceMode() {
@@ -450,7 +466,11 @@ async function loadServiceCountries() {
   quotes.value = []
   if (!serviceCode.value) return
   try {
-    countries.value = await smsAPI.serviceCountries(providerCode.value, serviceCode.value)
+    countries.value = await smsAPI.serviceCountries(providerCode.value, serviceCode.value, {
+      product_type: productType.value,
+      duration_value: productType.value === 'rental' ? durationValue.value : undefined,
+      duration_unit: productType.value === 'rental' ? durationUnit.value : undefined,
+    })
     countryCode.value = countries.value.find(item => item.available !== false)?.iso2 || ''
     await loadOperators()
   }
