@@ -194,13 +194,20 @@ func (p *smsPVAProvider) Catalog(ctx context.Context) ([]SMSSvcCatalogItem, []SM
 			if name == "" {
 				name = service
 			}
-			servicesMap[service] = SMSSvcCatalogItem{
-				Code:         service,
-				Name:         name,
-				ProviderCode: service,
-				Category:     "activation",
-				Available:    true,
+			item := servicesMap[service]
+			if item.Code == "" {
+				item = SMSSvcCatalogItem{
+					Code:         service,
+					Name:         name,
+					ProviderCode: service,
+					Category:     "activation",
+					Available:    true,
+				}
 			}
+			if price, ok := jsonNumber(row.Price); ok && price > 0 && (item.ProviderCost == 0 || price < item.ProviderCost) {
+				item.ProviderCost = price
+			}
+			servicesMap[service] = item
 		}
 		if len(country) == 2 {
 			countriesMap[country] = SMSCountryCatalogItem{
