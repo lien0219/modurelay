@@ -46,20 +46,40 @@ func (s *SMSService) SyncProviderCatalog(ctx context.Context, code string) error
 	}
 
 	var services []SMSSvcCatalogItem
-	if p, ok := provider.(SMSServiceCatalogProvider); ok {
+	if p, ok := provider.(SMSProductServiceCatalogProvider); ok {
+		activation, activationErr := p.CatalogServicesForProduct(ctx, "temporary", 0, "")
+		if activationErr != nil { return s.finishCatalogSync(ctx, id, started, activationErr) }
+		services = append(services, activation...)
+		if provider.Capabilities(ctx).Rental {
+			// A one-week period is the smallest common rental window used only to
+			// discover the provider's rental service catalog. Purchase-time price,
+			// stock and country validation are always live and period-specific.
+			rental, rentalErr := p.CatalogServicesForProduct(ctx, "rental", 1, "week")
+			if rentalErr != nil { return s.finishCatalogSync(ctx, id, started, rentalErr) }
+			services = append(services, rental...)
+		}
+	} else if p, ok := provider.(SMSServiceCatalogProvider); ok {
 		services, err = p.CatalogServices(ctx, countries)
 	} else {
 		services, err = s.ListServices(ctx)
 	}
-	if err != nil {
-		return s.finishCatalogSync(ctx, id, started, err)
-	}
+	if err != nil { return s.finishCatalogSync(ctx, id, started, err) }
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return s.finishCatalogSync(ctx, id, started, err)
 	}
 	defer func() { _ = tx.Rollback() }()
+
+	// Treat a successful provider sync as an authoritative snapshot. Rows not
+	// observed in this run are disabled instead of deleted so historical orders
+	// and references remain intact.
+	if _, err = tx.ExecContext(ctx, `UPDATE sms_provider_catalog_services SET enabled=FALSE WHERE provider_id=$1`, id); err != nil {
+		return s.finishCatalogSync(ctx, id, started, err)
+	}
+	if _, err = tx.ExecContext(ctx, `UPDATE sms_provider_catalog_countries SET enabled=FALSE WHERE provider_id=$1`, id); err != nil {
+		return s.finishCatalogSync(ctx, id, started, err)
+	}
 
 	for _, v := range services {
 		providerCode := v.ProviderCode
