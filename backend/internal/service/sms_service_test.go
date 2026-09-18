@@ -24,10 +24,10 @@ func TestSMSProviderCapabilitiesAreSeparated(t *testing.T) {
 		if !cap.Temporary {
 			t.Fatalf("provider %s must support temporary numbers", code)
 		}
-		if (code == "smspool" || code == "sms_activate") && cap.Rental {
+		if (code == "5sim" || code == "smspool" || code == "sms_activate") && cap.Rental {
 			t.Fatalf("provider %s must not advertise rental", code)
 		}
-		if (code == "5sim" || code == "smspva" || code == "onlinesim" || code == "pingme") && !cap.Rental {
+		if (code == "smspva" || code == "onlinesim" || code == "pingme") && !cap.Rental {
 			t.Fatalf("provider %s must advertise its configured rental capability", code)
 		}
 	}
@@ -59,6 +59,35 @@ func TestSMSActivateUsesRealActionContract(t *testing.T) {
 	}
 	if quote.Stock != 4 || quote.Cost.String() != "0.8" {
 		t.Fatalf("unexpected quote: %#v", quote)
+	}
+}
+
+func TestFiveSIMRentalIsFailClosed(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatalf("5SIM rental flow must not call upstream, got %s", r.URL.String())
+	}))
+	defer server.Close()
+
+	p := providerFor("5sim", server.URL, "secret")
+	if p.Capabilities(context.Background()).Rental {
+		t.Fatal("5SIM must not advertise rental")
+	}
+	if catalog, ok := p.(SMSProductServiceCatalogProvider); !ok {
+		t.Fatal("5SIM product catalog adapter missing")
+	} else if items, err := catalog.CatalogServicesForProduct(context.Background(), "rental", 1, "day"); err != nil || len(items) != 0 {
+		t.Fatalf("rental services=%#v err=%v, want empty", items, err)
+	}
+	if countries, err := p.(SMSProductServiceCountryProvider).CountriesForServiceProduct(context.Background(), "openai", "rental", 1, "day"); err != nil || len(countries) != 0 {
+		t.Fatalf("rental countries=%#v err=%v, want empty", countries, err)
+	}
+	if operators, err := p.(SMSProductOperatorProvider).OperatorsForProduct(context.Background(), "usa", "openai", "rental", 0, 1, "day"); err != nil || len(operators) != 0 {
+		t.Fatalf("rental operators=%#v err=%v, want empty", operators, err)
+	}
+	if _, err := p.Quote(context.Background(), SMSQuoteRequest{CountryCode: "usa", ServiceCode: "openai", ProductType: "rental"}); !errors.Is(err, ErrSMSProviderUnavailable) {
+		t.Fatalf("rental quote err=%v, want provider unavailable", err)
+	}
+	if _, err := p.PurchaseRental(context.Background(), SMSPurchaseRequest{CountryCode: "usa", ServiceCode: "openai", ProductType: "rental"}); !errors.Is(err, ErrSMSProviderUnavailable) {
+		t.Fatalf("rental purchase err=%v, want provider unavailable", err)
 	}
 }
 
