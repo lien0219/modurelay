@@ -37,7 +37,7 @@ func (p *smsPVAProvider) Capabilities(context.Context) SMSProviderCapabilities {
 		Temporary: true, Rental: true, RentalCancel: true, Polling: true, Cancel: true, Refund: true,
 		Finish: true, Resend: true,
 		Voice: true, VoiceSMS: true, VoiceCallerID: true, VoiceCall: true,
-		OperatorSelection: true, ServiceSelection: true, Extend: true,
+		OperatorSelection: true, ServiceSelection: true, Extend: true, ConversionStats: true,
 	}
 }
 
@@ -298,6 +298,17 @@ func (p *smsPVAProvider) CountriesForService(ctx context.Context, serviceCode st
 		return nil, err
 	}
 
+	conversionRates := map[string]float64{}
+	var conversionEnv smsPVAEnvelope
+	if _, err := p.requestJSON(ctx, http.MethodGet, "activation/conversions/"+url.PathEscape(serviceCode), nil, &conversionEnv); err == nil {
+		var conversionData struct { Conversions map[string]json.RawMessage `json:"conversions"` }
+		if json.Unmarshal(conversionEnv.Data, &conversionData) == nil {
+			for code, raw := range conversionData.Conversions {
+				if value, ok := jsonNumber(raw); ok { conversionRates[strings.ToUpper(strings.TrimSpace(code))] = value }
+			}
+		}
+	}
+
 	out := make([]SMSCountryCatalogItem, 0, len(data.Countries))
 	for _, country := range data.Countries {
 		code := strings.ToUpper(strings.TrimSpace(country.Code))
@@ -318,6 +329,7 @@ func (p *smsPVAProvider) CountriesForService(ctx context.Context, serviceCode st
 			NameEN:       strings.TrimSpace(country.Name),
 			Stock:        stock,
 			ProviderCost: minPrice,
+			ConversionRate: conversionRates[code],
 			Available:    stock > 0,
 		})
 	}
