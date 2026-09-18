@@ -459,8 +459,7 @@ async function loadOperators() {
       duration_value: productType.value === 'rental' ? durationValue.value : undefined,
       duration_unit: productType.value === 'rental' ? durationUnit.value : undefined,
     })
-    const any = operators.value.find(item => item.code === 'any')
-    operatorCode.value = any?.code || operators.value.find(item => item.available !== false)?.code || 'any'
+    operatorCode.value = 'any'
   } catch {
     operators.value = []
     operatorCode.value = 'any'
