@@ -426,7 +426,7 @@ func (p *fiveSIMProvider) CatalogServicesForProduct(ctx context.Context, product
 		if code == "" {
 			continue
 		}
-		out = append(out, SMSSvcCatalogItem{Code: code, Name: code, Category: category, ProviderCode: code, Stock: product.Qty, ProviderCost: product.Price, Available: product.Qty > 0})
+		out = append(out, SMSSvcCatalogItem{Code: code, Name: fiveSIMDisplayName(code), Category: category, ProviderCode: code, Stock: product.Qty, ProviderCost: product.Price, Available: product.Qty > 0})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Code < out[j].Code })
 	return out, nil
@@ -436,6 +436,57 @@ type fiveSIMPricePoint struct {
 	Cost  float64 `json:"cost"`
 	Count int     `json:"count"`
 	Rate  float64 `json:"rate"`
+}
+
+func fiveSIMDisplayName(code string) string {
+	code = strings.ToLower(strings.TrimSpace(code))
+	names := map[string]string{
+		"amazon": "Amazon",
+		"apple": "Apple",
+		"discord": "Discord",
+		"facebook": "Facebook",
+		"google": "Google/YouTube",
+		"instagram": "Instagram/Threads",
+		"microsoft": "Microsoft",
+		"openai": "OpenAI/ChatGPT",
+		"telegram": "Telegram",
+		"whatsapp": "WhatsApp",
+	}
+	if name := names[code]; name != "" {
+		return name
+	}
+	if code == "" {
+		return ""
+	}
+	return code
+}
+
+func fiveSIMPriceCountries(prices map[string]map[string]map[string]fiveSIMPricePoint, serviceCode string) map[string]map[string]fiveSIMPricePoint {
+	serviceCode = strings.ToLower(strings.TrimSpace(serviceCode))
+	if byCountry, ok := prices[serviceCode]; ok {
+		return byCountry
+	}
+	out := make(map[string]map[string]fiveSIMPricePoint)
+	for country, products := range prices {
+		if operators, ok := products[serviceCode]; ok {
+			out[country] = operators
+		}
+	}
+	return out
+}
+
+func fiveSIMPriceOperators(prices map[string]map[string]map[string]fiveSIMPricePoint, countryCode, serviceCode string) map[string]fiveSIMPricePoint {
+	countryCode = strings.ToLower(strings.TrimSpace(countryCode))
+	serviceCode = strings.ToLower(strings.TrimSpace(serviceCode))
+	if byCountry, ok := prices[serviceCode]; ok {
+		if operators, ok := byCountry[countryCode]; ok {
+			return operators
+		}
+	}
+	if products, ok := prices[countryCode]; ok {
+		return products[serviceCode]
+	}
+	return nil
 }
 
 func (p *fiveSIMProvider) CountriesForService(ctx context.Context, serviceCode string) ([]SMSCountryCatalogItem, error) {
@@ -459,11 +510,7 @@ func (p *fiveSIMProvider) CountriesForServiceProduct(ctx context.Context, servic
 		return nil, err
 	}
 	out := []SMSCountryCatalogItem{}
-	for slug, products := range prices {
-		operators, ok := products[serviceCode]
-		if !ok {
-			continue
-		}
+	for slug, operators := range fiveSIMPriceCountries(prices, serviceCode) {
 		stock := 0
 		minCost := 0.0
 		for _, point := range operators {
@@ -626,19 +673,12 @@ func (p *fiveSIMProvider) OperatorsForProduct(ctx context.Context, countryCode, 
 	if err := p.request(ctx, http.MethodGet, "guest/prices", url.Values{"country": {countryCode}, "product": {serviceCode}}, nil, &prices); err != nil {
 		return nil, err
 	}
-	for _, products := range prices {
-		for product, operators := range products {
-			if !strings.EqualFold(product, serviceCode) {
-				continue
-			}
-			for code, point := range operators {
-				code = strings.ToLower(strings.TrimSpace(code))
-				if code == "" || code == "any" {
-					continue
-				}
-				out = append(out, SMSOperatorOption{Code: code, Name: code, Stock: point.Count, ProviderCost: point.Cost, ProviderRate: point.Rate, Available: point.Count > 0})
-			}
+	for code, point := range fiveSIMPriceOperators(prices, countryCode, serviceCode) {
+		code = strings.ToLower(strings.TrimSpace(code))
+		if code == "" || code == "any" {
+			continue
 		}
+		out = append(out, SMSOperatorOption{Code: code, Name: code, Stock: point.Count, ProviderCost: point.Cost, ProviderRate: point.Rate, Available: point.Count > 0})
 	}
 	sort.SliceStable(out, func(i, j int) bool {
 		if out[i].Code == "any" {
@@ -1321,15 +1361,16 @@ type SMSOrderPage struct {
 }
 
 type SMSSvcCatalogItem struct {
-	Code         string  `json:"code"`
-	Name         string  `json:"name"`
-	Icon         string  `json:"icon,omitempty"`
-	Category     string  `json:"category,omitempty"`
-	Description  string  `json:"description,omitempty"`
-	ProviderCode string  `json:"provider_code,omitempty"`
-	Stock        int     `json:"stock,omitempty"`
-	ProviderCost float64 `json:"-"`
-	Available    bool    `json:"available"`
+	Code          string  `json:"code"`
+	Name          string  `json:"name"`
+	Icon          string  `json:"icon,omitempty"`
+	Category      string  `json:"category,omitempty"`
+	Description   string  `json:"description,omitempty"`
+	ProviderCode  string  `json:"provider_code,omitempty"`
+	Stock         int     `json:"stock,omitempty"`
+	ProviderCost  float64 `json:"-"`
+	StartingPrice float64 `json:"starting_price,omitempty"`
+	Available     bool    `json:"available"`
 }
 type SMSPublicProvider struct {
 	Code         string                  `json:"code"`
@@ -1347,6 +1388,7 @@ type SMSCountryCatalogItem struct {
 	ProviderCode   string  `json:"provider_code,omitempty"`
 	Stock          int     `json:"stock,omitempty"`
 	ProviderCost   float64 `json:"-"`
+	StartingPrice  float64 `json:"starting_price,omitempty"`
 	ConversionRate float64 `json:"conversion_rate,omitempty"`
 	Available      bool    `json:"available"`
 }
