@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
@@ -252,7 +251,4 @@ func rawString(v json.RawMessage) string {
 	return s
 }
 
-func rawInt64(v json.RawMessage) int64 {
-	n, _ := strconv.ParseInt(rawString(v), 10, 64)
-	return n
-}
+
