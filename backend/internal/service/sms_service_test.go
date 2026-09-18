@@ -444,6 +444,36 @@ func TestSMSQuoteLookupIsUserScopedAndRejectsConsumedQuote(t *testing.T) {
 	}
 }
 
+
+func TestSMSPricingSettingsDriveUnknownAndGradeFormulas(t *testing.T) {
+	pricing := SMSPricingSettings{
+		CostMultiplier:          7,
+		FixedMarkup:             1,
+		UnknownGradeMultiplier:  2,
+		UnknownGradeFixedMarkup: 2,
+		GradeMultipliers:        map[string]float64{"S": 1.25},
+		GradeFixedMarkups:       map[string]float64{"S": 3},
+	}
+	svc := &SMSService{}
+	unknownMultiplier, unknownFixed := svc.gradePricing(context.Background(), "", pricing)
+	if unknownMultiplier != 2 || unknownFixed != 3 {
+		t.Fatalf("unknown pricing = multiplier %v fixed %v, want 2 and 3", unknownMultiplier, unknownFixed)
+	}
+	unknownSale := 0.6*pricing.CostMultiplier*unknownMultiplier + unknownFixed
+	if math.Abs(unknownSale-11.4) > 1e-9 {
+		t.Fatalf("unknown sale price = %v, want 11.4", unknownSale)
+	}
+
+	gradeMultiplier, gradeFixed := svc.gradePricing(context.Background(), "S", pricing)
+	if gradeMultiplier != 1.25 || gradeFixed != 4 {
+		t.Fatalf("S pricing = multiplier %v fixed %v, want 1.25 and 4", gradeMultiplier, gradeFixed)
+	}
+	gradeSale := 0.6*pricing.CostMultiplier*gradeMultiplier + gradeFixed
+	if math.Abs(gradeSale-9.25) > 1e-9 {
+		t.Fatalf("S sale price = %v, want 9.25", gradeSale)
+	}
+}
+
 func TestSMSOrderExpiryUsesProviderValueOrSafeDefaults(t *testing.T) {
 	now := time.Date(2026, 9, 17, 0, 0, 0, 0, time.UTC)
 	providerExpiry := now.Add(7 * time.Minute)
