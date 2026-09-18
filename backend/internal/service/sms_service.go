@@ -238,7 +238,7 @@ type SMSOperatorOption struct {
 	Code         string  `json:"code"`
 	Name         string  `json:"name"`
 	Stock        int     `json:"stock,omitempty"`
-	ProviderCost float64 `json:"provider_cost,omitempty"`
+	ProviderCost float64 `json:"-"`
 	ProviderRate float64 `json:"provider_rate,omitempty"`
 	Available    bool    `json:"available"`
 }
@@ -1328,7 +1328,7 @@ type SMSSvcCatalogItem struct {
 	Description  string  `json:"description,omitempty"`
 	ProviderCode string  `json:"provider_code,omitempty"`
 	Stock        int     `json:"stock,omitempty"`
-	ProviderCost float64 `json:"provider_cost,omitempty"`
+	ProviderCost float64 `json:"-"`
 	Available    bool    `json:"available"`
 }
 type SMSPublicProvider struct {
