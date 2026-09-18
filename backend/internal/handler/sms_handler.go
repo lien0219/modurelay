@@ -83,7 +83,8 @@ func (h *SMSHandler) Providers(c *gin.Context) {
 }
 
 func (h *SMSHandler) ProviderServices(c *gin.Context) {
-	items, err := h.svc.ProviderServices(c.Request.Context(), c.Param("provider"))
+	durationValue, _ := strconv.Atoi(strings.TrimSpace(c.DefaultQuery("duration_value", "0")))
+	items, err := h.svc.ProviderServicesForProduct(c.Request.Context(), c.Param("provider"), c.DefaultQuery("product_type", "temporary"), durationValue, c.Query("duration_unit"))
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -126,7 +127,8 @@ func (h *SMSHandler) ProviderOperators(c *gin.Context) {
 		response.BadRequest(c, "invalid voice_mode")
 		return
 	}
-	items, err := h.svc.ProviderOperators(c.Request.Context(), c.Param("provider"), c.Param("service"), c.Param("country"), voiceMode)
+	durationValue, _ := strconv.Atoi(strings.TrimSpace(c.DefaultQuery("duration_value", "0")))
+	items, err := h.svc.ProviderOperatorsForProduct(c.Request.Context(), c.Param("provider"), c.Param("service"), c.Param("country"), c.DefaultQuery("product_type", "temporary"), voiceMode, durationValue, c.Query("duration_unit"))
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -145,7 +147,8 @@ func (h *SMSHandler) Countries(c *gin.Context) {
 
 func (h *SMSHandler) ServiceCountries(c *gin.Context) {
 	serviceCode := strings.ToLower(strings.TrimSpace(c.Param("service")))
-	items, err := h.svc.CountriesForProviderService(c.Request.Context(), c.Param("provider"), serviceCode)
+	durationValue, _ := strconv.Atoi(strings.TrimSpace(c.DefaultQuery("duration_value", "0")))
+	items, err := h.svc.CountriesForProviderServiceProduct(c.Request.Context(), c.Param("provider"), serviceCode, c.DefaultQuery("product_type", "temporary"), durationValue, c.Query("duration_unit"))
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
