@@ -3196,7 +3196,10 @@ func (s *SMSService) convergeSMSProviderStatus(ctx context.Context, id int64, st
 		return err
 	}
 	switch status {
-	case "completed":
+	case "active", "completed":
+		// A held settlement means the provider allocation has now been
+		// confirmed (normally via timeout recovery). Capture exactly once so the
+		// order behaves the same as a normal synchronous purchase.
 		if settlementStatus == "held" {
 			return s.captureSMSSettlement(ctx, id, userID)
 		}
