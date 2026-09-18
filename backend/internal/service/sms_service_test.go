@@ -520,6 +520,8 @@ func TestSMSPVARentalLifecycleUsesOfficialRentContract(t *testing.T) {
 				t.Errorf("unexpected create query: %s", r.URL.RawQuery)
 			}
 			_, _ = w.Write([]byte(`{"status":1,"data":{"id":"501","pnumber":"+12025550001","until":1893456000}}`))
+		case "activate":
+			_, _ = w.Write([]byte(`{"status":1,"data":[{"id":"501"}]}`))
 		case "sms":
 			_, _ = w.Write([]byte(`{"status":1,"data":{"SmsList":[{"text":"Your code is 482913"}],"OtherSms":[]}}`))
 		case "prolong":
@@ -540,7 +542,7 @@ func TestSMSPVARentalLifecycleUsesOfficialRentContract(t *testing.T) {
 	if len(status.Messages) != 1 || status.Messages[0] != "Your code is 482913" { t.Fatalf("status=%#v", status) }
 	if err = p.ExtendRental(context.Background(), "501", 1, "week"); err != nil { t.Fatal(err) }
 	if err = p.CancelRental(context.Background(), "501"); err != nil { t.Fatal(err) }
-	want := []string{"create","sms","prolong","delete"}
+	want := []string{"create","activate","activate","sms","prolong","delete"}
 	if len(methods) != len(want) { t.Fatalf("methods=%v", methods) }
 	for i := range want { if methods[i] != want[i] { t.Fatalf("method[%d]=%q want %q",i,methods[i],want[i]) } }
 }
