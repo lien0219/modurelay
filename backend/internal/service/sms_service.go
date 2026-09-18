@@ -29,6 +29,7 @@ import (
 	"sync"
 	"time"
 
+	apperrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/shopspring/decimal"
 )
 
@@ -435,6 +436,13 @@ func (p *httpSMSProvider) requestBytes(ctx context.Context, method, path string,
 		return nil, err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		detail := strings.TrimSpace(string(data))
+		if len(detail) > 512 {
+			detail = detail[:512] + "..."
+		}
+		if detail != "" {
+			return nil, fmt.Errorf("provider %s returned HTTP %d: %s", p.code, resp.StatusCode, detail)
+		}
 		return nil, fmt.Errorf("provider %s returned HTTP %d", p.code, resp.StatusCode)
 	}
 	return data, nil
@@ -2778,7 +2786,7 @@ func sanitizeProviderError(err error) error {
 	if err == nil {
 		return nil
 	}
-	return fmt.Errorf("渠道暂时不可用，请稍后重试")
+	return apperrors.ServiceUnavailable("PROVIDER_UNAVAILABLE", "渠道暂时不可用，请稍后重试").WithCause(err)
 }
 func (s *SMSService) GetOrder(ctx context.Context, userID, orderID int64) (*SMSOrder, error) {
 	var o SMSOrder
