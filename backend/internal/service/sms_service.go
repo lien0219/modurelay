@@ -726,22 +726,23 @@ func (p *fiveSIMProvider) buy(ctx context.Context, category string, req SMSPurch
 }
 
 func (p *fiveSIMProvider) RecoverTemporaryPurchase(ctx context.Context, req SMSPurchaseRequest, startedAt time.Time) (*SMSPurchaseResult, error) {
+	type historyOrder struct {
+		ID        any       `json:"id"`
+		Phone     string    `json:"phone"`
+		Operator  string    `json:"operator"`
+		Product   string    `json:"product"`
+		Price     float64   `json:"price"`
+		Status    string    `json:"status"`
+		Expires   time.Time `json:"expires"`
+		CreatedAt time.Time `json:"created_at"`
+		Country   string    `json:"country"`
+	}
 	var history struct {
-		Data []struct {
-			ID        any       `json:"id"`
-			Phone     string    `json:"phone"`
-			Operator  string    `json:"operator"`
-			Product   string    `json:"product"`
-			Price     float64   `json:"price"`
-			Status    string    `json:"status"`
-			Expires   time.Time `json:"expires"`
-			CreatedAt time.Time `json:"created_at"`
-			Country   string    `json:"country"`
-		} `json:"Data"`
+		Data json.RawMessage `json:"Data"`
 	}
 	query := url.Values{
 		"category": {"activation"},
-		"limit":    {"25"},
+		"limit":    {"50"},
 		"offset":   {"0"},
 		"order":    {"id"},
 		"reverse":  {"true"},
@@ -749,6 +750,23 @@ func (p *fiveSIMProvider) RecoverTemporaryPurchase(ctx context.Context, req SMSP
 	if err := p.request(ctx, http.MethodGet, "user/orders", query, nil, &history); err != nil {
 		return nil, err
 	}
+	raw := bytes.TrimSpace(history.Data)
+	if len(raw) == 0 || bytes.Equal(raw, []byte("null")) {
+		return nil, nil
+	}
+	orders := make([]historyOrder, 0, 8)
+	if raw[0] == '[' {
+		if err := json.Unmarshal(raw, &orders); err != nil {
+			return nil, fmt.Errorf("5SIM order history is invalid: %w", err)
+		}
+	} else {
+		var single historyOrder
+		if err := json.Unmarshal(raw, &single); err != nil {
+			return nil, fmt.Errorf("5SIM order history is invalid: %w", err)
+		}
+		orders = append(orders, single)
+	}
+
 	serviceCode := strings.ToLower(strings.TrimSpace(req.ServiceCode))
 	countryCode := strings.ToLower(strings.TrimSpace(req.CountryCode))
 	operatorCode := strings.ToLower(strings.TrimSpace(req.OperatorCode))
@@ -756,16 +774,22 @@ func (p *fiveSIMProvider) RecoverTemporaryPurchase(ctx context.Context, req SMSP
 		operatorCode = "any"
 	}
 	if startedAt.IsZero() {
-		startedAt = time.Now().Add(-2 * time.Minute)
+		startedAt = time.Now()
 	}
-	windowStart := startedAt.Add(-10 * time.Second)
-	windowEnd := time.Now().Add(10 * time.Second)
-	matches := make([]SMSPurchaseResult, 0, 2)
-	for _, item := range history.Data {
+	// 5SIM returns UTC timestamps. Allow a small network/clock-skew margin and
+	// only consider allocations created shortly after this platform purchase.
+	windowStart := startedAt.Add(-30 * time.Second)
+	windowEnd := startedAt.Add(5 * time.Minute)
+	type candidate struct {
+		result SMSPurchaseResult
+		delta  time.Duration
+	}
+	candidates := make([]candidate, 0, 4)
+	for _, item := range orders {
 		if strings.ToLower(strings.TrimSpace(item.Product)) != serviceCode || strings.ToLower(strings.TrimSpace(item.Country)) != countryCode {
 			continue
 		}
-		if item.CreatedAt.Before(windowStart) || item.CreatedAt.After(windowEnd) {
+		if item.CreatedAt.IsZero() || item.CreatedAt.Before(windowStart) || item.CreatedAt.After(windowEnd) {
 			continue
 		}
 		status := strings.ToUpper(strings.TrimSpace(item.Status))
@@ -782,23 +806,30 @@ func (p *fiveSIMProvider) RecoverTemporaryPurchase(ctx context.Context, req SMSP
 		if id == "" || id == "<nil>" {
 			continue
 		}
-		matches = append(matches, SMSPurchaseResult{
-			ProviderOrderID:      id,
-			PhoneNumber:          item.Phone,
-			ExpiresAt:            &item.Expires,
-			ProviderCost:         item.Price,
-			ProviderOperatorCode: strings.ToLower(strings.TrimSpace(item.Operator)),
+		delta := item.CreatedAt.Sub(startedAt)
+		if delta < 0 {
+			delta = -delta
+		}
+		candidates = append(candidates, candidate{
+			result: SMSPurchaseResult{
+				ProviderOrderID:      id,
+				PhoneNumber:          item.Phone,
+				ExpiresAt:            &item.Expires,
+				ProviderCost:         item.Price,
+				ProviderOperatorCode: strings.ToLower(strings.TrimSpace(item.Operator)),
+			},
+			delta: delta,
 		})
 	}
-	if len(matches) == 0 {
+	if len(candidates) == 0 {
 		return nil, nil
 	}
-	if len(matches) > 1 {
+	sort.Slice(candidates, func(i, j int) bool { return candidates[i].delta < candidates[j].delta })
+	if len(candidates) > 1 && candidates[1].delta-candidates[0].delta <= 2*time.Second {
 		return nil, errors.New("5SIM purchase recovery is ambiguous")
 	}
-	return &matches[0], nil
+	return &candidates[0].result, nil
 }
-
 func (p *fiveSIMProvider) GetTemporaryStatus(ctx context.Context, id string) (*SMSStatusResult, error) {
 	var out struct {
 		Status   string  `json:"status"`
@@ -2606,12 +2637,22 @@ func (s *SMSService) Purchase(ctx context.Context, userID int64, req SMSPurchase
 		}
 		return nil, sanitizeProviderError(err)
 	}
-	pricing, _ := s.GetPricingSettings(ctx)
+	// Once the provider has allocated a number, do not use the client request
+	// context for settlement. The browser/proxy may have timed out already even
+	// though 5SIM succeeded; using a detached bounded context prevents a valid
+	// provider order from being stranded as "reconciling".
+	finalizeCtx, finalizeCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer finalizeCancel()
+	pricing, _ := s.GetPricingSettings(finalizeCtx)
 	expiresAt := smsOrderExpiresAt(time.Now(), req.ProductType, req.DurationValue, req.DurationUnit, purchased.ExpiresAt, time.Duration(pricing.TemporaryExpiryMinutes)*time.Minute)
-	if err = s.activateSMSOrder(ctx, orderID, userID, purchased.ProviderOrderID, purchased.PhoneNumber, expiresAt, purchased.ProviderCost, purchased.ProviderOperatorCode); err != nil {
-		return nil, err
+	if err = s.activateSMSOrder(finalizeCtx, orderID, userID, purchased.ProviderOrderID, purchased.PhoneNumber, expiresAt, purchased.ProviderCost, purchased.ProviderOperatorCode); err != nil {
+		// Persist the provider reference before returning an uncertain result so
+		// the reconciliation worker can poll this exact order instead of guessing
+		// from history.
+		_, _ = s.db.ExecContext(finalizeCtx, `UPDATE sms_orders SET provider_order_id=$1,phone_number=COALESCE(NULLIF($2,''),phone_number),expires_at=COALESCE($3,expires_at),provider_cost_snapshot=CASE WHEN $4>0 THEN $4 ELSE provider_cost_snapshot END,operator_code=COALESCE(NULLIF($5,''),operator_code),status='reconciling',reconciliation_action=$6,reconcile_after=NOW()+($7 * INTERVAL '1 second'),last_provider_error=$8 WHERE id=$9 AND settlement_status='held'`, purchased.ProviderOrderID, purchased.PhoneNumber, expiresAt, purchased.ProviderCost, strings.TrimSpace(purchased.ProviderOperatorCode), smsReconciliationPurchase, int(smsVerificationPollInterval.Seconds()), "provider allocation confirmed; platform settlement retry required", orderID)
+		return nil, ErrSMSProviderUnknown
 	}
-	return s.GetOrder(ctx, userID, orderID)
+	return s.GetOrder(finalizeCtx, userID, orderID)
 }
 
 // PurchaseBatch executes multiple independently quoted purchases while keeping
