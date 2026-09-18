@@ -1787,6 +1787,27 @@ func (s *SMSService) Purchase(ctx context.Context, userID int64, req SMSPurchase
 	if provider == nil {
 		return nil, ErrSMSProviderUnavailable
 	}
+	// A quote is only a short-lived user confirmation snapshot. Immediately
+	// before reserving balance, re-check the provider's current cost and stock so
+	// a stale upstream price can never be purchased at the old sale price.
+	providerServiceCode := quote.ProviderServiceCode
+	if strings.TrimSpace(providerServiceCode) == "" { providerServiceCode = req.ServiceCode }
+	providerCountryCode := quote.ProviderCountryCode
+	if strings.TrimSpace(providerCountryCode) == "" { providerCountryCode = req.CountryCode }
+	liveQuote, liveErr := provider.Quote(ctx, SMSQuoteRequest{
+		ProviderCode: providerCode,
+		ServiceCode: providerServiceCode,
+		CountryCode: providerCountryCode,
+		ProductType: req.ProductType,
+		OperatorCode: quote.OperatorCode,
+		VoiceMode: quote.VoiceMode,
+		DurationValue: req.DurationValue,
+		DurationUnit: req.DurationUnit,
+	})
+	if liveErr != nil { return nil, sanitizeProviderError(liveErr) }
+	if liveQuote == nil || liveQuote.Stock <= 0 { return nil, ErrSMSInsufficientStock }
+	liveCost, _ := liveQuote.Cost.Float64()
+	if math.Abs(liveCost-quote.ProviderCost) > 0.00000001 { return nil, ErrSMSPriceChanged }
 	orderID, err := s.reserveSMSPurchase(ctx, userID, channelID, providerID, serviceID, countryID, req, selected, idempotencyKey)
 	if err != nil {
 		if lookupErr := s.db.QueryRowContext(ctx, `SELECT id FROM sms_orders WHERE user_id=$1 AND idempotency_key=$2`, userID, idempotencyKey).Scan(&orderID); lookupErr == nil {
