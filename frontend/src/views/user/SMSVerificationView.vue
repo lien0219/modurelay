@@ -13,7 +13,7 @@
       </header>
 
       <div class="flex gap-2 border-b border-gray-200 dark:border-dark-700" role="tablist" :aria-label="t('nav.smsService')">
-        <button v-for="tab in tabs" :key="tab.value" type="button" class="border-b-2 px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-40" :disabled="tab.disabled" :class="productType === tab.value && activeTab !== 'orders' ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500'" role="tab" :aria-selected="productType === tab.value && activeTab !== 'orders'" @click="productType = tab.value; activeTab = tab.value; loadQuotes()">{{ tab.label }}</button>
+        <button v-for="tab in tabs" :key="tab.value" type="button" class="border-b-2 px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-40" :disabled="tab.disabled" :class="productType === tab.value && activeTab !== 'orders' ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500'" role="tab" :aria-selected="productType === tab.value && activeTab !== 'orders'" @click="switchProductType(tab.value)">{{ tab.label }}</button>
         <button type="button" class="border-b-2 px-3 py-2 text-sm font-medium" :class="activeTab === 'orders' ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500'" role="tab" :aria-selected="activeTab === 'orders'" @click="activeTab = 'orders'; loadOrders()">{{ t('sms.user.orders') }}</button>
       </div>
 
@@ -77,7 +77,7 @@
             <Select v-model="durationUnit" :label="t('sms.user.unit')" :options="durationUnitOptions" />
           </div>
           <label v-if="currentProvider?.capabilities.supports_voice" class="block"><span class="input-label">验证码类型</span><select v-model.number="voiceMode" class="input h-[42px] w-full" @change="changeVoiceMode"><option v-for="item in voiceModeOptions" :key="item.value" :value="item.value">{{ item.label }}</option></select></label>
-          <label v-if="currentProvider?.capabilities.supports_operator_selection" class="block"><span class="input-label">运营商</span><select v-model="operatorCode" class="input h-[42px] w-full" @change="quotes = []; loadQuotes()"><option value="any">Any / 自动选择</option><option v-for="item in operators.filter(op => op.code !== 'any')" :key="item.code" :value="item.code" :disabled="item.available === false">{{ item.name }}<template v-if="item.stock != null"> · 库存 {{ item.stock }}</template></option></select></label>
+          <label v-if="currentProvider?.capabilities.supports_operator_selection" class="block"><span class="input-label">运营商</span><select v-model="operatorCode" class="input h-[42px] w-full" @change="quotes = []; loadQuotes()"><option value="any">Any / 自动选择</option><option v-for="item in operators.filter(op => op.code !== 'any')" :key="item.code" :value="item.code" :disabled="item.available === false">{{ item.name }}{{ item.stock != null ? ` · 库存 ${item.stock}` : '' }}</option></select></label>
           <label class="block"><span class="input-label">{{ t('sms.user.quantity') }}</span><input v-model.number="purchaseQuantity" class="input h-[42px] w-full" type="number" min="1" max="50" /></label><button type="button" class="btn btn-primary w-full" :disabled="!serviceCode || !countryCode || quoting" @click="loadQuotes">{{ quoting ? t('sms.user.quoting') : t('sms.user.getQuote') }}</button></div></div>
         </div>
 
@@ -160,7 +160,7 @@ const countryKeyword = ref('')
 const serviceCode = ref('')
 const countryCode = ref('US')
 const durationValue = ref(1)
-const durationUnit = ref('hour')
+const durationUnit = ref('week')
 const quotes = ref<SMSQuote[]>([])
 const orders = ref<SMSOrder[]>([])
 const loading = ref(false)
@@ -191,7 +191,12 @@ const filteredCountryOptions = computed(() => {
   const q = countryKeyword.value.toLowerCase()
   return countryOptions.value.filter(item => !q || item.label.toLowerCase().includes(q) || item.value.toLowerCase().includes(q))
 })
-const durationUnitOptions = computed(() => [{ value: 'hour', label: t('sms.user.hour') }, { value: 'day', label: t('sms.user.day') }, { value: 'week', label: t('sms.user.week') }])
+const durationUnitOptions = computed(() => {
+  if (providerCode.value === 'smspva') {
+    return [{ value: 'week', label: t('sms.user.week') }, { value: 'month', label: '月' }]
+  }
+  return [{ value: 'hour', label: t('sms.user.hour') }, { value: 'day', label: t('sms.user.day') }, { value: 'week', label: t('sms.user.week') }]
+})
 const voiceModeOptions = [
   { value: 0, label: '短信 SMS' },
   { value: 1, label: '来电显示 Caller ID' },
@@ -280,6 +285,7 @@ async function switchProvider(code: string) {
   if (!provider?.selectable || code === providerCode.value) return
   providerCode.value = code
   productType.value = provider.capabilities.supports_temporary ? 'temporary' : 'rental'
+  durationUnit.value = provider.code === 'smspva' ? 'week' : 'hour'
   activeTab.value = productType.value
   loading.value = true
   try {
@@ -291,11 +297,31 @@ async function switchProvider(code: string) {
   }
 }
 
+async function switchProductType(type: 'temporary' | 'rental') {
+  productType.value = type
+  activeTab.value = type
+  if (type === 'rental' && providerCode.value === 'smspva' && !['week', 'month'].includes(durationUnit.value)) {
+    durationUnit.value = 'week'
+  }
+  quotes.value = []
+  await loadServiceCountries()
+  if (serviceCode.value && countryCode.value) await loadQuotes()
+}
+
 async function loadQuotes() {
   if (!serviceCode.value || !countryCode.value) return
   quoting.value = true
   try {
-    quotes.value = await smsAPI.quotes({ provider: providerCode.value, service: serviceCode.value, country: countryCode.value, product_type: productType.value, operator: operatorCode.value || 'any', voice_mode: voiceMode.value })
+    quotes.value = await smsAPI.quotes({
+      provider: providerCode.value,
+      service: serviceCode.value,
+      country: countryCode.value,
+      product_type: productType.value,
+      operator: operatorCode.value || 'any',
+      voice_mode: voiceMode.value,
+      duration_value: productType.value === 'rental' ? durationValue.value : undefined,
+      duration_unit: productType.value === 'rental' ? durationUnit.value : undefined,
+    })
   } catch (error) {
     quotes.value = []
     appStore.showError(errorMessage(error, t('sms.user.errors.quote')))
