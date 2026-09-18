@@ -525,6 +525,33 @@ func TestFiveSIMPurchaseFinishAndBanContracts(t *testing.T) {
 	}
 }
 
+func TestSMSPVAQuoteUsesSelectedOperatorPriceAndStock(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("apikey") != "secret" {
+			t.Errorf("missing apikey header")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/activation/serviceprice/US/opt20":
+			_, _ = w.Write([]byte(`{"statusCode":200,"data":{"price":"0.80","priceByOperators":{"att":"1.25","tmobile":"0.95"}}}`))
+		case "/activation/countnumbers/US":
+			_, _ = w.Write([]byte(`{"statusCode":200,"data":[{"operator":"att","country":"US","services":[{"service":"opt20","total":3}]},{"operator":"tmobile","country":"US","services":[{"service":"opt20","total":9}]}]}`))
+		default:
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	p := providerFor("smspva", server.URL, "secret")
+	quote, err := p.Quote(context.Background(), SMSQuoteRequest{CountryCode: "US", ServiceCode: "opt20", ProductType: "temporary", OperatorCode: "att"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if quote.Cost.String() != "1.25" || quote.Stock != 3 {
+		t.Fatalf("unexpected selected-operator quote: %#v", quote)
+	}
+}
+
 func TestSMSPVAPurchaseCarriesOperatorAndVoice(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/activation/number/US/telegram/att" {
