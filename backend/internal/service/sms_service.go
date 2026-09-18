@@ -441,16 +441,16 @@ type fiveSIMPricePoint struct {
 func fiveSIMDisplayName(code string) string {
 	code = strings.ToLower(strings.TrimSpace(code))
 	names := map[string]string{
-		"amazon": "Amazon",
-		"apple": "Apple",
-		"discord": "Discord",
-		"facebook": "Facebook",
-		"google": "Google/YouTube",
+		"amazon":    "Amazon",
+		"apple":     "Apple",
+		"discord":   "Discord",
+		"facebook":  "Facebook",
+		"google":    "Google/YouTube",
 		"instagram": "Instagram/Threads",
 		"microsoft": "Microsoft",
-		"openai": "OpenAI/ChatGPT",
-		"telegram": "Telegram",
-		"whatsapp": "WhatsApp",
+		"openai":    "OpenAI/ChatGPT",
+		"telegram":  "Telegram",
+		"whatsapp":  "WhatsApp",
 	}
 	if name := names[code]; name != "" {
 		return name
