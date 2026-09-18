@@ -10,9 +10,12 @@ export interface SMSOperatorItem { code: string; name: string; stock?: number; p
 export interface SMSMessage { id: number; message_text: string; verification_code?: string; received_at: string }
 export interface SMSOrder { id: string; product_type: 'temporary' | 'rental'; status: string; channel_code: string; channel_name: string; service_code: string; country_code: string; phone_number?: string; operator_code?: string; voice_mode?: number; price: number; success_rate?: number; success_rate_grade?: string; success_rate_source: string; refund_status: string; refund_reason?: string; capabilities?: SMSCapabilities; messages?: SMSMessage[]; expires_at?: string; remaining_seconds?: number; created_at: string }
 export interface SMSOrderPage { items: SMSOrder[]; total: number; page: number; page_size: number; pages: number }
+export interface SMSRecentSuccessItem { username: string; country_code: string; phone: string }
+export interface SMSRecentSuccessFeed { source: 'mock' | 'real'; real_success_count: number; items: SMSRecentSuccessItem[] }
 
 export const smsAPI = {
   providers: () => apiClient.get<SMSProviderItem[]>('/sms/providers').then(r => r.data),
+  recentSuccesses: () => apiClient.get<SMSRecentSuccessFeed>('/sms/recent-successes').then(r => r.data),
   providerServices: (provider: string, params?: { product_type?: 'temporary' | 'rental'; duration_value?: number; duration_unit?: string }) => apiClient.get<SMSServiceItem[]>(`/sms/providers/${encodeURIComponent(provider)}/services`, { params }).then(r => r.data),
   providerServicesPage: (provider: string, params: { page: number; page_size: number; keyword?: string; product_type?: 'temporary' | 'rental'; duration_value?: number; duration_unit?: string }) => apiClient.get<SMSCatalogPage<SMSServiceItem>>(`/sms/providers/${encodeURIComponent(provider)}/services`, { params }).then(r => r.data),
   services: () => apiClient.get<SMSServiceItem[]>('/sms/services').then(r => r.data),
