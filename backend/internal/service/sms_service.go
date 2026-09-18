@@ -1304,12 +1304,36 @@ func (s *SMSService) CountriesForService(ctx context.Context, serviceCode string
 }
 func (s *SMSService) CountriesForProviderService(ctx context.Context, providerCode, serviceCode string) ([]SMSCountryCatalogItem, error) {
 	providerCode = strings.ToLower(strings.TrimSpace(providerCode))
-	rows, snapshotErr := s.db.QueryContext(ctx, `SELECT c.iso2,c.provider_country_id,c.provider_country_code,c.name_zh,c.name_en FROM sms_provider_catalog_countries c JOIN sms_providers p ON p.id=c.provider_id WHERE p.code=$1 AND p.enabled AND c.enabled ORDER BY c.name_en`, providerCode)
-	if snapshotErr == nil { defer rows.Close(); items:=make([]SMSCountryCatalogItem,0); for rows.Next(){ var item SMSCountryCatalogItem; if scanErr:=rows.Scan(&item.ISO2,&item.ProviderCode,&item.ProviderCode,&item.NameZH,&item.NameEN); scanErr!=nil{return nil,scanErr}; items=append(items,item) }; if rows.Err()!=nil{return nil,rows.Err()}; if len(items)>0{return items,nil} }
+	serviceCode = strings.ToLower(strings.TrimSpace(serviceCode))
 	var base, credential string
-	if err := s.db.QueryRowContext(ctx, `SELECT base_url,credential_ref FROM sms_providers WHERE code=$1 AND enabled`, providerCode).Scan(&base,&credential); err != nil { return nil, err }
-	provider := providerFor(providerCode,base,providerAPIKey(providerCode,credential,s.encryptor)); if p,ok := provider.(SMSServiceCountryProvider); ok { return p.CountriesForService(ctx,serviceCode) }
-	return s.CountriesForService(ctx,serviceCode)
+	if err := s.db.QueryRowContext(ctx, `SELECT base_url,credential_ref FROM sms_providers WHERE code=$1 AND enabled`, providerCode).Scan(&base,&credential); err != nil {
+		return nil, err
+	}
+	provider := providerFor(providerCode,base,providerAPIKey(providerCode,credential,s.encryptor))
+	if p, ok := provider.(SMSServiceCountryProvider); ok {
+		if items, err := p.CountriesForService(ctx,serviceCode); err == nil {
+			// This live service-specific result is authoritative. A provider-wide
+			// country snapshot cannot tell whether a particular app is available
+			// in a country, so it must not override this list.
+			return items,nil
+		}
+	}
+
+	// Fallback for legacy/BETA providers whose adapter cannot return a
+	// service-specific country list.
+	rows, snapshotErr := s.db.QueryContext(ctx, `SELECT c.iso2,c.provider_country_id,c.provider_country_code,c.name_zh,c.name_en FROM sms_provider_catalog_countries c JOIN sms_providers p ON p.id=c.provider_id WHERE p.code=$1 AND p.enabled AND c.enabled ORDER BY c.name_en`, providerCode)
+	if snapshotErr != nil { return nil, snapshotErr }
+	defer rows.Close()
+	items:=make([]SMSCountryCatalogItem,0)
+	for rows.Next(){
+		var item SMSCountryCatalogItem
+		var providerCountryID, providerCountryCode string
+		if scanErr:=rows.Scan(&item.ISO2,&providerCountryID,&providerCountryCode,&item.NameZH,&item.NameEN); scanErr!=nil{return nil,scanErr}
+		item.ProviderCode = providerCountryID
+		if item.ProviderCode == "" { item.ProviderCode = providerCountryCode }
+		items=append(items,item)
+	}
+	return items,rows.Err()
 }
 func (s *SMSService) ListCountries(ctx context.Context) ([]SMSCountryCatalogItem, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT DISTINCT co.iso2,co.iso3,co.calling_code,co.name_zh,co.name_en FROM sms_countries co JOIN sms_provider_country_mappings m ON m.country_id=co.id JOIN sms_channels c ON c.provider_id=m.provider_id AND c.enabled AND c.visible AND c.healthy JOIN sms_providers p ON p.id=m.provider_id AND p.enabled WHERE co.enabled ORDER BY co.iso2`)
