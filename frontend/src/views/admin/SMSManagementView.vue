@@ -215,7 +215,8 @@ function isBetaChannel(channel: SMSChannelAdmin) {
   return !provider || isBetaProvider(provider)
 }
 
-function providerName(providerId: number) {
+function providerName(providerId?: number) {
+  if (providerId == null) return '-'
   return providers.value.find(item => item.id === providerId)?.name || '-'
 }
 
