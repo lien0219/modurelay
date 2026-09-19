@@ -470,7 +470,7 @@ func (p *fiveSIMProvider) Capabilities(context.Context) SMSProviderCapabilities 
 	// 5SIM numbers are short-lived activation numbers. Do not expose them as
 	// platform rentals: the documented activation flow has no user-selected
 	// rental term, renewal lifecycle, or rental cancellation contract.
-	return SMSProviderCapabilities{Temporary: true, Rental: false, Polling: true, Cancel: true, Refund: true, Finish: true, Ban: true, Voice: true, VoiceSMS: true, VoiceCall: true, OperatorSelection: true, ServiceSelection: true}
+	return SMSProviderCapabilities{Temporary: true, Rental: false, Polling: true, Cancel: true, Refund: true, Finish: true, Ban: true, Voice: true, VoiceSMS: true, VoiceCall: true, OperatorSelection: true, ServiceSelection: true, ConversionStats: true}
 }
 
 func (p *fiveSIMProvider) Catalog(ctx context.Context) ([]SMSSvcCatalogItem, []SMSCountryCatalogItem, error) {
@@ -621,10 +621,27 @@ func (p *fiveSIMProvider) CountriesForServiceProduct(ctx context.Context, servic
 	for slug, operators := range fiveSIMPriceCountries(prices, serviceCode) {
 		stock := 0
 		minCost := 0.0
-		for _, point := range operators {
+		bestRate := 0.0
+		bestOperator := ""
+		bestOperatorStock := 0
+		bestOperatorCost := 0.0
+		for operatorCode, point := range operators {
 			stock += point.Count
 			if point.Count > 0 && point.Cost > 0 && (minCost == 0 || point.Cost < minCost) {
 				minCost = point.Cost
+			}
+			if point.Count <= 0 || point.Rate <= 0 {
+				continue
+			}
+			operatorCode = strings.ToLower(strings.TrimSpace(operatorCode))
+			betterRate := point.Rate > bestRate
+			sameRateBetterStock := point.Rate == bestRate && point.Count > bestOperatorStock
+			sameRateStockCheaper := point.Rate == bestRate && point.Count == bestOperatorStock && point.Cost > 0 && (bestOperatorCost == 0 || point.Cost < bestOperatorCost)
+			if betterRate || sameRateBetterStock || sameRateStockCheaper {
+				bestRate = point.Rate
+				bestOperator = operatorCode
+				bestOperatorStock = point.Count
+				bestOperatorCost = point.Cost
 			}
 		}
 		meta, ok := countryMeta[slug]
@@ -639,9 +656,28 @@ func (p *fiveSIMProvider) CountriesForServiceProduct(ctx context.Context, servic
 		if iso2 == "" {
 			continue
 		}
-		out = append(out, SMSCountryCatalogItem{ISO2: iso2, ProviderCode: slug, NameEN: strings.TrimSpace(meta.NameEN), Stock: stock, ProviderCost: minCost, Available: stock > 0})
+		out = append(out, SMSCountryCatalogItem{
+			ISO2:                     iso2,
+			ProviderCode:             slug,
+			NameEN:                   strings.TrimSpace(meta.NameEN),
+			Stock:                    stock,
+			ProviderCost:             minCost,
+			ConversionRate:           bestRate,
+			RecommendedOperator:      bestOperator,
+			RecommendedOperatorStock: bestOperatorStock,
+			RecommendedProviderCost:  bestOperatorCost,
+			Available:                stock > 0,
+		})
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].ISO2 < out[j].ISO2 })
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].ConversionRate != out[j].ConversionRate {
+			return out[i].ConversionRate > out[j].ConversionRate
+		}
+		if out[i].Stock != out[j].Stock {
+			return out[i].Stock > out[j].Stock
+		}
+		return out[i].ISO2 < out[j].ISO2
+	})
 	return out, nil
 }
 
@@ -909,6 +945,12 @@ func (p *fiveSIMProvider) OperatorsForProduct(ctx context.Context, countryCode, 
 		}
 		if out[j].Code == "any" {
 			return false
+		}
+		if out[i].ProviderRate != out[j].ProviderRate {
+			return out[i].ProviderRate > out[j].ProviderRate
+		}
+		if out[i].Stock != out[j].Stock {
+			return out[i].Stock > out[j].Stock
 		}
 		if out[i].ProviderCost == out[j].ProviderCost {
 			return out[i].Name < out[j].Name
@@ -1677,17 +1719,21 @@ type SMSPublicProvider struct {
 	Capabilities SMSProviderCapabilities `json:"capabilities"`
 }
 type SMSCountryCatalogItem struct {
-	ISO2           string  `json:"iso2"`
-	ISO3           string  `json:"iso3,omitempty"`
-	CallingCode    string  `json:"calling_code,omitempty"`
-	NameZH         string  `json:"name_zh,omitempty"`
-	NameEN         string  `json:"name_en,omitempty"`
-	ProviderCode   string  `json:"provider_code,omitempty"`
-	Stock          int     `json:"stock,omitempty"`
-	ProviderCost   float64 `json:"-"`
-	StartingPrice  float64 `json:"starting_price,omitempty"`
-	ConversionRate float64 `json:"conversion_rate,omitempty"`
-	Available      bool    `json:"available"`
+	ISO2                     string  `json:"iso2"`
+	ISO3                     string  `json:"iso3,omitempty"`
+	CallingCode              string  `json:"calling_code,omitempty"`
+	NameZH                   string  `json:"name_zh,omitempty"`
+	NameEN                   string  `json:"name_en,omitempty"`
+	ProviderCode             string  `json:"provider_code,omitempty"`
+	Stock                    int     `json:"stock,omitempty"`
+	ProviderCost             float64 `json:"-"`
+	StartingPrice            float64 `json:"starting_price,omitempty"`
+	ConversionRate           float64 `json:"conversion_rate,omitempty"`
+	RecommendedOperator      string  `json:"recommended_operator,omitempty"`
+	RecommendedOperatorStock int     `json:"recommended_operator_stock,omitempty"`
+	RecommendedProviderCost  float64 `json:"-"`
+	RecommendedStartingPrice float64 `json:"recommended_starting_price,omitempty"`
+	Available                bool    `json:"available"`
 }
 
 func (s *SMSService) ListServices(ctx context.Context) ([]SMSSvcCatalogItem, error) {
@@ -1759,14 +1805,20 @@ func (s *SMSService) decorateCountryStartingPrices(ctx context.Context, items []
 		return items
 	}
 	for i := range items {
-		if items[i].ProviderCost <= 0 {
-			continue
+		if items[i].ProviderCost > 0 {
+			price := decimal.NewFromFloat(items[i].ProviderCost).
+				Mul(decimal.NewFromFloat(pricing.CostMultiplier)).
+				Mul(decimal.NewFromFloat(pricing.UnknownGradeMultiplier)).
+				Add(decimal.NewFromFloat(pricing.UnknownGradeFixedMarkup + pricing.FixedMarkup))
+			items[i].StartingPrice = quantize(price)
 		}
-		price := decimal.NewFromFloat(items[i].ProviderCost).
-			Mul(decimal.NewFromFloat(pricing.CostMultiplier)).
-			Mul(decimal.NewFromFloat(pricing.UnknownGradeMultiplier)).
-			Add(decimal.NewFromFloat(pricing.UnknownGradeFixedMarkup + pricing.FixedMarkup))
-		items[i].StartingPrice = quantize(price)
+		if items[i].RecommendedProviderCost > 0 {
+			recommendedPrice := decimal.NewFromFloat(items[i].RecommendedProviderCost).
+				Mul(decimal.NewFromFloat(pricing.CostMultiplier)).
+				Mul(decimal.NewFromFloat(pricing.UnknownGradeMultiplier)).
+				Add(decimal.NewFromFloat(pricing.UnknownGradeFixedMarkup + pricing.FixedMarkup))
+			items[i].RecommendedStartingPrice = quantize(recommendedPrice)
+		}
 	}
 	return items
 }
