@@ -98,8 +98,8 @@ describe('SMSVerificationView', () => {
     smsAPI.providerServices.mockResolvedValue([{ code: 'openai', name: 'OpenAI' }])
     smsAPI.providerServicesPage.mockResolvedValue({ items: [{ code: 'openai', name: 'OpenAI', stock: 10, starting_price: 0.5 }], total: 1, page: 1, page_size: 20, pages: 1, has_more: false })
     smsAPI.serviceCountries.mockResolvedValue([{ iso2: 'US', name_zh: '美国', name_en: 'United States', stock: 10, available: true }])
-    smsAPI.serviceCountriesPage.mockResolvedValue({ items: [{ iso2: 'US', name_zh: '美国', name_en: 'United States', stock: 10, starting_price: 0.5, available: true }], total: 1, page: 1, page_size: 20, pages: 1, has_more: false })
-    smsAPI.operators.mockResolvedValue([{ code: 'any', name: 'Any / 自动选择', stock: 10, available: true }])
+    smsAPI.serviceCountriesPage.mockResolvedValue({ items: [{ iso2: 'US', name_zh: '美国', name_en: 'United States', stock: 10, starting_price: 0.5, conversion_rate: 81.82, platform_30d_success_rate: 78.4, platform_30d_sample_size: 125, platform_30d_successes: 98, platform_30d_failures: 27, recommended_operator: 'virtual63', recommended_operator_stock: 8, recommended_starting_price: 0.55, available: true }], total: 1, page: 1, page_size: 20, pages: 1, has_more: false })
+    smsAPI.operators.mockResolvedValue([{ code: 'any', name: 'Any / 自动选择', stock: 10, platform_30d_success_rate: 78.4, platform_30d_sample_size: 125, available: true }, { code: 'virtual63', name: 'virtual63', stock: 8, provider_rate: 81.82, platform_30d_success_rate: 80, platform_30d_sample_size: 50, available: true }])
     smsAPI.quotes.mockResolvedValue([])
     smsAPI.orders.mockResolvedValue({
       items: [order('pending', 'sms-1'), order('expired', 'sms-2')],
@@ -134,6 +134,27 @@ describe('SMSVerificationView', () => {
     wrapper.unmount()
   })
 
+
+  it('shows provider and platform 30-day delivery rates separately', async () => {
+    const wrapper = mount(SMSVerificationView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<main><slot /></main>' },
+          Icon: true,
+          Pagination: true,
+          Select: true,
+          ConfirmDialog: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    expect(smsAPI.serviceCountriesPage).toHaveBeenCalledWith('5sim', 'openai', expect.objectContaining({ sort: 'recommended' }))
+    expect(wrapper.text()).toContain('81.82')
+    expect(wrapper.text()).toContain('78.40')
+    expect(wrapper.text()).toContain('125')
+    wrapper.unmount()
+  })
 
   it('shows copyable order ids with service and country icons', async () => {
     const wrapper = mount(SMSVerificationView, {
