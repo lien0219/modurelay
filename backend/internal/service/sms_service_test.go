@@ -142,6 +142,23 @@ func TestFiveSIMRecoversTimedOutPurchaseFromOrderHistory(t *testing.T) {
 	}
 }
 
+func TestFiveSIMPreservesExactNumericOrderID(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":1094675152,"phone":"+4367870333648","expires":"2026-09-19T16:00:00Z","price":0.3425,"operator":"Virtual66"}`))
+	}))
+	defer server.Close()
+
+	p := providerFor("5sim", server.URL, "secret")
+	result, err := p.PurchaseTemporary(context.Background(), SMSPurchaseRequest{CountryCode: "austria", ServiceCode: "openai", OperatorCode: "virtual66"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.ProviderOrderID != "1094675152" {
+		t.Fatalf("provider order id=%q, want exact integer string", result.ProviderOrderID)
+	}
+}
+
 func TestFiveSIMRecoveryRejectsAmbiguousMatches(t *testing.T) {
 	startedAt := time.Date(2026, 9, 19, 2, 30, 0, 0, time.UTC)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -660,7 +677,7 @@ func TestSMSReservationConsumesQuoteAndFreezesBalanceInOneTransaction(t *testing
 	defer func() { _ = db.Close() }()
 	mock.ExpectBegin()
 	mock.ExpectQuery(`INSERT INTO sms_orders .* RETURNING id`).
-		WithArgs(int64(7), int64(1), int64(2), int64(3), int64(4), "temporary", "any", 0, .4, .6, nil, "unavailable", "", 1.0, "idem-1", smsReconciliationPurchase, int(smsVerificationUnknownTimeout.Seconds())).
+		WithArgs(int64(7), int64(1), int64(2), int64(3), int64(4), "temporary", "any", 0, .4, .6, nil, "unavailable", "", 1.0, "idem-1").
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(int64(15)))
 	mock.ExpectExec(`UPDATE sms_quotes SET consumed_at=NOW\(\),consumed_order_id=\$1`).
 		WithArgs(int64(15), "quote-15", int64(7)).
