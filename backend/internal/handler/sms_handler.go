@@ -198,17 +198,30 @@ func (h *SMSHandler) ServiceCountries(c *gin.Context) {
 		return
 	}
 	localizeSMSCountryCatalog(items)
-	sort.SliceStable(items, func(i, j int) bool {
-		left := strings.TrimSpace(items[i].NameEN)
-		right := strings.TrimSpace(items[j].NameEN)
-		if left == "" {
-			left = items[i].ISO2
-		}
-		if right == "" {
-			right = items[j].ISO2
-		}
-		return strings.ToLower(left) < strings.ToLower(right)
-	})
+	providerCode := strings.ToLower(strings.TrimSpace(c.Param("provider")))
+	if providerCode == "5sim" {
+		sort.SliceStable(items, func(i, j int) bool {
+			if items[i].ConversionRate != items[j].ConversionRate {
+				return items[i].ConversionRate > items[j].ConversionRate
+			}
+			if items[i].Stock != items[j].Stock {
+				return items[i].Stock > items[j].Stock
+			}
+			return strings.ToLower(items[i].NameEN) < strings.ToLower(items[j].NameEN)
+		})
+	} else {
+		sort.SliceStable(items, func(i, j int) bool {
+			left := strings.TrimSpace(items[i].NameEN)
+			right := strings.TrimSpace(items[j].NameEN)
+			if left == "" {
+				left = items[i].ISO2
+			}
+			if right == "" {
+				right = items[j].ISO2
+			}
+			return strings.ToLower(left) < strings.ToLower(right)
+		})
+	}
 	if c.Query("page") == "" && c.Query("page_size") == "" && c.Query("keyword") == "" {
 		response.Success(c, items)
 		return
