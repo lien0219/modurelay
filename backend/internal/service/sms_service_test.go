@@ -100,6 +100,15 @@ func TestFiveSIMRentalIsFailClosed(t *testing.T) {
 	}
 }
 
+func TestSMSPurchaseOutcomeAmbiguousForUpstream5xx(t *testing.T) {
+	if !isSMSPurchaseOutcomeAmbiguous(&smsProviderHTTPError{Provider: "5sim", StatusCode: http.StatusServiceUnavailable, Detail: "gateway timeout"}) {
+		t.Fatal("provider 5xx must be treated as an ambiguous purchase outcome")
+	}
+	if isSMSPurchaseOutcomeAmbiguous(&smsProviderHTTPError{Provider: "5sim", StatusCode: http.StatusBadRequest, Detail: "no free phones"}) {
+		t.Fatal("definitive provider 4xx must not be treated as ambiguous")
+	}
+}
+
 func TestFiveSIMRecoversTimedOutPurchaseFromOrderHistory(t *testing.T) {
 	startedAt := time.Date(2026, 9, 19, 2, 30, 0, 0, time.UTC)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
