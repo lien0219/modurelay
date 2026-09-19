@@ -90,18 +90,34 @@
           </div>
 
           <div class="rounded-xl border border-gray-200 p-4 dark:border-dark-700">
-            <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">3 · {{ t('sms.user.country') }}</p>
+            <div class="flex items-center justify-between gap-2">
+              <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">3 · {{ t('sms.user.country') }}</p>
+              <select v-if="providerCode === '5sim'" v-model="countrySortMode" class="input h-8 w-auto min-w-28 py-1 text-xs">
+                <option v-for="item in countrySortOptions" :key="item.value" :value="item.value">{{ item.label }}</option>
+              </select>
+            </div>
             <div class="mt-3"><input v-model.trim="countryKeyword" class="input h-10 w-full" :placeholder="t('sms.user.countrySearch')" :disabled="!serviceCode" /></div>
             <div class="mt-3 max-h-[390px] space-y-2 overflow-y-auto pr-1">
               <button v-for="option in filteredCountryOptions" :key="String(option.value)" type="button" class="flex min-h-14 w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left text-sm disabled:cursor-not-allowed disabled:opacity-45" :disabled="option.available === false" :class="countryCode === option.value ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-900/20' : 'border-gray-200 hover:border-primary-300 dark:border-dark-700'" @click="selectCountry(String(option.value))">
                 <span class="flex min-w-0 items-center gap-3">
                   <span :class="flagClass(String(option.value))" class="fi fis shrink-0 rounded-sm shadow-sm" aria-hidden="true"></span>
                   <span class="min-w-0">
-                    <span class="block truncate font-medium">{{ option.label }}</span>
+                    <span class="flex items-center gap-2">
+                      <span class="block truncate font-medium">{{ option.label }}</span>
+                      <span v-if="providerCode === '5sim' && option.conversionRate && option.conversionRate >= 70" class="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">{{ t('sms.user.highDeliveryRate') }}</span>
+                    </span>
                     <span class="block text-[11px] text-gray-400">{{ option.value }}<template v-if="option.stock != null"> · {{ t('sms.user.numbersAvailable', { count: option.stock.toLocaleString() }) }}</template></span>
+                    <span v-if="providerCode === '5sim' && option.conversionRate" class="mt-0.5 block text-[11px] font-medium text-cyan-600 dark:text-cyan-400">
+                      {{ t('sms.user.deliveryRateValue', { rate: option.conversionRate.toFixed(2) }) }}
+                      <template v-if="option.recommendedOperator"> · {{ option.recommendedOperator }}</template>
+                    </span>
                   </span>
                 </span>
-                <span v-if="option.startingPrice != null && option.startingPrice > 0" class="shrink-0 font-semibold tabular-nums text-gray-900 dark:text-white">{{ t('sms.user.startingAt', { price: formatPrice(option.startingPrice) }) }}</span>
+                <span class="shrink-0 text-right">
+                  <span v-if="option.recommendedStartingPrice != null && option.recommendedStartingPrice > 0 && providerCode === '5sim' && option.conversionRate" class="block font-semibold tabular-nums text-gray-900 dark:text-white">{{ t('sms.user.startingAt', { price: formatPrice(option.recommendedStartingPrice) }) }}</span>
+                  <span v-else-if="option.startingPrice != null && option.startingPrice > 0" class="block font-semibold tabular-nums text-gray-900 dark:text-white">{{ t('sms.user.startingAt', { price: formatPrice(option.startingPrice) }) }}</span>
+                  <span v-if="providerCode === '5sim' && option.recommendedOperatorStock" class="block text-[10px] text-gray-400">{{ t('sms.user.recommendedStock', { count: option.recommendedOperatorStock.toLocaleString() }) }}</span>
+                </span>
               </button>
               <div v-if="countriesLoading && !countries.length" class="py-8 text-center text-sm text-gray-400">{{ t('sms.user.loading') }}</div>
               <div v-else-if="serviceCode && !filteredCountryOptions.length" class="py-8 text-center text-sm text-gray-400">{{ t('sms.user.noCountryMatch') }}</div>
@@ -136,7 +152,7 @@
                 <Select v-model="durationUnit" :label="t('sms.user.unit')" :options="durationUnitOptions" @update:model-value="reloadRentalCatalog" />
               </div>
               <label v-if="currentProvider?.capabilities.supports_voice" class="block"><span class="input-label">{{ t('sms.user.verificationType') }}</span><select v-model.number="voiceMode" class="input h-[42px] w-full" @change="changeVoiceMode"><option v-for="item in voiceModeOptions" :key="item.value" :value="item.value">{{ item.label }}</option></select></label>
-              <label v-if="currentProvider?.capabilities.supports_operator_selection" class="block"><span class="input-label">{{ t('sms.user.operator') }}</span><select v-model="operatorCode" class="input h-[42px] w-full" @change="quotes = []; loadQuotes()"><option value="any">{{ t('sms.user.autoOperator') }}</option><option v-for="item in operators.filter(op => op.code !== 'any')" :key="item.code" :value="item.code" :disabled="item.available === false">{{ item.name }}{{ item.stock != null ? ` · ${t('sms.user.stock')} ${item.stock}` : '' }}</option></select></label>
+              <label v-if="currentProvider?.capabilities.supports_operator_selection" class="block"><span class="input-label">{{ t('sms.user.operator') }}</span><select v-model="operatorCode" class="input h-[42px] w-full" @change="quotes = []; loadQuotes()"><option value="any">{{ t('sms.user.autoOperator') }}</option><option v-for="item in operators.filter(op => op.code !== 'any')" :key="item.code" :value="item.code" :disabled="item.available === false">{{ item.name }}{{ item.provider_rate ? ` · ${item.provider_rate.toFixed(2)}%` : '' }}{{ item.stock != null ? ` · ${t('sms.user.stock')} ${item.stock}` : '' }}</option></select><p v-if="providerCode === '5sim' && operatorCode !== 'any'" class="mt-1 text-[11px] text-cyan-600 dark:text-cyan-400">{{ t('sms.user.recommendedOperatorSelected') }}</p></label>
               <label class="block"><span class="input-label">{{ t('sms.user.quantity') }}</span><input v-model.number="purchaseQuantity" class="input h-[42px] w-full" type="number" min="1" max="50" /></label>
 
               <div v-if="bestQuote" class="flex items-center justify-between border-t border-gray-200 pt-3 dark:border-dark-700">
@@ -289,6 +305,7 @@ const operatorCode = ref('any')
 const voiceMode = ref(0)
 const serviceKeyword = ref('')
 const countryKeyword = ref('')
+const countrySortMode = ref<'rate' | 'price' | 'stock' | 'name'>('rate')
 const serviceCode = ref('')
 const countryCode = ref('')
 const durationValue = ref(1)
@@ -328,8 +345,24 @@ const bestQuote = computed(() => [...quotes.value].sort((a, b) => a.sale_price -
 const recentSuccessLoop = computed(() => recentSuccessItems.value.length ? [...recentSuccessItems.value, ...recentSuccessItems.value] : [])
 const serviceOptions = computed(() => services.value.map(item => ({ value: item.code, label: item.name || item.code, logo: item.icon || serviceLogo(item.code, item.name), stock: item.stock, startingPrice: item.starting_price })))
 const filteredServiceOptions = computed(() => serviceOptions.value)
-const countryOptions = computed(() => countries.value.map(item => ({ value: item.iso2, label: countryName(item), stock: item.stock, startingPrice: item.starting_price, conversionRate: item.conversion_rate, available: item.available })))
-const filteredCountryOptions = computed(() => [...countryOptions.value].sort((a, b) => englishCountryName(String(a.value)).localeCompare(englishCountryName(String(b.value)), 'en')))
+const countryOptions = computed(() => countries.value.map(item => ({
+  value: item.iso2,
+  label: countryName(item),
+  stock: item.stock,
+  startingPrice: item.starting_price,
+  conversionRate: item.conversion_rate,
+  recommendedOperator: item.recommended_operator,
+  recommendedOperatorStock: item.recommended_operator_stock,
+  recommendedStartingPrice: item.recommended_starting_price,
+  available: item.available,
+})))
+const filteredCountryOptions = computed(() => countryOptions.value)
+const countrySortOptions = computed(() => [
+  { value: 'rate', label: t('sms.user.sortByRate') },
+  { value: 'price', label: t('sms.user.sortByPrice') },
+  { value: 'stock', label: t('sms.user.sortByStock') },
+  { value: 'name', label: t('sms.user.sortByName') },
+])
 const durationUnitOptions = computed(() => {
   if (providerCode.value === 'smspva') {
     return [{ value: 'week', label: t('sms.user.week') }, { value: 'month', label: t('sms.user.month') }]
@@ -538,6 +571,7 @@ async function loadCountryPage(reset = false) {
       page: countryPagination.page,
       page_size: countryPagination.pageSize,
       keyword: countryKeyword.value || undefined,
+      sort: providerCode.value === '5sim' ? countrySortMode.value : 'name',
       product_type: productType.value,
       duration_value: productType.value === 'rental' ? durationValue.value : undefined,
       duration_unit: productType.value === 'rental' ? durationUnit.value : undefined,
@@ -561,6 +595,7 @@ async function loadProviderCatalog() {
   voiceMode.value = 0
   serviceKeyword.value = ''
   countryKeyword.value = ''
+  countrySortMode.value = providerCode.value === '5sim' ? 'rate' : 'name'
   serviceCode.value = ''
   countryCode.value = ''
   quotes.value = []
@@ -795,7 +830,15 @@ async function loadOperators() {
       duration_value: productType.value === 'rental' ? durationValue.value : undefined,
       duration_unit: productType.value === 'rental' ? durationUnit.value : undefined,
     })
-    operatorCode.value = 'any'
+    const selectedCountry = countries.value.find(item => item.iso2 === countryCode.value)
+    const recommended = providerCode.value === '5sim'
+      ? selectedCountry?.recommended_operator
+      : ''
+    if (recommended && operators.value.some(item => item.code === recommended && item.available !== false)) {
+      operatorCode.value = recommended
+    } else {
+      operatorCode.value = 'any'
+    }
   } catch {
     operators.value = []
     operatorCode.value = 'any'
@@ -834,6 +877,10 @@ watch(serviceKeyword, () => {
 watch(countryKeyword, () => {
   if (countrySearchTimer) window.clearTimeout(countrySearchTimer)
   countrySearchTimer = window.setTimeout(() => { if (serviceCode.value) void loadCountryPage(true) }, 250)
+})
+
+watch(countrySortMode, () => {
+  if (serviceCode.value) void loadCountryPage(true)
 })
 
 function refundLabel(status: string) {
