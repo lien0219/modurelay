@@ -669,7 +669,14 @@ async function purchase(quote: SMSQuote) {
   } catch (error) {
     await authStore.refreshUser().catch(() => undefined)
     void loadOrders()
-    appStore.showError(errorMessage(error, t('sms.user.errors.purchase')))
+    const candidate = error as { reason?: string; code?: string | number }
+    const reason = candidate?.reason || (typeof candidate?.code === 'string' ? candidate.code : '')
+    if (reason === 'ORDER_RECONCILING') {
+      appStore.showSuccess(t('sms.user.purchaseConfirming'))
+      ensureOrderPolling()
+    } else {
+      appStore.showError(errorMessage(error, t('sms.user.errors.purchase')))
+    }
   } finally {
     purchasing.value = false
   }
