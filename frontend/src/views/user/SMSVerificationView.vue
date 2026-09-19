@@ -433,10 +433,6 @@ function refreshCountdowns() {
   liveOrders.value = liveOrders.value.map(order => ({ ...order }))
 }
 
-function englishCountryName(iso2: string) {
-  try { return new Intl.DisplayNames(['en'], { type: 'region' }).of(iso2.toUpperCase()) || iso2 } catch { return iso2 }
-}
-
 function countryName(country: SMSCountryItem) {
   const fallback = locale.value.startsWith('zh') ? country.name_zh || country.name_en || country.iso2 : country.name_en || country.name_zh || country.iso2
   try {
