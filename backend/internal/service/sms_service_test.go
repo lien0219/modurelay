@@ -189,7 +189,7 @@ func TestFiveSIMCountriesParseProductFilteredPricesShape(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(countries) != 1 || countries[0].ISO2 != "US" || countries[0].Stock != 7 || countries[0].ProviderCost != 0.5 {
+	if len(countries) != 1 || countries[0].ISO2 != "US" || countries[0].Stock != 7 || countries[0].ProviderCost != 0.5 || countries[0].ConversionRate != 95 || countries[0].RecommendedOperator != "att" || countries[0].RecommendedOperatorStock != 4 || countries[0].RecommendedProviderCost != 0.5 {
 		t.Fatalf("unexpected countries: %#v", countries)
 	}
 }
@@ -687,7 +687,7 @@ func TestFiveSIMOperatorsUsePricesEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(ops) != 3 || ops[0].Code != "any" {
+	if len(ops) != 3 || ops[0].Code != "any" || ops[1].Code != "att" || ops[1].ProviderRate != 95 || ops[2].Code != "tmobile" || ops[2].ProviderRate != 91 {
 		t.Fatalf("unexpected operators: %#v", ops)
 	}
 }
