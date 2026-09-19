@@ -734,11 +734,11 @@ func TestSMSPricingSettingsDriveUnknownAndGradeFormulas(t *testing.T) {
 	}
 }
 
-func TestSMSOrderExpiryUsesProviderValueOrSafeDefaults(t *testing.T) {
+func TestSMSOrderExpiryUsesPlatformPolicyOrSafeDefaults(t *testing.T) {
 	now := time.Date(2026, 9, 17, 0, 0, 0, 0, time.UTC)
 	providerExpiry := now.Add(7 * time.Minute)
-	if got := smsOrderExpiresAt(now, "temporary", 0, "", &providerExpiry); !got.Equal(providerExpiry) {
-		t.Fatalf("provider expiry=%v, want %v", got, providerExpiry)
+	if got := smsOrderExpiresAt(now, "temporary", 0, "", &providerExpiry); !got.Equal(now.Add(10 * time.Minute)) {
+		t.Fatalf("temporary platform expiry=%v, want %v", got, now.Add(10*time.Minute))
 	}
 	longProviderExpiry := now.Add(15 * time.Minute)
 	if got := smsOrderExpiresAt(now, "temporary", 0, "", &longProviderExpiry, 3*time.Minute); !got.Equal(now.Add(3 * time.Minute)) {
@@ -752,6 +752,80 @@ func TestSMSOrderExpiryUsesProviderValueOrSafeDefaults(t *testing.T) {
 	}
 	if got := smsOrderExpiresAt(now, "rental", 0, "", nil); !got.Equal(now.Add(24 * time.Hour)) {
 		t.Fatalf("fallback rental expiry=%v", got)
+	}
+}
+
+func TestSMSOrderCancellationWindowIsIndependentFromExpiry(t *testing.T) {
+	now := time.Date(2026, 9, 17, 0, 5, 0, 0, time.UTC)
+	created := now.Add(-30 * time.Second)
+	expires := now.Add(9 * time.Minute)
+	order := SMSOrder{
+		ProductType: "temporary",
+		Status:      "active",
+		CreatedAt:   created,
+		ExpiresAt:   &expires,
+		Capabilities: SMSProviderCapabilities{
+			Refund: true,
+		},
+	}
+	setSMSOrderCancellationState(&order, SMSPricingSettings{SelfServiceCancelAfterMinutes: 1}, now)
+	if order.CanCancel {
+		t.Fatal("order should remain non-cancellable during the safety window")
+	}
+	if order.CancelAvailableAt == nil || !order.CancelAvailableAt.Equal(created.Add(time.Minute)) {
+		t.Fatalf("cancel_available_at=%v, want %v", order.CancelAvailableAt, created.Add(time.Minute))
+	}
+	if order.CancelRemainingSeconds != 30 {
+		t.Fatalf("cancel_remaining_seconds=%d, want 30", order.CancelRemainingSeconds)
+	}
+
+	now = created.Add(2 * time.Minute)
+	setSMSOrderCancellationState(&order, SMSPricingSettings{SelfServiceCancelAfterMinutes: 1}, now)
+	if !order.CanCancel || order.CancelRemainingSeconds != 0 {
+		t.Fatalf("order should be cancellable after safety window: can=%v remaining=%d", order.CanCancel, order.CancelRemainingSeconds)
+	}
+
+	order.Status = "cancelled"
+	setSMSOrderCancellationState(&order, SMSPricingSettings{SelfServiceCancelAfterMinutes: 1}, now)
+	if order.CanCancel || order.CancelAvailableAt != nil || order.CancelRemainingSeconds != 0 {
+		t.Fatalf("terminal order should have no cancellation window: %#v", order)
+	}
+}
+
+func TestSMSOrderRemainingStopsDuringRefundReconciliation(t *testing.T) {
+	now := time.Now()
+	expires := now.Add(5 * time.Minute)
+	order := SMSOrder{Status: "reconciling", ReconciliationAction: smsReconciliationRefund, ExpiresAt: &expires}
+	setSMSOrderRemaining(&order)
+	if order.RemainingSeconds != 0 {
+		t.Fatalf("refund reconciliation remaining=%d, want 0", order.RemainingSeconds)
+	}
+}
+
+func TestSMSExpiryReleasesHeldSettlement(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	mock.ExpectQuery(`SELECT settlement_status FROM sms_orders WHERE id=\$1`).
+		WithArgs(int64(44)).
+		WillReturnRows(sqlmock.NewRows([]string{"settlement_status"}).AddRow("held"))
+	mock.ExpectBegin()
+	mock.ExpectQuery(`UPDATE sms_orders SET status=\$1,refund_status=\$2.*settlement_status='held'.*RETURNING reserved_amount`).
+		WithArgs("refunded", "approved", "expired while provider refund was confirmed", "released", int64(44)).
+		WillReturnRows(sqlmock.NewRows([]string{"reserved_amount"}).AddRow(1.25))
+	mock.ExpectExec(`UPDATE users SET balance=balance\+\$1,frozen_balance`).
+		WithArgs(1.25, int64(9)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	svc := &SMSService{db: db}
+	if err := svc.settleSMSExpiry(context.Background(), 44, 9, "refunded", "approved", "expired while provider refund was confirmed"); err != nil {
+		t.Fatal(err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
 	}
 }
 

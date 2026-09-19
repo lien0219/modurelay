@@ -556,6 +556,10 @@ func (h *SMSHandler) Cancel(c *gin.Context) {
 			response.ErrorWithDetails(c, http.StatusUnprocessableEntity, "Please wait until the configured cancellation window before cancelling this order", "CANCEL_TOO_EARLY", nil)
 			return
 		}
+		if err == service.ErrSMSOrderExpired {
+			response.ErrorWithDetails(c, http.StatusUnprocessableEntity, "The order validity period has ended; automatic cancellation/refund is being handled", "CANCEL_TOO_LATE", nil)
+			return
+		}
 		if err == service.ErrSMSProviderUnknown || err == service.ErrSMSRefundPending {
 			response.ErrorWithDetails(c, http.StatusAccepted, "The cancellation/refund is being reconciled", "ORDER_RECONCILING", nil)
 			return
@@ -574,6 +578,10 @@ func (h *SMSHandler) Refund(c *gin.Context) {
 	if err := h.svc.RequestRefund(c.Request.Context(), subject.UserID, c.Param("id")); err != nil {
 		if err == service.ErrSMSCancelTooEarly {
 			response.ErrorWithDetails(c, http.StatusUnprocessableEntity, "Please wait until the configured cancellation window before requesting a refund", "CANCEL_TOO_EARLY", nil)
+			return
+		}
+		if err == service.ErrSMSOrderExpired {
+			response.ErrorWithDetails(c, http.StatusUnprocessableEntity, "The order validity period has ended; automatic cancellation/refund is being handled", "CANCEL_TOO_LATE", nil)
 			return
 		}
 		if err == service.ErrSMSRefundPending {

@@ -1,6 +1,6 @@
 <template>
   <AppLayout>
-    <div class="mx-auto w-full max-w-[1600px] space-y-5">
+    <div class="mx-auto w-full max-w-[1600px] space-y-5 overflow-x-hidden">
       <header class="flex flex-wrap items-end justify-between gap-3">
         <div class="min-w-0">
           <p class="text-xs font-semibold uppercase tracking-[0.14em] text-cyan-600 dark:text-cyan-400">ModuRelay</p>
@@ -33,7 +33,7 @@
         <button type="button" class="border-b-2 px-3 py-2 text-sm font-medium" :class="activeTab === 'orders' ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500'" role="tab" :aria-selected="activeTab === 'orders'" @click="activeTab = 'orders'; loadOrders()">{{ t('sms.user.orders') }}</button>
       </div>
 
-      <section v-if="activeTab !== 'orders'" class="card space-y-5 p-5">
+      <section v-if="activeTab !== 'orders'" class="card space-y-5 p-4 sm:p-5">
         <div>
           <div class="mb-3 flex items-center justify-between gap-3">
             <div>
@@ -62,11 +62,12 @@
           </div>
         </div>
 
-        <div class="grid items-start gap-4 lg:grid-cols-3">
-          <div class="rounded-xl border border-gray-200 p-4 dark:border-dark-700">
+        <div class="sms-selection-grid grid gap-4 lg:grid-cols-3 lg:items-start">
+          <div class="grid min-w-0 gap-4 lg:col-span-2 lg:grid-cols-2">
+          <div class="flex min-h-0 min-w-0 flex-col rounded-xl border border-gray-200 p-4 dark:border-dark-700">
             <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">2 · {{ t('sms.user.service') }}</p>
             <div class="mt-3"><input v-model.trim="serviceKeyword" class="input h-10 w-full" :placeholder="t('sms.user.serviceSearch')" /></div>
-            <div class="mt-3 max-h-[390px] space-y-2 overflow-y-auto pr-1">
+            <div class="mt-3 min-h-0 space-y-2 overflow-y-auto pr-1 lg:max-h-[440px]">
               <button v-for="option in filteredServiceOptions" :key="String(option.value)" type="button" class="flex min-h-14 w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left text-sm transition" :class="serviceCode === option.value ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-900/20' : 'border-gray-200 hover:border-primary-300 dark:border-dark-700'" @click="selectService(String(option.value))">
                 <span class="flex min-w-0 items-center gap-3">
                   <span class="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-gray-100 text-base font-semibold text-gray-500 dark:bg-dark-700 dark:text-gray-300">
@@ -89,7 +90,7 @@
             </div>
           </div>
 
-          <div class="rounded-xl border border-gray-200 p-4 dark:border-dark-700">
+          <div class="flex min-h-0 min-w-0 flex-col rounded-xl border border-gray-200 p-4 dark:border-dark-700">
             <div class="flex items-center justify-between gap-2">
               <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">3 · {{ t('sms.user.country') }}</p>
               <select v-if="providerCode === '5sim'" v-model="countrySortMode" class="input h-8 w-auto min-w-28 py-1 text-xs">
@@ -97,7 +98,7 @@
               </select>
             </div>
             <div class="mt-3"><input v-model.trim="countryKeyword" class="input h-10 w-full" :placeholder="t('sms.user.countrySearch')" :disabled="!serviceCode" /></div>
-            <div class="mt-3 max-h-[390px] space-y-2 overflow-y-auto pr-1">
+            <div class="mt-3 min-h-0 space-y-2 overflow-y-auto pr-1 lg:max-h-[440px]">
               <button v-for="option in filteredCountryOptions" :key="String(option.value)" type="button" class="flex min-h-14 w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left text-sm disabled:cursor-not-allowed disabled:opacity-45" :disabled="option.available === false" :class="countryCode === option.value ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-900/20' : 'border-gray-200 hover:border-primary-300 dark:border-dark-700'" @click="selectCountry(String(option.value))">
                 <span class="flex min-w-0 items-center gap-3">
                   <span :class="flagClass(String(option.value))" class="fi fis shrink-0 rounded-sm shadow-sm" aria-hidden="true"></span>
@@ -133,7 +134,9 @@
             <p v-if="!serviceCode" class="mt-3 text-xs text-gray-500">{{ t('sms.user.selectService') }}</p>
           </div>
 
-          <div class="rounded-xl border border-gray-200 p-4 dark:border-dark-700">
+          </div>
+
+          <div class="flex min-h-0 min-w-0 flex-col rounded-xl border border-gray-200 p-4 dark:border-dark-700">
             <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">4 · {{ t('sms.user.confirmSelection') }}</p>
             <div class="mt-4 space-y-4">
               <div class="space-y-3 rounded-xl bg-gray-50 p-3 dark:bg-dark-800/60">
@@ -230,7 +233,7 @@
               </div>
             </div>
             <div class="flex shrink-0 flex-wrap gap-2">
-              <button v-if="(order.status === 'active' || (order.status === 'reconciling' && order.reconciliation_action === 'purchase')) && order.capabilities?.supports_cancel !== false" type="button" class="btn btn-secondary" @click="cancel(order.id)">{{ t('sms.user.cancel') }}</button>
+              <button v-if="showCancelAction(order)" type="button" class="btn btn-secondary" :disabled="!canCancelOrder(order)" :title="cancelActionHint(order)" @click="cancel(order)">{{ t('sms.user.cancel') }}</button>
               <button v-if="order.status === 'active' && order.product_type === 'temporary' && order.capabilities?.supports_resend" type="button" class="btn btn-secondary" @click="resend(order.id)">{{ t('sms.user.resend') }}</button>
             </div>
           </div>
@@ -275,7 +278,7 @@
             <thead class="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-dark-800"><tr><th class="px-4 py-3">{{ t('sms.user.order') }}</th><th class="px-4 py-3">{{ t('sms.user.channel') }}</th><th class="px-4 py-3">{{ t('sms.user.service') }}</th><th class="px-4 py-3">{{ t('sms.user.country') }}</th><th class="px-4 py-3">{{ t('sms.user.operator') }}</th><th class="px-4 py-3">{{ t('sms.user.phone') }}</th><th class="px-4 py-3">{{ t('sms.user.status') }}</th><th class="px-4 py-3">{{ t('sms.user.code') }}</th><th class="px-4 py-3">{{ t('sms.user.price') }}</th><th class="px-4 py-3">{{ t('sms.user.expiresIn') }}</th><th class="px-4 py-3">{{ t('sms.user.actions') }}</th></tr></thead>
             <tbody>
             <tr v-for="order in orders" :key="order.id" class="border-t border-gray-100 dark:border-dark-700">
-              <td class="px-4 py-3"><div class="flex min-w-max items-center gap-2"><span class="font-mono text-xs">{{ order.id }}</span><button type="button" class="btn btn-secondary btn-sm" :title="t('common.copy')" :aria-label="`${t('common.copy')} ${order.id}`" @click="copyText(order.id)"><Icon name="copy" size="xs" aria-hidden="true" /></button></div></td><td class="px-4 py-3">{{ order.channel_name || order.channel_code }}</td><td class="px-4 py-3"><div class="flex min-w-max items-center gap-2"><span class="relative flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-md bg-gray-100 text-xs font-semibold text-gray-500 dark:bg-dark-700 dark:text-gray-300"><span>{{ serviceLabel(order.service_code).slice(0, 1).toUpperCase() }}</span><IconifyIcon v-if="serviceLogo(order.service_code, serviceLabel(order.service_code))" :icon="serviceLogo(order.service_code, serviceLabel(order.service_code))" class="absolute inset-0 m-auto h-5 w-5 bg-gray-100 dark:bg-dark-700" /></span><span>{{ serviceLabel(order.service_code) }}</span></div></td><td class="px-4 py-3"><div class="flex min-w-max items-center gap-2"><span :class="flagClass(order.country_code)" class="fi fis rounded-sm shadow-sm" aria-hidden="true"></span><span>{{ countryLabel(order.country_code) }}</span></div></td><td class="px-4 py-3 font-mono text-xs">{{ order.operator_code || 'any' }}</td><td class="px-4 py-3"><div class="flex min-w-max items-center gap-2"><span class="font-mono">{{ order.phone_number || '-' }}</span><button v-if="order.phone_number" type="button" class="btn btn-secondary btn-sm" @click="copyText(order.phone_number)">{{ t('common.copy') }}</button></div></td><td class="px-4 py-3"><span class="badge" :class="statusClass(order.status)">{{ statusLabel(order.status, order.reconciliation_action) }}</span><span v-if="order.refund_status !== 'not_requested'" class="badge badge-warning ml-1">{{ refundLabel(order.refund_status) }}</span></td><td class="px-4 py-3"><div v-if="order.messages?.length" class="space-y-2"><div v-for="message in order.messages" :key="message.id" class="max-w-80"><div v-if="message.verification_code" class="flex items-center gap-2"><code class="font-mono font-semibold">{{ message.verification_code }}</code><button type="button" class="btn btn-secondary btn-sm" @click="copyText(message.verification_code)">{{ t('common.copy') }}</button></div><div class="mt-1 break-words text-xs text-gray-500">{{ message.message_text }}</div></div></div><span v-else>-</span></td><td class="px-4 py-3 tabular-nums">{{ order.price.toFixed(4) }}</td><td class="px-4 py-3 tabular-nums">{{ remainingLabel(order) }}</td><td class="px-4 py-3"><div class="flex min-w-max items-center gap-2"><button v-if="(order.status === 'active' || (order.status === 'reconciling' && order.reconciliation_action === 'purchase')) && (order.product_type === 'rental' ? order.capabilities?.supports_rental_cancel : order.capabilities?.supports_cancel !== false)" type="button" class="btn btn-secondary btn-sm" @click="cancel(order.id)">{{ t('sms.user.cancel') }}</button><button v-if="order.status === 'active' && order.product_type === 'rental' && order.capabilities?.supports_extend" type="button" class="btn btn-secondary btn-sm" @click="extend(order.id)">{{ t('sms.user.extend') }}</button><button v-if="order.status === 'active' && order.product_type === 'temporary' && order.capabilities?.supports_resend" type="button" class="btn btn-secondary btn-sm" @click="resend(order.id)">{{ t('sms.user.resend') }}</button><button type="button" class="btn btn-secondary btn-sm" :disabled="refreshingId === order.id" :aria-label="t('common.refresh')" @click="refreshOrder(order.id)"><Icon name="refresh" size="sm" :class="refreshingId === order.id ? 'animate-spin' : ''" aria-hidden="true" /></button></div></td>
+              <td class="px-4 py-3"><div class="flex min-w-max items-center gap-2"><span class="font-mono text-xs">{{ order.id }}</span><button type="button" class="btn btn-secondary btn-sm" :title="t('common.copy')" :aria-label="`${t('common.copy')} ${order.id}`" @click="copyText(order.id)"><Icon name="copy" size="xs" aria-hidden="true" /></button></div></td><td class="px-4 py-3">{{ order.channel_name || order.channel_code }}</td><td class="px-4 py-3"><div class="flex min-w-max items-center gap-2"><span class="relative flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-md bg-gray-100 text-xs font-semibold text-gray-500 dark:bg-dark-700 dark:text-gray-300"><span>{{ serviceLabel(order.service_code).slice(0, 1).toUpperCase() }}</span><IconifyIcon v-if="serviceLogo(order.service_code, serviceLabel(order.service_code))" :icon="serviceLogo(order.service_code, serviceLabel(order.service_code))" class="absolute inset-0 m-auto h-5 w-5 bg-gray-100 dark:bg-dark-700" /></span><span>{{ serviceLabel(order.service_code) }}</span></div></td><td class="px-4 py-3"><div class="flex min-w-max items-center gap-2"><span :class="flagClass(order.country_code)" class="fi fis rounded-sm shadow-sm" aria-hidden="true"></span><span>{{ countryLabel(order.country_code) }}</span></div></td><td class="px-4 py-3 font-mono text-xs">{{ order.operator_code || 'any' }}</td><td class="px-4 py-3"><div class="flex min-w-max items-center gap-2"><span class="font-mono">{{ order.phone_number || '-' }}</span><button v-if="order.phone_number" type="button" class="btn btn-secondary btn-sm" @click="copyText(order.phone_number)">{{ t('common.copy') }}</button></div></td><td class="px-4 py-3"><span class="badge" :class="statusClass(order.status)">{{ statusLabel(order.status, order.reconciliation_action) }}</span><span v-if="order.refund_status !== 'not_requested'" class="badge badge-warning ml-1">{{ refundLabel(order.refund_status) }}</span></td><td class="px-4 py-3"><div v-if="order.messages?.length" class="space-y-2"><div v-for="message in order.messages" :key="message.id" class="max-w-80"><div v-if="message.verification_code" class="flex items-center gap-2"><code class="font-mono font-semibold">{{ message.verification_code }}</code><button type="button" class="btn btn-secondary btn-sm" @click="copyText(message.verification_code)">{{ t('common.copy') }}</button></div><div class="mt-1 break-words text-xs text-gray-500">{{ message.message_text }}</div></div></div><span v-else>-</span></td><td class="px-4 py-3 tabular-nums">{{ order.price.toFixed(4) }}</td><td class="px-4 py-3 tabular-nums">{{ remainingLabel(order) }}</td><td class="px-4 py-3"><div class="flex min-w-max items-center gap-2"><button v-if="showCancelAction(order)" type="button" class="btn btn-secondary btn-sm" :disabled="!canCancelOrder(order)" :title="cancelActionHint(order)" @click="cancel(order)">{{ t('sms.user.cancel') }}</button><button v-if="order.status === 'active' && order.product_type === 'rental' && order.capabilities?.supports_extend" type="button" class="btn btn-secondary btn-sm" @click="extend(order.id)">{{ t('sms.user.extend') }}</button><button v-if="order.status === 'active' && order.product_type === 'temporary' && order.capabilities?.supports_resend" type="button" class="btn btn-secondary btn-sm" @click="resend(order.id)">{{ t('sms.user.resend') }}</button><button type="button" class="btn btn-secondary btn-sm" :disabled="refreshingId === order.id" :aria-label="t('common.refresh')" @click="refreshOrder(order.id)"><Icon name="refresh" size="sm" :class="refreshingId === order.id ? 'animate-spin' : ''" aria-hidden="true" /></button></div></td>
             </tr>
             </tbody>
           </table>
@@ -408,11 +411,15 @@ const voiceModeOptions = computed(() => {
 const orderStatuses = ['pending', 'active', 'reconciling', 'provider_unknown', 'completed', 'cancelled', 'failed', 'refunded', 'expired']
 const orderStatusOptions = computed(() => orderStatuses.map(value => ({ value, label: statusLabel(value) })))
 const serviceLabel = (code: string) => services.value.find(item => item.code === code)?.name || code
-const countryLabel = (code: string) => { const item = countries.value.find(country => country.iso2 === code); return item ? countryName(item) : code }
+const countryLabel = (code: string) => {
+  const item = countries.value.find(country => country.iso2.toUpperCase() === code.toUpperCase())
+  return item ? countryName(item) : displayRegionName(code)
+}
 function errorMessage(error: unknown, fallback: string) {
   const candidate = error as { message?: string; code?: string | number; reason?: string }
   const reason = candidate?.reason || (typeof candidate?.code === 'string' ? candidate.code : '')
   if (reason === 'CANCEL_TOO_EARLY') return t('sms.user.errors.cancelTooEarly')
+  if (reason === 'CANCEL_TOO_LATE') return t('sms.user.ended')
   if (reason === 'INSUFFICIENT_STOCK') return t('sms.user.errors.insufficientStock')
   if (reason === 'PROVIDER_NO_STOCK') return t('sms.user.errors.providerNoStock')
   if (reason === 'PROVIDER_PRICE_LIMIT') return t('sms.user.errors.providerPriceLimit')
@@ -425,7 +432,64 @@ function errorMessage(error: unknown, fallback: string) {
   if (reason === 'PROVIDER_UPSTREAM_ERROR') return t('sms.user.errors.providerUpstreamError')
   return candidate?.message || fallback
 }
-const isOrderWaiting = (order: SMSOrder) => ['pending', 'active', 'provider_unknown', 'reconciling'].includes(order.status)
+const isOrderWaiting = (order: SMSOrder) => ['pending', 'active', 'provider_unknown', 'reconciling'].includes(order.status) && !isTerminalOrder(order)
+const terminalOrderStatuses = new Set(['completed', 'cancelled', 'canceled', 'failed', 'refunded', 'expired'])
+const terminalReconciliationActions = new Set(['cancel', 'refund', 'expire'])
+const isTerminalOrder = (order: SMSOrder) => {
+  const status = String(order.status || '').toLowerCase()
+  const action = String(order.reconciliation_action || '').toLowerCase()
+  return terminalOrderStatuses.has(status)
+    || (status === 'reconciling' && terminalReconciliationActions.has(action))
+    || ['approved', 'released', 'succeeded'].includes(String(order.refund_status || '').toLowerCase())
+}
+
+function cancellationRemainingSeconds(order: SMSOrder): number | null {
+  const explicit = [order.cancel_remaining_seconds, order.cancellation_remaining_seconds, order.cancel_after_seconds]
+    .find(value => typeof value === 'number' && Number.isFinite(value))
+  if (explicit != null) return Math.max(0, Math.ceil(explicit))
+  const availableAt = order.cancel_available_at || order.cancellation_available_at || order.cancel_after
+  if (availableAt) {
+    const timestamp = new Date(availableAt).getTime()
+    if (Number.isFinite(timestamp)) return Math.max(0, Math.ceil((timestamp - Date.now()) / 1000))
+  }
+  return null
+}
+
+function showCancelAction(order: SMSOrder) {
+  if (isTerminalOrder(order)) return false
+  if (order.status === 'reconciling' && order.reconciliation_action === 'purchase') {
+    return order.capabilities?.supports_cancel === true || order.capabilities?.supports_refund === true
+  }
+  if (order.status !== 'active') return false
+  return order.product_type === 'rental'
+    ? order.capabilities?.supports_rental_cancel === true
+    : order.capabilities?.supports_cancel === true || order.capabilities?.supports_refund === true
+}
+
+function canCancelOrder(order: SMSOrder) {
+  if (!showCancelAction(order) || order.status !== 'active') return false
+  if (order.can_cancel === false || order.cancellation_available === false) return false
+  if (order.can_cancel === true || order.cancellation_available === true) return true
+  const remaining = cancellationRemainingSeconds(order)
+  if (remaining != null) return remaining <= 0
+  // Newer backends provide the cancellation window. Until then, keep
+  // temporary cancellation closed rather than allowing an unsafe early refund.
+  return order.product_type === 'rental'
+}
+
+function cancelActionHint(order: SMSOrder) {
+  if (order.status === 'reconciling') return t('sms.user.cancelWaitingForConfirmation')
+  if (canCancelOrder(order)) return t('sms.user.cancelAvailable')
+  const remaining = cancellationRemainingSeconds(order)
+  if (remaining != null && remaining > 0) return t('sms.user.cancelUnavailableUntil', { time: formatDuration(remaining) })
+  return t('sms.user.cancelUnavailable')
+}
+
+function formatDuration(seconds: number) {
+  const minutes = Math.floor(Math.max(0, seconds) / 60)
+  const remainder = Math.max(0, seconds) % 60
+  return `${minutes}:${String(remainder).padStart(2, '0')}`
+}
 const pollingCandidates = () => [...liveOrders.value, ...(activeTab.value === 'orders' ? orders.value : [])]
   .filter(isOrderWaiting)
   .filter((order, index, items) => items.findIndex(item => item.id === order.id) === index)
@@ -447,6 +511,7 @@ function ensureOrderPolling() {
 const latestVerificationCode = (order: SMSOrder) => [...(order.messages || [])].reverse().find(message => message.verification_code)?.verification_code || ''
 
 const remainingLabel = (order: SMSOrder) => {
+  if (isTerminalOrder(order)) return t('sms.user.ended')
   const seconds = Math.max(0, order.expires_at
     ? Math.floor((new Date(order.expires_at).getTime() - Date.now()) / 1000)
     : (order.remaining_seconds ?? 0))
@@ -507,7 +572,7 @@ function serviceLogo(code: string, name = '') {
 }
 
 function statusLabel(status: string, reconciliationAction?: string) {
-  if (status === 'pending' || (status === 'reconciling' && reconciliationAction === 'purchase')) return t('sms.user.statuses.confirmingPurchase')
+  if (status === 'reconciling' && reconciliationAction === 'purchase') return t('sms.user.statuses.confirmingPurchase')
   const labels: Record<string, string> = {
     pending: t('sms.user.statuses.pending'),
     active: t('sms.user.statuses.waitingSms'),
@@ -786,7 +851,8 @@ async function runConfirmedAction() {
   }
 }
 
-function cancel(id: string) {
+function cancel(order: SMSOrder) {
+  if (!canCancelOrder(order)) return
   askConfirm({
     title: t('sms.user.cancelConfirmTitle'),
     message: t('sms.user.cancelConfirmMessage'),
@@ -795,11 +861,11 @@ function cancel(id: string) {
     danger: true,
     action: async () => {
       try {
-        await smsAPI.cancel(id)
-        await refreshOrder(id)
+        await smsAPI.cancel(order.id)
+        await refreshOrder(order.id)
         await authStore.refreshUser().catch(() => undefined)
       } catch (error) {
-        await refreshOrder(id)
+        await refreshOrder(order.id)
         await authStore.refreshUser().catch(() => undefined)
         appStore.showError(errorMessage(error, t('sms.user.errors.cancel')))
       }
@@ -987,4 +1053,3 @@ onBeforeUnmount(() => {
   .sms-success-track { animation: none; }
 }
 </style>
-

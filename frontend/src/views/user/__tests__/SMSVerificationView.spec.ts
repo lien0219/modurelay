@@ -264,4 +264,120 @@ describe('SMSVerificationView', () => {
     expect(wrapper.text()).not.toContain('expired')
     wrapper.unmount()
   })
+
+  it('renders the cancellation action but disables it during the safety window', async () => {
+    smsAPI.orders.mockResolvedValue({
+      items: [{ ...order('active', 'sms-safe-window'), cancel_remaining_seconds: 42, can_cancel: false }],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+    const wrapper = mount(SMSVerificationView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<main><slot /></main>' },
+          Icon: true,
+          Pagination: true,
+          Select: true,
+          ConfirmDialog: true,
+        },
+      },
+    })
+    await flushPromises()
+    const ordersTab = wrapper.findAll('[role="tab"]').find(tab => tab.text() === 'sms.user.orders')
+    await ordersTab!.trigger('click')
+    await flushPromises()
+
+    const cancelButton = wrapper.findAll('button').find(button => button.text() === 'sms.user.cancel')
+    expect(cancelButton).toBeDefined()
+    expect(cancelButton!.attributes('disabled')).toBeDefined()
+    wrapper.unmount()
+  })
+
+  it('enables cancellation only when the backend marks the safety window elapsed', async () => {
+    smsAPI.orders.mockResolvedValue({
+      items: [{ ...order('active', 'sms-cancel-ready'), cancel_remaining_seconds: 0, can_cancel: true }],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+    const wrapper = mount(SMSVerificationView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<main><slot /></main>' },
+          Icon: true,
+          Pagination: true,
+          Select: true,
+          ConfirmDialog: true,
+        },
+      },
+    })
+    await flushPromises()
+    const ordersTab = wrapper.findAll('[role="tab"]').find(tab => tab.text() === 'sms.user.orders')
+    await ordersTab!.trigger('click')
+    await flushPromises()
+
+    const cancelButton = wrapper.findAll('button').find(button => button.text() === 'sms.user.cancel')
+    expect(cancelButton).toBeDefined()
+    expect(cancelButton!.attributes('disabled')).toBeUndefined()
+    wrapper.unmount()
+  })
+
+  it('stops the expiry countdown and labels cancelled/refunded orders as ended', async () => {
+    smsAPI.orders.mockResolvedValue({
+      items: [{ ...order('cancelled', 'sms-ended'), refund_status: 'approved', expires_at: '2099-01-01T00:00:00Z' }],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+    const wrapper = mount(SMSVerificationView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<main><slot /></main>' },
+          Icon: true,
+          Pagination: true,
+          Select: true,
+          ConfirmDialog: true,
+        },
+      },
+    })
+    await flushPromises()
+    const ordersTab = wrapper.findAll('[role="tab"]').find(tab => tab.text() === 'sms.user.orders')
+    await ordersTab!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('sms.user.ended')
+    wrapper.unmount()
+  })
+
+  it('stops the expiry countdown while cancellation/refund reconciliation is pending', async () => {
+    smsAPI.orders.mockResolvedValue({
+      items: [{ ...order('reconciling', 'sms-refund-reconciling'), reconciliation_action: 'refund', refund_status: 'pending', expires_at: '2099-01-01T00:00:00Z' }],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+    const wrapper = mount(SMSVerificationView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<main><slot /></main>' },
+          Icon: true,
+          Pagination: true,
+          Select: true,
+          ConfirmDialog: true,
+        },
+      },
+    })
+    await flushPromises()
+    const ordersTab = wrapper.findAll('[role="tab"]').find(tab => tab.text() === 'sms.user.orders')
+    await ordersTab!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('sms.user.ended')
+    wrapper.unmount()
+  })
 })

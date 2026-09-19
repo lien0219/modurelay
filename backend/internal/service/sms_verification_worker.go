@@ -61,6 +61,19 @@ func (s *SMSService) Reconcile(ctx context.Context) error {
 			status = "reconciling"
 			reconciliationAction = smsReconciliationPurchase
 		}
+		// A provider allocation that is still settling must not bypass the
+		// platform expiry policy merely because the local row is reconciling.
+		// The normal reconciliation branch polls first, which could leave an
+		// already-expired temporary order active until another cycle (or keep
+		// extending the apparent lifetime after a delayed purchase response).
+		// Once the provider order id is known, run the same automatic
+		// cancellation/refund path used by active orders.
+		if status == "reconciling" && reconciliationAction == smsReconciliationPurchase && providerOrder != "" && expiresAt.Valid && !expiresAt.Time.After(time.Now()) {
+			if err := s.expireSMSOrder(ctx, id, userID, productType, providerOrder, providerCode, baseURL, credential); err != nil && firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
 		if status == "reconciling" && reconciliationAction != "" {
 			if err := s.reconcileSMSAction(ctx, id, userID, productType, providerOrder, providerCode, baseURL, credential, settlementStatus, reconciliationAction, updatedAt); err != nil && firstErr == nil {
 				firstErr = err
@@ -149,18 +162,29 @@ func (s *SMSService) reconcileSMSAction(ctx context.Context, id, userID int64, p
 			}
 			break
 		}
-		if !provider.Capabilities(ctx).Refund {
-			return s.markSMSClosed(ctx, id, "cancelled", "rejected", "provider does not support refunds; administrator review is required")
+		capabilities := provider.Capabilities(ctx)
+		if !capabilities.Refund && !capabilities.Cancel {
+			return s.markSMSClosed(ctx, id, "cancelled", "rejected", "provider does not support cancellation or refunds; administrator review is required")
 		}
-		// Temporary refund-capable providers such as 5SIM use cancellation itself
-		// as the refund operation. Mutate the provider exactly once.
-		err = provider.RequestTemporaryRefund(ctx, providerOrder)
+		// Refund-capable temporary providers such as 5SIM use cancellation itself
+		// as the refund operation. Providers that expose cancellation without a
+		// refund endpoint still use their cancellation operation here.
+		if capabilities.Refund {
+			err = provider.RequestTemporaryRefund(ctx, providerOrder)
+		} else {
+			err = provider.CancelTemporary(ctx, providerOrder)
+		}
 		if err == nil {
-			s.markProviderRefund(ctx, id, "succeeded", "")
-			return s.refundSMSCapture(ctx, id, userID, "cancelled", "provider cancellation and refund confirmed during reconciliation")
+			if capabilities.Refund {
+				s.markProviderRefund(ctx, id, "succeeded", "")
+				return s.settleSMSExpiry(ctx, id, userID, "cancelled", "approved", "provider cancellation and refund confirmed during reconciliation")
+			}
+			return s.markSMSClosed(ctx, id, "cancelled", "rejected", "provider cancellation confirmed during reconciliation; refund unsupported")
 		}
-		if handled, reconcileErr := s.reconcileTemporaryRefundState(ctx, provider, id, userID, providerOrder, "cancelled"); handled {
-			return reconcileErr
+		if capabilities.Refund {
+			if handled, reconcileErr := s.reconcileTemporaryRefundState(ctx, provider, id, userID, providerOrder, "cancelled"); handled {
+				return reconcileErr
+			}
 		}
 	case smsReconciliationRefund:
 		if productType != "temporary" {
@@ -196,7 +220,7 @@ func (s *SMSService) reconcileSMSAction(ctx context.Context, id, userID int64, p
 			err = provider.RequestTemporaryRefund(ctx, providerOrder)
 			if err == nil {
 				s.markProviderRefund(ctx, id, "succeeded", "")
-				return s.refundSMSCapture(ctx, id, userID, "refunded", "provider expiry refund confirmed during reconciliation")
+				return s.settleSMSExpiry(ctx, id, userID, "refunded", "approved", "provider expiry refund confirmed during reconciliation")
 			}
 			if handled, reconcileErr := s.reconcileTemporaryRefundState(ctx, provider, id, userID, providerOrder, "refunded"); handled {
 				return reconcileErr
@@ -212,12 +236,12 @@ func (s *SMSService) reconcileSMSAction(ctx context.Context, id, userID int64, p
 func (s *SMSService) expireSMSOrder(ctx context.Context, id, userID int64, productType, providerOrder, providerCode, baseURL, credential string) error {
 	key := providerAPIKey(providerCode, credential, s.encryptor)
 	if strings.TrimSpace(key) == "" {
-		_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET status='reconciling',reconciliation_action=$1,reconcile_after=NOW()+($2 * INTERVAL '1 second'),last_provider_error=$3,updated_at=NOW() WHERE id=$4 AND status IN ('active','provider_unknown')`, smsReconciliationExpire, 300, "provider credential is unavailable during expiry reconciliation", id)
+		_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET status='reconciling',reconciliation_action=$1,reconcile_after=NOW()+($2 * INTERVAL '1 second'),last_provider_error=$3,updated_at=NOW() WHERE id=$4 AND status IN ('active','provider_unknown','reconciling')`, smsReconciliationExpire, 300, "provider credential is unavailable during expiry reconciliation", id)
 		return ErrSMSProviderCredentialMissing
 	}
 	provider := providerFor(providerCode, baseURL, key)
 	if provider == nil {
-		_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET status='reconciling',reconciliation_action=$1,reconcile_after=NOW()+($2 * INTERVAL '1 second'),last_provider_error=$3,updated_at=NOW() WHERE id=$4 AND status IN ('active','provider_unknown')`, smsReconciliationExpire, 300, "provider adapter is unavailable during expiry reconciliation", id)
+		_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET status='reconciling',reconciliation_action=$1,reconcile_after=NOW()+($2 * INTERVAL '1 second'),last_provider_error=$3,updated_at=NOW() WHERE id=$4 AND status IN ('active','provider_unknown','reconciling')`, smsReconciliationExpire, 300, "provider adapter is unavailable during expiry reconciliation", id)
 		return ErrSMSProviderUnavailable
 	}
 	if productType == "temporary" {
@@ -227,16 +251,16 @@ func (s *SMSService) expireSMSOrder(ctx context.Context, id, userID int64, produ
 		refundErr := provider.RequestTemporaryRefund(ctx, providerOrder)
 		if refundErr == nil {
 			s.markProviderRefund(ctx, id, "succeeded", "")
-			return s.refundSMSCapture(ctx, id, userID, "refunded", "no SMS received before order expiry")
+			return s.settleSMSExpiry(ctx, id, userID, "refunded", "approved", "no SMS received before order expiry")
 		}
 		if handled, reconcileErr := s.reconcileTemporaryRefundState(ctx, provider, id, userID, providerOrder, "refunded"); handled {
 			return reconcileErr
 		}
 		if isSMSProviderTimeout(refundErr) {
-			_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET status='reconciling',refund_status='pending',reconciliation_action=$1,reconcile_after=NOW()+($2 * INTERVAL '1 second'),refund_reason=$3,updated_at=NOW() WHERE id=$4 AND status IN ('active','provider_unknown')`, smsReconciliationExpire, int(smsVerificationPollInterval.Seconds()), "provider refund is being confirmed", id)
+			_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET status='reconciling',refund_status='pending',reconciliation_action=$1,reconcile_after=NOW()+($2 * INTERVAL '1 second'),refund_reason=$3,updated_at=NOW() WHERE id=$4 AND status IN ('active','provider_unknown','reconciling')`, smsReconciliationExpire, int(smsVerificationPollInterval.Seconds()), "provider refund is being confirmed", id)
 			return ErrSMSRefundPending
 		}
-		_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET status='reconciling',refund_status='pending',reconciliation_action=$1,reconcile_after=NOW()+($2 * INTERVAL '1 second'),refund_reason=$3,updated_at=NOW() WHERE id=$4 AND status IN ('active','provider_unknown')`, smsReconciliationExpire, int(smsVerificationPollInterval.Seconds()), "provider cancellation/refund requires confirmation", id)
+		_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET status='reconciling',refund_status='pending',reconciliation_action=$1,reconcile_after=NOW()+($2 * INTERVAL '1 second'),refund_reason=$3,updated_at=NOW() WHERE id=$4 AND status IN ('active','provider_unknown','reconciling')`, smsReconciliationExpire, int(smsVerificationPollInterval.Seconds()), "provider cancellation/refund requires confirmation", id)
 		return ErrSMSRefundPending
 	}
 	if !provider.Capabilities(ctx).RentalCancel {
@@ -245,12 +269,31 @@ func (s *SMSService) expireSMSOrder(ctx context.Context, id, userID int64, produ
 	cancelErr := provider.CancelRental(ctx, providerOrder)
 	if cancelErr != nil {
 		if isSMSProviderTimeout(cancelErr) {
-			_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET status='reconciling',reconciliation_action=$1,reconcile_after=NOW()+($2 * INTERVAL '1 second'),last_provider_error=$3,updated_at=NOW() WHERE id=$4 AND status IN ('active','provider_unknown')`, smsReconciliationExpire, int(smsVerificationPollInterval.Seconds()), "provider cancellation timed out", id)
+			_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET status='reconciling',reconciliation_action=$1,reconcile_after=NOW()+($2 * INTERVAL '1 second'),last_provider_error=$3,updated_at=NOW() WHERE id=$4 AND status IN ('active','provider_unknown','reconciling')`, smsReconciliationExpire, int(smsVerificationPollInterval.Seconds()), "provider cancellation timed out", id)
 			return ErrSMSProviderUnknown
 		}
 		return s.markSMSExpired(ctx, id, "rejected", "provider did not confirm rental cancellation")
 	}
 	return s.markSMSExpired(ctx, id, "not_requested", "rental expired")
+}
+
+// settleSMSExpiry returns a still-held reservation or refunds a captured
+// settlement, depending on which phase the order reached before expiry. A
+// provider allocation can be known while local activation is still settling;
+// treating that row as captured would leave the user's balance frozen and a
+// successful provider cancellation unable to close the order.
+func (s *SMSService) settleSMSExpiry(ctx context.Context, id, userID int64, terminalStatus, refundStatus, reason string) error {
+	var settlementStatus string
+	if err := s.db.QueryRowContext(ctx, `SELECT settlement_status FROM sms_orders WHERE id=$1`, id).Scan(&settlementStatus); err != nil {
+		return err
+	}
+	if settlementStatus == "held" {
+		return s.returnSMSBalance(ctx, id, userID, true, terminalStatus, refundStatus, reason)
+	}
+	if settlementStatus == "captured" {
+		return s.refundSMSCapture(ctx, id, userID, terminalStatus, reason)
+	}
+	return nil
 }
 
 func (s *SMSService) markSMSExpired(ctx context.Context, id int64, refundStatus, reason string) error {

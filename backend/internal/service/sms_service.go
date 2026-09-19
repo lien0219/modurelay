@@ -46,6 +46,7 @@ var (
 	ErrSMSQuoteInvalid              = errors.New("sms quote is invalid")
 	ErrSMSQuoteExpired              = errors.New("sms quote has expired")
 	ErrSMSCancelTooEarly            = errors.New("order cannot be cancelled until the configured waiting period has elapsed")
+	ErrSMSOrderExpired              = errors.New("order has reached its configured expiry and can no longer be cancelled manually")
 	ErrSMSInsufficientStock         = errors.New("selected channel does not have enough stock for this batch")
 	smsVerificationCodePattern      = regexp.MustCompile(`(?:^|[^0-9])([0-9]{4,8})(?:$|[^0-9])`)
 )
@@ -1643,28 +1644,31 @@ type SMSPublicChannel struct {
 	ProviderCountryCode      string                  `json:"-"`
 }
 type SMSOrder struct {
-	ID                   string                  `json:"id"`
-	ProductType          string                  `json:"product_type"`
-	Status               string                  `json:"status"`
-	ReconciliationAction string                  `json:"reconciliation_action,omitempty"`
-	ChannelCode          string                  `json:"channel_code"`
-	ChannelName          string                  `json:"channel_name"`
-	ServiceCode          string                  `json:"service_code"`
-	CountryCode          string                  `json:"country_code"`
-	PhoneNumber          string                  `json:"phone_number,omitempty"`
-	OperatorCode         string                  `json:"operator_code,omitempty"`
-	VoiceMode            int                     `json:"voice_mode,omitempty"`
-	Price                float64                 `json:"price"`
-	SuccessRate          *float64                `json:"success_rate,omitempty"`
-	SuccessRateGrade     string                  `json:"success_rate_grade,omitempty"`
-	SuccessRateSource    string                  `json:"success_rate_source"`
-	RefundStatus         string                  `json:"refund_status"`
-	RefundReason         string                  `json:"refund_reason,omitempty"`
-	Capabilities         SMSProviderCapabilities `json:"capabilities"`
-	Messages             []SMSMessage            `json:"messages,omitempty"`
-	ExpiresAt            *time.Time              `json:"expires_at,omitempty"`
-	RemainingSeconds     int64                   `json:"remaining_seconds"`
-	CreatedAt            time.Time               `json:"created_at"`
+	ID                     string                  `json:"id"`
+	ProductType            string                  `json:"product_type"`
+	Status                 string                  `json:"status"`
+	ReconciliationAction   string                  `json:"reconciliation_action,omitempty"`
+	ChannelCode            string                  `json:"channel_code"`
+	ChannelName            string                  `json:"channel_name"`
+	ServiceCode            string                  `json:"service_code"`
+	CountryCode            string                  `json:"country_code"`
+	PhoneNumber            string                  `json:"phone_number,omitempty"`
+	OperatorCode           string                  `json:"operator_code,omitempty"`
+	VoiceMode              int                     `json:"voice_mode,omitempty"`
+	Price                  float64                 `json:"price"`
+	SuccessRate            *float64                `json:"success_rate,omitempty"`
+	SuccessRateGrade       string                  `json:"success_rate_grade,omitempty"`
+	SuccessRateSource      string                  `json:"success_rate_source"`
+	RefundStatus           string                  `json:"refund_status"`
+	RefundReason           string                  `json:"refund_reason,omitempty"`
+	Capabilities           SMSProviderCapabilities `json:"capabilities"`
+	Messages               []SMSMessage            `json:"messages,omitempty"`
+	ExpiresAt              *time.Time              `json:"expires_at,omitempty"`
+	RemainingSeconds       int64                   `json:"remaining_seconds"`
+	CancelAvailableAt      *time.Time              `json:"cancel_available_at,omitempty"`
+	CancelRemainingSeconds int64                   `json:"cancel_remaining_seconds"`
+	CanCancel              bool                    `json:"can_cancel"`
+	CreatedAt              time.Time               `json:"created_at"`
 }
 
 func setSMSOrderRemaining(order *SMSOrder) {
@@ -1675,11 +1679,54 @@ func setSMSOrderRemaining(order *SMSOrder) {
 		order.RemainingSeconds = 0
 		return
 	}
+	if order.Status == "reconciling" && order.ReconciliationAction != smsReconciliationPurchase {
+		// Cancellation/refund/expiry reconciliation is already a terminal user
+		// action. Do not keep showing an old provider TTL while the refund settles.
+		order.RemainingSeconds = 0
+		return
+	}
 	remaining := int64(time.Until(*order.ExpiresAt).Seconds())
 	if remaining < 0 {
 		remaining = 0
 	}
 	order.RemainingSeconds = remaining
+}
+
+// setSMSOrderCancellationState exposes the server-authoritative self-service
+// cancellation window. The waiting period is only a safety gate for a user's
+// action; expiry is handled separately by the reconciliation worker.
+func setSMSOrderCancellationState(order *SMSOrder, pricing SMSPricingSettings, now time.Time) {
+	if order == nil {
+		return
+	}
+	order.CancelAvailableAt = nil
+	order.CancelRemainingSeconds = 0
+	order.CanCancel = false
+
+	if order.Status != "active" {
+		return
+	}
+	if order.ExpiresAt != nil && !now.Before(*order.ExpiresAt) {
+		return
+	}
+	if order.ProductType == "rental" {
+		order.CanCancel = order.Capabilities.RentalCancel
+		return
+	}
+	if !order.Capabilities.Refund && !order.Capabilities.Cancel {
+		return
+	}
+
+	availableAt := order.CreatedAt.Add(time.Duration(pricing.SelfServiceCancelAfterMinutes) * time.Minute)
+	order.CancelAvailableAt = &availableAt
+	if now.Before(availableAt) {
+		order.CancelRemainingSeconds = int64(availableAt.Sub(now).Seconds())
+		if order.CancelRemainingSeconds < 0 {
+			order.CancelRemainingSeconds = 0
+		}
+		return
+	}
+	order.CanCancel = true
 }
 
 type SMSOrderPage struct {
@@ -3215,9 +3262,10 @@ func smsOrderExpiresAt(now time.Time, productType string, durationValue int, dur
 		ttl = 10 * time.Minute
 	}
 	platformExpiry := now.Add(ttl)
-	if providerExpiry != nil && !providerExpiry.IsZero() && providerExpiry.After(now) && providerExpiry.Before(platformExpiry) {
-		return providerExpiry
-	}
+	// Temporary order lifetime is an administrator policy. Provider-side
+	// activation timestamps can be shorter (or reflect a different provider
+	// timeout), but must not turn the self-service cancellation safety window
+	// into an automatic platform cancellation/refund.
 	return &platformExpiry
 }
 
@@ -3443,6 +3491,11 @@ func (s *SMSService) GetOrder(ctx context.Context, userID, orderID int64) (*SMSO
 	}
 	o.Messages = messages
 	setSMSOrderRemaining(&o)
+	pricing := defaultSMSPricingSettings()
+	if configured, pricingErr := s.GetPricingSettings(ctx); pricingErr == nil {
+		pricing = configured
+	}
+	setSMSOrderCancellationState(&o, pricing, time.Now())
 	return &o, nil
 }
 
@@ -3540,7 +3593,13 @@ func (s *SMSService) SyncOrderStatus(ctx context.Context, userID int64, publicID
 	if (status != "active" && status != "provider_unknown" && status != "reconciling") || providerOrder == "" {
 		return nil
 	}
-	if expiresAt.Valid && !expiresAt.Time.After(time.Now()) && (status == "active" || status == "provider_unknown") {
+	// A purchase that is still settling can already have a provider order id.
+	// Once the platform validity period ends, apply the same automatic
+	// cancellation/refund path as the worker instead of polling it back to
+	// active and extending the apparent lifetime.
+	if expiresAt.Valid && !expiresAt.Time.After(time.Now()) &&
+		(status == "active" || status == "provider_unknown" ||
+			(status == "reconciling" && reconciliationAction == smsReconciliationPurchase)) {
 		return s.expireSMSOrder(ctx, id, userID, productType, providerOrder, providerCode, base, credential)
 	}
 	return s.pollSMSOrder(ctx, id, providerOrder, providerCode, base, credential, productType)
@@ -3581,7 +3640,10 @@ func (s *SMSService) recoverUnknownSMSPurchase(ctx context.Context, id, userID i
 		return false, nil
 	}
 	pricing, _ := s.GetPricingSettings(ctx)
-	expiresAt := smsOrderExpiresAt(time.Now(), productType, 0, "", recovered.ExpiresAt, time.Duration(pricing.TemporaryExpiryMinutes)*time.Minute)
+	// Keep the configured temporary lifetime anchored to the original local
+	// order creation time. Recovery can happen well after a provider timeout;
+	// using time.Now() here would silently extend an already-running order.
+	expiresAt := smsOrderExpiresAt(createdAt, productType, 0, "", recovered.ExpiresAt, time.Duration(pricing.TemporaryExpiryMinutes)*time.Minute)
 	if err := s.activateSMSOrder(ctx, id, userID, recovered.ProviderOrderID, recovered.PhoneNumber, expiresAt, recovered.ProviderCost, recovered.ProviderOperatorCode); err != nil {
 		return false, err
 	}
@@ -3877,7 +3939,7 @@ func (s *SMSService) reconcileTemporaryRefundState(ctx context.Context, p SMSPro
 	switch state {
 	case "cancelled", "expired":
 		s.markProviderRefund(ctx, id, "succeeded", "provider status confirms cancellation/timeout refund")
-		return true, s.refundSMSCapture(ctx, id, userID, terminalStatus, "provider status confirms cancellation/timeout refund")
+		return true, s.settleSMSExpiry(ctx, id, userID, terminalStatus, "approved", "provider status confirms cancellation/timeout refund")
 	case "completed":
 		s.markProviderRefund(ctx, id, "rejected", "verification SMS was already received; cancellation/refund is no longer available")
 		_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET refund_status='rejected',refund_reason=$1,updated_at=NOW() WHERE id=$2`, "已收到验证码，供应商不再允许取消退款", id)
@@ -3890,7 +3952,8 @@ func (s *SMSService) CancelOrder(ctx context.Context, userID int64, publicID str
 	var id int64
 	var providerOrder, providerCode, base, credential, status, productType, reconciliationAction string
 	var createdAt time.Time
-	if err := s.db.QueryRowContext(ctx, `SELECT o.id,o.provider_order_id,p.code,p.base_url,p.credential_ref,o.status,o.product_type,o.reconciliation_action,o.created_at FROM sms_orders o JOIN sms_providers p ON p.id=o.provider_id WHERE o.user_id=$1 AND o.public_id=$2::uuid`, userID, strings.TrimSpace(publicID)).Scan(&id, &providerOrder, &providerCode, &base, &credential, &status, &productType, &reconciliationAction, &createdAt); err != nil {
+	var expiresAt sql.NullTime
+	if err := s.db.QueryRowContext(ctx, `SELECT o.id,o.provider_order_id,p.code,p.base_url,p.credential_ref,o.status,o.product_type,o.reconciliation_action,o.created_at,o.expires_at FROM sms_orders o JOIN sms_providers p ON p.id=o.provider_id WHERE o.user_id=$1 AND o.public_id=$2::uuid`, userID, strings.TrimSpace(publicID)).Scan(&id, &providerOrder, &providerCode, &base, &credential, &status, &productType, &reconciliationAction, &createdAt, &expiresAt); err != nil {
 		return err
 	}
 	if status == "reconciling" && reconciliationAction == smsReconciliationPurchase {
@@ -3902,12 +3965,15 @@ func (s *SMSService) CancelOrder(ctx context.Context, userID int64, publicID str
 			s.deferSMSReconciliation(ctx, id, providerErrorDiagnostic(recoveryErr), false)
 			return ErrSMSProviderUnknown
 		}
-		if err := s.db.QueryRowContext(ctx, `SELECT provider_order_id,status FROM sms_orders WHERE id=$1`, id).Scan(&providerOrder, &status); err != nil {
+		if err := s.db.QueryRowContext(ctx, `SELECT provider_order_id,status,expires_at FROM sms_orders WHERE id=$1`, id).Scan(&providerOrder, &status, &expiresAt); err != nil {
 			return err
 		}
 	}
 	if status != "active" {
 		return errors.New("order cannot be cancelled")
+	}
+	if expiresAt.Valid && !expiresAt.Time.After(time.Now()) {
+		return ErrSMSOrderExpired
 	}
 	if productType == "temporary" {
 		pricing, pricingErr := s.GetPricingSettings(ctx)
@@ -3927,8 +3993,8 @@ func (s *SMSService) CancelOrder(ctx context.Context, userID int64, publicID str
 	if productType == "rental" && !capabilities.RentalCancel {
 		return errors.New("provider does not support rental cancellation")
 	}
-	if productType != "rental" && !capabilities.Cancel {
-		return errors.New("provider does not support cancellation")
+	if productType != "rental" && !capabilities.Cancel && !capabilities.Refund {
+		return errors.New("provider does not support cancellation or refunds")
 	}
 	if productType == "rental" {
 		if err := p.CancelRental(ctx, providerOrder); err != nil {
@@ -3983,6 +4049,11 @@ func (s *SMSService) ListOrders(ctx context.Context, userID int64, admin bool) (
 	}
 	defer func() { _ = rows.Close() }()
 	out := []SMSOrder{}
+	pricing := defaultSMSPricingSettings()
+	if configured, pricingErr := s.GetPricingSettings(ctx); pricingErr == nil {
+		pricing = configured
+	}
+	now := time.Now()
 	for rows.Next() {
 		var o SMSOrder
 		var internalID, owner int64
@@ -4005,6 +4076,7 @@ func (s *SMSService) ListOrders(ctx context.Context, userID int64, admin bool) (
 			return nil, err
 		}
 		setSMSOrderRemaining(&o)
+		setSMSOrderCancellationState(&o, pricing, now)
 		out = append(out, o)
 	}
 	return out, rows.Err()
@@ -4049,6 +4121,11 @@ func (s *SMSService) ListUserOrdersPage(ctx context.Context, userID int64, page,
 	}
 	defer func() { _ = rows.Close() }()
 	items := make([]SMSOrder, 0, pageSize)
+	pricing := defaultSMSPricingSettings()
+	if configured, pricingErr := s.GetPricingSettings(ctx); pricingErr == nil {
+		pricing = configured
+	}
+	now := time.Now()
 	for rows.Next() {
 		var order SMSOrder
 		var internalID, owner int64
@@ -4071,6 +4148,7 @@ func (s *SMSService) ListUserOrdersPage(ctx context.Context, userID int64, page,
 			return nil, err
 		}
 		setSMSOrderRemaining(&order)
+		setSMSOrderCancellationState(&order, pricing, now)
 		items = append(items, order)
 	}
 	if err := rows.Err(); err != nil {
@@ -4086,7 +4164,8 @@ func (s *SMSService) RequestRefund(ctx context.Context, userID int64, orderPubli
 	var id int64
 	var providerOrder, providerCode, base, cred, status, productType, reconciliationAction string
 	var createdAt time.Time
-	err := s.db.QueryRowContext(ctx, `SELECT o.id,o.provider_order_id,p.code,p.base_url,p.credential_ref,o.status,o.product_type,o.reconciliation_action,o.created_at FROM sms_orders o JOIN sms_providers p ON p.id=o.provider_id WHERE o.user_id=$1 AND o.public_id=$2::uuid`, userID, orderPublicID).Scan(&id, &providerOrder, &providerCode, &base, &cred, &status, &productType, &reconciliationAction, &createdAt)
+	var expiresAt sql.NullTime
+	err := s.db.QueryRowContext(ctx, `SELECT o.id,o.provider_order_id,p.code,p.base_url,p.credential_ref,o.status,o.product_type,o.reconciliation_action,o.created_at,o.expires_at FROM sms_orders o JOIN sms_providers p ON p.id=o.provider_id WHERE o.user_id=$1 AND o.public_id=$2::uuid`, userID, orderPublicID).Scan(&id, &providerOrder, &providerCode, &base, &cred, &status, &productType, &reconciliationAction, &createdAt, &expiresAt)
 	if err != nil {
 		return err
 	}
@@ -4098,12 +4177,15 @@ func (s *SMSService) RequestRefund(ctx context.Context, userID int64, orderPubli
 		if !recovered {
 			return ErrSMSProviderUnknown
 		}
-		if err := s.db.QueryRowContext(ctx, `SELECT provider_order_id,status FROM sms_orders WHERE id=$1`, id).Scan(&providerOrder, &status); err != nil {
+		if err := s.db.QueryRowContext(ctx, `SELECT provider_order_id,status,expires_at FROM sms_orders WHERE id=$1`, id).Scan(&providerOrder, &status, &expiresAt); err != nil {
 			return err
 		}
 	}
 	if status != "active" {
 		return errors.New("order cannot be refunded")
+	}
+	if expiresAt.Valid && !expiresAt.Time.After(time.Now()) {
+		return ErrSMSOrderExpired
 	}
 	if productType == "rental" {
 		return errors.New("rental refunds are unavailable for this channel")

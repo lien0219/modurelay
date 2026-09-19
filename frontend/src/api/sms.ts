@@ -8,7 +8,39 @@ export interface SMSCapabilities { supports_temporary: boolean; supports_rental:
 export interface SMSQuote { channel_code: string; public_name: string; channel_role: string; sale_price: number; stock: number; success_rate?: number; success_rate_grade?: string; success_rate_source: string; success_rate_sample_size?: number; estimated_delivery_seconds: number; capabilities: SMSCapabilities; quote_id: string; quote_expires_at: string }
 export interface SMSOperatorItem { code: string; name: string; stock?: number; provider_rate?: number; platform_30d_success_rate?: number; platform_30d_sample_size?: number; platform_30d_successes?: number; platform_30d_failures?: number; available: boolean }
 export interface SMSMessage { id: number; message_text: string; verification_code?: string; received_at: string }
-export interface SMSOrder { id: string; product_type: 'temporary' | 'rental'; status: string; reconciliation_action?: string; channel_code: string; channel_name: string; service_code: string; country_code: string; phone_number?: string; operator_code?: string; voice_mode?: number; price: number; success_rate?: number; success_rate_grade?: string; success_rate_source: string; refund_status: string; refund_reason?: string; capabilities?: SMSCapabilities; messages?: SMSMessage[]; expires_at?: string; remaining_seconds?: number; created_at: string }
+export interface SMSOrder {
+  id: string
+  product_type: 'temporary' | 'rental'
+  status: string
+  reconciliation_action?: string
+  channel_code: string
+  channel_name: string
+  service_code: string
+  country_code: string
+  phone_number?: string
+  operator_code?: string
+  voice_mode?: number
+  price: number
+  success_rate?: number
+  success_rate_grade?: string
+  success_rate_source: string
+  refund_status: string
+  refund_reason?: string
+  capabilities?: SMSCapabilities
+  messages?: SMSMessage[]
+  expires_at?: string
+  remaining_seconds?: number
+  /** Explicit cancellation policy fields, supported by newer API builds. */
+  cancel_available_at?: string
+  cancellation_available_at?: string
+  cancel_after?: string
+  cancel_after_seconds?: number
+  cancel_remaining_seconds?: number
+  cancellation_remaining_seconds?: number
+  can_cancel?: boolean
+  cancellation_available?: boolean
+  created_at: string
+}
 export interface SMSOrderPage { items: SMSOrder[]; total: number; page: number; page_size: number; pages: number }
 export interface SMSRecentSuccessItem { username: string; country_code: string; phone: string }
 export interface SMSRecentSuccessFeed { source: 'mock' | 'real'; real_success_count: number; items: SMSRecentSuccessItem[] }

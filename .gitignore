@@ -32,6 +32,11 @@ vendor/
 backend/.gocache/
 backend/.gomodcache/
 backend/.gopath/
+# Go validation commands may be launched from a nested backend working
+# directory; keep their module and toolchain caches out of the worktree too.
+**/.gomodcache/
+**/.gopath/
+**/.gocache-codex/
 # Repository-local Go caches used by focused validation runs
 /.tmp-go-cache*/
 backend/.tmp-go-cache*/
