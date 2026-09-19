@@ -406,6 +406,7 @@ export default {
       waitingForCode: '等待验证码…',
       cancelConfirmTitle: '取消接码订单',
       cancelConfirmMessage: '取消后该号码将停止等待验证码，并按渠道规则进入退款/结算流程。确认取消吗？',
+      cancelConfirmAction: '确认取消',
       refundConfirmTitle: '申请退款',
       refundConfirmMessage: '将向渠道发起取消/退款请求。若已收到验证码，渠道可能拒绝退款。确认继续吗？',
       processing: '处理中…',

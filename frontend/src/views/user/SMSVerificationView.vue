@@ -288,6 +288,7 @@
         :title="confirmState.title"
         :message="confirmState.message"
         :confirm-text="confirmState.confirmText"
+        :cancel-text="confirmState.cancelText"
         :danger="confirmState.danger"
         :confirming="confirmingAction"
         @confirm="runConfirmedAction"
@@ -346,7 +347,7 @@ const refreshingId = ref('')
 const orderPagination = reactive({ page: 1, pageSize: getPersistedPageSize(20), total: 0 })
 const orderDraft = reactive({ keyword: '', status: '' })
 const orderFilters = reactive({ keyword: '', status: '' })
-const confirmState = reactive({ show: false, title: '', message: '', confirmText: '', danger: false, action: null as null | (() => Promise<void>) })
+const confirmState = reactive({ show: false, title: '', message: '', confirmText: '', cancelText: '', danger: false, action: null as null | (() => Promise<void>) })
 const confirmingAction = ref(false)
 let pollTimer: number | undefined
 let countdownTimer: number | undefined
@@ -757,10 +758,11 @@ async function purchase(quote: SMSQuote) {
   }
 }
 
-function askConfirm(options: { title: string; message: string; confirmText?: string; danger?: boolean; action: () => Promise<void> }) {
+function askConfirm(options: { title: string; message: string; confirmText?: string; cancelText?: string; danger?: boolean; action: () => Promise<void> }) {
   confirmState.title = options.title
   confirmState.message = options.message
   confirmState.confirmText = options.confirmText || t('common.confirm')
+  confirmState.cancelText = options.cancelText || t('common.cancel')
   confirmState.danger = options.danger ?? false
   confirmState.action = options.action
   confirmState.show = true
@@ -788,7 +790,8 @@ function cancel(id: string) {
   askConfirm({
     title: t('sms.user.cancelConfirmTitle'),
     message: t('sms.user.cancelConfirmMessage'),
-    confirmText: t('sms.user.cancel'),
+    confirmText: t('sms.user.cancelConfirmAction'),
+    cancelText: t('common.back'),
     danger: true,
     action: async () => {
       try {

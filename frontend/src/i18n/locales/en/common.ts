@@ -406,6 +406,7 @@ export default {
       waitingForCode: 'Waiting for verification code…',
       cancelConfirmTitle: 'Cancel SMS order',
       cancelConfirmMessage: 'Cancelling stops waiting for SMS and then follows the channel refund/settlement rules. Continue?',
+      cancelConfirmAction: 'Confirm cancellation',
       refundConfirmTitle: 'Request refund',
       refundConfirmMessage: 'A cancellation/refund request will be sent to the channel. If an SMS has already been received, the channel may reject the refund. Continue?',
       processing: 'Processing...',

@@ -150,7 +150,7 @@ func TestFiveSIMRecoversTimedOutPurchaseFromOrderHistory(t *testing.T) {
 		if r.URL.Path != "/user/orders" {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
-		if r.URL.Query().Get("category") != "activation" || r.URL.Query().Get("limit") != "50" || r.URL.Query().Get("reverse") != "true" {
+		if r.URL.Query().Get("category") != "activation" || r.URL.Query().Get("limit") != "100" || r.URL.Query().Get("reverse") != "true" {
 			t.Fatalf("unexpected history query: %s", r.URL.RawQuery)
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -174,6 +174,42 @@ func TestFiveSIMRecoversTimedOutPurchaseFromOrderHistory(t *testing.T) {
 	}
 	if result == nil || result.ProviderOrderID != "1094361636" || result.PhoneNumber != "+542243424387" || result.ProviderCost != 0.05 || result.ProviderOperatorCode != "virtual62" {
 		t.Fatalf("unexpected recovered purchase: %#v", result)
+	}
+}
+
+func TestFiveSIMRecoveryFallsBackToOppositeHistoryOrder(t *testing.T) {
+	startedAt := time.Date(2026, 9, 19, 9, 22, 40, 0, time.UTC)
+	var reverses []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/user/orders" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		reverse := r.URL.Query().Get("reverse")
+		reverses = append(reverses, reverse)
+		w.Header().Set("Content-Type", "application/json")
+		if reverse == "true" {
+			_, _ = w.Write([]byte(`{"Data":[],"Total":1}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"Data":[{"id":1094737019,"phone":"+31685440669","operator":"Virtual66","product":"openai","price":0.18,"status":"RECEIVED","expires":"2026-09-19T09:42:40Z","created_at":"2026-09-19T09:22:42Z","country":"netherlands"}],"Total":1}`))
+	}))
+	defer server.Close()
+
+	p := providerFor("5sim", server.URL, "secret")
+	recovery := p.(SMSPurchaseRecoveryProvider)
+	result, err := recovery.RecoverTemporaryPurchase(context.Background(), SMSPurchaseRequest{
+		ServiceCode:  "openai",
+		CountryCode:  "netherlands",
+		OperatorCode: "virtual66",
+	}, startedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result == nil || result.ProviderOrderID != "1094737019" || result.PhoneNumber != "+31685440669" {
+		t.Fatalf("unexpected recovered purchase: %#v", result)
+	}
+	if len(reverses) != 2 || reverses[0] != "true" || reverses[1] != "false" {
+		t.Fatalf("history directions=%v", reverses)
 	}
 }
 
