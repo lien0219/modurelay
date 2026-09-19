@@ -3263,20 +3263,45 @@ func isSMSProviderTimeout(err error) bool {
 	return errors.As(err, &netErr) && netErr.Timeout()
 }
 
-func isSMSPurchaseOutcomeAmbiguous(err error) bool {
+func isSMSPurchaseDefinitiveRejection(err error) bool {
 	if err == nil {
 		return false
 	}
-	if isSMSProviderTimeout(err) {
-		return true
-	}
 	var httpErr *smsProviderHTTPError
+	detail := strings.ToLower(strings.TrimSpace(err.Error()))
 	if errors.As(err, &httpErr) {
-		// A 5xx may be emitted by an upstream proxy after the provider has already
-		// committed the allocation. Never treat it as proof that no order exists.
-		return httpErr.StatusCode >= 500
+		detail = strings.ToLower(strings.TrimSpace(httpErr.Detail))
+		switch httpErr.StatusCode {
+		case http.StatusUnauthorized, http.StatusForbidden, http.StatusTooManyRequests:
+			return true
+		}
+	}
+	definitiveFragments := []string{
+		"no free phones",
+		"not enough user balance",
+		"not enough rating",
+		"max price",
+		"price limit",
+		"bad country",
+		"country is incorrect",
+		"select country",
+		"bad operator",
+		"select operator",
+		"product is incorrect",
+		"no product",
+		"api limit is 100 requests per second",
+		"ip address limit is 100 requests per second",
+	}
+	for _, fragment := range definitiveFragments {
+		if strings.Contains(detail, fragment) {
+			return true
+		}
 	}
 	return false
+}
+
+func isSMSPurchaseOutcomeAmbiguous(err error) bool {
+	return err != nil && !isSMSPurchaseDefinitiveRejection(err)
 }
 
 func providerErrorDiagnostic(err error) string {
