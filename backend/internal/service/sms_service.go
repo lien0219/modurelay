@@ -2337,8 +2337,8 @@ func (s *SMSService) platformDeliveryStats(ctx context.Context, providerCode, se
 	operatorCode = strings.ToLower(strings.TrimSpace(operatorCode))
 	var successes, failures int
 	query := `SELECT
-		COUNT(*) FILTER (WHERE o.first_sms_received_at IS NOT NULL),
-		COUNT(*) FILTER (WHERE o.first_sms_received_at IS NULL AND o.status IN ('failed','expired'))
+		COUNT(*) FILTER (WHERE o.delivery_outcome='success'),
+		COUNT(*) FILTER (WHERE o.delivery_outcome='failed')
 	FROM sms_orders o
 	JOIN sms_providers p ON p.id=o.provider_id
 	JOIN sms_services sv ON sv.id=o.service_id
@@ -2376,8 +2376,8 @@ func (s *SMSService) decorateCountryPlatformDeliveryStats(ctx context.Context, p
 	}
 	if !allCached {
 		rows, err := s.db.QueryContext(ctx, `SELECT co.iso2,
-			COUNT(*) FILTER (WHERE o.first_sms_received_at IS NOT NULL),
-			COUNT(*) FILTER (WHERE o.first_sms_received_at IS NULL AND o.status IN ('failed','expired'))
+			COUNT(*) FILTER (WHERE o.delivery_outcome='success'),
+			COUNT(*) FILTER (WHERE o.delivery_outcome='failed')
 		FROM sms_orders o
 		JOIN sms_providers p ON p.id=o.provider_id
 		JOIN sms_services sv ON sv.id=o.service_id
@@ -2424,8 +2424,8 @@ func (s *SMSService) decorateOperatorPlatformDeliveryStats(ctx context.Context, 
 		return items
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT lower(o.operator_code),
-		COUNT(*) FILTER (WHERE o.first_sms_received_at IS NOT NULL),
-		COUNT(*) FILTER (WHERE o.first_sms_received_at IS NULL AND o.status IN ('failed','expired'))
+		COUNT(*) FILTER (WHERE o.delivery_outcome='success'),
+		COUNT(*) FILTER (WHERE o.delivery_outcome='failed')
 		FROM sms_orders o
 		JOIN sms_providers p ON p.id=o.provider_id
 		JOIN sms_services sv ON sv.id=o.service_id
@@ -3475,7 +3475,8 @@ func (s *SMSService) pollSMSOrder(ctx context.Context, id int64, providerOrder, 
 			continue
 		}
 		_, _ = s.db.ExecContext(ctx, `INSERT INTO sms_messages(order_id,message_text,verification_code) SELECT $1,$2,$3 WHERE NOT EXISTS (SELECT 1 FROM sms_messages WHERE order_id=$1 AND message_text=$2)`, id, message, extractSMSCode(message))
-		_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET first_sms_received_at=COALESCE(first_sms_received_at,NOW()) WHERE id=$1`, id)
+		_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET first_sms_received_at=COALESCE(first_sms_received_at,NOW()),delivery_outcome='success',delivery_finalized_at=COALESCE(delivery_finalized_at,NOW()),delivery_failure_reason='' WHERE id=$1`, id)
+		clearSMSPlatformDeliveryStatsCache()
 	}
 	return s.convergeSMSProviderStatus(ctx, id, newStatus)
 }
@@ -3489,12 +3490,45 @@ func (s *SMSService) updateSMSProviderActuals(ctx context.Context, id int64, pro
 	return err
 }
 
+func clearSMSPlatformDeliveryStatsCache() {
+	smsPlatformDeliveryStatsCache.Lock()
+	smsPlatformDeliveryStatsCache.items = map[string]smsPlatformDeliveryStatsCacheEntry{}
+	smsPlatformDeliveryStatsCache.Unlock()
+}
+
+func (s *SMSService) markSMSDeliveryOutcome(ctx context.Context, id int64, providerStatus, action string) {
+	status := strings.ToLower(strings.TrimSpace(providerStatus))
+	action = strings.ToLower(strings.TrimSpace(action))
+	outcome := ""
+	reason := ""
+	switch {
+	case action == smsReconciliationCancel || action == smsReconciliationRefund:
+		outcome = "excluded"
+	case status == "cancelled" || status == "canceled":
+		outcome = "excluded"
+	case status == "failed" || status == "expired":
+		outcome = "failed"
+		reason = status
+	default:
+		return
+	}
+	result, err := s.db.ExecContext(ctx, `UPDATE sms_orders
+		SET delivery_outcome=$1,delivery_finalized_at=NOW(),delivery_failure_reason=$2
+		WHERE id=$3 AND delivery_outcome='pending' AND first_sms_received_at IS NULL`, outcome, reason, id)
+	if err == nil {
+		if affected, _ := result.RowsAffected(); affected > 0 {
+			clearSMSPlatformDeliveryStatsCache()
+		}
+	}
+}
+
 func (s *SMSService) convergeSMSProviderStatus(ctx context.Context, id int64, status string) error {
 	var userID int64
 	var settlementStatus, action, providerRefundStatus, providerCode string
 	if err := s.db.QueryRowContext(ctx, `SELECT o.user_id,o.settlement_status,o.reconciliation_action,o.provider_refund_status,p.code FROM sms_orders o JOIN sms_providers p ON p.id=o.provider_id WHERE o.id=$1`, id).Scan(&userID, &settlementStatus, &action, &providerRefundStatus, &providerCode); err != nil {
 		return err
 	}
+	s.markSMSDeliveryOutcome(ctx, id, status, action)
 	switch status {
 	case "active", "completed":
 		// A held settlement means the provider allocation has now been
@@ -3598,7 +3632,8 @@ func (s *SMSService) ProcessWebhook(ctx context.Context, providerCode string, pa
 			continue
 		}
 		_, _ = s.db.ExecContext(ctx, `INSERT INTO sms_messages(order_id,message_text,verification_code) SELECT $1,$2,$3 WHERE NOT EXISTS (SELECT 1 FROM sms_messages WHERE order_id=$1 AND message_text=$2)`, id, message, extractSMSCode(message))
-		_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET first_sms_received_at=COALESCE(first_sms_received_at,NOW()) WHERE id=$1`, id)
+		_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET first_sms_received_at=COALESCE(first_sms_received_at,NOW()),delivery_outcome='success',delivery_finalized_at=COALESCE(delivery_finalized_at,NOW()),delivery_failure_reason='' WHERE id=$1`, id)
+		clearSMSPlatformDeliveryStatsCache()
 	}
 	return s.convergeSMSProviderStatus(ctx, id, newStatus)
 }
