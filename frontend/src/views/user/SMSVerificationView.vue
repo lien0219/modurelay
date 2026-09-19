@@ -104,12 +104,19 @@
                   <span class="min-w-0">
                     <span class="flex items-center gap-2">
                       <span class="block truncate font-medium">{{ option.label }}</span>
-                      <span v-if="providerCode === '5sim' && option.conversionRate && option.conversionRate >= 70" class="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">{{ t('sms.user.highDeliveryRate') }}</span>
+                      <span v-if="option.platform30dSuccessRate != null && option.platform30dSampleSize >= 20 && option.platform30dSuccessRate >= 70" class="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">{{ t('sms.user.platformVerified') }}</span>
+                      <span v-else-if="providerCode === '5sim' && option.conversionRate && option.conversionRate >= 70" class="rounded-full bg-cyan-100 px-2 py-0.5 text-[10px] font-semibold text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300">{{ t('sms.user.highDeliveryRate') }}</span>
                     </span>
                     <span class="block text-[11px] text-gray-400">{{ option.value }}<template v-if="option.stock != null"> · {{ t('sms.user.numbersAvailable', { count: option.stock.toLocaleString() }) }}</template></span>
                     <span v-if="providerCode === '5sim' && option.conversionRate" class="mt-0.5 block text-[11px] font-medium text-cyan-600 dark:text-cyan-400">
-                      {{ t('sms.user.deliveryRateValue', { rate: option.conversionRate.toFixed(2) }) }}
+                      {{ t('sms.user.providerDeliveryRateValue', { rate: option.conversionRate.toFixed(2) }) }}
                       <template v-if="option.recommendedOperator"> · {{ option.recommendedOperator }}</template>
+                    </span>
+                    <span v-if="option.platform30dSuccessRate != null" class="mt-0.5 block text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                      {{ t('sms.user.platform30dRateValue', { rate: option.platform30dSuccessRate.toFixed(2), count: option.platform30dSampleSize }) }}
+                    </span>
+                    <span v-else-if="option.platform30dSampleSize > 0" class="mt-0.5 block text-[11px] text-gray-400">
+                      {{ t('sms.user.platform30dInsufficient', { count: option.platform30dSampleSize, minimum: 20 }) }}
                     </span>
                   </span>
                 </span>
@@ -145,6 +152,16 @@
                   <span class="text-xs text-gray-500">{{ t('sms.user.selectedCountry') }}</span>
                   <span class="flex items-center gap-2 font-medium text-gray-900 dark:text-white"><span v-if="countryCode" :class="flagClass(countryCode)" class="fi fis rounded-sm shadow-sm" aria-hidden="true"></span>{{ countryLabel(countryCode) || '-' }}</span>
                 </div>
+                <div v-if="countryCode && selectedCountryStats" class="border-t border-gray-200 pt-2 text-[11px] dark:border-dark-700">
+                  <div v-if="providerCode === '5sim' && selectedCountryStats.conversion_rate" class="flex items-center justify-between gap-3 text-cyan-600 dark:text-cyan-400">
+                    <span>{{ t('sms.user.providerDeliveryRate') }}</span><span class="font-semibold tabular-nums">{{ selectedCountryStats.conversion_rate.toFixed(2) }}%</span>
+                  </div>
+                  <div class="mt-1 flex items-center justify-between gap-3" :class="selectedCountryStats.platform_30d_success_rate != null ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400'">
+                    <span>{{ t('sms.user.platform30dSuccessRate') }}</span>
+                    <span v-if="selectedCountryStats.platform_30d_success_rate != null" class="font-semibold tabular-nums">{{ selectedCountryStats.platform_30d_success_rate.toFixed(2) }}% · n={{ selectedCountryStats.platform_30d_sample_size || 0 }}</span>
+                    <span v-else>{{ t('sms.user.platform30dInsufficientShort', { count: selectedCountryStats.platform_30d_sample_size || 0 }) }}</span>
+                  </div>
+                </div>
               </div>
 
               <div v-if="productType === 'rental' && providerCode === 'smspva'" class="grid grid-cols-2 gap-2">
@@ -152,7 +169,7 @@
                 <Select v-model="durationUnit" :label="t('sms.user.unit')" :options="durationUnitOptions" @update:model-value="reloadRentalCatalog" />
               </div>
               <label v-if="currentProvider?.capabilities.supports_voice" class="block"><span class="input-label">{{ t('sms.user.verificationType') }}</span><select v-model.number="voiceMode" class="input h-[42px] w-full" @change="changeVoiceMode"><option v-for="item in voiceModeOptions" :key="item.value" :value="item.value">{{ item.label }}</option></select></label>
-              <label v-if="currentProvider?.capabilities.supports_operator_selection" class="block"><span class="input-label">{{ t('sms.user.operator') }}</span><select v-model="operatorCode" class="input h-[42px] w-full" @change="quotes = []; loadQuotes()"><option value="any">{{ t('sms.user.autoOperator') }}</option><option v-for="item in operators.filter(op => op.code !== 'any')" :key="item.code" :value="item.code" :disabled="item.available === false">{{ item.name }}{{ item.provider_rate ? ` · ${item.provider_rate.toFixed(2)}%` : '' }}{{ item.stock != null ? ` · ${t('sms.user.stock')} ${item.stock}` : '' }}</option></select><p v-if="providerCode === '5sim' && operatorCode !== 'any'" class="mt-1 text-[11px] text-cyan-600 dark:text-cyan-400">{{ t('sms.user.recommendedOperatorSelected') }}</p></label>
+              <label v-if="currentProvider?.capabilities.supports_operator_selection" class="block"><span class="input-label">{{ t('sms.user.operator') }}</span><select v-model="operatorCode" class="input h-[42px] w-full" @change="quotes = []; loadQuotes()"><option value="any">{{ t('sms.user.autoOperator') }}</option><option v-for="item in operators.filter(op => op.code !== 'any')" :key="item.code" :value="item.code" :disabled="item.available === false">{{ item.name }}{{ item.provider_rate ? ` · 5SIM ${item.provider_rate.toFixed(2)}%` : '' }}{{ item.platform_30d_success_rate != null ? ` · ${t('sms.user.platform30dShort')} ${item.platform_30d_success_rate.toFixed(2)}% (n=${item.platform_30d_sample_size || 0})` : '' }}{{ item.stock != null ? ` · ${t('sms.user.stock')} ${item.stock}` : '' }}</option></select><p v-if="providerCode === '5sim' && operatorCode !== 'any'" class="mt-1 text-[11px] text-cyan-600 dark:text-cyan-400">{{ t('sms.user.recommendedOperatorSelected') }}</p></label>
               <label class="block"><span class="input-label">{{ t('sms.user.quantity') }}</span><input v-model.number="purchaseQuantity" class="input h-[42px] w-full" type="number" min="1" max="50" /></label>
 
               <div v-if="bestQuote" class="flex items-center justify-between border-t border-gray-200 pt-3 dark:border-dark-700">
