@@ -199,7 +199,12 @@ func (h *SMSHandler) ServiceCountries(c *gin.Context) {
 	}
 	localizeSMSCountryCatalog(items)
 	providerCode := strings.ToLower(strings.TrimSpace(c.Param("provider")))
-	if providerCode == "5sim" {
+	sortMode := strings.ToLower(strings.TrimSpace(c.DefaultQuery("sort", "")))
+	if sortMode == "" && providerCode == "5sim" {
+		sortMode = "rate"
+	}
+	switch sortMode {
+	case "rate":
 		sort.SliceStable(items, func(i, j int) bool {
 			if items[i].ConversionRate != items[j].ConversionRate {
 				return items[i].ConversionRate > items[j].ConversionRate
@@ -209,7 +214,35 @@ func (h *SMSHandler) ServiceCountries(c *gin.Context) {
 			}
 			return strings.ToLower(items[i].NameEN) < strings.ToLower(items[j].NameEN)
 		})
-	} else {
+	case "price":
+		sort.SliceStable(items, func(i, j int) bool {
+			left := items[i].RecommendedStartingPrice
+			if left <= 0 {
+				left = items[i].StartingPrice
+			}
+			right := items[j].RecommendedStartingPrice
+			if right <= 0 {
+				right = items[j].StartingPrice
+			}
+			if left <= 0 && right > 0 {
+				return false
+			}
+			if right <= 0 && left > 0 {
+				return true
+			}
+			if left != right {
+				return left < right
+			}
+			return items[i].ConversionRate > items[j].ConversionRate
+		})
+	case "stock":
+		sort.SliceStable(items, func(i, j int) bool {
+			if items[i].Stock != items[j].Stock {
+				return items[i].Stock > items[j].Stock
+			}
+			return items[i].ConversionRate > items[j].ConversionRate
+		})
+	default:
 		sort.SliceStable(items, func(i, j int) bool {
 			left := strings.TrimSpace(items[i].NameEN)
 			right := strings.TrimSpace(items[j].NameEN)
