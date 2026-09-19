@@ -789,8 +789,23 @@ func (p *fiveSIMProvider) buy(ctx context.Context, category string, req SMSPurch
 	if operator == "any" && req.ProviderCostLimit > 0 {
 		query.Set("maxPrice", strconv.FormatFloat(req.ProviderCostLimit, 'f', -1, 64))
 	}
-	if err := p.request(ctx, http.MethodGet, path, query, nil, &out); err != nil {
+	data, err := p.requestBytes(ctx, http.MethodGet, path, query, nil)
+	if err != nil {
 		return nil, err
+	}
+	if err := json.Unmarshal(data, &out); err != nil {
+		detail := strings.TrimSpace(string(data))
+		if detail == "" {
+			return nil, errors.New("5SIM returned an empty purchase response")
+		}
+		if len(detail) > 512 {
+			detail = detail[:512] + "..."
+		}
+		// 5SIM documents business rejections such as "no free phones" as
+		// HTTP 200 text responses. Preserve the upstream text so the purchase
+		// classifier can fail closed instead of treating it as an ambiguous
+		// allocation and leaving the platform stuck in reconciliation.
+		return nil, fmt.Errorf("5SIM purchase rejected: %s", detail)
 	}
 	id := parseProviderJSONID(out.ID)
 	if id == "" {
@@ -2914,10 +2929,18 @@ func (s *SMSService) Purchase(ctx context.Context, userID int64, req SMSPurchase
 	}
 	if err != nil {
 		ambiguous := isSMSPurchaseOutcomeAmbiguous(err)
-		// Recovery is attempted for every temporary-provider error, not only
-		// timeouts/5xx. Some providers have been observed to commit an allocation
-		// and then return a non-success response. An exact history match is stronger
-		// evidence than the transport status and prevents orphaned paid numbers.
+		if !ambiguous {
+			// A definitive provider rejection means no allocation exists. Release
+			// the hold and remove the provisional row immediately; do not query
+			// provider history and do not expose a fake reconciliation order.
+			if settleErr := s.failSMSPurchase(context.Background(), orderID, userID, providerErrorDiagnostic(err)); settleErr != nil {
+				return nil, settleErr
+			}
+			return nil, sanitizeProviderError(err)
+		}
+		// Only genuinely ambiguous transport/upstream failures are eligible for
+		// history recovery. This prevents known 4xx/200-text business rejections
+		// from being confused with an unrelated recent provider order.
 		recovered, recoveryErr := recoverSMSPurchaseAfterError(provider, purchaseReq, purchaseStartedAt, true)
 		if recoveryErr == nil && recovered != nil {
 			finalizeCtx, finalizeCancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -3271,8 +3294,11 @@ func isSMSPurchaseDefinitiveRejection(err error) bool {
 	detail := strings.ToLower(strings.TrimSpace(err.Error()))
 	if errors.As(err, &httpErr) {
 		detail = strings.ToLower(strings.TrimSpace(httpErr.Detail))
-		switch httpErr.StatusCode {
-		case http.StatusUnauthorized, http.StatusForbidden, http.StatusTooManyRequests:
+		// 5SIM's documented purchase 4xx responses are business/request
+		// rejections and do not represent a committed allocation. Treat all
+		// non-timeout 4xx responses as definitive so they cannot create a
+		// user-visible "confirming purchase" order.
+		if httpErr.StatusCode >= 400 && httpErr.StatusCode < 500 {
 			return true
 		}
 	}
@@ -3289,6 +3315,7 @@ func isSMSPurchaseDefinitiveRejection(err error) bool {
 		"select operator",
 		"product is incorrect",
 		"no product",
+		"server offline",
 		"api limit is 100 requests per second",
 		"ip address limit is 100 requests per second",
 	}

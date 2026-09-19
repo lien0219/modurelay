@@ -109,6 +109,41 @@ func TestSMSPurchaseOutcomeAmbiguousForUpstream5xx(t *testing.T) {
 	}
 }
 
+func TestFiveSIMBuyTreatsHTTP200NoFreePhonesAsDefinitiveFailure(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/user/buy/activation/usa/any/openai" {
+			t.Fatalf("unexpected purchase path: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("no free phones"))
+	}))
+	defer server.Close()
+
+	provider := providerFor("5sim", server.URL, "secret")
+	_, err := provider.PurchaseTemporary(context.Background(), SMSPurchaseRequest{
+		CountryCode:  "usa",
+		ServiceCode:  "openai",
+		OperatorCode: "any",
+	})
+	if err == nil {
+		t.Fatal("expected no-free-phones purchase rejection")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "no free phones") {
+		t.Fatalf("purchase error lost provider rejection: %v", err)
+	}
+	if isSMSPurchaseOutcomeAmbiguous(err) {
+		t.Fatalf("HTTP 200 no-free-phones must be definitive, got ambiguous error: %v", err)
+	}
+}
+
+func TestSMSPurchaseHTTP400ServerOfflineIsDefinitive(t *testing.T) {
+	err := &smsProviderHTTPError{Provider: "5sim", StatusCode: http.StatusBadRequest, Detail: "server offline"}
+	if isSMSPurchaseOutcomeAmbiguous(err) {
+		t.Fatal("documented 5SIM HTTP 400 purchase rejection must not enter reconciliation")
+	}
+}
+
 func TestFiveSIMRecoversTimedOutPurchaseFromOrderHistory(t *testing.T) {
 	startedAt := time.Date(2026, 9, 19, 2, 30, 0, 0, time.UTC)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

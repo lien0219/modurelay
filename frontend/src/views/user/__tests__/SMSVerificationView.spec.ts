@@ -209,6 +209,36 @@ describe('SMSVerificationView', () => {
     wrapper.unmount()
   })
 
+  it('keeps cancellation as the only user refund entry point', async () => {
+    smsAPI.orders.mockResolvedValue({
+      items: [{ ...order('active', 'sms-active'), capabilities: { ...capabilities, supports_refund: true } }],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+    const wrapper = mount(SMSVerificationView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<main><slot /></main>' },
+          Icon: true,
+          Pagination: true,
+          Select: true,
+          ConfirmDialog: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    const ordersTab = wrapper.findAll('[role="tab"]').find(tab => tab.text() === 'sms.user.orders')
+    await ordersTab!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('sms.user.cancel')
+    expect(wrapper.text()).not.toContain('sms.user.requestRefund')
+    wrapper.unmount()
+  })
+
   it('localizes pending and expired order statuses without raw enum fallback', async () => {
     const wrapper = mount(SMSVerificationView, {
       global: {

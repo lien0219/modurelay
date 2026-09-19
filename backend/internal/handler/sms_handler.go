@@ -556,8 +556,8 @@ func (h *SMSHandler) Cancel(c *gin.Context) {
 			response.ErrorWithDetails(c, http.StatusUnprocessableEntity, "Please wait until the configured cancellation window before cancelling this order", "CANCEL_TOO_EARLY", nil)
 			return
 		}
-		if err == service.ErrSMSProviderUnknown {
-			response.ErrorWithDetails(c, http.StatusAccepted, "The cancellation is being reconciled", "ORDER_RECONCILING", nil)
+		if err == service.ErrSMSProviderUnknown || err == service.ErrSMSRefundPending {
+			response.ErrorWithDetails(c, http.StatusAccepted, "The cancellation/refund is being reconciled", "ORDER_RECONCILING", nil)
 			return
 		}
 		response.ErrorWithDetails(c, http.StatusUnprocessableEntity, "Cancellation could not be completed", "CANCEL_REJECTED", nil)
