@@ -424,7 +424,7 @@ function errorMessage(error: unknown, fallback: string) {
   if (reason === 'PROVIDER_UPSTREAM_ERROR') return t('sms.user.errors.providerUpstreamError')
   return candidate?.message || fallback
 }
-const isOrderWaiting = (order: SMSOrder) => ['active', 'provider_unknown', 'reconciling'].includes(order.status)
+const isOrderWaiting = (order: SMSOrder) => ['pending', 'active', 'provider_unknown', 'reconciling'].includes(order.status)
 const pollingCandidates = () => [...liveOrders.value, ...(activeTab.value === 'orders' ? orders.value : [])]
   .filter(isOrderWaiting)
   .filter((order, index, items) => items.findIndex(item => item.id === order.id) === index)
@@ -506,7 +506,7 @@ function serviceLogo(code: string, name = '') {
 }
 
 function statusLabel(status: string, reconciliationAction?: string) {
-  if (status === 'reconciling' && reconciliationAction === 'purchase') return t('sms.user.statuses.confirmingPurchase')
+  if (status === 'pending' || (status === 'reconciling' && reconciliationAction === 'purchase')) return t('sms.user.statuses.confirmingPurchase')
   const labels: Record<string, string> = {
     pending: t('sms.user.statuses.pending'),
     active: t('sms.user.statuses.waitingSms'),

@@ -3129,7 +3129,7 @@ func (s *SMSService) reserveSMSPurchase(ctx context.Context, userID, channelID, 
 	defer func() { _ = tx.Rollback() }()
 	var orderID int64
 	price := selected.SalePrice
-	err = tx.QueryRowContext(ctx, `INSERT INTO sms_orders (user_id,channel_id,provider_id,service_id,country_id,product_type,status,operator_code,voice_mode,provider_cost_snapshot,sale_price_snapshot,success_rate_snapshot,success_rate_source_snapshot,success_rate_grade_snapshot,success_rate_multiplier_snapshot,idempotency_key,reserved_amount,settlement_status,reconciliation_action,reconcile_after) VALUES ($1,$2,$3,$4,$5,$6,'pending',$7,$8,$9,$10,$11,$12,$13,$14,$15,$10,'held','',NULL) RETURNING id`, userID, channelID, providerID, serviceID, countryID, req.ProductType, requestedSMSOperator(req.OperatorCode), req.VoiceMode, selected.ProviderCost, price, selected.SuccessRate, selected.SuccessRateSource, selected.SuccessRateGrade, selected.GradeMultiplier, idempotencyKey).Scan(&orderID)
+	err = tx.QueryRowContext(ctx, `INSERT INTO sms_orders (user_id,channel_id,provider_id,service_id,country_id,product_type,status,operator_code,voice_mode,provider_cost_snapshot,sale_price_snapshot,success_rate_snapshot,success_rate_source_snapshot,success_rate_grade_snapshot,success_rate_multiplier_snapshot,idempotency_key,reserved_amount,settlement_status,reconciliation_action,reconcile_after) VALUES ($1,$2,$3,$4,$5,$6,'reconciling',$7,$8,$9,$10,$11,$12,$13,$14,$15,$10,'held','purchase',NOW()+INTERVAL '5 seconds') RETURNING id`, userID, channelID, providerID, serviceID, countryID, req.ProductType, requestedSMSOperator(req.OperatorCode), req.VoiceMode, selected.ProviderCost, price, selected.SuccessRate, selected.SuccessRateSource, selected.SuccessRateGrade, selected.GradeMultiplier, idempotencyKey).Scan(&orderID)
 	if err != nil {
 		return 0, err
 	}
@@ -3478,10 +3478,19 @@ func smsStatusFromProvider(result *SMSStatusResult) string {
 // messages. It is called by the order endpoint and can also be used by a worker.
 func (s *SMSService) SyncOrderStatus(ctx context.Context, userID int64, publicID string) error {
 	var id int64
-	var providerOrder, providerCode, base, credential, productType, status, reconciliationAction string
+	var providerOrder, providerCode, base, credential, productType, status, reconciliationAction, settlementStatus string
 	var expiresAt sql.NullTime
-	if err := s.db.QueryRowContext(ctx, `SELECT o.id,o.provider_order_id,p.code,p.base_url,p.credential_ref,o.product_type,o.status,o.reconciliation_action,o.expires_at FROM sms_orders o JOIN sms_providers p ON p.id=o.provider_id WHERE o.user_id=$1 AND o.public_id=$2::uuid`, userID, strings.TrimSpace(publicID)).Scan(&id, &providerOrder, &providerCode, &base, &credential, &productType, &status, &reconciliationAction, &expiresAt); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT o.id,o.provider_order_id,p.code,p.base_url,p.credential_ref,o.product_type,o.status,o.reconciliation_action,o.expires_at,o.settlement_status FROM sms_orders o JOIN sms_providers p ON p.id=o.provider_id WHERE o.user_id=$1 AND o.public_id=$2::uuid`, userID, strings.TrimSpace(publicID)).Scan(&id, &providerOrder, &providerCode, &base, &credential, &productType, &status, &reconciliationAction, &expiresAt, &settlementStatus); err != nil {
 		return err
+	}
+	// Older builds could crash after 5SIM allocated a number while the local
+	// reservation was still status=pending. Promote those held reservations
+	// into the normal purchase reconciliation path so the order becomes visible
+	// and recoverable instead of being hidden forever.
+	if status == "pending" && settlementStatus == "held" && providerOrder == "" {
+		_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET status='reconciling',reconciliation_action=$1,reconcile_after=NOW(),updated_at=NOW() WHERE id=$2 AND status='pending' AND settlement_status='held'`, smsReconciliationPurchase, id)
+		status = "reconciling"
+		reconciliationAction = smsReconciliationPurchase
 	}
 	if status == "reconciling" && reconciliationAction == smsReconciliationPurchase && providerOrder == "" {
 		recovered, recoveryErr := s.recoverUnknownSMSPurchase(ctx, id, userID, productType, providerCode, base, credential)
@@ -3919,7 +3928,7 @@ func (s *SMSService) ListOrders(ctx context.Context, userID int64, admin bool) (
 	q := `SELECT o.id,o.public_id::text,o.user_id,o.product_type,o.status,o.reconciliation_action,c.code,c.public_name,sv.code,co.iso2,o.phone_number,o.operator_code,o.voice_mode,o.sale_price_snapshot,o.success_rate_snapshot,o.success_rate_grade_snapshot,o.success_rate_source_snapshot,o.refund_status,o.refund_reason,o.expires_at,o.created_at,p.code,p.base_url,p.capabilities FROM sms_orders o JOIN sms_channels c ON c.id=o.channel_id JOIN sms_providers p ON p.id=o.provider_id JOIN sms_services sv ON sv.id=o.service_id JOIN sms_countries co ON co.id=o.country_id`
 	args := []any{}
 	if !admin {
-		q += ` WHERE o.user_id=$1 AND NOT (o.provider_order_id='' AND o.status IN ('pending','failed'))`
+		q += ` WHERE o.user_id=$1 AND NOT (o.provider_order_id='' AND o.status='failed')`
 		args = append(args, userID)
 	}
 	q += ` ORDER BY o.created_at DESC LIMIT 100`
@@ -3968,7 +3977,7 @@ func (s *SMSService) ListUserOrdersPage(ctx context.Context, userID int64, page,
 	}
 	keyword = strings.TrimSpace(keyword)
 	status = strings.TrimSpace(status)
-	where := ` WHERE o.user_id=$1 AND NOT (o.provider_order_id='' AND o.status IN ('pending','failed'))`
+	where := ` WHERE o.user_id=$1 AND NOT (o.provider_order_id='' AND o.status='failed')`
 	args := []any{userID}
 	if keyword != "" {
 		args = append(args, "%"+keyword+"%")

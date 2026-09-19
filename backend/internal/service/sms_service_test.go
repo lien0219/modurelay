@@ -704,6 +704,36 @@ func TestSMSMappingValidationFailsClosed(t *testing.T) {
 	}
 }
 
+func TestSMSReservationStartsInPurchaseReconciliationState(t *testing.T) {
+	const insertSQL = "INSERT INTO sms_orders"
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectBegin()
+	mock.ExpectQuery(insertSQL).
+		WithArgs(int64(7), int64(1), int64(2), int64(3), int64(4), "temporary", "any", 0, .4, .6, nil, "unavailable", "", 1.0, "idem-crash-safe").
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(int64(17)))
+	mock.ExpectExec(`UPDATE sms_quotes SET consumed_at=NOW\(\),consumed_order_id=\$1`).
+		WithArgs(int64(17), "quote-17", int64(7)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`UPDATE users SET balance=balance-\$1,frozen_balance`).
+		WithArgs(.6, int64(7)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	svc := &SMSService{db: db}
+	selected := &SMSPublicChannel{ProviderCost: .4, SalePrice: .6, SuccessRateSource: "unavailable", GradeMultiplier: 1}
+	if _, err := svc.reserveSMSPurchase(context.Background(), 7, 1, 2, 3, 4, SMSPurchaseRequest{ProductType: "temporary", QuoteID: "quote-17"}, selected, "idem-crash-safe"); err != nil {
+		t.Fatal(err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestSMSReservationConsumesQuoteAndFreezesBalanceInOneTransaction(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
