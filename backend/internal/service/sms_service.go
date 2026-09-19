@@ -754,13 +754,28 @@ func (p *fiveSIMProvider) PurchaseTemporary(ctx context.Context, req SMSPurchase
 	return p.buy(ctx, "activation", req)
 }
 
+func parseProviderJSONID(raw json.RawMessage) string {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 || bytes.Equal(raw, []byte("null")) {
+		return ""
+	}
+	if raw[0] == '"' {
+		var id string
+		if json.Unmarshal(raw, &id) == nil {
+			return strings.TrimSpace(id)
+		}
+		return ""
+	}
+	return strings.TrimSpace(string(raw))
+}
+
 func (p *fiveSIMProvider) buy(ctx context.Context, category string, req SMSPurchaseRequest) (*SMSPurchaseResult, error) {
 	var out struct {
-		ID       any       `json:"id"`
-		Phone    string    `json:"phone"`
-		Expires  time.Time `json:"expires"`
-		Price    float64   `json:"price"`
-		Operator string    `json:"operator"`
+		ID       json.RawMessage `json:"id"`
+		Phone    string          `json:"phone"`
+		Expires  time.Time       `json:"expires"`
+		Price    float64         `json:"price"`
+		Operator string          `json:"operator"`
 	}
 	operator := strings.ToLower(strings.TrimSpace(req.OperatorCode))
 	if operator == "" {
@@ -777,8 +792,8 @@ func (p *fiveSIMProvider) buy(ctx context.Context, category string, req SMSPurch
 	if err := p.request(ctx, http.MethodGet, path, query, nil, &out); err != nil {
 		return nil, err
 	}
-	id := fmt.Sprint(out.ID)
-	if id == "" || id == "<nil>" {
+	id := parseProviderJSONID(out.ID)
+	if id == "" {
 		return nil, errors.New("5SIM returned no order id")
 	}
 	return &SMSPurchaseResult{ProviderOrderID: id, PhoneNumber: out.Phone, ExpiresAt: &out.Expires, ProviderCost: out.Price, ProviderOperatorCode: strings.ToLower(strings.TrimSpace(out.Operator))}, nil
@@ -786,15 +801,15 @@ func (p *fiveSIMProvider) buy(ctx context.Context, category string, req SMSPurch
 
 func (p *fiveSIMProvider) RecoverTemporaryPurchase(ctx context.Context, req SMSPurchaseRequest, startedAt time.Time) (*SMSPurchaseResult, error) {
 	type historyOrder struct {
-		ID        any       `json:"id"`
-		Phone     string    `json:"phone"`
-		Operator  string    `json:"operator"`
-		Product   string    `json:"product"`
-		Price     float64   `json:"price"`
-		Status    string    `json:"status"`
-		Expires   time.Time `json:"expires"`
-		CreatedAt time.Time `json:"created_at"`
-		Country   string    `json:"country"`
+		ID        json.RawMessage `json:"id"`
+		Phone     string          `json:"phone"`
+		Operator  string          `json:"operator"`
+		Product   string          `json:"product"`
+		Price     float64         `json:"price"`
+		Status    string          `json:"status"`
+		Expires   time.Time       `json:"expires"`
+		CreatedAt time.Time       `json:"created_at"`
+		Country   string          `json:"country"`
 	}
 	var history struct {
 		Data json.RawMessage `json:"Data"`
@@ -861,8 +876,8 @@ func (p *fiveSIMProvider) RecoverTemporaryPurchase(ctx context.Context, req SMSP
 		if operatorCode == "any" && req.ProviderCostLimit > 0 && item.Price > req.ProviderCostLimit+0.00000001 {
 			continue
 		}
-		id := fmt.Sprint(item.ID)
-		if id == "" || id == "<nil>" {
+		id := parseProviderJSONID(item.ID)
+		if id == "" {
 			continue
 		}
 		delta := item.CreatedAt.Sub(startedAt)
