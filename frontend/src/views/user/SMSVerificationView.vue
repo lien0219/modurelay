@@ -204,6 +204,9 @@
                   {{ countryLabel(order.country_code) }}
                 </span>
               </div>
+              <div v-if="order.status === 'reconciling' && order.reconciliation_action === 'purchase'" class="mt-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-300">
+                {{ t('sms.user.purchaseConfirmingInline') }}
+              </div>
               <div class="mt-3 flex flex-wrap items-center gap-x-6 gap-y-3">
                 <div>
                   <div class="text-xs text-gray-500">{{ t('sms.user.phone') }}</div>
