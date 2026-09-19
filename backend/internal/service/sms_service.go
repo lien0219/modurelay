@@ -51,6 +51,18 @@ var (
 	smsVerificationCodePattern      = regexp.MustCompile(`(?:^|[^0-9])([0-9]{4,8})(?:$|[^0-9])`)
 )
 
+// SMSBatchPurchaseLimitError reports that a requested batch exceeds the
+// administrator-configured maximum. It is intentionally typed so HTTP
+// handlers can return a client error instead of treating it as an internal
+// service failure while still exposing the effective limit to clients.
+type SMSBatchPurchaseLimitError struct {
+	Limit int
+}
+
+func (e SMSBatchPurchaseLimitError) Error() string {
+	return fmt.Sprintf("batch size must be between 1 and %d", e.Limit)
+}
+
 var smsCatalogCache struct {
 	sync.RWMutex
 	services  []SMSSvcCatalogItem
@@ -188,15 +200,21 @@ type SMSPricingSettings struct {
 	UnknownGradeFixedMarkup       float64            `json:"unknown_grade_fixed_markup"`
 	TemporaryExpiryMinutes        int                `json:"temporary_expiry_minutes"`
 	SelfServiceCancelAfterMinutes int                `json:"self_service_cancel_after_minutes"`
+	BatchPurchaseLimit            int                `json:"batch_purchase_limit"`
 	GradeMultipliers              map[string]float64 `json:"grade_multipliers,omitempty"`
 	GradeFixedMarkups             map[string]float64 `json:"grade_fixed_markups,omitempty"`
 }
 
+const (
+	defaultSMSBatchPurchaseLimit = 5
+	maxSMSBatchPurchaseLimit     = 50
+)
+
 func defaultSMSPricingSettings() SMSPricingSettings {
-	return SMSPricingSettings{CostMultiplier: 1.30, UnknownGradeMultiplier: 1, TemporaryExpiryMinutes: 10, SelfServiceCancelAfterMinutes: 1, GradeMultipliers: map[string]float64{}, GradeFixedMarkups: map[string]float64{}}
+	return SMSPricingSettings{CostMultiplier: 1.30, UnknownGradeMultiplier: 1, TemporaryExpiryMinutes: 10, SelfServiceCancelAfterMinutes: 1, BatchPurchaseLimit: defaultSMSBatchPurchaseLimit, GradeMultipliers: map[string]float64{}, GradeFixedMarkups: map[string]float64{}}
 }
 func (s SMSPricingSettings) Validate() error {
-	if s.CostMultiplier <= 0 || s.CostMultiplier > 100 || s.FixedMarkup < 0 || s.UnknownGradeMultiplier <= 0 || s.UnknownGradeMultiplier > 100 || s.UnknownGradeFixedMarkup < 0 || s.TemporaryExpiryMinutes < 1 || s.TemporaryExpiryMinutes > 1440 || s.SelfServiceCancelAfterMinutes < 0 || s.SelfServiceCancelAfterMinutes > 1440 {
+	if s.CostMultiplier <= 0 || s.CostMultiplier > 100 || s.FixedMarkup < 0 || s.UnknownGradeMultiplier <= 0 || s.UnknownGradeMultiplier > 100 || s.UnknownGradeFixedMarkup < 0 || s.TemporaryExpiryMinutes < 1 || s.TemporaryExpiryMinutes > 1440 || s.SelfServiceCancelAfterMinutes < 0 || s.SelfServiceCancelAfterMinutes > 1440 || s.BatchPurchaseLimit < 1 || s.BatchPurchaseLimit > maxSMSBatchPurchaseLimit {
 		return errors.New("invalid SMS pricing settings")
 	}
 	valid := map[string]bool{"S": true, "A": true, "B": true, "C": true, "D": true}
@@ -1565,6 +1583,10 @@ func (s *SMSService) GetPricingSettings(ctx context.Context) (SMSPricingSettings
 	if err := json.Unmarshal([]byte(raw), &settings); err != nil {
 		return defaultSMSPricingSettings(), errors.New("invalid SMS pricing settings")
 	}
+	var rawFields map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(raw), &rawFields); err != nil {
+		return defaultSMSPricingSettings(), errors.New("invalid SMS pricing settings")
+	}
 	if settings.CostMultiplier <= 0 {
 		settings.CostMultiplier = 1
 	}
@@ -1576,6 +1598,11 @@ func (s *SMSService) GetPricingSettings(ctx context.Context) (SMSPricingSettings
 	}
 	if settings.SelfServiceCancelAfterMinutes < 0 {
 		settings.SelfServiceCancelAfterMinutes = 0
+	}
+	if _, configured := rawFields["batch_purchase_limit"]; !configured {
+		settings.BatchPurchaseLimit = defaultSMSBatchPurchaseLimit
+	} else if settings.BatchPurchaseLimit < 1 || settings.BatchPurchaseLimit > maxSMSBatchPurchaseLimit {
+		return defaultSMSPricingSettings(), errors.New("invalid SMS pricing settings")
 	}
 	// Older settings rows predate the self-service cancellation policy. Use the
 	// safe default for those rows while still allowing administrators to save 0
@@ -3080,8 +3107,12 @@ func (s *SMSService) Purchase(ctx context.Context, userID int64, req SMSPurchase
 // created orders so callers can present partial results and retry only failed
 // items with new idempotency keys.
 func (s *SMSService) PurchaseBatch(ctx context.Context, userID int64, items []SMSPurchaseRequest, idempotencyKey string, expectedPrices []*float64) ([]*SMSOrder, error) {
-	if len(items) == 0 || len(items) > 50 {
-		return nil, errors.New("batch size must be between 1 and 50")
+	pricing, err := s.GetPricingSettings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(items) == 0 || len(items) > maxSMSBatchPurchaseLimit {
+		return nil, SMSBatchPurchaseLimitError{Limit: pricing.BatchPurchaseLimit}
 	}
 	key := strings.TrimSpace(idempotencyKey)
 	if key == "" || len(key) > 125 {
@@ -3095,6 +3126,7 @@ func (s *SMSService) PurchaseBatch(ctx context.Context, userID int64, items []SM
 		key      string
 	}
 	pending := make([]pendingItem, 0, len(items))
+	overConfiguredLimit := len(items) > pricing.BatchPurchaseLimit
 	// Recover already committed items before touching quotes. This makes a
 	// retried batch idempotent even when the original response was lost.
 	for i, item := range items {
@@ -3108,6 +3140,11 @@ func (s *SMSService) PurchaseBatch(ctx context.Context, userID int64, items []SM
 			}
 			ordersByIndex[i] = order
 			continue
+		}
+		if errors.Is(err, sql.ErrNoRows) && overConfiguredLimit {
+			// A completed batch remains replayable after an administrator lowers
+			// the limit, but a retry may not create any additional orders.
+			return nil, SMSBatchPurchaseLimitError{Limit: pricing.BatchPurchaseLimit}
 		}
 		if err != sql.ErrNoRows {
 			return nil, err

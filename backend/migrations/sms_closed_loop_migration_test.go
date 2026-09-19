@@ -16,6 +16,7 @@ func TestSMSClosedLoopMigrationsAreEmbeddedAndAppendOnly(t *testing.T) {
 		"247_sms_provider_mapping_seeds.sql",
 		"253_sms_platform_30d_delivery_stats.sql",
 		"254_sms_delivery_outcome.sql",
+		"255_sms_batch_purchase_limit.sql",
 	} {
 		content, err := FS.ReadFile(name)
 		require.NoError(t, err, name)
@@ -57,4 +58,9 @@ func TestSMSClosedLoopMigrationsAreEmbeddedAndAppendOnly(t *testing.T) {
 	require.Contains(t, deliveryOutcomeSQL, "delivery_finalized_at")
 	require.Contains(t, deliveryOutcomeSQL, "idx_sms_orders_delivery_outcome_30d")
 
+	batchLimit, err := FS.ReadFile("255_sms_batch_purchase_limit.sql")
+	require.NoError(t, err)
+	batchLimitSQL := strings.Join(strings.Fields(string(batchLimit)), " ")
+	require.Contains(t, batchLimitSQL, "batch_purchase_limit")
+	require.Contains(t, batchLimitSQL, "'5'::jsonb")
 }

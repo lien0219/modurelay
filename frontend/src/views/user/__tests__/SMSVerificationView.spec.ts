@@ -5,6 +5,7 @@ import SMSVerificationView from '../SMSVerificationView.vue'
 
 const { smsAPI, showError, showSuccess, refreshUser } = vi.hoisted(() => ({
   smsAPI: {
+    settings: vi.fn(),
     providers: vi.fn(),
     recentSuccesses: vi.fn(),
     providerServices: vi.fn(),
@@ -90,6 +91,7 @@ describe('SMSVerificationView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     refreshUser.mockResolvedValue({})
+    smsAPI.settings.mockResolvedValue({ batch_purchase_limit: 5 })
     smsAPI.recentSuccesses.mockResolvedValue({ source: 'mock', real_success_count: 0, items: [{ username: 'te***', country_code: 'US', phone: '+120****123' }] })
     smsAPI.providers.mockResolvedValue([
       { code: '5sim', name: '5SIM', beta: false, selectable: true, capabilities },
@@ -134,6 +136,26 @@ describe('SMSVerificationView', () => {
     wrapper.unmount()
   })
 
+  it('uses the administrator-configured batch purchase limit', async () => {
+    smsAPI.settings.mockResolvedValueOnce({ batch_purchase_limit: 3 })
+    const wrapper = mount(SMSVerificationView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<main><slot /></main>' },
+          Icon: true,
+          Pagination: true,
+          Select: true,
+          ConfirmDialog: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    const quantityLabel = wrapper.findAll('label').find(label => label.text().includes('sms.user.quantity'))
+    expect(quantityLabel).toBeDefined()
+    expect(quantityLabel!.get('input').attributes('max')).toBe('3')
+    wrapper.unmount()
+  })
 
   it('shows provider and platform 30-day delivery rates separately', async () => {
     const wrapper = mount(SMSVerificationView, {

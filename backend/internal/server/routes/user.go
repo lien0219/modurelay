@@ -184,6 +184,7 @@ func RegisterUserRoutes(
 		if h.SMS != nil {
 			sms := authenticated.Group("/sms")
 			sms.Use(smsFeatureGuard(h.SMS))
+			sms.GET("/settings", h.SMS.Settings)
 			sms.GET("/services", h.SMS.Services)
 			sms.GET("/providers", h.SMS.Providers)
 			sms.GET("/recent-successes", h.SMS.RecentSuccesses)

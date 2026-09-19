@@ -50,6 +50,7 @@
           <label class="block"><span class="input-label">{{ t('sms.admin.unknownGradeFixedMarkup') }}</span><input v-model.number="pricing.unknown_grade_fixed_markup" class="input" type="number" min="0" step="0.0001" /></label>
           <label class="block"><span class="input-label">{{ t('sms.admin.temporaryExpiryMinutes') }}</span><input v-model.number="pricing.temporary_expiry_minutes" class="input" type="number" min="1" max="1440" step="1" /></label>
           <label class="block"><span class="input-label">{{ t('sms.admin.cancelAfterMinutes') }}</span><input v-model.number="pricing.self_service_cancel_after_minutes" class="input" type="number" min="0" max="1440" step="1" /></label>
+          <label class="block"><span class="input-label">{{ t('sms.admin.batchPurchaseLimit') }}</span><input v-model.number="pricing.batch_purchase_limit" class="input" :class="batchPurchaseLimitError ? 'border-red-500 focus-visible:border-red-500 focus-visible:ring-red-500/30' : ''" type="number" min="1" max="50" step="1" :aria-invalid="batchPurchaseLimitError ? 'true' : undefined" aria-describedby="sms-admin-batch-limit-hint" /><span id="sms-admin-batch-limit-hint" class="mt-1 block text-xs text-gray-500 dark:text-gray-400">{{ batchPurchaseLimitError || t('sms.admin.batchPurchaseLimitHint') }}</span></label>
         </div>
         <div class="overflow-x-auto">
           <table class="min-w-[560px] text-left text-sm">
@@ -57,7 +58,7 @@
             <tbody><tr v-for="grade in successGrades" :key="grade" class="border-t border-gray-100 dark:border-dark-700"><td class="px-3 py-2 font-semibold">{{ grade }}</td><td class="px-3 py-2"><input v-model.number="pricing.grade_multipliers[grade]" class="input max-w-48" type="number" min="0.01" step="0.01" /></td><td class="px-3 py-2"><input v-model.number="pricing.grade_fixed_markups[grade]" class="input max-w-48" type="number" min="0" step="0.0001" /></td></tr></tbody>
           </table>
         </div>
-        <div class="flex justify-end"><button type="button" class="btn btn-primary" :disabled="pricingSaving" @click="savePricing">{{ pricingSaving ? t('sms.admin.saving') : t('sms.admin.savePricing') }}</button></div>
+        <div class="flex justify-end"><button type="button" class="btn btn-primary" :disabled="pricingSaving || !!batchPurchaseLimitError" @click="savePricing">{{ pricingSaving ? t('sms.admin.saving') : t('sms.admin.savePricing') }}</button></div>
       </section>
 
       <section class="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
@@ -183,8 +184,14 @@ const testingProviderId = ref<number | null>(null)
 const syncingProviderCode = ref('')
 const catalogStatus = ref<Record<string, SMSCatalogSyncStatus | undefined>>({})
 const credentialDrafts = ref<Record<number, string>>({})
-const pricing = ref<SMSPricingSettings>({ cost_multiplier: 1.3, fixed_markup: 0, unknown_grade_multiplier: 1, unknown_grade_fixed_markup: 0, temporary_expiry_minutes: 10, self_service_cancel_after_minutes: 1, grade_multipliers: { S: 1, A: 1, B: 1, C: 1, D: 1 }, grade_fixed_markups: { S: 0, A: 0, B: 0, C: 0, D: 0 } })
+const pricing = ref<SMSPricingSettings>({ cost_multiplier: 1.3, fixed_markup: 0, unknown_grade_multiplier: 1, unknown_grade_fixed_markup: 0, temporary_expiry_minutes: 10, self_service_cancel_after_minutes: 1, batch_purchase_limit: 5, grade_multipliers: { S: 1, A: 1, B: 1, C: 1, D: 1 }, grade_fixed_markups: { S: 0, A: 0, B: 0, C: 0, D: 0 } })
 const pricingSaving = ref(false)
+const batchPurchaseLimitError = computed(() => {
+  const value = pricing.value.batch_purchase_limit
+  return Number.isInteger(value) && value >= 1 && value <= 50
+    ? ''
+    : t('sms.admin.batchPurchaseLimitInvalid', { min: 1, max: 50 })
+})
 const successGrades = ['S', 'A', 'B', 'C', 'D']
 
 const providerPortals: Record<string, string> = {
@@ -248,6 +255,11 @@ function roleLabel(role: string) {
   return role === 'primary' ? t('sms.admin.primary') : role === 'backup' ? t('sms.admin.backup') : role
 }
 
+function normalizeBatchPurchaseLimit(value: unknown) {
+  const parsed = Number(value)
+  return Number.isInteger(parsed) ? Math.min(50, Math.max(1, parsed)) : 5
+}
+
 async function load() {
   loading.value = true
   try {
@@ -265,7 +277,7 @@ async function load() {
     channels.value = nextChannels
     stats.value = nextStats
     enabled.value = Boolean(stats.value.feature_enabled)
-    pricing.value = { ...pricing.value, ...nextPricing, grade_multipliers: { ...pricing.value.grade_multipliers, ...nextPricing.grade_multipliers }, grade_fixed_markups: { ...pricing.value.grade_fixed_markups, ...nextPricing.grade_fixed_markups } }
+    pricing.value = { ...pricing.value, ...nextPricing, batch_purchase_limit: normalizeBatchPurchaseLimit(nextPricing.batch_purchase_limit), grade_multipliers: { ...pricing.value.grade_multipliers, ...nextPricing.grade_multipliers }, grade_fixed_markups: { ...pricing.value.grade_fixed_markups, ...nextPricing.grade_fixed_markups } }
   } catch (error) {
     appStore.showError(errorMessage(error, t('sms.user.errors.unavailable')))
   } finally {
@@ -274,6 +286,10 @@ async function load() {
 }
 
 async function savePricing() {
+  if (batchPurchaseLimitError.value) {
+    appStore.showError(batchPurchaseLimitError.value)
+    return
+  }
   pricingSaving.value = true
   try {
     pricing.value = await adminSMS.updatePricing(pricing.value)

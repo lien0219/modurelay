@@ -44,8 +44,10 @@ export interface SMSOrder {
 export interface SMSOrderPage { items: SMSOrder[]; total: number; page: number; page_size: number; pages: number }
 export interface SMSRecentSuccessItem { username: string; country_code: string; phone: string }
 export interface SMSRecentSuccessFeed { source: 'mock' | 'real'; real_success_count: number; items: SMSRecentSuccessItem[] }
+export interface SMSSettings { batch_purchase_limit: number }
 
 export const smsAPI = {
+  settings: () => apiClient.get<SMSSettings>('/sms/settings').then(r => r.data),
   providers: () => apiClient.get<SMSProviderItem[]>('/sms/providers').then(r => r.data),
   recentSuccesses: () => apiClient.get<SMSRecentSuccessFeed>('/sms/recent-successes').then(r => r.data),
   providerServices: (provider: string, params?: { product_type?: 'temporary' | 'rental'; duration_value?: number; duration_unit?: string }) => apiClient.get<SMSServiceItem[]>(`/sms/providers/${encodeURIComponent(provider)}/services`, { params }).then(r => r.data),

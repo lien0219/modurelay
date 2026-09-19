@@ -42,6 +42,7 @@ describe('SMSManagementView', () => {
       cost_multiplier: 1.3, fixed_markup: 0, unknown_grade_multiplier: 1,
       unknown_grade_fixed_markup: 0, temporary_expiry_minutes: 10,
       self_service_cancel_after_minutes: 1,
+      batch_purchase_limit: 5,
       grade_multipliers: {}, grade_fixed_markups: {},
     })
     adminSMS.updatePricing.mockImplementation(async (value: unknown) => value)
@@ -94,6 +95,21 @@ describe('SMSManagementView', () => {
 
     expect(adminSMS.testProvider).toHaveBeenCalledWith(1)
     expect(showSuccess).toHaveBeenCalledWith('sms.admin.testSuccess (12ms)')
+  })
+
+  it('saves the administrator-configured batch purchase limit', async () => {
+    const wrapper = mount(SMSManagementView, {
+      global: { stubs: { AppLayout: { template: '<main><slot /></main>' }, Icon: true } },
+    })
+    await flushPromises()
+
+    const batchLimitLabel = wrapper.findAll('label').find(label => label.text().includes('sms.admin.batchPurchaseLimit'))
+    expect(batchLimitLabel).toBeDefined()
+    await batchLimitLabel!.get('input').setValue('8')
+    await wrapper.findAll('button').find(button => button.text() === 'sms.admin.savePricing')!.trigger('click')
+    await flushPromises()
+
+    expect(adminSMS.updatePricing).toHaveBeenCalledWith(expect.objectContaining({ batch_purchase_limit: 8 }))
   })
 
   it('shows provider-native catalog status instead of mapping configuration', async () => {

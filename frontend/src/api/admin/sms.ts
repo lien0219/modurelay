@@ -8,6 +8,7 @@ export interface SMSPricingSettings {
   unknown_grade_fixed_markup: number
   temporary_expiry_minutes: number
   self_service_cancel_after_minutes: number
+  batch_purchase_limit: number
   grade_multipliers: Record<string, number>
   grade_fixed_markups: Record<string, number>
 }

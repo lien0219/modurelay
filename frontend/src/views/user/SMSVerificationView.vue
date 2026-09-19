@@ -173,13 +173,13 @@
               </div>
               <label v-if="currentProvider?.capabilities.supports_voice" class="block"><span class="input-label">{{ t('sms.user.verificationType') }}</span><select v-model.number="voiceMode" class="input h-[42px] w-full" @change="changeVoiceMode"><option v-for="item in voiceModeOptions" :key="item.value" :value="item.value">{{ item.label }}</option></select></label>
               <label v-if="currentProvider?.capabilities.supports_operator_selection" class="block"><span class="input-label">{{ t('sms.user.operator') }}</span><select v-model="operatorCode" class="input h-[42px] w-full" @change="quotes = []; loadQuotes()"><option value="any">{{ t('sms.user.autoOperator') }}</option><option v-for="item in operators.filter(op => op.code !== 'any')" :key="item.code" :value="item.code" :disabled="item.available === false">{{ item.name }}{{ item.provider_rate ? ` · ${t('sms.user.channelReferenceShort')} ${item.provider_rate.toFixed(2)}%` : '' }}{{ item.platform_30d_success_rate != null ? ` · ${t('sms.user.platform30dShort')} ${item.platform_30d_success_rate.toFixed(2)}% (n=${item.platform_30d_sample_size || 0})` : '' }}{{ item.stock != null ? ` · ${t('sms.user.stock')} ${item.stock}` : '' }}</option></select><p v-if="providerCode === '5sim' && operatorCode !== 'any'" class="mt-1 text-[11px] text-cyan-600 dark:text-cyan-400">{{ t('sms.user.recommendedOperatorSelected') }}</p></label>
-              <label class="block"><span class="input-label">{{ t('sms.user.quantity') }}</span><input v-model.number="purchaseQuantity" class="input h-[42px] w-full" type="number" min="1" max="50" /></label>
+              <label class="block"><span class="input-label">{{ t('sms.user.quantity') }}</span><input v-model.number="purchaseQuantity" class="input h-[42px] w-full" :class="purchaseQuantityError ? 'border-red-500 focus-visible:border-red-500 focus-visible:ring-red-500/30' : ''" type="number" min="1" :max="batchPurchaseLimit" :aria-invalid="purchaseQuantityError ? 'true' : undefined" :aria-describedby="purchaseQuantityError ? 'sms-quantity-error' : undefined" /><span class="mt-1 block text-xs text-gray-500 dark:text-gray-400">{{ t('sms.user.batchPurchaseHint', { max: batchPurchaseLimit }) }}</span><span v-if="purchaseQuantityError" id="sms-quantity-error" class="mt-1 block text-xs text-red-600 dark:text-red-400" role="alert">{{ purchaseQuantityError }}</span></label>
 
               <div v-if="bestQuote" class="flex items-center justify-between border-t border-gray-200 pt-3 dark:border-dark-700">
                 <span class="text-sm text-gray-500">{{ t('sms.user.price') }}</span>
                 <span class="text-xl font-semibold tabular-nums text-gray-900 dark:text-white">{{ formatPrice(bestQuote.sale_price) }}</span>
               </div>
-              <button type="button" class="btn btn-primary w-full" :disabled="!serviceCode || !countryCode || quoting || purchasing" @click="confirmSelection">
+              <button type="button" class="btn btn-primary w-full" :disabled="!serviceCode || !countryCode || quoting || purchasing || !isPurchaseQuantityValid" @click="confirmSelection">
                 {{ purchasing ? t('sms.user.processing') : quoting ? t('sms.user.quoting') : bestQuote ? t('sms.user.purchase') : t('sms.user.getQuote') }}
               </button>
               <p v-if="currentProvider?.capabilities.supports_refund && productType === 'temporary'" class="text-center text-xs text-gray-500">{{ t('sms.user.refundGuarantee') }}</p>
@@ -260,7 +260,7 @@
           </div>
           <div class="flex items-center justify-between gap-4 sm:justify-end">
             <div class="text-right"><div class="text-lg font-semibold tabular-nums text-gray-900 dark:text-white">{{ quote.sale_price.toFixed(4) }}</div><div class="text-xs text-gray-500">{{ t('sms.user.currency') }}</div></div>
-            <button type="button" class="btn btn-primary" :disabled="purchasing" @click="purchase(quote)">{{ purchasing ? t('sms.user.processing') : purchaseQuantity > 1 ? t('sms.user.batchPurchase') : t('sms.user.purchase') }}</button>
+            <button type="button" class="btn btn-primary" :disabled="purchasing || !isPurchaseQuantityValid" @click="purchase(quote)">{{ purchasing ? t('sms.user.processing') : purchaseQuantity > 1 ? t('sms.user.batchPurchase') : t('sms.user.purchase') }}</button>
           </div>
         </div>
       </section>
@@ -346,6 +346,14 @@ const countryPagination = reactive({ page: 1, pageSize: 20, total: 0, hasMore: f
 const ordersLoading = ref(false)
 const purchasing = ref(false)
 const purchaseQuantity = ref(1)
+const batchPurchaseLimit = ref(5)
+const purchaseQuantityError = computed(() => {
+  const value = Number(purchaseQuantity.value)
+  if (!Number.isInteger(value)) return t('sms.user.errors.quantityInteger', { max: batchPurchaseLimit.value })
+  if (value < 1 || value > batchPurchaseLimit.value) return t('sms.user.errors.quantityRange', { max: batchPurchaseLimit.value })
+  return ''
+})
+const isPurchaseQuantityValid = computed(() => purchaseQuantityError.value === '')
 const refreshingId = ref('')
 const orderPagination = reactive({ page: 1, pageSize: getPersistedPageSize(20), total: 0 })
 const orderDraft = reactive({ keyword: '', status: '' })
@@ -416,8 +424,16 @@ const countryLabel = (code: string) => {
   return item ? countryName(item) : displayRegionName(code)
 }
 function errorMessage(error: unknown, fallback: string) {
-  const candidate = error as { message?: string; code?: string | number; reason?: string }
+  const candidate = error as { message?: string; code?: string | number; reason?: string; metadata?: Record<string, string | number> }
   const reason = candidate?.reason || (typeof candidate?.code === 'string' ? candidate.code : '')
+  if (reason === 'BATCH_PURCHASE_LIMIT_EXCEEDED') {
+    const configuredMax = Number(candidate?.metadata?.max)
+    if (Number.isInteger(configuredMax) && configuredMax >= 1 && configuredMax <= 50) {
+      batchPurchaseLimit.value = configuredMax
+      purchaseQuantity.value = Math.min(configuredMax, Math.max(1, Number(purchaseQuantity.value) || 1))
+      return t('sms.user.errors.batchLimitExceeded', { max: configuredMax })
+    }
+  }
   if (reason === 'CANCEL_TOO_EARLY') return t('sms.user.errors.cancelTooEarly')
   if (reason === 'CANCEL_TOO_LATE') return t('sms.user.ended')
   if (reason === 'INSUFFICIENT_STOCK') return t('sms.user.errors.insufficientStock')
@@ -615,11 +631,14 @@ async function hydrateLiveOrders() {
 async function loadAll() {
   loading.value = true
   try {
-    const [providerItems] = await Promise.all([
+    const [providerItems, smsSettings] = await Promise.all([
       smsAPI.providers(),
+      smsAPI.settings().catch(() => ({ batch_purchase_limit: 5 })),
       hydrateLiveOrders(),
     ])
     providers.value = providerItems
+    batchPurchaseLimit.value = normalizeBatchPurchaseLimit(smsSettings.batch_purchase_limit)
+    purchaseQuantity.value = Math.min(batchPurchaseLimit.value, Math.max(1, Number(purchaseQuantity.value) || 1))
     const preferred = providers.value.find(item => item.code === providerCode.value && item.selectable)
       || providers.value.find(item => item.code === '5sim' && item.selectable)
       || providers.value.find(item => item.selectable)
@@ -788,10 +807,14 @@ function changeOrderPage(page: number) { orderPagination.page = page; void loadO
 function changeOrderPageSize(pageSize: number) { orderPagination.pageSize = pageSize; orderPagination.page = 1; void loadOrders() }
 
 async function purchase(quote: SMSQuote) {
+  if (!isPurchaseQuantityValid.value) {
+    appStore.showError(purchaseQuantityError.value)
+    return
+  }
   purchasing.value = true
   try {
     const key = `sms-${Date.now()}-${Math.random().toString(36).slice(2)}`
-    const quantity = Math.min(50, Math.max(1, Number(purchaseQuantity.value) || 1))
+    const quantity = Number(purchaseQuantity.value)
     const item = { channel_code: quote.channel_code, service_code: serviceCode.value, country_code: countryCode.value, product_type: productType.value, operator_code: operatorCode.value || 'any', voice_mode: voiceMode.value, duration_value: productType.value === 'rental' ? durationValue.value : undefined, duration_unit: productType.value === 'rental' ? durationUnit.value : undefined, quote_id: quote.quote_id, expected_price: quote.sale_price }
     if (quantity > 1) {
       const result = await smsAPI.purchaseBatch({ items: Array.from({ length: quantity }, () => item) }, key)
@@ -821,6 +844,11 @@ async function purchase(quote: SMSQuote) {
   } finally {
     purchasing.value = false
   }
+}
+
+function normalizeBatchPurchaseLimit(value: unknown) {
+  const parsed = Number(value)
+  return Number.isInteger(parsed) ? Math.min(50, Math.max(1, parsed)) : 5
 }
 
 function askConfirm(options: { title: string; message: string; confirmText?: string; cancelText?: string; danger?: boolean; action: () => Promise<void> }) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"os"
 	"sort"
@@ -93,6 +94,17 @@ func (h *SMSHandler) RecentSuccesses(c *gin.Context) {
 		return
 	}
 	response.Success(c, feed)
+}
+
+// Settings exposes the user-safe SMS purchase policy. Administrative pricing
+// and markup fields remain available only through the admin pricing endpoint.
+func (h *SMSHandler) Settings(c *gin.Context) {
+	pricing, err := h.svc.GetPricingSettings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"batch_purchase_limit": pricing.BatchPurchaseLimit})
 }
 
 func localizeSMSCountryCatalog(items []service.SMSCountryCatalogItem) {
@@ -405,6 +417,11 @@ func (h *SMSHandler) PurchaseBatch(c *gin.Context) {
 	}
 	orders, err := h.svc.PurchaseBatch(c.Request.Context(), subject.UserID, items, c.GetHeader("Idempotency-Key"), prices)
 	if err != nil && len(orders) == 0 {
+		var batchLimitErr service.SMSBatchPurchaseLimitError
+		if errors.As(err, &batchLimitErr) {
+			response.ErrorWithDetails(c, http.StatusBadRequest, batchLimitErr.Error(), "BATCH_PURCHASE_LIMIT_EXCEEDED", map[string]string{"max": strconv.Itoa(batchLimitErr.Limit)})
+			return
+		}
 		switch err {
 		case service.ErrSMSInsufficientBalance:
 			response.ErrorWithDetails(c, http.StatusPaymentRequired, "Insufficient balance", "INSUFFICIENT_BALANCE", nil)
@@ -837,11 +854,45 @@ func (h *SMSHandler) AdminPricing(c *gin.Context) {
 	response.Success(c, settings)
 }
 
+type smsPricingSettingsUpdateRequest struct {
+	CostMultiplier                float64            `json:"cost_multiplier"`
+	FixedMarkup                   float64            `json:"fixed_markup"`
+	UnknownGradeMultiplier        float64            `json:"unknown_grade_multiplier"`
+	UnknownGradeFixedMarkup       float64            `json:"unknown_grade_fixed_markup"`
+	TemporaryExpiryMinutes        int                `json:"temporary_expiry_minutes"`
+	SelfServiceCancelAfterMinutes int                `json:"self_service_cancel_after_minutes"`
+	BatchPurchaseLimit            *int               `json:"batch_purchase_limit"`
+	GradeMultipliers              map[string]float64 `json:"grade_multipliers"`
+	GradeFixedMarkups             map[string]float64 `json:"grade_fixed_markups"`
+}
+
 func (h *SMSHandler) AdminPricingUpdate(c *gin.Context) {
-	var settings service.SMSPricingSettings
-	if err := c.ShouldBindJSON(&settings); err != nil {
+	var req smsPricingSettingsUpdateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "invalid SMS pricing settings")
 		return
+	}
+	batchPurchaseLimit := 0
+	if req.BatchPurchaseLimit == nil {
+		current, err := h.svc.GetPricingSettings(c.Request.Context())
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		batchPurchaseLimit = current.BatchPurchaseLimit
+	} else {
+		batchPurchaseLimit = *req.BatchPurchaseLimit
+	}
+	settings := service.SMSPricingSettings{
+		CostMultiplier:                req.CostMultiplier,
+		FixedMarkup:                   req.FixedMarkup,
+		UnknownGradeMultiplier:        req.UnknownGradeMultiplier,
+		UnknownGradeFixedMarkup:       req.UnknownGradeFixedMarkup,
+		TemporaryExpiryMinutes:        req.TemporaryExpiryMinutes,
+		SelfServiceCancelAfterMinutes: req.SelfServiceCancelAfterMinutes,
+		BatchPurchaseLimit:            batchPurchaseLimit,
+		GradeMultipliers:              req.GradeMultipliers,
+		GradeFixedMarkups:             req.GradeFixedMarkups,
 	}
 	if err := h.svc.SetPricingSettings(c.Request.Context(), settings); err != nil {
 		response.BadRequest(c, err.Error())

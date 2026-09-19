@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,37 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 )
+
+type smsBatchLimitSettingRepoStub struct {
+	value string
+}
+
+func (s *smsBatchLimitSettingRepoStub) Get(context.Context, string) (*Setting, error) {
+	return nil, ErrSettingNotFound
+}
+
+func (s *smsBatchLimitSettingRepoStub) GetValue(context.Context, string) (string, error) {
+	if s.value == "" {
+		return "", ErrSettingNotFound
+	}
+	return s.value, nil
+}
+
+func (s *smsBatchLimitSettingRepoStub) Set(context.Context, string, string) error { return nil }
+
+func (s *smsBatchLimitSettingRepoStub) GetMultiple(context.Context, []string) (map[string]string, error) {
+	return nil, nil
+}
+
+func (s *smsBatchLimitSettingRepoStub) SetMultiple(context.Context, map[string]string) error {
+	return nil
+}
+
+func (s *smsBatchLimitSettingRepoStub) GetAll(context.Context) (map[string]string, error) {
+	return nil, nil
+}
+
+func (s *smsBatchLimitSettingRepoStub) Delete(context.Context, string) error { return nil }
 
 func TestSMSProviderCapabilitiesAreSeparated(t *testing.T) {
 	for _, code := range []string{"5sim", "smspva", "smspool", "sms_activate", "onlinesim", "pingme"} {
@@ -757,6 +789,114 @@ func TestSMSPricingSettingsDriveUnknownAndGradeFormulas(t *testing.T) {
 	gradeSale := 0.6*pricing.CostMultiplier*gradeMultiplier + gradeFixed
 	if math.Abs(gradeSale-9.25) > 1e-9 {
 		t.Fatalf("S sale price = %v, want 9.25", gradeSale)
+	}
+}
+
+func TestSMSBatchPurchaseLimitDefaultsAndValidates(t *testing.T) {
+	defaults := defaultSMSPricingSettings()
+	if defaults.BatchPurchaseLimit != defaultSMSBatchPurchaseLimit {
+		t.Fatalf("default batch purchase limit=%d, want %d", defaults.BatchPurchaseLimit, defaultSMSBatchPurchaseLimit)
+	}
+	for _, limit := range []int{1, maxSMSBatchPurchaseLimit} {
+		settings := defaults
+		settings.BatchPurchaseLimit = limit
+		if err := settings.Validate(); err != nil {
+			t.Fatalf("batch purchase limit %d should be valid: %v", limit, err)
+		}
+	}
+	for _, limit := range []int{0, maxSMSBatchPurchaseLimit + 1} {
+		settings := defaults
+		settings.BatchPurchaseLimit = limit
+		if err := settings.Validate(); err == nil {
+			t.Fatalf("batch purchase limit %d should be rejected", limit)
+		}
+	}
+}
+
+func TestSMSBatchPurchaseLimitReadsConfiguredSettingAndRejectsOverflow(t *testing.T) {
+	settingService := NewSettingService(&smsBatchLimitSettingRepoStub{value: `{"batch_purchase_limit":2}`}, nil)
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New error: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+	svc := &SMSService{db: db, settings: settingService}
+	settings, err := svc.GetPricingSettings(context.Background())
+	if err != nil {
+		t.Fatalf("GetPricingSettings error: %v", err)
+	}
+	if settings.BatchPurchaseLimit != 2 {
+		t.Fatalf("configured batch purchase limit=%d, want 2", settings.BatchPurchaseLimit)
+	}
+	items := make([]SMSPurchaseRequest, 3)
+	mock.ExpectQuery(`SELECT id FROM sms_orders WHERE user_id=\$1 AND idempotency_key=\$2`).
+		WithArgs(int64(1), "batch-key-0").
+		WillReturnError(sql.ErrNoRows)
+	if _, err := svc.PurchaseBatch(context.Background(), 1, items, "batch-key", nil); err == nil || err.Error() != "batch size must be between 1 and 2" {
+		t.Fatalf("PurchaseBatch overflow error=%v, want configured limit error", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet database expectations: %v", err)
+	}
+}
+
+func TestSMSBatchPurchaseLimitPreservesLegacyDefaultAndRejectsInvalidUpdates(t *testing.T) {
+	settingService := NewSettingService(&smsBatchLimitSettingRepoStub{value: `{"cost_multiplier":1.4}`}, nil)
+	svc := &SMSService{settings: settingService}
+	settings, err := svc.GetPricingSettings(context.Background())
+	if err != nil {
+		t.Fatalf("GetPricingSettings error: %v", err)
+	}
+	if settings.BatchPurchaseLimit != defaultSMSBatchPurchaseLimit {
+		t.Fatalf("legacy batch purchase limit=%d, want %d", settings.BatchPurchaseLimit, defaultSMSBatchPurchaseLimit)
+	}
+	settings.BatchPurchaseLimit = 0
+	if err := svc.SetPricingSettings(context.Background(), settings); err == nil {
+		t.Fatal("SetPricingSettings should reject an explicit zero batch purchase limit")
+	}
+}
+
+func TestSMSBatchPurchaseLimitFailsClosedWhenSettingsCannotBeRead(t *testing.T) {
+	settingService := NewSettingService(&smsBatchLimitSettingRepoStub{value: `{invalid-json`}, nil)
+	svc := &SMSService{settings: settingService}
+	if _, err := svc.PurchaseBatch(context.Background(), 1, []SMSPurchaseRequest{{}}, "batch-key", nil); err == nil || err.Error() != "invalid SMS pricing settings" {
+		t.Fatalf("PurchaseBatch settings error=%v, want invalid settings error", err)
+	}
+}
+
+func TestSMSBatchPurchaseLimitAllowsCompleteIdempotentReplayAfterLimitReduction(t *testing.T) {
+	settingService := NewSettingService(&smsBatchLimitSettingRepoStub{value: `{"batch_purchase_limit":1}`}, nil)
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New error: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+	svc := &SMSService{db: db, settings: settingService}
+	createdAt := time.Now().Add(-time.Minute)
+	orderColumns := []string{"public_id", "product_type", "status", "reconciliation_action", "channel_code", "channel_name", "service_code", "country_code", "phone_number", "operator_code", "voice_mode", "sale_price_snapshot", "success_rate_snapshot", "success_rate_grade_snapshot", "success_rate_source_snapshot", "refund_status", "refund_reason", "expires_at", "created_at", "provider_code", "base_url", "capabilities"}
+	for i, orderID := range []int64{101, 102} {
+		itemKey := fmt.Sprintf("replay-key-%d", i)
+		publicID := fmt.Sprintf("00000000-0000-0000-0000-%012d", orderID)
+		mock.ExpectQuery(`SELECT id FROM sms_orders WHERE user_id=\$1 AND idempotency_key=\$2`).
+			WithArgs(int64(1), itemKey).
+			WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(orderID))
+		mock.ExpectQuery(`SELECT o.public_id::text`).
+			WithArgs(int64(1), orderID).
+			WillReturnRows(sqlmock.NewRows(orderColumns).AddRow(publicID, "temporary", "active", "", "channel_1", "Channel 1", "openai", "US", "+12025550123", "any", 0, 1.25, nil, "", "unavailable", "not_requested", "", nil, createdAt, "5sim", "https://5sim.net", []byte(`{}`)))
+		mock.ExpectQuery(`SELECT id,message_text,verification_code,received_at FROM sms_messages`).
+			WithArgs(orderID).
+			WillReturnRows(sqlmock.NewRows([]string{"id", "message_text", "verification_code", "received_at"}))
+	}
+
+	orders, err := svc.PurchaseBatch(context.Background(), 1, []SMSPurchaseRequest{{}, {}}, "replay-key", nil)
+	if err != nil {
+		t.Fatalf("PurchaseBatch replay error: %v", err)
+	}
+	if len(orders) != 2 {
+		t.Fatalf("replayed order count=%d, want 2", len(orders))
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet database expectations: %v", err)
 	}
 }
 
