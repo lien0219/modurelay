@@ -163,6 +163,53 @@ func TestFiveSIMRecoveryRejectsAmbiguousMatches(t *testing.T) {
 	}
 }
 
+func TestSMSPlatform30DayRateUsesDeliveredMessagesAndCaches(t *testing.T) {
+	clearSMSPlatformDeliveryStatsCache()
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	mock.ExpectQuery(`SELECT\s+COUNT\(\*\) FILTER \(WHERE o\.delivery_outcome='success'\),\s+COUNT\(\*\) FILTER \(WHERE o\.delivery_outcome='failed'\)`).
+		WithArgs("5sim", "openai", "US", "virtual58").
+		WillReturnRows(sqlmock.NewRows([]string{"successes", "failures"}).AddRow(18, 2))
+
+	svc := &SMSService{db: db}
+	grade, rate, sample := svc.successGrade(context.Background(), "5sim", "openai", "US", "virtual58")
+	if grade != "A" || rate == nil || math.Abs(*rate-0.9) > 0.000001 || sample != 20 {
+		t.Fatalf("grade=%q rate=%v sample=%d", grade, rate, sample)
+	}
+	// A second read of the same dimension must hit the short-lived cache.
+	grade, rate, sample = svc.successGrade(context.Background(), "5sim", "openai", "US", "virtual58")
+	if grade != "A" || rate == nil || sample != 20 {
+		t.Fatalf("cached grade=%q rate=%v sample=%d", grade, rate, sample)
+	}
+	if err = mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSMSPlatform30DayRateRequiresMinimumSample(t *testing.T) {
+	clearSMSPlatformDeliveryStatsCache()
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	mock.ExpectQuery(`SELECT\s+COUNT\(\*\) FILTER \(WHERE o\.delivery_outcome='success'\),\s+COUNT\(\*\) FILTER \(WHERE o\.delivery_outcome='failed'\)`).
+		WithArgs("5sim", "telegram", "DE", "any").
+		WillReturnRows(sqlmock.NewRows([]string{"successes", "failures"}).AddRow(9, 1))
+
+	svc := &SMSService{db: db}
+	grade, rate, sample := svc.successGrade(context.Background(), "5sim", "telegram", "DE", "any")
+	if grade != "" || rate != nil || sample != 10 {
+		t.Fatalf("grade=%q rate=%v sample=%d, want unpublished 10-sample rate", grade, rate, sample)
+	}
+	if err = mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestFiveSIMCountriesParseProductFilteredPricesShape(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
