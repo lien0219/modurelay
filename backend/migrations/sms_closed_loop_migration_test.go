@@ -14,6 +14,8 @@ func TestSMSClosedLoopMigrationsAreEmbeddedAndAppendOnly(t *testing.T) {
 		"245_sms_reconciliation_actions.sql",
 		"246_sms_pricing_and_catalog.sql",
 		"247_sms_provider_mapping_seeds.sql",
+		"253_sms_platform_30d_delivery_stats.sql",
+		"254_sms_delivery_outcome.sql",
 	} {
 		content, err := FS.ReadFile(name)
 		require.NoError(t, err, name)
@@ -41,4 +43,18 @@ func TestSMSClosedLoopMigrationsAreEmbeddedAndAppendOnly(t *testing.T) {
 	seedSQL := strings.Join(strings.Fields(string(seed)), " ")
 	require.Contains(t, seedSQL, "provider_country_id")
 	require.Contains(t, seedSQL, "'usa'")
+
+	deliveryStats, err := FS.ReadFile("253_sms_platform_30d_delivery_stats.sql")
+	require.NoError(t, err)
+	deliveryStatsSQL := strings.Join(strings.Fields(string(deliveryStats)), " ")
+	require.Contains(t, deliveryStatsSQL, "first_sms_received_at")
+	require.Contains(t, deliveryStatsSQL, "idx_sms_orders_delivery_stats_30d")
+
+	deliveryOutcome, err := FS.ReadFile("254_sms_delivery_outcome.sql")
+	require.NoError(t, err)
+	deliveryOutcomeSQL := strings.Join(strings.Fields(string(deliveryOutcome)), " ")
+	require.Contains(t, deliveryOutcomeSQL, "delivery_outcome")
+	require.Contains(t, deliveryOutcomeSQL, "delivery_finalized_at")
+	require.Contains(t, deliveryOutcomeSQL, "idx_sms_orders_delivery_outcome_30d")
+
 }
