@@ -33,6 +33,7 @@ backend/.gocache/
 backend/.gomodcache/
 backend/.gopath/
 # Repository-local Go caches used by focused validation runs
+/.tmp-go-cache*/
 backend/.tmp-go-cache*/
 # Repository-root Go cache used by Email validation runs
 /.tmp-email-gocache/
