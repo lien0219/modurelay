@@ -77,9 +77,29 @@ var smsProviderCountryCache = struct {
 	items map[string]smsProviderCountryCacheEntry
 }{items: map[string]smsProviderCountryCacheEntry{}}
 
+type smsPlatformDeliveryStats struct {
+	Rate       *float64
+	SampleSize int
+	Successes  int
+	Failures   int
+}
+
+type smsPlatformDeliveryStatsCacheEntry struct {
+	stats     smsPlatformDeliveryStats
+	expiresAt time.Time
+}
+
+var smsPlatformDeliveryStatsCache = struct {
+	sync.RWMutex
+	items map[string]smsPlatformDeliveryStatsCacheEntry
+}{items: map[string]smsPlatformDeliveryStatsCacheEntry{}}
+
 const (
-	smsProviderServiceCacheTTL = 2 * time.Minute
-	smsProviderCountryCacheTTL = 45 * time.Second
+	smsProviderServiceCacheTTL     = 2 * time.Minute
+	smsProviderCountryCacheTTL     = 45 * time.Second
+	smsPlatformDeliveryStatsTTL    = 2 * time.Minute
+	smsPlatformDeliveryStatsWindow = 30 * 24 * time.Hour
+	smsPlatformRateMinSample       = 20
 )
 
 func smsProviderCatalogCacheKey(providerCode, productType string, durationValue int, durationUnit string) string {
@@ -314,12 +334,16 @@ type SMSProductServiceCountryProvider interface {
 }
 
 type SMSOperatorOption struct {
-	Code         string  `json:"code"`
-	Name         string  `json:"name"`
-	Stock        int     `json:"stock,omitempty"`
-	ProviderCost float64 `json:"-"`
-	ProviderRate float64 `json:"provider_rate,omitempty"`
-	Available    bool    `json:"available"`
+	Code                    string   `json:"code"`
+	Name                    string   `json:"name"`
+	Stock                   int      `json:"stock,omitempty"`
+	ProviderCost            float64  `json:"-"`
+	ProviderRate            float64  `json:"provider_rate,omitempty"`
+	Platform30dSuccessRate  *float64 `json:"platform_30d_success_rate,omitempty"`
+	Platform30dSampleSize   int      `json:"platform_30d_sample_size,omitempty"`
+	Platform30dSuccesses    int      `json:"platform_30d_successes,omitempty"`
+	Platform30dFailures     int      `json:"platform_30d_failures,omitempty"`
+	Available               bool     `json:"available"`
 }
 
 type SMSOperatorProvider interface {
@@ -1548,6 +1572,7 @@ type SMSPublicChannel struct {
 	SuccessRate              *float64                `json:"success_rate,omitempty"`
 	SuccessRateGrade         string                  `json:"success_rate_grade,omitempty"`
 	SuccessRateSource        string                  `json:"success_rate_source"`
+	SuccessRateSampleSize    int                     `json:"success_rate_sample_size,omitempty"`
 	EstimatedDeliverySeconds int                     `json:"estimated_delivery_seconds"`
 	Capabilities             SMSProviderCapabilities `json:"capabilities"`
 	QuoteID                  string                  `json:"quote_id"`
@@ -1728,12 +1753,16 @@ type SMSCountryCatalogItem struct {
 	Stock                    int     `json:"stock,omitempty"`
 	ProviderCost             float64 `json:"-"`
 	StartingPrice            float64 `json:"starting_price,omitempty"`
-	ConversionRate           float64 `json:"conversion_rate,omitempty"`
-	RecommendedOperator      string  `json:"recommended_operator,omitempty"`
-	RecommendedOperatorStock int     `json:"recommended_operator_stock,omitempty"`
-	RecommendedProviderCost  float64 `json:"-"`
-	RecommendedStartingPrice float64 `json:"recommended_starting_price,omitempty"`
-	Available                bool    `json:"available"`
+	ConversionRate           float64  `json:"conversion_rate,omitempty"`
+	Platform30dSuccessRate   *float64 `json:"platform_30d_success_rate,omitempty"`
+	Platform30dSampleSize    int      `json:"platform_30d_sample_size,omitempty"`
+	Platform30dSuccesses     int      `json:"platform_30d_successes,omitempty"`
+	Platform30dFailures      int      `json:"platform_30d_failures,omitempty"`
+	RecommendedOperator      string   `json:"recommended_operator,omitempty"`
+	RecommendedOperatorStock int      `json:"recommended_operator_stock,omitempty"`
+	RecommendedProviderCost  float64  `json:"-"`
+	RecommendedStartingPrice float64  `json:"recommended_starting_price,omitempty"`
+	Available                bool     `json:"available"`
 }
 
 func (s *SMSService) ListServices(ctx context.Context) ([]SMSSvcCatalogItem, error) {
@@ -2091,7 +2120,7 @@ func (s *SMSService) CountriesForProviderServiceProduct(ctx context.Context, pro
 	cacheKey := smsProviderCountryCacheKey(providerCode, serviceCode, productType, durationValue, durationUnit)
 	if providerCode == "5sim" || providerCode == "smspva" {
 		if items, ok := cachedProviderCountries(cacheKey); ok {
-			return s.decorateCountryStartingPrices(ctx, items), nil
+			return s.decorateCountryPlatformDeliveryStats(ctx, providerCode, serviceCode, s.decorateCountryStartingPrices(ctx, items)), nil
 		}
 	}
 	var base, credential string
@@ -2104,7 +2133,7 @@ func (s *SMSService) CountriesForProviderServiceProduct(ctx context.Context, pro
 			if providerCode == "5sim" || providerCode == "smspva" {
 				cacheProviderCountries(cacheKey, items)
 			}
-			return s.decorateCountryStartingPrices(ctx, items), nil
+			return s.decorateCountryPlatformDeliveryStats(ctx, providerCode, serviceCode, s.decorateCountryStartingPrices(ctx, items)), nil
 		} else if productType == "rental" {
 			return nil, err
 		}
@@ -2117,7 +2146,7 @@ func (s *SMSService) CountriesForProviderServiceProduct(ctx context.Context, pro
 			if providerCode == "5sim" || providerCode == "smspva" {
 				cacheProviderCountries(cacheKey, items)
 			}
-			return s.decorateCountryStartingPrices(ctx, items), nil
+			return s.decorateCountryPlatformDeliveryStats(ctx, providerCode, serviceCode, s.decorateCountryStartingPrices(ctx, items)), nil
 		}
 	}
 
@@ -2278,6 +2307,85 @@ func (s *SMSService) ensureProviderCatalogSelection(ctx context.Context, provide
 	return nil
 }
 
+func smsPlatformStatsCacheKey(providerCode, serviceCode, countryCode, operatorCode string) string {
+	return strings.ToLower(strings.TrimSpace(providerCode)) + "|" +
+		strings.ToLower(strings.TrimSpace(serviceCode)) + "|" +
+		strings.ToUpper(strings.TrimSpace(countryCode)) + "|" +
+		strings.ToLower(strings.TrimSpace(operatorCode))
+}
+
+func cachedSMSPlatformDeliveryStats(key string) (smsPlatformDeliveryStats, bool) {
+	smsPlatformDeliveryStatsCache.RLock()
+	entry, ok := smsPlatformDeliveryStatsCache.items[key]
+	smsPlatformDeliveryStatsCache.RUnlock()
+	if !ok || time.Now().After(entry.expiresAt) {
+		return smsPlatformDeliveryStats{}, false
+	}
+	return entry.stats, true
+}
+
+func cacheSMSPlatformDeliveryStats(key string, stats smsPlatformDeliveryStats) {
+	smsPlatformDeliveryStatsCache.Lock()
+	smsPlatformDeliveryStatsCache.items[key] = smsPlatformDeliveryStatsCacheEntry{stats: stats, expiresAt: time.Now().Add(smsPlatformDeliveryStatsTTL)}
+	smsPlatformDeliveryStatsCache.Unlock()
+}
+
+func (s *SMSService) platformDeliveryStats(ctx context.Context, providerCode, serviceCode, countryCode, operatorCode string) smsPlatformDeliveryStats {
+	key := smsPlatformStatsCacheKey(providerCode, serviceCode, countryCode, operatorCode)
+	if stats, ok := cachedSMSPlatformDeliveryStats(key); ok {
+		return stats
+	}
+	operatorCode = strings.ToLower(strings.TrimSpace(operatorCode))
+	var successes, failures int
+	query := `SELECT
+		COUNT(*) FILTER (WHERE o.first_sms_received_at IS NOT NULL),
+		COUNT(*) FILTER (WHERE o.first_sms_received_at IS NULL AND o.status IN ('failed','expired'))
+	FROM sms_orders o
+	JOIN sms_providers p ON p.id=o.provider_id
+	JOIN sms_services sv ON sv.id=o.service_id
+	JOIN sms_countries co ON co.id=o.country_id
+	WHERE p.code=$1
+	  AND sv.code=$2
+	  AND co.iso2=$3
+	  AND o.product_type='temporary'
+	  AND o.voice_mode=0
+	  AND o.provider_order_id<>''
+	  AND o.created_at >= NOW() - INTERVAL '30 days'
+	  AND ($4='' OR $4='any' OR lower(o.operator_code)=lower($4))`
+	if err := s.db.QueryRowContext(ctx, query, strings.ToLower(strings.TrimSpace(providerCode)), strings.ToLower(strings.TrimSpace(serviceCode)), strings.ToUpper(strings.TrimSpace(countryCode)), operatorCode).Scan(&successes, &failures); err != nil {
+		return smsPlatformDeliveryStats{}
+	}
+	stats := smsPlatformDeliveryStats{SampleSize: successes + failures, Successes: successes, Failures: failures}
+	if stats.SampleSize >= smsPlatformRateMinSample {
+		rate := float64(successes) / float64(stats.SampleSize) * 100
+		stats.Rate = &rate
+	}
+	cacheSMSPlatformDeliveryStats(key, stats)
+	return stats
+}
+
+func (s *SMSService) decorateCountryPlatformDeliveryStats(ctx context.Context, providerCode, serviceCode string, items []SMSCountryCatalogItem) []SMSCountryCatalogItem {
+	for i := range items {
+		stats := s.platformDeliveryStats(ctx, providerCode, serviceCode, items[i].ISO2, "any")
+		items[i].Platform30dSuccessRate = stats.Rate
+		items[i].Platform30dSampleSize = stats.SampleSize
+		items[i].Platform30dSuccesses = stats.Successes
+		items[i].Platform30dFailures = stats.Failures
+	}
+	return items
+}
+
+func (s *SMSService) decorateOperatorPlatformDeliveryStats(ctx context.Context, providerCode, serviceCode, countryCode string, items []SMSOperatorOption) []SMSOperatorOption {
+	for i := range items {
+		stats := s.platformDeliveryStats(ctx, providerCode, serviceCode, countryCode, items[i].Code)
+		items[i].Platform30dSuccessRate = stats.Rate
+		items[i].Platform30dSampleSize = stats.SampleSize
+		items[i].Platform30dSuccesses = stats.Successes
+		items[i].Platform30dFailures = stats.Failures
+	}
+	return items
+}
+
 func (s *SMSService) ProviderOperators(ctx context.Context, providerCode, serviceCode, countryCode string, voiceMode int) ([]SMSOperatorOption, error) {
 	return s.ProviderOperatorsForProduct(ctx, providerCode, serviceCode, countryCode, "temporary", voiceMode, 0, "")
 }
@@ -2311,13 +2419,21 @@ func (s *SMSService) ProviderOperatorsForProduct(ctx context.Context, providerCo
 		}
 	}
 	if p, ok := provider.(SMSProductOperatorProvider); ok {
-		return p.OperatorsForProduct(ctx, providerCountry, serviceCode, productType, voiceMode, durationValue, durationUnit)
+		items, err := p.OperatorsForProduct(ctx, providerCountry, serviceCode, productType, voiceMode, durationValue, durationUnit)
+		if err != nil {
+			return nil, err
+		}
+		return s.decorateOperatorPlatformDeliveryStats(ctx, providerCode, serviceCode, countryCode, items), nil
 	}
 	p, ok := provider.(SMSOperatorProvider)
 	if !ok {
 		return []SMSOperatorOption{}, nil
 	}
-	return p.Operators(ctx, providerCountry, serviceCode, voiceMode)
+	items, err := p.Operators(ctx, providerCountry, serviceCode, voiceMode)
+	if err != nil {
+		return nil, err
+	}
+	return s.decorateOperatorPlatformDeliveryStats(ctx, providerCode, serviceCode, countryCode, items), nil
 }
 
 func (s *SMSService) Quote(ctx context.Context, userID int64, req SMSQuoteRequest) ([]SMSPublicChannel, error) {
@@ -2405,7 +2521,7 @@ func (s *SMSService) Quote(ctx context.Context, userID int64, req SMSQuoteReques
 		if err != nil || q == nil || q.Stock <= 0 {
 			continue
 		}
-		grade, rate := s.successGrade(ctx, code, req.ServiceCode, strings.ToUpper(req.CountryCode))
+		grade, rate, rateSampleSize := s.successGrade(ctx, pc, req.ServiceCode, strings.ToUpper(req.CountryCode), req.OperatorCode)
 		pricing, pricingErr := s.GetPricingSettings(ctx)
 		if pricingErr != nil {
 			return nil, pricingErr
@@ -2422,7 +2538,7 @@ func (s *SMSService) Quote(ctx context.Context, userID int64, req SMSQuoteReques
 		if _, err := s.db.ExecContext(ctx, `INSERT INTO sms_quotes (id,user_id,channel_id,provider_id,service_id,country_id,product_type,provider_service_code,provider_country_code,operator_code,voice_mode,duration_value,duration_unit,provider_cost_snapshot,sale_price_snapshot,success_rate_snapshot,success_rate_source_snapshot,success_rate_grade_snapshot,success_rate_multiplier_snapshot,fixed_markup_snapshot,stock,estimated_delivery_seconds,expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`, id, userID, channelID, providerID, serviceID, countryID, req.ProductType, providerServiceCode, providerCountryCode, req.OperatorCode, req.VoiceMode, req.DurationValue, req.DurationUnit, providerCost, salePrice, rate, rateSource(rate), grade, multiplier, fixed, q.Stock, q.EstimatedDeliverySeconds, expiresAt); err != nil {
 			return nil, err
 		}
-		out = append(out, SMSPublicChannel{Code: code, PublicName: name, Role: role, SalePrice: salePrice, Stock: q.Stock, SuccessRate: rate, SuccessRateGrade: grade, SuccessRateSource: rateSource(rate), EstimatedDeliverySeconds: q.EstimatedDeliverySeconds, Capabilities: capabilities, QuoteID: id, QuoteExpiresAt: expiresAt, ProviderCost: providerCost, GradeMultiplier: multiplier, GradeFixedMarkup: fixed, ProviderServiceCode: providerServiceCode, ProviderCountryCode: providerCountryCode})
+		out = append(out, SMSPublicChannel{Code: code, PublicName: name, Role: role, SalePrice: salePrice, Stock: q.Stock, SuccessRate: rate, SuccessRateGrade: grade, SuccessRateSource: rateSource(rate), SuccessRateSampleSize: rateSampleSize, EstimatedDeliverySeconds: q.EstimatedDeliverySeconds, Capabilities: capabilities, QuoteID: id, QuoteExpiresAt: expiresAt, ProviderCost: providerCost, GradeMultiplier: multiplier, GradeFixedMarkup: fixed, ProviderServiceCode: providerServiceCode, ProviderCountryCode: providerCountryCode})
 	}
 	return out, rows.Err()
 }
@@ -2439,26 +2555,25 @@ func rateSource(v *float64) string {
 	if v == nil {
 		return "unavailable"
 	}
-	return "platform"
+	return "platform_30d"
 }
-func (s *SMSService) successGrade(ctx context.Context, channel, service, country string) (string, *float64) {
-	var rate sql.NullFloat64
-	_ = s.db.QueryRowContext(ctx, `SELECT CASE WHEN COUNT(*) FILTER (WHERE status='completed')+COUNT(*) FILTER (WHERE status IN ('failed','expired')) >= 20 THEN COUNT(*) FILTER (WHERE status='completed')::float / NULLIF(COUNT(*) FILTER (WHERE status IN ('completed','failed','expired')),0) ELSE NULL END FROM sms_orders o JOIN sms_channels c ON c.id=o.channel_id JOIN sms_services sv ON sv.id=o.service_id JOIN sms_countries co ON co.id=o.country_id WHERE c.code=$1 AND sv.code=$2 AND co.iso2=$3`, channel, service, country).Scan(&rate)
-	if !rate.Valid {
-		return "", nil
+func (s *SMSService) successGrade(ctx context.Context, provider, service, country, operator string) (string, *float64, int) {
+	stats := s.platformDeliveryStats(ctx, provider, service, country, operator)
+	if stats.Rate == nil {
+		return "", nil, stats.SampleSize
 	}
-	v := rate.Float64
+	normalized := *stats.Rate / 100
 	switch {
-	case v >= .95:
-		return "S", &v
-	case v >= .90:
-		return "A", &v
-	case v >= .80:
-		return "B", &v
-	case v >= .60:
-		return "C", &v
+	case normalized >= .95:
+		return "S", &normalized, stats.SampleSize
+	case normalized >= .90:
+		return "A", &normalized, stats.SampleSize
+	case normalized >= .80:
+		return "B", &normalized, stats.SampleSize
+	case normalized >= .60:
+		return "C", &normalized, stats.SampleSize
 	default:
-		return "D", &v
+		return "D", &normalized, stats.SampleSize
 	}
 }
 func (s *SMSService) gradePricing(ctx context.Context, grade string, pricing SMSPricingSettings) (float64, float64) {
@@ -3271,6 +3386,7 @@ func (s *SMSService) pollSMSOrder(ctx context.Context, id int64, providerOrder, 
 			continue
 		}
 		_, _ = s.db.ExecContext(ctx, `INSERT INTO sms_messages(order_id,message_text,verification_code) SELECT $1,$2,$3 WHERE NOT EXISTS (SELECT 1 FROM sms_messages WHERE order_id=$1 AND message_text=$2)`, id, message, extractSMSCode(message))
+		_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET first_sms_received_at=COALESCE(first_sms_received_at,NOW()) WHERE id=$1`, id)
 	}
 	return s.convergeSMSProviderStatus(ctx, id, newStatus)
 }
@@ -3393,6 +3509,7 @@ func (s *SMSService) ProcessWebhook(ctx context.Context, providerCode string, pa
 			continue
 		}
 		_, _ = s.db.ExecContext(ctx, `INSERT INTO sms_messages(order_id,message_text,verification_code) SELECT $1,$2,$3 WHERE NOT EXISTS (SELECT 1 FROM sms_messages WHERE order_id=$1 AND message_text=$2)`, id, message, extractSMSCode(message))
+		_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET first_sms_received_at=COALESCE(first_sms_received_at,NOW()) WHERE id=$1`, id)
 	}
 	return s.convergeSMSProviderStatus(ctx, id, newStatus)
 }
