@@ -201,9 +201,47 @@ func (h *SMSHandler) ServiceCountries(c *gin.Context) {
 	providerCode := strings.ToLower(strings.TrimSpace(c.Param("provider")))
 	sortMode := strings.ToLower(strings.TrimSpace(c.DefaultQuery("sort", "")))
 	if sortMode == "" && providerCode == "5sim" {
-		sortMode = "rate"
+		sortMode = "recommended"
+	}
+	effectiveRate := func(item service.SMSCountryCatalogItem) float64 {
+		if item.Platform30dSuccessRate != nil {
+			return *item.Platform30dSuccessRate
+		}
+		return item.ConversionRate
 	}
 	switch sortMode {
+	case "recommended":
+		sort.SliceStable(items, func(i, j int) bool {
+			left := effectiveRate(items[i])
+			right := effectiveRate(items[j])
+			if left != right {
+				return left > right
+			}
+			if items[i].Platform30dSampleSize != items[j].Platform30dSampleSize {
+				return items[i].Platform30dSampleSize > items[j].Platform30dSampleSize
+			}
+			if items[i].Stock != items[j].Stock {
+				return items[i].Stock > items[j].Stock
+			}
+			return strings.ToLower(items[i].NameEN) < strings.ToLower(items[j].NameEN)
+		})
+	case "platform":
+		sort.SliceStable(items, func(i, j int) bool {
+			left, right := items[i].Platform30dSuccessRate, items[j].Platform30dSuccessRate
+			if left == nil && right != nil {
+				return false
+			}
+			if right == nil && left != nil {
+				return true
+			}
+			if left != nil && right != nil && *left != *right {
+				return *left > *right
+			}
+			if items[i].Platform30dSampleSize != items[j].Platform30dSampleSize {
+				return items[i].Platform30dSampleSize > items[j].Platform30dSampleSize
+			}
+			return items[i].ConversionRate > items[j].ConversionRate
+		})
 	case "rate":
 		sort.SliceStable(items, func(i, j int) bool {
 			if items[i].ConversionRate != items[j].ConversionRate {
