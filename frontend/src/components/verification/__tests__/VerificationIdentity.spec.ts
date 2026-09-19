@@ -31,6 +31,7 @@ describe('VerificationIdentity', () => {
     const wrapper = mountIdentity({ kind: 'country', code: 'US', label: 'United States' })
 
     expect(wrapper.get('.fi').classes()).toContain('fi-us')
+    expect(wrapper.get('span').classes()).toContain('whitespace-nowrap')
     expect(wrapper.find('img').exists()).toBe(false)
   })
 

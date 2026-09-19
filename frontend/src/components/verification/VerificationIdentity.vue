@@ -1,5 +1,5 @@
 <template>
-  <span class="inline-flex min-w-0 items-center gap-2">
+  <span class="inline-flex min-w-0 max-w-full items-center gap-2 whitespace-nowrap">
     <span class="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-md border border-gray-200 bg-white dark:border-dark-600 dark:bg-dark-700">
       <IconifyIcon
         v-if="platformIcon"

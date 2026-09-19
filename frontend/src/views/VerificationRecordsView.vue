@@ -19,12 +19,13 @@
         </div>
       </section>
 
-      <form class="glass-panel rounded-xl p-4" @submit.prevent="applyFilters">
-        <div class="grid items-end gap-3 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-[150px_170px_minmax(190px,1fr)_minmax(190px,1fr)_minmax(230px,1.2fr)_160px_160px_auto]">
-          <Select v-model="draftFilters.type" :label="t('verificationRecords.filters.type')" :options="typeOptions" clearable />
-          <Select v-model="draftFilters.outcome" :label="t('verificationRecords.filters.outcome')" :options="outcomeOptions" clearable />
+      <form class="glass-panel min-w-0 rounded-xl p-4" @submit.prevent="applyFilters">
+        <div class="grid min-w-0 grid-cols-1 items-end gap-3 md:grid-cols-2 xl:grid-cols-4 min-[2000px]:grid-cols-[150px_170px_minmax(190px,1fr)_minmax(190px,1fr)_minmax(230px,1.2fr)_160px_160px_auto]">
+          <Select v-model="draftFilters.type" class="min-w-0" :label="t('verificationRecords.filters.type')" :options="typeOptions" clearable />
+          <Select v-model="draftFilters.outcome" class="min-w-0" :label="t('verificationRecords.filters.outcome')" :options="outcomeOptions" clearable />
           <Select
             v-model="draftFilters.platform"
+            class="min-w-0"
             :label="t('verificationRecords.filters.platform')"
             :options="platformOptions"
             :placeholder="t('verificationRecords.filters.allPlatforms')"
@@ -40,6 +41,7 @@
           </Select>
           <Select
             v-model="draftFilters.country"
+            class="min-w-0"
             :label="t('verificationRecords.filters.country')"
             :options="countryOptions"
             :placeholder="t('verificationRecords.filters.allCountries')"
@@ -54,10 +56,10 @@
             <template #selected="{ option }"><VerificationIdentity v-if="option" kind="country" :code="String(option.value)" :label="String(option.label)" :show-code="false" /><span v-else>{{ t('verificationRecords.filters.allCountries') }}</span></template>
             <template #option="{ option }"><VerificationIdentity kind="country" :code="String(option.value)" :label="String(option.label)" /></template>
           </Select>
-          <label class="block min-w-0"><span class="input-label">{{ t('verificationRecords.filters.keyword') }}</span><input v-model.trim="draftFilters.keyword" class="input h-[42px]" :placeholder="t(isAdmin ? 'verificationRecords.filters.adminKeywordPlaceholder' : 'verificationRecords.filters.keywordPlaceholder')" /></label>
-          <label class="block min-w-0"><span class="input-label">{{ t('verificationRecords.filters.from') }}</span><input v-model="draftFilters.created_from" type="date" class="input h-[42px]" /></label>
-          <label class="block min-w-0"><span class="input-label">{{ t('verificationRecords.filters.to') }}</span><input v-model="draftFilters.created_to" type="date" class="input h-[42px]" /></label>
-          <div class="flex h-[42px] items-center gap-2 self-end">
+          <label class="block min-w-0"><span class="input-label">{{ t('verificationRecords.filters.keyword') }}</span><input v-model.trim="draftFilters.keyword" class="input h-[42px] min-w-0" :placeholder="t(isAdmin ? 'verificationRecords.filters.adminKeywordPlaceholder' : 'verificationRecords.filters.keywordPlaceholder')" /></label>
+          <label class="block min-w-0"><span class="input-label">{{ t('verificationRecords.filters.from') }}</span><input v-model="draftFilters.created_from" type="date" class="input h-[42px] min-w-0" /></label>
+          <label class="block min-w-0"><span class="input-label">{{ t('verificationRecords.filters.to') }}</span><input v-model="draftFilters.created_to" type="date" class="input h-[42px] min-w-0" /></label>
+          <div class="flex min-w-0 flex-wrap items-center gap-2 self-end">
             <button type="submit" class="btn btn-primary h-[42px] shrink-0 whitespace-nowrap" :disabled="loading"><Icon name="search" size="sm" aria-hidden="true" /><span>{{ t('common.search') }}</span></button>
             <button type="button" class="btn btn-secondary h-[42px] shrink-0 whitespace-nowrap" :disabled="loading" @click="resetFilters"><Icon name="eraser" size="sm" aria-hidden="true" /><span>{{ t('common.reset') }}</span></button>
           </div>
@@ -79,8 +81,8 @@
           </BulkActionBar>
         </div>
 
-        <div v-if="isAdmin" class="max-w-full overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500" tabindex="0" :aria-label="t('verificationRecords.adminTableLabel')">
-          <table class="min-w-[3300px] text-left text-sm">
+        <div v-if="isAdmin" class="w-full min-w-0 max-w-full overflow-x-auto overscroll-x-contain focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500" tabindex="0" :aria-label="t('verificationRecords.adminTableLabel')">
+          <table class="min-w-[3300px] whitespace-nowrap text-left text-sm">
             <thead class="whitespace-nowrap bg-gray-50 text-xs uppercase text-gray-500 dark:bg-dark-800 dark:text-gray-400">
               <tr>
                 <th class="w-12 px-4 py-3"><input type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" :checked="allPageSelected" :aria-label="t('verificationRecords.bulk.selectPage')" @change="toggleCurrentPage" /></th>
@@ -94,14 +96,14 @@
                 <td class="px-4 py-3"><input type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" :checked="selectedIds.has(record.id)" :aria-label="`${t('verificationRecords.columns.select')} ${record.order_no}`" @change="toggleRecord(record)" /></td>
                 <td class="whitespace-nowrap px-4 py-3 text-xs text-gray-500 dark:text-gray-400">{{ formatDate(record.created_at) }}</td><td class="whitespace-nowrap px-4 py-3"><span class="badge badge-info">{{ typeLabel(record.verification_type) }}</span></td><td class="px-4 py-3"><div class="min-w-52 font-medium text-gray-900 dark:text-white">{{ record.user_email || '-' }}</div><div class="text-xs text-gray-500">ID {{ record.user_id }}</div></td><td class="whitespace-nowrap px-4 py-3 font-mono text-xs">{{ record.order_no }}</td>
                 <td class="px-4 py-3"><VerificationIdentity kind="platform" :code="record.service_code" :label="platformLabel(record.service_code)" /></td><td class="px-4 py-3"><VerificationIdentity v-if="record.verification_type === 'sms' && record.region" kind="country" :code="record.region" :label="countryLabel(record.region)" /><span v-else class="text-gray-400">-</span></td>
-                <td class="px-4 py-3"><div class="min-w-44">{{ record.channel_name }}</div><div class="font-mono text-xs text-gray-500">{{ record.channel_code }}</div></td><td class="px-4 py-3 font-mono text-xs"><div class="min-w-52 break-all">{{ record.target || '-' }}</div></td><td class="whitespace-nowrap px-4 py-3 font-mono text-xs">{{ record.provider_code || '-' }}</td><td class="px-4 py-3"><span class="badge whitespace-nowrap" :class="outcomeClass(record.outcome)">{{ outcomeLabel(record.outcome) }}</span><div class="mt-1 whitespace-nowrap font-mono text-xs text-gray-500">{{ record.status }}</div></td><td class="px-4 py-3"><div class="whitespace-nowrap">{{ refundStatusLabel(record.refund_status) }}</div><div v-if="record.refund_reason" class="mt-1 max-w-52 text-xs text-gray-500">{{ refundReasonLabel(record.refund_reason) }}</div></td><td class="whitespace-nowrap px-4 py-3 tabular-nums">{{ money(record.sale_amount, record.currency) }}</td><td class="whitespace-nowrap px-4 py-3 tabular-nums">{{ money(record.provider_cost, record.currency) }}</td><td class="whitespace-nowrap px-4 py-3 tabular-nums">{{ money(record.user_debit_amount, record.currency) }}</td><td class="whitespace-nowrap px-4 py-3 tabular-nums">{{ money(record.reserved_amount, record.currency) }}</td><td class="whitespace-nowrap px-4 py-3 tabular-nums">{{ money(record.captured_amount, record.currency) }}</td><td class="whitespace-nowrap px-4 py-3 tabular-nums">{{ money(record.released_amount, record.currency) }}</td><td class="whitespace-nowrap px-4 py-3 tabular-nums">{{ money(record.refunded_amount, record.currency) }}</td><td class="px-4 py-3 text-center tabular-nums">{{ record.provider_request_count }}</td><td class="px-4 py-3"><div class="min-w-72 font-mono text-xs text-red-600 dark:text-red-300">{{ record.error_code || '-' }}</div><div v-if="record.error_message" class="mt-1 max-w-96 whitespace-normal break-words text-xs text-gray-500 dark:text-gray-400">{{ record.error_message }}</div></td>
+                <td class="px-4 py-3"><div class="min-w-44">{{ record.channel_name }}</div><div class="font-mono text-xs text-gray-500">{{ record.channel_code }}</div></td><td class="px-4 py-3 font-mono text-xs"><div class="min-w-52 break-all">{{ record.target || '-' }}</div></td><td class="whitespace-nowrap px-4 py-3 font-mono text-xs">{{ record.provider_code || '-' }}</td><td class="px-4 py-3"><span class="badge whitespace-nowrap" :class="outcomeClass(record.outcome)">{{ outcomeLabel(record.outcome) }}</span><div class="mt-1 whitespace-nowrap font-mono text-xs text-gray-500">{{ record.status }}</div></td><td class="px-4 py-3"><div class="block max-w-52 truncate" :title="refundStatusLabel(record.refund_status)">{{ refundStatusLabel(record.refund_status) }}</div><div v-if="record.refund_reason" class="mt-1 block max-w-52 truncate text-xs text-gray-500" :title="refundReasonLabel(record.refund_reason)">{{ refundReasonLabel(record.refund_reason) }}</div></td><td class="whitespace-nowrap px-4 py-3 tabular-nums">{{ money(record.sale_amount, record.currency) }}</td><td class="whitespace-nowrap px-4 py-3 tabular-nums">{{ money(record.provider_cost, record.currency) }}</td><td class="whitespace-nowrap px-4 py-3 tabular-nums">{{ money(record.user_debit_amount, record.currency) }}</td><td class="whitespace-nowrap px-4 py-3 tabular-nums">{{ money(record.reserved_amount, record.currency) }}</td><td class="whitespace-nowrap px-4 py-3 tabular-nums">{{ money(record.captured_amount, record.currency) }}</td><td class="whitespace-nowrap px-4 py-3 tabular-nums">{{ money(record.released_amount, record.currency) }}</td><td class="whitespace-nowrap px-4 py-3 tabular-nums">{{ money(record.refunded_amount, record.currency) }}</td><td class="px-4 py-3 text-center tabular-nums">{{ record.provider_request_count }}</td><td class="px-4 py-3"><div class="min-w-72 font-mono text-xs text-red-600 dark:text-red-300">{{ record.error_code || '-' }}</div><div v-if="record.error_message" class="mt-1 max-w-96 whitespace-normal break-words text-xs text-gray-500 dark:text-gray-400">{{ record.error_message }}</div></td>
               </tr>
             </tbody>
           </table>
         </div>
 
-        <div v-else class="max-w-full overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500" tabindex="0" :aria-label="t('verificationRecords.userTableLabel')">
-          <table class="w-full min-w-[1750px] text-left text-sm">
+        <div v-else class="w-full min-w-0 max-w-full overflow-x-auto overscroll-x-contain focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500" tabindex="0" :aria-label="t('verificationRecords.userTableLabel')">
+          <table class="w-full min-w-[1750px] whitespace-nowrap text-left text-sm">
             <thead class="whitespace-nowrap bg-gray-50 text-xs uppercase text-gray-500 dark:bg-dark-800 dark:text-gray-400"><tr><th class="px-4 py-3">{{ t('verificationRecords.columns.createdAt') }}</th><th class="px-4 py-3">{{ t('verificationRecords.columns.type') }}</th><th class="px-4 py-3">{{ t('verificationRecords.columns.orderNo') }}</th><th class="px-4 py-3">{{ t('verificationRecords.columns.platform') }}</th><th class="px-4 py-3">{{ t('verificationRecords.columns.country') }}</th><th class="px-4 py-3">{{ t('verificationRecords.columns.channel') }}</th><th class="px-4 py-3">{{ t('verificationRecords.columns.target') }}</th><th class="px-4 py-3">{{ t('verificationRecords.columns.result') }}</th><th class="px-4 py-3">{{ t('verificationRecords.columns.amount') }}</th><th class="px-4 py-3">{{ t('verificationRecords.columns.refundedAmount') }}</th><th class="px-4 py-3">{{ t('verificationRecords.columns.note') }}</th></tr></thead>
             <tbody>
               <tr v-if="loading && records.length === 0"><td colspan="11" class="px-5 py-12 text-center text-gray-500">{{ t('common.loading') }}</td></tr><tr v-else-if="records.length === 0"><td colspan="11" class="px-5 py-12 text-center text-gray-500">{{ t('verificationRecords.empty') }}</td></tr>
@@ -158,11 +160,52 @@ const countryCatalog = reactive<CatalogState>({ items: [], page: 1, pages: 1, qu
 const catalogState = (kind: 'platform' | 'country') => kind === 'platform' ? platformCatalog : countryCatalog
 const localizedOptionLabel = (option: VerificationRecordOption) => locale.value.startsWith('zh') ? option.label : option.label_en || option.label
 const platformOptions = computed(() => platformCatalog.items.map(item => ({ ...item, label: localizedOptionLabel(item) })))
-const countryOptions = computed(() => countryCatalog.items.map(item => ({ ...item, label: localizedOptionLabel(item) })))
+const regionDisplayNames = computed(() => {
+  try {
+    return new Intl.DisplayNames([String(locale.value || 'en')], { type: 'region' })
+  } catch {
+    return null
+  }
+})
+const localizedCountryCode = (code: string, fallback = '') => {
+  const normalized = String(code || '').trim().toUpperCase()
+  if (/^[A-Z]{2}$/.test(normalized)) {
+    const label = regionDisplayNames.value?.of(normalized)
+    if (label && label !== normalized) return label
+  }
+  return fallback.trim() || normalized || '-'
+}
+const countryOptions = computed(() => countryCatalog.items.map(item => ({
+  ...item,
+  label: localizedCountryCode(item.value, localizedOptionLabel(item)),
+})))
 const platformLabels = computed(() => Object.fromEntries(platformOptions.value.map(item => [item.value, item.label])))
-const countryLabels = computed(() => Object.fromEntries(countryOptions.value.map(item => [item.value, item.label])))
+const countryLabelAliases = computed(() => {
+  const labels: Record<string, string> = {}
+  countryCatalog.items.forEach((item, index) => {
+    const localizedLabel = countryOptions.value[index]?.label || localizedCountryCode(item.value)
+    for (const alias of [item.value, item.label, item.label_en]) {
+      const key = String(alias || '').trim()
+      if (!key) continue
+      labels[key] = localizedLabel
+      labels[key.toLowerCase()] = localizedLabel
+    }
+  })
+  return labels
+})
 const platformLabel = (code: string) => platformLabels.value[code] || code
-const countryLabel = (code: string) => countryLabels.value[code] || code
+const countryLabel = (code: string) => {
+  const key = String(code || '').trim()
+  return countryLabelAliases.value[key] || countryLabelAliases.value[key.toLowerCase()] || localizedCountryCode(key)
+}
+const countryLabels = computed(() => {
+  const labels = { ...countryLabelAliases.value }
+  for (const item of analytics.value.by_country) labels[item.key] = countryLabel(item.key)
+  for (const record of records.value) {
+    if (record.region) labels[record.region] = countryLabel(record.region)
+  }
+  return labels
+})
 
 const financialValue = (field: 'sale_amount' | 'provider_cost' | 'estimated_profit') => analytics.value.financial.length ? analytics.value.financial.map(item => formatCurrency(item[field], item.currency)).join(' / ') : '-'
 const summaryItems = computed(() => {

@@ -204,6 +204,51 @@ describe('SMSVerificationView', () => {
     wrapper.unmount()
   })
 
+  it('keeps order columns readable inside a keyboard-scrollable wide table', async () => {
+    const messageText = 'Your OpenAI verification code is 757119. Do not share it with anyone.'
+    smsAPI.orders.mockResolvedValue({
+      items: [{
+        ...order('completed', 'sms-wide-table'),
+        refund_status: 'approved',
+        messages: [{ id: 'message-1', verification_code: '757119', message_text: messageText }],
+      }],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+    const wrapper = mount(SMSVerificationView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<main><slot /></main>' },
+          Icon: true,
+          Pagination: true,
+          Select: true,
+          ConfirmDialog: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    const ordersTab = wrapper.findAll('[role="tab"]').find(tab => tab.text() === 'sms.user.orders')
+    await ordersTab!.trigger('click')
+    await flushPromises()
+
+    const scrollRegion = wrapper.get('.sms-orders-scroll')
+    const table = wrapper.get('.sms-orders-table')
+    expect(scrollRegion.classes()).toContain('overflow-x-auto')
+    expect(scrollRegion.attributes('tabindex')).toBe('0')
+    expect(table.classes()).toContain('min-w-[2200px]')
+    expect(table.classes()).toContain('table-fixed')
+    expect(table.get('thead').classes()).toContain('whitespace-nowrap')
+    expect(table.findAll('tbody td')).toHaveLength(11)
+    expect(table.findAll('tbody td').every(cell => cell.classes().includes('whitespace-nowrap'))).toBe(true)
+    expect(table.get('.sms-order-statuses').classes()).toContain('min-w-max')
+    expect(table.get('.sms-order-message-text').classes()).toContain('truncate')
+    expect(table.get('.sms-order-message-text').attributes('title')).toBe(messageText)
+    wrapper.unmount()
+  })
+
   it('labels purchase reconciliation as confirming purchase', async () => {
     smsAPI.orders.mockResolvedValue({
       items: [{ ...order('reconciling', 'sms-recovery'), reconciliation_action: 'purchase' }],

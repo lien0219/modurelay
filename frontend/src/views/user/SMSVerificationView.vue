@@ -273,13 +273,98 @@
         </form>
         <div v-if="ordersLoading" class="card p-8 text-center text-sm text-gray-500">{{ t('sms.user.loading') }}</div>
         <div v-else-if="!orders.length" class="card p-8 text-center text-sm text-gray-500">{{ t('sms.user.noOrders') }}</div>
-        <div v-else class="card overflow-x-auto">
-          <table class="min-w-[1220px] w-full text-left text-sm">
-            <thead class="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-dark-800"><tr><th class="px-4 py-3">{{ t('sms.user.order') }}</th><th class="px-4 py-3">{{ t('sms.user.channel') }}</th><th class="px-4 py-3">{{ t('sms.user.service') }}</th><th class="px-4 py-3">{{ t('sms.user.country') }}</th><th class="px-4 py-3">{{ t('sms.user.operator') }}</th><th class="px-4 py-3">{{ t('sms.user.phone') }}</th><th class="px-4 py-3">{{ t('sms.user.status') }}</th><th class="px-4 py-3">{{ t('sms.user.code') }}</th><th class="px-4 py-3">{{ t('sms.user.price') }}</th><th class="px-4 py-3">{{ t('sms.user.expiresIn') }}</th><th class="px-4 py-3">{{ t('sms.user.actions') }}</th></tr></thead>
+        <div
+          v-else
+          class="sms-orders-scroll card max-w-full overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500"
+          tabindex="0"
+          :aria-label="t('sms.user.orders')"
+        >
+          <table class="sms-orders-table w-full min-w-[2200px] table-fixed text-left text-sm">
+            <colgroup>
+              <col class="w-[320px]" />
+              <col class="w-[120px]" />
+              <col class="w-[200px]" />
+              <col class="w-[160px]" />
+              <col class="w-[130px]" />
+              <col class="w-[220px]" />
+              <col class="w-[220px]" />
+              <col class="w-[340px]" />
+              <col class="w-[110px]" />
+              <col class="w-[130px]" />
+              <col class="w-[250px]" />
+            </colgroup>
+            <thead class="whitespace-nowrap bg-gray-50 text-xs uppercase text-gray-500 dark:bg-dark-800">
+              <tr>
+                <th class="px-4 py-3">{{ t('sms.user.order') }}</th>
+                <th class="px-4 py-3">{{ t('sms.user.channel') }}</th>
+                <th class="px-4 py-3">{{ t('sms.user.service') }}</th>
+                <th class="px-4 py-3">{{ t('sms.user.country') }}</th>
+                <th class="px-4 py-3">{{ t('sms.user.operator') }}</th>
+                <th class="px-4 py-3">{{ t('sms.user.phone') }}</th>
+                <th class="px-4 py-3">{{ t('sms.user.status') }}</th>
+                <th class="px-4 py-3">{{ t('sms.user.code') }}</th>
+                <th class="px-4 py-3">{{ t('sms.user.price') }}</th>
+                <th class="px-4 py-3">{{ t('sms.user.expiresIn') }}</th>
+                <th class="px-4 py-3">{{ t('sms.user.actions') }}</th>
+              </tr>
+            </thead>
             <tbody>
-            <tr v-for="order in orders" :key="order.id" class="border-t border-gray-100 dark:border-dark-700">
-              <td class="px-4 py-3"><div class="flex min-w-max items-center gap-2"><span class="font-mono text-xs">{{ order.id }}</span><button type="button" class="btn btn-secondary btn-sm" :title="t('common.copy')" :aria-label="`${t('common.copy')} ${order.id}`" @click="copyText(order.id)"><Icon name="copy" size="xs" aria-hidden="true" /></button></div></td><td class="px-4 py-3">{{ order.channel_name || order.channel_code }}</td><td class="px-4 py-3"><div class="flex min-w-max items-center gap-2"><span class="relative flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-md bg-gray-100 text-xs font-semibold text-gray-500 dark:bg-dark-700 dark:text-gray-300"><span>{{ serviceLabel(order.service_code).slice(0, 1).toUpperCase() }}</span><IconifyIcon v-if="serviceLogo(order.service_code, serviceLabel(order.service_code))" :icon="serviceLogo(order.service_code, serviceLabel(order.service_code))" class="absolute inset-0 m-auto h-5 w-5 bg-gray-100 dark:bg-dark-700" /></span><span>{{ serviceLabel(order.service_code) }}</span></div></td><td class="px-4 py-3"><div class="flex min-w-max items-center gap-2"><span :class="flagClass(order.country_code)" class="fi fis rounded-sm shadow-sm" aria-hidden="true"></span><span>{{ countryLabel(order.country_code) }}</span></div></td><td class="px-4 py-3 font-mono text-xs">{{ order.operator_code || 'any' }}</td><td class="px-4 py-3"><div class="flex min-w-max items-center gap-2"><span class="font-mono">{{ order.phone_number || '-' }}</span><button v-if="order.phone_number" type="button" class="btn btn-secondary btn-sm" @click="copyText(order.phone_number)">{{ t('common.copy') }}</button></div></td><td class="px-4 py-3"><span class="badge" :class="statusClass(order.status)">{{ statusLabel(order.status, order.reconciliation_action) }}</span><span v-if="order.refund_status !== 'not_requested'" class="badge badge-warning ml-1">{{ refundLabel(order.refund_status) }}</span></td><td class="px-4 py-3"><div v-if="order.messages?.length" class="space-y-2"><div v-for="message in order.messages" :key="message.id" class="max-w-80"><div v-if="message.verification_code" class="flex items-center gap-2"><code class="font-mono font-semibold">{{ message.verification_code }}</code><button type="button" class="btn btn-secondary btn-sm" @click="copyText(message.verification_code)">{{ t('common.copy') }}</button></div><div class="mt-1 break-words text-xs text-gray-500">{{ message.message_text }}</div></div></div><span v-else>-</span></td><td class="px-4 py-3 tabular-nums">{{ order.price.toFixed(4) }}</td><td class="px-4 py-3 tabular-nums">{{ remainingLabel(order) }}</td><td class="px-4 py-3"><div class="flex min-w-max items-center gap-2"><button v-if="showCancelAction(order)" type="button" class="btn btn-secondary btn-sm" :disabled="!canCancelOrder(order)" :title="cancelActionHint(order)" @click="cancel(order)">{{ t('sms.user.cancel') }}</button><button v-if="order.status === 'active' && order.product_type === 'rental' && order.capabilities?.supports_extend" type="button" class="btn btn-secondary btn-sm" @click="extend(order.id)">{{ t('sms.user.extend') }}</button><button v-if="order.status === 'active' && order.product_type === 'temporary' && order.capabilities?.supports_resend" type="button" class="btn btn-secondary btn-sm" @click="resend(order.id)">{{ t('sms.user.resend') }}</button><button type="button" class="btn btn-secondary btn-sm" :disabled="refreshingId === order.id" :aria-label="t('common.refresh')" @click="refreshOrder(order.id)"><Icon name="refresh" size="sm" :class="refreshingId === order.id ? 'animate-spin' : ''" aria-hidden="true" /></button></div></td>
-            </tr>
+              <tr v-for="order in orders" :key="order.id" class="border-t border-gray-100 align-middle dark:border-dark-700">
+                <td class="whitespace-nowrap px-4 py-3">
+                  <div class="flex items-center gap-2">
+                    <span class="font-mono text-xs">{{ order.id }}</span>
+                    <button type="button" class="btn btn-secondary btn-sm shrink-0" :title="t('common.copy')" :aria-label="`${t('common.copy')} ${order.id}`" @click="copyText(order.id)"><Icon name="copy" size="xs" aria-hidden="true" /></button>
+                  </div>
+                </td>
+                <td class="whitespace-nowrap px-4 py-3"><span class="block truncate" :title="order.channel_name || order.channel_code">{{ order.channel_name || order.channel_code }}</span></td>
+                <td class="whitespace-nowrap px-4 py-3">
+                  <div class="flex min-w-0 items-center gap-2">
+                    <span class="relative flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-md bg-gray-100 text-xs font-semibold text-gray-500 dark:bg-dark-700 dark:text-gray-300"><span>{{ serviceLabel(order.service_code).slice(0, 1).toUpperCase() }}</span><IconifyIcon v-if="serviceLogo(order.service_code, serviceLabel(order.service_code))" :icon="serviceLogo(order.service_code, serviceLabel(order.service_code))" class="absolute inset-0 m-auto h-5 w-5 bg-gray-100 dark:bg-dark-700" /></span>
+                    <span class="block min-w-0 truncate" :title="serviceLabel(order.service_code)">{{ serviceLabel(order.service_code) }}</span>
+                  </div>
+                </td>
+                <td class="whitespace-nowrap px-4 py-3">
+                  <div class="flex min-w-0 items-center gap-2">
+                    <span :class="flagClass(order.country_code)" class="fi fis shrink-0 rounded-sm shadow-sm" aria-hidden="true"></span>
+                    <span class="block min-w-0 truncate" :title="countryLabel(order.country_code)">{{ countryLabel(order.country_code) }}</span>
+                  </div>
+                </td>
+                <td class="whitespace-nowrap px-4 py-3 font-mono text-xs"><span class="block truncate" :title="order.operator_code || 'any'">{{ order.operator_code || 'any' }}</span></td>
+                <td class="whitespace-nowrap px-4 py-3">
+                  <div class="flex items-center gap-2">
+                    <span class="font-mono">{{ order.phone_number || '-' }}</span>
+                    <button v-if="order.phone_number" type="button" class="btn btn-secondary btn-sm shrink-0" @click="copyText(order.phone_number)">{{ t('common.copy') }}</button>
+                  </div>
+                </td>
+                <td class="whitespace-nowrap px-4 py-3">
+                  <div class="sms-order-statuses flex min-w-max items-center gap-1.5">
+                    <span class="badge whitespace-nowrap" :class="statusClass(order.status)">{{ statusLabel(order.status, order.reconciliation_action) }}</span>
+                    <span v-if="order.refund_status !== 'not_requested'" class="badge badge-warning whitespace-nowrap">{{ refundLabel(order.refund_status) }}</span>
+                  </div>
+                </td>
+                <td class="whitespace-nowrap px-4 py-3">
+                  <div v-if="order.messages?.length" class="space-y-2">
+                    <div v-for="message in order.messages" :key="message.id" class="min-w-0 max-w-[308px]">
+                      <div v-if="message.verification_code" class="flex min-w-0 items-center gap-2">
+                        <code class="block min-w-0 flex-1 truncate font-mono font-semibold" :title="message.verification_code">{{ message.verification_code }}</code>
+                        <button type="button" class="btn btn-secondary btn-sm shrink-0" @click="copyText(message.verification_code)">{{ t('common.copy') }}</button>
+                      </div>
+                      <div class="sms-order-message-text mt-1 block truncate text-xs text-gray-500 dark:text-gray-400" :title="message.message_text || undefined">{{ message.message_text || '-' }}</div>
+                    </div>
+                  </div>
+                  <span v-else>-</span>
+                </td>
+                <td class="whitespace-nowrap px-4 py-3 tabular-nums">{{ order.price.toFixed(4) }}</td>
+                <td class="whitespace-nowrap px-4 py-3 tabular-nums">{{ remainingLabel(order) }}</td>
+                <td class="whitespace-nowrap px-4 py-3">
+                  <div class="flex min-w-max items-center gap-2">
+                    <button v-if="showCancelAction(order)" type="button" class="btn btn-secondary btn-sm" :disabled="!canCancelOrder(order)" :title="cancelActionHint(order)" @click="cancel(order)">{{ t('sms.user.cancel') }}</button>
+                    <button v-if="order.status === 'active' && order.product_type === 'rental' && order.capabilities?.supports_extend" type="button" class="btn btn-secondary btn-sm" @click="extend(order.id)">{{ t('sms.user.extend') }}</button>
+                    <button v-if="order.status === 'active' && order.product_type === 'temporary' && order.capabilities?.supports_resend" type="button" class="btn btn-secondary btn-sm" @click="resend(order.id)">{{ t('sms.user.resend') }}</button>
+                    <button type="button" class="btn btn-secondary btn-sm" :disabled="refreshingId === order.id" :aria-label="t('common.refresh')" @click="refreshOrder(order.id)"><Icon name="refresh" size="sm" :class="refreshingId === order.id ? 'animate-spin' : ''" aria-hidden="true" /></button>
+                  </div>
+                </td>
+              </tr>
             </tbody>
           </table>
         </div>
