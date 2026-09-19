@@ -858,7 +858,7 @@ func (p *fiveSIMProvider) RecoverTemporaryPurchase(ctx context.Context, req SMSP
 		if operatorCode != "any" && strings.ToLower(strings.TrimSpace(item.Operator)) != operatorCode {
 			continue
 		}
-		if req.ProviderCostLimit > 0 && item.Price > req.ProviderCostLimit+0.00000001 {
+		if operatorCode == "any" && req.ProviderCostLimit > 0 && item.Price > req.ProviderCostLimit+0.00000001 {
 			continue
 		}
 		id := fmt.Sprint(item.ID)
@@ -2731,6 +2731,44 @@ func (s *SMSService) loadQuote(ctx context.Context, userID int64, quoteID string
 	return &quote, nil
 }
 
+func recoverSMSPurchaseAfterError(provider SMSProvider, req SMSPurchaseRequest, startedAt time.Time, retry bool) (*SMSPurchaseResult, error) {
+	recoveryProvider, ok := provider.(SMSPurchaseRecoveryProvider)
+	if !ok || strings.ToLower(strings.TrimSpace(req.ProductType)) != "temporary" {
+		return nil, nil
+	}
+	attempts := 1
+	if retry {
+		attempts = 3
+	}
+	recoveryCtx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+	defer cancel()
+	var lastErr error
+	for attempt := 0; attempt < attempts; attempt++ {
+		if attempt > 0 {
+			delay := time.Duration(attempt) * 400 * time.Millisecond
+			timer := time.NewTimer(delay)
+			select {
+			case <-recoveryCtx.Done():
+				timer.Stop()
+				if lastErr != nil {
+					return nil, lastErr
+				}
+				return nil, recoveryCtx.Err()
+			case <-timer.C:
+			}
+		}
+		recovered, err := recoveryProvider.RecoverTemporaryPurchase(recoveryCtx, req, startedAt)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if recovered != nil && strings.TrimSpace(recovered.ProviderOrderID) != "" {
+			return recovered, nil
+		}
+	}
+	return nil, lastErr
+}
+
 func (s *SMSService) Purchase(ctx context.Context, userID int64, req SMSPurchaseRequest, idempotencyKey string, expectedPrice *float64) (*SMSOrder, error) {
 	if !s.Enabled(ctx) {
 		return nil, ErrSMSFeatureDisabled
@@ -2860,35 +2898,32 @@ func (s *SMSService) Purchase(ctx context.Context, userID int64, req SMSPurchase
 		purchased, err = provider.PurchaseTemporary(ctx, purchaseReq)
 	}
 	if err != nil {
-		if isSMSPurchaseOutcomeAmbiguous(err) {
-			// A timeout or upstream 5xx does not prove the allocation failed.
-			// 5SIM can successfully commit an order and still have a proxy/gateway
-			// return an error to us. Recover from recent provider history before
-			// deciding whether this attempt failed.
-			if recoveryProvider, ok := provider.(SMSPurchaseRecoveryProvider); ok && req.ProductType == "temporary" {
-				recoveryCtx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
-				recovered, recoveryErr := recoveryProvider.RecoverTemporaryPurchase(recoveryCtx, purchaseReq, purchaseStartedAt)
-				cancel()
-				if recoveryErr == nil && recovered != nil {
-					finalizeCtx, finalizeCancel := context.WithTimeout(context.Background(), 10*time.Second)
-					pricing, _ := s.GetPricingSettings(finalizeCtx)
-					expiresAt := smsOrderExpiresAt(time.Now(), req.ProductType, req.DurationValue, req.DurationUnit, recovered.ExpiresAt, time.Duration(pricing.TemporaryExpiryMinutes)*time.Minute)
-					activateErr := s.activateSMSOrder(finalizeCtx, orderID, userID, recovered.ProviderOrderID, recovered.PhoneNumber, expiresAt, recovered.ProviderCost, recovered.ProviderOperatorCode)
-					finalizeCancel()
-					if activateErr == nil {
-						return s.GetOrder(context.Background(), userID, orderID)
-					}
-				}
+		ambiguous := isSMSPurchaseOutcomeAmbiguous(err)
+		// Recovery is attempted for every temporary-provider error, not only
+		// timeouts/5xx. Some providers have been observed to commit an allocation
+		// and then return a non-success response. An exact history match is stronger
+		// evidence than the transport status and prevents orphaned paid numbers.
+		recovered, recoveryErr := recoverSMSPurchaseAfterError(provider, purchaseReq, purchaseStartedAt, ambiguous)
+		if recoveryErr == nil && recovered != nil {
+			finalizeCtx, finalizeCancel := context.WithTimeout(context.Background(), 10*time.Second)
+			pricing, _ := s.GetPricingSettings(finalizeCtx)
+			expiresAt := smsOrderExpiresAt(time.Now(), req.ProductType, req.DurationValue, req.DurationUnit, recovered.ExpiresAt, time.Duration(pricing.TemporaryExpiryMinutes)*time.Minute)
+			activateErr := s.activateSMSOrder(finalizeCtx, orderID, userID, recovered.ProviderOrderID, recovered.PhoneNumber, expiresAt, recovered.ProviderCost, recovered.ProviderOperatorCode)
+			if activateErr != nil {
+				_, _ = s.db.ExecContext(finalizeCtx, `UPDATE sms_orders SET provider_order_id=$1,phone_number=COALESCE(NULLIF($2,''),phone_number),expires_at=COALESCE($3,expires_at),provider_cost_snapshot=CASE WHEN $4>0 THEN $4 ELSE provider_cost_snapshot END,operator_code=COALESCE(NULLIF($5,''),operator_code),status='reconciling',reconciliation_action=$6,reconcile_after=NOW()+($7 * INTERVAL '1 second'),last_provider_error=$8,updated_at=NOW() WHERE id=$9 AND settlement_status='held'`, recovered.ProviderOrderID, recovered.PhoneNumber, expiresAt, recovered.ProviderCost, strings.TrimSpace(recovered.ProviderOperatorCode), smsReconciliationPurchase, int(smsVerificationPollInterval.Seconds()), "provider allocation recovered; settlement retry required", orderID)
 			}
-			// Keep this provisional attempt hidden from the user's order list and
-			// keep the sale amount frozen (not spent) while reconciliation checks
-			// whether the provider really created an order.
-			_, _ = s.db.ExecContext(context.Background(), `UPDATE sms_orders SET status='reconciling',reconciliation_action=$1,reconcile_after=NOW()+($2 * INTERVAL '1 second'),last_provider_error=$3 WHERE id=$4`, smsReconciliationPurchase, int(smsVerificationPollInterval.Seconds()), providerErrorDiagnostic(err), orderID)
-			return nil, ErrSMSProviderUnknown
+			finalizeCancel()
+			return s.GetOrder(context.Background(), userID, orderID)
 		}
-		// Only a definitive provider rejection reaches this path. No provider
-		// allocation exists, so release the reservation and remove the provisional
-		// platform row instead of creating a failed user order.
+		if ambiguous {
+			// The outcome is still unknown. Keep the amount frozen (not captured),
+			// expose the provisional order as "confirming purchase", and let both
+			// the foreground poller and worker keep checking provider history.
+			_, _ = s.db.ExecContext(context.Background(), `UPDATE sms_orders SET status='reconciling',reconciliation_action=$1,reconcile_after=NOW()+($2 * INTERVAL '1 second'),last_provider_error=$3,updated_at=NOW() WHERE id=$4`, smsReconciliationPurchase, int(smsVerificationPollInterval.Seconds()), providerErrorDiagnostic(err), orderID)
+			return s.GetOrder(context.Background(), userID, orderID)
+		}
+		// Only a definitive rejection with no recoverable provider allocation
+		// reaches this path. Release the hold and delete the provisional row.
 		if settleErr := s.failSMSPurchase(context.Background(), orderID, userID, providerErrorDiagnostic(err)); settleErr != nil {
 			return nil, settleErr
 		}
@@ -3246,42 +3281,41 @@ func sanitizeProviderError(err error) error {
 	}
 	var httpErr *smsProviderHTTPError
 	lower := strings.ToLower(strings.TrimSpace(err.Error()))
-	provider := "供应商"
-	if errors.As(err, &httpErr) && strings.EqualFold(httpErr.Provider, "5sim") {
-		provider = "5SIM"
+	if errors.As(err, &httpErr) {
 		lower = strings.ToLower(strings.TrimSpace(httpErr.Detail))
 	}
+	const channel = "当前渠道"
 	switch {
 	case strings.Contains(lower, "no free phones"):
-		return apperrors.Conflict("PROVIDER_NO_STOCK", provider+" 当前没有符合条件的可用号码，请刷新报价或更换国家/运营商").WithCause(err)
+		return apperrors.Conflict("PROVIDER_NO_STOCK", channel+"当前没有符合条件的可用号码，请刷新报价或更换国家/运营商").WithCause(err)
 	case strings.Contains(lower, "not enough user balance"):
-		return apperrors.ServiceUnavailable("PROVIDER_BALANCE_LOW", provider+" 供应商账户余额不足，请联系管理员").WithCause(err)
+		return apperrors.ServiceUnavailable("PROVIDER_BALANCE_LOW", channel+"上游账户余额不足，请联系管理员").WithCause(err)
 	case strings.Contains(lower, "not enough rating"):
-		return apperrors.ServiceUnavailable("PROVIDER_RATING_LOW", provider+" 账号评分不足，暂时无法下单").WithCause(err)
+		return apperrors.ServiceUnavailable("PROVIDER_RATING_LOW", channel+"上游账号评分不足，暂时无法下单").WithCause(err)
 	case strings.Contains(lower, "api limit is 100 requests per second"),
 		strings.Contains(lower, "ip address limit is 100 requests per second"):
-		return apperrors.TooManyRequests("PROVIDER_RATE_LIMITED", provider+" API 请求过于频繁，请稍后重试").WithCause(err)
+		return apperrors.TooManyRequests("PROVIDER_RATE_LIMITED", channel+"请求过于频繁，请稍后重试").WithCause(err)
 	case strings.Contains(lower, "max price"), strings.Contains(lower, "price limit"):
-		return apperrors.Conflict("PROVIDER_PRICE_LIMIT", provider+" 当前号码价格已超过本次报价上限，请刷新报价后重试").WithCause(err)
+		return apperrors.Conflict("PROVIDER_PRICE_LIMIT", channel+"当前号码价格已超过本次报价上限，请刷新报价后重试").WithCause(err)
 	case strings.Contains(lower, "bad country"), strings.Contains(lower, "country is incorrect"), strings.Contains(lower, "select country"):
-		return apperrors.ServiceUnavailable("PROVIDER_COUNTRY_INVALID", provider+" 国家参数暂不可用，请联系管理员检查渠道映射").WithCause(err)
+		return apperrors.ServiceUnavailable("PROVIDER_COUNTRY_INVALID", channel+"国家参数暂不可用，请联系管理员检查渠道映射").WithCause(err)
 	case strings.Contains(lower, "bad operator"), strings.Contains(lower, "select operator"):
-		return apperrors.ServiceUnavailable("PROVIDER_OPERATOR_INVALID", provider+" 运营商参数暂不可用，请更换运营商或联系管理员").WithCause(err)
+		return apperrors.ServiceUnavailable("PROVIDER_OPERATOR_INVALID", channel+"运营商参数暂不可用，请更换运营商或联系管理员").WithCause(err)
 	case strings.Contains(lower, "product is incorrect"), strings.Contains(lower, "no product"):
-		return apperrors.ServiceUnavailable("PROVIDER_SERVICE_INVALID", provider+" 服务参数暂不可用，请联系管理员检查渠道映射").WithCause(err)
+		return apperrors.ServiceUnavailable("PROVIDER_SERVICE_INVALID", channel+"服务参数暂不可用，请联系管理员检查渠道映射").WithCause(err)
 	}
 	if errors.As(err, &httpErr) {
 		switch httpErr.StatusCode {
 		case http.StatusUnauthorized, http.StatusForbidden:
-			return apperrors.ServiceUnavailable("PROVIDER_AUTH_FAILED", provider+" 认证失败，请联系管理员检查供应商凭证").WithCause(err)
+			return apperrors.ServiceUnavailable("PROVIDER_AUTH_FAILED", channel+"认证失败，请联系管理员检查渠道凭证").WithCause(err)
 		case http.StatusTooManyRequests:
-			return apperrors.TooManyRequests("PROVIDER_RATE_LIMITED", provider+" API 请求过于频繁，请稍后重试").WithCause(err)
+			return apperrors.TooManyRequests("PROVIDER_RATE_LIMITED", channel+"请求过于频繁，请稍后重试").WithCause(err)
 		}
 		if httpErr.StatusCode >= 500 {
-			return apperrors.ServiceUnavailable("PROVIDER_UPSTREAM_ERROR", provider+" 服务暂时异常，请稍后重试").WithCause(err)
+			return apperrors.ServiceUnavailable("PROVIDER_UPSTREAM_ERROR", channel+"服务暂时异常，请稍后重试").WithCause(err)
 		}
 	}
-	return apperrors.ServiceUnavailable("PROVIDER_UNAVAILABLE", provider+" 暂时无法完成本次下单，请刷新报价或稍后重试").WithCause(err)
+	return apperrors.ServiceUnavailable("PROVIDER_UNAVAILABLE", channel+"暂时无法完成本次下单，请刷新报价或稍后重试").WithCause(err)
 }
 func (s *SMSService) GetOrder(ctx context.Context, userID, orderID int64) (*SMSOrder, error) {
 	var o SMSOrder
@@ -3818,7 +3852,7 @@ func (s *SMSService) ListOrders(ctx context.Context, userID int64, admin bool) (
 	q := `SELECT o.id,o.public_id::text,o.user_id,o.product_type,o.status,o.reconciliation_action,c.code,c.public_name,sv.code,co.iso2,o.phone_number,o.operator_code,o.voice_mode,o.sale_price_snapshot,o.success_rate_snapshot,o.success_rate_grade_snapshot,o.success_rate_source_snapshot,o.refund_status,o.refund_reason,o.expires_at,o.created_at,p.code,p.base_url,p.capabilities FROM sms_orders o JOIN sms_channels c ON c.id=o.channel_id JOIN sms_providers p ON p.id=o.provider_id JOIN sms_services sv ON sv.id=o.service_id JOIN sms_countries co ON co.id=o.country_id`
 	args := []any{}
 	if !admin {
-		q += ` WHERE o.user_id=$1 AND NOT (o.status='pending' AND o.provider_order_id='')`
+		q += ` WHERE o.user_id=$1 AND NOT (o.provider_order_id='' AND o.status IN ('pending','failed'))`
 		args = append(args, userID)
 	}
 	q += ` ORDER BY o.created_at DESC LIMIT 100`
@@ -3867,7 +3901,7 @@ func (s *SMSService) ListUserOrdersPage(ctx context.Context, userID int64, page,
 	}
 	keyword = strings.TrimSpace(keyword)
 	status = strings.TrimSpace(status)
-	where := ` WHERE o.user_id=$1 AND NOT (o.status='pending' AND o.provider_order_id='')`
+	where := ` WHERE o.user_id=$1 AND NOT (o.provider_order_id='' AND o.status IN ('pending','failed'))`
 	args := []any{userID}
 	if keyword != "" {
 		args = append(args, "%"+keyword+"%")
