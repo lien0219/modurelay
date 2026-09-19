@@ -532,10 +532,26 @@ async function loadRecentSuccesses() {
   }
 }
 
+async function hydrateLiveOrders() {
+  try {
+    const page = await smsAPI.orders({ page: 1, page_size: 20 })
+    liveOrders.value = page.items
+      .filter(order => isOrderWaiting(order))
+      .slice(0, 10)
+    if (liveOrders.value.length) ensureOrderPolling()
+  } catch {
+    // Catalog loading must not fail just because recent-order hydration fails.
+  }
+}
+
 async function loadAll() {
   loading.value = true
   try {
-    providers.value = await smsAPI.providers()
+    const [providerItems] = await Promise.all([
+      smsAPI.providers(),
+      hydrateLiveOrders(),
+    ])
+    providers.value = providerItems
     const preferred = providers.value.find(item => item.code === providerCode.value && item.selectable)
       || providers.value.find(item => item.code === '5sim' && item.selectable)
       || providers.value.find(item => item.selectable)
@@ -720,13 +736,15 @@ async function purchase(quote: SMSQuote) {
     ensureOrderPolling()
     quotes.value = []
     await authStore.refreshUser().catch(() => undefined)
-    appStore.showSuccess(t('sms.user.purchaseSuccess'))
+    const confirming = liveOrders.value.some(order => order.status === 'reconciling' && order.reconciliation_action === 'purchase')
+    appStore.showSuccess(confirming ? t('sms.user.purchaseConfirming') : t('sms.user.purchaseSuccess'))
   } catch (error) {
     await authStore.refreshUser().catch(() => undefined)
     void loadOrders()
     const candidate = error as { reason?: string; code?: string | number }
     const reason = candidate?.reason || (typeof candidate?.code === 'string' ? candidate.code : '')
     if (reason === 'ORDER_RECONCILING') {
+      await hydrateLiveOrders()
       appStore.showSuccess(t('sms.user.purchaseConfirming'))
       ensureOrderPolling()
     } else {
