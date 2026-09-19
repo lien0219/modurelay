@@ -2903,7 +2903,7 @@ func (s *SMSService) Purchase(ctx context.Context, userID int64, req SMSPurchase
 		// timeouts/5xx. Some providers have been observed to commit an allocation
 		// and then return a non-success response. An exact history match is stronger
 		// evidence than the transport status and prevents orphaned paid numbers.
-		recovered, recoveryErr := recoverSMSPurchaseAfterError(provider, purchaseReq, purchaseStartedAt, ambiguous)
+		recovered, recoveryErr := recoverSMSPurchaseAfterError(provider, purchaseReq, purchaseStartedAt, true)
 		if recoveryErr == nil && recovered != nil {
 			finalizeCtx, finalizeCancel := context.WithTimeout(context.Background(), 10*time.Second)
 			pricing, _ := s.GetPricingSettings(finalizeCtx)
