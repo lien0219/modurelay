@@ -98,7 +98,6 @@ const (
 	smsProviderServiceCacheTTL     = 2 * time.Minute
 	smsProviderCountryCacheTTL     = 45 * time.Second
 	smsPlatformDeliveryStatsTTL    = 2 * time.Minute
-	smsPlatformDeliveryStatsWindow = 30 * 24 * time.Hour
 	smsPlatformRateMinSample       = 20
 )
 
