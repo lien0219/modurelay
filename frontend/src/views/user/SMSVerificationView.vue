@@ -247,8 +247,8 @@
             <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500 dark:text-gray-400">
               <span>{{ t('sms.user.stock') }}: {{ quote.stock }}</span>
               <span>{{ t('sms.user.eta') }}: {{ quote.estimated_delivery_seconds }}{{ t('sms.user.seconds') }}</span>
-              <span v-if="quote.success_rate != null">{{ t('sms.user.successRate') }}: {{ Math.round(quote.success_rate * 100) }}%{{ t('sms.user.separator') }}{{ quote.success_rate_grade || '-' }}</span>
-              <span v-else>{{ t('sms.user.insufficientSuccessData') }}</span>
+              <span v-if="quote.success_rate != null">{{ t('sms.user.platform30dSuccessRate') }}: {{ (quote.success_rate * 100).toFixed(2) }}% · n={{ quote.success_rate_sample_size || 0 }}{{ t('sms.user.separator') }}{{ quote.success_rate_grade || '-' }}</span>
+              <span v-else>{{ t('sms.user.platform30dInsufficient', { count: quote.success_rate_sample_size || 0, minimum: 20 }) }}</span>
               <span>{{ quote.capabilities.supports_cancel ? t('sms.user.capabilities.cancel') : t('sms.user.capabilities.noCancel') }}</span>
               <span>{{ quote.capabilities.supports_refund ? t('sms.user.capabilities.refund') : t('sms.user.capabilities.noRefund') }}</span>
             </div>
