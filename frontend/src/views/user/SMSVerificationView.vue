@@ -305,7 +305,7 @@ const operatorCode = ref('any')
 const voiceMode = ref(0)
 const serviceKeyword = ref('')
 const countryKeyword = ref('')
-const countrySortMode = ref<'rate' | 'price' | 'stock' | 'name'>('rate')
+const countrySortMode = ref<'recommended' | 'platform' | 'rate' | 'price' | 'stock' | 'name'>('recommended')
 const serviceCode = ref('')
 const countryCode = ref('')
 const durationValue = ref(1)
@@ -341,6 +341,7 @@ const tabs = computed(() => [
 ])
 const selectedService = computed(() => services.value.find(item => item.code === serviceCode.value))
 const selectedServiceLogo = computed(() => serviceLogo(selectedService.value?.code || '', selectedService.value?.name || ''))
+const selectedCountryStats = computed(() => countries.value.find(item => item.iso2 === countryCode.value))
 const bestQuote = computed(() => [...quotes.value].sort((a, b) => a.sale_price - b.sale_price)[0])
 const recentSuccessLoop = computed(() => recentSuccessItems.value.length ? [...recentSuccessItems.value, ...recentSuccessItems.value] : [])
 const serviceOptions = computed(() => services.value.map(item => ({ value: item.code, label: item.name || item.code, logo: item.icon || serviceLogo(item.code, item.name), stock: item.stock, startingPrice: item.starting_price })))
@@ -351,6 +352,10 @@ const countryOptions = computed(() => countries.value.map(item => ({
   stock: item.stock,
   startingPrice: item.starting_price,
   conversionRate: item.conversion_rate,
+  platform30dSuccessRate: item.platform_30d_success_rate,
+  platform30dSampleSize: item.platform_30d_sample_size || 0,
+  platform30dSuccesses: item.platform_30d_successes || 0,
+  platform30dFailures: item.platform_30d_failures || 0,
   recommendedOperator: item.recommended_operator,
   recommendedOperatorStock: item.recommended_operator_stock,
   recommendedStartingPrice: item.recommended_starting_price,
@@ -358,6 +363,8 @@ const countryOptions = computed(() => countries.value.map(item => ({
 })))
 const filteredCountryOptions = computed(() => countryOptions.value)
 const countrySortOptions = computed(() => [
+  { value: 'recommended', label: t('sms.user.sortRecommended') },
+  { value: 'platform', label: t('sms.user.sortByPlatform30d') },
   { value: 'rate', label: t('sms.user.sortByRate') },
   { value: 'price', label: t('sms.user.sortByPrice') },
   { value: 'stock', label: t('sms.user.sortByStock') },
@@ -591,7 +598,7 @@ async function loadProviderCatalog() {
   voiceMode.value = 0
   serviceKeyword.value = ''
   countryKeyword.value = ''
-  countrySortMode.value = providerCode.value === '5sim' ? 'rate' : 'name'
+  countrySortMode.value = providerCode.value === '5sim' ? 'recommended' : 'name'
   serviceCode.value = ''
   countryCode.value = ''
   quotes.value = []
