@@ -402,6 +402,7 @@ export default {
       purchase: '购买',
       purchaseSuccess: '下单成功，正在等待验证码',
       purchaseConfirming: '当前渠道正在确认下单结果，请稍候；确认成功后会自动进入接码倒计时。',
+      purchaseConfirmingInline: '当前渠道正在确认是否已成功分配号码。此时余额仅冻结，不会重复扣费；确认成功后会自动显示手机号并开始接码倒计时。',
       waitingForCode: '等待验证码…',
       cancelConfirmTitle: '取消接码订单',
       cancelConfirmMessage: '取消后该号码将停止等待验证码，并按渠道规则进入退款/结算流程。确认取消吗？',
