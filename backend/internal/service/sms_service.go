@@ -2604,27 +2604,35 @@ func (s *SMSService) Purchase(ctx context.Context, userID int64, req SMSPurchase
 		purchased, err = provider.PurchaseTemporary(ctx, purchaseReq)
 	}
 	if err != nil {
-		if isSMSProviderTimeout(err) {
-			// The upstream may have allocated a number even when our HTTP request
-			// timed out. 5SIM exposes recent activation history, so recover the
-			// exact new order when there is one unambiguous match.
+		if isSMSPurchaseOutcomeAmbiguous(err) {
+			// A timeout or upstream 5xx does not prove the allocation failed.
+			// 5SIM can successfully commit an order and still have a proxy/gateway
+			// return an error to us. Recover from recent provider history before
+			// deciding whether this attempt failed.
 			if recoveryProvider, ok := provider.(SMSPurchaseRecoveryProvider); ok && req.ProductType == "temporary" {
 				recoveryCtx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 				recovered, recoveryErr := recoveryProvider.RecoverTemporaryPurchase(recoveryCtx, purchaseReq, purchaseStartedAt)
 				cancel()
 				if recoveryErr == nil && recovered != nil {
-					pricing, _ := s.GetPricingSettings(context.Background())
+					finalizeCtx, finalizeCancel := context.WithTimeout(context.Background(), 10*time.Second)
+					pricing, _ := s.GetPricingSettings(finalizeCtx)
 					expiresAt := smsOrderExpiresAt(time.Now(), req.ProductType, req.DurationValue, req.DurationUnit, recovered.ExpiresAt, time.Duration(pricing.TemporaryExpiryMinutes)*time.Minute)
-					if activateErr := s.activateSMSOrder(context.Background(), orderID, userID, recovered.ProviderOrderID, recovered.PhoneNumber, expiresAt, recovered.ProviderCost, recovered.ProviderOperatorCode); activateErr == nil {
+					activateErr := s.activateSMSOrder(finalizeCtx, orderID, userID, recovered.ProviderOrderID, recovered.PhoneNumber, expiresAt, recovered.ProviderCost, recovered.ProviderOperatorCode)
+					finalizeCancel()
+					if activateErr == nil {
 						return s.GetOrder(context.Background(), userID, orderID)
 					}
 				}
 			}
-			// Keep the user's sale amount frozen, not spent, while we retry
-			// recovery. Do not wait 15 minutes before the first recovery attempt.
-			_, _ = s.db.ExecContext(context.Background(), `UPDATE sms_orders SET status='reconciling',reconciliation_action=$1,reconcile_after=NOW()+($2 * INTERVAL '1 second'),last_provider_error=$3 WHERE id=$4`, smsReconciliationPurchase, int(smsVerificationPollInterval.Seconds()), "provider timeout; purchase recovery required", orderID)
+			// Keep this provisional attempt hidden from the user's order list and
+			// keep the sale amount frozen (not spent) while reconciliation checks
+			// whether the provider really created an order.
+			_, _ = s.db.ExecContext(context.Background(), `UPDATE sms_orders SET status='reconciling',reconciliation_action=$1,reconcile_after=NOW()+($2 * INTERVAL '1 second'),last_provider_error=$3 WHERE id=$4`, smsReconciliationPurchase, int(smsVerificationPollInterval.Seconds()), providerErrorDiagnostic(err), orderID)
 			return nil, ErrSMSProviderUnknown
 		}
+		// Only a definitive provider rejection reaches this path. No provider
+		// allocation exists, so release the reservation and remove the provisional
+		// platform row instead of creating a failed user order.
 		if settleErr := s.failSMSPurchase(context.Background(), orderID, userID, providerErrorDiagnostic(err)); settleErr != nil {
 			return nil, settleErr
 		}
@@ -2947,6 +2955,22 @@ func isSMSProviderTimeout(err error) bool {
 	}
 	var netErr net.Error
 	return errors.As(err, &netErr) && netErr.Timeout()
+}
+
+func isSMSPurchaseOutcomeAmbiguous(err error) bool {
+	if err == nil {
+		return false
+	}
+	if isSMSProviderTimeout(err) {
+		return true
+	}
+	var httpErr *smsProviderHTTPError
+	if errors.As(err, &httpErr) {
+		// A 5xx may be emitted by an upstream proxy after the provider has already
+		// committed the allocation. Never treat it as proof that no order exists.
+		return httpErr.StatusCode >= 500
+	}
+	return false
 }
 
 func providerErrorDiagnostic(err error) string {
