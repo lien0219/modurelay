@@ -2365,8 +2365,53 @@ func (s *SMSService) platformDeliveryStats(ctx context.Context, providerCode, se
 }
 
 func (s *SMSService) decorateCountryPlatformDeliveryStats(ctx context.Context, providerCode, serviceCode string, items []SMSCountryCatalogItem) []SMSCountryCatalogItem {
+	if len(items) == 0 {
+		return items
+	}
+	allCached := true
+	for _, item := range items {
+		if _, ok := cachedSMSPlatformDeliveryStats(smsPlatformStatsCacheKey(providerCode, serviceCode, item.ISO2, "any")); !ok {
+			allCached = false
+			break
+		}
+	}
+	if !allCached {
+		rows, err := s.db.QueryContext(ctx, `SELECT co.iso2,
+			COUNT(*) FILTER (WHERE o.first_sms_received_at IS NOT NULL),
+			COUNT(*) FILTER (WHERE o.first_sms_received_at IS NULL AND o.status IN ('failed','expired'))
+		FROM sms_orders o
+		JOIN sms_providers p ON p.id=o.provider_id
+		JOIN sms_services sv ON sv.id=o.service_id
+		JOIN sms_countries co ON co.id=o.country_id
+		WHERE p.code=$1 AND sv.code=$2
+		  AND o.product_type='temporary' AND o.voice_mode=0
+		  AND o.provider_order_id<>''
+		  AND o.created_at >= NOW() - INTERVAL '30 days'
+		GROUP BY co.iso2`, strings.ToLower(strings.TrimSpace(providerCode)), strings.ToLower(strings.TrimSpace(serviceCode)))
+		if err == nil {
+			statsByCountry := make(map[string]smsPlatformDeliveryStats)
+			for rows.Next() {
+				var iso2 string
+				var successes, failures int
+				if scanErr := rows.Scan(&iso2, &successes, &failures); scanErr != nil {
+					continue
+				}
+				stats := smsPlatformDeliveryStats{SampleSize: successes + failures, Successes: successes, Failures: failures}
+				if stats.SampleSize >= smsPlatformRateMinSample {
+					rate := float64(successes) / float64(stats.SampleSize) * 100
+					stats.Rate = &rate
+				}
+				statsByCountry[strings.ToUpper(strings.TrimSpace(iso2))] = stats
+			}
+			_ = rows.Close()
+			for _, item := range items {
+				stats := statsByCountry[strings.ToUpper(strings.TrimSpace(item.ISO2))]
+				cacheSMSPlatformDeliveryStats(smsPlatformStatsCacheKey(providerCode, serviceCode, item.ISO2, "any"), stats)
+			}
+		}
+	}
 	for i := range items {
-		stats := s.platformDeliveryStats(ctx, providerCode, serviceCode, items[i].ISO2, "any")
+		stats, _ := cachedSMSPlatformDeliveryStats(smsPlatformStatsCacheKey(providerCode, serviceCode, items[i].ISO2, "any"))
 		items[i].Platform30dSuccessRate = stats.Rate
 		items[i].Platform30dSampleSize = stats.SampleSize
 		items[i].Platform30dSuccesses = stats.Successes
@@ -2376,12 +2421,57 @@ func (s *SMSService) decorateCountryPlatformDeliveryStats(ctx context.Context, p
 }
 
 func (s *SMSService) decorateOperatorPlatformDeliveryStats(ctx context.Context, providerCode, serviceCode, countryCode string, items []SMSOperatorOption) []SMSOperatorOption {
+	if len(items) == 0 {
+		return items
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT lower(o.operator_code),
+		COUNT(*) FILTER (WHERE o.first_sms_received_at IS NOT NULL),
+		COUNT(*) FILTER (WHERE o.first_sms_received_at IS NULL AND o.status IN ('failed','expired'))
+		FROM sms_orders o
+		JOIN sms_providers p ON p.id=o.provider_id
+		JOIN sms_services sv ON sv.id=o.service_id
+		JOIN sms_countries co ON co.id=o.country_id
+		WHERE p.code=$1 AND sv.code=$2 AND co.iso2=$3
+		  AND o.product_type='temporary' AND o.voice_mode=0
+		  AND o.provider_order_id<>''
+		  AND o.created_at >= NOW() - INTERVAL '30 days'
+		GROUP BY lower(o.operator_code)`, strings.ToLower(strings.TrimSpace(providerCode)), strings.ToLower(strings.TrimSpace(serviceCode)), strings.ToUpper(strings.TrimSpace(countryCode)))
+	statsByOperator := make(map[string]smsPlatformDeliveryStats)
+	aggregate := smsPlatformDeliveryStats{}
+	if err == nil {
+		for rows.Next() {
+			var operator string
+			var successes, failures int
+			if scanErr := rows.Scan(&operator, &successes, &failures); scanErr != nil {
+				continue
+			}
+			stats := smsPlatformDeliveryStats{SampleSize: successes + failures, Successes: successes, Failures: failures}
+			if stats.SampleSize >= smsPlatformRateMinSample {
+				rate := float64(successes) / float64(stats.SampleSize) * 100
+				stats.Rate = &rate
+			}
+			statsByOperator[strings.ToLower(strings.TrimSpace(operator))] = stats
+			aggregate.Successes += successes
+			aggregate.Failures += failures
+		}
+		_ = rows.Close()
+	}
+	aggregate.SampleSize = aggregate.Successes + aggregate.Failures
+	if aggregate.SampleSize >= smsPlatformRateMinSample {
+		rate := float64(aggregate.Successes) / float64(aggregate.SampleSize) * 100
+		aggregate.Rate = &rate
+	}
 	for i := range items {
-		stats := s.platformDeliveryStats(ctx, providerCode, serviceCode, countryCode, items[i].Code)
+		code := strings.ToLower(strings.TrimSpace(items[i].Code))
+		stats := statsByOperator[code]
+		if code == "any" {
+			stats = aggregate
+		}
 		items[i].Platform30dSuccessRate = stats.Rate
 		items[i].Platform30dSampleSize = stats.SampleSize
 		items[i].Platform30dSuccesses = stats.Successes
 		items[i].Platform30dFailures = stats.Failures
+		cacheSMSPlatformDeliveryStats(smsPlatformStatsCacheKey(providerCode, serviceCode, countryCode, code), stats)
 	}
 	return items
 }
