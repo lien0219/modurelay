@@ -382,6 +382,7 @@ export default {
       currency: 'USD',
       purchase: 'Purchase',
       purchaseSuccess: 'Order placed. Waiting for the verification code.',
+      purchaseConfirming: 'The provider is confirming the purchase. It will automatically enter the SMS countdown once recovered.',
       waitingForCode: 'Waiting for verification code…',
       cancelConfirmTitle: 'Cancel SMS order',
       cancelConfirmMessage: 'Cancelling stops waiting for SMS and then follows the channel refund/settlement rules. Continue?',
