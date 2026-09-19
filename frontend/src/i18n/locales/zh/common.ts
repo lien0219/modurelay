@@ -401,7 +401,7 @@ export default {
       currency: '美元',
       purchase: '购买',
       purchaseSuccess: '下单成功，正在等待验证码',
-      purchaseConfirming: '供应商正在确认下单结果，请稍候，成功后会自动进入接码倒计时。',
+      purchaseConfirming: '当前渠道正在确认下单结果，请稍候；确认成功后会自动进入接码倒计时。',
       waitingForCode: '等待验证码…',
       cancelConfirmTitle: '取消接码订单',
       cancelConfirmMessage: '取消后该号码将停止等待验证码，并按渠道规则进入退款/结算流程。确认取消吗？',
@@ -429,7 +429,7 @@ export default {
       refunds: { approved: '退款成功', rejected: '退款被拒', pending: '退款处理中' },
       provider: '供应商', selectProvider: '选择供应商', selected: '已选择',
       productTypes: { temporary: '临时号码', rental: '长期号码' },
-      errors: { unavailable: '接码服务暂时不可用。', quote: '报价获取失败。', orders: '订单加载失败。', purchase: '下单失败，余额未必扣除，请刷新订单确认。', insufficientStock: '当前通道库存不足，请减少购买数量或刷新报价。', providerNoStock: '5SIM 当前没有符合条件的可用号码，请刷新报价或更换国家/运营商。', providerPriceLimit: '5SIM 当前号码价格已超过本次报价上限，请刷新报价后重试。', providerBalanceLow: '5SIM 供应商账户余额不足，请联系管理员充值供应商余额。', providerRateLimited: '5SIM API 请求过于频繁，请稍后重试。', providerAuthFailed: '5SIM 认证失败，请管理员检查 API 凭证。', providerCountryInvalid: '5SIM 国家映射无效，请管理员检查国家映射。', providerOperatorInvalid: '5SIM 运营商参数无效，请更换运营商或联系管理员。', providerServiceInvalid: '5SIM 服务映射无效，请管理员检查服务映射。', providerUpstreamError: '5SIM 服务端暂时异常，请稍后重试。', cancel: '取消失败。', cancelTooEarly: '请等待配置的取消时长后再操作。', refund: '退款申请失败。', extend: '续租失败。' },
+      errors: { unavailable: '接码服务暂时不可用。', quote: '报价获取失败。', orders: '订单加载失败。', purchase: '下单失败，余额未必扣除，请刷新订单确认。', insufficientStock: '当前通道库存不足，请减少购买数量或刷新报价。', providerNoStock: '当前渠道没有符合条件的可用号码，请刷新报价或更换国家/运营商。', providerPriceLimit: '当前渠道号码价格已超过本次报价上限，请刷新报价后重试。', providerBalanceLow: '当前渠道上游账户余额不足，请联系管理员。', providerRateLimited: '当前渠道请求过于频繁，请稍后重试。', providerAuthFailed: '当前渠道认证失败，请管理员检查渠道凭证。', providerCountryInvalid: '当前渠道国家映射无效，请管理员检查渠道映射。', providerOperatorInvalid: '当前渠道运营商参数无效，请更换运营商或联系管理员。', providerServiceInvalid: '当前渠道服务映射无效，请管理员检查渠道映射。', providerUpstreamError: '当前渠道服务暂时异常，请稍后重试。', cancel: '取消失败。', cancelTooEarly: '请等待配置的取消时长后再操作。', refund: '退款申请失败。', extend: '续租失败。' },
     },
   },
 
