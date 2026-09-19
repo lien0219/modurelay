@@ -499,6 +499,32 @@ func TestSMSProviderTerminalStateNeedsVerificationCode(t *testing.T) {
 	}
 }
 
+func TestSMSProviderExpiryWaitsForPlatformExpiry(t *testing.T) {
+	now := time.Date(2026, 9, 19, 15, 10, 0, 0, time.UTC)
+	platformExpiry := now.Add(5 * time.Minute)
+	if got := deferSMSProviderExpiry("temporary", "expired", "", &platformExpiry, now); got != "active" {
+		t.Fatalf("provider timeout before platform expiry = %q, want active", got)
+	}
+	if got := deferSMSProviderExpiry("temporary", "expired", "", &platformExpiry, platformExpiry); got != "expired" {
+		t.Fatalf("provider timeout at platform expiry = %q, want expired", got)
+	}
+	if got := deferSMSProviderExpiry("temporary", "cancelled", "", &platformExpiry, now); got != "active" {
+		t.Fatalf("provider cancellation before platform expiry = %q, want active", got)
+	}
+	if got := deferSMSProviderExpiry("temporary", "TIMEOUT", "", &platformExpiry, now); got != "active" {
+		t.Fatalf("raw provider timeout before platform expiry = %q, want active", got)
+	}
+	if got := deferSMSProviderExpiry("temporary", "CANCELED", "", &platformExpiry, now); got != "active" {
+		t.Fatalf("raw provider cancellation before platform expiry = %q, want active", got)
+	}
+	if got := deferSMSProviderExpiry("temporary", "cancelled", smsReconciliationCancel, &platformExpiry, now); got != "cancelled" {
+		t.Fatalf("manual cancellation before platform expiry = %q, want cancelled", got)
+	}
+	if got := deferSMSProviderExpiry("rental", "expired", "", &platformExpiry, now); got != "expired" {
+		t.Fatalf("rental provider expiry = %q, want expired", got)
+	}
+}
+
 func TestSMSCodeExtractionHandlesPunctuationAndRejectsLongNumbers(t *testing.T) {
 	if got := extractSMSCode("验证码：482913"); got != "482913" {
 		t.Fatalf("Chinese punctuation code = %q", got)

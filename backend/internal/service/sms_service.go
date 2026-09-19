@@ -3563,6 +3563,21 @@ func smsStatusFromProvider(result *SMSStatusResult) string {
 	return status
 }
 
+// deferSMSProviderExpiry keeps a temporary order open until the platform's
+// configured expiry.  Some providers (notably 5SIM) can report their own
+// timeout before that policy deadline.  That provider timeout must not be
+// mistaken for the platform expiry: the worker will perform the provider
+// cancellation/refund at expires_at and settle the local order then.
+func deferSMSProviderExpiry(productType, status, reconciliationAction string, expiresAt *time.Time, now time.Time) string {
+	status = normalizeSMSStatus(status)
+	if productType == "temporary" &&
+		(reconciliationAction == "" || reconciliationAction == smsReconciliationPurchase) &&
+		(status == "expired" || status == "cancelled") && expiresAt != nil && now.Before(*expiresAt) {
+		return "active"
+	}
+	return status
+}
+
 // SyncOrderStatus performs one bounded provider poll and records newly received
 // messages. It is called by the order endpoint and can also be used by a worker.
 func (s *SMSService) SyncOrderStatus(ctx context.Context, userID int64, publicID string) error {
@@ -3670,10 +3685,18 @@ func (s *SMSService) pollSMSOrder(ctx context.Context, id int64, providerOrder, 
 	if result == nil {
 		return nil
 	}
+	var expiresAt sql.NullTime
+	var reconciliationAction string
+	if err := s.db.QueryRowContext(ctx, `SELECT expires_at,reconciliation_action FROM sms_orders WHERE id=$1`, id).Scan(&expiresAt, &reconciliationAction); err != nil {
+		return err
+	}
 	if err := s.updateSMSProviderActuals(ctx, id, result.ProviderCost, result.ProviderOperatorCode); err != nil {
 		return err
 	}
 	newStatus := smsStatusFromProvider(result)
+	if expiresAt.Valid {
+		newStatus = deferSMSProviderExpiry(productType, newStatus, reconciliationAction, &expiresAt.Time, time.Now())
+	}
 	if productType == "rental" && newStatus == "completed" {
 		newStatus = "active"
 	}
@@ -3829,13 +3852,17 @@ func (s *SMSService) ProcessWebhook(ctx context.Context, providerCode string, pa
 	var current string
 	var productType, baseURL, credential string
 	var expiresAt sql.NullTime
-	if err := s.db.QueryRowContext(ctx, `SELECT o.id,o.user_id,o.status,o.product_type,p.base_url,p.credential_ref,o.expires_at FROM sms_orders o JOIN sms_providers p ON p.id=o.provider_id WHERE p.code=$1 AND o.provider_order_id=$2`, providerCode, providerOrderID).Scan(&id, &orderUserID, &current, &productType, &baseURL, &credential, &expiresAt); err != nil {
+	var reconciliationAction string
+	if err := s.db.QueryRowContext(ctx, `SELECT o.id,o.user_id,o.status,o.product_type,p.base_url,p.credential_ref,o.expires_at,o.reconciliation_action FROM sms_orders o JOIN sms_providers p ON p.id=o.provider_id WHERE p.code=$1 AND o.provider_order_id=$2`, providerCode, providerOrderID).Scan(&id, &orderUserID, &current, &productType, &baseURL, &credential, &expiresAt, &reconciliationAction); err != nil {
 		return err
 	}
 	if expiresAt.Valid && !expiresAt.Time.After(time.Now()) && (current == "active" || current == "provider_unknown" || current == "reconciling") {
 		return s.expireSMSOrder(ctx, id, orderUserID, productType, providerOrderID, providerCode, baseURL, credential)
 	}
 	newStatus := smsStatusFromProvider(&payload)
+	if expiresAt.Valid {
+		newStatus = deferSMSProviderExpiry(productType, newStatus, reconciliationAction, &expiresAt.Time, time.Now())
+	}
 	if current == "completed" || current == "refunded" || current == "cancelled" || current == "failed" || current == "expired" {
 		newStatus = current
 	}
