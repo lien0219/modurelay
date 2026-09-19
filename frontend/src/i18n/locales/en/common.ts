@@ -402,6 +402,7 @@ export default {
       purchase: 'Purchase',
       purchaseSuccess: 'Order placed. Waiting for the verification code.',
       purchaseConfirming: 'The current channel is confirming the purchase. The SMS countdown will start automatically once confirmed.',
+      purchaseConfirmingInline: 'The current channel is confirming whether a number was allocated. The amount is only frozen during confirmation; once confirmed, the phone number and SMS countdown will appear automatically.',
       waitingForCode: 'Waiting for verification code…',
       cancelConfirmTitle: 'Cancel SMS order',
       cancelConfirmMessage: 'Cancelling stops waiting for SMS and then follows the channel refund/settlement rules. Continue?',
