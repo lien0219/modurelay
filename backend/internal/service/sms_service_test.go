@@ -588,6 +588,31 @@ func TestSMSCaptureIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestSMSActivateOrderPersistsFractionalProviderCost(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectBegin()
+	mock.ExpectQuery(`UPDATE sms_orders SET status='active'.*provider_cost_snapshot=CASE WHEN \$4::numeric>0 THEN \$4::numeric`).
+		WithArgs("1094764603", "+44 7536658308", nil, 0.2, "virtual66", int64(28)).
+		WillReturnRows(sqlmock.NewRows([]string{"reserved_amount"}).AddRow(5.8))
+	mock.ExpectExec(`UPDATE users SET frozen_balance`).
+		WithArgs(5.8, int64(1)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	svc := &SMSService{db: db}
+	if err := svc.activateSMSOrder(context.Background(), 28, 1, "1094764603", "+44 7536658308", nil, 0.2, "virtual66"); err != nil {
+		t.Fatal(err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestSMS5SIMRefundReconciliationCallsCancelOnlyOnce(t *testing.T) {
 	var cancelCalls int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

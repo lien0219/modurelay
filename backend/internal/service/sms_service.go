@@ -95,10 +95,10 @@ var smsPlatformDeliveryStatsCache = struct {
 }{items: map[string]smsPlatformDeliveryStatsCacheEntry{}}
 
 const (
-	smsProviderServiceCacheTTL     = 2 * time.Minute
-	smsProviderCountryCacheTTL     = 45 * time.Second
-	smsPlatformDeliveryStatsTTL    = 2 * time.Minute
-	smsPlatformRateMinSample       = 20
+	smsProviderServiceCacheTTL  = 2 * time.Minute
+	smsProviderCountryCacheTTL  = 45 * time.Second
+	smsPlatformDeliveryStatsTTL = 2 * time.Minute
+	smsPlatformRateMinSample    = 20
 )
 
 func smsProviderCatalogCacheKey(providerCode, productType string, durationValue int, durationUnit string) string {
@@ -333,16 +333,16 @@ type SMSProductServiceCountryProvider interface {
 }
 
 type SMSOperatorOption struct {
-	Code                    string   `json:"code"`
-	Name                    string   `json:"name"`
-	Stock                   int      `json:"stock,omitempty"`
-	ProviderCost            float64  `json:"-"`
-	ProviderRate            float64  `json:"provider_rate,omitempty"`
-	Platform30dSuccessRate  *float64 `json:"platform_30d_success_rate,omitempty"`
-	Platform30dSampleSize   int      `json:"platform_30d_sample_size,omitempty"`
-	Platform30dSuccesses    int      `json:"platform_30d_successes,omitempty"`
-	Platform30dFailures     int      `json:"platform_30d_failures,omitempty"`
-	Available               bool     `json:"available"`
+	Code                   string   `json:"code"`
+	Name                   string   `json:"name"`
+	Stock                  int      `json:"stock,omitempty"`
+	ProviderCost           float64  `json:"-"`
+	ProviderRate           float64  `json:"provider_rate,omitempty"`
+	Platform30dSuccessRate *float64 `json:"platform_30d_success_rate,omitempty"`
+	Platform30dSampleSize  int      `json:"platform_30d_sample_size,omitempty"`
+	Platform30dSuccesses   int      `json:"platform_30d_successes,omitempty"`
+	Platform30dFailures    int      `json:"platform_30d_failures,omitempty"`
+	Available              bool     `json:"available"`
 }
 
 type SMSOperatorProvider interface {
@@ -1803,15 +1803,15 @@ type SMSPublicProvider struct {
 	Capabilities SMSProviderCapabilities `json:"capabilities"`
 }
 type SMSCountryCatalogItem struct {
-	ISO2                     string  `json:"iso2"`
-	ISO3                     string  `json:"iso3,omitempty"`
-	CallingCode              string  `json:"calling_code,omitempty"`
-	NameZH                   string  `json:"name_zh,omitempty"`
-	NameEN                   string  `json:"name_en,omitempty"`
-	ProviderCode             string  `json:"provider_code,omitempty"`
-	Stock                    int     `json:"stock,omitempty"`
-	ProviderCost             float64 `json:"-"`
-	StartingPrice            float64 `json:"starting_price,omitempty"`
+	ISO2                     string   `json:"iso2"`
+	ISO3                     string   `json:"iso3,omitempty"`
+	CallingCode              string   `json:"calling_code,omitempty"`
+	NameZH                   string   `json:"name_zh,omitempty"`
+	NameEN                   string   `json:"name_en,omitempty"`
+	ProviderCode             string   `json:"provider_code,omitempty"`
+	Stock                    int      `json:"stock,omitempty"`
+	ProviderCost             float64  `json:"-"`
+	StartingPrice            float64  `json:"starting_price,omitempty"`
 	ConversionRate           float64  `json:"conversion_rate,omitempty"`
 	Platform30dSuccessRate   *float64 `json:"platform_30d_success_rate,omitempty"`
 	Platform30dSampleSize    int      `json:"platform_30d_sample_size,omitempty"`
@@ -2984,7 +2984,7 @@ func (s *SMSService) Purchase(ctx context.Context, userID int64, req SMSPurchase
 			expiresAt := smsOrderExpiresAt(time.Now(), req.ProductType, req.DurationValue, req.DurationUnit, recovered.ExpiresAt, time.Duration(pricing.TemporaryExpiryMinutes)*time.Minute)
 			activateErr := s.activateSMSOrder(finalizeCtx, orderID, userID, recovered.ProviderOrderID, recovered.PhoneNumber, expiresAt, recovered.ProviderCost, recovered.ProviderOperatorCode)
 			if activateErr != nil {
-				_, _ = s.db.ExecContext(finalizeCtx, `UPDATE sms_orders SET provider_order_id=$1,phone_number=COALESCE(NULLIF($2,''),phone_number),expires_at=COALESCE($3,expires_at),provider_cost_snapshot=CASE WHEN $4>0 THEN $4 ELSE provider_cost_snapshot END,operator_code=COALESCE(NULLIF($5,''),operator_code),status='reconciling',reconciliation_action=$6,reconcile_after=NOW()+($7 * INTERVAL '1 second'),last_provider_error=$8,updated_at=NOW() WHERE id=$9 AND settlement_status='held'`, recovered.ProviderOrderID, recovered.PhoneNumber, expiresAt, recovered.ProviderCost, strings.TrimSpace(recovered.ProviderOperatorCode), smsReconciliationPurchase, int(smsVerificationPollInterval.Seconds()), "provider allocation recovered; settlement retry required", orderID)
+				_, _ = s.db.ExecContext(finalizeCtx, `UPDATE sms_orders SET provider_order_id=$1,phone_number=COALESCE(NULLIF($2,''),phone_number),expires_at=COALESCE($3,expires_at),provider_cost_snapshot=CASE WHEN $4::numeric>0 THEN $4::numeric ELSE provider_cost_snapshot END,operator_code=COALESCE(NULLIF($5,''),operator_code),status='reconciling',reconciliation_action=$6,reconcile_after=NOW()+($7 * INTERVAL '1 second'),last_provider_error=$8,updated_at=NOW() WHERE id=$9 AND settlement_status='held'`, recovered.ProviderOrderID, recovered.PhoneNumber, expiresAt, recovered.ProviderCost, strings.TrimSpace(recovered.ProviderOperatorCode), smsReconciliationPurchase, int(smsVerificationPollInterval.Seconds()), "provider allocation recovered; settlement retry required", orderID)
 			}
 			finalizeCancel()
 			return s.GetOrder(context.Background(), userID, orderID)
@@ -3022,7 +3022,7 @@ func (s *SMSService) Purchase(ctx context.Context, userID int64, req SMSPurchase
 		// Persist the provider reference before returning an uncertain result so
 		// the reconciliation worker can poll this exact order instead of guessing
 		// from history.
-		_, _ = s.db.ExecContext(finalizeCtx, `UPDATE sms_orders SET provider_order_id=$1,phone_number=COALESCE(NULLIF($2,''),phone_number),expires_at=COALESCE($3,expires_at),provider_cost_snapshot=CASE WHEN $4>0 THEN $4 ELSE provider_cost_snapshot END,operator_code=COALESCE(NULLIF($5,''),operator_code),status='reconciling',reconciliation_action=$6,reconcile_after=NOW()+($7 * INTERVAL '1 second'),last_provider_error=$8 WHERE id=$9 AND settlement_status='held'`, purchased.ProviderOrderID, purchased.PhoneNumber, expiresAt, purchased.ProviderCost, strings.TrimSpace(purchased.ProviderOperatorCode), smsReconciliationPurchase, int(smsVerificationPollInterval.Seconds()), "provider allocation confirmed; platform settlement retry required", orderID)
+		_, _ = s.db.ExecContext(finalizeCtx, `UPDATE sms_orders SET provider_order_id=$1,phone_number=COALESCE(NULLIF($2,''),phone_number),expires_at=COALESCE($3,expires_at),provider_cost_snapshot=CASE WHEN $4::numeric>0 THEN $4::numeric ELSE provider_cost_snapshot END,operator_code=COALESCE(NULLIF($5,''),operator_code),status='reconciling',reconciliation_action=$6,reconcile_after=NOW()+($7 * INTERVAL '1 second'),last_provider_error=$8 WHERE id=$9 AND settlement_status='held'`, purchased.ProviderOrderID, purchased.PhoneNumber, expiresAt, purchased.ProviderCost, strings.TrimSpace(purchased.ProviderOperatorCode), smsReconciliationPurchase, int(smsVerificationPollInterval.Seconds()), "provider allocation confirmed; platform settlement retry required", orderID)
 		return nil, ErrSMSProviderUnknown
 	}
 	return s.GetOrder(finalizeCtx, userID, orderID)
@@ -3299,7 +3299,7 @@ func (s *SMSService) activateSMSOrder(ctx context.Context, orderID, userID int64
 	}
 	defer func() { _ = tx.Rollback() }()
 	var amount float64
-	if err = tx.QueryRowContext(ctx, `UPDATE sms_orders SET status='active',provider_order_id=$1,phone_number=$2,expires_at=$3,provider_cost_snapshot=CASE WHEN $4>0 THEN $4 ELSE provider_cost_snapshot END,operator_code=COALESCE(NULLIF($5,''),operator_code),captured_amount=reserved_amount,settlement_status='captured',reconciliation_action='',reconciliation_attempts=0,reconcile_after=NULL,updated_at=NOW() WHERE id=$6 AND settlement_status='held' RETURNING reserved_amount`, providerOrderID, phoneNumber, expiresAt, providerCost, strings.TrimSpace(providerOperatorCode), orderID).Scan(&amount); err != nil {
+	if err = tx.QueryRowContext(ctx, `UPDATE sms_orders SET status='active',provider_order_id=$1,phone_number=$2,expires_at=$3,provider_cost_snapshot=CASE WHEN $4::numeric>0 THEN $4::numeric ELSE provider_cost_snapshot END,operator_code=COALESCE(NULLIF($5,''),operator_code),captured_amount=reserved_amount,settlement_status='captured',reconciliation_action='',reconciliation_attempts=0,reconcile_after=NULL,updated_at=NOW() WHERE id=$6 AND settlement_status='held' RETURNING reserved_amount`, providerOrderID, phoneNumber, expiresAt, providerCost, strings.TrimSpace(providerOperatorCode), orderID).Scan(&amount); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return errors.New("sms order settlement is no longer pending")
 		}
@@ -3557,12 +3557,20 @@ func (s *SMSService) recoverUnknownSMSPurchase(ctx context.Context, id, userID i
 	}
 	var req SMSPurchaseRequest
 	var createdAt time.Time
-	if err := s.db.QueryRowContext(ctx, `SELECT q.provider_service_code,q.provider_country_code,q.operator_code,q.voice_mode,q.provider_cost_snapshot,o.created_at FROM sms_orders o JOIN sms_quotes q ON q.consumed_order_id=o.id WHERE o.id=$1 ORDER BY q.consumed_at DESC NULLS LAST LIMIT 1`, id).Scan(&req.ServiceCode, &req.CountryCode, &req.OperatorCode, &req.VoiceMode, &req.ProviderCostLimit, &createdAt); err != nil {
+	var serviceCode, countryCode, operatorCode string
+	var voiceMode int
+	var providerCost float64
+	if err := s.db.QueryRowContext(ctx, `SELECT q.provider_service_code,q.provider_country_code,q.operator_code,q.voice_mode,q.provider_cost_snapshot,o.created_at FROM sms_orders o JOIN sms_quotes q ON q.consumed_order_id=o.id WHERE o.id=$1 ORDER BY q.consumed_at DESC NULLS LAST LIMIT 1`, id).Scan(&serviceCode, &countryCode, &operatorCode, &voiceMode, &providerCost, &createdAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return false, nil
 		}
 		return false, err
 	}
+	req.ServiceCode = serviceCode
+	req.CountryCode = countryCode
+	req.OperatorCode = operatorCode
+	req.VoiceMode = voiceMode
+	req.ProviderCostLimit = providerCost
 	recovered, err := recoveryProvider.RecoverTemporaryPurchase(ctx, req, createdAt)
 	if err != nil {
 		s.deferSMSReconciliation(ctx, id, providerErrorDiagnostic(err), false)
@@ -3632,7 +3640,7 @@ func (s *SMSService) updateSMSProviderActuals(ctx context.Context, id int64, pro
 	if providerCost <= 0 && providerOperatorCode == "" {
 		return nil
 	}
-	_, err := s.db.ExecContext(ctx, `UPDATE sms_orders SET provider_cost_snapshot=CASE WHEN $1>0 THEN $1 ELSE provider_cost_snapshot END,operator_code=COALESCE(NULLIF($2,''),operator_code),updated_at=NOW() WHERE id=$3`, providerCost, providerOperatorCode, id)
+	_, err := s.db.ExecContext(ctx, `UPDATE sms_orders SET provider_cost_snapshot=CASE WHEN $1::numeric>0 THEN $1::numeric ELSE provider_cost_snapshot END,operator_code=COALESCE(NULLIF($2,''),operator_code),updated_at=NOW() WHERE id=$3`, providerCost, providerOperatorCode, id)
 	return err
 }
 
