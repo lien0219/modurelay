@@ -850,8 +850,8 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/recharge', label: t('nav.rechargeCenter'), icon: RechargeSubscriptionIcon, featureFlag: flagRechargeCenter },
     { path: '/orders', label: t('nav.myOrders'), icon: OrderListIcon, hideInSimpleMode: true, featureFlag: flagPayment },
     { path: '/activities', label: t('nav.activityCenter'), icon: CalendarIcon, featureFlag: flagActivityCenter },
+    { path: '/resource-center', label: t('nav.resourceCenter'), icon: ResourceCenterIcon, featureFlag: flagResourceCenter },
     { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true },
-    ...(withDashboard ? [{ path: '/resource-center', label: t('nav.resourceCenter'), icon: ResourceCenterIcon, featureFlag: flagResourceCenter }] : []),
     { path: '/affiliate', label: t('nav.affiliate'), icon: UsersIcon, hideInSimpleMode: true, featureFlag: flagAffiliate },
     { path: '/distribution', label: t('nav.distribution'), icon: DistributionIcon },
     ...customMenuItemsForUser.value.map((item): NavItem => ({
@@ -934,7 +934,6 @@ const adminNavItems = computed((): NavItem[] => {
     { path: '/admin/verification-records', label: t('nav.verificationRecords'), icon: OrderIcon, hideInSimpleMode: true },
     { path: '/admin/usage', label: t('nav.usage'), icon: ChartIcon },
     { path: '/admin/announcements', label: t('nav.announcements'), icon: BellIcon },
-    { path: '/resource-center', label: t('nav.resourceCenter'), icon: ResourceCenterIcon },
     { path: '/admin/resource-center', label: t('nav.resourceCenterAdmin'), icon: ResourceCenterIcon },
     { path: '/admin/activities', label: t('nav.activityManagement'), icon: CalendarIcon },
     {

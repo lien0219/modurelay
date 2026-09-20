@@ -1,3 +1,7 @@
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { defineComponent, h } from "vue";
 import { flushPromises, mount } from "@vue/test-utils";
@@ -7,6 +11,8 @@ import enSettings from "@/i18n/locales/en/admin/settings";
 import zhCommon from "@/i18n/locales/zh/common";
 import zhSettings from "@/i18n/locales/zh/admin/settings";
 import SettingsView from "../SettingsView.vue";
+
+const settingsViewSource = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), "../SettingsView.vue"), "utf8");
 
 const {
   getSettings,
@@ -637,6 +643,16 @@ describe("admin SettingsView email domain quota copy", () => {
     expect(zhQuotaHint).toContain("关闭时非白名单域名直接拒绝");
     expect(enQuotaHint).toContain("one account");
     expect(enQuotaHint).toContain("When disabled");
+  });
+});
+
+describe("admin SettingsView tool center copy", () => {
+  it("uses the short tool-center title and keeps the explanatory hint", () => {
+    expect(zhSettings.settings.features.toolCenter.title).toBe("工具中心");
+    expect(enSettings.settings.features.toolCenter.title).toBe("Tool Center");
+    expect(zhSettings.settings.features.toolCenter.hint).toContain("/tools");
+    expect(enSettings.settings.features.toolCenter.hint).toContain("/tools");
+    expect(settingsViewSource).not.toContain("form.tool_center_enabled ? t('common.enabled')");
   });
 });
 

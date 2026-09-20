@@ -15,7 +15,7 @@ export default {
       },
       features: {
         toolCenter: {
-          title: '开发者工具中心',
+          title: '工具中心',
           description: '在用户侧导航中提供本地优先的开发者工具集。',
           enabled: '启用工具中心',
           hint: '关闭后会隐藏导航入口，直接访问 /tools 会返回仪表盘。',

@@ -166,7 +166,7 @@ export default {
 
   // Navigation
   nav: {
-    planCatalog: 'Plans',
+    planCatalog: 'Plan Store',
     planCatalogManagement: 'Plan management',
     website: 'Website',
     home: 'Home',

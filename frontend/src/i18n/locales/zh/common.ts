@@ -166,7 +166,7 @@ export default {
 
   // Navigation
   nav: {
-    planCatalog: '套餐',
+    planCatalog: '套餐商店',
     planCatalogManagement: '套餐管理',
     website: '官网',
     home: '官网首页',

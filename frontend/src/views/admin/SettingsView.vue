@@ -7180,7 +7180,6 @@
                 <p class="mt-2 text-xs leading-5 text-gray-500 dark:text-gray-400">{{ t('admin.settings.features.toolCenter.hint') }}</p>
               </div>
               <div class="flex shrink-0 items-center gap-3">
-                <span class="text-sm font-medium text-gray-700 dark:text-gray-200">{{ form.tool_center_enabled ? t('common.enabled') : t('common.disabled') }}</span>
                 <Toggle v-model="form.tool_center_enabled" :label="t('admin.settings.features.toolCenter.enabled')" />
               </div>
             </div>

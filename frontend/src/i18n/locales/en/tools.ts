@@ -1,7 +1,7 @@
 ﻿export default {
-  nav: { tools: 'Tools' },
+  nav: { tools: 'Tool Center' },
   tools: {
-    title: 'Developer Toolbox',
+    title: 'Tool Center',
     description: 'Fast, local-first utilities for security, encoding, APIs, and everyday engineering work.',
     searchPlaceholder: 'Search tools',
     allCategories: 'All categories',

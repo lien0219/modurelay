@@ -1,7 +1,7 @@
 ﻿export default {
-  nav: { tools: '工具' },
+  nav: { tools: '工具中心' },
   tools: {
-    title: '开发者工具中心',
+    title: '工具中心',
     description: '面向安全、编码、API 与日常工程工作的本地优先工具集。',
     searchPlaceholder: '搜索工具',
     allCategories: '全部分类',

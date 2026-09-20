@@ -150,8 +150,8 @@ describe('AppSidebar personal navigation order', () => {
       '/recharge',
       '/orders',
       '/activities',
-      '/redeem',
       '/resource-center',
+      '/redeem',
       '/affiliate',
       '/distribution',
       '/profile'
@@ -186,7 +186,6 @@ describe('AppSidebar administrator navigation order', () => {
       '/admin/verification-records',
       '/admin/usage',
       '/admin/announcements',
-      '/resource-center',
       '/admin/resource-center',
       '/admin/activities',
       '/admin/security-audit',
@@ -200,6 +199,28 @@ describe('AppSidebar administrator navigation order', () => {
 
     expect(positions.every(position => position >= 0)).toBe(true)
     expect(positions).toEqual([...positions].sort((left, right) => left - right))
+  })
+})
+
+describe('AppSidebar forum and label contracts', () => {
+  it('keeps the user forum in My Account while admin exposes only forum management', () => {
+    const selfNavBlock = componentSource.slice(
+      componentSource.indexOf('function buildSelfNavItems'),
+      componentSource.indexOf('// finalizeNav')
+    )
+    const adminNavBlock = componentSource.slice(
+      componentSource.indexOf('const adminNavItems = computed'),
+      componentSource.indexOf('\n\n  const visible = applyFeatureFlags(baseItems)')
+    )
+
+    expect(selfNavBlock).toContain("{ path: '/resource-center', label: t('nav.resourceCenter'), icon: ResourceCenterIcon, featureFlag: flagResourceCenter }")
+    expect(adminNavBlock).not.toContain("{ path: '/resource-center', label: t('nav.resourceCenter'), icon: ResourceCenterIcon }")
+    expect(adminNavBlock).toContain("{ path: '/admin/resource-center', label: t('nav.resourceCenterAdmin'), icon: ResourceCenterIcon }")
+  })
+
+  it('uses the requested tool-center and plan-store labels', () => {
+    expect(componentSource).toContain("{ path: '/tools', label: t('nav.tools'), icon: PluginIcon, featureFlag: flagToolCenter }")
+    expect(componentSource).toContain("{ path: '/plan-catalog', label: t('nav.planCatalog'), icon: CreditCardIcon, featureFlag: flagPlanCatalog }")
   })
 })
 

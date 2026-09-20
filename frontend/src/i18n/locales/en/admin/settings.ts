@@ -15,9 +15,9 @@ export default {
       },
       features: {
         toolCenter: {
-          title: 'Developer Toolbox',
+          title: 'Tool Center',
           description: 'Expose the local-first developer utilities under the user navigation.',
-          enabled: 'Enable Toolbox',
+          enabled: 'Enable Tool Center',
           hint: 'When disabled, the navigation entry is hidden and /tools routes redirect to the dashboard.',
         },
         channelMonitor: {
