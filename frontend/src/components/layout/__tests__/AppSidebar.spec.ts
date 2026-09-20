@@ -126,7 +126,7 @@ describe('AppSidebar website navigation', () => {
 })
 
 describe('AppSidebar personal navigation order', () => {
-  it('keeps primary tools and account operations ahead of guidance and billing', () => {
+  it('groups workbench, verification, guidance, and billing entries in task order', () => {
     const navBlock = componentSource.slice(
       componentSource.indexOf('function buildSelfNavItems'),
       componentSource.indexOf('// finalizeNav')
@@ -138,8 +138,13 @@ describe('AppSidebar personal navigation order', () => {
       '/usage',
       '/available-channels',
       '/monitor',
+      '/sms',
+      '/email',
+      '/verification-records',
       '/quick-start',
+      '/tools',
       '/ai-learning',
+      '/plan-catalog',
       '/subscriptions',
       '/purchase',
       '/recharge',
@@ -150,6 +155,46 @@ describe('AppSidebar personal navigation order', () => {
       '/affiliate',
       '/distribution',
       '/profile'
+    ]
+    const positions = expectedPaths.map(path => navBlock.indexOf(`path: '${path}'`))
+
+    expect(positions.every(position => position >= 0)).toBe(true)
+    expect(positions).toEqual([...positions].sort((left, right) => left - right))
+  })
+})
+
+describe('AppSidebar administrator navigation order', () => {
+  it('groups administration by overview, operations, content, and audit workflow', () => {
+    const navBlock = componentSource.slice(
+      componentSource.indexOf('const adminNavItems = computed'),
+      componentSource.indexOf('\n\n  const visible = applyFeatureFlags(baseItems)')
+    )
+    const expectedPaths = [
+      '/admin/dashboard',
+      '/admin/ops',
+      '/admin/users',
+      '/admin/groups',
+      '/admin/channels',
+      '/admin/accounts',
+      '/admin/proxies',
+      '/admin/plugins',
+      '/admin/plan-catalog',
+      '/admin/subscriptions',
+      '/admin/orders',
+      '/admin/sms',
+      '/admin/email',
+      '/admin/verification-records',
+      '/admin/usage',
+      '/admin/announcements',
+      '/resource-center',
+      '/admin/resource-center',
+      '/admin/activities',
+      '/admin/security-audit',
+      '/admin/redeem',
+      '/admin/promo-codes',
+      '/admin/distribution',
+      '/admin/affiliates',
+      '/admin/audit-logs'
     ]
     const positions = expectedPaths.map(path => navBlock.indexOf(`path: '${path}'`))
 

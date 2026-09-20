@@ -39,6 +39,7 @@ vi.mock('vue-i18n', async (importOriginal) => {
     'sms.user.statuses.expired': '已过期',
     'sms.user.statuses.confirmingPurchase': '正在确认下单',
     'sms.user.statuses.unknown': '未知状态',
+    'sms.user.capabilities.cancelRefund': '未收到验证码之前允许取消订单并自动退款',
   }
   return {
     ...actual,
@@ -175,6 +176,42 @@ describe('SMSVerificationView', () => {
     expect(wrapper.text()).toContain('81.82')
     expect(wrapper.text()).toContain('78.40')
     expect(wrapper.text()).toContain('125')
+    wrapper.unmount()
+  })
+
+  it('shows the automatic refund policy when temporary quotes support cancellation and refund', async () => {
+    smsAPI.quotes.mockResolvedValue([{
+      channel_code: 'channel_1',
+      public_name: 'Channel 1',
+      channel_role: 'primary',
+      sale_price: 0.5,
+      stock: 10,
+      success_rate_source: 'provider',
+      estimated_delivery_seconds: 30,
+      capabilities,
+      quote_id: 'quote-1',
+      quote_expires_at: '2099-01-01T00:00:00Z',
+    }])
+    const wrapper = mount(SMSVerificationView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<main><slot /></main>' },
+          Icon: true,
+          Pagination: true,
+          Select: true,
+          ConfirmDialog: true,
+        },
+      },
+    })
+    await flushPromises()
+    const countryButton = wrapper.findAll('button').find(button => button.text().includes('美国'))
+    expect(countryButton).toBeDefined()
+    await countryButton!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('未收到验证码之前允许取消订单并自动退款')
+    expect(wrapper.text()).not.toContain('sms.user.capabilities.cancel')
+    expect(wrapper.text()).not.toContain('sms.user.capabilities.refund')
     wrapper.unmount()
   })
 

@@ -823,8 +823,9 @@ const siteNavItems = computed((): NavItem[] => [
 // buildSelfNavItems 构造用户自己的导航项（用户端主菜单和管理员的"我的账户"子菜单共享这组声明）。
 // withDashboard=true 时包含仪表盘（用户端），false 时不含（管理员的个人区已经有独立仪表盘入口）。
 //
-// 条目顺序：核心工具 → 密钥/用量/渠道 → 上手学习 → 订阅支付 → 活动社区 → 分销/资料。
-// 可用渠道紧挨渠道状态之上，让用户"先看自己能用什么、再看对应状态"。
+// 条目顺序按用户完成任务的路径组织：工作区 → API 与用量 → 渠道与接码 →
+// 上手/工具 → 订阅支付 → 活动社区 → 分销/资料。
+// 可用渠道和渠道状态相邻，接码服务及记录也保持在同一组内。
 function buildSelfNavItems(withDashboard: boolean): NavItem[] {
   const items: NavItem[] = []
   if (withDashboard) {
@@ -832,18 +833,18 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
   }
   items.push(
     { path: '/canvas', label: t('nav.canvas'), icon: CanvasIcon, featureFlag: flagCanvas },
-    { path: '/plan-catalog', label: t('nav.planCatalog'), icon: CreditCardIcon, featureFlag: flagPlanCatalog },
     { path: '/batch-image', label: t('nav.batchImage'), icon: BatchImageIcon, hideInSimpleMode: true, featureFlag: flagBatchImageAccess },
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
     { path: '/available-channels', label: t('nav.availableChannels'), icon: ChannelIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
+    { path: '/monitor', label: t('nav.channelStatus'), icon: SignalIcon, featureFlag: flagChannelMonitor },
     { path: '/sms', label: t('nav.smsService'), icon: MessageIcon, hideInSimpleMode: true, featureFlag: flagSmsService },
     { path: '/email', label: t('nav.emailService'), icon: MessageIcon, hideInSimpleMode: true, featureFlag: flagEmailService },
     { path: '/verification-records', label: t('nav.verificationRecords'), icon: OrderIcon, hideInSimpleMode: true },
-    { path: '/monitor', label: t('nav.channelStatus'), icon: SignalIcon, featureFlag: flagChannelMonitor },
     { path: '/quick-start', label: t('nav.quickStart'), icon: QuickStartIcon },
     { path: '/tools', label: t('nav.tools'), icon: PluginIcon, featureFlag: flagToolCenter },
     { path: '/ai-learning', label: t('nav.aiLearning'), icon: AILearningIcon },
+    { path: '/plan-catalog', label: t('nav.planCatalog'), icon: CreditCardIcon, featureFlag: flagPlanCatalog },
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },
     { path: '/purchase', label: t('nav.buySubscription'), icon: RechargeSubscriptionIcon, hideInSimpleMode: true, featureFlag: flagPayment },
     { path: '/recharge', label: t('nav.rechargeCenter'), icon: RechargeSubscriptionIcon, featureFlag: flagRechargeCenter },
@@ -910,15 +911,32 @@ const adminNavItems = computed((): NavItem[] => {
         { path: '/admin/channels/monitor', label: t('nav.channelMonitor'), icon: SignalIcon, featureFlag: flagChannelMonitor },
       ],
     },
-    { path: '/admin/subscriptions', label: t('nav.subscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },
     { path: '/admin/accounts', label: t('nav.accounts'), icon: GlobeIcon },
+    { path: '/admin/proxies', label: t('nav.proxies'), icon: ServerIcon },
     { path: '/admin/plugins', label: t('nav.plugins'), icon: PluginIcon, featureFlag: flagPluginManagement },
+    { path: '/admin/plan-catalog', label: t('nav.planCatalogManagement'), icon: CreditCardIcon },
+    { path: '/admin/subscriptions', label: t('nav.subscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },
+    {
+      path: '/admin/orders',
+      label: t('nav.orderManagement'),
+      icon: OrderIcon,
+      hideInSimpleMode: true,
+      expandOnly: true,
+      featureFlag: flagAdminPayment,
+      children: [
+        { path: '/admin/orders/dashboard', label: t('nav.paymentDashboard'), icon: ChartIcon },
+        { path: '/admin/orders', label: t('nav.orderManagement'), icon: OrderIcon },
+        { path: '/admin/orders/plans', label: t('nav.paymentPlans'), icon: CreditCardIcon },
+      ],
+    },
+    { path: '/admin/sms', label: t('nav.smsManagement'), icon: MessageIcon, hideInSimpleMode: true },
+    { path: '/admin/email', label: t('nav.emailManagement'), icon: MessageIcon, hideInSimpleMode: true },
+    { path: '/admin/verification-records', label: t('nav.verificationRecords'), icon: OrderIcon, hideInSimpleMode: true },
+    { path: '/admin/usage', label: t('nav.usage'), icon: ChartIcon },
     { path: '/admin/announcements', label: t('nav.announcements'), icon: BellIcon },
     { path: '/resource-center', label: t('nav.resourceCenter'), icon: ResourceCenterIcon },
     { path: '/admin/resource-center', label: t('nav.resourceCenterAdmin'), icon: ResourceCenterIcon },
     { path: '/admin/activities', label: t('nav.activityManagement'), icon: CalendarIcon },
-    { path: '/admin/plan-catalog', label: t('nav.planCatalogManagement'), icon: CreditCardIcon },
-    { path: '/admin/proxies', label: t('nav.proxies'), icon: ServerIcon },
     {
       path: '/admin/security-audit',
       label: t('nav.securityAudit'),
@@ -946,23 +964,6 @@ const adminNavItems = computed((): NavItem[] => {
         { path: '/admin/affiliates/transfers', label: t('nav.affiliateTransferRecords'), icon: CreditCardIcon },
       ],
     },
-    {
-      path: '/admin/orders',
-      label: t('nav.orderManagement'),
-      icon: OrderIcon,
-      hideInSimpleMode: true,
-      expandOnly: true,
-      featureFlag: flagAdminPayment,
-      children: [
-        { path: '/admin/orders/dashboard', label: t('nav.paymentDashboard'), icon: ChartIcon },
-        { path: '/admin/orders', label: t('nav.orderManagement'), icon: OrderIcon },
-        { path: '/admin/orders/plans', label: t('nav.paymentPlans'), icon: CreditCardIcon },
-      ],
-    },
-    { path: '/admin/usage', label: t('nav.usage'), icon: ChartIcon },
-    { path: '/admin/sms', label: t('nav.smsManagement'), icon: MessageIcon, hideInSimpleMode: true },
-    { path: '/admin/email', label: t('nav.emailManagement'), icon: MessageIcon, hideInSimpleMode: true },
-    { path: '/admin/verification-records', label: t('nav.verificationRecords'), icon: OrderIcon, hideInSimpleMode: true },
     { path: '/admin/audit-logs', label: t('nav.auditLogs'), icon: ShieldIcon, hideInSimpleMode: true }
   ]
 

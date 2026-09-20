@@ -254,8 +254,11 @@
               <span>{{ t('sms.user.eta') }}: {{ quote.estimated_delivery_seconds }}{{ t('sms.user.seconds') }}</span>
               <span v-if="quote.success_rate != null">{{ t('sms.user.platform30dSuccessRate') }}: {{ (quote.success_rate * 100).toFixed(2) }}% · n={{ quote.success_rate_sample_size || 0 }}{{ t('sms.user.separator') }}{{ quote.success_rate_grade || '-' }}</span>
               <span v-else>{{ t('sms.user.platform30dInsufficient', { count: quote.success_rate_sample_size || 0, minimum: 20 }) }}</span>
-              <span>{{ quote.capabilities.supports_cancel ? t('sms.user.capabilities.cancel') : t('sms.user.capabilities.noCancel') }}</span>
-              <span>{{ quote.capabilities.supports_refund ? t('sms.user.capabilities.refund') : t('sms.user.capabilities.noRefund') }}</span>
+              <span v-if="productType === 'temporary' && quote.capabilities.supports_cancel && quote.capabilities.supports_refund">{{ t('sms.user.capabilities.cancelRefund') }}</span>
+              <template v-else>
+                <span>{{ quote.capabilities.supports_cancel ? t('sms.user.capabilities.cancel') : t('sms.user.capabilities.noCancel') }}</span>
+                <span>{{ quote.capabilities.supports_refund ? t('sms.user.capabilities.refund') : t('sms.user.capabilities.noRefund') }}</span>
+              </template>
             </div>
           </div>
           <div class="flex items-center justify-between gap-4 sm:justify-end">
