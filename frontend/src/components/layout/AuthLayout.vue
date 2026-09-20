@@ -1,6 +1,5 @@
 <template>
   <div class="auth-layout">
-    <div class="auth-background" aria-hidden="true"></div>
     <button
       type="button"
       class="auth-theme-toggle"
@@ -26,22 +25,6 @@
 
         <div class="auth-brand-story">
           <p class="auth-brand-subtitle">{{ siteSubtitle }}</p>
-
-          <div class="auth-relay-visual" aria-hidden="true">
-            <span class="auth-relay-path auth-relay-path-start"></span>
-            <span class="auth-relay-path auth-relay-path-end"></span>
-            <span class="auth-relay-port auth-relay-port-start"></span>
-            <span class="auth-relay-port auth-relay-port-end"></span>
-            <div class="auth-relay-core">
-              <Icon name="swap" size="lg" />
-            </div>
-          </div>
-        </div>
-
-        <div class="auth-brand-footer">
-          <div class="auth-brand-rule" aria-hidden="true">
-            <span></span><span></span><span></span>
-          </div>
         </div>
       </section>
 
@@ -99,30 +82,6 @@ onMounted(() => {
   overflow-x: hidden;
   padding: clamp(24px, 4vw, 56px);
   background: var(--color-bg);
-}
-
-.auth-background {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background-color: var(--color-bg);
-}
-
-.auth-background::before {
-  position: absolute;
-  inset: 0 0 auto;
-  height: 38%;
-  border-bottom: 1px solid var(--color-border-subtle);
-  background-color: color-mix(in srgb, var(--color-primary-soft) 36%, var(--color-bg));
-  content: '';
-}
-
-.auth-background::after {
-  position: absolute;
-  inset: clamp(28px, 6vw, 92px);
-  border: 1px solid var(--color-border-subtle);
-  content: '';
-  opacity: 0.56;
 }
 
 .auth-theme-toggle {
@@ -188,15 +147,6 @@ onMounted(() => {
   background-color: color-mix(in srgb, var(--color-primary-soft) 78%, var(--color-surface));
 }
 
-.auth-brand-panel::before {
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 3px;
-  background-color: var(--color-primary);
-  content: '';
-  opacity: 0.9;
-}
-
 .auth-brand-lockup {
   display: flex;
   min-width: 0;
@@ -239,7 +189,7 @@ onMounted(() => {
 .auth-brand-story {
   display: grid;
   min-width: 0;
-  gap: 32px;
+  gap: 20px;
 }
 
 .auth-brand-subtitle {
@@ -249,133 +199,6 @@ onMounted(() => {
   font-weight: 600;
   line-height: 1.45;
   text-wrap: balance;
-}
-
-.auth-relay-visual {
-  position: relative;
-  width: min(100%, 340px);
-  height: 118px;
-}
-
-.auth-relay-path {
-  position: absolute;
-  top: 50%;
-  height: 1px;
-  background-color: var(--color-primary-border);
-  transform: translateY(-50%);
-}
-
-.auth-relay-path-start {
-  right: calc(50% + 38px);
-  left: 8px;
-}
-
-.auth-relay-path-end {
-  right: 8px;
-  left: calc(50% + 38px);
-}
-
-.auth-relay-path::after {
-  position: absolute;
-  top: -18px;
-  width: 34%;
-  height: 18px;
-  border-top: 1px solid var(--color-border-strong);
-  content: '';
-  opacity: 0.68;
-}
-
-.auth-relay-path-start::after {
-  left: 30%;
-  border-left: 1px solid var(--color-border-strong);
-}
-
-.auth-relay-path-end::after {
-  right: 28%;
-  border-right: 1px solid var(--color-border-strong);
-}
-
-.auth-relay-port {
-  position: absolute;
-  top: 50%;
-  width: 9px;
-  height: 9px;
-  border: 1px solid var(--color-primary);
-  border-radius: 3px;
-  background-color: var(--color-surface-raised);
-  box-shadow: 0 0 0 4px var(--color-primary-soft);
-  transform: translateY(-50%);
-}
-
-.auth-relay-port-start {
-  left: 0;
-}
-
-.auth-relay-port-end {
-  right: 0;
-}
-
-.auth-relay-core {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  display: flex;
-  width: 76px;
-  height: 76px;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--color-primary-border);
-  border-radius: 16px;
-  color: var(--color-primary);
-  background-color: var(--color-surface-raised);
-  box-shadow: var(--shadow-md), inset 0 1px 0 var(--glass-highlight);
-  transform: translate(-50%, -50%);
-}
-
-.auth-relay-core::before,
-.auth-relay-core::after {
-  position: absolute;
-  width: 8px;
-  height: 8px;
-  border: 1px solid var(--color-accent);
-  background-color: var(--color-accent-soft);
-  content: '';
-}
-
-.auth-relay-core::before {
-  top: -20px;
-  right: 8px;
-}
-
-.auth-relay-core::after {
-  bottom: -20px;
-  left: 8px;
-}
-
-.auth-brand-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.auth-brand-rule {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.auth-brand-rule span {
-  display: block;
-  width: 8px;
-  height: 8px;
-  border: 1px solid var(--color-primary-border);
-  background-color: var(--color-surface-raised);
-}
-
-.auth-brand-rule span:first-child {
-  width: 48px;
-  background-color: var(--color-primary);
 }
 
 .auth-focus-panel {
@@ -600,11 +423,6 @@ onMounted(() => {
     font-size: 24px;
   }
 
-  .auth-brand-rule,
-  .auth-brand-footer {
-    display: none;
-  }
-
   .auth-focus-panel {
     padding: 30px 20px 26px;
   }
@@ -643,10 +461,6 @@ onMounted(() => {
 
   .auth-brand-subtitle {
     font-size: 16px;
-  }
-
-  .auth-relay-visual {
-    display: none;
   }
 
   .auth-focus-panel {

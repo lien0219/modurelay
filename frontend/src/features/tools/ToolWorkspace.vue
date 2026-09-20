@@ -6,10 +6,6 @@
         <h1 :id="`tool-title-${tool}`">{{ label(definition.titleKey, tool) }}</h1>
         <p>{{ label(definition.descriptionKey, label('tools.workspace.localOnly', 'Runs locally in this browser.')) }}</p>
       </div>
-      <div v-if="sensitive" class="tool-workspace__privacy" role="note">
-        <span aria-hidden="true">●</span>
-        {{ label('tools.workspace.privacy', 'Sensitive values stay in this browser and are never uploaded.') }}
-      </div>
     </header>
     <p v-if="noticeKey" class="tool-workspace__notice" role="note">{{ label(noticeKey, '') }}</p>
 
@@ -21,7 +17,7 @@
         </div>
 
         <template v-if="tool === 'totp'">
-          <label class="tool-field"><span>{{ label('tools.workspace.secret', 'Secret or otpauth URI') }}</span><span class="tool-input-wrap"><input v-model="input" :type="showSecret ? 'text' : 'password'" autocomplete="off" spellcheck="false" class="tool-input tool-input--with-action" /><button type="button" class="tool-input-action" :aria-label="label(showSecret ? 'tools.workspace.hideValue' : 'tools.workspace.showValue', showSecret ? 'Hide value' : 'Show value')" :title="label(showSecret ? 'tools.workspace.hideValue' : 'tools.workspace.showValue', showSecret ? 'Hide value' : 'Show value')" @click="showSecret = !showSecret"><Icon :name="showSecret ? 'eyeOff' : 'eye'" size="sm" aria-hidden="true" /></button></span></label>
+          <label class="tool-field"><span>{{ label('tools.workspace.secretOrUri', 'Secret or otpauth URI') }}</span><span class="tool-input-wrap"><input v-model="input" :type="showSecret ? 'text' : 'password'" autocomplete="off" spellcheck="false" class="tool-input tool-input--with-action" /><button type="button" class="tool-input-action" :aria-label="label(showSecret ? 'tools.workspace.hideValue' : 'tools.workspace.showValue', showSecret ? 'Hide value' : 'Show value')" :title="label(showSecret ? 'tools.workspace.hideValue' : 'tools.workspace.showValue', showSecret ? 'Hide value' : 'Show value')" @click="showSecret = !showSecret"><Icon :name="showSecret ? 'eyeOff' : 'eye'" size="sm" aria-hidden="true" /></button></span></label>
           <p class="tool-help">{{ label('tools.workspace.totpHint', 'Base32 secrets and otpauth://totp/... URIs are processed locally.') }}</p>
         </template>
 
@@ -36,7 +32,7 @@
           <label class="tool-field"><span>{{ label('tools.workspace.customCharacters', 'Custom characters') }}</span><input v-model="options.customCharacters" type="text" class="tool-input" /></label>
           <label class="tool-field"><span>{{ label('tools.workspace.excludeCharacters', 'Exclude characters') }}</span><input v-model="options.excludeCharacters" type="text" class="tool-input" /></label>
           <label class="tool-field"><span>{{ label('tools.workspace.batch', 'Batch') }}</span><input v-model.number="batch" type="number" min="1" max="20" class="tool-input" /></label>
-          <p v-if="randomAlphabetSize > 0" class="tool-help tool-entropy">{{ label('tools.workspace.entropy', 'Estimated entropy') }}: {{ randomEntropyBits.toFixed(1) }} bits / {{ label('tools.workspace.strength', 'Strength') }}: {{ randomStrength }}</p>
+          <p v-if="randomAlphabetSize > 0" class="tool-help tool-entropy">{{ label('tools.workspace.entropy', 'Estimated entropy') }}: {{ randomEntropyBits.toFixed(1) }} {{ label('tools.workspace.bits', 'bits') }} / {{ label('tools.workspace.strength', 'Strength') }}: {{ randomStrength }}</p>
         </template>
 
         <template v-else-if="tool === 'uuid'">
@@ -157,10 +153,10 @@
         <p v-if="isRunning" class="tool-help" role="status" aria-live="polite">{{ label('tools.workspace.running', 'Processing...') }}</p>
         <div v-if="totpDetails" class="tool-totp-result" aria-live="polite">
           <strong class="tool-totp-result__code">{{ totpDetails.code }}</strong>
-          <span>{{ label('tools.workspace.remaining', 'Remaining') }}: {{ totpDetails.remainingSeconds }}s</span>
+          <span>{{ label('tools.workspace.remaining', 'Remaining') }}: {{ totpDetails.remainingSeconds }} {{ label('tools.workspace.seconds', 'seconds') }}</span>
           <span v-if="totpDetails.issuer">{{ label('tools.workspace.issuer', 'Issuer') }}: {{ totpDetails.issuer }}</span>
           <span v-if="totpDetails.account">{{ label('tools.workspace.account', 'Account') }}: {{ totpDetails.account }}</span>
-          <span>{{ totpDetails.algorithm }} · {{ totpDetails.digits }} digits · {{ totpDetails.period }}s period</span>
+          <span>{{ totpDetails.algorithm }} · {{ totpDetails.digits }} {{ label('tools.workspace.digits', 'digits') }} · {{ totpDetails.period }}{{ label('tools.workspace.period', 's period') }}</span>
         </div>
         <pre v-if="outputText && !totpDetails" class="tool-output" :class="{ 'tool-output--mono': true }">{{ outputText }}</pre>
         <div v-if="outputHtml || liveMarkdownHtml" class="tool-markdown" v-html="liveMarkdownHtml || outputHtml" />
@@ -193,7 +189,6 @@ const props = defineProps<{ tool: ToolId }>()
 const { t } = useI18n()
 const appStore = useAppStore()
 const definition = computed(() => getToolDefinition(props.tool) || { id: props.tool, route: `/tools/${props.tool}`, titleKey: props.tool, descriptionKey: '', icon: 'cube' as const, category: 'developer' as const, enabled: true as const })
-const sensitive = computed(() => ['totp', 'password', 'jwt', 'hmac', 'hash', 'random-string', 'api-builder', 'curl-converter'].includes(props.tool))
 const noticeKey = computed(() => {
   if (props.tool === 'jwt') return 'tools.notices.jwt'
   if (props.tool === 'api-builder') return 'tools.notices.request'
@@ -580,23 +575,21 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .tool-workspace { width: 100%; color: var(--color-text-primary); }
-.tool-workspace__header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-bottom: 20px; }
+.tool-workspace__header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-bottom: 24px; padding: 4px 0 0; }
 .tool-workspace__heading { min-width: 0; }
 .tool-workspace__eyebrow { display: block; margin-bottom: 8px; color: var(--color-accent); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; font-weight: 700; letter-spacing: .14em; }
 .tool-workspace h1 { margin: 0; font-size: 1.75rem; font-weight: 700; line-height: 1.25; }
 .tool-workspace__heading p { max-width: 680px; margin: 8px 0 0; color: var(--color-text-secondary); font-size: .9rem; line-height: 1.55; }
-.tool-workspace__privacy { display: inline-flex; flex-shrink: 0; align-items: center; gap: 8px; max-width: 310px; padding: 9px 12px; border: 1px solid var(--color-primary-border); border-radius: 10px; background: var(--color-primary-soft); color: var(--color-text-secondary); font-size: .75rem; line-height: 1.4; }
-.tool-workspace__privacy span { color: var(--color-success); font-size: 9px; }
 .tool-workspace__notice { margin: -8px 0 16px; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 9px; background: var(--color-surface-soft); color: var(--color-text-secondary); font-size: .8rem; line-height: 1.5; }
-.tool-workspace__grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
-.tool-panel { min-width: 0; padding: 18px; border: 1px solid var(--color-border); border-radius: 14px; background: var(--color-surface); box-shadow: var(--shadow-xs); }
-.tool-panel--output { min-height: 360px; background: var(--color-surface-soft); }
-.tool-panel__header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+.tool-workspace__grid { display: grid; grid-template-columns: minmax(320px, .9fr) minmax(0, 1.1fr); gap: 20px; align-items: start; }
+.tool-panel { min-width: 0; padding: 20px; border: 1px solid var(--color-border); border-radius: 16px; background: var(--color-surface); box-shadow: var(--shadow-xs); }
+.tool-panel--output { min-height: 380px; background: var(--color-surface-soft); }
+.tool-panel__header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; padding-bottom: 12px; border-bottom: 1px solid var(--color-border-subtle); }
 .tool-panel__actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .tool-panel__actions--qr { justify-content: center; margin-top: 8px; }
 .tool-panel h2 { margin: 0; font-size: 1rem; font-weight: 650; }
-.tool-field { display: grid; gap: 6px; margin-bottom: 13px; color: var(--color-text-secondary); font-size: .8rem; font-weight: 550; }
-.tool-input { width: 100%; min-height: 38px; box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--color-border); border-radius: 9px; outline: none; background: var(--color-bg-subtle); color: var(--color-text-primary); font: inherit; resize: vertical; transition: border-color var(--motion-fast) var(--ease-standard), box-shadow var(--motion-fast) var(--ease-standard); }
+.tool-field { display: grid; gap: 7px; margin-bottom: 15px; color: var(--color-text-secondary); font-size: .82rem; font-weight: 550; }
+.tool-input { width: 100%; min-height: 40px; box-sizing: border-box; padding: 9px 11px; border: 1px solid var(--color-border); border-radius: 10px; outline: none; background: var(--color-bg-subtle); color: var(--color-text-primary); font: inherit; resize: vertical; transition: border-color var(--motion-fast) var(--ease-standard), box-shadow var(--motion-fast) var(--ease-standard), background-color var(--motion-fast) var(--ease-standard); }
 .tool-input:focus { border-color: var(--color-primary); box-shadow: 0 0 0 3px var(--color-primary-ring); }
 .tool-input-wrap { position: relative; display: block; }
 .tool-input--with-action { padding-right: 42px; }
@@ -629,7 +622,7 @@ onBeforeUnmount(() => {
 .tool-results--diff .is-removed { color: var(--color-danger); background: color-mix(in srgb, var(--color-danger) 8%, transparent); }
 .tool-qr { display: block; width: min(100%, 360px); height: auto; margin: 12px auto; image-rendering: pixelated; }
 @keyframes tool-spin { to { transform: rotate(360deg); } }
-@media (max-width: 860px) { .tool-workspace__header { flex-direction: column; } .tool-workspace__privacy { max-width: none; } .tool-workspace__grid { grid-template-columns: 1fr; } }
+@media (max-width: 860px) { .tool-workspace__header { flex-direction: column; } .tool-workspace__grid { grid-template-columns: 1fr; } }
 @media (max-width: 480px) { .tool-panel { padding: 14px; border-radius: 12px; } .tool-workspace h1 { font-size: 1.5rem; } .tool-checks { grid-template-columns: 1fr; } .tool-row { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) { .tool-input, .tool-button { transition-duration: .01ms; } .tool-spinner { animation: none; } }
 </style>

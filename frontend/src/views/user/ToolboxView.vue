@@ -39,7 +39,11 @@
             </span>
             <Icon name="arrowRight" size="sm" class="shrink-0 text-[color:var(--color-text-muted)] transition-[transform,color] duration-200 group-hover:translate-x-0.5 group-hover:text-[color:var(--color-primary)]" aria-hidden="true" />
           </RouterLink>
-          <div v-if="filteredTools.length === 0" class="tool-empty-state">{{ t('tools.noInput') }}</div>
+          <div v-if="filteredTools.length === 0" class="tool-empty-state" role="status">
+            <span class="tool-empty-state__icon" aria-hidden="true"><Icon name="search" size="md" /></span>
+            <strong>{{ t('tools.noTools') }}</strong>
+            <span>{{ t('tools.noToolsHint') }}</span>
+          </div>
         </section>
       </template>
 
@@ -112,7 +116,9 @@ const filteredTools = computed(() => {
 .tool-card:hover { border-color: var(--color-primary-border); background: var(--color-surface-raised); transform: translateY(-1px); }
 .tool-card:focus-visible { outline: 2px solid var(--color-primary-ring); outline-offset: 2px; }
 .tool-card-icon { display: inline-flex; width: 2.5rem; height: 2.5rem; flex: 0 0 auto; align-items: center; justify-content: center; border-radius: .75rem; background: var(--color-primary-soft); color: var(--color-primary); }
-.tool-empty-state, .tool-invalid-route { padding: 2rem; border: 1px dashed var(--color-border-strong); border-radius: .875rem; color: var(--color-text-muted); text-align: center; }
+.tool-empty-state, .tool-invalid-route { display: grid; justify-items: center; gap: .5rem; min-height: 180px; padding: 2.5rem 2rem; border: 1px solid var(--color-border); border-radius: 1rem; background: var(--color-surface); color: var(--color-text-muted); text-align: center; }
+.tool-empty-state strong { color: var(--color-text-primary); font-size: 1rem; font-weight: 650; }
+.tool-empty-state__icon { display: grid; width: 2.75rem; height: 2.75rem; place-items: center; margin-bottom: .25rem; border-radius: .875rem; background: var(--color-primary-soft); color: var(--color-primary); }
 .tool-loading { min-height: 260px; display: grid; place-items: center; padding: 2rem; border: 1px solid var(--color-border); border-radius: .875rem; background: var(--color-surface); color: var(--color-text-muted); }
 .tool-workspace-shell { display: grid; gap: 1rem; }
 .tool-back-link { display: inline-flex; width: fit-content; min-height: 40px; align-items: center; gap: .5rem; color: var(--color-primary); font-size: .875rem; font-weight: 600; }
