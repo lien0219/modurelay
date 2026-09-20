@@ -1,13 +1,34 @@
 <template>
-  <div class="resource-editor overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-dark-600 dark:bg-dark-800" :class="disabled ? 'opacity-60' : ''">
-    <div class="flex flex-wrap items-center gap-1 border-b border-gray-200 bg-gray-50 px-2 py-1.5 dark:border-dark-700 dark:bg-dark-900/60">
-      <button v-for="tool in tools" :key="tool.command" type="button" class="inline-flex h-8 min-w-8 items-center justify-center rounded-lg px-2 text-sm font-semibold text-gray-600 transition hover:bg-white hover:text-primary-700 dark:text-dark-300 dark:hover:bg-dark-700 dark:hover:text-primary-300" :title="tool.label" :aria-label="tool.label" :disabled="disabled" @mousedown.prevent="applyCommand(tool.command, tool.value)">
-        <span v-if="tool.symbol" :class="tool.command === 'italic' ? 'italic' : ''">{{ tool.symbol }}</span>
-        <Icon v-else :name="tool.icon || 'link'" size="sm" />
-      </button>
-      <span class="ml-auto px-2 text-xs tabular-nums text-gray-400 dark:text-dark-500">{{ textLength }}/{{ maxLength }}</span>
+  <div class="resource-editor" :class="{ 'is-disabled': disabled }">
+    <div class="resource-editor__toolbar">
+      <div class="resource-editor__tools">
+        <button
+          v-for="tool in tools"
+          :key="tool.command"
+          type="button"
+          :title="tool.label"
+          :aria-label="tool.label"
+          :disabled="disabled"
+          @mousedown.prevent="applyCommand(tool.command, tool.value)"
+        >
+          <span v-if="tool.symbol" :class="{ 'is-italic': tool.command === 'italic' }">{{ tool.symbol }}</span>
+          <Icon v-else :name="tool.icon || 'link'" size="sm" />
+        </button>
+      </div>
+      <span class="resource-editor__count">{{ textLength }}/{{ maxLength }}</span>
     </div>
-    <div ref="editor" class="resource-editor__surface min-h-[140px] max-h-[320px] overflow-y-auto px-3 py-3 text-sm leading-6 text-gray-800 outline-none empty:before:text-gray-400 empty:before:content-[attr(data-placeholder)] dark:text-dark-100 dark:empty:before:text-dark-500" role="textbox" aria-multiline="true" :aria-label="placeholder" :data-placeholder="placeholder" :contenteditable="!disabled" @input="onInput" @keydown="onKeydown" />
+
+    <div
+      ref="editor"
+      class="resource-editor__surface"
+      role="textbox"
+      aria-multiline="true"
+      :aria-label="placeholder"
+      :data-placeholder="placeholder"
+      :contenteditable="!disabled"
+      @input="onInput"
+      @keydown="onKeydown"
+    />
   </div>
 </template>
 
@@ -111,5 +132,104 @@ watch(() => props.modelValue, value => {
   if (editor.value && sanitize(editor.value.innerHTML) !== sanitize(value)) void render(value)
 })
 
-onMounted(() => { void render(props.modelValue) })
+onMounted(() => {
+  void render(props.modelValue)
+})
 </script>
+
+<style scoped>
+.resource-editor {
+  overflow: hidden;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 12px;
+  background: var(--color-surface);
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard);
+}
+
+.resource-editor:focus-within {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-ring);
+}
+
+.resource-editor.is-disabled {
+  opacity: .6;
+}
+
+.resource-editor__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 40px;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--color-border-subtle);
+  background: var(--color-surface-soft);
+}
+
+.resource-editor__tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+
+.resource-editor__tools button {
+  display: grid;
+  min-width: 30px;
+  height: 30px;
+  place-items: center;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: .76rem;
+  font-weight: 650;
+}
+
+.resource-editor__tools button:hover:not(:disabled) {
+  background: var(--color-surface);
+  color: var(--color-primary);
+}
+
+.resource-editor__tools button:disabled {
+  cursor: not-allowed;
+}
+
+.is-italic {
+  font-style: italic;
+}
+
+.resource-editor__count {
+  flex: 0 0 auto;
+  padding: 0 5px;
+  color: var(--color-text-disabled);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: .62rem;
+}
+
+.resource-editor__surface {
+  min-height: 150px;
+  max-height: 340px;
+  overflow-y: auto;
+  padding: 12px 13px;
+  outline: none;
+  color: var(--color-text-primary);
+  font-size: .78rem;
+  line-height: 1.65;
+}
+
+.resource-editor__surface:empty::before {
+  color: var(--color-text-muted);
+  content: attr(data-placeholder);
+  pointer-events: none;
+}
+
+.resource-editor__tools button:focus-visible {
+  outline: 2px solid var(--color-primary-ring);
+  outline-offset: 1px;
+}
+</style>
