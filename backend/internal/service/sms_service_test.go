@@ -228,7 +228,10 @@ func TestFiveSIMRecoveryFallsBackToOppositeHistoryOrder(t *testing.T) {
 	defer server.Close()
 
 	p := providerFor("5sim", server.URL, "secret")
-	recovery := p.(SMSPurchaseRecoveryProvider)
+	recovery, ok := p.(SMSPurchaseRecoveryProvider)
+	if !ok {
+		t.Fatal("5sim provider does not implement SMSPurchaseRecoveryProvider")
+	}
 	result, err := recovery.RecoverTemporaryPurchase(context.Background(), SMSPurchaseRequest{
 		ServiceCode:  "openai",
 		CountryCode:  "netherlands",
