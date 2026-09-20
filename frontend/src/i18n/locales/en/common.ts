@@ -445,6 +445,16 @@ export default {
 
   // Auth
   auth: {
+    heroEyebrow: 'Unified AI Infrastructure',
+    heroTitleLead: 'One gateway,',
+    heroTitleAccent: 'every model',
+    heroDescription: 'Unify model routing, account pools, usage metering and API access. Sign in to enter your AI infrastructure control plane.',
+    capabilityRouting: 'Multi-model routing',
+    capabilityBalancing: 'Smart load balancing',
+    capabilityMetering: 'Real-time metering',
+    capabilityAvailability: 'High availability',
+    gatewayConsole: 'Gateway console',
+    routerCore: 'Router core',
     welcomeBack: 'Welcome Back',
     signInToAccount: 'Sign in to your account to continue',
     signIn: 'Sign In',

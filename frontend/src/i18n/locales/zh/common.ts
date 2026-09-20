@@ -445,6 +445,16 @@ export default {
 
   // Auth
   auth: {
+    heroEyebrow: '统一 AI 基础设施',
+    heroTitleLead: '一个入口，',
+    heroTitleAccent: '连接所有模型',
+    heroDescription: '统一管理模型路由、账号池、用量计费与 API 访问。登录后进入你的 AI 基础设施控制平面。',
+    capabilityRouting: '多模型路由',
+    capabilityBalancing: '智能负载均衡',
+    capabilityMetering: '实时用量计费',
+    capabilityAvailability: '高可用接入',
+    gatewayConsole: '网关控制台',
+    routerCore: '路由核心',
     welcomeBack: '欢迎回来',
     signInToAccount: '登录您的账户以继续',
     signIn: '登录',
