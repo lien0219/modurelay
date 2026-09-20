@@ -206,6 +206,7 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		ResourceCenterEnabled:                settings.ResourceCenterEnabled,
 		CanvasEnabled:                        settings.CanvasEnabled,
 		PlanCatalogEnabled:                   settings.PlanCatalogEnabled,
+		ToolCenterEnabled:                    settings.ToolCenterEnabled,
 		ActivityCenterEnabled:                settings.ActivityCenterEnabled,
 		DingTalkOAuthEnabled:                 settings.DingTalkOAuthEnabled,
 		LinuxDoOAuthEnabled:                  settings.LinuxDoOAuthEnabled,
