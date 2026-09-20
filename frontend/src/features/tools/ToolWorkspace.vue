@@ -183,6 +183,7 @@ import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import Icon from '@/components/icons/Icon.vue'
+import { getDefaultToolOperation } from './defaults'
 import { getToolDefinition, type ToolId } from './registry'
 import {
   calculateCidr, currentTimestamp, curlToSnippets, dateToTimestamp, decodeBase64Utf8, decodeJwt, decodeUrlComponent, diffCharacters, diffLines, encodeBase64Utf8, encodeUrlComponent, estimateEntropyBits, executeRegexInWorker, formatJson, generateApiSnippets, generatePassword, generateRandomString, generateTotp, generateUuidV4, generateUuidV7, getRandomAlphabetSize, hashText, hmacText, jsonToGo, jsonToPython, jsonToTypeScript, markdownToSafeHtml, minifyJson, nextCronRuns, parseCron, parseOtpAuthUri, parseUserAgent, searchHttpStatuses, timestampToDate, validateApiRequestUrl, validateJson, validateQrInput, type ApiRequestSpec, type CharacterDiff, type DiffLine, type HashAlgorithm, type RandomStringOptions,
@@ -207,7 +208,7 @@ const showAuthValue = ref(false)
 const showJwt = ref(false)
 const pattern = ref('')
 const flags = ref('g')
-const operation = ref('format')
+const operation = ref(getDefaultToolOperation(props.tool))
 const timestampUnit = ref<'auto' | 'seconds' | 'milliseconds'>('auto')
 const algorithm = ref<HashAlgorithm>('SHA-256')
 const outputText = ref('')
@@ -314,7 +315,7 @@ function resetTool(): void {
   showJwt.value = false
   pattern.value = ''
   flags.value = 'g'
-  operation.value = 'format'
+  operation.value = getDefaultToolOperation(props.tool)
   timestampUnit.value = 'auto'
   algorithm.value = 'SHA-256'
   batch.value = 1

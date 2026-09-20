@@ -118,7 +118,7 @@
               >
               <span v-else>{{ userInitials }}</span>
             </div>
-            <div class="hidden text-left md:block">
+            <div class="hidden text-left xl:block">
               <div class="text-sm font-medium text-[color:var(--color-text-primary)]">
                 {{ displayName }}
               </div>
