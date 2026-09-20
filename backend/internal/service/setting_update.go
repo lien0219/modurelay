@@ -434,6 +434,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyEmailServiceEnabled] = strconv.FormatBool(settings.EmailServiceEnabled)
 	updates[SettingKeyCanvasEnabled] = strconv.FormatBool(settings.CanvasEnabled)
 	updates[SettingKeyPlanCatalogEnabled] = strconv.FormatBool(settings.PlanCatalogEnabled)
+	updates[SettingKeyToolCenterEnabled] = strconv.FormatBool(settings.ToolCenterEnabled)
 
 	// Model plaza feature switches + description
 	updates[SettingKeyModelPlazaEnabled] = strconv.FormatBool(settings.ModelPlazaEnabled)

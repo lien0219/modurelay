@@ -7172,6 +7172,19 @@
 
 	        <!-- Tab: Features (功能开关) -->
         <div v-show="activeTab === 'features'" class="space-y-6">
+          <section class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-dark-700 dark:bg-dark-800">
+            <div class="flex items-start justify-between gap-4">
+              <div class="min-w-0">
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('admin.settings.features.toolCenter.title') }}</h2>
+                <p class="mt-1 text-sm leading-6 text-gray-500 dark:text-gray-400">{{ t('admin.settings.features.toolCenter.description') }}</p>
+                <p class="mt-2 text-xs leading-5 text-gray-500 dark:text-gray-400">{{ t('admin.settings.features.toolCenter.hint') }}</p>
+              </div>
+              <div class="flex shrink-0 items-center gap-3">
+                <span class="text-sm font-medium text-gray-700 dark:text-gray-200">{{ form.tool_center_enabled ? t('common.enabled') : t('common.disabled') }}</span>
+                <Toggle v-model="form.tool_center_enabled" :label="t('admin.settings.features.toolCenter.enabled')" />
+              </div>
+            </div>
+          </section>
 
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
@@ -9999,6 +10012,7 @@ const form = reactive<SettingsForm>({
   channel_monitor_hide_throughput: false,
   channel_monitor_show_quota: false,
   // Available Channels feature switch
+  tool_center_enabled: true,
   available_channels_enabled: false,
   sms_service_enabled: false,
   email_service_enabled: false,
@@ -11687,6 +11701,7 @@ async function saveSettings() {
       channel_monitor_hide_throughput: Boolean(form.channel_monitor_hide_throughput),
       channel_monitor_show_quota: Boolean(form.channel_monitor_show_quota),
       // Available Channels feature switch
+      tool_center_enabled: form.tool_center_enabled,
       available_channels_enabled: form.available_channels_enabled,
       sms_service_enabled: form.sms_service_enabled,
       email_service_enabled: form.email_service_enabled,

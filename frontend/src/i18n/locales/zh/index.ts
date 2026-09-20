@@ -8,6 +8,7 @@ import misc from './misc'
 import activity from './activity'
 import distribution from './distribution'
 import canvas from './canvas'
+import tools from './tools'
 
 export default {
   ...landing,
@@ -20,4 +21,9 @@ export default {
   ...activity,
   ...distribution,
   ...canvas,
+  ...tools,
+  nav: {
+    ...common.nav,
+    ...tools.nav,
+  },
 }

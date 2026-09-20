@@ -346,6 +346,7 @@ type UpdateSettingsRequest struct {
 	EmailServiceEnabled      *bool `json:"email_service_enabled"`
 	CanvasEnabled            *bool `json:"canvas_enabled"`
 	PlanCatalogEnabled       *bool `json:"plan_catalog_enabled"`
+	ToolCenterEnabled        *bool `json:"tool_center_enabled"`
 
 	// Model Plaza feature switches + description
 	ModelPlazaEnabled     *bool   `json:"model_plaza_enabled"`
@@ -1979,6 +1980,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.PlanCatalogEnabled
 		}(),
+		ToolCenterEnabled: func() bool {
+			if req.ToolCenterEnabled != nil {
+				return *req.ToolCenterEnabled
+			}
+			return previousSettings.ToolCenterEnabled
+		}(),
 		ModelPlazaEnabled: func() bool {
 			if req.ModelPlazaEnabled != nil {
 				return *req.ModelPlazaEnabled
@@ -2425,6 +2432,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		EmailServiceEnabled:      updatedSettings.EmailServiceEnabled,
 		CanvasEnabled:            updatedSettings.CanvasEnabled,
 		PlanCatalogEnabled:       updatedSettings.PlanCatalogEnabled,
+		ToolCenterEnabled:        updatedSettings.ToolCenterEnabled,
 
 		ModelPlazaEnabled:       updatedSettings.ModelPlazaEnabled,
 		ModelPlazaRequireAuth:   updatedSettings.ModelPlazaRequireAuth,

@@ -14,6 +14,12 @@ export default {
         payment: 'Payment',
       },
       features: {
+        toolCenter: {
+          title: 'Developer Toolbox',
+          description: 'Expose the local-first developer utilities under the user navigation.',
+          enabled: 'Enable Toolbox',
+          hint: 'When disabled, the navigation entry is hidden and /tools routes redirect to the dashboard.',
+        },
         channelMonitor: {
           title: 'Channel Monitor',
           description: 'Choose either V1 active probes or V2 passive usage monitoring. When disabled, both background jobs stop and the user entry is hidden.',

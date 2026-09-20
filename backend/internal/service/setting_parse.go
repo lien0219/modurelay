@@ -78,6 +78,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyResourceCenterEnabled:                     "true",
 		SettingKeyCanvasEnabled:                             "false",
 		SettingKeyPlanCatalogEnabled:                        "false",
+		SettingKeyToolCenterEnabled:                         "true",
 		SettingKeyActivityCenterEnabled:                     "false",
 		SettingKeyWeChatConnectEnabled:                      "false",
 		SettingKeyWeChatConnectAppID:                        "",
@@ -378,6 +379,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		ResourceCenterEnabled:                  settings[SettingKeyResourceCenterEnabled] != "false",
 		CanvasEnabled:                          settings[SettingKeyCanvasEnabled] == "true",
 		PlanCatalogEnabled:                     settings[SettingKeyPlanCatalogEnabled] == "true",
+		ToolCenterEnabled:                      settings[SettingKeyToolCenterEnabled] != "false",
 		ActivityCenterEnabled:                  settings[SettingKeyActivityCenterEnabled] == "true",
 		BackendModeEnabled:                     settings[SettingKeyBackendModeEnabled] == "true",
 	}

@@ -24,6 +24,7 @@ const appStore = vi.hoisted(() => ({
   backendModeEnabled: false,
   publicSettingsLoaded: false,
   cachedPublicSettings: null as null | {
+    tool_center_enabled?: boolean
     payment_enabled?: boolean
     risk_control_enabled?: boolean
     activity_center_enabled?: boolean
@@ -195,6 +196,39 @@ describe('feature route guard', () => {
     await disabled.navigation
     expect(disabled.next).toHaveBeenCalledOnce()
     expect(disabled.next).toHaveBeenCalledWith('/dashboard')
+  })
+
+  it('blocks toolbox routes when the tool center is explicitly disabled', async () => {
+    appStore.cachedPublicSettings = { tool_center_enabled: false }
+    appStore.publicSettingsLoaded = true
+
+    const { navigation, next } = runGuard({}, '/tools/json')
+    await navigation
+
+    expect(next).toHaveBeenCalledOnce()
+    expect(next).toHaveBeenCalledWith('/dashboard')
+  })
+
+  it('allows toolbox routes when the tool center is enabled', async () => {
+    appStore.cachedPublicSettings = { tool_center_enabled: true }
+    appStore.publicSettingsLoaded = true
+
+    const { navigation, next } = runGuard({}, '/tools/json')
+    await navigation
+
+    expect(next).toHaveBeenCalledOnce()
+    expect(next).toHaveBeenCalledWith()
+  })
+
+  it('fails closed for toolbox routes when public settings are unavailable', async () => {
+    appStore.cachedPublicSettings = null
+    appStore.publicSettingsLoaded = false
+
+    const { navigation, next } = runGuard({}, '/tools/json')
+    await navigation
+
+    expect(next).toHaveBeenCalledOnce()
+    expect(next).toHaveBeenCalledWith('/dashboard')
   })
 
   it.each(['/canvas', '/canvas/editor', '/canvas/video'])(

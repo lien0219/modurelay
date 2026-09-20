@@ -208,6 +208,7 @@ export interface LoginAgreementDocument {
 }
 
 export interface PublicSettings {
+  tool_center_enabled?: boolean
   plan_catalog_enabled?: boolean
   canvas_enabled?: boolean
   registration_enabled: boolean

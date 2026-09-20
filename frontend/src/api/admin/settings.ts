@@ -394,6 +394,7 @@ export function deriveWeChatConnectStoredMode(
  * System settings interface
  */
 export interface SystemSettings {
+  tool_center_enabled: boolean;
   // Registration settings
   registration_enabled: boolean;
   email_verify_enabled: boolean;
@@ -750,6 +751,7 @@ export interface SystemSettings {
 }
 
 export interface UpdateSettingsRequest {
+  tool_center_enabled?: boolean;
   registration_enabled?: boolean;
   email_verify_enabled?: boolean;
   registration_email_suffix_whitelist?: string[];

@@ -166,6 +166,41 @@ func TestSettingService_GetPublicSettingsForInjection_ExposesCanvasEnabled(t *te
 	require.True(t, payload.CanvasEnabled)
 }
 
+func TestSettingService_GetPublicSettings_ExposesToolCenterEnabled(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		raw  string
+		want bool
+	}{
+		{name: "enabled", raw: "true", want: true},
+		{name: "disabled", raw: "false", want: false},
+		{name: "missing defaults enabled", raw: "", want: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			values := map[string]string{}
+			if tc.raw != "" {
+				values[SettingKeyToolCenterEnabled] = tc.raw
+			}
+			settings, err := NewSettingService(&settingPublicRepoStub{values: values}, &config.Config{}).
+				GetPublicSettings(context.Background())
+			require.NoError(t, err)
+			require.Equal(t, tc.want, settings.ToolCenterEnabled)
+		})
+	}
+}
+
+func TestSettingService_GetPublicSettingsForInjection_ExposesToolCenterEnabled(t *testing.T) {
+	svc := NewSettingService(&settingPublicRepoStub{
+		values: map[string]string{SettingKeyToolCenterEnabled: "true"},
+	}, &config.Config{})
+
+	injected, err := svc.GetPublicSettingsForInjection(context.Background())
+	require.NoError(t, err)
+	payload, ok := injected.(*PublicSettingsInjectionPayload)
+	require.True(t, ok)
+	require.True(t, payload.ToolCenterEnabled)
+}
+
 func TestSettingService_GetPublicSettings_ExposesAllowUserViewErrorRequests(t *testing.T) {
 	repo := &settingPublicRepoStub{
 		values: map[string]string{

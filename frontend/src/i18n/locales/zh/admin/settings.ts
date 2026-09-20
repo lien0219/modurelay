@@ -14,6 +14,12 @@ export default {
         payment: '支付设置',
       },
       features: {
+        toolCenter: {
+          title: '开发者工具中心',
+          description: '在用户侧导航中提供本地优先的开发者工具集。',
+          enabled: '启用工具中心',
+          hint: '关闭后会隐藏导航入口，直接访问 /tools 会返回仪表盘。',
+        },
         channelMonitor: {
           title: '渠道监控',
           description: '启用后在 V1 主动探测与 V2 被动用量监控中二选一。关闭后两种模式的后台任务均停止，用户端入口隐藏。',

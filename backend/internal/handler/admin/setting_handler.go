@@ -386,6 +386,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		EmailServiceEnabled:      settings.EmailServiceEnabled,
 		CanvasEnabled:            settings.CanvasEnabled,
 		PlanCatalogEnabled:       settings.PlanCatalogEnabled,
+		ToolCenterEnabled:        settings.ToolCenterEnabled,
 
 		ModelPlazaEnabled:       settings.ModelPlazaEnabled,
 		ModelPlazaRequireAuth:   settings.ModelPlazaRequireAuth,

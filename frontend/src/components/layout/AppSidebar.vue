@@ -813,6 +813,7 @@ const flagResourceCenter = makeSidebarFlag(FeatureFlags.resourceCenter)
 const flagActivityCenter = makeSidebarFlag(FeatureFlags.activityCenter)
 const flagCanvas = makeSidebarFlag(FeatureFlags.canvas)
 const flagPlanCatalog = makeSidebarFlag(FeatureFlags.planCatalog)
+const flagToolCenter = makeSidebarFlag(FeatureFlags.toolCenter)
 
 const siteNavItems = computed((): NavItem[] => [
   { path: '/home', label: t('nav.home'), icon: SiteHomeIcon },
@@ -841,6 +842,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/verification-records', label: t('nav.verificationRecords'), icon: OrderIcon, hideInSimpleMode: true },
     { path: '/monitor', label: t('nav.channelStatus'), icon: SignalIcon, featureFlag: flagChannelMonitor },
     { path: '/quick-start', label: t('nav.quickStart'), icon: QuickStartIcon },
+    { path: '/tools', label: t('nav.tools'), icon: PluginIcon, featureFlag: flagToolCenter },
     { path: '/ai-learning', label: t('nav.aiLearning'), icon: AILearningIcon },
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },
     { path: '/purchase', label: t('nav.buySubscription'), icon: RechargeSubscriptionIcon, hideInSimpleMode: true, featureFlag: flagPayment },

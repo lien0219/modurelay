@@ -24,6 +24,22 @@ func (s *SettingService) IsRegistrationEnabled(ctx context.Context) bool {
 	return value == "true"
 }
 
+// IsToolCenterEnabled reports whether the public Toolbox surface is available
+// to backend callers that need a direct setting lookup. A missing or unreadable
+// row fails closed here; the public-settings bulk reader deliberately treats a
+// missing compatibility-migration row as enabled so existing deployments keep
+// the requested default until migration/default initialization persists it.
+func (s *SettingService) IsToolCenterEnabled(ctx context.Context) bool {
+	if s == nil || s.settingRepo == nil {
+		return false
+	}
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyToolCenterEnabled)
+	if err != nil {
+		return false
+	}
+	return value != "false"
+}
+
 // IsEmailVerifyEnabled 检查是否开启邮件验证
 func (s *SettingService) IsEmailVerifyEnabled(ctx context.Context) bool {
 	value, err := s.settingRepo.GetValue(ctx, SettingKeyEmailVerifyEnabled)

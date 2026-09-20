@@ -198,6 +198,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyResourceCenterEnabled,
 		SettingKeyCanvasEnabled,
 		SettingKeyPlanCatalogEnabled,
+		SettingKeyToolCenterEnabled,
 		SettingKeyActivityCenterEnabled,
 		SettingKeyLinuxDoConnectEnabled,
 		SettingKeyDingTalkConnectEnabled,
@@ -348,6 +349,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		ResourceCenterEnabled:               settings[SettingKeyResourceCenterEnabled] != "false",
 		CanvasEnabled:                       settings[SettingKeyCanvasEnabled] == "true",
 		PlanCatalogEnabled:                  settings[SettingKeyPlanCatalogEnabled] == "true",
+		ToolCenterEnabled:                   settings[SettingKeyToolCenterEnabled] != "false",
 		ActivityCenterEnabled:               settings[SettingKeyActivityCenterEnabled] == "true",
 		LinuxDoOAuthEnabled:                 linuxDoEnabled,
 		DingTalkOAuthEnabled:                dingTalkEnabled,
@@ -811,6 +813,7 @@ type PublicSettingsInjectionPayload struct {
 	ActivityCenterEnabled               bool                     `json:"activity_center_enabled"`
 	CanvasEnabled                       bool                     `json:"canvas_enabled"`
 	PlanCatalogEnabled                  bool                     `json:"plan_catalog_enabled"`
+	ToolCenterEnabled                   bool                     `json:"tool_center_enabled"`
 	LinuxDoOAuthEnabled                 bool                     `json:"linuxdo_oauth_enabled"`
 	DingTalkOAuthEnabled                bool                     `json:"dingtalk_oauth_enabled"`
 	WeChatOAuthEnabled                  bool                     `json:"wechat_oauth_enabled"`
@@ -921,6 +924,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 				CustomEndpoints:                  safeRawJSONArray(settings.CustomEndpoints),
 			ResourceCenterEnabled:            settings.ResourceCenterEnabled,
 			CanvasEnabled:                    settings.CanvasEnabled,
+			ToolCenterEnabled:                settings.ToolCenterEnabled,
 				LinuxDoOAuthEnabled:              settings.LinuxDoOAuthEnabled,
 				DingTalkOAuthEnabled:             settings.DingTalkOAuthEnabled,
 				WeChatOAuthEnabled:               settings.WeChatOAuthEnabled,
@@ -1040,6 +1044,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		ResourceCenterEnabled:               settings.ResourceCenterEnabled,
 		ActivityCenterEnabled:               settings.ActivityCenterEnabled,
 		CanvasEnabled:                       settings.CanvasEnabled,
+		ToolCenterEnabled:                   settings.ToolCenterEnabled,
 		LinuxDoOAuthEnabled:                 settings.LinuxDoOAuthEnabled,
 		DingTalkOAuthEnabled:                settings.DingTalkOAuthEnabled,
 		WeChatOAuthEnabled:                  settings.WeChatOAuthEnabled,

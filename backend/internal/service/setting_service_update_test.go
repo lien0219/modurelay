@@ -571,6 +571,18 @@ func TestSettingService_InitializeDefaultSettingsPersistsConfiguredForwardedClie
 
 	require.NoError(t, svc.InitializeDefaultSettings(context.Background()))
 	require.JSONEq(t, `["X-Cdn-Ip","True-Client-Ip"]`, repo.values[SettingKeyForwardedClientIPHeaders])
+	require.Equal(t, "true", repo.values[SettingKeyToolCenterEnabled])
+}
+
+func TestSettingService_ToolCenterFlagRoundTrip(t *testing.T) {
+	repo := &settingUpdateRepoStub{}
+	svc := NewSettingService(repo, &config.Config{})
+	require.NoError(t, svc.UpdateSettings(context.Background(), &SystemSettings{ToolCenterEnabled: false}))
+	require.Equal(t, "false", repo.updates[SettingKeyToolCenterEnabled])
+
+	parsed := svc.parseSettings(map[string]string{SettingKeyToolCenterEnabled: "false"})
+	require.False(t, parsed.ToolCenterEnabled)
+	require.True(t, svc.parseSettings(map[string]string{}).ToolCenterEnabled)
 }
 
 func TestSettingService_UpdateSettings_APIKeyACLTrustForwardedIPRefreshesConfig(t *testing.T) {

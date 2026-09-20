@@ -366,6 +366,7 @@ const (
 	SettingKeyResourceCenterEnabled       = "resource_center_enabled"
 	SettingKeyCanvasEnabled               = "canvas_enabled"
 	SettingKeyPlanCatalogEnabled          = "plan_catalog_enabled"
+	SettingKeyToolCenterEnabled           = "tool_center_enabled"
 
 	// 默认配置
 	SettingKeyDefaultConcurrency   = "default_concurrency"    // 新用户默认并发量

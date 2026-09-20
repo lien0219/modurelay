@@ -275,6 +275,30 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/tools',
+    name: 'Tools',
+    component: () => import('@/views/user/ToolboxView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Toolbox',
+      titleKey: 'nav.tools',
+      descriptionKey: 'tools.description'
+    }
+  },
+  {
+    path: '/tools/:toolId',
+    name: 'ToolWorkspace',
+    component: () => import('@/views/user/ToolboxView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Toolbox',
+      titleKey: 'nav.tools',
+      descriptionKey: 'tools.description'
+    }
+  },
+  {
     path: '/resource-center',
     name: 'ResourceCenter',
     component: () => import('@/views/user/ResourceCenterView.vue'),
@@ -1189,6 +1213,19 @@ router.beforeEach(async (to, _from, next) => {
       try { await appStore.fetchPublicSettings() } catch { /* backend remains the source of truth */ }
     }
     if (appStore.publicSettingsLoaded && appStore.cachedPublicSettings?.canvas_enabled !== true) {
+      next('/dashboard')
+      return
+    }
+  }
+
+  if (to.path === '/tools' || to.path.startsWith('/tools/')) {
+    if (!appStore.publicSettingsLoaded) {
+      try { await appStore.fetchPublicSettings() } catch { /* backend remains the source of truth */ }
+    }
+    // Toolbox is a local-only surface, so its public-settings flag is the
+    // authorization boundary. Unknown settings state must not expose a deep
+    // link after a failed or incomplete settings load.
+    if (!appStore.publicSettingsLoaded || appStore.cachedPublicSettings?.tool_center_enabled !== true) {
       next('/dashboard')
       return
     }

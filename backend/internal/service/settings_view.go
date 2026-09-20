@@ -167,6 +167,7 @@ type SystemSettings struct {
 	ResourceCenterEnabled       bool
 	CanvasEnabled               bool `json:"canvas_enabled"`
 	PlanCatalogEnabled          bool `json:"plan_catalog_enabled"`
+	ToolCenterEnabled           bool `json:"tool_center_enabled"`
 	ActivityCenterEnabled       bool
 
 	DefaultConcurrency           int
@@ -370,6 +371,7 @@ type PublicSettings struct {
 	ResourceCenterEnabled       bool
 	CanvasEnabled               bool `json:"canvas_enabled"`
 	PlanCatalogEnabled          bool `json:"plan_catalog_enabled"`
+	ToolCenterEnabled           bool `json:"tool_center_enabled"`
 	ActivityCenterEnabled       bool
 
 	LinuxDoOAuthEnabled      bool

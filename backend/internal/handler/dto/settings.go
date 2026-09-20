@@ -319,6 +319,7 @@ type SystemSettings struct {
 	EmailServiceEnabled      bool `json:"email_service_enabled"`
 	CanvasEnabled            bool `json:"canvas_enabled"`
 	PlanCatalogEnabled       bool `json:"plan_catalog_enabled"`
+	ToolCenterEnabled        bool `json:"tool_center_enabled"`
 
 	// Model Plaza feature (public group/model pricing showcase)
 	ModelPlazaEnabled       bool   `json:"model_plaza_enabled"`
@@ -512,6 +513,7 @@ type PublicSettings struct {
 	ResourceCenterEnabled                bool                     `json:"resource_center_enabled"`
 	CanvasEnabled                        bool                     `json:"canvas_enabled"`
 	PlanCatalogEnabled                   bool                     `json:"plan_catalog_enabled"`
+	ToolCenterEnabled                    bool                     `json:"tool_center_enabled"`
 	ActivityCenterEnabled                bool                     `json:"activity_center_enabled"`
 	DingTalkOAuthEnabled                 bool                     `json:"dingtalk_oauth_enabled"`
 	LinuxDoOAuthEnabled                  bool                     `json:"linuxdo_oauth_enabled"`
