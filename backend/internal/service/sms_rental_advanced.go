@@ -592,9 +592,9 @@ func (s *SMSService) RestoreRentalOrder(ctx context.Context, userID int64, sourc
 	err = tx.QueryRowContext(ctx, `INSERT INTO sms_orders
 		(user_id,channel_id,provider_id,service_id,country_id,product_type,status,provider_cost_snapshot,sale_price_snapshot,idempotency_key,reserved_amount,settlement_status,reconciliation_action,reconcile_after,metadata)
 		VALUES($1,$2,$3,$4,$5,'rental','reconciling',$6,$7,$8,$7,'held','purchase',NOW()+INTERVAL '5 seconds',
-			jsonb_build_object('restored_from_order_id',$9,'provider_history_order_id',$10,'restore_baseline_ids',$11::jsonb,'restore_service_code',$12,'restore_country_code',$13,'restore_phone_number',$14))
+			jsonb_build_object('restored_from_order_id',$9,'provider_history_order_id',$10,'restore_baseline_ids',$11::jsonb,'restore_service_code',$12,'restore_country_code',$13,'restore_phone_number',$14,'restore_duration_days',$15))
 		RETURNING id`,
-		userID, channelID, providerID, serviceID, countryID, providerCost, salePrice, idempotencyKey, sourceOrderID, providerHistoryID, string(baselineJSON), serviceCode, countryCode, live.PhoneNumber).Scan(&orderID)
+		userID, channelID, providerID, serviceID, countryID, providerCost, salePrice, idempotencyKey, sourceOrderID, providerHistoryID, string(baselineJSON), serviceCode, countryCode, live.PhoneNumber, durationDays).Scan(&orderID)
 	if err != nil {
 		return nil, err
 	}
