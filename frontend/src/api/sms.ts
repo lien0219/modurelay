@@ -45,6 +45,9 @@ export interface SMSOrderPage { items: SMSOrder[]; total: number; page: number; 
 export interface SMSRecentSuccessItem { username: string; country_code: string; phone: string }
 export interface SMSRecentSuccessFeed { source: 'mock' | 'real'; real_success_count: number; items: SMSRecentSuccessItem[] }
 export interface SMSRentalConstraints { can_extend: boolean; can_prolong_max?: number; current_until?: string; can_prolong_until?: string; last_online?: string }
+export interface SMSRentalServiceOption { code: string; name: string; icon?: string; stock: number; rent_days: number; sale_price: number }
+export interface SMSRentalServiceQuote { quote_id: string; service_code: string; rent_days: number; sale_price: number; expires_at: string }
+export interface SMSRentalRestoreQuote { quote_id: string; service_code: string; country_code: string; phone_number: string; duration_days: number; sale_price: number; expires_at: string }
 export interface SMSSettings { batch_purchase_limit: number }
 
 export const smsAPI = {
@@ -68,5 +71,10 @@ export const smsAPI = {
   refund: (id: string) => apiClient.post(`/sms/orders/${encodeURIComponent(id)}/refund`).then(r => r.data),
   refundStatus: (id: string) => apiClient.get<{ status: string; reason?: string }>(`/sms/orders/${encodeURIComponent(id)}/refund-status`).then(r => r.data),
   rentalConstraints: (id: string) => apiClient.get<SMSRentalConstraints>(`/sms/rentals/${encodeURIComponent(id)}/constraints`).then(r => r.data),
+  rentalServiceOptions: (id: string, rentDays = 7) => apiClient.get<SMSRentalServiceOption[]>(`/sms/rentals/${encodeURIComponent(id)}/services`, { params: { rent_days: rentDays } }).then(r => r.data),
+  rentalServiceQuote: (id: string, payload: { service_code: string; rent_days: number }) => apiClient.post<SMSRentalServiceQuote>(`/sms/rentals/${encodeURIComponent(id)}/services/quotes`, payload).then(r => r.data),
+  addRentalService: (id: string, payload: { quote_id: string; expected_price: number }, idempotencyKey: string) => apiClient.post<SMSOrder>(`/sms/rentals/${encodeURIComponent(id)}/services`, payload, { headers: { 'Idempotency-Key': idempotencyKey } }).then(r => r.data),
+  rentalRestoreQuote: (id: string) => apiClient.post<SMSRentalRestoreQuote>(`/sms/rentals/${encodeURIComponent(id)}/restore-quote`).then(r => r.data),
+  restoreRental: (id: string, payload: { quote_id: string; expected_price: number }, idempotencyKey: string) => apiClient.post<SMSOrder>(`/sms/rentals/${encodeURIComponent(id)}/restore`, payload, { headers: { 'Idempotency-Key': idempotencyKey } }).then(r => r.data),
   extendRental: (id: string, payload: { duration_value: number; duration_unit: string }, idempotencyKey: string) => apiClient.post<SMSOrder>(`/sms/rentals/${encodeURIComponent(id)}/extend`, payload, { headers: { 'Idempotency-Key': idempotencyKey } }).then(r => r.data),
 }
