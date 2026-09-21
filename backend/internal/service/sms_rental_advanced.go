@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -455,6 +456,58 @@ func (s *SMSService) CreateRentalRestoreQuote(ctx context.Context, userID int64,
 	}, nil
 }
 
+func filterNewSMSPVARentalOrder(orders []SMSRentalProviderOrder, baseline map[string]struct{}, serviceCode, countryCode string) *SMSRentalProviderOrder {
+	var candidate *SMSRentalProviderOrder
+	for i := range orders {
+		item := orders[i]
+		if _, existed := baseline[item.ID]; existed {
+			continue
+		}
+		if !strings.EqualFold(item.ServiceCode, serviceCode) || !strings.EqualFold(item.CountryCode, countryCode) {
+			continue
+		}
+		if candidate != nil {
+			return nil
+		}
+		copy := item
+		candidate = &copy
+	}
+	return candidate
+}
+
+func (s *SMSService) recoverSMSPVARestorePurchase(ctx context.Context, orderID int64, provider *smsPVAProvider) (*SMSPurchaseResult, error) {
+	var raw []byte
+	if err := s.db.QueryRowContext(ctx, `SELECT metadata FROM sms_orders WHERE id=$1`, orderID).Scan(&raw); err != nil {
+		return nil, err
+	}
+	var metadata struct {
+		Baseline    []string `json:"restore_baseline_ids"`
+		ServiceCode string   `json:"restore_service_code"`
+		CountryCode string   `json:"restore_country_code"`
+	}
+	if json.Unmarshal(raw, &metadata) != nil || metadata.ServiceCode == "" || metadata.CountryCode == "" {
+		return nil, nil
+	}
+	baseline := make(map[string]struct{}, len(metadata.Baseline))
+	for _, id := range metadata.Baseline {
+		baseline[strings.TrimSpace(id)] = struct{}{}
+	}
+	orders, err := provider.RentalOrders(ctx)
+	if err != nil {
+		return nil, err
+	}
+	candidate := filterNewSMSPVARentalOrder(orders, baseline, metadata.ServiceCode, metadata.CountryCode)
+	if candidate == nil {
+		return nil, nil
+	}
+	var expires *time.Time
+	if candidate.Until > 0 {
+		t := time.Unix(candidate.Until, 0)
+		expires = &t
+	}
+	return &SMSPurchaseResult{ProviderOrderID: candidate.ID, PhoneNumber: candidate.PhoneNumber, ExpiresAt: expires}, nil
+}
+
 func (s *SMSService) RestoreRentalOrder(ctx context.Context, userID int64, sourcePublicID, quoteID, idempotencyKey string, expectedPrice *float64) (*SMSOrder, error) {
 	if !s.Enabled(ctx) {
 		return nil, ErrSMSFeatureDisabled
@@ -496,9 +549,22 @@ func (s *SMSService) RestoreRentalOrder(ctx context.Context, userID int64, sourc
 	}
 	provider := providerFor(providerCode, base, providerAPIKey(providerCode, credential, s.encryptor))
 	advanced, ok := provider.(SMSRentalAdvancedProvider)
+	if !ok || !provider.Capabilities(ctx).RentalRestore {
+		return nil, ErrSMSProviderUnavailable
+	}
+	smspva, ok := provider.(*smsPVAProvider)
 	if !ok {
 		return nil, ErrSMSProviderUnavailable
 	}
+	beforeOrders, err := smspva.RentalOrders(ctx)
+	if err != nil {
+		return nil, sanitizeProviderError(err)
+	}
+	baselineIDs := make([]string, 0, len(beforeOrders))
+	for _, item := range beforeOrders {
+		baselineIDs = append(baselineIDs, item.ID)
+	}
+	baselineJSON, _ := json.Marshal(baselineIDs)
 	live, err := advanced.PrecalcRentalRestore(ctx, providerHistoryID)
 	if err != nil {
 		return nil, sanitizeProviderError(err)
@@ -515,9 +581,10 @@ func (s *SMSService) RestoreRentalOrder(ctx context.Context, userID int64, sourc
 	var orderID int64
 	err = tx.QueryRowContext(ctx, `INSERT INTO sms_orders
 		(user_id,channel_id,provider_id,service_id,country_id,product_type,status,provider_cost_snapshot,sale_price_snapshot,idempotency_key,reserved_amount,settlement_status,reconciliation_action,reconcile_after,metadata)
-		VALUES($1,$2,$3,$4,$5,'rental','reconciling',$6,$7,$8,$7,'held','purchase',NOW()+INTERVAL '5 seconds',jsonb_build_object('restored_from_order_id',$9,'provider_history_order_id',$10))
+		VALUES($1,$2,$3,$4,$5,'rental','reconciling',$6,$7,$8,$7,'held','purchase',NOW()+INTERVAL '5 seconds',
+			jsonb_build_object('restored_from_order_id',$9,'provider_history_order_id',$10,'restore_baseline_ids',$11::jsonb,'restore_service_code',$12,'restore_country_code',$13))
 		RETURNING id`,
-		userID, channelID, providerID, serviceID, countryID, providerCost, salePrice, idempotencyKey, sourceOrderID, providerHistoryID).Scan(&orderID)
+		userID, channelID, providerID, serviceID, countryID, providerCost, salePrice, idempotencyKey, sourceOrderID, providerHistoryID, string(baselineJSON), serviceCode, countryCode).Scan(&orderID)
 	if err != nil {
 		return nil, err
 	}
@@ -549,8 +616,15 @@ func (s *SMSService) RestoreRentalOrder(ctx context.Context, userID int64, sourc
 			}
 			return nil, sanitizeProviderError(restoreErr)
 		}
-		_, _ = s.db.ExecContext(context.Background(), `UPDATE sms_orders SET status='reconciling',reconciliation_action='purchase',last_provider_error=$1,reconcile_after=NOW()+INTERVAL '5 seconds',updated_at=NOW() WHERE id=$2`, providerErrorDiagnostic(restoreErr), orderID)
-		return s.GetOrder(context.Background(), userID, orderID)
+		recoveryCtx, recoveryCancel := context.WithTimeout(context.Background(), 6*time.Second)
+		recovered, recoveryErr := s.recoverSMSPVARestorePurchase(recoveryCtx, orderID, smspva)
+		recoveryCancel()
+		if recoveryErr == nil && recovered != nil {
+			restoredID = recovered.ProviderOrderID
+		} else {
+			_, _ = s.db.ExecContext(context.Background(), `UPDATE sms_orders SET status='reconciling',reconciliation_action='purchase',last_provider_error=$1,reconcile_after=NOW()+INTERVAL '5 seconds',updated_at=NOW() WHERE id=$2`, providerErrorDiagnostic(restoreErr), orderID)
+			return s.GetOrder(context.Background(), userID, orderID)
+		}
 	}
 	if strings.TrimSpace(restoredID) == "" {
 		_, _ = s.db.ExecContext(context.Background(), `UPDATE sms_orders SET status='reconciling',reconciliation_action='purchase',last_provider_error='provider restore returned no order id',reconcile_after=NOW()+INTERVAL '5 seconds',updated_at=NOW() WHERE id=$1`, orderID)
