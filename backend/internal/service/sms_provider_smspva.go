@@ -1004,6 +1004,15 @@ func (p *smsPVAProvider) PurchaseRental(ctx context.Context, req SMSPurchaseRequ
 func (p *smsPVAProvider) GetRentalStatus(ctx context.Context, id string) (*SMSStatusResult, error) {
 	var activation smsPVARentalEnvelope
 	_ = p.rentalRequestJSON(ctx, url.Values{"method": {"activate"}, "id": {strings.TrimSpace(id)}}, &activation)
+	var phone string
+	var expiresAt *time.Time
+	if order, err := p.RentalOrder(ctx, strings.TrimSpace(id)); err == nil && order != nil {
+		phone = strings.TrimSpace(order.PhoneNumber)
+		if order.Until > 0 {
+			t := time.Unix(order.Until, 0)
+			expiresAt = &t
+		}
+	}
 	var env smsPVARentalEnvelope
 	if err := p.rentalRequestJSON(ctx, url.Values{"method": {"sms"}, "id": {strings.TrimSpace(id)}}, &env); err != nil {
 		return nil, err
@@ -1061,7 +1070,7 @@ func (p *smsPVAProvider) GetRentalStatus(ctx context.Context, id string) (*SMSSt
 	if len(messageMetadata) > 0 {
 		metadata = map[string]any{"messages": messageMetadata}
 	}
-	return &SMSStatusResult{Status: "active", Messages: messages, Metadata: metadata}, nil
+	return &SMSStatusResult{Status: "active", PhoneNumber: phone, ExpiresAt: expiresAt, Messages: messages, Metadata: metadata}, nil
 }
 
 // RecoverRentalPurchase is also fail-closed. SMSPVA rental/orders has no
