@@ -623,6 +623,30 @@ func (h *SMSHandler) RefundStatus(c *gin.Context) {
 	}
 	response.Success(c, gin.H{"status": order.RefundStatus, "reason": order.RefundReason})
 }
+func (h *SMSHandler) ServiceIcon(c *gin.Context) {
+	data, contentType, err := h.svc.ServiceIcon(c.Request.Context(), c.Param("provider"), c.Param("service"))
+	if err != nil {
+		response.ErrorWithDetails(c, http.StatusNotFound, "Service icon is unavailable", "SERVICE_ICON_UNAVAILABLE", nil)
+		return
+	}
+	c.Header("Cache-Control", "public, max-age=43200, stale-while-revalidate=86400")
+	c.Data(http.StatusOK, contentType, data)
+}
+
+func (h *SMSHandler) RentalConstraints(c *gin.Context) {
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	constraints, err := h.svc.RentalConstraints(c.Request.Context(), subject.UserID, c.Param("id"))
+	if err != nil {
+		response.ErrorWithDetails(c, http.StatusUnprocessableEntity, "Rental extension is unavailable for this order", "RENTAL_EXTENSION_UNSUPPORTED", nil)
+		return
+	}
+	response.Success(c, constraints)
+}
+
 func (h *SMSHandler) ExtendRental(c *gin.Context) {
 	subject, ok := middleware.GetAuthSubjectFromContext(c)
 	if !ok {
