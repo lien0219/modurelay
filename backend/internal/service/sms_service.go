@@ -4528,6 +4528,29 @@ func (s *SMSService) ExtendRental(ctx context.Context, userID int64, publicID st
 	if p == nil || !p.Capabilities(ctx).Extend {
 		return nil, errors.New("rental extension is unavailable for this channel")
 	}
+	if inspector, supported := p.(SMSRentalOrderInspector); supported {
+		providerState, inspectErr := inspector.RentalOrder(ctx, providerOrder)
+		if inspectErr != nil {
+			return nil, sanitizeProviderError(inspectErr)
+		}
+		if !providerState.CanProlong {
+			return nil, errors.New("provider does not currently allow this rental to be extended")
+		}
+		normalizedUnit := strings.ToLower(strings.TrimSpace(unit))
+		if normalizedUnit == "day" && providerState.CanProlongMax > 0 && value > providerState.CanProlongMax {
+			return nil, errors.New("requested rental extension exceeds provider maximum")
+		}
+		if providerState.CanProlongUntil > 0 {
+			baseUntil := providerState.Until
+			if baseUntil <= 0 {
+				baseUntil = time.Now().Unix()
+			}
+			requestedUntil := time.Unix(baseUntil, 0).Add(delta)
+			if requestedUntil.After(time.Unix(providerState.CanProlongUntil, 0)) {
+				return nil, errors.New("requested rental extension exceeds provider allowed-until boundary")
+			}
+		}
+	}
 	if err := p.ExtendRental(ctx, providerOrder, value, unit); err != nil {
 		if isSMSProviderTimeout(err) {
 			return nil, ErrSMSProviderUnknown
