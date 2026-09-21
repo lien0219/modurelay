@@ -167,7 +167,7 @@
                   <label class="block min-w-0"><span class="input-label">{{ t('sms.user.duration') }}</span><input v-model.number="durationValue" class="input h-[42px]" type="number" min="1" @change="reloadRentalCatalog" /></label>
                   <Select v-model="durationUnit" :label="t('sms.user.unit')" :options="durationUnitOptions" @update:model-value="reloadRentalCatalog" />
                 </div>
-                <div class="rounded-xl border border-gray-200 p-3 dark:border-dark-700">
+                <div v-if="currentProvider?.capabilities.supports_rental_multi_service" class="rounded-xl border border-gray-200 p-3 dark:border-dark-700">
                   <div class="flex items-center justify-between gap-2">
                     <div>
                       <div class="text-sm font-medium text-gray-900 dark:text-white">{{ t('sms.user.multiServiceRental') }}</div>
@@ -380,7 +380,7 @@
                 <td class="whitespace-nowrap px-4 py-3">
                   <div class="flex min-w-max items-center gap-2">
                     <button v-if="showCancelAction(order)" type="button" class="btn btn-secondary btn-sm" :disabled="!canCancelOrder(order)" :title="cancelActionHint(order)" @click="cancel(order)">{{ t('sms.user.cancel') }}</button>
-                    <button v-if="order.status === 'active' && order.product_type === 'rental'" type="button" class="btn btn-secondary btn-sm" @click="openRentalServiceModal(order)">{{ t('sms.user.addService') }}</button>
+                    <button v-if="order.status === 'active' && order.product_type === 'rental' && order.capabilities?.supports_rental_add_service" type="button" class="btn btn-secondary btn-sm" @click="openRentalServiceModal(order)">{{ t('sms.user.addService') }}</button>
                     <button v-if="order.status === 'active' && order.product_type === 'rental' && order.capabilities?.supports_extend" type="button" class="btn btn-secondary btn-sm" @click="extend(order.id)">{{ t('sms.user.extend') }}</button>
                     <button v-if="canRestoreRental(order)" type="button" class="btn btn-secondary btn-sm" @click="restoreRental(order)">{{ t('sms.user.restoreRental') }}</button>
                     <button v-if="order.status === 'active' && order.product_type === 'temporary' && order.capabilities?.supports_resend" type="button" class="btn btn-secondary btn-sm" @click="resend(order.id)">{{ t('sms.user.resend') }}</button>
@@ -932,7 +932,7 @@ async function loadQuotes() {
     quotes.value = await smsAPI.quotes({
       provider: providerCode.value,
       service: serviceCode.value,
-      services: productType.value === 'rental' && providerCode.value === 'smspva'
+      services: productType.value === 'rental' && currentProvider.value?.capabilities.supports_rental_multi_service
         ? [serviceCode.value, ...additionalRentalServiceCodes.value].join(',')
         : undefined,
       country: countryCode.value,
@@ -986,7 +986,7 @@ async function purchase(quote: SMSQuote) {
   try {
     const key = `sms-${Date.now()}-${Math.random().toString(36).slice(2)}`
     const quantity = Number(purchaseQuantity.value)
-    const item = { channel_code: quote.channel_code, service_code: serviceCode.value, service_codes: productType.value === 'rental' && providerCode.value === 'smspva' ? [serviceCode.value, ...additionalRentalServiceCodes.value] : undefined, country_code: countryCode.value, product_type: productType.value, operator_code: operatorCode.value || 'any', voice_mode: voiceMode.value, duration_value: productType.value === 'rental' ? durationValue.value : undefined, duration_unit: productType.value === 'rental' ? durationUnit.value : undefined, quote_id: quote.quote_id, expected_price: quote.sale_price }
+    const item = { channel_code: quote.channel_code, service_code: serviceCode.value, service_codes: productType.value === 'rental' && currentProvider.value?.capabilities.supports_rental_multi_service ? [serviceCode.value, ...additionalRentalServiceCodes.value] : undefined, country_code: countryCode.value, product_type: productType.value, operator_code: operatorCode.value || 'any', voice_mode: voiceMode.value, duration_value: productType.value === 'rental' ? durationValue.value : undefined, duration_unit: productType.value === 'rental' ? durationUnit.value : undefined, quote_id: quote.quote_id, expected_price: quote.sale_price }
     if (quantity > 1) {
       const result = await smsAPI.purchaseBatch({ items: Array.from({ length: quantity }, () => item) }, key)
       liveOrders.value = [...result.items, ...liveOrders.value.filter(existing => !result.items.some(item => item.id === existing.id))]
@@ -1179,7 +1179,7 @@ function refundLabel(status: string) {
 }
 
 function canRestoreRental(order: SMSOrder) {
-  return order.product_type === 'rental' && ['expired', 'cancelled', 'refunded', 'failed', 'completed'].includes(order.status)
+  return order.product_type === 'rental' && order.capabilities?.supports_rental_restore === true && ['expired', 'cancelled', 'refunded', 'failed', 'completed'].includes(order.status)
 }
 
 async function openRentalServiceModal(order: SMSOrder) {
