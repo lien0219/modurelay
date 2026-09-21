@@ -162,7 +162,7 @@
                 </div>
               </div>
 
-              <div v-if="productType === 'rental' && providerCode === 'smspva'" class="space-y-3">
+              <div v-if="productType === 'rental' && currentProvider?.capabilities.supports_rental_constraints" class="space-y-3">
                 <div class="grid grid-cols-2 gap-2">
                   <label class="block min-w-0"><span class="input-label">{{ t('sms.user.duration') }}</span><input v-model.number="durationValue" class="input h-[42px]" type="number" min="1" @change="reloadRentalCatalog" /></label>
                   <Select v-model="durationUnit" :label="t('sms.user.unit')" :options="durationUnitOptions" @update:model-value="reloadRentalCatalog" />
@@ -562,7 +562,7 @@ const countrySortOptions = computed(() => [
   { value: 'name', label: t('sms.user.sortByName') },
 ])
 const durationUnitOptions = computed(() => {
-  if (providerCode.value === 'smspva') {
+  if (currentProvider.value?.capabilities.supports_rental_constraints) {
     return [{ value: 'week', label: t('sms.user.week') }, { value: 'month', label: t('sms.user.month') }]
   }
   return [{ value: 'hour', label: t('sms.user.hour') }, { value: 'day', label: t('sms.user.day') }, { value: 'week', label: t('sms.user.week') }]
@@ -811,7 +811,6 @@ async function loadAll() {
     batchPurchaseLimit.value = normalizeBatchPurchaseLimit(smsSettings.batch_purchase_limit)
     purchaseQuantity.value = Math.min(batchPurchaseLimit.value, Math.max(1, Number(purchaseQuantity.value) || 1))
     const preferred = providers.value.find(item => item.code === providerCode.value && item.selectable)
-      || providers.value.find(item => item.code === '5sim' && item.selectable)
       || providers.value.find(item => item.selectable)
     providerCode.value = preferred?.code || ''
     await loadProviderCatalog()
@@ -905,7 +904,7 @@ async function switchProvider(code: string) {
   providerCode.value = code
   additionalRentalServiceCodes.value = []
   productType.value = provider.capabilities.supports_temporary ? 'temporary' : 'rental'
-  durationUnit.value = provider.code === 'smspva' ? 'week' : 'hour'
+  durationUnit.value = provider.capabilities.supports_rental_constraints ? 'week' : 'hour'
   voiceMode.value = voiceModeOptions.value[0]?.value ?? 0
   activeTab.value = productType.value
   loading.value = true
@@ -923,7 +922,7 @@ async function switchProductType(type: 'temporary' | 'rental') {
   productType.value = type
   additionalRentalServiceCodes.value = []
   activeTab.value = type
-  if (type === 'rental' && providerCode.value === 'smspva' && !['week', 'month'].includes(durationUnit.value)) {
+  if (type === 'rental' && currentProvider.value?.capabilities.supports_rental_constraints && !['week', 'month'].includes(durationUnit.value)) {
     durationUnit.value = 'week'
   }
   quotes.value = []
