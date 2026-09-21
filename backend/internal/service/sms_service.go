@@ -3917,8 +3917,13 @@ func (s *SMSService) recoverUnknownSMSPurchase(ctx context.Context, id, userID i
 	if productType == "rental" {
 		if smspva, ok := p.(*smsPVAProvider); ok {
 			var restoreHistoryID string
+			var restoreDurationDays int
 			var createdAt time.Time
-			if err := s.db.QueryRowContext(ctx, `SELECT COALESCE(metadata->>'provider_history_order_id',''),created_at FROM sms_orders WHERE id=$1`, id).Scan(&restoreHistoryID, &createdAt); err != nil {
+			if err := s.db.QueryRowContext(ctx, `SELECT
+				COALESCE(metadata->>'provider_history_order_id',''),
+				COALESCE(NULLIF(metadata->>'restore_duration_days','')::int,0),
+				created_at
+				FROM sms_orders WHERE id=$1`, id).Scan(&restoreHistoryID, &restoreDurationDays, &createdAt); err != nil {
 				return false, err
 			}
 			if strings.TrimSpace(restoreHistoryID) != "" {
@@ -3931,7 +3936,11 @@ func (s *SMSService) recoverUnknownSMSPurchase(ctx context.Context, id, userID i
 					_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET reconcile_after=NOW()+($1 * INTERVAL '1 second') WHERE id=$2 AND status='reconciling' AND reconciliation_action=$3`, int(smsVerificationPollInterval.Seconds()), id, smsReconciliationPurchase)
 					return false, nil
 				}
-				expiresAt := smsOrderExpiresAt(createdAt, productType, 0, "", recovered.ExpiresAt)
+				expiresAt := recovered.ExpiresAt
+				if expiresAt == nil && restoreDurationDays > 0 {
+					fallback := createdAt.Add(time.Duration(restoreDurationDays) * 24 * time.Hour)
+					expiresAt = &fallback
+				}
 				if err := s.activateSMSOrder(ctx, id, userID, recovered.ProviderOrderID, recovered.PhoneNumber, expiresAt, recovered.ProviderCost, recovered.ProviderOperatorCode); err != nil {
 					return false, err
 				}
