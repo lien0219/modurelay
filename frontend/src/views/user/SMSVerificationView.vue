@@ -177,7 +177,7 @@
                   </div>
                   <div class="mt-3 max-h-36 space-y-1.5 overflow-y-auto pr-1">
                     <label v-for="item in services.filter(item => item.code !== serviceCode)" :key="item.code" class="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-gray-50 dark:hover:bg-dark-800">
-                      <input v-model="additionalRentalServiceCodes" type="checkbox" :value="item.code" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" @change="quotes = []; if (countryCode) loadQuotes()" />
+                      <input v-model="additionalRentalServiceCodes" type="checkbox" :value="item.code" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" @change="handleAdditionalRentalServiceChange" />
                       <SMSServiceLogo :icon="item.icon || serviceLogo(item.code, item.name)" :label="item.name || item.code" class="h-6 w-6 rounded-md text-[10px]" />
                       <span class="min-w-0 flex-1 truncate">{{ item.name || item.code }}</span>
                     </label>
@@ -1093,6 +1093,11 @@ async function resend(id: string) {
 }
 
 
+
+async function handleAdditionalRentalServiceChange() {
+  quotes.value = []
+  if (countryCode.value) await loadQuotes()
+}
 
 async function selectService(code: string) {
   if (code === serviceCode.value) return
