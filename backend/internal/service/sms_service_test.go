@@ -1316,3 +1316,93 @@ func TestSMSPVARentalPeriodValidation(t *testing.T) {
 		t.Fatal("daily extension above six days must fail")
 	}
 }
+
+func TestSMSPVAEmbeddedBusinessErrorsAreDefinitiveAndRedacted(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		body       string
+		definitive bool
+	}{
+		{name: "low balance", body: `{"statusCode":407,"error":{"type":"LOW_BALANCE","description":"account balance is too low"}}`, definitive: true},
+		{name: "order closed", body: `{"statusCode":410,"error":{"type":"ORDER_CLOSED","description":"order is closed"}}`, definitive: true},
+		{name: "unknown upstream", body: `{"statusCode":499,"error":{"type":"UNKNOWN","description":"temporary provider issue"}}`, definitive: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			defer server.Close()
+			err := func() error {
+				_, err := providerFor("smspva", server.URL, "secret-key").PurchaseTemporary(context.Background(), SMSPurchaseRequest{CountryCode: "US", ServiceCode: "telegram"})
+				return err
+			}()
+			if err == nil {
+				t.Fatal("expected provider error")
+			}
+			if strings.Contains(err.Error(), "secret-key") {
+				t.Fatalf("provider credential leaked in error: %v", err)
+			}
+			if got := isSMSPurchaseDefinitiveRejection(err); got != tc.definitive {
+				t.Fatalf("definitive=%v, want %v, err=%v", got, tc.definitive, err)
+			}
+		})
+	}
+}
+
+func TestSMSPVAPurchaseRecoveryIsFailClosed(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatalf("SMSPVA recovery must not guess from provider history: %s", r.URL.String())
+	}))
+	defer server.Close()
+	p := providerFor("smspva", server.URL, "secret")
+	temporary, ok := p.(SMSPurchaseRecoveryProvider)
+	if !ok {
+		t.Fatal("SMSPVA temporary recovery adapter missing")
+	}
+	if recovered, err := temporary.RecoverTemporaryPurchase(context.Background(), SMSPurchaseRequest{CountryCode: "US", ServiceCode: "telegram"}, time.Now()); err != nil || recovered != nil {
+		t.Fatalf("temporary recovery=%#v err=%v, want nil,nil", recovered, err)
+	}
+	rental, ok := p.(SMSRentalPurchaseRecoveryProvider)
+	if !ok {
+		t.Fatal("SMSPVA rental recovery adapter missing")
+	}
+	if recovered, err := rental.RecoverRentalPurchase(context.Background(), SMSPurchaseRequest{CountryCode: "US", ServiceCode: "telegram", ProductType: "rental"}, time.Now()); err != nil || recovered != nil {
+		t.Fatalf("rental recovery=%#v err=%v, want nil,nil", recovered, err)
+	}
+}
+
+func TestSMSPVARentalStatusPreservesSenderDateAndOtherSMS(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Query().Get("method") {
+		case "activate":
+			_, _ = w.Write([]byte(`{"status":1,"data":[]}`))
+		case "sms":
+			_, _ = w.Write([]byte(`{"status":1,"data":{"SmsList":[{"text":"Code 482913","sender":"Example","date":1893456000}],"OtherSms":[{"text":"Service notice"}]}}`))
+		default:
+			t.Fatalf("unexpected rental method %q", r.URL.Query().Get("method"))
+		}
+	}))
+	defer server.Close()
+	status, err := providerFor("smspva", server.URL, "secret").GetRentalStatus(context.Background(), "501")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(status.Messages) != 2 || status.Messages[0] != "Code 482913" || status.Messages[1] != "Service notice" {
+		t.Fatalf("messages=%#v", status.Messages)
+	}
+	items, ok := status.Metadata["messages"].([]map[string]any)
+	if !ok || len(items) != 2 {
+		t.Fatalf("metadata=%#v", status.Metadata)
+	}
+	if items[0]["sender"] != "Example" || items[0]["message_type"] != "service" || items[0]["other_sms"] != false {
+		t.Fatalf("service metadata=%#v", items[0])
+	}
+	if got, ok := items[0]["provider_received_at"].(time.Time); !ok || !got.Equal(time.Unix(1893456000, 0).UTC()) {
+		t.Fatalf("provider time=%#v", items[0]["provider_received_at"])
+	}
+	if items[1]["message_type"] != "other" || items[1]["other_sms"] != true {
+		t.Fatalf("other metadata=%#v", items[1])
+	}
+}

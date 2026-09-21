@@ -137,6 +137,41 @@ describe('SMSVerificationView', () => {
     wrapper.unmount()
   })
 
+  it('disables channel 1 while the long-term number tab is selected', async () => {
+    smsAPI.providers.mockResolvedValueOnce([
+      { code: '5sim', name: '5SIM', beta: false, selectable: true, capabilities: { ...capabilities, supports_rental: false } },
+      { code: 'smspva', name: 'SMPPVA', beta: false, selectable: true, capabilities },
+    ])
+    const wrapper = mount(SMSVerificationView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<main><slot /></main>' },
+          Icon: true,
+          Pagination: true,
+          Select: true,
+          ConfirmDialog: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    const providerButtons = () => wrapper.findAll('button').filter(button => button.text().includes('sms.user.channel'))
+    await providerButtons()[1].trigger('click')
+    await flushPromises()
+
+    const rentalTab = wrapper.findAll('[role="tab"]').find(tab => tab.text() === 'sms.user.rental')
+    expect(rentalTab).toBeDefined()
+    await rentalTab!.trigger('click')
+    await flushPromises()
+
+    const channelOne = providerButtons()[0]
+    expect(channelOne.attributes('disabled')).toBeDefined()
+    expect(channelOne.text()).toContain('sms.user.rentalUnavailable')
+    await channelOne.trigger('click')
+    expect(providerButtons()[1].classes()).toContain('border-primary-500')
+    wrapper.unmount()
+  })
+
   it('uses the administrator-configured batch purchase limit', async () => {
     smsAPI.settings.mockResolvedValueOnce({ batch_purchase_limit: 3 })
     const wrapper = mount(SMSVerificationView, {

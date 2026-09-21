@@ -7,7 +7,7 @@ export interface SMSCountryItem { iso2: string; iso3?: string; calling_code?: st
 export interface SMSCapabilities { supports_temporary: boolean; supports_rental: boolean; supports_rental_cancel: boolean; supports_webhook: boolean; supports_polling: boolean; supports_cancel: boolean; supports_refund: boolean; supports_refund_status: boolean; supports_finish: boolean; supports_ban: boolean; supports_extend: boolean; supports_resend: boolean; supports_voice: boolean; supports_voice_sms: boolean; supports_voice_caller_id: boolean; supports_voice_call: boolean; supports_operator_selection: boolean; supports_service_selection: boolean; supports_conversion_stats: boolean }
 export interface SMSQuote { channel_code: string; public_name: string; channel_role: string; sale_price: number; stock: number; success_rate?: number; success_rate_grade?: string; success_rate_source: string; success_rate_sample_size?: number; estimated_delivery_seconds: number; capabilities: SMSCapabilities; quote_id: string; quote_expires_at: string }
 export interface SMSOperatorItem { code: string; name: string; stock?: number; provider_rate?: number; platform_30d_success_rate?: number; platform_30d_sample_size?: number; platform_30d_successes?: number; platform_30d_failures?: number; available: boolean }
-export interface SMSMessage { id: number; message_text: string; verification_code?: string; received_at: string }
+export interface SMSMessage { id: number; message_text: string; verification_code?: string; sender?: string; provider_received_at?: string; message_type?: string; service_code?: string; other_sms?: boolean; received_at: string }
 export interface SMSOrder {
   id: string
   product_type: 'temporary' | 'rental'

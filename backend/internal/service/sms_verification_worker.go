@@ -133,7 +133,11 @@ func (s *SMSService) reconcileSMSAction(ctx context.Context, id, userID int64, p
 			return nil
 		}
 		if time.Since(updatedAt) >= smsVerificationUnknownTimeout {
-			return s.failSMSPurchase(ctx, id, userID, "provider did not create a recoverable order before reconciliation timeout")
+			reason := "provider did not create a recoverable order before reconciliation timeout"
+			if strings.EqualFold(providerCode, "smspva") {
+				reason = "provider purchase outcome cannot be deterministically recovered before reconciliation timeout"
+			}
+			return s.failSMSPurchase(ctx, id, userID, reason)
 		}
 		return nil
 	}
@@ -179,6 +183,13 @@ func (s *SMSService) reconcileSMSAction(ctx context.Context, id, userID int64, p
 				s.markProviderRefund(ctx, id, "succeeded", "")
 				return s.settleSMSExpiry(ctx, id, userID, "cancelled", "approved", "provider cancellation and refund confirmed during reconciliation")
 			}
+			if strings.EqualFold(providerCode, "smspva") {
+				// SMSPVA has no refund-status endpoint. A successful cancelorder
+				// response cannot prove that upstream funds were returned, so keep
+				// the captured balance pending manual/reconciliation review and do
+				// not retry cancelorder.
+				return s.markSMSCancellationPendingRefund(ctx, id, "provider cancellation accepted; upstream refund confirmation is unavailable")
+			}
 			return s.markSMSClosed(ctx, id, "cancelled", "rejected", "provider cancellation confirmed during reconciliation; refund unsupported")
 		}
 		if capabilities.Refund {
@@ -186,11 +197,20 @@ func (s *SMSService) reconcileSMSAction(ctx context.Context, id, userID int64, p
 				return reconcileErr
 			}
 		}
+		if strings.EqualFold(providerCode, "smspva") {
+			// SMSPVA has no cancellation/refund status endpoint. Once the
+			// cancellation call itself is ambiguous or rejected, stop retrying the
+			// mutating endpoint and leave the captured balance for manual review.
+			return s.markSMSCancellationPendingRefund(ctx, id, "provider cancellation outcome is ambiguous; upstream refund confirmation is unavailable")
+		}
 	case smsReconciliationRefund:
 		if productType != "temporary" {
 			return s.markSMSExpired(ctx, id, "rejected", "rental refunds are unavailable")
 		}
 		if !provider.Capabilities(ctx).Refund {
+			if strings.EqualFold(providerCode, "smspva") {
+				return s.markSMSExpiryPendingRefund(ctx, id, "provider cancellation accepted; upstream refund confirmation is unavailable")
+			}
 			return s.markSMSExpired(ctx, id, "rejected", "provider does not support refunds; administrator review is required")
 		}
 		err = provider.RequestTemporaryRefund(ctx, providerOrder)
@@ -212,6 +232,9 @@ func (s *SMSService) reconcileSMSAction(ctx context.Context, id, userID int64, p
 			}
 		} else {
 			if !provider.Capabilities(ctx).Refund {
+				if strings.EqualFold(providerCode, "smspva") {
+					return s.markSMSExpiryPendingRefund(ctx, id, "provider cancellation accepted; upstream refund confirmation is unavailable")
+				}
 				return s.markSMSExpired(ctx, id, "rejected", "provider does not support refunds; administrator review is required")
 			}
 			// 5SIM cancellation already produces the refund. Calling Cancel and then
@@ -246,6 +269,13 @@ func (s *SMSService) expireSMSOrder(ctx context.Context, id, userID int64, produ
 	}
 	if productType == "temporary" {
 		if !provider.Capabilities(ctx).Refund {
+			if strings.EqualFold(providerCode, "smspva") {
+				cancelErr := provider.CancelTemporary(ctx, providerOrder)
+				if cancelErr == nil {
+					return s.markSMSExpiryPendingRefund(ctx, id, "provider cancellation accepted; upstream refund confirmation is unavailable")
+				}
+				return s.markSMSExpiryPendingRefund(ctx, id, "provider cancellation outcome is ambiguous; upstream refund confirmation is unavailable")
+			}
 			return s.markSMSExpired(ctx, id, "rejected", "provider does not support refunds; administrator review is required")
 		}
 		refundErr := provider.RequestTemporaryRefund(ctx, providerOrder)

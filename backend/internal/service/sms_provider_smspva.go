@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -20,6 +21,17 @@ import (
 // Authentication is carried in the apikey header (not Bearer auth).
 type smsPVAProvider struct{ *httpSMSProvider }
 
+const (
+	smsPVADefaultResponseLimit int64 = 2 << 20
+	smsPVACatalogResponseLimit int64 = 16 << 20
+)
+
+type smsPVAMessage struct {
+	Text   string `json:"text"`
+	Sender string `json:"sender"`
+	Date   int64  `json:"date"`
+}
+
 type smsPVAEnvelope struct {
 	StatusCode int             `json:"statusCode"`
 	Data       json.RawMessage `json:"data"`
@@ -32,9 +44,32 @@ type smsPVARentalEnvelope struct {
 	Msg    string          `json:"msg"`
 }
 
+// smsPVAAPIError represents the provider's documented error envelope.
+// SMSPVA can return an HTTP 200 response with a non-200 statusCode in the
+// JSON body, so callers must not treat transport success as business success.
+type smsPVAAPIError struct {
+	StatusCode  int
+	Type        string
+	Description string
+}
+
+func (e *smsPVAAPIError) Error() string {
+	if e == nil {
+		return "SMSPVA request failed"
+	}
+	detail := strings.TrimSpace(e.Description)
+	if detail == "" {
+		detail = strings.TrimSpace(e.Type)
+	}
+	if detail == "" {
+		detail = "upstream rejected the request"
+	}
+	return fmt.Sprintf("SMSPVA status %d: %s", e.StatusCode, detail)
+}
+
 func (p *smsPVAProvider) Capabilities(context.Context) SMSProviderCapabilities {
 	return SMSProviderCapabilities{
-		Temporary: true, Rental: true, RentalCancel: true, Polling: true, Cancel: true, Refund: true,
+		Temporary: true, Rental: true, RentalCancel: true, Polling: true, Cancel: true, Refund: false,
 		Finish: true, Resend: true,
 		Voice: true, VoiceSMS: true, VoiceCallerID: true, VoiceCall: true,
 		OperatorSelection: true, ServiceSelection: true, Extend: true, ConversionStats: true,
@@ -42,8 +77,15 @@ func (p *smsPVAProvider) Capabilities(context.Context) SMSProviderCapabilities {
 }
 
 func (p *smsPVAProvider) requestJSON(ctx context.Context, method, path string, query url.Values, out any, accepted ...int) (int, error) {
+	return p.requestJSONWithLimit(ctx, method, path, query, smsPVADefaultResponseLimit, out, accepted...)
+}
+
+func (p *smsPVAProvider) requestJSONWithLimit(ctx context.Context, method, path string, query url.Values, maxResponseBytes int64, out any, accepted ...int) (int, error) {
 	if strings.TrimSpace(p.apiKey) == "" {
 		return 0, ErrSMSProviderCredentialMissing
+	}
+	if maxResponseBytes <= 0 {
+		maxResponseBytes = smsPVADefaultResponseLimit
 	}
 	base := strings.TrimRight(p.baseURL, "/")
 	target := base + "/" + strings.TrimLeft(path, "/")
@@ -67,9 +109,12 @@ func (p *smsPVAProvider) requestJSON(ctx context.Context, method, path string, q
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 	if err != nil {
 		return resp.StatusCode, err
+	}
+	if int64(len(body)) > maxResponseBytes {
+		return resp.StatusCode, fmt.Errorf("provider smspva response exceeds %d byte limit", maxResponseBytes)
 	}
 
 	ok := resp.StatusCode >= 200 && resp.StatusCode < 300
@@ -83,6 +128,16 @@ func (p *smsPVAProvider) requestJSON(ctx context.Context, method, path string, q
 		return resp.StatusCode, fmt.Errorf("provider smspva returned HTTP %d", resp.StatusCode)
 	}
 	if out != nil && len(strings.TrimSpace(string(body))) > 0 {
+		var envelope struct {
+			StatusCode int `json:"statusCode"`
+			Error      struct {
+				Type        string `json:"type"`
+				Description string `json:"description"`
+			} `json:"error"`
+		}
+		if json.Unmarshal(body, &envelope) == nil && envelope.StatusCode >= 400 {
+			return resp.StatusCode, &smsPVAAPIError{StatusCode: envelope.StatusCode, Type: envelope.Error.Type, Description: envelope.Error.Description}
+		}
 		if err := json.Unmarshal(body, out); err != nil {
 			return resp.StatusCode, fmt.Errorf("provider smspva returned invalid response: %w", err)
 		}
@@ -167,7 +222,7 @@ func smsPVARentalExtensionPeriod(value int, unit string) (string, int, error) {
 
 func (p *smsPVAProvider) Catalog(ctx context.Context) ([]SMSSvcCatalogItem, []SMSCountryCatalogItem, error) {
 	var env smsPVAEnvelope
-	if _, err := p.requestJSON(ctx, http.MethodGet, "activation/servicesprices", url.Values{"voice": {"0"}}, &env); err != nil {
+	if _, err := p.requestJSONWithLimit(ctx, http.MethodGet, "activation/servicesprices", url.Values{"voice": {"0"}}, smsPVACatalogResponseLimit, &env); err != nil {
 		return nil, nil, err
 	}
 	if env.StatusCode != 0 && env.StatusCode != http.StatusOK {
@@ -353,21 +408,113 @@ func (p *smsPVAProvider) CountriesForServiceProduct(ctx context.Context, service
 	if err := p.rentalRequestJSON(ctx, url.Values{"method": {"get_country_by_service"}, "service": {strings.ToLower(strings.TrimSpace(serviceCode))}, "dtype": {dtype}, "dcount": {strconv.Itoa(dcount)}}, &env); err != nil {
 		return nil, err
 	}
-	var rows []struct {
-		Name string `json:"name"`
-		Code string `json:"code"`
-	}
-	if err := json.Unmarshal(env.Data, &rows); err != nil {
+	items, err := parseSMSPVARentalServiceCountries(env.Data)
+	if err != nil {
 		return nil, err
 	}
+
+	needsNames := false
+	for _, item := range items {
+		if item.NameEN == "" || strings.EqualFold(item.NameEN, item.ISO2) {
+			needsNames = true
+			break
+		}
+	}
+	if needsNames {
+		if countries, countryErr := p.rentalCountries(ctx); countryErr == nil {
+			names := make(map[string]string, len(countries))
+			for _, country := range countries {
+				names[strings.ToUpper(strings.TrimSpace(country.ProviderCode))] = strings.TrimSpace(country.NameEN)
+			}
+			for i := range items {
+				if name := names[strings.ToUpper(strings.TrimSpace(items[i].ProviderCode))]; name != "" {
+					items[i].NameEN = name
+				}
+			}
+		}
+	}
+	return items, nil
+}
+
+type smsPVARentalServiceCountry struct {
+	Name        string          `json:"name"`
+	Code        string          `json:"code"`
+	Country     string          `json:"country"`
+	Price       json.RawMessage `json:"price"`
+	PhoneAmount *int            `json:"phoneAmount"`
+}
+
+func parseSMSPVARentalServiceCountries(data json.RawMessage) ([]SMSCountryCatalogItem, error) {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 {
+		return nil, errors.New("SMSPVA rental country response is empty")
+	}
+
+	rows := make(map[string]smsPVARentalServiceCountry)
+	switch trimmed[0] {
+	case '[':
+		var legacyRows []smsPVARentalServiceCountry
+		if err := json.Unmarshal(trimmed, &legacyRows); err != nil {
+			return nil, err
+		}
+		for _, row := range legacyRows {
+			code := strings.TrimSpace(row.Code)
+			if code == "" {
+				code = strings.TrimSpace(row.Country)
+			}
+			if code != "" {
+				rows[code] = row
+			}
+		}
+	case '{':
+		if err := json.Unmarshal(trimmed, &rows); err != nil {
+			return nil, err
+		}
+	default:
+		return nil, errors.New("SMSPVA rental country response has unsupported shape")
+	}
+
 	out := make([]SMSCountryCatalogItem, 0, len(rows))
-	for _, row := range rows {
+	for key, row := range rows {
 		code := strings.ToUpper(strings.TrimSpace(row.Code))
+		if code == "" {
+			code = strings.ToUpper(strings.TrimSpace(row.Country))
+		}
+		if code == "" {
+			code = strings.ToUpper(strings.TrimSpace(key))
+		}
 		if code == "" {
 			continue
 		}
-		out = append(out, SMSCountryCatalogItem{ISO2: code, ProviderCode: code, NameEN: strings.TrimSpace(row.Name), Available: true})
+		name := strings.TrimSpace(row.Name)
+		if name == "" {
+			name = code
+		}
+		stock := 0
+		available := true
+		if row.PhoneAmount != nil {
+			stock = *row.PhoneAmount
+			if stock < 0 {
+				stock = 0
+			}
+			available = stock > 0
+		}
+		price, _ := jsonNumber(row.Price)
+		out = append(out, SMSCountryCatalogItem{
+			ISO2:         code,
+			ProviderCode: code,
+			NameEN:       name,
+			Stock:        stock,
+			ProviderCost: price,
+			Available:    available,
+		})
 	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].NameEN == out[j].NameEN {
+			return out[i].ISO2 < out[j].ISO2
+		}
+		return out[i].NameEN < out[j].NameEN
+	})
 	return out, nil
 }
 
@@ -767,6 +914,15 @@ func (p *smsPVAProvider) GetTemporaryStatus(ctx context.Context, id string) (*SM
 	}, nil
 }
 
+// RecoverTemporaryPurchase deliberately does not bind an order. SMSPVA's
+// documented activation/orders response contains no creation timestamp,
+// client correlation token, price, or operator. A service/country match can
+// therefore be an older order and would violate the no-guessing recovery
+// invariant. The caller keeps the local order in reconciliation instead.
+func (p *smsPVAProvider) RecoverTemporaryPurchase(context.Context, SMSPurchaseRequest, time.Time) (*SMSPurchaseResult, error) {
+	return nil, nil
+}
+
 func (p *smsPVAProvider) CancelTemporary(ctx context.Context, id string) error {
 	var env smsPVAEnvelope
 	_, err := p.requestJSON(ctx, http.MethodPut, "activation/cancelorder/"+url.PathEscape(strings.TrimSpace(id)), nil, &env)
@@ -836,21 +992,67 @@ func (p *smsPVAProvider) GetRentalStatus(ctx context.Context, id string) (*SMSSt
 		return nil, err
 	}
 	var data struct {
-		SMSList []struct {
-			Text string `json:"text"`
-		} `json:"SmsList"`
-		OtherSMS []any `json:"OtherSms"`
+		SMSList  []smsPVAMessage   `json:"SmsList"`
+		OtherSMS []json.RawMessage `json:"OtherSms"`
 	}
 	if err := json.Unmarshal(env.Data, &data); err != nil {
 		return nil, err
 	}
 	messages := make([]string, 0, len(data.SMSList))
+	messageMetadata := make([]map[string]any, 0, len(data.SMSList)+len(data.OtherSMS))
 	for _, m := range data.SMSList {
 		if strings.TrimSpace(m.Text) != "" {
 			messages = append(messages, m.Text)
+			meta := map[string]any{"message_type": "service", "other_sms": false}
+			if strings.TrimSpace(m.Sender) != "" {
+				meta["sender"] = strings.TrimSpace(m.Sender)
+			}
+			if m.Date > 0 {
+				meta["provider_received_at"] = time.Unix(m.Date, 0).UTC()
+			}
+			messageMetadata = append(messageMetadata, meta)
 		}
 	}
-	return &SMSStatusResult{Status: "active", Messages: messages}, nil
+	// OtherSms is an explicitly documented SMSPVA field. Preserve its text
+	// instead of silently dropping messages that are not service-attributed.
+	for _, raw := range data.OtherSMS {
+		var item struct {
+			Text     string `json:"text"`
+			Message  string `json:"message"`
+			FullText string `json:"fullText"`
+		}
+		if json.Unmarshal(raw, &item) == nil {
+			text := strings.TrimSpace(item.Text)
+			if text == "" {
+				text = strings.TrimSpace(item.Message)
+			}
+			if text == "" {
+				text = strings.TrimSpace(item.FullText)
+			}
+			if text != "" {
+				messages = append(messages, text)
+				messageMetadata = append(messageMetadata, map[string]any{"message_type": "other", "other_sms": true})
+			}
+			continue
+		}
+		if text := strings.TrimSpace(string(raw)); text != "" && text != "null" {
+			messages = append(messages, strings.Trim(text, "\""))
+			messageMetadata = append(messageMetadata, map[string]any{"message_type": "other", "other_sms": true})
+		}
+	}
+	var metadata map[string]any
+	if len(messageMetadata) > 0 {
+		metadata = map[string]any{"messages": messageMetadata}
+	}
+	return &SMSStatusResult{Status: "active", Messages: messages, Metadata: metadata}, nil
+}
+
+// RecoverRentalPurchase is also fail-closed. SMSPVA rental/orders has no
+// creation timestamp or request correlation, while get_rent_history only
+// contains completed rentals. Neither endpoint can prove that an active order
+// belongs to the timed-out create call.
+func (p *smsPVAProvider) RecoverRentalPurchase(context.Context, SMSPurchaseRequest, time.Time) (*SMSPurchaseResult, error) {
+	return nil, nil
 }
 
 func (p *smsPVAProvider) ExtendRental(ctx context.Context, id string, value int, unit string) error {

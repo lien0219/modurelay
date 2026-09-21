@@ -48,16 +48,17 @@
               class="relative min-h-20 rounded-xl border p-4 text-left transition"
               :class="[
                 providerCode === provider.code ? 'border-primary-500 bg-primary-50 ring-1 ring-primary-200 dark:bg-primary-900/20' : 'border-gray-200 dark:border-dark-700',
-                !provider.selectable ? 'cursor-not-allowed bg-gray-50 opacity-50 grayscale dark:bg-dark-800' : 'hover:border-primary-300'
+                !isProviderSelectable(provider) ? 'cursor-not-allowed bg-gray-50 opacity-50 grayscale dark:bg-dark-800' : 'hover:border-primary-300'
               ]"
-              :disabled="!provider.selectable"
+              :disabled="!isProviderSelectable(provider)"
+              :title="providerDisabledReason(provider)"
               @click="switchProvider(provider.code)"
             >
               <div class="flex items-center justify-between gap-2">
                 <span class="font-semibold text-gray-900 dark:text-white">{{ t('sms.user.channel') }}{{ index + 1 }}</span>
                 <span v-if="provider.beta" class="rounded bg-gray-200 px-2 py-0.5 text-[10px] font-bold tracking-wider text-gray-600 dark:bg-dark-600 dark:text-gray-300">BETA</span>
               </div>
-              <div v-if="!provider.selectable" class="mt-2 text-xs text-gray-400">{{ t('sms.user.unavailable') }}</div>
+              <div v-if="!isProviderSelectable(provider)" class="mt-2 text-xs text-gray-400">{{ providerDisabledReason(provider) }}</div>
             </button>
           </div>
         </div>
@@ -93,7 +94,7 @@
           <div class="flex min-h-0 min-w-0 flex-col rounded-xl border border-gray-200 p-4 dark:border-dark-700">
             <div class="flex items-center justify-between gap-2">
               <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">3 · {{ t('sms.user.country') }}</p>
-              <select v-if="providerCode === '5sim'" v-model="countrySortMode" class="input h-8 w-auto min-w-28 py-1 text-xs">
+              <select v-if="currentProvider?.capabilities.supports_conversion_stats" v-model="countrySortMode" class="input h-8 w-auto min-w-28 py-1 text-xs">
                 <option v-for="item in countrySortOptions" :key="item.value" :value="item.value">{{ item.label }}</option>
               </select>
             </div>
@@ -106,10 +107,10 @@
                     <span class="flex items-center gap-2">
                       <span class="block truncate font-medium">{{ option.label }}</span>
                       <span v-if="option.platform30dSuccessRate != null && option.platform30dSampleSize >= 20 && option.platform30dSuccessRate >= 70" class="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">{{ t('sms.user.platformVerified') }}</span>
-                      <span v-else-if="providerCode === '5sim' && option.conversionRate && option.conversionRate >= 70" class="rounded-full bg-cyan-100 px-2 py-0.5 text-[10px] font-semibold text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300">{{ t('sms.user.highDeliveryRate') }}</span>
+                      <span v-else-if="currentProvider?.capabilities.supports_conversion_stats && option.conversionRate != null && option.conversionRate >= 70" class="rounded-full bg-cyan-100 px-2 py-0.5 text-[10px] font-semibold text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300">{{ t('sms.user.highDeliveryRate') }}</span>
                     </span>
                     <span class="block text-[11px] text-gray-400">{{ option.value }}<template v-if="option.stock != null"> · {{ t('sms.user.numbersAvailable', { count: option.stock.toLocaleString() }) }}</template></span>
-                    <span v-if="providerCode === '5sim' && option.conversionRate" class="mt-0.5 block text-[11px] font-medium text-cyan-600 dark:text-cyan-400">
+                    <span v-if="currentProvider?.capabilities.supports_conversion_stats && option.conversionRate != null && option.conversionRate > 0" class="mt-0.5 block text-[11px] font-medium text-cyan-600 dark:text-cyan-400">
                       {{ t('sms.user.providerDeliveryRateValue', { rate: option.conversionRate.toFixed(2) }) }}
                       <template v-if="option.recommendedOperator"> · {{ option.recommendedOperator }}</template>
                     </span>
@@ -122,9 +123,9 @@
                   </span>
                 </span>
                 <span class="shrink-0 text-right">
-                  <span v-if="option.recommendedStartingPrice != null && option.recommendedStartingPrice > 0 && providerCode === '5sim' && option.conversionRate" class="block font-semibold tabular-nums text-gray-900 dark:text-white">{{ t('sms.user.startingAt', { price: formatPrice(option.recommendedStartingPrice) }) }}</span>
+                  <span v-if="option.recommendedStartingPrice != null && option.recommendedStartingPrice > 0 && currentProvider?.capabilities.supports_conversion_stats && option.conversionRate != null && option.conversionRate > 0" class="block font-semibold tabular-nums text-gray-900 dark:text-white">{{ t('sms.user.startingAt', { price: formatPrice(option.recommendedStartingPrice) }) }}</span>
                   <span v-else-if="option.startingPrice != null && option.startingPrice > 0" class="block font-semibold tabular-nums text-gray-900 dark:text-white">{{ t('sms.user.startingAt', { price: formatPrice(option.startingPrice) }) }}</span>
-                  <span v-if="providerCode === '5sim' && option.recommendedOperatorStock" class="block text-[10px] text-gray-400">{{ t('sms.user.recommendedStock', { count: option.recommendedOperatorStock.toLocaleString() }) }}</span>
+                  <span v-if="currentProvider?.capabilities.supports_conversion_stats && option.recommendedOperatorStock != null && option.recommendedOperatorStock > 0" class="block text-[10px] text-gray-400">{{ t('sms.user.recommendedStock', { count: option.recommendedOperatorStock.toLocaleString() }) }}</span>
                 </span>
               </button>
               <div v-if="countriesLoading && !countries.length" class="py-8 text-center text-sm text-gray-400">{{ t('sms.user.loading') }}</div>
@@ -156,7 +157,7 @@
                   <span class="flex items-center gap-2 font-medium text-gray-900 dark:text-white"><span v-if="countryCode" :class="flagClass(countryCode)" class="fi fis rounded-sm shadow-sm" aria-hidden="true"></span>{{ countryLabel(countryCode) || '-' }}</span>
                 </div>
                 <div v-if="countryCode && selectedCountryStats" class="border-t border-gray-200 pt-2 text-[11px] dark:border-dark-700">
-                  <div v-if="providerCode === '5sim' && selectedCountryStats.conversion_rate" class="flex items-center justify-between gap-3 text-cyan-600 dark:text-cyan-400">
+                  <div v-if="currentProvider?.capabilities.supports_conversion_stats && selectedCountryStats.conversion_rate != null && selectedCountryStats.conversion_rate > 0" class="flex items-center justify-between gap-3 text-cyan-600 dark:text-cyan-400">
                     <span>{{ t('sms.user.providerDeliveryRate') }}</span><span class="font-semibold tabular-nums">{{ selectedCountryStats.conversion_rate.toFixed(2) }}%</span>
                   </div>
                   <div class="mt-1 flex items-center justify-between gap-3" :class="selectedCountryStats.platform_30d_success_rate != null ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400'">
@@ -172,7 +173,7 @@
                 <Select v-model="durationUnit" :label="t('sms.user.unit')" :options="durationUnitOptions" @update:model-value="reloadRentalCatalog" />
               </div>
               <label v-if="currentProvider?.capabilities.supports_voice" class="block"><span class="input-label">{{ t('sms.user.verificationType') }}</span><select v-model.number="voiceMode" class="input h-[42px] w-full" @change="changeVoiceMode"><option v-for="item in voiceModeOptions" :key="item.value" :value="item.value">{{ item.label }}</option></select></label>
-              <label v-if="currentProvider?.capabilities.supports_operator_selection" class="block"><span class="input-label">{{ t('sms.user.operator') }}</span><select v-model="operatorCode" class="input h-[42px] w-full" @change="quotes = []; loadQuotes()"><option value="any">{{ t('sms.user.autoOperator') }}</option><option v-for="item in operators.filter(op => op.code !== 'any')" :key="item.code" :value="item.code" :disabled="item.available === false">{{ item.name }}{{ item.provider_rate ? ` · ${t('sms.user.channelReferenceShort')} ${item.provider_rate.toFixed(2)}%` : '' }}{{ item.platform_30d_success_rate != null ? ` · ${t('sms.user.platform30dShort')} ${item.platform_30d_success_rate.toFixed(2)}% (n=${item.platform_30d_sample_size || 0})` : '' }}{{ item.stock != null ? ` · ${t('sms.user.stock')} ${item.stock}` : '' }}</option></select><p v-if="providerCode === '5sim' && operatorCode !== 'any'" class="mt-1 text-[11px] text-cyan-600 dark:text-cyan-400">{{ t('sms.user.recommendedOperatorSelected') }}</p></label>
+              <label v-if="currentProvider?.capabilities.supports_operator_selection" class="block"><span class="input-label">{{ t('sms.user.operator') }}</span><select v-model="operatorCode" class="input h-[42px] w-full" @change="quotes = []; loadQuotes()"><option value="any">{{ t('sms.user.autoOperator') }}</option><option v-for="item in operators.filter(op => op.code !== 'any')" :key="item.code" :value="item.code" :disabled="item.available === false">{{ item.name }}{{ item.provider_rate ? ` · ${t('sms.user.channelReferenceShort')} ${item.provider_rate.toFixed(2)}%` : '' }}{{ item.platform_30d_success_rate != null ? ` · ${t('sms.user.platform30dShort')} ${item.platform_30d_success_rate.toFixed(2)}% (n=${item.platform_30d_sample_size || 0})` : '' }}{{ item.stock != null ? ` · ${t('sms.user.stock')} ${item.stock}` : '' }}</option></select><p v-if="currentProvider?.capabilities.supports_conversion_stats && operatorCode !== 'any'" class="mt-1 text-[11px] text-cyan-600 dark:text-cyan-400">{{ t('sms.user.recommendedOperatorSelected') }}</p></label>
               <label class="block"><span class="input-label">{{ t('sms.user.quantity') }}</span><input v-model.number="purchaseQuantity" class="input h-[42px] w-full" :class="purchaseQuantityError ? 'border-red-500 focus-visible:border-red-500 focus-visible:ring-red-500/30' : ''" type="number" min="1" :max="batchPurchaseLimit" :aria-invalid="purchaseQuantityError ? 'true' : undefined" :aria-describedby="purchaseQuantityError ? 'sms-quantity-error' : undefined" /><span class="mt-1 block text-xs text-gray-500 dark:text-gray-400">{{ t('sms.user.batchPurchaseHint', { max: batchPurchaseLimit }) }}</span><span v-if="purchaseQuantityError" id="sms-quantity-error" class="mt-1 block text-xs text-red-600 dark:text-red-400" role="alert">{{ purchaseQuantityError }}</span></label>
 
               <div v-if="bestQuote" class="flex items-center justify-between border-t border-gray-200 pt-3 dark:border-dark-700">
@@ -352,6 +353,11 @@
                         <code class="block min-w-0 flex-1 truncate font-mono font-semibold" :title="message.verification_code">{{ message.verification_code }}</code>
                         <button type="button" class="btn btn-secondary btn-sm shrink-0" @click="copyText(message.verification_code)">{{ t('common.copy') }}</button>
                       </div>
+                      <div class="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-gray-500 dark:text-gray-400">
+                        <span v-if="message.sender" class="min-w-0 max-w-[14rem] truncate font-medium text-gray-700 dark:text-gray-300" :title="message.sender">{{ message.sender }}</span>
+                        <time v-if="message.provider_received_at" class="shrink-0 tabular-nums" :datetime="message.provider_received_at">{{ formatSMSMessageTime(message.provider_received_at) }}</time>
+                        <span v-if="message.other_sms" class="badge whitespace-nowrap">{{ t('sms.user.otherMessage') }}</span>
+                      </div>
                       <div class="sms-order-message-text mt-1 block truncate text-xs text-gray-500 dark:text-gray-400" :title="message.message_text || undefined">{{ message.message_text || '-' }}</div>
                     </div>
                   </div>
@@ -392,6 +398,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { formatDateTime } from '@/utils/format'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import Select from '@/components/common/Select.vue'
@@ -458,6 +465,14 @@ const tabs = computed(() => [
   { value: 'temporary' as const, label: t('sms.user.temporary'), disabled: !currentProvider.value?.capabilities.supports_temporary },
   { value: 'rental' as const, label: t('sms.user.rental'), disabled: !currentProvider.value?.capabilities.supports_rental },
 ])
+function isProviderSelectable(provider: SMSProviderItem) {
+  return provider.selectable && (productType.value !== 'rental' || provider.capabilities.supports_rental)
+}
+function providerDisabledReason(provider: SMSProviderItem) {
+  if (!provider.selectable) return t('sms.user.unavailable')
+  if (productType.value === 'rental' && !provider.capabilities.supports_rental) return t('sms.user.rentalUnavailable')
+  return ''
+}
 const selectedService = computed(() => services.value.find(item => item.code === serviceCode.value))
 const selectedServiceLogo = computed(() => serviceLogo(selectedService.value?.code || '', selectedService.value?.name || ''))
 const selectedCountryStats = computed(() => countries.value.find(item => item.iso2 === countryCode.value))
@@ -613,6 +628,7 @@ function ensureOrderPolling() {
   }, 3000)
 }
 const latestVerificationCode = (order: SMSOrder) => [...(order.messages || [])].reverse().find(message => message.verification_code)?.verification_code || ''
+const formatSMSMessageTime = (value: string) => formatDateTime(value, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })
 
 const remainingLabel = (order: SMSOrder) => {
   if (isTerminalOrder(order)) return t('sms.user.ended')
@@ -782,7 +798,7 @@ async function loadCountryPage(reset = false) {
       page: countryPagination.page,
       page_size: countryPagination.pageSize,
       keyword: countryKeyword.value || undefined,
-      sort: providerCode.value === '5sim' ? countrySortMode.value : 'name',
+      sort: currentProvider.value?.capabilities.supports_conversion_stats ? countrySortMode.value : 'name',
       product_type: productType.value,
       duration_value: productType.value === 'rental' ? durationValue.value : undefined,
       duration_unit: productType.value === 'rental' ? durationUnit.value : undefined,
@@ -806,7 +822,7 @@ async function loadProviderCatalog() {
   voiceMode.value = 0
   serviceKeyword.value = ''
   countryKeyword.value = ''
-  countrySortMode.value = providerCode.value === '5sim' ? 'recommended' : 'name'
+  countrySortMode.value = currentProvider.value?.capabilities.supports_conversion_stats ? 'recommended' : 'name'
   serviceCode.value = ''
   countryCode.value = ''
   quotes.value = []
@@ -818,7 +834,7 @@ async function loadProviderCatalog() {
 
 async function switchProvider(code: string) {
   const provider = providers.value.find(item => item.code === code)
-  if (!provider?.selectable || code === providerCode.value) return
+  if (!provider || !isProviderSelectable(provider) || code === providerCode.value) return
   providerCode.value = code
   productType.value = provider.capabilities.supports_temporary ? 'temporary' : 'rental'
   durationUnit.value = provider.code === 'smspva' ? 'week' : 'hour'
@@ -835,6 +851,7 @@ async function switchProvider(code: string) {
 }
 
 async function switchProductType(type: 'temporary' | 'rental') {
+  if (type === 'rental' && !currentProvider.value?.capabilities.supports_rental) return
   productType.value = type
   activeTab.value = type
   if (type === 'rental' && providerCode.value === 'smspva' && !['week', 'month'].includes(durationUnit.value)) {
@@ -1036,7 +1053,7 @@ async function loadOperators() {
       duration_unit: productType.value === 'rental' ? durationUnit.value : undefined,
     })
     const selectedCountry = countries.value.find(item => item.iso2 === countryCode.value)
-    const recommended = providerCode.value === '5sim'
+    const recommended = currentProvider.value?.capabilities.supports_conversion_stats
       ? selectedCountry?.recommended_operator
       : ''
     if (recommended && operators.value.some(item => item.code === recommended && item.available !== false)) {
