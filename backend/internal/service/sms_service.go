@@ -316,6 +316,7 @@ type SMSPurchaseResult struct {
 type SMSStatusResult struct {
 	Status               string         `json:"status"`
 	PhoneNumber          string         `json:"phone_number"`
+	ExpiresAt            *time.Time     `json:"expires_at,omitempty"`
 	Messages             []string       `json:"messages,omitempty"`
 	Metadata             map[string]any `json:"metadata,omitempty"`
 	ProviderCost         float64        `json:"-"`
@@ -3856,7 +3857,7 @@ func (s *SMSService) pollSMSOrder(ctx context.Context, id int64, providerOrder, 
 			_ = action.FinishTemporary(ctx, providerOrder)
 		}
 	}
-	if _, err = s.db.ExecContext(ctx, `UPDATE sms_orders SET status=$1,phone_number=COALESCE(NULLIF($2,''),phone_number),reconciliation_attempts=0,reconcile_after=NULL,updated_at=NOW() WHERE id=$3 AND status IN ('active','provider_unknown','reconciling')`, newStatus, result.PhoneNumber, id); err != nil {
+	if _, err = s.db.ExecContext(ctx, `UPDATE sms_orders SET status=$1,phone_number=COALESCE(NULLIF($2,''),phone_number),expires_at=COALESCE($3,expires_at),reconciliation_attempts=0,reconcile_after=NULL,updated_at=NOW() WHERE id=$4 AND status IN ('active','provider_unknown','reconciling')`, newStatus, result.PhoneNumber, result.ExpiresAt, id); err != nil {
 		return err
 	}
 	for index, message := range result.Messages {
