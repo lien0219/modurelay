@@ -4749,12 +4749,26 @@ func (s *SMSService) ExtendRental(ctx context.Context, userID int64, publicID st
 			}
 		}
 	}
-	if err := p.ExtendRental(ctx, providerOrder, value, unit); err != nil {
-		if isSMSProviderTimeout(err) {
+	extendCtx, extendCancel := context.WithTimeout(context.Background(), 20*time.Second)
+	extendErr := p.ExtendRental(extendCtx, providerOrder, value, unit)
+	extendCancel()
+	if extendErr != nil {
+		if isSMSProviderTimeout(extendErr) {
 			return nil, ErrSMSProviderUnknown
 		}
 		return nil, errors.New("channel refused rental extension")
 	}
+
+	var actualExpiresAt *time.Time
+	if inspector, supported := p.(SMSRentalOrderInspector); supported {
+		verifyCtx, verifyCancel := context.WithTimeout(context.Background(), 6*time.Second)
+		if providerState, inspectErr := inspector.RentalOrder(verifyCtx, providerOrder); inspectErr == nil && providerState != nil && providerState.Until > 0 {
+			actual := time.Unix(providerState.Until, 0)
+			actualExpiresAt = &actual
+		}
+		verifyCancel()
+	}
+
 	result, err := s.db.ExecContext(ctx, `INSERT INTO sms_order_events(order_id,event_type,idempotency_key,payload) VALUES ($1,'rental_extend',$2,$3) ON CONFLICT (order_id,event_type,idempotency_key) DO NOTHING`, id, idempotencyKey, fmt.Sprintf(`{"duration_value":%d,"duration_unit":%q}`, value, strings.ToLower(unit)))
 	if err != nil {
 		return nil, err
@@ -4762,7 +4776,11 @@ func (s *SMSService) ExtendRental(ctx context.Context, userID int64, publicID st
 	if affected, _ := result.RowsAffected(); affected == 0 {
 		return s.GetOrderByPublicID(ctx, userID, publicID)
 	}
-	_, err = s.db.ExecContext(ctx, `UPDATE sms_orders SET expires_at=COALESCE(expires_at,NOW())+($1 * INTERVAL '1 second'),updated_at=NOW() WHERE id=$2`, delta.Seconds(), id)
+	if actualExpiresAt != nil {
+		_, err = s.db.ExecContext(ctx, `UPDATE sms_orders SET expires_at=$1,updated_at=NOW() WHERE id=$2`, actualExpiresAt, id)
+	} else {
+		_, err = s.db.ExecContext(ctx, `UPDATE sms_orders SET expires_at=COALESCE(expires_at,NOW())+($1 * INTERVAL '1 second'),updated_at=NOW() WHERE id=$2`, delta.Seconds(), id)
+	}
 	if err != nil {
 		return nil, err
 	}
