@@ -306,6 +306,7 @@ func (p *smsPVAProvider) CatalogServicesForProduct(ctx context.Context, productT
 	for _, row := range rows {
 		code := smsPVAFirstString(row, "service", "code", "opt")
 		name := smsPVAFirstString(row, "name", "title", "service_name")
+		iconPath := smsPVAFirstString(row, "img", "image", "icon")
 		code = strings.ToLower(strings.TrimSpace(code))
 		if code == "" {
 			continue
@@ -313,7 +314,11 @@ func (p *smsPVAProvider) CatalogServicesForProduct(ctx context.Context, productT
 		if name == "" {
 			name = code
 		}
-		out = append(out, SMSSvcCatalogItem{Code: code, Name: name, ProviderCode: code, Category: "rental", Available: true})
+		item := SMSSvcCatalogItem{Code: code, Name: name, ProviderCode: code, Category: "rental", Available: true, ProviderIconPath: strings.TrimSpace(iconPath)}
+		if item.ProviderIconPath != "" {
+			item.Icon = "/api/v1/sms/providers/smspva/service-icons/" + url.PathEscape(code)
+		}
+		out = append(out, item)
 	}
 	if len(out) == 0 {
 		// Some deployments return sparse default-service metadata. Build the
@@ -334,6 +339,7 @@ func (p *smsPVAProvider) CatalogServicesForProduct(ctx context.Context, productT
 					Name     string          `json:"name"`
 					Service  string          `json:"service"`
 					PriceDay json.RawMessage `json:"price_day"`
+					Img      string          `json:"img"`
 					Count    int             `json:"count"`
 				} `json:"services"`
 			}
@@ -349,7 +355,11 @@ func (p *smsPVAProvider) CatalogServicesForProduct(ctx context.Context, productT
 				if name == "" {
 					name = code
 				}
-				seen[code] = SMSSvcCatalogItem{Code: code, Name: name, ProviderCode: code, Category: "rental", Available: svc.Count > 0}
+				item := SMSSvcCatalogItem{Code: code, Name: name, ProviderCode: code, Category: "rental", Available: svc.Count > 0, ProviderIconPath: strings.TrimSpace(svc.Img)}
+				if item.ProviderIconPath != "" {
+					item.Icon = "/api/v1/sms/providers/smspva/service-icons/" + url.PathEscape(code)
+				}
+				seen[code] = item
 			}
 		}
 		for _, item := range seen {
