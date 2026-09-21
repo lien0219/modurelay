@@ -747,7 +747,7 @@ func (h *SMSHandler) RestoreRental(c *gin.Context) {
 }
 
 func (h *SMSHandler) ServiceIcon(c *gin.Context) {
-	data, contentType, err := h.svc.ServiceIcon(c.Request.Context(), c.Param("provider"), c.Param("service"))
+	data, contentType, err := h.svc.ServiceIcon(c.Request.Context(), c.Param("service"))
 	if err != nil {
 		response.ErrorWithDetails(c, http.StatusNotFound, "Service icon is unavailable", "SERVICE_ICON_UNAVAILABLE", nil)
 		return
