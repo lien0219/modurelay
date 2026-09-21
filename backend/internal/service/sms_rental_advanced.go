@@ -456,7 +456,13 @@ func (s *SMSService) CreateRentalRestoreQuote(ctx context.Context, userID int64,
 	}, nil
 }
 
-func filterNewSMSPVARentalOrder(orders []SMSRentalProviderOrder, baseline map[string]struct{}, serviceCode, countryCode string) *SMSRentalProviderOrder {
+func normalizeSMSRentalPhone(value string) string {
+	value = strings.TrimSpace(value)
+	value = strings.TrimPrefix(value, "+")
+	return strings.ReplaceAll(value, " ", "")
+}
+
+func filterNewSMSPVARentalOrder(orders []SMSRentalProviderOrder, baseline map[string]struct{}, serviceCode, countryCode, phoneNumber string) *SMSRentalProviderOrder {
 	var candidate *SMSRentalProviderOrder
 	for i := range orders {
 		item := orders[i]
@@ -464,6 +470,9 @@ func filterNewSMSPVARentalOrder(orders []SMSRentalProviderOrder, baseline map[st
 			continue
 		}
 		if !strings.EqualFold(item.ServiceCode, serviceCode) || !strings.EqualFold(item.CountryCode, countryCode) {
+			continue
+		}
+		if expectedPhone := normalizeSMSRentalPhone(phoneNumber); expectedPhone != "" && normalizeSMSRentalPhone(item.PhoneNumber) != expectedPhone {
 			continue
 		}
 		if candidate != nil {
@@ -484,6 +493,7 @@ func (s *SMSService) recoverSMSPVARestorePurchase(ctx context.Context, orderID i
 		Baseline    []string `json:"restore_baseline_ids"`
 		ServiceCode string   `json:"restore_service_code"`
 		CountryCode string   `json:"restore_country_code"`
+		PhoneNumber string   `json:"restore_phone_number"`
 	}
 	if json.Unmarshal(raw, &metadata) != nil || metadata.ServiceCode == "" || metadata.CountryCode == "" {
 		return nil, nil
@@ -496,7 +506,7 @@ func (s *SMSService) recoverSMSPVARestorePurchase(ctx context.Context, orderID i
 	if err != nil {
 		return nil, err
 	}
-	candidate := filterNewSMSPVARentalOrder(orders, baseline, metadata.ServiceCode, metadata.CountryCode)
+	candidate := filterNewSMSPVARentalOrder(orders, baseline, metadata.ServiceCode, metadata.CountryCode, metadata.PhoneNumber)
 	if candidate == nil {
 		return nil, nil
 	}
@@ -582,9 +592,9 @@ func (s *SMSService) RestoreRentalOrder(ctx context.Context, userID int64, sourc
 	err = tx.QueryRowContext(ctx, `INSERT INTO sms_orders
 		(user_id,channel_id,provider_id,service_id,country_id,product_type,status,provider_cost_snapshot,sale_price_snapshot,idempotency_key,reserved_amount,settlement_status,reconciliation_action,reconcile_after,metadata)
 		VALUES($1,$2,$3,$4,$5,'rental','reconciling',$6,$7,$8,$7,'held','purchase',NOW()+INTERVAL '5 seconds',
-			jsonb_build_object('restored_from_order_id',$9,'provider_history_order_id',$10,'restore_baseline_ids',$11::jsonb,'restore_service_code',$12,'restore_country_code',$13))
+			jsonb_build_object('restored_from_order_id',$9,'provider_history_order_id',$10,'restore_baseline_ids',$11::jsonb,'restore_service_code',$12,'restore_country_code',$13,'restore_phone_number',$14))
 		RETURNING id`,
-		userID, channelID, providerID, serviceID, countryID, providerCost, salePrice, idempotencyKey, sourceOrderID, providerHistoryID, string(baselineJSON), serviceCode, countryCode).Scan(&orderID)
+		userID, channelID, providerID, serviceID, countryID, providerCost, salePrice, idempotencyKey, sourceOrderID, providerHistoryID, string(baselineJSON), serviceCode, countryCode, live.PhoneNumber).Scan(&orderID)
 	if err != nil {
 		return nil, err
 	}
