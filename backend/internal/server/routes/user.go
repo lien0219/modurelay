@@ -23,6 +23,7 @@ func RegisterUserRoutes(
 ) {
 	if h.SMS != nil {
 		v1.POST("/sms/webhooks/:provider", h.SMS.Webhook)
+		v1.GET("/sms/providers/:provider/service-icons/:service", h.SMS.ServiceIcon)
 	}
 	authenticated := v1.Group("")
 	authenticated.Use(gin.HandlerFunc(jwtAuth))
@@ -189,7 +190,6 @@ func RegisterUserRoutes(
 			sms.GET("/providers", h.SMS.Providers)
 			sms.GET("/recent-successes", h.SMS.RecentSuccesses)
 			sms.GET("/providers/:provider/services", h.SMS.ProviderServices)
-			sms.GET("/providers/:provider/service-icons/:service", h.SMS.ServiceIcon)
 			sms.GET("/countries", h.SMS.Countries)
 			sms.GET("/providers/:provider/services/:service/countries", h.SMS.ServiceCountries)
 			sms.GET("/providers/:provider/services/:service/countries/:country/operators", h.SMS.ProviderOperators)
