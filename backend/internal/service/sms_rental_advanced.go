@@ -641,7 +641,7 @@ func (s *SMSService) RestoreRentalOrder(ctx context.Context, userID int64, sourc
 		return s.GetOrder(context.Background(), userID, orderID)
 	}
 
-	var phone string
+	phone := strings.TrimSpace(live.PhoneNumber)
 	var expiresAt *time.Time
 	if inspector, ok := provider.(SMSRentalOrderInspector); ok {
 		if state, inspectErr := inspector.RentalOrder(context.Background(), restoredID); inspectErr == nil && state != nil {
