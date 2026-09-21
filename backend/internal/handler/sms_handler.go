@@ -59,13 +59,22 @@ func (h *SMSHandler) Quotes(c *gin.Context) {
 	if req.ProductType == "" {
 		req.ProductType = "temporary"
 	}
+	internalProviderCode := ""
+	if req.ProviderCode != "" {
+		var resolveErr error
+		internalProviderCode, resolveErr = h.svc.ResolvePublicChannelProvider(c.Request.Context(), req.ProviderCode)
+		if resolveErr != nil {
+			response.ErrorWithDetails(c, http.StatusServiceUnavailable, "The selected channel is temporarily unavailable", "PROVIDER_UNAVAILABLE", nil)
+			return
+		}
+	}
 	serviceCodes := []string{}
 	for _, value := range strings.Split(req.Services, ",") {
 		if value = strings.TrimSpace(value); value != "" {
 			serviceCodes = append(serviceCodes, value)
 		}
 	}
-	quotes, err := h.svc.Quote(c.Request.Context(), subject.UserID, service.SMSQuoteRequest{ProviderCode: req.ProviderCode, ServiceCode: req.ServiceCode, ServiceCodes: serviceCodes, CountryCode: req.CountryCode, ProductType: req.ProductType, OperatorCode: strings.TrimSpace(req.OperatorCode), VoiceMode: req.VoiceMode, DurationValue: req.DurationValue, DurationUnit: strings.ToLower(strings.TrimSpace(req.DurationUnit))})
+	quotes, err := h.svc.Quote(c.Request.Context(), subject.UserID, service.SMSQuoteRequest{ProviderCode: internalProviderCode, ServiceCode: req.ServiceCode, ServiceCodes: serviceCodes, CountryCode: req.CountryCode, ProductType: req.ProductType, OperatorCode: strings.TrimSpace(req.OperatorCode), VoiceMode: req.VoiceMode, DurationValue: req.DurationValue, DurationUnit: strings.ToLower(strings.TrimSpace(req.DurationUnit))})
 	if err != nil {
 		if err == service.ErrSMSFeatureDisabled {
 			response.ErrorWithDetails(c, http.StatusNotFound, "SMS Verification is unavailable", "FEATURE_DISABLED", nil)
@@ -134,7 +143,12 @@ func localizeSMSCountryCatalog(items []service.SMSCountryCatalogItem) {
 
 func (h *SMSHandler) ProviderServices(c *gin.Context) {
 	durationValue, _ := strconv.Atoi(strings.TrimSpace(c.DefaultQuery("duration_value", "0")))
-	items, err := h.svc.ProviderServicesForProduct(c.Request.Context(), c.Param("provider"), c.DefaultQuery("product_type", "temporary"), durationValue, c.Query("duration_unit"))
+	providerCode, err := h.svc.ResolvePublicChannelProvider(c.Request.Context(), c.Param("provider"))
+	if err != nil {
+		response.ErrorWithDetails(c, http.StatusServiceUnavailable, "The selected channel is temporarily unavailable", "PROVIDER_UNAVAILABLE", nil)
+		return
+	}
+	items, err := h.svc.ProviderServicesForProduct(c.Request.Context(), providerCode, c.DefaultQuery("product_type", "temporary"), durationValue, c.Query("duration_unit"))
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -190,7 +204,12 @@ func (h *SMSHandler) ProviderOperators(c *gin.Context) {
 		return
 	}
 	durationValue, _ := strconv.Atoi(strings.TrimSpace(c.DefaultQuery("duration_value", "0")))
-	items, err := h.svc.ProviderOperatorsForProduct(c.Request.Context(), c.Param("provider"), c.Param("service"), c.Param("country"), c.DefaultQuery("product_type", "temporary"), voiceMode, durationValue, c.Query("duration_unit"))
+	providerCode, err := h.svc.ResolvePublicChannelProvider(c.Request.Context(), c.Param("provider"))
+	if err != nil {
+		response.ErrorWithDetails(c, http.StatusServiceUnavailable, "The selected channel is temporarily unavailable", "PROVIDER_UNAVAILABLE", nil)
+		return
+	}
+	items, err := h.svc.ProviderOperatorsForProduct(c.Request.Context(), providerCode, c.Param("service"), c.Param("country"), c.DefaultQuery("product_type", "temporary"), voiceMode, durationValue, c.Query("duration_unit"))
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -211,15 +230,19 @@ func (h *SMSHandler) Countries(c *gin.Context) {
 func (h *SMSHandler) ServiceCountries(c *gin.Context) {
 	serviceCode := strings.ToLower(strings.TrimSpace(c.Param("service")))
 	durationValue, _ := strconv.Atoi(strings.TrimSpace(c.DefaultQuery("duration_value", "0")))
-	items, err := h.svc.CountriesForProviderServiceProduct(c.Request.Context(), c.Param("provider"), serviceCode, c.DefaultQuery("product_type", "temporary"), durationValue, c.Query("duration_unit"))
+	internalProviderCode, err := h.svc.ResolvePublicChannelProvider(c.Request.Context(), c.Param("provider"))
+	if err != nil {
+		response.ErrorWithDetails(c, http.StatusServiceUnavailable, "The selected channel is temporarily unavailable", "PROVIDER_UNAVAILABLE", nil)
+		return
+	}
+	items, err := h.svc.CountriesForProviderServiceProduct(c.Request.Context(), internalProviderCode, serviceCode, c.DefaultQuery("product_type", "temporary"), durationValue, c.Query("duration_unit"))
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
 	localizeSMSCountryCatalog(items)
-	providerCode := strings.ToLower(strings.TrimSpace(c.Param("provider")))
 	sortMode := strings.ToLower(strings.TrimSpace(c.DefaultQuery("sort", "")))
-	if sortMode == "" && providerCode == "5sim" {
+	if sortMode == "" {
 		sortMode = "recommended"
 	}
 	effectiveRate := func(item service.SMSCountryCatalogItem) float64 {
