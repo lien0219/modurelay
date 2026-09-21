@@ -137,6 +137,40 @@ describe('SMSVerificationView', () => {
     wrapper.unmount()
   })
 
+  it('uses the backend service icon in the selected-service preview', async () => {
+    const icon = '/api/v1/sms/service-icons/custom-service'
+    smsAPI.providerServicesPage.mockResolvedValueOnce({
+      items: [{ code: 'custom-service', name: 'Custom service', icon, stock: 10, starting_price: 0.5 }],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+      has_more: false,
+    })
+    const wrapper = mount(SMSVerificationView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<main><slot /></main>' },
+          Icon: true,
+          Pagination: true,
+          Select: true,
+          ConfirmDialog: true,
+          SMSServiceLogo: {
+            props: ['icon', 'label'],
+            template: '<span data-test="sms-service-logo" :data-icon="icon" :data-label="label" />',
+          },
+        },
+      },
+    })
+    await flushPromises()
+
+    const logos = wrapper.findAll('[data-test="sms-service-logo"]')
+    expect(logos).toHaveLength(2)
+    expect(logos[0].attributes('data-icon')).toBe(icon)
+    expect(logos[1].attributes('data-icon')).toBe(icon)
+    wrapper.unmount()
+  })
+
   it('disables channel 1 while the long-term number tab is selected', async () => {
     smsAPI.providers.mockResolvedValueOnce([
       { code: 'channel_1', name: 'Channel 1', beta: false, selectable: true, capabilities: { ...capabilities, supports_rental: false } },

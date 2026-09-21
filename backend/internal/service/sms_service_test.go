@@ -85,6 +85,30 @@ func TestSMSOrderCapabilitiesPreferRegisteredAdapter(t *testing.T) {
 	}
 }
 
+func TestSMSListPublicProvidersUsesOpaqueChannelAllowlist(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectQuery(`(?s)SELECT c\.code,c\.public_name.*WHERE lower\(c\.code\) IN \('channel_1','channel_2'\).*ORDER BY c\.sort_order,c\.id`).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"code", "public_name", "provider_code", "base_url", "enabled", "health_status", "credential_ref", "capabilities", "channel_ready",
+		}).AddRow("channel_2", "Channel 2", "smspva", "https://example.invalid", false, "disabled", "", []byte(`{}`), false))
+
+	providers, err := (&SMSService{db: db}).ListPublicProviders(context.Background())
+	if err != nil {
+		t.Fatalf("ListPublicProviders: %v", err)
+	}
+	if len(providers) != 1 || providers[0].Code != "channel_2" {
+		t.Fatalf("providers=%#v, want only the opaque channel projection", providers)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("public provider query lost its closed allow-list: %v", err)
+	}
+}
+
 func TestSMSActivateUsesRealActionContract(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("api_key") != "secret" || r.URL.Query().Get("action") != "getPrices" {

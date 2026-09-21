@@ -41,6 +41,30 @@ type smsQuoteRequest struct {
 	DurationUnit  string `form:"duration_unit" json:"duration_unit"`
 }
 
+// isPublicSMSChannel keeps the user API boundary opaque. Provider codes are
+// internal routing identifiers and must not be accepted from browser-visible
+// catalog or quote endpoints. The public catalog currently exposes exactly
+// the two production channels; adding another channel requires an explicit
+// public projection rather than falling back to a provider code.
+func isPublicSMSChannel(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "channel_1", "channel_2":
+		return true
+	default:
+		return false
+	}
+}
+
+func rejectNonPublicSMSChannel(c *gin.Context, value string) bool {
+	if isPublicSMSChannel(value) {
+		return false
+	}
+	// Keep the response provider-neutral as well. In particular, do not echo
+	// a manually supplied provider code such as "smspva" back to the browser.
+	response.ErrorWithDetails(c, http.StatusNotFound, "SMS channel is unavailable", "CHANNEL_UNAVAILABLE", nil)
+	return true
+}
+
 func (h *SMSHandler) Quotes(c *gin.Context) {
 	subject, ok := middleware.GetAuthSubjectFromContext(c)
 	if !ok {
@@ -55,6 +79,9 @@ func (h *SMSHandler) Quotes(c *gin.Context) {
 	req.ProviderCode = strings.ToLower(strings.TrimSpace(req.ProviderCode))
 	req.ServiceCode = strings.ToLower(strings.TrimSpace(req.ServiceCode))
 	req.CountryCode = strings.ToUpper(strings.TrimSpace(req.CountryCode))
+	if req.ProviderCode != "" && rejectNonPublicSMSChannel(c, req.ProviderCode) {
+		return
+	}
 	if req.ProductType == "" {
 		req.ProductType = "temporary"
 	}
@@ -130,6 +157,9 @@ func localizeSMSCountryCatalog(items []service.SMSCountryCatalogItem) {
 }
 
 func (h *SMSHandler) ProviderServices(c *gin.Context) {
+	if rejectNonPublicSMSChannel(c, c.Param("provider")) {
+		return
+	}
 	durationValue, _ := strconv.Atoi(strings.TrimSpace(c.DefaultQuery("duration_value", "0")))
 	items, err := h.svc.ProviderServicesForProduct(c.Request.Context(), c.Param("provider"), c.DefaultQuery("product_type", "temporary"), durationValue, c.Query("duration_unit"))
 	if err != nil {
@@ -185,6 +215,9 @@ func (h *SMSHandler) ProviderServices(c *gin.Context) {
 }
 
 func (h *SMSHandler) ProviderOperators(c *gin.Context) {
+	if rejectNonPublicSMSChannel(c, c.Param("provider")) {
+		return
+	}
 	voiceMode, err := strconv.Atoi(strings.TrimSpace(c.DefaultQuery("voice_mode", "0")))
 	if err != nil || voiceMode < 0 || voiceMode > 2 {
 		response.BadRequest(c, "invalid voice_mode")
@@ -213,6 +246,9 @@ func (h *SMSHandler) Countries(c *gin.Context) {
 }
 
 func (h *SMSHandler) ServiceCountries(c *gin.Context) {
+	if rejectNonPublicSMSChannel(c, c.Param("provider")) {
+		return
+	}
 	serviceCode := strings.ToLower(strings.TrimSpace(c.Param("service")))
 	durationValue, _ := strconv.Atoi(strings.TrimSpace(c.DefaultQuery("duration_value", "0")))
 	items, err := h.svc.CountriesForProviderServiceProduct(c.Request.Context(), c.Param("provider"), serviceCode, c.DefaultQuery("product_type", "temporary"), durationValue, c.Query("duration_unit"))
@@ -226,7 +262,10 @@ func (h *SMSHandler) ServiceCountries(c *gin.Context) {
 	}
 	providerCode := strings.ToLower(strings.TrimSpace(c.Param("provider")))
 	sortMode := strings.ToLower(strings.TrimSpace(c.DefaultQuery("sort", "")))
-	if sortMode == "" && providerCode == "5sim" {
+	// channel_1 is the opaque public projection of the frozen 5SIM baseline;
+	// preserve its established recommended ordering without exposing or
+	// accepting the upstream provider code at the HTTP boundary.
+	if sortMode == "" && providerCode == "channel_1" {
 		sortMode = "recommended"
 	}
 	effectiveRate := func(item service.SMSCountryCatalogItem) float64 {

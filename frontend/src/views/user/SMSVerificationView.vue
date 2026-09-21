@@ -468,7 +468,7 @@ function providerDisabledReason(provider: SMSProviderItem) {
   return ''
 }
 const selectedService = computed(() => services.value.find(item => item.code === serviceCode.value))
-const selectedServiceLogo = computed(() => serviceLogo(selectedService.value?.code || '', selectedService.value?.name || ''))
+const selectedServiceLogo = computed(() => selectedService.value?.icon || serviceLogo(selectedService.value?.code || '', selectedService.value?.name || ''))
 const selectedCountryStats = computed(() => countries.value.find(item => item.iso2 === countryCode.value))
 const bestQuote = computed(() => [...quotes.value].sort((a, b) => a.sale_price - b.sale_price)[0])
 const recentSuccessLoop = computed(() => recentSuccessItems.value.length ? [...recentSuccessItems.value, ...recentSuccessItems.value] : [])

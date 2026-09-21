@@ -1974,6 +1974,10 @@ func (s *SMSService) ListPublicProviders(ctx context.Context) ([]SMSPublicProvid
 		(c.enabled AND c.visible AND c.healthy AND p.enabled) AS channel_ready
 		FROM sms_channels c
 		JOIN sms_providers p ON p.id=c.provider_id
+		-- The user projection is intentionally a closed allow-list.  Admins may
+		-- keep additional provider/channel rows for preparation, but an unknown
+		-- channel code must never become a browser-visible provider identity.
+		WHERE lower(c.code) IN ('channel_1','channel_2')
 		ORDER BY c.sort_order,c.id`)
 	if err != nil {
 		return nil, err
