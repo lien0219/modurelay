@@ -84,8 +84,8 @@ func (s *SMSService) RentalServiceOptions(ctx context.Context, userID int64, pub
 	}
 	provider := providerFor(providerCode, base, providerAPIKey(providerCode, credential, s.encryptor))
 	smspva, ok := provider.(*smsPVAProvider)
-	if !ok {
-		return nil, errors.New("advanced rental service management is unavailable for this channel")
+	if !ok || !provider.Capabilities(ctx).RentalAddService {
+		return nil, errors.New("advanced rental service management is awaiting provider billing verification")
 	}
 	offers, err := smspva.RentalServiceOffers(ctx, countryCode, 1, "week")
 	if err != nil {
@@ -401,7 +401,7 @@ func (s *SMSService) CreateRentalRestoreQuote(ctx context.Context, userID int64,
 	}
 	provider := providerFor(providerCode, base, providerAPIKey(providerCode, credential, s.encryptor))
 	advanced, ok := provider.(SMSRentalAdvancedProvider)
-	if !ok {
+	if !ok || !provider.Capabilities(ctx).RentalRestore {
 		return nil, ErrSMSProviderUnavailable
 	}
 
