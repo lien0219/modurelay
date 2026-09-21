@@ -1530,3 +1530,39 @@ func TestNormalizeSMSPVAIconPath(t *testing.T) {
 		}
 	}
 }
+
+
+func TestFilterNewSMSPVARentalOrderRequiresMatchingRestoreEvidence(t *testing.T) {
+	baseline := map[string]struct{}{"old": {}}
+	orders := []SMSRentalProviderOrder{
+		{ID: "old", ServiceCode: "opt9", CountryCode: "LT", PhoneNumber: "37067787324"},
+		{ID: "wrong-phone", ServiceCode: "opt9", CountryCode: "LT", PhoneNumber: "37060000000"},
+		{ID: "wrong-country", ServiceCode: "opt9", CountryCode: "US", PhoneNumber: "37067787324"},
+		{ID: "restored", ServiceCode: "opt9", CountryCode: "LT", PhoneNumber: "+37067787324"},
+	}
+	got := filterNewSMSPVARentalOrder(orders, baseline, "opt9", "LT", "37067787324")
+	if got == nil || got.ID != "restored" {
+		t.Fatalf("restore candidate=%#v", got)
+	}
+}
+
+func TestFilterNewSMSPVARentalOrderFailsClosedOnAmbiguousCandidates(t *testing.T) {
+	orders := []SMSRentalProviderOrder{
+		{ID: "a", ServiceCode: "opt9", CountryCode: "LT", PhoneNumber: "37067787324"},
+		{ID: "b", ServiceCode: "opt9", CountryCode: "LT", PhoneNumber: "+37067787324"},
+	}
+	if got := filterNewSMSPVARentalOrder(orders, map[string]struct{}{}, "opt9", "LT", "37067787324"); got != nil {
+		t.Fatalf("ambiguous restore must fail closed, got %#v", got)
+	}
+}
+
+func TestSMSPVAServiceIconProxyURLDoesNotExposeProviderName(t *testing.T) {
+	item := SMSSvcCatalogItem{Code: "opt9", ProviderIconPath: "images/ico/opt9.png"}
+	if item.ProviderIconPath == "" {
+		t.Fatal("test fixture requires an upstream icon path")
+	}
+	publicURL := "/api/v1/sms/service-icons/" + item.Code
+	if strings.Contains(strings.ToLower(publicURL), "smspva") || strings.Contains(strings.ToLower(publicURL), "5sim") {
+		t.Fatalf("public icon URL leaks provider identity: %s", publicURL)
+	}
+}
