@@ -153,6 +153,10 @@ func (h *SMSHandler) ProviderServices(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	for i := range items {
+		items[i].ProviderCode = ""
+		items[i].ProviderIconPath = ""
+	}
 	popular := map[string]int{"amazon": 1, "apple": 2, "discord": 3, "facebook": 4, "google": 5, "instagram": 6, "microsoft": 7, "openai": 8, "telegram": 9, "whatsapp": 10}
 	sort.SliceStable(items, func(i, j int) bool {
 		ri, iPopular := popular[strings.ToLower(items[i].Code)]
@@ -239,6 +243,9 @@ func (h *SMSHandler) ServiceCountries(c *gin.Context) {
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
+	}
+	for i := range items {
+		items[i].ProviderCode = ""
 	}
 	localizeSMSCountryCatalog(items)
 	sortMode := strings.ToLower(strings.TrimSpace(c.DefaultQuery("sort", "")))
