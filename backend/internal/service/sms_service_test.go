@@ -1406,3 +1406,116 @@ func TestSMSPVARentalStatusPreservesSenderDateAndOtherSMS(t *testing.T) {
 		t.Fatalf("other metadata=%#v", items[1])
 	}
 }
+
+
+func TestSMSPVARentalOrderConstraints(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/rent.php" || r.URL.Query().Get("method") != "orders" {
+			t.Fatalf("unexpected request: %s?%s", r.URL.Path, r.URL.RawQuery)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":1,"data":[{"id":"40300","scode":"opt16","sname":"Instagram","state":"0","pnumber":"9096068511","ccode":"+7","cname":"KZ","hasnewsms":false,"until":"1587552240","canprolong":true,"canprolongmax":6,"canprolonguntil":1634883780,"lastonline":1586947920}]}`))
+	}))
+	defer server.Close()
+
+	provider := providerFor("smspva", server.URL, "secret")
+	inspector, ok := provider.(SMSRentalOrderInspector)
+	if !ok {
+		t.Fatal("SMSPVA provider must expose rental order inspection")
+	}
+	order, err := inspector.RentalOrder(context.Background(), "40300")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !order.CanProlong || order.CanProlongMax != 6 || order.CanProlongUntil != 1634883780 {
+		t.Fatalf("unexpected rental constraints: %#v", order)
+	}
+	if order.ServiceCode != "opt16" || order.CountryCode != "KZ" {
+		t.Fatalf("unexpected rental identity: %#v", order)
+	}
+}
+
+func TestSMSPVAAdvancedRentalContracts(t *testing.T) {
+	var methods []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/rent.php" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		method := r.URL.Query().Get("method")
+		methods = append(methods, method)
+		w.Header().Set("Content-Type", "application/json")
+		switch method {
+		case "create_multi":
+			if got := r.URL.Query().Get("services"); got != "opt6,opt7" {
+				t.Fatalf("services=%q", got)
+			}
+			_, _ = w.Write([]byte(`{"status":1,"data":{"id":40370,"pnumber":"9096037108","until":1893456000}}`))
+		case "activate":
+			_, _ = w.Write([]byte(`{"status":1,"data":{"id":40370}}`))
+		case "add_service_to_order":
+			if r.URL.Query().Get("pnumber") != "9096037108" || r.URL.Query().Get("service") != "opt89" {
+				t.Fatalf("unexpected add-service query: %s", r.URL.RawQuery)
+			}
+			_, _ = w.Write([]byte(`{"status":1,"data":{"id":4211321,"pnumber":"9096037108","service":"opt89","until":1893456000}}`))
+		case "get_rent_history":
+			_, _ = w.Write([]byte(`{"status":1,"data":[{"orderId":857191,"resourceCode":"opt9","number":"37067787324","haveSms":false,"isAvailForRestore":true,"days":30,"country":"LT","begin":1768902473,"end":1771494473,"closed":1768903921}]}`))
+		case "restore_user_precalc":
+			_, _ = w.Write([]byte(`{"status":1,"data":{"ccode":"LT","scode":"opt9","price":1.5,"sname":"Instagram","pnumber":"37067787324","outdays":5,"orderid":857191,"prolongTo":30}}`))
+		case "restore_user":
+			_, _ = w.Write([]byte(`{"status":1,"data":{"id":123456}}`))
+		default:
+			t.Fatalf("unexpected method: %s", method)
+		}
+	}))
+	defer server.Close()
+
+	provider := providerFor("smspva", server.URL, "secret")
+	advanced, ok := provider.(SMSRentalAdvancedProvider)
+	if !ok {
+		t.Fatal("SMSPVA provider must expose advanced rental operations")
+	}
+	multi, err := advanced.PurchaseRentalMulti(context.Background(), SMSPurchaseRequest{CountryCode: "KZ", DurationValue: 1, DurationUnit: "week"}, []string{"opt6", "opt7"})
+	if err != nil || multi.ProviderOrderID != "40370" {
+		t.Fatalf("multi=%#v err=%v", multi, err)
+	}
+	added, err := advanced.AddRentalService(context.Background(), "40370", "+9096037108", "opt89", 7)
+	if err != nil || added.ProviderOrderID != "4211321" {
+		t.Fatalf("added=%#v err=%v", added, err)
+	}
+	history, err := advanced.RentalHistory(context.Background(), 0, 10)
+	if err != nil || len(history) != 1 || !history[0].CanRestore {
+		t.Fatalf("history=%#v err=%v", history, err)
+	}
+	quote, err := advanced.PrecalcRentalRestore(context.Background(), "857191")
+	if err != nil || quote.ProviderCost != 1.5 || quote.ServiceCode != "opt9" {
+		t.Fatalf("quote=%#v err=%v", quote, err)
+	}
+	restoredID, err := advanced.RestoreRental(context.Background(), "857191")
+	if err != nil || restoredID != "123456" {
+		t.Fatalf("restored=%q err=%v", restoredID, err)
+	}
+}
+
+func TestNormalizeSMSPVAIconPath(t *testing.T) {
+	valid := []string{
+		"images/ico/example.ico",
+		"/images/ico/example.png",
+		"https://smspva.com/images/ico/example.webp",
+	}
+	for _, value := range valid {
+		if _, err := normalizeSMSPVAIconPath(value); err != nil {
+			t.Fatalf("expected %q to be valid: %v", value, err)
+		}
+	}
+	invalid := []string{
+		"https://example.com/images/ico/example.ico",
+		"http://smspva.com/images/ico/example.ico",
+		"../secret",
+		"images/other/example.ico",
+	}
+	for _, value := range invalid {
+		if _, err := normalizeSMSPVAIconPath(value); err == nil {
+			t.Fatalf("expected %q to be rejected", value)
+		}
+	}
+}
