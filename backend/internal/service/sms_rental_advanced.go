@@ -96,14 +96,19 @@ func (s *SMSService) RentalServiceOptions(ctx context.Context, userID int64, pub
 	rows, err := s.db.QueryContext(ctx, `SELECT lower(COALESCE(NULLIF(provider_service_code,''),sv.code))
 		FROM sms_order_services os JOIN sms_services sv ON sv.id=os.service_id
 		WHERE os.order_id=$1 AND os.status='active'`, orderID)
-	if err == nil {
-		defer func() { _ = rows.Close() }()
-		for rows.Next() {
-			var code string
-			if rows.Scan(&code) == nil {
-				existing[strings.ToLower(strings.TrimSpace(code))] = struct{}{}
-			}
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var code string
+		if err := rows.Scan(&code); err != nil {
+			return nil, err
 		}
+		existing[strings.ToLower(strings.TrimSpace(code))] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	pricing, err := s.GetPricingSettings(ctx)
 	if err != nil {
@@ -170,7 +175,7 @@ func (s *SMSService) CreateRentalServiceQuote(ctx context.Context, userID int64,
 	}
 	provider := providerFor(providerCode, base, providerAPIKey(providerCode, credential, s.encryptor))
 	smspva, ok := provider.(*smsPVAProvider)
-	if !ok {
+	if !ok || !provider.Capabilities(ctx).RentalAddService {
 		return nil, ErrSMSProviderUnavailable
 	}
 	offers, err := smspva.RentalServiceOffers(ctx, countryCode, 1, "week")
