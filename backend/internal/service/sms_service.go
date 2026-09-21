@@ -2799,6 +2799,9 @@ func (s *SMSService) Quote(ctx context.Context, userID int64, req SMSQuoteReques
 		if req.ProductType == "rental" && !capabilities.Rental {
 			continue
 		}
+		if req.ProductType == "rental" && len(req.ServiceCodes) > 1 && !capabilities.RentalMultiService {
+			continue
+		}
 		providerReq := req
 		providerReq.ServiceCode = providerServiceCode
 		providerReq.CountryCode = providerCountryCode
