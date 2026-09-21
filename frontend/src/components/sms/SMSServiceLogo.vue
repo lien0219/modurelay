@@ -14,7 +14,6 @@
       v-else
       :icon="resolvedIcon"
       class="h-[70%] w-[70%]"
-      @vue:mounted="failed = false"
     />
   </span>
 </template>
