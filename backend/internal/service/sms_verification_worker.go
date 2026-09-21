@@ -117,6 +117,7 @@ func (s *SMSService) Reconcile(ctx context.Context) error {
 	if _, err := s.db.ExecContext(ctx, `DELETE FROM sms_quotes WHERE expires_at < NOW() - INTERVAL '1 hour'`); err != nil && firstErr == nil {
 		firstErr = err
 	}
+	s.cleanupExpiredRentalQuotes(ctx)
 	return firstErr
 }
 
