@@ -1566,3 +1566,73 @@ func TestSMSPVAServiceIconProxyURLDoesNotExposeProviderName(t *testing.T) {
 		t.Fatalf("public icon URL leaks provider identity: %s", publicURL)
 	}
 }
+
+
+func TestResolvePublicChannelProviderUsesOnlyReadyPublicChannel(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectQuery(`SELECT p\.code\s+FROM sms_channels c\s+JOIN sms_providers p ON p\.id=c\.provider_id`).
+		WithArgs("channel_2").
+		WillReturnRows(sqlmock.NewRows([]string{"code"}).AddRow("smspva"))
+
+	svc := &SMSService{db: db}
+	got, err := svc.ResolvePublicChannelProvider(context.Background(), " CHANNEL_2 ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "smspva" {
+		t.Fatalf("resolved provider=%q, want smspva", got)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestListPublicProvidersReturnsChannelAliasesNotSupplierIdentity(t *testing.T) {
+	t.Setenv("SMS_5SIM_API_KEY", "five-key")
+	t.Setenv("SMS_SMSPVA_API_KEY", "pva-key")
+
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	rows := sqlmock.NewRows([]string{
+		"channel_code", "public_name", "provider_code", "base_url", "provider_enabled",
+		"health_status", "credential_ref", "capabilities", "channel_enabled", "visible", "healthy",
+	}).
+		AddRow("channel_1", "渠道1", "5sim", "https://5sim.net/v1", true, "healthy", "", []byte(`{"supports_temporary":true}`), true, true, true).
+		AddRow("channel_2", "渠道2", "smspva", "https://api.smspva.com", true, "healthy", "", []byte(`{"supports_temporary":true,"supports_rental":true}`), true, true, true)
+
+	mock.ExpectQuery(`SELECT c\.code,c\.public_name,p\.code,p\.base_url`).WillReturnRows(rows)
+
+	svc := &SMSService{db: db}
+	items, err := svc.ListPublicProviders(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("providers=%#v", items)
+	}
+	if items[0].Code != "channel_1" || items[0].Name != "渠道1" || items[1].Code != "channel_2" || items[1].Name != "渠道2" {
+		t.Fatalf("public channel aliases=%#v", items)
+	}
+	for _, item := range items {
+		serialized, _ := json.Marshal(item)
+		lower := strings.ToLower(string(serialized))
+		if strings.Contains(lower, "5sim") || strings.Contains(lower, "smspva") {
+			t.Fatalf("public provider response leaked supplier identity: %s", serialized)
+		}
+	}
+	if !items[0].Selectable || !items[1].Selectable {
+		t.Fatalf("ready channels must be selectable: %#v", items)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
