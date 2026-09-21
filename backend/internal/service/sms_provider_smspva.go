@@ -328,6 +328,64 @@ func (p *smsPVAProvider) CatalogServicesForProduct(ctx context.Context, productT
 		}
 		out = append(out, item)
 	}
+	if len(out) > 0 {
+		missingIcons := 0
+		for i := range out {
+			if strings.TrimSpace(out[i].ProviderIconPath) == "" {
+				missingIcons++
+			}
+		}
+		// get_default_services can omit image metadata. Enrich from a small,
+		// bounded sample of country catalogs instead of issuing one request per
+		// service or scanning every country during the normal fast path.
+		if missingIcons > 0 {
+			if countries, countryErr := p.rentalCountries(ctx); countryErr == nil {
+				sort.SliceStable(countries, func(i, j int) bool {
+					if strings.EqualFold(countries[i].ProviderCode, "US") {
+						return true
+					}
+					if strings.EqualFold(countries[j].ProviderCode, "US") {
+						return false
+					}
+					return countries[i].ProviderCode < countries[j].ProviderCode
+				})
+				iconByService := map[string]string{}
+				for countryIndex, country := range countries {
+					if countryIndex >= 3 || len(iconByService) >= missingIcons {
+						break
+					}
+					dtype, dcount, _, _ := smsPVARentalPeriod(durationValue, durationUnit)
+					var data smsPVARentalEnvelope
+					if err := p.rentalRequestJSON(ctx, url.Values{"method": {"getdataWithProviders"}, "country": {country.ProviderCode}, "dtype": {dtype}, "dcount": {strconv.Itoa(dcount)}, "extend": {"1"}}, &data); err != nil {
+						continue
+					}
+					var payload struct {
+						Services []struct {
+							Service string `json:"service"`
+							Img     string `json:"img"`
+						} `json:"services"`
+					}
+					if json.Unmarshal(data.Data, &payload) != nil {
+						continue
+					}
+					for _, svc := range payload.Services {
+						if code := strings.ToLower(strings.TrimSpace(svc.Service)); code != "" && strings.TrimSpace(svc.Img) != "" {
+							iconByService[code] = strings.TrimSpace(svc.Img)
+						}
+					}
+				}
+				for i := range out {
+					if out[i].ProviderIconPath != "" {
+						continue
+					}
+					if iconPath := iconByService[out[i].Code]; iconPath != "" {
+						out[i].ProviderIconPath = iconPath
+						out[i].Icon = "/api/v1/sms/providers/smspva/service-icons/" + url.PathEscape(out[i].Code)
+					}
+				}
+			}
+		}
+	}
 	if len(out) == 0 {
 		// Some deployments return sparse default-service metadata. Build the
 		// catalog from the provider's country data without fabricating service IDs.
