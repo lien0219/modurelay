@@ -1937,7 +1937,10 @@ func (s *SMSService) ListServices(ctx context.Context) ([]SMSSvcCatalogItem, err
 }
 
 func (s *SMSService) ListPublicProviders(ctx context.Context) ([]SMSPublicProvider, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT p.code,p.name,p.base_url,p.enabled,p.health_status,p.credential_ref,p.capabilities,EXISTS(SELECT 1 FROM sms_channels c WHERE c.provider_id=p.id AND c.enabled AND c.visible AND c.healthy) FROM sms_providers p ORDER BY CASE p.code WHEN '5sim' THEN 1 WHEN 'smspva' THEN 2 ELSE 100 END,p.id`)
+	rows, err := s.db.QueryContext(ctx, `SELECT c.code,c.public_name,p.code,p.base_url,p.enabled,p.health_status,p.credential_ref,p.capabilities,c.enabled,c.visible,c.healthy
+		FROM sms_channels c
+		JOIN sms_providers p ON p.id=c.provider_id
+		ORDER BY c.sort_order,c.id`)
 	if err != nil {
 		return nil, err
 	}
@@ -1945,19 +1948,41 @@ func (s *SMSService) ListPublicProviders(ctx context.Context) ([]SMSPublicProvid
 	out := []SMSPublicProvider{}
 	for rows.Next() {
 		var item SMSPublicProvider
-		var enabled, channelReady bool
-		var baseURL, healthStatus, credentialRef string
+		var providerCode, baseURL, healthStatus, credentialRef string
+		var providerEnabled, channelEnabled, channelVisible, channelHealthy bool
 		var raw []byte
-		if err := rows.Scan(&item.Code, &item.Name, &baseURL, &enabled, &healthStatus, &credentialRef, &raw, &channelReady); err != nil {
+		if err := rows.Scan(&item.Code, &item.Name, &providerCode, &baseURL, &providerEnabled, &healthStatus, &credentialRef, &raw, &channelEnabled, &channelVisible, &channelHealthy); err != nil {
 			return nil, err
 		}
-		item.Beta = item.Code != "5sim" && item.Code != "smspva"
-		credentialReady := providerAPIKey(item.Code, credentialRef, s.encryptor) != ""
-		item.Selectable = enabled && !item.Beta && strings.EqualFold(healthStatus, "healthy") && credentialReady && channelReady
-		item.Capabilities = resolveSMSCapabilities(item.Code, baseURL, raw)
+		item.Beta = providerCode != "5sim" && providerCode != "smspva"
+		credentialReady := providerAPIKey(providerCode, credentialRef, s.encryptor) != ""
+		item.Selectable = providerEnabled && channelEnabled && channelVisible && channelHealthy && !item.Beta && strings.EqualFold(healthStatus, "healthy") && credentialReady
+		item.Capabilities = resolveSMSCapabilities(providerCode, baseURL, raw)
 		out = append(out, item)
 	}
 	return out, rows.Err()
+}
+
+func (s *SMSService) ResolvePublicChannelProvider(ctx context.Context, channelCode string) (string, error) {
+	channelCode = strings.ToLower(strings.TrimSpace(channelCode))
+	if channelCode == "" {
+		return "", ErrSMSProviderUnavailable
+	}
+	var providerCode string
+	err := s.db.QueryRowContext(ctx, `SELECT p.code
+		FROM sms_channels c
+		JOIN sms_providers p ON p.id=c.provider_id
+		WHERE lower(c.code)=lower($1)
+		  AND c.enabled AND c.visible AND c.healthy
+		  AND p.enabled
+		LIMIT 1`, channelCode).Scan(&providerCode)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrSMSProviderUnavailable
+	}
+	if err != nil {
+		return "", err
+	}
+	return strings.ToLower(strings.TrimSpace(providerCode)), nil
 }
 
 func (s *SMSService) ProviderServices(ctx context.Context, providerCode string) ([]SMSSvcCatalogItem, error) {
