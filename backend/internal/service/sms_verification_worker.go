@@ -13,6 +13,24 @@ const (
 	smsVerificationUnknownTimeout = 15 * time.Minute
 )
 
+// smsProviderPollDelay is deliberately conservative.  SMSPVA does not
+// publish a rate-limit contract that we can safely turn into a platform
+// promise, so the worker starts with the existing five-second cadence and
+// backs off as an order ages.  5SIM keeps the historical cadence exactly.
+func smsProviderPollDelay(providerCode string, createdAt, now time.Time) time.Duration {
+	if !strings.EqualFold(strings.TrimSpace(providerCode), "smspva") {
+		return smsVerificationPollInterval
+	}
+	age := now.Sub(createdAt)
+	if age < time.Minute {
+		return 5 * time.Second
+	}
+	if age < 5*time.Minute {
+		return 10 * time.Second
+	}
+	return 25 * time.Second
+}
+
 // Reconcile polls active SMS orders and repairs purchases that were left in an
 // unknown state by a process or network interruption. It is called by the
 // existing leader-elected verification worker.
@@ -20,7 +38,7 @@ func (s *SMSService) Reconcile(ctx context.Context) error {
 	if s == nil || s.db == nil {
 		return nil
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT o.id,o.user_id,o.status,o.product_type,o.provider_order_id,o.refund_status,p.code,p.base_url,p.credential_ref,o.expires_at,o.updated_at,o.settlement_status,o.reconciliation_action FROM sms_orders o JOIN sms_providers p ON p.id=o.provider_id WHERE (o.status IN ('active','provider_unknown') AND (((o.reconcile_after IS NULL AND o.updated_at <= NOW()-($1 * INTERVAL '1 second')) OR o.reconcile_after <= NOW()) OR o.expires_at <= NOW())) OR (o.status='reconciling' AND (o.reconcile_after IS NULL OR o.reconcile_after <= NOW())) OR (o.status='pending' AND o.settlement_status='held' AND o.provider_order_id='') OR (o.status IN ('failed','cancelled','expired','refunded','completed') AND o.settlement_status='held') ORDER BY COALESCE(o.reconcile_after,o.updated_at) LIMIT 100`, int(smsVerificationPollInterval.Seconds()))
+	rows, err := s.db.QueryContext(ctx, `SELECT o.id,o.user_id,o.status,o.product_type,o.provider_order_id,o.refund_status,p.code,p.base_url,p.credential_ref,o.expires_at,o.updated_at,o.created_at,o.settlement_status,o.reconciliation_action FROM sms_orders o JOIN sms_providers p ON p.id=o.provider_id WHERE (o.status IN ('active','provider_unknown') AND (((o.reconcile_after IS NULL AND o.updated_at <= NOW()-($1 * INTERVAL '1 second')) OR o.reconcile_after <= NOW()) OR o.expires_at <= NOW())) OR (o.status='reconciling' AND (o.reconcile_after IS NULL OR o.reconcile_after <= NOW())) OR (o.status='pending' AND o.settlement_status='held' AND o.provider_order_id='') OR (o.status IN ('failed','cancelled','expired','refunded','completed') AND o.settlement_status='held') ORDER BY COALESCE(o.reconcile_after,o.updated_at) LIMIT 100`, int(smsVerificationPollInterval.Seconds()))
 	if err != nil {
 		return err
 	}
@@ -30,8 +48,8 @@ func (s *SMSService) Reconcile(ctx context.Context) error {
 		var id, userID int64
 		var status, productType, providerOrder, refundStatus, providerCode, baseURL, credential, settlementStatus, reconciliationAction string
 		var expiresAt sql.NullTime
-		var updatedAt time.Time
-		if err := rows.Scan(&id, &userID, &status, &productType, &providerOrder, &refundStatus, &providerCode, &baseURL, &credential, &expiresAt, &updatedAt, &settlementStatus, &reconciliationAction); err != nil {
+		var updatedAt, createdAt time.Time
+		if err := rows.Scan(&id, &userID, &status, &productType, &providerOrder, &refundStatus, &providerCode, &baseURL, &credential, &expiresAt, &updatedAt, &createdAt, &settlementStatus, &reconciliationAction); err != nil {
 			if firstErr == nil {
 				firstErr = err
 			}
@@ -97,6 +115,13 @@ func (s *SMSService) Reconcile(ctx context.Context) error {
 		}
 
 		if providerOrder != "" && refundStatus != "pending" {
+			// Only SMSPVA uses the age-based schedule.  The 5SIM path remains
+			// exactly five seconds as the frozen production baseline.
+			if (status == "active" || status == "provider_unknown") &&
+				time.Since(updatedAt) < smsProviderPollDelay(providerCode, createdAt, time.Now()) &&
+				(!expiresAt.Valid || expiresAt.Time.After(time.Now())) {
+				continue
+			}
 			if err := s.pollSMSOrder(ctx, id, providerOrder, providerCode, baseURL, credential, productType); err != nil && firstErr == nil {
 				firstErr = err
 			}

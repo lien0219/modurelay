@@ -23,7 +23,10 @@ func RegisterUserRoutes(
 ) {
 	if h.SMS != nil {
 		v1.POST("/sms/webhooks/:provider", h.SMS.Webhook)
-		v1.GET("/sms/providers/:provider/service-icons/:service", h.SMS.ServiceIcon)
+		// Service icons are deliberately provider-neutral on the user surface.
+		// The handler resolves the catalog internally and never exposes the
+		// upstream provider name in a browser-visible URL.
+		v1.GET("/sms/service-icons/:service", h.SMS.ServiceIcon)
 	}
 	authenticated := v1.Group("")
 	authenticated.Use(gin.HandlerFunc(jwtAuth))

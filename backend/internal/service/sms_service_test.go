@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -63,6 +64,14 @@ func TestSMSProviderCapabilitiesAreSeparated(t *testing.T) {
 		if (code == "smspva" || code == "onlinesim" || code == "pingme") && !cap.Rental {
 			t.Fatalf("provider %s must advertise its configured rental capability", code)
 		}
+	}
+}
+
+func TestSMSPVAWebhookIsFailClosedBeforeDatabaseLookup(t *testing.T) {
+	svc := NewSMSService(nil, nil, nil)
+	err := svc.ProcessWebhook(context.Background(), "SMSPVA", SMSStatusResult{Status: "completed"}, "501")
+	if !errors.Is(err, ErrSMSProviderWebhookUnsupported) {
+		t.Fatalf("SMSPVA webhook error = %v, want %v", err, ErrSMSProviderWebhookUnsupported)
 	}
 }
 
@@ -1262,6 +1271,8 @@ func TestSMSPVARentalLifecycleUsesOfficialRentContract(t *testing.T) {
 			_, _ = w.Write([]byte(`{"status":1,"data":{"id":"501","pnumber":"+12025550001","until":1893456000}}`))
 		case "activate":
 			_, _ = w.Write([]byte(`{"status":1,"data":[{"id":"501"}]}`))
+		case "orders":
+			_, _ = w.Write([]byte(`{"status":1,"data":[{"id":"501","scode":"telegram","sname":"Telegram","state":"0","pnumber":"+12025550001","cname":"US","hasnewsms":true,"until":1893456000,"canprolong":true,"canprolongmax":6,"canprolonguntil":1893459600,"lastonline":1893455000}]}`))
 		case "sms":
 			_, _ = w.Write([]byte(`{"status":1,"data":{"SmsList":[{"text":"Your code is 482913"}],"OtherSms":[]}}`))
 		case "prolong":
@@ -1294,7 +1305,7 @@ func TestSMSPVARentalLifecycleUsesOfficialRentContract(t *testing.T) {
 	if err = p.CancelRental(context.Background(), "501"); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"create", "activate", "activate", "sms", "prolong", "delete"}
+	want := []string{"create", "activate", "activate", "orders", "sms", "prolong", "delete"}
 	if len(methods) != len(want) {
 		t.Fatalf("methods=%v", methods)
 	}
@@ -1314,6 +1325,25 @@ func TestSMSPVARentalPeriodValidation(t *testing.T) {
 	}
 	if _, _, err := smsPVARentalExtensionPeriod(7, "day"); err == nil {
 		t.Fatal("daily extension above six days must fail")
+	}
+}
+
+func TestSMSPVARentalRequestFailsClosedWithoutCredential(t *testing.T) {
+	called := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+	}))
+	defer server.Close()
+
+	p := providerFor("smspva", server.URL, "")
+	_, err := p.PurchaseRental(context.Background(), SMSPurchaseRequest{
+		CountryCode: "US", ServiceCode: "telegram", DurationValue: 1, DurationUnit: "week",
+	})
+	if !errors.Is(err, ErrSMSProviderCredentialMissing) {
+		t.Fatalf("error=%v, want missing-credential error", err)
+	}
+	if called {
+		t.Fatal("rental request must not reach upstream without an API key")
 	}
 }
 
@@ -1378,6 +1408,8 @@ func TestSMSPVARentalStatusPreservesSenderDateAndOtherSMS(t *testing.T) {
 		switch r.URL.Query().Get("method") {
 		case "activate":
 			_, _ = w.Write([]byte(`{"status":1,"data":[]}`))
+		case "orders":
+			_, _ = w.Write([]byte(`{"status":1,"data":[{"id":"501","scode":"telegram","sname":"Telegram","state":"0","pnumber":"+12025550001","cname":"US","hasnewsms":true,"until":1893456000,"canprolong":true,"canprolongmax":6,"canprolonguntil":1893459600,"lastonline":1893455000}]}`))
 		case "sms":
 			_, _ = w.Write([]byte(`{"status":1,"data":{"SmsList":[{"text":"Code 482913","sender":"Example","date":1893456000}],"OtherSms":[{"text":"Service notice"}]}}`))
 		default:
@@ -1406,7 +1438,6 @@ func TestSMSPVARentalStatusPreservesSenderDateAndOtherSMS(t *testing.T) {
 		t.Fatalf("other metadata=%#v", items[1])
 	}
 }
-
 
 func TestSMSPVARentalOrderConstraints(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1510,12 +1541,172 @@ func TestNormalizeSMSPVAIconPath(t *testing.T) {
 	invalid := []string{
 		"https://example.com/images/ico/example.ico",
 		"http://smspva.com/images/ico/example.ico",
+		"https://smspva.com:443/images/ico/example.ico",
+		"https://user:pass@smspva.com/images/ico/example.ico",
+		"https://smspva.com/images/ico/example.ico?x=1",
+		"https://smspva.com/images/ico/example.ico?",
+		"https://smspva.com/images/ico/example.ico#fragment",
 		"../secret",
+		"images/ico/%2e%2e/secret.ico",
+		"images/ico/foo\\bar.ico",
 		"images/other/example.ico",
 	}
 	for _, value := range invalid {
 		if _, err := normalizeSMSPVAIconPath(value); err == nil {
 			t.Fatalf("expected %q to be rejected", value)
 		}
+	}
+}
+
+func newSMSIconServiceTest(t *testing.T, serviceCode, iconPath string) (*SMSService, *sql.DB, sqlmock.Sqlmock) {
+	t.Helper()
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New: %v", err)
+	}
+	mock.ExpectQuery(`SELECT COALESCE\(c\.raw_metadata->>'icon_path',''\)`).
+		WithArgs("smspva", serviceCode).
+		WillReturnRows(sqlmock.NewRows([]string{"icon_path"}).AddRow(iconPath))
+	return &SMSService{db: db}, db, mock
+}
+
+func withSMSIconHTTPClient(t *testing.T, service *SMSService, client *http.Client) {
+	t.Helper()
+	service.iconHTTPClient = client
+}
+
+func clearSMSIconCache(serviceCode, iconPath string) {
+	if normalized, err := normalizeSMSPVAIconPath(iconPath); err == nil {
+		smsProviderIconCache.Delete("smspva:" + normalized)
+	}
+	_ = serviceCode
+}
+
+func TestSMSServiceIconRejectsRedirect(t *testing.T) {
+	service, db, mock := newSMSIconServiceTest(t, "redirect", "images/ico/redirect.png")
+	defer db.Close()
+	defer clearSMSIconCache("redirect", "images/ico/redirect.png")
+
+	called := 0
+	withSMSIconHTTPClient(t, service, &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			called++
+			return &http.Response{
+				StatusCode: http.StatusFound,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader("redirect")),
+				Request:    req,
+			}, nil
+		}),
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	})
+	_, _, err := service.ServiceIcon(context.Background(), "", "redirect")
+	if err == nil || !strings.Contains(err.Error(), "HTTP 302") {
+		t.Fatalf("redirect should be rejected, err=%v", err)
+	}
+	if called != 1 {
+		t.Fatalf("redirect response should be fetched once, calls=%d", called)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSMSServiceIconRejectsUnsupportedMIME(t *testing.T) {
+	service, db, mock := newSMSIconServiceTest(t, "mime", "images/ico/mime.png")
+	defer db.Close()
+	defer clearSMSIconCache("mime", "images/ico/mime.png")
+	withSMSIconHTTPClient(t, service, &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/html; charset=utf-8"}},
+			Body:       io.NopCloser(strings.NewReader("not an image")),
+			Request:    req,
+		}, nil
+	})})
+	_, _, err := service.ServiceIcon(context.Background(), "", "mime")
+	if err == nil || !strings.Contains(err.Error(), "unsupported content type") {
+		t.Fatalf("unsupported MIME should be rejected, err=%v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSMSServiceIconRejectsOversizedResponse(t *testing.T) {
+	service, db, mock := newSMSIconServiceTest(t, "large", "images/ico/large.png")
+	defer db.Close()
+	defer clearSMSIconCache("large", "images/ico/large.png")
+	withSMSIconHTTPClient(t, service, &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"image/png"}},
+			Body:       io.NopCloser(strings.NewReader(strings.Repeat("x", smsProviderIconMaxBytes+1))),
+			Request:    req,
+		}, nil
+	})})
+	_, _, err := service.ServiceIcon(context.Background(), "", "large")
+	if err == nil || !strings.Contains(err.Error(), "exceeds allowed size") {
+		t.Fatalf("oversized response should be rejected, err=%v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSMSServiceIconHonorsTimeout(t *testing.T) {
+	service, db, mock := newSMSIconServiceTest(t, "timeout", "images/ico/timeout.png")
+	defer db.Close()
+	defer clearSMSIconCache("timeout", "images/ico/timeout.png")
+	withSMSIconHTTPClient(t, service, &http.Client{
+		Timeout: 10 * time.Millisecond,
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			<-req.Context().Done()
+			return nil, req.Context().Err()
+		}),
+	})
+	started := time.Now()
+	_, _, err := service.ServiceIcon(context.Background(), "", "timeout")
+	if err == nil || time.Since(started) > time.Second || !strings.Contains(strings.ToLower(err.Error()), "deadline") {
+		t.Fatalf("icon request should honor timeout, err=%v elapsed=%v", err, time.Since(started))
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSMSServiceIconCachesSuccessfulResponse(t *testing.T) {
+	service, db, mock := newSMSIconServiceTest(t, "cached", "images/ico/cached.png")
+	defer db.Close()
+	defer clearSMSIconCache("cached", "images/ico/cached.png")
+	mock.ExpectQuery(`SELECT COALESCE\(c\.raw_metadata->>'icon_path',''\)`).
+		WithArgs("smspva", "cached").
+		WillReturnRows(sqlmock.NewRows([]string{"icon_path"}).AddRow("images/ico/cached.png"))
+	requests := 0
+	withSMSIconHTTPClient(t, service, &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		requests++
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"image/png; charset=binary"}},
+			Body:       io.NopCloser(strings.NewReader("png")),
+			Request:    req,
+		}, nil
+	})})
+	first, firstType, err := service.ServiceIcon(context.Background(), "", "cached")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, secondType, err := service.ServiceIcon(context.Background(), "", "cached")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(first) != "png" || string(second) != "png" || firstType != "image/png" || secondType != "image/png" {
+		t.Fatalf("unexpected cached payload: first=%q/%q second=%q/%q", first, firstType, second, secondType)
+	}
+	if requests != 1 {
+		t.Fatalf("expected one upstream request for cache hit, got %d", requests)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
 	}
 }

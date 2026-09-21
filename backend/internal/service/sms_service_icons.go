@@ -31,28 +31,80 @@ func normalizeSMSPVAIconPath(raw string) (string, error) {
 	if value == "" {
 		return "", errors.New("provider icon path is empty")
 	}
-	if strings.HasPrefix(value, "http://") || strings.HasPrefix(value, "https://") {
-		u, err := url.Parse(value)
-		if err != nil {
-			return "", errors.New("invalid provider icon URL")
+	// Do not let path.Clean turn an attacker-controlled traversal into an
+	// apparently safe path. Check the original and once-decoded forms first;
+	// backslashes are rejected because some upstream/proxy stacks treat them as
+	// path separators even though net/url treats them as ordinary characters.
+	if strings.ContainsAny(value, `\\`) || strings.Contains(value, "..") {
+		return "", errors.New("provider icon path is not allowed")
+	}
+	decoded, err := url.PathUnescape(value)
+	if err != nil {
+		return "", errors.New("invalid provider icon path")
+	}
+	if strings.ContainsAny(decoded, `\\`) || strings.Contains(decoded, "..") {
+		return "", errors.New("provider icon path is not allowed")
+	}
+	// Reject double-encoded traversal as well. The upstream may decode escaped
+	// path segments more than once, so inspect a small bounded number of layers.
+	for i := 0; i < 8; i++ {
+		next, unescapeErr := url.PathUnescape(decoded)
+		if unescapeErr != nil || next == decoded {
+			break
 		}
-		if !strings.EqualFold(u.Scheme, "https") || !strings.EqualFold(u.Hostname(), "smspva.com") {
+		decoded = next
+		if strings.ContainsAny(decoded, `\\`) || strings.Contains(decoded, "..") {
+			return "", errors.New("provider icon path is not allowed")
+		}
+	}
+
+	u, err := url.Parse(value)
+	if err != nil {
+		return "", errors.New("invalid provider icon URL")
+	}
+	if u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.User != nil {
+		return "", errors.New("provider icon URL must not contain query, fragment, or credentials")
+	}
+	if u.IsAbs() || u.Host != "" {
+		if !strings.EqualFold(u.Scheme, "https") || !strings.EqualFold(u.Hostname(), "smspva.com") || u.Port() != "" || u.Opaque != "" {
 			return "", errors.New("provider icon host is not allowed")
 		}
-		value = strings.TrimPrefix(u.EscapedPath(), "/")
+		value = u.EscapedPath()
 	}
 	value = strings.TrimPrefix(value, "/")
 	cleaned := path.Clean("/" + value)
 	cleaned = strings.TrimPrefix(cleaned, "/")
-	if !strings.HasPrefix(cleaned, "images/ico/") || strings.Contains(cleaned, "..") {
+	if !strings.HasPrefix(cleaned, "images/ico/") || cleaned == "images/ico/" || strings.Contains(cleaned, "..") {
 		return "", errors.New("provider icon path is not allowed")
 	}
 	return cleaned, nil
 }
 
+// defaultSMSProviderIconHTTPClient returns a bounded client with redirects
+// disabled. SMSService has an optional client field so tests can inject a
+// transport without mutating package-global state.
+func defaultSMSProviderIconHTTPClient() *http.Client {
+	return &http.Client{
+		Timeout: 5 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+}
+
 func (s *SMSService) ServiceIcon(ctx context.Context, providerCode, serviceCode string) ([]byte, string, error) {
 	providerCode = strings.ToLower(strings.TrimSpace(providerCode))
 	serviceCode = strings.ToLower(strings.TrimSpace(serviceCode))
+	// The user-facing endpoint deliberately omits the provider. Resolve the
+	// trusted catalog internally instead of making the upstream identity part
+	// of a browser-visible URL. Keep an explicit provider argument only for
+	// internal/legacy callers and reject every provider except the catalog that
+	// owns the persisted icon metadata.
+	if providerCode == "" {
+		providerCode = "smspva"
+	} else {
+		providerCode = s.resolveSMSProviderAlias(ctx, providerCode)
+	}
 	if providerCode != "smspva" || serviceCode == "" {
 		return nil, "", errors.New("service icon is unavailable")
 	}
@@ -85,11 +137,12 @@ func (s *SMSService) ServiceIcon(ctx context.Context, providerCode, serviceCode 
 	}
 	req.Header.Set("Accept", "image/avif,image/webp,image/png,image/jpeg,image/gif,image/x-icon,image/vnd.microsoft.icon;q=0.9,*/*;q=0.1")
 
-	client := &http.Client{
-		Timeout: 5 * time.Second,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
+	client := s.iconHTTPClient
+	if client == nil {
+		client = defaultSMSProviderIconHTTPClient()
+	}
+	if client == nil {
+		return nil, "", errors.New("provider service icon HTTP client unavailable")
 	}
 	resp, err := client.Do(req)
 	if err != nil {

@@ -34,21 +34,22 @@ import (
 )
 
 var (
-	ErrSMSFeatureDisabled           = errors.New("sms service is disabled")
-	ErrSMSInsufficientBalance       = errors.New("insufficient balance")
-	ErrSMSProviderUnavailable       = errors.New("selected channel is unavailable")
-	ErrSMSPriceChanged              = errors.New("price changed; please confirm again")
-	ErrSMSProviderUnknown           = errors.New("channel purchase is being reconciled")
-	ErrSMSRefundPending             = errors.New("channel refund is being processed")
-	ErrSMSProviderCredentialMissing = errors.New("sms provider credential is not configured")
-	ErrSMSProviderTestUnsupported   = errors.New("provider does not support a safe connection test")
-	ErrSMSProviderTestCooldown      = errors.New("provider connection test is cooling down")
-	ErrSMSQuoteInvalid              = errors.New("sms quote is invalid")
-	ErrSMSQuoteExpired              = errors.New("sms quote has expired")
-	ErrSMSCancelTooEarly            = errors.New("order cannot be cancelled until the configured waiting period has elapsed")
-	ErrSMSOrderExpired              = errors.New("order has reached its configured expiry and can no longer be cancelled manually")
-	ErrSMSInsufficientStock         = errors.New("selected channel does not have enough stock for this batch")
-	smsVerificationCodePattern      = regexp.MustCompile(`(?:^|[^0-9])([0-9]{4,8})(?:$|[^0-9])`)
+	ErrSMSFeatureDisabled            = errors.New("sms service is disabled")
+	ErrSMSInsufficientBalance        = errors.New("insufficient balance")
+	ErrSMSProviderUnavailable        = errors.New("selected channel is unavailable")
+	ErrSMSPriceChanged               = errors.New("price changed; please confirm again")
+	ErrSMSProviderUnknown            = errors.New("channel purchase is being reconciled")
+	ErrSMSRefundPending              = errors.New("channel refund is being processed")
+	ErrSMSProviderCredentialMissing  = errors.New("sms provider credential is not configured")
+	ErrSMSProviderTestUnsupported    = errors.New("provider does not support a safe connection test")
+	ErrSMSProviderWebhookUnsupported = errors.New("provider does not support webhooks")
+	ErrSMSProviderTestCooldown       = errors.New("provider connection test is cooling down")
+	ErrSMSQuoteInvalid               = errors.New("sms quote is invalid")
+	ErrSMSQuoteExpired               = errors.New("sms quote has expired")
+	ErrSMSCancelTooEarly             = errors.New("order cannot be cancelled until the configured waiting period has elapsed")
+	ErrSMSOrderExpired               = errors.New("order has reached its configured expiry and can no longer be cancelled manually")
+	ErrSMSInsufficientStock          = errors.New("selected channel does not have enough stock for this batch")
+	smsVerificationCodePattern       = regexp.MustCompile(`(?:^|[^0-9])([0-9]{4,8})(?:$|[^0-9])`)
 )
 
 // SMSBatchPurchaseLimitError reports that a requested batch exceeds the
@@ -170,25 +171,29 @@ const (
 )
 
 type SMSProviderCapabilities struct {
-	Temporary         bool `json:"supports_temporary"`
-	Rental            bool `json:"supports_rental"`
-	RentalCancel      bool `json:"supports_rental_cancel"`
-	Webhook           bool `json:"supports_webhook"`
-	Polling           bool `json:"supports_polling"`
-	Cancel            bool `json:"supports_cancel"`
-	Refund            bool `json:"supports_refund"`
-	RefundStatus      bool `json:"supports_refund_status"`
-	Finish            bool `json:"supports_finish"`
-	Ban               bool `json:"supports_ban"`
-	Extend            bool `json:"supports_extend"`
-	Resend            bool `json:"supports_resend"`
-	Voice             bool `json:"supports_voice"`
-	VoiceSMS          bool `json:"supports_voice_sms"`
-	VoiceCallerID     bool `json:"supports_voice_caller_id"`
-	VoiceCall         bool `json:"supports_voice_call"`
-	OperatorSelection bool `json:"supports_operator_selection"`
-	ServiceSelection  bool `json:"supports_service_selection"`
-	ConversionStats   bool `json:"supports_conversion_stats"`
+	Temporary          bool `json:"supports_temporary"`
+	Rental             bool `json:"supports_rental"`
+	RentalConstraints  bool `json:"supports_rental_constraints"`
+	RentalRestore      bool `json:"supports_rental_restore"`
+	RentalMultiService bool `json:"supports_rental_multi_service"`
+	RentalAddService   bool `json:"supports_rental_add_service"`
+	RentalCancel       bool `json:"supports_rental_cancel"`
+	Webhook            bool `json:"supports_webhook"`
+	Polling            bool `json:"supports_polling"`
+	Cancel             bool `json:"supports_cancel"`
+	Refund             bool `json:"supports_refund"`
+	RefundStatus       bool `json:"supports_refund_status"`
+	Finish             bool `json:"supports_finish"`
+	Ban                bool `json:"supports_ban"`
+	Extend             bool `json:"supports_extend"`
+	Resend             bool `json:"supports_resend"`
+	Voice              bool `json:"supports_voice"`
+	VoiceSMS           bool `json:"supports_voice_sms"`
+	VoiceCallerID      bool `json:"supports_voice_caller_id"`
+	VoiceCall          bool `json:"supports_voice_call"`
+	OperatorSelection  bool `json:"supports_operator_selection"`
+	ServiceSelection   bool `json:"supports_service_selection"`
+	ConversionStats    bool `json:"supports_conversion_stats"`
 }
 
 // SMSPricingSettings is stored in the existing settings repository so admins
@@ -1552,6 +1557,7 @@ type SMSService struct {
 	db                   *sql.DB
 	settings             *SettingService
 	encryptor            SecretEncryptor
+	iconHTTPClient       *http.Client
 	catalogSyncMu        sync.Mutex
 	catalogSyncLastCheck time.Time
 }
@@ -1890,6 +1896,40 @@ type SMSPublicProvider struct {
 	Selectable   bool                    `json:"selectable"`
 	Capabilities SMSProviderCapabilities `json:"capabilities"`
 }
+
+// resolveSMSProviderAlias accepts the opaque channel identifiers exposed by
+// the user API and resolves them to the internal provider code.  Provider
+// names are intentionally kept inside the service boundary: a browser-visible
+// route, payload, or error should only need to carry channel_1/channel_2.
+// Raw provider codes remain accepted for backwards-compatible requests from
+// older clients, but are never generated by the public provider projection.
+func (s *SMSService) resolveSMSProviderAlias(ctx context.Context, value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" || !strings.HasPrefix(value, "channel_") {
+		return value
+	}
+	var providerCode string
+	if err := s.db.QueryRowContext(ctx, `SELECT p.code
+		FROM sms_channels c JOIN sms_providers p ON p.id=c.provider_id
+		WHERE lower(c.code)=lower($1)
+		LIMIT 1`, value).Scan(&providerCode); err == nil {
+		return strings.ToLower(strings.TrimSpace(providerCode))
+	}
+	return value
+}
+
+func publicSMSProviderCode(ctx context.Context, db *sql.DB, providerCode string) string {
+	providerCode = strings.ToLower(strings.TrimSpace(providerCode))
+	if providerCode == "" || db == nil {
+		return providerCode
+	}
+	var channelCode string
+	if err := db.QueryRowContext(ctx, `SELECT c.code FROM sms_channels c JOIN sms_providers p ON p.id=c.provider_id WHERE lower(p.code)=lower($1) ORDER BY c.sort_order,c.id LIMIT 1`, providerCode).Scan(&channelCode); err == nil {
+		return strings.ToLower(strings.TrimSpace(channelCode))
+	}
+	return providerCode
+}
+
 type SMSCountryCatalogItem struct {
 	ISO2                     string   `json:"iso2"`
 	ISO3                     string   `json:"iso3,omitempty"`
@@ -1930,7 +1970,11 @@ func (s *SMSService) ListServices(ctx context.Context) ([]SMSSvcCatalogItem, err
 }
 
 func (s *SMSService) ListPublicProviders(ctx context.Context) ([]SMSPublicProvider, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT p.code,p.name,p.base_url,p.enabled,p.health_status,p.credential_ref,p.capabilities,EXISTS(SELECT 1 FROM sms_channels c WHERE c.provider_id=p.id AND c.enabled AND c.visible AND c.healthy) FROM sms_providers p ORDER BY CASE p.code WHEN '5sim' THEN 1 WHEN 'smspva' THEN 2 ELSE 100 END,p.id`)
+	rows, err := s.db.QueryContext(ctx, `SELECT c.code,c.public_name,p.code,p.base_url,p.enabled,p.health_status,p.credential_ref,p.capabilities,
+		(c.enabled AND c.visible AND c.healthy AND p.enabled) AS channel_ready
+		FROM sms_channels c
+		JOIN sms_providers p ON p.id=c.provider_id
+		ORDER BY c.sort_order,c.id`)
 	if err != nil {
 		return nil, err
 	}
@@ -1939,15 +1983,17 @@ func (s *SMSService) ListPublicProviders(ctx context.Context) ([]SMSPublicProvid
 	for rows.Next() {
 		var item SMSPublicProvider
 		var enabled, channelReady bool
+		var providerCode string
 		var baseURL, healthStatus, credentialRef string
 		var raw []byte
-		if err := rows.Scan(&item.Code, &item.Name, &baseURL, &enabled, &healthStatus, &credentialRef, &raw, &channelReady); err != nil {
+		if err := rows.Scan(&item.Code, &item.Name, &providerCode, &baseURL, &enabled, &healthStatus, &credentialRef, &raw, &channelReady); err != nil {
 			return nil, err
 		}
-		item.Beta = item.Code != "5sim" && item.Code != "smspva"
-		credentialReady := providerAPIKey(item.Code, credentialRef, s.encryptor) != ""
+		providerCode = strings.ToLower(strings.TrimSpace(providerCode))
+		item.Beta = providerCode != "5sim" && providerCode != "smspva"
+		credentialReady := providerAPIKey(providerCode, credentialRef, s.encryptor) != ""
 		item.Selectable = enabled && !item.Beta && strings.EqualFold(healthStatus, "healthy") && credentialReady && channelReady
-		item.Capabilities = resolveSMSCapabilities(item.Code, baseURL, raw)
+		item.Capabilities = resolveSMSCapabilities(providerCode, baseURL, raw)
 		out = append(out, item)
 	}
 	return out, rows.Err()
@@ -2000,6 +2046,7 @@ func (s *SMSService) decorateCountryStartingPrices(ctx context.Context, items []
 }
 
 func (s *SMSService) ProviderServicesForProduct(ctx context.Context, providerCode, productType string, durationValue int, durationUnit string) ([]SMSSvcCatalogItem, error) {
+	providerCode = s.resolveSMSProviderAlias(ctx, providerCode)
 	providerCode = strings.ToLower(strings.TrimSpace(providerCode))
 	productType = strings.ToLower(strings.TrimSpace(productType))
 	if productType == "" {
@@ -2039,9 +2086,11 @@ func (s *SMSService) ProviderServicesForProduct(ctx context.Context, providerCod
 			if scanErr := rows.Scan(&item.Code, &item.Name, &item.Category, &item.ProviderIconPath); scanErr != nil {
 				return nil, scanErr
 			}
-			item.ProviderCode = item.Code
+			// Provider service identifiers are internal routing data. The user
+			// catalog only needs the canonical service code and icon URL.
+			item.ProviderCode = ""
 			if item.ProviderIconPath != "" {
-				item.Icon = "/api/v1/sms/providers/" + url.PathEscape(providerCode) + "/service-icons/" + url.PathEscape(item.Code)
+				item.Icon = "/api/v1/sms/service-icons/" + url.PathEscape(item.Code)
 			}
 			items = append(items, item)
 		}
@@ -2107,8 +2156,12 @@ func (s *SMSService) persistProviderServices(ctx context.Context, providerCode s
 		if item.Name == "" {
 			item.Name = item.Code
 		}
-		rawMetadata, _ := json.Marshal(map[string]any{"icon_path": strings.TrimSpace(item.ProviderIconPath)})
-		_, _ = s.db.ExecContext(ctx, `INSERT INTO sms_provider_catalog_services(provider_id,provider_service_code,provider_service_name,category,enabled,observed_at,raw_metadata) VALUES($1,$2,$3,$4,TRUE,NOW(),$5::jsonb) ON CONFLICT(provider_id,provider_service_code) DO UPDATE SET provider_service_name=EXCLUDED.provider_service_name,category=EXCLUDED.category,enabled=TRUE,observed_at=NOW(),raw_metadata=COALESCE(sms_provider_catalog_services.raw_metadata,'{}'::jsonb) || EXCLUDED.raw_metadata`, providerID, providerServiceCode, item.Name, item.Category, string(rawMetadata))
+		iconPath := strings.TrimSpace(item.ProviderIconPath)
+		rawMetadata, _ := json.Marshal(map[string]any{"icon_path": iconPath})
+		// A sparse provider response must not erase a previously trusted icon.
+		// Only merge icon_path when this observation is non-empty; other catalog
+		// fields continue to refresh on every successful sync.
+		_, _ = s.db.ExecContext(ctx, `INSERT INTO sms_provider_catalog_services(provider_id,provider_service_code,provider_service_name,category,enabled,observed_at,raw_metadata) VALUES($1,$2,$3,$4,TRUE,NOW(),$5::jsonb) ON CONFLICT(provider_id,provider_service_code) DO UPDATE SET provider_service_name=EXCLUDED.provider_service_name,category=EXCLUDED.category,enabled=TRUE,observed_at=NOW(),raw_metadata=CASE WHEN NULLIF(EXCLUDED.raw_metadata->>'icon_path','') IS NULL THEN COALESCE(sms_provider_catalog_services.raw_metadata,'{}'::jsonb) ELSE COALESCE(sms_provider_catalog_services.raw_metadata,'{}'::jsonb) || jsonb_build_object('icon_path',EXCLUDED.raw_metadata->>'icon_path') END`, providerID, providerServiceCode, item.Name, item.Category, string(rawMetadata))
 		var serviceID int64
 		if s.db.QueryRowContext(ctx, `INSERT INTO sms_services(code,name,category,enabled) VALUES ($1,$2,$3,TRUE) ON CONFLICT (code) DO UPDATE SET name=EXCLUDED.name,category=EXCLUDED.category,enabled=TRUE RETURNING id`, item.Code, item.Name, item.Category).Scan(&serviceID) == nil && providerCode != "5sim" && providerCode != "smspva" {
 			_, _ = s.db.ExecContext(ctx, `INSERT INTO sms_provider_service_mappings(provider_id,service_id,provider_service_code,provider_service_name,temporary_supported,rental_supported,enabled) VALUES ($1,$2,$3,$4,TRUE,FALSE,TRUE) ON CONFLICT (provider_id,service_id) DO UPDATE SET provider_service_code=EXCLUDED.provider_service_code,provider_service_name=EXCLUDED.provider_service_name,enabled=TRUE`, providerID, serviceID, providerServiceCode, item.Name)
@@ -2259,6 +2312,7 @@ func (s *SMSService) CountriesForProviderService(ctx context.Context, providerCo
 }
 
 func (s *SMSService) CountriesForProviderServiceProduct(ctx context.Context, providerCode, serviceCode, productType string, durationValue int, durationUnit string) ([]SMSCountryCatalogItem, error) {
+	providerCode = s.resolveSMSProviderAlias(ctx, providerCode)
 	providerCode = strings.ToLower(strings.TrimSpace(providerCode))
 	serviceCode = strings.ToLower(strings.TrimSpace(serviceCode))
 	productType = strings.ToLower(strings.TrimSpace(productType))
@@ -2315,10 +2369,10 @@ func (s *SMSService) CountriesForProviderServiceProduct(ctx context.Context, pro
 		if scanErr := rows.Scan(&item.ISO2, &providerCountryID, &providerCountryCode, &item.NameZH, &item.NameEN); scanErr != nil {
 			return nil, scanErr
 		}
-		item.ProviderCode = providerCountryID
-		if item.ProviderCode == "" {
-			item.ProviderCode = providerCountryCode
-		}
+		// Keep provider country identifiers inside the adapter boundary. User
+		// responses expose only the canonical ISO country code.
+		_ = providerCountryID
+		_ = providerCountryCode
 		items = append(items, item)
 	}
 	return items, rows.Err()
@@ -2632,6 +2686,7 @@ func (s *SMSService) ProviderOperators(ctx context.Context, providerCode, servic
 }
 
 func (s *SMSService) ProviderOperatorsForProduct(ctx context.Context, providerCode, serviceCode, countryCode, productType string, voiceMode, durationValue int, durationUnit string) ([]SMSOperatorOption, error) {
+	providerCode = s.resolveSMSProviderAlias(ctx, providerCode)
 	providerCode = strings.ToLower(strings.TrimSpace(providerCode))
 	serviceCode = strings.ToLower(strings.TrimSpace(serviceCode))
 	countryCode = strings.ToUpper(strings.TrimSpace(countryCode))
@@ -2681,6 +2736,7 @@ func (s *SMSService) Quote(ctx context.Context, userID int64, req SMSQuoteReques
 	if !s.Enabled(ctx) {
 		return nil, ErrSMSFeatureDisabled
 	}
+	req.ProviderCode = s.resolveSMSProviderAlias(ctx, req.ProviderCode)
 	req.ProviderCode = strings.ToLower(strings.TrimSpace(req.ProviderCode))
 	req.ServiceCode = strings.ToLower(strings.TrimSpace(req.ServiceCode))
 	req.CountryCode = strings.ToUpper(strings.TrimSpace(req.CountryCode))
@@ -3865,9 +3921,8 @@ func (s *SMSService) pollSMSOrder(ctx context.Context, id int64, providerOrder, 
 		if message == "" {
 			continue
 		}
-		_, _ = s.db.ExecContext(ctx, `INSERT INTO sms_messages(order_id,message_text,verification_code) SELECT $1,$2,$3 WHERE NOT EXISTS (SELECT 1 FROM sms_messages WHERE order_id=$1 AND message_text=$2)`, id, message, extractSMSCode(message))
-		if sender, providerReceivedAt, messageType, serviceCode, otherSMS, ok := smsMessageMetadata(result.Metadata, index); ok {
-			_, _ = s.db.ExecContext(ctx, `UPDATE sms_messages SET sender=$1,provider_received_at=$2,message_type=$3,service_code=$4,other_sms=$5 WHERE order_id=$6 AND message_text=$7`, sender, providerReceivedAt, messageType, serviceCode, otherSMS, id, message)
+		if err := s.persistSMSMessage(ctx, id, message, result.Metadata, index); err != nil {
+			return err
 		}
 		_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET first_sms_received_at=COALESCE(first_sms_received_at,NOW()),delivery_outcome='success',delivery_finalized_at=COALESCE(delivery_finalized_at,NOW()),delivery_failure_reason='' WHERE id=$1`, id)
 		clearSMSPlatformDeliveryStatsCache()
@@ -4057,10 +4112,64 @@ func smsMessageMetadata(metadata map[string]any, index int) (sender string, prov
 	return sender, providerReceivedAt, messageType, serviceCode, otherSMS, true
 }
 
+// persistSMSMessage uses one identity for both polling and webhook delivery.
+// Message text alone is not sufficient for rental orders: a provider can
+// deliver the same text for different senders/services, or report it again
+// with a distinct provider timestamp. The database hash keeps this boundary
+// deterministic and lets the unique index enforce exactly-once insertion.
+func (s *SMSService) persistSMSMessage(ctx context.Context, orderID int64, message string, metadata map[string]any, index int) error {
+	sender, providerReceivedAt, messageType, serviceCode, otherSMS, _ := smsMessageMetadata(metadata, index)
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO sms_messages(order_id,message_text,verification_code,sender,provider_received_at,message_type,service_code,other_sms,dedupe_hash)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,md5(concat_ws(chr(31),$1::text,$2::text,$4::text,$6::text,$7::text,$8::text,$5::timestamptz::text)))
+		ON CONFLICT (order_id,dedupe_hash) DO UPDATE SET
+			sender=CASE WHEN EXCLUDED.sender<>'' THEN EXCLUDED.sender ELSE sms_messages.sender END,
+			provider_received_at=COALESCE(EXCLUDED.provider_received_at,sms_messages.provider_received_at),
+			message_type=CASE WHEN EXCLUDED.message_type<>'' THEN EXCLUDED.message_type ELSE sms_messages.message_type END,
+			service_code=CASE WHEN EXCLUDED.service_code<>'' THEN EXCLUDED.service_code ELSE sms_messages.service_code END,
+			other_sms=sms_messages.other_sms OR EXCLUDED.other_sms`,
+		orderID, message, extractSMSCode(message), sender, providerReceivedAt, messageType, serviceCode, otherSMS)
+	if err != nil && smsMessageDedupColumnMissing(err) {
+		// A rolling deployment can briefly run the new binary before migration
+		// 263. Keep delivery readable during that window with the legacy text
+		// identity; once the column exists the provider-aware statement above is
+		// used and the unique index provides exactly-once insertion.
+		_, fallbackErr := s.db.ExecContext(ctx, `
+			INSERT INTO sms_messages(order_id,message_text,verification_code)
+			SELECT $1,$2,$3
+			WHERE NOT EXISTS (SELECT 1 FROM sms_messages WHERE order_id=$1 AND message_text=$2)`,
+			orderID, message, extractSMSCode(message))
+		if fallbackErr == nil && (sender != "" || providerReceivedAt != nil || messageType != "" || serviceCode != "" || otherSMS) {
+			_, _ = s.db.ExecContext(ctx, `UPDATE sms_messages SET sender=COALESCE(NULLIF($1,''),sender),provider_received_at=COALESCE($2,provider_received_at),message_type=COALESCE(NULLIF($3,''),message_type),service_code=COALESCE(NULLIF($4,''),service_code),other_sms=other_sms OR $5 WHERE order_id=$6 AND message_text=$7`, sender, providerReceivedAt, messageType, serviceCode, otherSMS, orderID, message)
+		}
+		return fallbackErr
+	}
+	return err
+}
+
+func smsMessageDedupColumnMissing(err error) bool {
+	if err == nil {
+		return false
+	}
+	lower := strings.ToLower(err.Error())
+	return strings.Contains(lower, "dedupe_hash") &&
+		(strings.Contains(lower, "does not exist") || strings.Contains(lower, "undefined column"))
+}
+
 func (s *SMSService) ProcessWebhook(ctx context.Context, providerCode string, payload SMSStatusResult, providerOrderID string) error {
 	providerCode = strings.ToLower(strings.TrimSpace(providerCode))
+	if providerCode == "" {
+		return errors.New("provider and provider order id are required")
+	}
+	// SMSPVA has no documented webhook contract. Keep its capability boundary
+	// fail-closed even if an operator accidentally configures a secret for the
+	// generic webhook route. Polling remains the only supported delivery path.
+	// 5SIM intentionally keeps the existing route semantics for compatibility.
+	if providerCode == "smspva" {
+		return ErrSMSProviderWebhookUnsupported
+	}
 	providerOrderID = strings.TrimSpace(providerOrderID)
-	if providerCode == "" || providerOrderID == "" {
+	if providerOrderID == "" {
 		return errors.New("provider and provider order id are required")
 	}
 	var id int64
@@ -4090,9 +4199,8 @@ func (s *SMSService) ProcessWebhook(ctx context.Context, providerCode string, pa
 		if message == "" {
 			continue
 		}
-		_, _ = s.db.ExecContext(ctx, `INSERT INTO sms_messages(order_id,message_text,verification_code) SELECT $1,$2,$3 WHERE NOT EXISTS (SELECT 1 FROM sms_messages WHERE order_id=$1 AND message_text=$2)`, id, message, extractSMSCode(message))
-		if sender, providerReceivedAt, messageType, serviceCode, otherSMS, ok := smsMessageMetadata(payload.Metadata, index); ok {
-			_, _ = s.db.ExecContext(ctx, `UPDATE sms_messages SET sender=$1,provider_received_at=$2,message_type=$3,service_code=$4,other_sms=$5 WHERE order_id=$6 AND message_text=$7`, sender, providerReceivedAt, messageType, serviceCode, otherSMS, id, message)
+		if err := s.persistSMSMessage(ctx, id, message, payload.Metadata, index); err != nil {
+			return err
 		}
 		_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET first_sms_received_at=COALESCE(first_sms_received_at,NOW()),delivery_outcome='success',delivery_finalized_at=COALESCE(delivery_finalized_at,NOW()),delivery_failure_reason='' WHERE id=$1`, id)
 		clearSMSPlatformDeliveryStatsCache()
@@ -4526,7 +4634,7 @@ func (s *SMSService) ExtendRental(ctx context.Context, userID int64, publicID st
 		return s.GetOrderByPublicID(ctx, userID, publicID)
 	}
 	p := providerFor(providerCode, base, providerAPIKey(providerCode, credential, s.encryptor))
-	if p == nil || !p.Capabilities(ctx).Extend {
+	if p == nil || !p.Capabilities(ctx).RentalConstraints || !p.Capabilities(ctx).Extend {
 		return nil, errors.New("rental extension is unavailable for this channel")
 	}
 	if inspector, supported := p.(SMSRentalOrderInspector); supported {
@@ -4618,25 +4726,29 @@ func decodeCapabilities(raw []byte) SMSProviderCapabilities {
 	var values map[string]bool
 	_ = json.Unmarshal(raw, &values)
 	return SMSProviderCapabilities{
-		Temporary:         values["supports_temporary"] || values["temporary"],
-		Rental:            values["supports_rental"] || values["rental"],
-		RentalCancel:      values["supports_rental_cancel"] || values["rental_cancel"],
-		Webhook:           values["supports_webhook"] || values["webhook"],
-		Polling:           values["supports_polling"] || values["polling"],
-		Cancel:            values["supports_cancel"] || values["cancel"],
-		Refund:            values["supports_refund"] || values["refund"],
-		RefundStatus:      values["supports_refund_status"] || values["refund_status"],
-		Finish:            values["supports_finish"] || values["finish"],
-		Ban:               values["supports_ban"] || values["ban"],
-		Extend:            values["supports_extend"] || values["extend"],
-		Resend:            values["supports_resend"] || values["resend"],
-		Voice:             values["supports_voice"] || values["voice"],
-		VoiceSMS:          values["supports_voice_sms"] || values["voice_sms"],
-		VoiceCallerID:     values["supports_voice_caller_id"] || values["voice_caller_id"],
-		VoiceCall:         values["supports_voice_call"] || values["voice_call"],
-		OperatorSelection: values["supports_operator_selection"] || values["operator_selection"],
-		ServiceSelection:  values["supports_service_selection"] || values["service_selection"],
-		ConversionStats:   values["supports_conversion_stats"] || values["conversion_stats"],
+		Temporary:          values["supports_temporary"] || values["temporary"],
+		Rental:             values["supports_rental"] || values["rental"],
+		RentalConstraints:  values["supports_rental_constraints"] || values["rental_constraints"],
+		RentalRestore:      values["supports_rental_restore"] || values["rental_restore"],
+		RentalMultiService: values["supports_rental_multi_service"] || values["rental_multi_service"],
+		RentalAddService:   values["supports_rental_add_service"] || values["rental_add_service"],
+		RentalCancel:       values["supports_rental_cancel"] || values["rental_cancel"],
+		Webhook:            values["supports_webhook"] || values["webhook"],
+		Polling:            values["supports_polling"] || values["polling"],
+		Cancel:             values["supports_cancel"] || values["cancel"],
+		Refund:             values["supports_refund"] || values["refund"],
+		RefundStatus:       values["supports_refund_status"] || values["refund_status"],
+		Finish:             values["supports_finish"] || values["finish"],
+		Ban:                values["supports_ban"] || values["ban"],
+		Extend:             values["supports_extend"] || values["extend"],
+		Resend:             values["supports_resend"] || values["resend"],
+		Voice:              values["supports_voice"] || values["voice"],
+		VoiceSMS:           values["supports_voice_sms"] || values["voice_sms"],
+		VoiceCallerID:      values["supports_voice_caller_id"] || values["voice_caller_id"],
+		VoiceCall:          values["supports_voice_call"] || values["voice_call"],
+		OperatorSelection:  values["supports_operator_selection"] || values["operator_selection"],
+		ServiceSelection:   values["supports_service_selection"] || values["service_selection"],
+		ConversionStats:    values["supports_conversion_stats"] || values["conversion_stats"],
 	}
 }
 

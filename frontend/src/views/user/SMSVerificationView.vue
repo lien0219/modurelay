@@ -162,7 +162,7 @@
                 </div>
               </div>
 
-              <div v-if="productType === 'rental' && providerCode === 'smspva'" class="grid grid-cols-2 gap-2">
+              <div v-if="productType === 'rental' && currentProvider?.capabilities.supports_rental" class="grid grid-cols-2 gap-2">
                 <label class="block min-w-0"><span class="input-label">{{ t('sms.user.duration') }}</span><input v-model.number="durationValue" class="input h-[42px]" type="number" min="1" @change="reloadRentalCatalog" /></label>
                 <Select v-model="durationUnit" :label="t('sms.user.unit')" :options="durationUnitOptions" @update:model-value="reloadRentalCatalog" />
               </div>
@@ -402,6 +402,7 @@ import SMSServiceLogo from '@/components/sms/SMSServiceLogo.vue'
 import { smsAPI, type SMSCountryItem, type SMSOperatorItem, type SMSOrder, type SMSOrderPage, type SMSProviderItem, type SMSQuote, type SMSRecentSuccessItem, type SMSServiceItem } from '@/api/sms'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { useAppStore, useAuthStore } from '@/stores'
+import { smsOrderPollBucket, smsOrderPollDelay, type SMSOrderPollBucket } from './smsPolling'
 
 const { locale, t } = useI18n()
 const appStore = useAppStore()
@@ -449,7 +450,6 @@ const orderDraft = reactive({ keyword: '', status: '' })
 const orderFilters = reactive({ keyword: '', status: '' })
 const confirmState = reactive({ show: false, title: '', message: '', confirmText: '', cancelText: '', danger: false, action: null as null | (() => Promise<void>) })
 const confirmingAction = ref(false)
-let pollTimer: number | undefined
 let countdownTimer: number | undefined
 let serviceSearchTimer: number | undefined
 let countrySearchTimer: number | undefined
@@ -499,7 +499,10 @@ const countrySortOptions = computed(() => [
   { value: 'name', label: t('sms.user.sortByName') },
 ])
 const durationUnitOptions = computed(() => {
-  if (providerCode.value === 'smspva') {
+  // The user API exposes channel capabilities, never provider identities.
+  // Weekly/monthly rental semantics are enabled only for channels whose
+  // backend advertises server-authoritative rental constraints.
+  if (currentProvider.value?.capabilities.supports_rental_constraints) {
     return [{ value: 'week', label: t('sms.user.week') }, { value: 'month', label: t('sms.user.month') }]
   }
   return [{ value: 'hour', label: t('sms.user.hour') }, { value: 'day', label: t('sms.user.day') }, { value: 'week', label: t('sms.user.week') }]
@@ -603,23 +606,41 @@ function formatDuration(seconds: number) {
   const remainder = Math.max(0, seconds) % 60
   return `${minutes}:${String(remainder).padStart(2, '0')}`
 }
+const pollTimers: Partial<Record<SMSOrderPollBucket, number>> = {}
+
 const pollingCandidates = () => [...liveOrders.value, ...(activeTab.value === 'orders' ? orders.value : [])]
   .filter(isOrderWaiting)
   .filter((order, index, items) => items.findIndex(item => item.id === order.id) === index)
   .slice(0, 20)
 
+// Channel 1 deliberately retains the frozen three-second browser cadence.
+// Channel 2 uses conservative age bands, but only the opaque channel code
+// crosses the user boundary.
 function stopOrderPolling() {
-  if (pollTimer) window.clearTimeout(pollTimer)
-  pollTimer = undefined
+  Object.keys(pollTimers).forEach(key => {
+    const bucket = key as SMSOrderPollBucket
+    if (pollTimers[bucket]) window.clearTimeout(pollTimers[bucket])
+    delete pollTimers[bucket]
+  })
 }
 
 function ensureOrderPolling() {
-  if (pollTimer || pollingCandidates().length === 0) return
-  pollTimer = window.setTimeout(async () => {
-    pollTimer = undefined
-    await refreshWaitingOrders()
-    ensureOrderPolling()
-  }, 3000)
+  const candidates = pollingCandidates()
+  const buckets: SMSOrderPollBucket[] = ['baseline', 'channel-2-fast', 'channel-2-medium', 'channel-2-slow']
+  buckets.forEach(bucket => {
+    const bucketCandidates = candidates.filter(order => smsOrderPollBucket(order) === bucket)
+    if (!bucketCandidates.length) {
+      if (pollTimers[bucket]) window.clearTimeout(pollTimers[bucket])
+      delete pollTimers[bucket]
+      return
+    }
+    if (pollTimers[bucket]) return
+    pollTimers[bucket] = window.setTimeout(async () => {
+      delete pollTimers[bucket]
+      await refreshWaitingOrders(bucket)
+      ensureOrderPolling()
+    }, smsOrderPollDelay(bucket))
+  })
 }
 const latestVerificationCode = (order: SMSOrder) => [...(order.messages || [])].reverse().find(message => message.verification_code)?.verification_code || ''
 const formatSMSMessageTime = (value: string) => formatDateTime(value, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })
@@ -742,7 +763,6 @@ async function loadAll() {
     batchPurchaseLimit.value = normalizeBatchPurchaseLimit(smsSettings.batch_purchase_limit)
     purchaseQuantity.value = Math.min(batchPurchaseLimit.value, Math.max(1, Number(purchaseQuantity.value) || 1))
     const preferred = providers.value.find(item => item.code === providerCode.value && item.selectable)
-      || providers.value.find(item => item.code === '5sim' && item.selectable)
       || providers.value.find(item => item.selectable)
     providerCode.value = preferred?.code || ''
     await loadProviderCatalog()
@@ -835,7 +855,7 @@ async function switchProvider(code: string) {
   if (!provider || !isProviderSelectable(provider) || code === providerCode.value) return
   providerCode.value = code
   productType.value = provider.capabilities.supports_temporary ? 'temporary' : 'rental'
-  durationUnit.value = provider.code === 'smspva' ? 'week' : 'hour'
+  durationUnit.value = provider.capabilities.supports_rental_constraints ? 'week' : 'hour'
   voiceMode.value = voiceModeOptions.value[0]?.value ?? 0
   activeTab.value = productType.value
   loading.value = true
@@ -852,7 +872,7 @@ async function switchProductType(type: 'temporary' | 'rental') {
   if (type === 'rental' && !currentProvider.value?.capabilities.supports_rental) return
   productType.value = type
   activeTab.value = type
-  if (type === 'rental' && providerCode.value === 'smspva' && !['week', 'month'].includes(durationUnit.value)) {
+  if (type === 'rental' && currentProvider.value?.capabilities.supports_rental_constraints && !['week', 'month'].includes(durationUnit.value)) {
     durationUnit.value = 'week'
   }
   quotes.value = []
@@ -1152,10 +1172,10 @@ async function refreshOrder(id: string) {
   }
 }
 
-async function refreshWaitingOrders() {
-  const candidates = pollingCandidates()
+async function refreshWaitingOrders(bucket?: SMSOrderPollBucket) {
+  const candidates = pollingCandidates().filter(order => bucket == null || smsOrderPollBucket(order) === bucket)
   if (!candidates.length) {
-    stopOrderPolling()
+    if (bucket == null) stopOrderPolling()
     return
   }
   const updates = await Promise.allSettled(candidates.map(order => smsAPI.order(order.id)))

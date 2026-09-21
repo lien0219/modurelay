@@ -72,7 +72,10 @@ func (p *smsPVAProvider) Capabilities(context.Context) SMSProviderCapabilities {
 		Temporary: true, Rental: true, RentalCancel: true, Polling: true, Cancel: true, Refund: false,
 		Finish: true, Resend: true,
 		Voice: true, VoiceSMS: true, VoiceCallerID: true, VoiceCall: true,
-		OperatorSelection: true, ServiceSelection: true, Extend: true, ConversionStats: true,
+		OperatorSelection: true, ServiceSelection: true, Extend: true, RentalConstraints: true,
+		// Restore, multi-service, and add-service remain fail-closed until the
+		// complete user API and exactly-once financial recovery flow is proven.
+		RentalRestore: false, RentalMultiService: false, RentalAddService: false, ConversionStats: true,
 	}
 }
 
@@ -146,12 +149,13 @@ func (p *smsPVAProvider) requestJSONWithLimit(ctx context.Context, method, path 
 }
 
 func (p *smsPVAProvider) rentalRequestJSON(ctx context.Context, query url.Values, out *smsPVARentalEnvelope) error {
+	if strings.TrimSpace(p.apiKey) == "" {
+		return ErrSMSProviderCredentialMissing
+	}
 	if query == nil {
 		query = url.Values{}
 	}
-	if strings.TrimSpace(p.apiKey) != "" {
-		query.Set("apikey", p.apiKey)
-	}
+	query.Set("apikey", p.apiKey)
 	base := strings.TrimRight(p.baseURL, "/")
 	targetBase := "https://smspva.com/api/rent.php"
 	if u, err := url.Parse(base); err == nil && u.Host != "" && !strings.Contains(strings.ToLower(u.Host), "smspva.com") {
@@ -316,7 +320,7 @@ func (p *smsPVAProvider) CatalogServicesForProduct(ctx context.Context, productT
 		}
 		item := SMSSvcCatalogItem{Code: code, Name: name, ProviderCode: code, Category: "rental", Available: true, ProviderIconPath: strings.TrimSpace(iconPath)}
 		if item.ProviderIconPath != "" {
-			item.Icon = "/api/v1/sms/providers/smspva/service-icons/" + url.PathEscape(code)
+			item.Icon = "/api/v1/sms/service-icons/" + url.PathEscape(code)
 		}
 		out = append(out, item)
 	}
@@ -336,12 +340,12 @@ func (p *smsPVAProvider) CatalogServicesForProduct(ctx context.Context, productT
 			}
 			var payload struct {
 				Services []struct {
-					Name     string          `json:"name"`
-					Service  string          `json:"service"`
-					PriceDay json.RawMessage `json:"price_day"`
-					Img        string         `json:"img"`
-					Count      map[string]int `json:"count"`
-					TotalCount int            `json:"totalCount"`
+					Name       string          `json:"name"`
+					Service    string          `json:"service"`
+					PriceDay   json.RawMessage `json:"price_day"`
+					Img        string          `json:"img"`
+					Count      map[string]int  `json:"count"`
+					TotalCount int             `json:"totalCount"`
 				} `json:"services"`
 			}
 			if json.Unmarshal(data.Data, &payload) != nil {
@@ -364,7 +368,7 @@ func (p *smsPVAProvider) CatalogServicesForProduct(ctx context.Context, productT
 				}
 				item := SMSSvcCatalogItem{Code: code, Name: name, ProviderCode: code, Category: "rental", Stock: stock, Available: stock > 0, ProviderIconPath: strings.TrimSpace(svc.Img)}
 				if item.ProviderIconPath != "" {
-					item.Icon = "/api/v1/sms/providers/smspva/service-icons/" + url.PathEscape(code)
+					item.Icon = "/api/v1/sms/service-icons/" + url.PathEscape(code)
 				}
 				seen[code] = item
 			}

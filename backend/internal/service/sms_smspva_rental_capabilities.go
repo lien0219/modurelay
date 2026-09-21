@@ -153,8 +153,6 @@ func (p *smsPVAProvider) RentalOrder(ctx context.Context, id string) (*SMSRental
 	return found, nil
 }
 
-
-
 func (p *smsPVAProvider) RentalServiceOffers(ctx context.Context, countryCode string, durationValue int, durationUnit string) ([]SMSRentalServiceOffer, error) {
 	dtype, dcount, _, err := smsPVARentalPeriod(durationValue, durationUnit)
 	if err != nil {
@@ -172,12 +170,12 @@ func (p *smsPVAProvider) RentalServiceOffers(ctx context.Context, countryCode st
 	}
 	var payload struct {
 		Services []struct {
-			Name       string         `json:"name"`
-			Service    string         `json:"service"`
+			Name       string          `json:"name"`
+			Service    string          `json:"service"`
 			PriceDay   json.RawMessage `json:"price_day"`
-			Img        string         `json:"img"`
-			Count      map[string]int `json:"count"`
-			TotalCount int            `json:"totalCount"`
+			Img        string          `json:"img"`
+			Count      map[string]int  `json:"count"`
+			TotalCount int             `json:"totalCount"`
 		} `json:"services"`
 	}
 	if err := json.Unmarshal(env.Data, &payload); err != nil {
@@ -435,14 +433,14 @@ func (p *smsPVAProvider) PrecalcRentalRestore(ctx context.Context, id string) (*
 		return nil, err
 	}
 	var data struct {
-		Country    string          `json:"ccode"`
-		Service    string          `json:"scode"`
-		Price      json.RawMessage `json:"price"`
-		ServiceName string         `json:"sname"`
-		Phone      string          `json:"pnumber"`
-		OutDays    int             `json:"outdays"`
-		OrderID    json.RawMessage `json:"orderid"`
-		ProlongTo  int             `json:"prolongTo"`
+		Country     string          `json:"ccode"`
+		Service     string          `json:"scode"`
+		Price       json.RawMessage `json:"price"`
+		ServiceName string          `json:"sname"`
+		Phone       string          `json:"pnumber"`
+		OutDays     int             `json:"outdays"`
+		OrderID     json.RawMessage `json:"orderid"`
+		ProlongTo   int             `json:"prolongTo"`
 	}
 	if err := json.Unmarshal(env.Data, &data); err != nil {
 		return nil, err
@@ -504,7 +502,7 @@ func (s *SMSService) RentalConstraints(ctx context.Context, userID int64, public
 		return nil, errors.New("rental extension is unavailable for this order")
 	}
 	provider := providerFor(providerCode, base, providerAPIKey(providerCode, credential, s.encryptor))
-	if provider == nil || !provider.Capabilities(ctx).Extend {
+	if provider == nil || !provider.Capabilities(ctx).RentalConstraints || !provider.Capabilities(ctx).Extend {
 		return nil, errors.New("rental extension is unavailable for this channel")
 	}
 	inspector, ok := provider.(SMSRentalOrderInspector)

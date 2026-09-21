@@ -76,6 +76,10 @@ func (h *SMSHandler) Services(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	for i := range items {
+		items[i].ProviderCode = ""
+		items[i].ProviderIconPath = ""
+	}
 	response.Success(c, items)
 }
 func (h *SMSHandler) Providers(c *gin.Context) {
@@ -131,6 +135,10 @@ func (h *SMSHandler) ProviderServices(c *gin.Context) {
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
+	}
+	for i := range items {
+		items[i].ProviderCode = ""
+		items[i].ProviderIconPath = ""
 	}
 	popular := map[string]int{"amazon": 1, "apple": 2, "discord": 3, "facebook": 4, "google": 5, "instagram": 6, "microsoft": 7, "openai": 8, "telegram": 9, "whatsapp": 10}
 	sort.SliceStable(items, func(i, j int) bool {
@@ -198,6 +206,9 @@ func (h *SMSHandler) Countries(c *gin.Context) {
 		return
 	}
 	localizeSMSCountryCatalog(items)
+	for i := range items {
+		items[i].ProviderCode = ""
+	}
 	response.Success(c, items)
 }
 
@@ -210,6 +221,9 @@ func (h *SMSHandler) ServiceCountries(c *gin.Context) {
 		return
 	}
 	localizeSMSCountryCatalog(items)
+	for i := range items {
+		items[i].ProviderCode = ""
+	}
 	providerCode := strings.ToLower(strings.TrimSpace(c.Param("provider")))
 	sortMode := strings.ToLower(strings.TrimSpace(c.DefaultQuery("sort", "")))
 	if sortMode == "" && providerCode == "5sim" {
@@ -485,6 +499,14 @@ func (h *SMSHandler) Order(c *gin.Context) {
 
 func (h *SMSHandler) Webhook(c *gin.Context) {
 	provider := strings.ToLower(strings.TrimSpace(c.Param("provider")))
+	// SMSPVA has no documented webhook endpoint, signature scheme, or retry
+	// contract. Reject it before reading a deployment secret or payload so an
+	// accidentally configured generic secret cannot turn polling-only channel 2
+	// into a false webhook capability. Keep the legacy 5SIM path unchanged.
+	if provider == "smspva" {
+		response.ErrorWithDetails(c, http.StatusNotImplemented, "This provider does not support webhooks", "WEBHOOK_UNSUPPORTED", nil)
+		return
+	}
 	secret := strings.TrimSpace(os.Getenv("SMS_" + strings.ToUpper(strings.ReplaceAll(provider, "-", "_")) + "_WEBHOOK_SECRET"))
 	supplied := strings.TrimSpace(c.GetHeader("X-SMS-Webhook-Secret"))
 	if secret == "" || subtle.ConstantTimeCompare([]byte(secret), []byte(supplied)) != 1 {
@@ -624,7 +646,10 @@ func (h *SMSHandler) RefundStatus(c *gin.Context) {
 	response.Success(c, gin.H{"status": order.RefundStatus, "reason": order.RefundReason})
 }
 func (h *SMSHandler) ServiceIcon(c *gin.Context) {
-	data, contentType, err := h.svc.ServiceIcon(c.Request.Context(), c.Param("provider"), c.Param("service"))
+	// User-facing icon URLs are provider-neutral. The service resolves the
+	// catalog's trusted upstream internally; no provider identifier belongs in
+	// the browser-visible request path.
+	data, contentType, err := h.svc.ServiceIcon(c.Request.Context(), "", c.Param("service"))
 	if err != nil {
 		response.ErrorWithDetails(c, http.StatusNotFound, "Service icon is unavailable", "SERVICE_ICON_UNAVAILABLE", nil)
 		return

@@ -95,8 +95,8 @@ describe('SMSVerificationView', () => {
     smsAPI.settings.mockResolvedValue({ batch_purchase_limit: 5 })
     smsAPI.recentSuccesses.mockResolvedValue({ source: 'mock', real_success_count: 0, items: [{ username: 'te***', country_code: 'US', phone: '+120****123' }] })
     smsAPI.providers.mockResolvedValue([
-      { code: '5sim', name: '5SIM', beta: false, selectable: true, capabilities },
-      { code: 'smspool', name: 'SMSPool', beta: true, selectable: false, capabilities },
+      { code: 'channel_1', name: 'Channel 1', beta: false, selectable: true, capabilities },
+      { code: 'channel_2', name: 'Channel 2', beta: true, selectable: false, capabilities },
     ])
     smsAPI.providerServices.mockResolvedValue([{ code: 'openai', name: 'OpenAI' }])
     smsAPI.providerServicesPage.mockResolvedValue({ items: [{ code: 'openai', name: 'OpenAI', stock: 10, starting_price: 0.5 }], total: 1, page: 1, page_size: 20, pages: 1, has_more: false })
@@ -128,19 +128,19 @@ describe('SMSVerificationView', () => {
     })
     await flushPromises()
 
-    expect(smsAPI.providerServicesPage).toHaveBeenCalledWith('5sim', expect.objectContaining({ product_type: 'temporary', page: 1 }))
-    expect(smsAPI.serviceCountriesPage).toHaveBeenCalledWith('5sim', 'openai', expect.objectContaining({ product_type: 'temporary', page: 1 }))
+    expect(smsAPI.providerServicesPage).toHaveBeenCalledWith('channel_1', expect.objectContaining({ product_type: 'temporary', page: 1 }))
+    expect(smsAPI.serviceCountriesPage).toHaveBeenCalledWith('channel_1', 'openai', expect.objectContaining({ product_type: 'temporary', page: 1 }))
     expect(wrapper.text()).toContain('OpenAI')
-    expect(wrapper.text()).not.toContain('5SIM')
-    expect(wrapper.text()).not.toContain('SMSPool')
+    expect(wrapper.text()).not.toContain('5sim')
+    expect(wrapper.text()).not.toContain('smspool')
     expect(wrapper.text()).toContain('BETA')
     wrapper.unmount()
   })
 
   it('disables channel 1 while the long-term number tab is selected', async () => {
     smsAPI.providers.mockResolvedValueOnce([
-      { code: '5sim', name: '5SIM', beta: false, selectable: true, capabilities: { ...capabilities, supports_rental: false } },
-      { code: 'smspva', name: 'SMPPVA', beta: false, selectable: true, capabilities },
+      { code: 'channel_1', name: 'Channel 1', beta: false, selectable: true, capabilities: { ...capabilities, supports_rental: false } },
+      { code: 'channel_2', name: 'Channel 2', beta: false, selectable: true, capabilities },
     ])
     const wrapper = mount(SMSVerificationView, {
       global: {
@@ -207,7 +207,7 @@ describe('SMSVerificationView', () => {
     })
     await flushPromises()
 
-    expect(smsAPI.serviceCountriesPage).toHaveBeenCalledWith('5sim', 'openai', expect.objectContaining({ sort: 'recommended' }))
+    expect(smsAPI.serviceCountriesPage).toHaveBeenCalledWith('channel_1', 'openai', expect.objectContaining({ sort: 'recommended' }))
     expect(wrapper.text()).toContain('81.82')
     expect(wrapper.text()).toContain('78.40')
     expect(wrapper.text()).toContain('125')
