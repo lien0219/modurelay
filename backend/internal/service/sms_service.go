@@ -2048,7 +2048,7 @@ func (s *SMSService) ProviderServicesForProduct(ctx context.Context, providerCod
 			}
 			item.ProviderCode = item.Code
 			if item.ProviderIconPath != "" {
-				item.Icon = "/api/v1/sms/providers/" + url.PathEscape(providerCode) + "/service-icons/" + url.PathEscape(item.Code)
+				item.Icon = "/api/v1/sms/service-icons/" + url.PathEscape(item.Code)
 			}
 			items = append(items, item)
 		}
