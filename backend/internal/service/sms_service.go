@@ -188,7 +188,11 @@ type SMSProviderCapabilities struct {
 	VoiceCall         bool `json:"supports_voice_call"`
 	OperatorSelection bool `json:"supports_operator_selection"`
 	ServiceSelection  bool `json:"supports_service_selection"`
-	ConversionStats   bool `json:"supports_conversion_stats"`
+	ConversionStats       bool `json:"supports_conversion_stats"`
+	RentalConstraints     bool `json:"supports_rental_constraints"`
+	RentalMultiService    bool `json:"supports_rental_multi_service"`
+	RentalAddService      bool `json:"supports_rental_add_service"`
+	RentalRestore         bool `json:"supports_rental_restore"`
 }
 
 // SMSPricingSettings is stored in the existing settings repository so admins
@@ -4758,7 +4762,11 @@ func decodeCapabilities(raw []byte) SMSProviderCapabilities {
 		VoiceCall:         values["supports_voice_call"] || values["voice_call"],
 		OperatorSelection: values["supports_operator_selection"] || values["operator_selection"],
 		ServiceSelection:  values["supports_service_selection"] || values["service_selection"],
-		ConversionStats:   values["supports_conversion_stats"] || values["conversion_stats"],
+		ConversionStats:       values["supports_conversion_stats"] || values["conversion_stats"],
+		RentalConstraints:     values["supports_rental_constraints"] || values["rental_constraints"],
+		RentalMultiService:    values["supports_rental_multi_service"] || values["rental_multi_service"],
+		RentalAddService:      values["supports_rental_add_service"] || values["rental_add_service"],
+		RentalRestore:         values["supports_rental_restore"] || values["rental_restore"],
 	}
 }
 
