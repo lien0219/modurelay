@@ -3010,6 +3010,7 @@ func (s *SMSService) Purchase(ctx context.Context, userID int64, req SMSPurchase
 		return nil, errors.New("Idempotency-Key is too long")
 	}
 	req.ServiceCode = strings.ToLower(strings.TrimSpace(req.ServiceCode))
+	req.ServiceCodes = normalizeSMSServiceCodes(req.ServiceCode, req.ServiceCodes)
 	req.CountryCode = strings.ToUpper(strings.TrimSpace(req.CountryCode))
 	req.ProductType = strings.ToLower(strings.TrimSpace(req.ProductType))
 	req.QuoteID = strings.TrimSpace(req.QuoteID)
@@ -3038,6 +3039,9 @@ func (s *SMSService) Purchase(ctx context.Context, userID int64, req SMSPurchase
 		return nil, ErrSMSQuoteInvalid
 	}
 	if quote.ServiceCode != req.ServiceCode || quote.CountryCode != req.CountryCode || quote.ProductType != req.ProductType {
+		return nil, ErrSMSQuoteInvalid
+	}
+	if !sameSMSServiceCodes(quote.ServiceCodes, req.ServiceCodes) {
 		return nil, ErrSMSQuoteInvalid
 	}
 	requestedOperator := strings.TrimSpace(req.OperatorCode)
@@ -3081,16 +3085,28 @@ func (s *SMSService) Purchase(ctx context.Context, userID int64, req SMSPurchase
 	if strings.TrimSpace(providerCountryCode) == "" {
 		providerCountryCode = req.CountryCode
 	}
-	liveQuote, liveErr := provider.Quote(ctx, SMSQuoteRequest{
+	liveReq := SMSQuoteRequest{
 		ProviderCode:  providerCode,
 		ServiceCode:   providerServiceCode,
+		ServiceCodes:  append([]string(nil), quote.ServiceCodes...),
 		CountryCode:   providerCountryCode,
 		ProductType:   req.ProductType,
 		OperatorCode:  quote.OperatorCode,
 		VoiceMode:     quote.VoiceMode,
 		DurationValue: req.DurationValue,
 		DurationUnit:  req.DurationUnit,
-	})
+	}
+	var liveQuote *SMSProviderQuote
+	var liveErr error
+	if req.ProductType == "rental" && providerCode == "smspva" && len(quote.ServiceCodes) > 1 {
+		smspva, ok := provider.(*smsPVAProvider)
+		if !ok {
+			return nil, ErrSMSProviderUnavailable
+		}
+		liveQuote, liveErr = smspva.QuoteRentalMulti(ctx, liveReq, quote.ServiceCodes)
+	} else {
+		liveQuote, liveErr = provider.Quote(ctx, liveReq)
+	}
 	if liveErr != nil {
 		return nil, sanitizeProviderError(liveErr)
 	}
@@ -3110,6 +3126,7 @@ func (s *SMSService) Purchase(ctx context.Context, userID int64, req SMSPurchase
 	}
 	purchaseReq := req
 	purchaseReq.QuoteID = ""
+	purchaseReq.ServiceCodes = append([]string(nil), quote.ServiceCodes...)
 	purchaseReq.OperatorCode = quote.OperatorCode
 	purchaseReq.VoiceMode = quote.VoiceMode
 	purchaseReq.ProviderCostLimit = quote.ProviderCost
@@ -3127,7 +3144,16 @@ func (s *SMSService) Purchase(ctx context.Context, userID int64, req SMSPurchase
 	// a local "confirming purchase" row with no provider_order_id.
 	purchaseCtx, purchaseCancel := context.WithTimeout(context.Background(), 20*time.Second)
 	if req.ProductType == "rental" {
-		purchased, err = provider.PurchaseRental(purchaseCtx, purchaseReq)
+		if providerCode == "smspva" && len(quote.ServiceCodes) > 1 {
+			smspva, ok := provider.(*smsPVAProvider)
+			if !ok {
+				err = ErrSMSProviderUnavailable
+			} else {
+				purchased, err = smspva.PurchaseRentalMulti(purchaseCtx, purchaseReq, quote.ServiceCodes)
+			}
+		} else {
+			purchased, err = provider.PurchaseRental(purchaseCtx, purchaseReq)
+		}
 	} else {
 		purchased, err = provider.PurchaseTemporary(purchaseCtx, purchaseReq)
 	}
@@ -3355,6 +3381,22 @@ func (s *SMSService) reserveSMSPurchase(ctx context.Context, userID, channelID, 
 	if consumed, _ := quoteResult.RowsAffected(); consumed != 1 {
 		return 0, ErrSMSQuoteExpired
 	}
+	if strings.EqualFold(req.ProductType, "rental") {
+		serviceCodes := normalizeSMSServiceCodes(req.ServiceCode, req.ServiceCodes)
+		for _, code := range serviceCodes {
+			var relationServiceID int64
+			if strings.EqualFold(code, req.ServiceCode) {
+				relationServiceID = serviceID
+			} else if err := tx.QueryRowContext(ctx, `SELECT id FROM sms_services WHERE lower(code)=lower($1) AND enabled`, code).Scan(&relationServiceID); err != nil {
+				return 0, ErrSMSQuoteInvalid
+			}
+			if _, err := tx.ExecContext(ctx, `INSERT INTO sms_order_services(order_id,service_id,provider_service_code,status,metadata)
+				VALUES($1,$2,$3,'pending',jsonb_build_object('primary',$4))
+				ON CONFLICT(order_id,service_id) DO NOTHING`, orderID, relationServiceID, code, strings.EqualFold(code, req.ServiceCode)); err != nil {
+				return 0, err
+			}
+		}
+	}
 	res, err := tx.ExecContext(ctx, `UPDATE users SET balance=balance-$1,frozen_balance=COALESCE(frozen_balance,0)+$1,updated_at=NOW() WHERE id=$2 AND deleted_at IS NULL AND balance >= $1`, price, userID)
 	if err != nil {
 		return 0, err
@@ -3486,6 +3528,12 @@ func (s *SMSService) activateSMSOrder(ctx context.Context, orderID, userID int64
 		return err
 	}
 	if _, err = tx.ExecContext(ctx, `UPDATE users SET frozen_balance=GREATEST(0,COALESCE(frozen_balance,0)-$1),updated_at=NOW() WHERE id=$2`, amount, userID); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `UPDATE sms_order_services
+		SET provider_order_id=CASE WHEN provider_order_id='' THEN $1 ELSE provider_order_id END,
+		    status='active',updated_at=NOW()
+		WHERE order_id=$2`, providerOrderID, orderID); err != nil {
 		return err
 	}
 	return tx.Commit()
