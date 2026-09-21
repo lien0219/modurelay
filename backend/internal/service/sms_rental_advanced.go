@@ -124,7 +124,7 @@ func (s *SMSService) RentalServiceOptions(ctx context.Context, userID int64, pub
 		providerCost := offer.PriceDay * float64(rentDays)
 		icon := ""
 		if strings.TrimSpace(offer.ProviderIconPath) != "" {
-			icon = "/api/v1/sms/providers/smspva/service-icons/" + offer.Code
+			icon = "/api/v1/sms/service-icons/" + offer.Code
 		}
 		out = append(out, SMSRentalServicePublicOption{
 			Code:      offer.Code,
