@@ -73,6 +73,14 @@ func (p *smsPVAProvider) Capabilities(context.Context) SMSProviderCapabilities {
 		Finish: true, Resend: true,
 		Voice: true, VoiceSMS: true, VoiceCallerID: true, VoiceCall: true,
 		OperatorSelection: true, ServiceSelection: true, Extend: true, ConversionStats: true,
+		RentalConstraints: true,
+		// The provider documents create_multi/add_service_to_order, but does not
+		// expose an authoritative combined/precharge quote contract. Keep these
+		// user-facing capabilities gated until real-account billing is verified.
+		RentalMultiService: false,
+		RentalAddService:   false,
+		// restore_user_precalc provides an explicit provider price before restore.
+		RentalRestore: true,
 	}
 }
 
