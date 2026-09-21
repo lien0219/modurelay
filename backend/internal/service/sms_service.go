@@ -1870,16 +1870,17 @@ func (s *SMSService) RecentSuccesses(ctx context.Context) (*SMSRecentSuccessFeed
 }
 
 type SMSSvcCatalogItem struct {
-	Code          string  `json:"code"`
-	Name          string  `json:"name"`
-	Icon          string  `json:"icon,omitempty"`
-	Category      string  `json:"category,omitempty"`
-	Description   string  `json:"description,omitempty"`
-	ProviderCode  string  `json:"provider_code,omitempty"`
-	Stock         int     `json:"stock,omitempty"`
-	ProviderCost  float64 `json:"-"`
-	StartingPrice float64 `json:"starting_price,omitempty"`
-	Available     bool    `json:"available"`
+	Code             string  `json:"code"`
+	Name             string  `json:"name"`
+	Icon             string  `json:"icon,omitempty"`
+	Category         string  `json:"category,omitempty"`
+	Description      string  `json:"description,omitempty"`
+	ProviderCode     string  `json:"provider_code,omitempty"`
+	ProviderIconPath string  `json:"-"`
+	Stock            int     `json:"stock,omitempty"`
+	ProviderCost     float64 `json:"-"`
+	StartingPrice    float64 `json:"starting_price,omitempty"`
+	Available        bool    `json:"available"`
 }
 type SMSPublicProvider struct {
 	Code         string                  `json:"code"`
@@ -2028,16 +2029,19 @@ func (s *SMSService) ProviderServicesForProduct(ctx context.Context, providerCod
 			}
 		}
 	}
-	rows, snapshotErr := s.db.QueryContext(ctx, `SELECT c.provider_service_code,c.provider_service_name,c.category FROM sms_provider_catalog_services c JOIN sms_providers p ON p.id=c.provider_id WHERE p.code=$1 AND p.enabled AND c.enabled AND (($2='rental' AND lower(c.category)='rental') OR ($2<>'rental' AND lower(c.category)<>'rental')) ORDER BY c.provider_service_code`, providerCode, productType)
+	rows, snapshotErr := s.db.QueryContext(ctx, `SELECT c.provider_service_code,c.provider_service_name,c.category,COALESCE(c.raw_metadata->>'icon_path','') FROM sms_provider_catalog_services c JOIN sms_providers p ON p.id=c.provider_id WHERE p.code=$1 AND p.enabled AND c.enabled AND (($2='rental' AND lower(c.category)='rental') OR ($2<>'rental' AND lower(c.category)<>'rental')) ORDER BY c.provider_service_code`, providerCode, productType)
 	if snapshotErr == nil {
 		defer func() { _ = rows.Close() }()
 		items := make([]SMSSvcCatalogItem, 0)
 		for rows.Next() {
 			var item SMSSvcCatalogItem
-			if scanErr := rows.Scan(&item.Code, &item.Name, &item.Category); scanErr != nil {
+			if scanErr := rows.Scan(&item.Code, &item.Name, &item.Category, &item.ProviderIconPath); scanErr != nil {
 				return nil, scanErr
 			}
 			item.ProviderCode = item.Code
+			if item.ProviderIconPath != "" {
+				item.Icon = "/api/v1/sms/providers/" + url.PathEscape(providerCode) + "/service-icons/" + url.PathEscape(item.Code)
+			}
 			items = append(items, item)
 		}
 		if rows.Err() != nil {
@@ -2102,7 +2106,8 @@ func (s *SMSService) persistProviderServices(ctx context.Context, providerCode s
 		if item.Name == "" {
 			item.Name = item.Code
 		}
-		_, _ = s.db.ExecContext(ctx, `INSERT INTO sms_provider_catalog_services(provider_id,provider_service_code,provider_service_name,category,enabled,observed_at) VALUES($1,$2,$3,$4,TRUE,NOW()) ON CONFLICT(provider_id,provider_service_code) DO UPDATE SET provider_service_name=EXCLUDED.provider_service_name,category=EXCLUDED.category,enabled=TRUE,observed_at=NOW()`, providerID, providerServiceCode, item.Name, item.Category)
+		rawMetadata, _ := json.Marshal(map[string]any{"icon_path": strings.TrimSpace(item.ProviderIconPath)})
+		_, _ = s.db.ExecContext(ctx, `INSERT INTO sms_provider_catalog_services(provider_id,provider_service_code,provider_service_name,category,enabled,observed_at,raw_metadata) VALUES($1,$2,$3,$4,TRUE,NOW(),$5::jsonb) ON CONFLICT(provider_id,provider_service_code) DO UPDATE SET provider_service_name=EXCLUDED.provider_service_name,category=EXCLUDED.category,enabled=TRUE,observed_at=NOW(),raw_metadata=COALESCE(sms_provider_catalog_services.raw_metadata,'{}'::jsonb) || EXCLUDED.raw_metadata`, providerID, providerServiceCode, item.Name, item.Category, string(rawMetadata))
 		var serviceID int64
 		if s.db.QueryRowContext(ctx, `INSERT INTO sms_services(code,name,category,enabled) VALUES ($1,$2,$3,TRUE) ON CONFLICT (code) DO UPDATE SET name=EXCLUDED.name,category=EXCLUDED.category,enabled=TRUE RETURNING id`, item.Code, item.Name, item.Category).Scan(&serviceID) == nil && providerCode != "5sim" && providerCode != "smspva" {
 			_, _ = s.db.ExecContext(ctx, `INSERT INTO sms_provider_service_mappings(provider_id,service_id,provider_service_code,provider_service_name,temporary_supported,rental_supported,enabled) VALUES ($1,$2,$3,$4,TRUE,FALSE,TRUE) ON CONFLICT (provider_id,service_id) DO UPDATE SET provider_service_code=EXCLUDED.provider_service_code,provider_service_name=EXCLUDED.provider_service_name,enabled=TRUE`, providerID, serviceID, providerServiceCode, item.Name)
