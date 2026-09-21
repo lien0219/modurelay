@@ -185,7 +185,7 @@
                 </div>
               </div>
               <label v-if="currentProvider?.capabilities.supports_voice" class="block"><span class="input-label">{{ t('sms.user.verificationType') }}</span><select v-model.number="voiceMode" class="input h-[42px] w-full" @change="changeVoiceMode"><option v-for="item in voiceModeOptions" :key="item.value" :value="item.value">{{ item.label }}</option></select></label>
-              <label v-if="currentProvider?.capabilities.supports_operator_selection" class="block"><span class="input-label">{{ t('sms.user.operator') }}</span><select v-model="operatorCode" class="input h-[42px] w-full" @change="quotes = []; loadQuotes()"><option value="any">{{ t('sms.user.autoOperator') }}</option><option v-for="item in operators.filter(op => op.code !== 'any')" :key="item.code" :value="item.code" :disabled="item.available === false">{{ item.name }}{{ item.provider_rate ? ` · ${t('sms.user.channelReferenceShort')} ${item.provider_rate.toFixed(2)}%` : '' }}{{ item.platform_30d_success_rate != null ? ` · ${t('sms.user.platform30dShort')} ${item.platform_30d_success_rate.toFixed(2)}% (n=${item.platform_30d_sample_size || 0})` : '' }}{{ item.stock != null ? ` · ${t('sms.user.stock')} ${item.stock}` : '' }}</option></select><p v-if="currentProvider?.capabilities.supports_conversion_stats && operatorCode !== 'any'" class="mt-1 text-[11px] text-cyan-600 dark:text-cyan-400">{{ t('sms.user.recommendedOperatorSelected') }}</p></label>
+              <label v-if="currentProvider?.capabilities.supports_operator_selection" class="block"><span class="input-label">{{ t('sms.user.operator') }}</span><select v-model="operatorCode" class="input h-[42px] w-full" @change="quotes = []; loadQuotes()"><option value="any">{{ t('sms.user.autoOperator') }}</option><option v-for="item in operators.filter(op => op.code !== 'any')" :key="item.code" :value="item.code" :disabled="item.available === false">{{ item.name }}{{ item.provider_rate ? ` · ${t('sms.user.channelReferenceShort')} ${item.provider_rate.toFixed(2)}%` : '' }}{{ item.platform_30d_success_rate != null ? ` · ${t('sms.user.platform30dShort')} ${item.platform_30d_success_rate.toFixed(2)}% (n=${item.platform_30d_sample_size || 0})` : '' }}{{ operatorStockLabel(item) }}</option></select><p v-if="currentProvider?.capabilities.supports_conversion_stats && operatorCode !== 'any'" class="mt-1 text-[11px] text-cyan-600 dark:text-cyan-400">{{ t('sms.user.recommendedOperatorSelected') }}</p></label>
               <label class="block"><span class="input-label">{{ t('sms.user.quantity') }}</span><input v-model.number="purchaseQuantity" class="input h-[42px] w-full" :class="purchaseQuantityError ? 'border-red-500 focus-visible:border-red-500 focus-visible:ring-red-500/30' : ''" type="number" min="1" :max="batchPurchaseLimit" :aria-invalid="purchaseQuantityError ? 'true' : undefined" :aria-describedby="purchaseQuantityError ? 'sms-quantity-error' : undefined" /><span class="mt-1 block text-xs text-gray-500 dark:text-gray-400">{{ t('sms.user.batchPurchaseHint', { max: batchPurchaseLimit }) }}</span><span v-if="purchaseQuantityError" id="sms-quantity-error" class="mt-1 block text-xs text-red-600 dark:text-red-400" role="alert">{{ purchaseQuantityError }}</span></label>
 
               <div v-if="bestQuote" class="flex items-center justify-between border-t border-gray-200 pt-3 dark:border-dark-700">
@@ -727,6 +727,12 @@ function displayRegionName(iso2: string) {
 
 function formatPrice(value: number) {
   return `${Number(value || 0).toFixed(4).replace(/0+$/, '').replace(/\.$/, '')}`
+}
+
+function operatorStockLabel(item: SMSOperatorItem) {
+  if (item.stock == null) return ''
+  if (item.source_type === 'donor' && item.stock >= 9999) return ` · ${t('sms.user.stockAbundant')}`
+  return ` · ${t('sms.user.stock')} ${item.stock}`
 }
 
 function serviceIcon(code: string, name = '') {
