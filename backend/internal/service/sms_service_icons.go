@@ -69,19 +69,22 @@ func detectSMSServiceIconType(data []byte) string {
 	return ""
 }
 
-func (s *SMSService) ServiceIcon(ctx context.Context, providerCode, serviceCode string) ([]byte, string, error) {
-	providerCode = strings.ToLower(strings.TrimSpace(providerCode))
+func (s *SMSService) ServiceIcon(ctx context.Context, serviceCode string) ([]byte, string, error) {
 	serviceCode = strings.ToLower(strings.TrimSpace(serviceCode))
-	if providerCode != "smspva" || serviceCode == "" {
+	if serviceCode == "" {
 		return nil, "", errors.New("service icon is unavailable")
 	}
 
-	var iconPath string
-	if err := s.db.QueryRowContext(ctx, `SELECT COALESCE(c.raw_metadata->>'icon_path','')
+	var providerCode, iconPath string
+	if err := s.db.QueryRowContext(ctx, `SELECT p.code,COALESCE(c.raw_metadata->>'icon_path','')
 		FROM sms_provider_catalog_services c
 		JOIN sms_providers p ON p.id=c.provider_id
-		WHERE p.code=$1 AND p.enabled AND lower(c.provider_service_code)=lower($2) AND c.enabled
-		LIMIT 1`, providerCode, serviceCode).Scan(&iconPath); err != nil {
+		WHERE p.enabled AND c.enabled
+		  AND lower(c.provider_service_code)=lower($1)
+		  AND COALESCE(c.raw_metadata->>'icon_path','')<>''
+		  AND p.code='smspva'
+		ORDER BY c.observed_at DESC
+		LIMIT 1`, serviceCode).Scan(&providerCode, &iconPath); err != nil {
 		return nil, "", err
 	}
 	normalized, err := normalizeSMSPVAIconPath(iconPath)
