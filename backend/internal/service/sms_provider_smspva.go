@@ -324,7 +324,7 @@ func (p *smsPVAProvider) CatalogServicesForProduct(ctx context.Context, productT
 		}
 		item := SMSSvcCatalogItem{Code: code, Name: name, ProviderCode: code, Category: "rental", Available: true, ProviderIconPath: strings.TrimSpace(iconPath)}
 		if item.ProviderIconPath != "" {
-			item.Icon = "/api/v1/sms/providers/smspva/service-icons/" + url.PathEscape(code)
+			item.Icon = "/api/v1/sms/service-icons/" + url.PathEscape(code)
 		}
 		out = append(out, item)
 	}
@@ -380,7 +380,7 @@ func (p *smsPVAProvider) CatalogServicesForProduct(ctx context.Context, productT
 					}
 					if iconPath := iconByService[out[i].Code]; iconPath != "" {
 						out[i].ProviderIconPath = iconPath
-						out[i].Icon = "/api/v1/sms/providers/smspva/service-icons/" + url.PathEscape(out[i].Code)
+						out[i].Icon = "/api/v1/sms/service-icons/" + url.PathEscape(out[i].Code)
 					}
 				}
 			}
@@ -430,7 +430,7 @@ func (p *smsPVAProvider) CatalogServicesForProduct(ctx context.Context, productT
 				}
 				item := SMSSvcCatalogItem{Code: code, Name: name, ProviderCode: code, Category: "rental", Stock: stock, Available: stock > 0, ProviderIconPath: strings.TrimSpace(svc.Img)}
 				if item.ProviderIconPath != "" {
-					item.Icon = "/api/v1/sms/providers/smspva/service-icons/" + url.PathEscape(code)
+					item.Icon = "/api/v1/sms/service-icons/" + url.PathEscape(code)
 				}
 				seen[code] = item
 			}
