@@ -375,6 +375,8 @@ export default {
       extendUnitPrompt: '请输入续租单位：day / week / month',
       extendUnitInvalid: '续租单位仅支持 day、week 或 month',
       extendValuePrompt: '请输入续租数量（单位：{unit}）',
+      rentalCannotExtend: '当前长期号码暂不允许续租。',
+      extendMaxExceeded: '本次最多可续租 {max} 天，请调整续租时长。',
       temporary: '临时号码',
       rental: '长期号码',
       orders: '我的订单',
