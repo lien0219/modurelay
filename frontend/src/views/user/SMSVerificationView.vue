@@ -71,10 +71,7 @@
             <div class="mt-3 min-h-0 space-y-2 overflow-y-auto pr-1 lg:max-h-[440px]">
               <button v-for="option in filteredServiceOptions" :key="String(option.value)" type="button" class="flex min-h-14 w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left text-sm transition" :class="serviceCode === option.value ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-900/20' : 'border-gray-200 hover:border-primary-300 dark:border-dark-700'" @click="selectService(String(option.value))">
                 <span class="flex min-w-0 items-center gap-3">
-                  <span class="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-gray-100 text-base font-semibold text-gray-500 dark:bg-dark-700 dark:text-gray-300">
-                    <span>{{ option.label.slice(0, 1).toUpperCase() }}</span>
-                    <IconifyIcon v-if="option.logo" :icon="option.logo" class="absolute inset-0 m-auto h-6 w-6 bg-gray-100 dark:bg-dark-700" />
-                  </span>
+                  <SMSServiceLogo :icon="option.logo" :label="option.label" class="h-9 w-9 text-base" />
                   <span class="min-w-0">
                     <span class="block truncate font-medium">{{ option.label }}</span>
                     <span v-if="option.stock != null && option.stock > 0" class="block text-[11px] text-emerald-600 dark:text-emerald-400">{{ t('sms.user.numbersAvailable', { count: option.stock.toLocaleString() }) }}</span>
@@ -144,10 +141,7 @@
                 <div class="flex items-center justify-between gap-3">
                   <span class="text-xs text-gray-500">{{ t('sms.user.selectedService') }}</span>
                   <span class="flex min-w-0 items-center gap-2 font-medium text-gray-900 dark:text-white">
-                    <span class="relative flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg bg-white text-xs font-semibold text-gray-500 dark:bg-dark-700 dark:text-gray-300">
-                      <span>{{ serviceLabel(serviceCode).slice(0, 1).toUpperCase() }}</span>
-                      <IconifyIcon v-if="selectedServiceLogo" :icon="selectedServiceLogo" class="absolute inset-0 m-auto h-5 w-5 bg-white dark:bg-dark-700" />
-                    </span>
+                    <SMSServiceLogo :icon="selectedServiceLogo" :label="serviceLabel(serviceCode)" class="h-8 w-8 text-xs" />
                     <span class="max-w-44 truncate">{{ serviceLabel(serviceCode) || '-' }}</span>
                   </span>
                 </div>
@@ -323,7 +317,7 @@
                 <td class="whitespace-nowrap px-4 py-3"><span class="block truncate" :title="order.channel_name || order.channel_code">{{ order.channel_name || order.channel_code }}</span></td>
                 <td class="whitespace-nowrap px-4 py-3">
                   <div class="flex min-w-0 items-center gap-2">
-                    <span class="relative flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-md bg-gray-100 text-xs font-semibold text-gray-500 dark:bg-dark-700 dark:text-gray-300"><span>{{ serviceLabel(order.service_code).slice(0, 1).toUpperCase() }}</span><IconifyIcon v-if="serviceLogo(order.service_code, serviceLabel(order.service_code))" :icon="serviceLogo(order.service_code, serviceLabel(order.service_code))" class="absolute inset-0 m-auto h-5 w-5 bg-gray-100 dark:bg-dark-700" /></span>
+                    <SMSServiceLogo :icon="serviceIcon(order.service_code, serviceLabel(order.service_code))" :label="serviceLabel(order.service_code)" class="h-7 w-7 rounded-md text-xs" />
                     <span class="block min-w-0 truncate" :title="serviceLabel(order.service_code)">{{ serviceLabel(order.service_code) }}</span>
                   </div>
                 </td>
@@ -404,7 +398,7 @@ import Pagination from '@/components/common/Pagination.vue'
 import Select from '@/components/common/Select.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
-import { Icon as IconifyIcon } from '@iconify/vue'
+import SMSServiceLogo from '@/components/sms/SMSServiceLogo.vue'
 import { smsAPI, type SMSCountryItem, type SMSOperatorItem, type SMSOrder, type SMSOrderPage, type SMSProviderItem, type SMSQuote, type SMSRecentSuccessItem, type SMSServiceItem } from '@/api/sms'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { useAppStore, useAuthStore } from '@/stores'
@@ -670,6 +664,10 @@ function displayRegionName(iso2: string) {
 
 function formatPrice(value: number) {
   return `${Number(value || 0).toFixed(4).replace(/0+$/, '').replace(/\.$/, '')}`
+}
+
+function serviceIcon(code: string, name = '') {
+  return services.value.find(item => item.code === code)?.icon || serviceLogo(code, name)
 }
 
 function serviceLogo(code: string, name = '') {
@@ -1111,15 +1109,24 @@ function refundLabel(status: string) {
 }
 
 async function extend(id: string) {
-  const unit = (window.prompt(t('sms.user.extendUnitPrompt'), 'week') || '').trim().toLowerCase()
-  if (!['day', 'week', 'month'].includes(unit)) {
-    appStore.showError(t('sms.user.extendUnitInvalid'))
-    return
-  }
-  const raw = window.prompt(t('sms.user.extendValuePrompt', { unit }), '1')
-  const value = Number(raw)
-  if (!Number.isInteger(value) || value <= 0) return
   try {
+    const constraints = await smsAPI.rentalConstraints(id)
+    if (!constraints.can_extend) {
+      appStore.showError(t('sms.user.rentalCannotExtend'))
+      return
+    }
+    const unit = (window.prompt(t('sms.user.extendUnitPrompt'), 'week') || '').trim().toLowerCase()
+    if (!['day', 'week', 'month'].includes(unit)) {
+      appStore.showError(t('sms.user.extendUnitInvalid'))
+      return
+    }
+    const raw = window.prompt(t('sms.user.extendValuePrompt', { unit }), '1')
+    const value = Number(raw)
+    if (!Number.isInteger(value) || value <= 0) return
+    if (unit === 'day' && constraints.can_prolong_max && value > constraints.can_prolong_max) {
+      appStore.showError(t('sms.user.extendMaxExceeded', { max: constraints.can_prolong_max }))
+      return
+    }
     await smsAPI.extendRental(id, { duration_value: value, duration_unit: unit }, `sms-renew-${id}-${Date.now()}`)
     await loadOrders()
   } catch (error) {
