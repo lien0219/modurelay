@@ -543,6 +543,16 @@ func parseSMSPVARentalServiceCountries(data json.RawMessage) ([]SMSCountryCatalo
 	return out, nil
 }
 
+func smsPVAOperatorSource(code string) string {
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(code)), "donor") {
+		return "donor"
+	}
+	if strings.TrimSpace(code) == "" {
+		return "unknown"
+	}
+	return "native"
+}
+
 func (p *smsPVAProvider) OperatorsForProduct(ctx context.Context, countryCode, serviceCode, productType string, voiceMode, durationValue int, durationUnit string) ([]SMSOperatorOption, error) {
 	if !strings.EqualFold(strings.TrimSpace(productType), "rental") {
 		return p.Operators(ctx, countryCode, serviceCode, voiceMode)
@@ -572,7 +582,7 @@ func (p *smsPVAProvider) OperatorsForProduct(ctx context.Context, countryCode, s
 		}
 		price, _ := jsonNumber(svc.PriceDay)
 		for op, count := range svc.Count {
-			out = append(out, SMSOperatorOption{Code: op, Name: op, Stock: count, ProviderCost: price, Available: count > 0})
+			out = append(out, SMSOperatorOption{Code: op, Name: op, Stock: count, SourceType: smsPVAOperatorSource(op), ProviderCost: price, Available: count > 0})
 		}
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -669,7 +679,7 @@ func (p *smsPVAProvider) Operators(ctx context.Context, countryCode, serviceCode
 	out := make([]SMSOperatorOption, 0, len(data.PriceByOperators)+1)
 	for code, raw := range data.PriceByOperators {
 		if price, ok := jsonNumber(raw); ok {
-			out = append(out, SMSOperatorOption{Code: code, Name: code, ProviderCost: price, Available: true})
+			out = append(out, SMSOperatorOption{Code: code, Name: code, SourceType: smsPVAOperatorSource(code), ProviderCost: price, Available: true})
 		}
 	}
 	if len(out) == 0 {
@@ -680,7 +690,7 @@ func (p *smsPVAProvider) Operators(ctx context.Context, countryCode, serviceCode
 			}
 			if json.Unmarshal(ops.Data, &d) == nil {
 				for _, code := range d.Operators {
-					out = append(out, SMSOperatorOption{Code: code, Name: code, Available: true})
+					out = append(out, SMSOperatorOption{Code: code, Name: code, SourceType: smsPVAOperatorSource(code), Available: true})
 				}
 			}
 		}
