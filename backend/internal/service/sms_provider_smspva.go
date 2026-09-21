@@ -331,7 +331,7 @@ func (p *smsPVAProvider) CatalogServicesForProduct(ctx context.Context, productT
 		for _, country := range countries {
 			dtype, dcount, _, _ := smsPVARentalPeriod(durationValue, durationUnit)
 			var data smsPVARentalEnvelope
-			if err := p.rentalRequestJSON(ctx, url.Values{"method": {"getdata"}, "country": {country.ProviderCode}, "dtype": {dtype}, "dcount": {strconv.Itoa(dcount)}, "extend": {"1"}}, &data); err != nil {
+			if err := p.rentalRequestJSON(ctx, url.Values{"method": {"getdataWithProviders"}, "country": {country.ProviderCode}, "dtype": {dtype}, "dcount": {strconv.Itoa(dcount)}, "extend": {"1"}}, &data); err != nil {
 				continue
 			}
 			var payload struct {
@@ -339,8 +339,9 @@ func (p *smsPVAProvider) CatalogServicesForProduct(ctx context.Context, productT
 					Name     string          `json:"name"`
 					Service  string          `json:"service"`
 					PriceDay json.RawMessage `json:"price_day"`
-					Img      string          `json:"img"`
-					Count    int             `json:"count"`
+					Img        string         `json:"img"`
+					Count      map[string]int `json:"count"`
+					TotalCount int            `json:"totalCount"`
 				} `json:"services"`
 			}
 			if json.Unmarshal(data.Data, &payload) != nil {
@@ -355,7 +356,13 @@ func (p *smsPVAProvider) CatalogServicesForProduct(ctx context.Context, productT
 				if name == "" {
 					name = code
 				}
-				item := SMSSvcCatalogItem{Code: code, Name: name, ProviderCode: code, Category: "rental", Available: svc.Count > 0, ProviderIconPath: strings.TrimSpace(svc.Img)}
+				stock := svc.TotalCount
+				if stock <= 0 {
+					for _, count := range svc.Count {
+						stock += count
+					}
+				}
+				item := SMSSvcCatalogItem{Code: code, Name: name, ProviderCode: code, Category: "rental", Stock: stock, Available: stock > 0, ProviderIconPath: strings.TrimSpace(svc.Img)}
 				if item.ProviderIconPath != "" {
 					item.Icon = "/api/v1/sms/providers/smspva/service-icons/" + url.PathEscape(code)
 				}
