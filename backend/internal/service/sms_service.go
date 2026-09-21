@@ -248,14 +248,15 @@ func normalizeSMSPricingGradeMaps(settings *SMSPricingSettings) {
 }
 
 type SMSQuoteRequest struct {
-	ProviderCode  string `json:"provider_code,omitempty"`
-	ServiceCode   string `json:"service_code"`
-	CountryCode   string `json:"country_code"`
-	ProductType   string `json:"product_type"`
-	OperatorCode  string `json:"operator_code,omitempty"`
-	VoiceMode     int    `json:"voice_mode,omitempty"`
-	DurationValue int    `json:"duration_value,omitempty"`
-	DurationUnit  string `json:"duration_unit,omitempty"`
+	ProviderCode  string   `json:"provider_code,omitempty"`
+	ServiceCode   string   `json:"service_code"`
+	ServiceCodes  []string `json:"service_codes,omitempty"`
+	CountryCode   string   `json:"country_code"`
+	ProductType   string   `json:"product_type"`
+	OperatorCode  string   `json:"operator_code,omitempty"`
+	VoiceMode     int      `json:"voice_mode,omitempty"`
+	DurationValue int      `json:"duration_value,omitempty"`
+	DurationUnit  string   `json:"duration_unit,omitempty"`
 }
 type SMSProviderQuote struct {
 	Cost                     decimal.Decimal `json:"cost"`
@@ -265,16 +266,17 @@ type SMSProviderQuote struct {
 	EstimatedDeliverySeconds int             `json:"estimated_delivery_seconds"`
 }
 type SMSPurchaseRequest struct {
-	ChannelCode       string  `json:"channel_code"`
-	ServiceCode       string  `json:"service_code"`
-	CountryCode       string  `json:"country_code"`
-	ProductType       string  `json:"product_type"`
-	OperatorCode      string  `json:"operator_code,omitempty"`
-	VoiceMode         int     `json:"voice_mode,omitempty"`
-	DurationValue     int     `json:"duration_value,omitempty"`
-	DurationUnit      string  `json:"duration_unit,omitempty"`
-	QuoteID           string  `json:"quote_id,omitempty"`
-	ProviderCostLimit float64 `json:"-"`
+	ChannelCode       string   `json:"channel_code"`
+	ServiceCode       string   `json:"service_code"`
+	ServiceCodes      []string `json:"service_codes,omitempty"`
+	CountryCode       string   `json:"country_code"`
+	ProductType       string   `json:"product_type"`
+	OperatorCode      string   `json:"operator_code,omitempty"`
+	VoiceMode         int      `json:"voice_mode,omitempty"`
+	DurationValue     int      `json:"duration_value,omitempty"`
+	DurationUnit      string   `json:"duration_unit,omitempty"`
+	QuoteID           string   `json:"quote_id,omitempty"`
+	ProviderCostLimit float64  `json:"-"`
 }
 
 // CloneQuote creates an independent consumable quote for a batch item. The
