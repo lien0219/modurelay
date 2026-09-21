@@ -367,7 +367,6 @@ type SMSOperatorOption struct {
 	Code                   string   `json:"code"`
 	Name                   string   `json:"name"`
 	Stock                  int      `json:"stock,omitempty"`
-	StockExact             bool     `json:"stock_exact"`
 	SourceType             string   `json:"source_type,omitempty"`
 	ProviderCost           float64  `json:"-"`
 	ProviderRate           float64  `json:"provider_rate,omitempty"`
