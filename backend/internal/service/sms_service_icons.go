@@ -61,7 +61,7 @@ func (s *SMSService) ServiceIcon(ctx context.Context, providerCode, serviceCode 
 	if err := s.db.QueryRowContext(ctx, `SELECT COALESCE(c.raw_metadata->>'icon_path','')
 		FROM sms_provider_catalog_services c
 		JOIN sms_providers p ON p.id=c.provider_id
-		WHERE p.code=$1 AND lower(c.provider_service_code)=lower($2) AND c.enabled
+		WHERE p.code=$1 AND p.enabled AND lower(c.provider_service_code)=lower($2) AND c.enabled
 		LIMIT 1`, providerCode, serviceCode).Scan(&iconPath); err != nil {
 		return nil, "", err
 	}
