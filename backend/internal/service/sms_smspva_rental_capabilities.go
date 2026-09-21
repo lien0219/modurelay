@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/shopspring/decimal"
 )
 
 // SMSRentalProviderOrder is the provider-side active rental projection used for
@@ -47,6 +49,15 @@ type SMSRentalHistoryItem struct {
 	Begin           int64  `json:"begin"`
 	End             int64  `json:"end"`
 	Closed          int64  `json:"closed"`
+}
+
+type SMSRentalServiceOffer struct {
+	Code             string         `json:"code"`
+	Name             string         `json:"name"`
+	PriceDay         float64        `json:"-"`
+	Stock            int            `json:"stock"`
+	ProviderCounts   map[string]int `json:"-"`
+	ProviderIconPath string         `json:"-"`
 }
 
 type SMSRentalRestoreQuote struct {
@@ -140,6 +151,128 @@ func (p *smsPVAProvider) RentalOrder(ctx context.Context, id string) (*SMSRental
 		return nil, errors.New("SMSPVA rental order was not found in active orders")
 	}
 	return found, nil
+}
+
+
+
+func (p *smsPVAProvider) RentalServiceOffers(ctx context.Context, countryCode string, durationValue int, durationUnit string) ([]SMSRentalServiceOffer, error) {
+	dtype, dcount, _, err := smsPVARentalPeriod(durationValue, durationUnit)
+	if err != nil {
+		return nil, err
+	}
+	var env smsPVARentalEnvelope
+	if err := p.rentalRequestJSON(ctx, url.Values{
+		"method":  {"getdataWithProviders"},
+		"country": {strings.ToUpper(strings.TrimSpace(countryCode))},
+		"dtype":   {dtype},
+		"dcount":  {strconv.Itoa(dcount)},
+		"extend":  {"1"},
+	}, &env); err != nil {
+		return nil, err
+	}
+	var payload struct {
+		Services []struct {
+			Name       string         `json:"name"`
+			Service    string         `json:"service"`
+			PriceDay   json.RawMessage `json:"price_day"`
+			Img        string         `json:"img"`
+			Count      map[string]int `json:"count"`
+			TotalCount int            `json:"totalCount"`
+		} `json:"services"`
+	}
+	if err := json.Unmarshal(env.Data, &payload); err != nil {
+		return nil, err
+	}
+	out := make([]SMSRentalServiceOffer, 0, len(payload.Services))
+	for _, item := range payload.Services {
+		code := strings.ToLower(strings.TrimSpace(item.Service))
+		priceDay, ok := jsonNumber(item.PriceDay)
+		if code == "" || !ok || priceDay <= 0 {
+			continue
+		}
+		stock := item.TotalCount
+		if stock <= 0 {
+			for _, count := range item.Count {
+				stock += count
+			}
+		}
+		out = append(out, SMSRentalServiceOffer{
+			Code:             code,
+			Name:             strings.TrimSpace(item.Name),
+			PriceDay:         priceDay,
+			Stock:            stock,
+			ProviderCounts:   item.Count,
+			ProviderIconPath: strings.TrimSpace(item.Img),
+		})
+	}
+	return out, nil
+}
+
+func (p *smsPVAProvider) QuoteRentalMulti(ctx context.Context, req SMSQuoteRequest, services []string) (*SMSProviderQuote, error) {
+	clean := make([]string, 0, len(services))
+	seen := map[string]struct{}{}
+	for _, service := range services {
+		service = strings.ToLower(strings.TrimSpace(service))
+		if service == "" {
+			continue
+		}
+		if _, ok := seen[service]; ok {
+			continue
+		}
+		seen[service] = struct{}{}
+		clean = append(clean, service)
+	}
+	if len(clean) < 2 {
+		return nil, errors.New("multi-service rental requires at least two services")
+	}
+	dtype, dcount, days, err := smsPVARentalPeriod(req.DurationValue, req.DurationUnit)
+	if err != nil {
+		return nil, err
+	}
+	offers, err := p.RentalServiceOffers(ctx, req.CountryCode, req.DurationValue, req.DurationUnit)
+	if err != nil {
+		return nil, err
+	}
+	offerMap := make(map[string]SMSRentalServiceOffer, len(offers))
+	for _, offer := range offers {
+		offerMap[offer.Code] = offer
+	}
+	totalCost := decimal.Zero
+	for _, service := range clean {
+		offer, ok := offerMap[service]
+		if !ok || offer.Stock <= 0 {
+			return nil, ErrSMSProviderUnavailable
+		}
+		if op := strings.TrimSpace(req.OperatorCode); op != "" && !strings.EqualFold(op, "any") {
+			if offer.ProviderCounts[op] <= 0 {
+				return nil, ErrSMSProviderUnavailable
+			}
+		}
+		totalCost = totalCost.Add(decimal.NewFromFloat(offer.PriceDay).Mul(decimal.NewFromInt(int64(days))))
+	}
+	var countEnv smsPVARentalEnvelope
+	if err := p.rentalRequestJSON(ctx, url.Values{
+		"method":   {"get_count_multi"},
+		"country":  {strings.ToUpper(strings.TrimSpace(req.CountryCode))},
+		"services": {strings.Join(clean, ",")},
+		"dtype":    {dtype},
+		"dcount":   {strconv.Itoa(dcount)},
+	}, &countEnv); err != nil {
+		return nil, err
+	}
+	var countData struct {
+		Count int `json:"count"`
+	}
+	if err := json.Unmarshal(countEnv.Data, &countData); err != nil || countData.Count <= 0 {
+		return nil, ErrSMSProviderUnavailable
+	}
+	return &SMSProviderQuote{
+		Cost:                     totalCost,
+		Currency:                 "USD",
+		Stock:                    countData.Count,
+		ExpiresAt:                time.Now().Add(30 * time.Second),
+		EstimatedDeliverySeconds: 90,
+	}, nil
 }
 
 func (p *smsPVAProvider) PurchaseRentalMulti(ctx context.Context, req SMSPurchaseRequest, services []string) (*SMSPurchaseResult, error) {
