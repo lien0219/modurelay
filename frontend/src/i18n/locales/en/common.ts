@@ -401,6 +401,7 @@ export default {
       noChannel: 'No channel is available for this selection.',
       chooseForQuote: 'Select a service and country to get a quote.',
       stock: 'Stock',
+      stockAbundant: 'Stock available',
       eta: 'ETA',
       seconds: 's',
       separator: ' · ',
