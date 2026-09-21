@@ -401,6 +401,7 @@ export default {
       noChannel: '暂无可用渠道，请稍后重试。',
       chooseForQuote: '选择服务和国家后获取报价。',
       stock: '库存',
+      stockAbundant: '库存充足',
       eta: '预计',
       seconds: '秒',
       separator: ' · ',
