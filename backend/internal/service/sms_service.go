@@ -3948,6 +3948,11 @@ func (s *SMSService) pollSMSOrder(ctx context.Context, id int64, providerOrder, 
 	if result == nil {
 		return nil
 	}
+	if productType == "rental" {
+		if merged, mergeErr := s.mergeRentalServiceStatuses(ctx, p, id, providerOrder, result); mergeErr == nil {
+			result = merged
+		}
+	}
 	var expiresAt sql.NullTime
 	var reconciliationAction string
 	if err := s.db.QueryRowContext(ctx, `SELECT expires_at,reconciliation_action FROM sms_orders WHERE id=$1`, id).Scan(&expiresAt, &reconciliationAction); err != nil {
