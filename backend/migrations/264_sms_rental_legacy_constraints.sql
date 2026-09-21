@@ -164,7 +164,8 @@ BEGIN
               AND i.indisunique
               AND (SELECT array_agg(a.attname::text ORDER BY k.ord)
                    FROM unnest(i.indkey) WITH ORDINALITY AS k(attnum, ord)
-                   JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = k.attnum)
+                   JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = k.attnum
+                   WHERE k.ord <= i.indnkeyatts)
                     = string_to_array(idx.columns_sql, ',')::text[]
               AND (
                     (idx.predicate_sql IS NULL AND i.indpred IS NULL)

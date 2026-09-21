@@ -159,6 +159,7 @@ func TestSMSRentalLegacyConstraintRepairIsGuardedAndIdempotent(t *testing.T) {
 	require.Contains(t, sql, "not valid")
 	require.Contains(t, sql, "pg_index")
 	require.Contains(t, sql, "i.indisunique")
+	require.Contains(t, sql, "i.indnkeyatts")
 	require.Contains(t, sql, "pg_get_expr(i.indpred, i.indrelid)")
 	require.Contains(t, sql, "create unique index")
 	for _, table := range []string{
