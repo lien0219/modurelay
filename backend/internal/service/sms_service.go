@@ -3883,6 +3883,39 @@ func (s *SMSService) recoverUnknownSMSPurchase(ctx context.Context, id, userID i
 	if p == nil {
 		return false, nil
 	}
+
+	// Restore orders do not consume sms_quotes: they use a dedicated
+	// sms_rental_restore_quotes snapshot. Detect them before the ordinary quote
+	// recovery query, otherwise a valid SMSPVA restore would be treated as
+	// unrecoverable and its held balance could be released after timeout even
+	// though the provider had already restored the rental.
+	if productType == "rental" {
+		if smspva, ok := p.(*smsPVAProvider); ok {
+			var restoreHistoryID string
+			var createdAt time.Time
+			if err := s.db.QueryRowContext(ctx, `SELECT COALESCE(metadata->>'provider_history_order_id',''),created_at FROM sms_orders WHERE id=$1`, id).Scan(&restoreHistoryID, &createdAt); err != nil {
+				return false, err
+			}
+			if strings.TrimSpace(restoreHistoryID) != "" {
+				recovered, err := s.recoverSMSPVARestorePurchase(ctx, id, smspva)
+				if err != nil {
+					s.deferSMSReconciliation(ctx, id, providerErrorDiagnostic(err), false)
+					return false, err
+				}
+				if recovered == nil {
+					_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET reconcile_after=NOW()+($1 * INTERVAL '1 second') WHERE id=$2 AND status='reconciling' AND reconciliation_action=$3`, int(smsVerificationPollInterval.Seconds()), id, smsReconciliationPurchase)
+					return false, nil
+				}
+				expiresAt := smsOrderExpiresAt(createdAt, productType, 0, "", recovered.ExpiresAt)
+				if err := s.activateSMSOrder(ctx, id, userID, recovered.ProviderOrderID, recovered.PhoneNumber, expiresAt, recovered.ProviderCost, recovered.ProviderOperatorCode); err != nil {
+					return false, err
+				}
+				_ = s.pollSMSOrder(ctx, id, recovered.ProviderOrderID, providerCode, base, credential, productType)
+				return true, nil
+			}
+		}
+	}
+
 	var req SMSPurchaseRequest
 	var createdAt time.Time
 	var serviceCode, countryCode, operatorCode string
@@ -3905,20 +3938,11 @@ func (s *SMSService) recoverUnknownSMSPurchase(ctx context.Context, id, userID i
 	var recovered *SMSPurchaseResult
 	var err error
 	if productType == "rental" {
-		if smspva, ok := p.(*smsPVAProvider); ok {
-			recovered, err = s.recoverSMSPVARestorePurchase(ctx, id, smspva)
-			if err != nil {
-				s.deferSMSReconciliation(ctx, id, providerErrorDiagnostic(err), false)
-				return false, err
-			}
+		recoveryProvider, ok := p.(SMSRentalPurchaseRecoveryProvider)
+		if !ok {
+			return false, nil
 		}
-		if recovered == nil {
-			recoveryProvider, ok := p.(SMSRentalPurchaseRecoveryProvider)
-			if !ok {
-				return false, nil
-			}
-			recovered, err = recoveryProvider.RecoverRentalPurchase(ctx, req, createdAt)
-		}
+		recovered, err = recoveryProvider.RecoverRentalPurchase(ctx, req, createdAt)
 	} else {
 		recoveryProvider, ok := p.(SMSPurchaseRecoveryProvider)
 		if !ok {
