@@ -162,9 +162,27 @@
                 </div>
               </div>
 
-              <div v-if="productType === 'rental' && providerCode === 'smspva'" class="grid grid-cols-2 gap-2">
-                <label class="block min-w-0"><span class="input-label">{{ t('sms.user.duration') }}</span><input v-model.number="durationValue" class="input h-[42px]" type="number" min="1" @change="reloadRentalCatalog" /></label>
-                <Select v-model="durationUnit" :label="t('sms.user.unit')" :options="durationUnitOptions" @update:model-value="reloadRentalCatalog" />
+              <div v-if="productType === 'rental' && providerCode === 'smspva'" class="space-y-3">
+                <div class="grid grid-cols-2 gap-2">
+                  <label class="block min-w-0"><span class="input-label">{{ t('sms.user.duration') }}</span><input v-model.number="durationValue" class="input h-[42px]" type="number" min="1" @change="reloadRentalCatalog" /></label>
+                  <Select v-model="durationUnit" :label="t('sms.user.unit')" :options="durationUnitOptions" @update:model-value="reloadRentalCatalog" />
+                </div>
+                <div class="rounded-xl border border-gray-200 p-3 dark:border-dark-700">
+                  <div class="flex items-center justify-between gap-2">
+                    <div>
+                      <div class="text-sm font-medium text-gray-900 dark:text-white">{{ t('sms.user.multiServiceRental') }}</div>
+                      <div class="mt-0.5 text-xs text-gray-500">{{ t('sms.user.multiServiceRentalHint') }}</div>
+                    </div>
+                    <span v-if="additionalRentalServiceCodes.length" class="badge">{{ t('sms.user.additionalServiceCount', { count: additionalRentalServiceCodes.length }) }}</span>
+                  </div>
+                  <div class="mt-3 max-h-36 space-y-1.5 overflow-y-auto pr-1">
+                    <label v-for="item in services.filter(item => item.code !== serviceCode)" :key="item.code" class="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-gray-50 dark:hover:bg-dark-800">
+                      <input v-model="additionalRentalServiceCodes" type="checkbox" :value="item.code" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" @change="quotes = []; if (countryCode) loadQuotes()" />
+                      <SMSServiceLogo :icon="item.icon || serviceLogo(item.code, item.name)" :label="item.name || item.code" class="h-6 w-6 rounded-md text-[10px]" />
+                      <span class="min-w-0 flex-1 truncate">{{ item.name || item.code }}</span>
+                    </label>
+                  </div>
+                </div>
               </div>
               <label v-if="currentProvider?.capabilities.supports_voice" class="block"><span class="input-label">{{ t('sms.user.verificationType') }}</span><select v-model.number="voiceMode" class="input h-[42px] w-full" @change="changeVoiceMode"><option v-for="item in voiceModeOptions" :key="item.value" :value="item.value">{{ item.label }}</option></select></label>
               <label v-if="currentProvider?.capabilities.supports_operator_selection" class="block"><span class="input-label">{{ t('sms.user.operator') }}</span><select v-model="operatorCode" class="input h-[42px] w-full" @change="quotes = []; loadQuotes()"><option value="any">{{ t('sms.user.autoOperator') }}</option><option v-for="item in operators.filter(op => op.code !== 'any')" :key="item.code" :value="item.code" :disabled="item.available === false">{{ item.name }}{{ item.provider_rate ? ` · ${t('sms.user.channelReferenceShort')} ${item.provider_rate.toFixed(2)}%` : '' }}{{ item.platform_30d_success_rate != null ? ` · ${t('sms.user.platform30dShort')} ${item.platform_30d_success_rate.toFixed(2)}% (n=${item.platform_30d_sample_size || 0})` : '' }}{{ item.stock != null ? ` · ${t('sms.user.stock')} ${item.stock}` : '' }}</option></select><p v-if="currentProvider?.capabilities.supports_conversion_stats && operatorCode !== 'any'" class="mt-1 text-[11px] text-cyan-600 dark:text-cyan-400">{{ t('sms.user.recommendedOperatorSelected') }}</p></label>
@@ -455,6 +473,7 @@ const serviceKeyword = ref('')
 const countryKeyword = ref('')
 const countrySortMode = ref<'recommended' | 'platform' | 'rate' | 'price' | 'stock' | 'name'>('recommended')
 const serviceCode = ref('')
+const additionalRentalServiceCodes = ref<string[]>([])
 const countryCode = ref('')
 const durationValue = ref(1)
 const durationUnit = ref('week')
@@ -878,6 +897,7 @@ async function switchProvider(code: string) {
   const provider = providers.value.find(item => item.code === code)
   if (!provider || !isProviderSelectable(provider) || code === providerCode.value) return
   providerCode.value = code
+  additionalRentalServiceCodes.value = []
   productType.value = provider.capabilities.supports_temporary ? 'temporary' : 'rental'
   durationUnit.value = provider.code === 'smspva' ? 'week' : 'hour'
   voiceMode.value = voiceModeOptions.value[0]?.value ?? 0
@@ -895,6 +915,7 @@ async function switchProvider(code: string) {
 async function switchProductType(type: 'temporary' | 'rental') {
   if (type === 'rental' && !currentProvider.value?.capabilities.supports_rental) return
   productType.value = type
+  additionalRentalServiceCodes.value = []
   activeTab.value = type
   if (type === 'rental' && providerCode.value === 'smspva' && !['week', 'month'].includes(durationUnit.value)) {
     durationUnit.value = 'week'
@@ -911,6 +932,9 @@ async function loadQuotes() {
     quotes.value = await smsAPI.quotes({
       provider: providerCode.value,
       service: serviceCode.value,
+      services: productType.value === 'rental' && providerCode.value === 'smspva'
+        ? [serviceCode.value, ...additionalRentalServiceCodes.value].join(',')
+        : undefined,
       country: countryCode.value,
       product_type: productType.value,
       operator: operatorCode.value || 'any',
@@ -962,7 +986,7 @@ async function purchase(quote: SMSQuote) {
   try {
     const key = `sms-${Date.now()}-${Math.random().toString(36).slice(2)}`
     const quantity = Number(purchaseQuantity.value)
-    const item = { channel_code: quote.channel_code, service_code: serviceCode.value, country_code: countryCode.value, product_type: productType.value, operator_code: operatorCode.value || 'any', voice_mode: voiceMode.value, duration_value: productType.value === 'rental' ? durationValue.value : undefined, duration_unit: productType.value === 'rental' ? durationUnit.value : undefined, quote_id: quote.quote_id, expected_price: quote.sale_price }
+    const item = { channel_code: quote.channel_code, service_code: serviceCode.value, service_codes: productType.value === 'rental' && providerCode.value === 'smspva' ? [serviceCode.value, ...additionalRentalServiceCodes.value] : undefined, country_code: countryCode.value, product_type: productType.value, operator_code: operatorCode.value || 'any', voice_mode: voiceMode.value, duration_value: productType.value === 'rental' ? durationValue.value : undefined, duration_unit: productType.value === 'rental' ? durationUnit.value : undefined, quote_id: quote.quote_id, expected_price: quote.sale_price }
     if (quantity > 1) {
       const result = await smsAPI.purchaseBatch({ items: Array.from({ length: quantity }, () => item) }, key)
       liveOrders.value = [...result.items, ...liveOrders.value.filter(existing => !result.items.some(item => item.id === existing.id))]
@@ -1068,6 +1092,7 @@ async function resend(id: string) {
 async function selectService(code: string) {
   if (code === serviceCode.value) return
   serviceCode.value = code
+  additionalRentalServiceCodes.value = []
   countryKeyword.value = ''
   quotes.value = []
   await loadCountryPage(true)
@@ -1111,6 +1136,7 @@ async function loadOperators() {
 
 async function reloadRentalCatalog() {
   if (productType.value !== 'rental') return
+  additionalRentalServiceCodes.value = []
   quotes.value = []
   await loadProviderCatalog()
   if (serviceCode.value && countryCode.value) await loadQuotes()
