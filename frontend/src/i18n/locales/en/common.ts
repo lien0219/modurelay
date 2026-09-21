@@ -375,6 +375,8 @@ export default {
       extendUnitPrompt: 'Enter extension unit: day / week / month',
       extendUnitInvalid: 'Extension unit must be day, week, or month',
       extendValuePrompt: 'Enter extension amount (unit: {unit})',
+      rentalCannotExtend: 'This long-term number cannot be extended right now.',
+      extendMaxExceeded: 'This rental can be extended by at most {max} day(s) in this request.',
       temporary: 'Temporary number',
       rental: 'Long-term number',
       orders: 'My orders',
