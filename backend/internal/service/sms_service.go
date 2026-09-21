@@ -3904,11 +3904,20 @@ func (s *SMSService) recoverUnknownSMSPurchase(ctx context.Context, id, userID i
 	var recovered *SMSPurchaseResult
 	var err error
 	if productType == "rental" {
-		recoveryProvider, ok := p.(SMSRentalPurchaseRecoveryProvider)
-		if !ok {
-			return false, nil
+		if smspva, ok := p.(*smsPVAProvider); ok {
+			recovered, err = s.recoverSMSPVARestorePurchase(ctx, id, smspva)
+			if err != nil {
+				s.deferSMSReconciliation(ctx, id, providerErrorDiagnostic(err), false)
+				return false, err
+			}
 		}
-		recovered, err = recoveryProvider.RecoverRentalPurchase(ctx, req, createdAt)
+		if recovered == nil {
+			recoveryProvider, ok := p.(SMSRentalPurchaseRecoveryProvider)
+			if !ok {
+				return false, nil
+			}
+			recovered, err = recoveryProvider.RecoverRentalPurchase(ctx, req, createdAt)
+		}
 	} else {
 		recoveryProvider, ok := p.(SMSPurchaseRecoveryProvider)
 		if !ok {
