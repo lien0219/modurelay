@@ -623,6 +623,121 @@ func (h *SMSHandler) RefundStatus(c *gin.Context) {
 	}
 	response.Success(c, gin.H{"status": order.RefundStatus, "reason": order.RefundReason})
 }
+func (h *SMSHandler) RentalServiceOptions(c *gin.Context) {
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	rentDays, err := strconv.Atoi(strings.TrimSpace(c.DefaultQuery("rent_days", "7")))
+	if err != nil || rentDays <= 0 {
+		response.BadRequest(c, "invalid rent_days")
+		return
+	}
+	items, err := h.svc.RentalServiceOptions(c.Request.Context(), subject.UserID, c.Param("id"), rentDays)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, items)
+}
+
+func (h *SMSHandler) RentalServiceQuote(c *gin.Context) {
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	var req struct {
+		ServiceCode string `json:"service_code"`
+		RentDays    int    `json:"rent_days"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.ServiceCode) == "" || req.RentDays <= 0 {
+		response.BadRequest(c, "invalid rental service quote request")
+		return
+	}
+	quote, err := h.svc.CreateRentalServiceQuote(c.Request.Context(), subject.UserID, c.Param("id"), req.ServiceCode, req.RentDays)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, quote)
+}
+
+func (h *SMSHandler) AddRentalService(c *gin.Context) {
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	var req struct {
+		QuoteID       string   `json:"quote_id"`
+		ExpectedPrice *float64 `json:"expected_price"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.QuoteID) == "" {
+		response.BadRequest(c, "invalid rental service purchase request")
+		return
+	}
+	order, err := h.svc.AddRentalService(c.Request.Context(), subject.UserID, c.Param("id"), req.QuoteID, c.GetHeader("Idempotency-Key"), req.ExpectedPrice)
+	if err != nil {
+		switch err {
+		case service.ErrSMSPriceChanged:
+			response.ErrorWithDetails(c, http.StatusConflict, "Price changed; refresh the quote and try again", "PRICE_CHANGED", nil)
+		case service.ErrSMSInsufficientBalance:
+			response.ErrorWithDetails(c, http.StatusPaymentRequired, "Insufficient balance", "INSUFFICIENT_BALANCE", nil)
+		case service.ErrSMSProviderUnknown:
+			response.ErrorWithDetails(c, http.StatusAccepted, "The provider result is being reconciled", "ORDER_RECONCILING", nil)
+		default:
+			response.ErrorFrom(c, err)
+		}
+		return
+	}
+	response.Success(c, order)
+}
+
+func (h *SMSHandler) RentalRestoreQuote(c *gin.Context) {
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	quote, err := h.svc.CreateRentalRestoreQuote(c.Request.Context(), subject.UserID, c.Param("id"))
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, quote)
+}
+
+func (h *SMSHandler) RestoreRental(c *gin.Context) {
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	var req struct {
+		QuoteID       string   `json:"quote_id"`
+		ExpectedPrice *float64 `json:"expected_price"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.QuoteID) == "" {
+		response.BadRequest(c, "invalid rental restore request")
+		return
+	}
+	order, err := h.svc.RestoreRentalOrder(c.Request.Context(), subject.UserID, c.Param("id"), req.QuoteID, c.GetHeader("Idempotency-Key"), req.ExpectedPrice)
+	if err != nil {
+		switch err {
+		case service.ErrSMSPriceChanged:
+			response.ErrorWithDetails(c, http.StatusConflict, "Price changed; refresh the quote and try again", "PRICE_CHANGED", nil)
+		case service.ErrSMSInsufficientBalance:
+			response.ErrorWithDetails(c, http.StatusPaymentRequired, "Insufficient balance", "INSUFFICIENT_BALANCE", nil)
+		default:
+			response.ErrorFrom(c, err)
+		}
+		return
+	}
+	response.Success(c, order)
+}
+
 func (h *SMSHandler) ServiceIcon(c *gin.Context) {
 	data, contentType, err := h.svc.ServiceIcon(c.Request.Context(), c.Param("provider"), c.Param("service"))
 	if err != nil {
