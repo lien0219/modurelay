@@ -3981,10 +3981,16 @@ func (s *SMSService) pollSMSOrder(ctx context.Context, id int64, providerOrder, 
 		if message == "" {
 			continue
 		}
-		_, _ = s.db.ExecContext(ctx, `INSERT INTO sms_messages(order_id,message_text,verification_code) SELECT $1,$2,$3 WHERE NOT EXISTS (SELECT 1 FROM sms_messages WHERE order_id=$1 AND message_text=$2)`, id, message, extractSMSCode(message))
-		if sender, providerReceivedAt, messageType, serviceCode, otherSMS, ok := smsMessageMetadata(result.Metadata, index); ok {
-			_, _ = s.db.ExecContext(ctx, `UPDATE sms_messages SET sender=$1,provider_received_at=$2,message_type=$3,service_code=$4,other_sms=$5 WHERE order_id=$6 AND message_text=$7`, sender, providerReceivedAt, messageType, serviceCode, otherSMS, id, message)
-		}
+		sender, providerReceivedAt, messageType, serviceCode, otherSMS, _ := smsMessageMetadata(result.Metadata, index)
+		_, _ = s.db.ExecContext(ctx, `INSERT INTO sms_messages(order_id,message_text,verification_code,sender,provider_received_at,message_type,service_code,other_sms)
+			SELECT $1,$2,$3,$4,$5,$6,$7,$8
+			WHERE NOT EXISTS (
+				SELECT 1 FROM sms_messages
+				WHERE order_id=$1 AND message_text=$2
+				  AND COALESCE(service_code,'')=COALESCE($7,'')
+				  AND COALESCE(sender,'')=COALESCE($4,'')
+				  AND COALESCE(other_sms,FALSE)=$8
+			)`, id, message, extractSMSCode(message), sender, providerReceivedAt, messageType, serviceCode, otherSMS)
 		_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET first_sms_received_at=COALESCE(first_sms_received_at,NOW()),delivery_outcome='success',delivery_finalized_at=COALESCE(delivery_finalized_at,NOW()),delivery_failure_reason='' WHERE id=$1`, id)
 		clearSMSPlatformDeliveryStatsCache()
 	}
