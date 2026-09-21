@@ -362,7 +362,9 @@
                 <td class="whitespace-nowrap px-4 py-3">
                   <div class="flex min-w-max items-center gap-2">
                     <button v-if="showCancelAction(order)" type="button" class="btn btn-secondary btn-sm" :disabled="!canCancelOrder(order)" :title="cancelActionHint(order)" @click="cancel(order)">{{ t('sms.user.cancel') }}</button>
+                    <button v-if="order.status === 'active' && order.product_type === 'rental'" type="button" class="btn btn-secondary btn-sm" @click="openRentalServiceModal(order)">{{ t('sms.user.addService') }}</button>
                     <button v-if="order.status === 'active' && order.product_type === 'rental' && order.capabilities?.supports_extend" type="button" class="btn btn-secondary btn-sm" @click="extend(order.id)">{{ t('sms.user.extend') }}</button>
+                    <button v-if="canRestoreRental(order)" type="button" class="btn btn-secondary btn-sm" @click="restoreRental(order)">{{ t('sms.user.restoreRental') }}</button>
                     <button v-if="order.status === 'active' && order.product_type === 'temporary' && order.capabilities?.supports_resend" type="button" class="btn btn-secondary btn-sm" @click="resend(order.id)">{{ t('sms.user.resend') }}</button>
                     <button type="button" class="btn btn-secondary btn-sm" :disabled="refreshingId === order.id" :aria-label="t('common.refresh')" @click="refreshOrder(order.id)"><Icon name="refresh" size="sm" :class="refreshingId === order.id ? 'animate-spin' : ''" aria-hidden="true" /></button>
                   </div>
@@ -373,6 +375,40 @@
         </div>
         <div v-if="orderPagination.total > 0" class="card overflow-hidden"><Pagination :page="orderPagination.page" :total="orderPagination.total" :page-size="orderPagination.pageSize" @update:page="changeOrderPage" @update:page-size="changeOrderPageSize" /></div>
       </section>
+
+      <div v-if="rentalServiceState.show" class="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4" @click.self="closeRentalServiceModal">
+        <div class="card w-full max-w-lg space-y-4 p-5 shadow-xl">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <h3 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('sms.user.addServiceTitle') }}</h3>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('sms.user.addServiceDescription') }}</p>
+            </div>
+            <button type="button" class="btn btn-secondary btn-sm" @click="closeRentalServiceModal">{{ t('common.close') }}</button>
+          </div>
+          <label class="block">
+            <span class="input-label">{{ t('sms.user.rentDays') }}</span>
+            <div class="mt-1 flex gap-2">
+              <input v-model.number="rentalServiceState.rentDays" class="input flex-1" type="number" min="1" max="366" />
+              <button type="button" class="btn btn-secondary" :disabled="rentalServiceState.loading" @click="loadRentalServiceOptions">{{ t('common.refresh') }}</button>
+            </div>
+          </label>
+          <label class="block">
+            <span class="input-label">{{ t('sms.user.service') }}</span>
+            <select v-model="rentalServiceState.selectedService" class="input mt-1 w-full" :disabled="rentalServiceState.loading">
+              <option value="">{{ t('sms.user.selectService') }}</option>
+              <option v-for="item in rentalServiceState.options" :key="item.code" :value="item.code">
+                {{ item.name }} · {{ formatPrice(item.sale_price) }} {{ t('sms.user.currency') }}
+              </option>
+            </select>
+          </label>
+          <div v-if="rentalServiceState.loading" class="py-4 text-center text-sm text-gray-500">{{ t('sms.user.loading') }}</div>
+          <div v-else-if="!rentalServiceState.options.length" class="rounded-lg bg-gray-50 p-3 text-sm text-gray-500 dark:bg-dark-800">{{ t('sms.user.noAdditionalServices') }}</div>
+          <div class="flex justify-end gap-2">
+            <button type="button" class="btn btn-secondary" @click="closeRentalServiceModal">{{ t('common.cancel') }}</button>
+            <button type="button" class="btn btn-primary" :disabled="!rentalServiceState.selectedService || rentalServiceState.loading" @click="quoteRentalServiceAddition">{{ t('sms.user.getQuote') }}</button>
+          </div>
+        </div>
+      </div>
 
       <ConfirmDialog
         :show="confirmState.show"
@@ -399,7 +435,7 @@ import Select from '@/components/common/Select.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import SMSServiceLogo from '@/components/sms/SMSServiceLogo.vue'
-import { smsAPI, type SMSCountryItem, type SMSOperatorItem, type SMSOrder, type SMSOrderPage, type SMSProviderItem, type SMSQuote, type SMSRecentSuccessItem, type SMSServiceItem } from '@/api/sms'
+import { smsAPI, type SMSCountryItem, type SMSOperatorItem, type SMSOrder, type SMSOrderPage, type SMSProviderItem, type SMSQuote, type SMSRecentSuccessItem, type SMSRentalServiceOption, type SMSServiceItem } from '@/api/sms'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { useAppStore, useAuthStore } from '@/stores'
 
@@ -449,6 +485,14 @@ const orderDraft = reactive({ keyword: '', status: '' })
 const orderFilters = reactive({ keyword: '', status: '' })
 const confirmState = reactive({ show: false, title: '', message: '', confirmText: '', cancelText: '', danger: false, action: null as null | (() => Promise<void>) })
 const confirmingAction = ref(false)
+const rentalServiceState = reactive({
+  show: false,
+  orderId: '',
+  rentDays: 7,
+  selectedService: '',
+  options: [] as SMSRentalServiceOption[],
+  loading: false,
+})
 let pollTimer: number | undefined
 let countdownTimer: number | undefined
 let serviceSearchTimer: number | undefined
@@ -1106,6 +1150,105 @@ watch(countrySortMode, () => {
 function refundLabel(status: string) {
   const labels: Record<string, string> = { approved: t('sms.user.refunds.approved'), rejected: t('sms.user.refunds.rejected'), pending: t('sms.user.refunds.pending') }
   return labels[status] || status
+}
+
+function canRestoreRental(order: SMSOrder) {
+  return order.product_type === 'rental' && ['expired', 'cancelled', 'refunded', 'failed', 'completed'].includes(order.status)
+}
+
+async function openRentalServiceModal(order: SMSOrder) {
+  rentalServiceState.orderId = order.id
+  rentalServiceState.rentDays = 7
+  rentalServiceState.selectedService = ''
+  rentalServiceState.options = []
+  rentalServiceState.show = true
+  await loadRentalServiceOptions()
+}
+
+function closeRentalServiceModal() {
+  if (rentalServiceState.loading) return
+  rentalServiceState.show = false
+  rentalServiceState.orderId = ''
+  rentalServiceState.selectedService = ''
+  rentalServiceState.options = []
+}
+
+async function loadRentalServiceOptions() {
+  const days = Number(rentalServiceState.rentDays)
+  if (!rentalServiceState.orderId || !Number.isInteger(days) || days <= 0 || days > 366) {
+    appStore.showError(t('sms.user.invalidRentDays'))
+    return
+  }
+  rentalServiceState.loading = true
+  try {
+    rentalServiceState.options = await smsAPI.rentalServiceOptions(rentalServiceState.orderId, days)
+    if (!rentalServiceState.options.some(item => item.code === rentalServiceState.selectedService)) {
+      rentalServiceState.selectedService = ''
+    }
+  } catch (error) {
+    appStore.showError(errorMessage(error, t('sms.user.errors.rentalServices')))
+  } finally {
+    rentalServiceState.loading = false
+  }
+}
+
+async function quoteRentalServiceAddition() {
+  const id = rentalServiceState.orderId
+  const serviceCode = rentalServiceState.selectedService
+  const rentDays = Number(rentalServiceState.rentDays)
+  if (!id || !serviceCode || !Number.isInteger(rentDays) || rentDays <= 0) return
+  rentalServiceState.loading = true
+  try {
+    const quote = await smsAPI.rentalServiceQuote(id, { service_code: serviceCode, rent_days: rentDays })
+    rentalServiceState.show = false
+    askConfirm({
+      title: t('sms.user.addServiceConfirmTitle'),
+      message: t('sms.user.addServiceConfirmMessage', { service: serviceCode, days: rentDays, price: formatPrice(quote.sale_price) }),
+      confirmText: t('sms.user.addService'),
+      action: async () => {
+        try {
+          await smsAPI.addRentalService(id, { quote_id: quote.quote_id, expected_price: quote.sale_price }, `sms-add-service-${id}-${Date.now()}`)
+          await refreshOrder(id)
+          await authStore.refreshUser().catch(() => undefined)
+          appStore.showSuccess(t('sms.user.addServiceSuccess'))
+        } catch (error) {
+          appStore.showError(errorMessage(error, t('sms.user.errors.addService')))
+        }
+      },
+    })
+  } catch (error) {
+    appStore.showError(errorMessage(error, t('sms.user.errors.rentalServiceQuote')))
+  } finally {
+    rentalServiceState.loading = false
+  }
+}
+
+async function restoreRental(order: SMSOrder) {
+  try {
+    const quote = await smsAPI.rentalRestoreQuote(order.id)
+    askConfirm({
+      title: t('sms.user.restoreRentalTitle'),
+      message: t('sms.user.restoreRentalConfirmMessage', {
+        service: serviceLabel(quote.service_code),
+        days: quote.duration_days,
+        price: formatPrice(quote.sale_price),
+      }),
+      confirmText: t('sms.user.restoreRental'),
+      action: async () => {
+        try {
+          const restored = await smsAPI.restoreRental(order.id, { quote_id: quote.quote_id, expected_price: quote.sale_price }, `sms-restore-${order.id}-${Date.now()}`)
+          await loadOrders()
+          await authStore.refreshUser().catch(() => undefined)
+          appStore.showSuccess(t('sms.user.restoreRentalSuccess'))
+          if (restored.id) await refreshOrder(restored.id)
+        } catch (error) {
+          appStore.showError(errorMessage(error, t('sms.user.errors.restoreRental')))
+        }
+      },
+    })
+  } catch (error) {
+    appStore.showError(errorMessage(error, t('sms.user.errors.restoreRentalQuote')))
+  }
 }
 
 async function extend(id: string) {
