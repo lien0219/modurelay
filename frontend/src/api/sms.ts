@@ -44,6 +44,7 @@ export interface SMSOrder {
 export interface SMSOrderPage { items: SMSOrder[]; total: number; page: number; page_size: number; pages: number }
 export interface SMSRecentSuccessItem { username: string; country_code: string; phone: string }
 export interface SMSRecentSuccessFeed { source: 'mock' | 'real'; real_success_count: number; items: SMSRecentSuccessItem[] }
+export interface SMSRentalConstraints { can_extend: boolean; can_prolong_max?: number; current_until?: string; can_prolong_until?: string; last_online?: string }
 export interface SMSSettings { batch_purchase_limit: number }
 
 export const smsAPI = {
@@ -66,5 +67,6 @@ export const smsAPI = {
   resend: (id: string) => apiClient.post(`/sms/orders/${encodeURIComponent(id)}/resend`).then(r => r.data),
   refund: (id: string) => apiClient.post(`/sms/orders/${encodeURIComponent(id)}/refund`).then(r => r.data),
   refundStatus: (id: string) => apiClient.get<{ status: string; reason?: string }>(`/sms/orders/${encodeURIComponent(id)}/refund-status`).then(r => r.data),
+  rentalConstraints: (id: string) => apiClient.get<SMSRentalConstraints>(`/sms/rentals/${encodeURIComponent(id)}/constraints`).then(r => r.data),
   extendRental: (id: string, payload: { duration_value: number; duration_unit: string }, idempotencyKey: string) => apiClient.post<SMSOrder>(`/sms/rentals/${encodeURIComponent(id)}/extend`, payload, { headers: { 'Idempotency-Key': idempotencyKey } }).then(r => r.data),
 }
