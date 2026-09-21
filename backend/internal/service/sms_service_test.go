@@ -66,6 +66,17 @@ func TestSMSProviderCapabilitiesAreSeparated(t *testing.T) {
 	}
 }
 
+func TestSMSPVAAdvancedRentalCapabilitiesAreSafelyGated(t *testing.T) {
+	p := providerFor("smspva", "https://example.invalid", "test-key")
+	cap := p.Capabilities(context.Background())
+	if !cap.Rental || !cap.Extend || !cap.RentalConstraints || !cap.RentalRestore {
+		t.Fatalf("SMSPVA safe rental capabilities = %#v", cap)
+	}
+	if cap.RentalMultiService || cap.RentalAddService {
+		t.Fatalf("unverified SMSPVA billing features must remain gated: %#v", cap)
+	}
+}
+
 func TestSMSOrderCapabilitiesPreferRegisteredAdapter(t *testing.T) {
 	if got := resolveSMSCapabilities("pingme", "https://example.invalid", []byte(`{}`)); !got.Extend || !got.Rental {
 		t.Fatalf("PingMe adapter capabilities = %#v", got)
