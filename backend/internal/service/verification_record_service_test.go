@@ -167,7 +167,6 @@ func TestVerificationRecordServiceOptionsAreSearchableAndPaginated(t *testing.T)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-
 func TestVerificationRecordCTEUsesDurableSettlementLedger(t *testing.T) {
 	require.Contains(t, verificationRecordsCTE, "ELSE o.captured_amount::float8")
 	require.Contains(t, verificationRecordsCTE, "ELSE o.refunded_amount::float8")
