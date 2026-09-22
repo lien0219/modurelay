@@ -884,7 +884,6 @@ func TestSMSPVAConvergeCapturesAfterDelivery(t *testing.T) {
 	}
 }
 
-
 func TestSMSPVATerminalHeldAfterDeliveryCapturesInsteadOfReleasing(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
@@ -1493,9 +1492,9 @@ func TestSMSPVATemporaryPurchaseAddsCallingCode(t *testing.T) {
 
 func TestSMSPVACanonicalPhoneDoesNotDuplicateCallingCode(t *testing.T) {
 	cases := map[string]string{
-		smsPVACanonicalPhone("78522241", "+591"):      "+59178522241",
-		smsPVACanonicalPhone("59178522241", "+591"):   "+59178522241",
-		smsPVACanonicalPhone("+59178522241", "+591"):  "+59178522241",
+		smsPVACanonicalPhone("78522241", "+591"):       "+59178522241",
+		smsPVACanonicalPhone("59178522241", "+591"):    "+59178522241",
+		smsPVACanonicalPhone("+59178522241", "+591"):   "+59178522241",
 		smsPVACanonicalPhone("1 (202) 555-0199", "+1"): "+12025550199",
 	}
 	for got, want := range cases {
@@ -2127,7 +2126,6 @@ func TestListPublicProvidersReturnsChannelAliasesNotSupplierIdentity(t *testing.
 		t.Fatal(err)
 	}
 }
-
 
 func TestPersistProviderServicesReturnsCatalogWriteError(t *testing.T) {
 	db, mock, err := sqlmock.New()
