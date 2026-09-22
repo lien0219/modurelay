@@ -840,7 +840,11 @@ func (h *SMSHandler) ServiceIcon(c *gin.Context) {
 	// the browser-visible request path.
 	data, contentType, err := h.svc.ServiceIcon(c.Request.Context(), "", c.Param("service"))
 	if err != nil {
-		response.ErrorWithDetails(c, http.StatusNotFound, "Service icon is unavailable", "SERVICE_ICON_UNAVAILABLE", nil)
+		// Service icons are optional decoration. Missing/stale upstream artwork
+		// must fall back quietly instead of surfacing dozens of expected 404s in
+		// the browser console during catalog rendering.
+		c.Header("Cache-Control", "public, max-age=300")
+		c.Status(http.StatusNoContent)
 		return
 	}
 	c.Header("Cache-Control", "public, max-age=43200, stale-while-revalidate=86400")
