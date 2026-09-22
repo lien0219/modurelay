@@ -29,9 +29,9 @@ func TestVerificationRecordServiceUserScopeAndRedaction(t *testing.T) {
 	mock.ExpectQuery(`(?s)WITH .*records AS \(.*COUNT\(\*\).*FROM records WHERE user_id = \$1 AND verification_type = \$2 AND \(order_no ILIKE \$3`).
 		WithArgs(int64(42), "email", "%openai%").
 		WillReturnRows(sqlmock.NewRows([]string{
-			"total", "processing", "success", "failed", "refunded", "cancelled", "expired",
+			"total", "processing", "success", "failed", "refunded", "free", "cancelled", "expired",
 			"sale", "debit", "reserved", "captured", "released", "refunded_amount", "provider_cost",
-		}).AddRow(1, 0, 0, 1, 0, 0, 0, 3.5, 3.5, 0, 0, 3.5, 0, 0.4))
+		}).AddRow(1, 0, 0, 1, 0, 0, 0, 0, 3.5, 3.5, 0, 0, 3.5, 0, 0.4))
 	mock.ExpectQuery(`(?s)WITH .*records AS \(.*SELECT id, order_no.*FROM records WHERE user_id = \$1 AND verification_type = \$2 AND \(order_no ILIKE \$3.*LIMIT \$4 OFFSET \$5`).
 		WithArgs(int64(42), "email", "%openai%", 20, 0).
 		WillReturnRows(sqlmock.NewRows(verificationRecordColumns).AddRow(
@@ -73,9 +73,9 @@ func TestVerificationRecordServiceAdminIncludesOperationalFields(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	mock.ExpectQuery(`(?s)WITH .*records AS \(.*COUNT\(\*\).*FROM records$`).
 		WillReturnRows(sqlmock.NewRows([]string{
-			"total", "processing", "success", "failed", "refunded", "cancelled", "expired",
+			"total", "processing", "success", "failed", "refunded", "free", "cancelled", "expired",
 			"sale", "debit", "reserved", "captured", "released", "refunded_amount", "provider_cost",
-		}).AddRow(1, 0, 1, 0, 0, 0, 0, 5.0, 5.0, 0, 5.0, 0, 0, 1.25))
+		}).AddRow(1, 0, 1, 0, 0, 0, 0, 0, 5.0, 5.0, 0, 5.0, 0, 0, 1.25))
 	mock.ExpectQuery(`(?s)WITH .*records AS \(.*SELECT id, order_no.*FROM records.*LIMIT \$1 OFFSET \$2`).
 		WithArgs(25, 25).
 		WillReturnRows(sqlmock.NewRows(verificationRecordColumns).AddRow(
@@ -188,4 +188,16 @@ func TestVerificationRecordCTEIncludesRentalAddOnLedger(t *testing.T) {
 	require.Contains(t, verificationRecordsCTE, "COALESCE(rt.released_amount,0)")
 	require.Contains(t, verificationRecordsCTE, "COALESCE(rt.provider_cost,0)")
 	require.Contains(t, verificationRecordsCTE, "GREATEST(o.reserved_amount-o.captured_amount-o.released_amount-o.refunded_amount,0)")
+}
+
+
+func TestVerificationRecordCTEClassifiesZeroCostEmailTerminalOrdersAsFree(t *testing.T) {
+	require.Contains(t, verificationRecordsCTE, "WHEN o.sale_price_snapshot = 0 AND o.status IN ('cancelled','expired','refunded') THEN 'free'")
+	require.Contains(t, verificationRecordsCTE, "CASE WHEN o.sale_price_snapshot = 0 THEN 'not_applicable' ELSE o.refund_status END AS refund_status")
+	require.Contains(t, verificationRecordsCTE, "CASE WHEN o.sale_price_snapshot = 0 THEN 0::float8 ELSE o.refunded_amount::float8 END")
+	require.Contains(t, verificationRecordsCTE, "COUNT(*) FILTER (WHERE outcome NOT IN ('processing','free'))::bigint")
+}
+
+func TestVerificationRecordServiceAcceptsFreeOutcomeFilter(t *testing.T) {
+	require.True(t, isVerificationOutcome("free"))
 }
