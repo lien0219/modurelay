@@ -259,7 +259,7 @@
         <div v-for="quote in quotes" :key="quote.quote_id" class="card flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
           <div class="min-w-0">
             <div class="flex flex-wrap items-center gap-2">
-              <h2 class="font-semibold text-gray-900 dark:text-white">{{ quote.public_name }}</h2>
+              <h2 class="font-semibold text-gray-900 dark:text-white">{{ smsChannelLabel(quote.channel_code) }}</h2>
               <span class="badge" :class="quote.channel_role === 'primary' ? 'badge-info' : 'badge-gray'">{{ quote.channel_role === 'primary' ? t('sms.admin.primary') : t('sms.admin.backup') }}</span>
             </div>
             <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500 dark:text-gray-400">
@@ -332,7 +332,7 @@
                     <CopyButton :text="order.id" class="shrink-0" />
                   </div>
                 </td>
-                <td class="whitespace-nowrap px-4 py-3"><span class="block truncate" :title="order.channel_name || order.channel_code">{{ order.channel_name || order.channel_code }}</span></td>
+                <td class="whitespace-nowrap px-4 py-3"><span class="block truncate" :title="smsChannelLabel(order.channel_code)">{{ smsChannelLabel(order.channel_code) }}</span></td>
                 <td class="whitespace-nowrap px-4 py-3">
                   <div class="flex min-w-0 items-center gap-2">
                     <SMSServiceLogo :icon="serviceIcon(order.service_code, serviceLabel(order.service_code))" :label="serviceLabel(order.service_code)" class="h-7 w-7 rounded-md text-xs" />
@@ -752,6 +752,11 @@ function displayRegionName(iso2: string) {
 
 function formatPrice(value: number) {
   return `${Number(value || 0).toFixed(4).replace(/0+$/, '').replace(/\.$/, '')}`
+}
+
+function smsChannelLabel(code: string) {
+  const match = /^channel_(\d+)$/.exec(String(code || '').trim().toLowerCase())
+  return match ? `${t('sms.user.channel')}${match[1]}` : t('sms.user.channel')
 }
 
 function operatorStockLabel(item: SMSOperatorItem) {

@@ -835,7 +835,7 @@ func (s *EmailVerificationService) Quote(ctx context.Context, serviceCode, addre
 			pricingSnapshot["force_free"] = true
 		}
 		expiresAt := time.Now().Add(30 * time.Second)
-		quote := EmailPublicChannel{Code: code, PublicName: name, EmailType: emailType, PrivacyLevel: privacy, SalePrice: finalPrice, SuccessRate: rate, SuccessRateGrade: grade, SuccessRateSampleCount: sample, EstimatedDeliverySeconds: 8, RetentionDescription: s.emailRetentionDescription(ctx), RefundPolicyDescription: refund, QuoteID: makeEmailQuoteID(s.quoteSigningKey, serviceCode, code, addressType, expiresAt), QuoteExpiresAt: expiresAt, Capabilities: p.Capabilities(ctx), ProviderCostEstimate: providerCost, PricingRuleSnapshot: pricingSnapshot}
+		quote := EmailPublicChannel{Code: code, PublicName: publicVerificationChannelName(code), EmailType: emailType, PrivacyLevel: privacy, SalePrice: finalPrice, SuccessRate: rate, SuccessRateGrade: grade, SuccessRateSampleCount: sample, EstimatedDeliverySeconds: 8, RetentionDescription: s.emailRetentionDescription(ctx), RefundPolicyDescription: refund, QuoteID: makeEmailQuoteID(s.quoteSigningKey, serviceCode, code, addressType, expiresAt), QuoteExpiresAt: expiresAt, Capabilities: p.Capabilities(ctx), ProviderCostEstimate: providerCost, PricingRuleSnapshot: pricingSnapshot}
 		_ = ttl
 		out = append(out, quote)
 	}
@@ -1363,6 +1363,8 @@ func (s *EmailVerificationService) getOrderByID(ctx context.Context, userID, id 
 	case "EMAIL_RECOVERY_REQUIRED":
 		o.ErrorPublicMessage = "Email order is being reconciled"
 	}
+	o.ChannelName = publicVerificationChannelName(o.ChannelCode)
+	o.RefundReason = ""
 	if rate.Valid {
 		o.SuccessRate = &rate.Float64
 	}

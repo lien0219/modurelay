@@ -5,7 +5,6 @@
         <div class="min-w-0">
           <p class="text-xs font-semibold uppercase tracking-[0.14em] text-cyan-600 dark:text-cyan-400">MODURELAY</p>
           <h1 class="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">{{ t('nav.emailService') }}</h1>
-          <p class="mt-1 max-w-3xl text-sm text-gray-500 dark:text-gray-400">{{ t('email.user.description') }}</p>
         </div>
         <button type="button" class="btn btn-secondary" :disabled="loading" :title="t('common.refresh')" :aria-label="t('common.refresh')" @click="loadAll">
           <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" aria-hidden="true" />
@@ -74,7 +73,7 @@
           <button v-for="quote in quotes" :key="quote.quote_id" type="button" class="card p-4 text-left transition" :class="selectedQuote?.quote_id === quote.quote_id ? 'ring-2 ring-primary-500' : ''" @click="selectedQuoteId = quote.quote_id">
             <div class="flex items-center justify-between gap-3">
               <div>
-                <div class="font-semibold text-gray-900 dark:text-white">{{ quote.public_name }}</div>
+                <div class="font-semibold text-gray-900 dark:text-white">{{ emailChannelLabel(quote.channel_code) }}</div>
                 <div class="mt-1 text-xs text-gray-500">{{ privacyLabel(quote.privacy_level) }} · {{ t('email.user.eta') }} {{ quote.estimated_delivery_seconds }}{{ t('email.user.seconds') }}</div>
               </div>
               <strong>{{ priceLabel(quote.sale_price) }}</strong>
@@ -91,7 +90,7 @@
             <div class="min-w-0">
               <div class="flex flex-wrap items-center gap-2">
                 <span class="font-semibold text-gray-900 dark:text-white">{{ statusLabel(currentOrder.status) }}</span>
-                <span class="text-sm text-gray-500">{{ currentOrder.channel_name }}</span>
+                <span class="text-sm text-gray-500">{{ emailChannelLabel(currentOrder.channel_code) }}</span>
               </div>
               <div class="mt-4 grid gap-4 sm:grid-cols-[minmax(260px,1fr)_120px_minmax(220px,1fr)]">
                 <div>
@@ -185,7 +184,7 @@
             </thead>
             <tbody>
               <tr v-for="order in orders" :key="order.id" class="border-b border-gray-100 last:border-0 dark:border-dark-700">
-                <td class="px-4 py-3">{{ order.channel_name }}</td>
+                <td class="px-4 py-3">{{ emailChannelLabel(order.channel_code) }}</td>
                 <td class="px-4 py-3">
                   <div class="flex max-w-[360px] items-center gap-2">
                     <span class="truncate font-mono">{{ order.email_address || '-' }}</span>
@@ -312,6 +311,12 @@ function addressTypeLabel(value: string) {
     outlook_real: 'outlookReal', outlook_alias: 'outlookAlias',
   }
   return t(`email.user.${key[value] || 'gmail'}`)
+}
+function emailChannelLabel(code: string) {
+  const normalized = String(code || '').trim().toLowerCase()
+  if (normalized === 'email_channel_1') return t('email.user.channel1')
+  if (normalized === 'email_channel_2') return t('email.user.channel2')
+  return t('email.user.channel')
 }
 function privacyLabel(value: string) { return value === 'private_api' ? t('email.user.private') : t('email.user.public') }
 function priceLabel(value: number) { return Number(value) === 0 ? t('email.user.free') : `${Number(value).toFixed(4)}` }

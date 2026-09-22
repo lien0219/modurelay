@@ -3843,6 +3843,7 @@ func (s *SMSService) GetOrder(ctx context.Context, userID, orderID int64) (*SMSO
 		return nil, err
 	}
 	o.Capabilities = resolveSMSCapabilities(providerCode, providerBaseURL, capabilities)
+	o.ChannelName = publicVerificationChannelName(o.ChannelCode)
 	if rate.Valid {
 		o.SuccessRate = &rate.Float64
 	}
@@ -4762,6 +4763,10 @@ func (s *SMSService) ListOrders(ctx context.Context, userID int64, admin bool) (
 			return nil, err
 		}
 		o.Capabilities = resolveSMSCapabilities(providerCode, providerBaseURL, capabilities)
+		if !admin {
+			o.ChannelName = publicVerificationChannelName(o.ChannelCode)
+			o.RefundReason = ""
+		}
 		if rate.Valid {
 			o.SuccessRate = &rate.Float64
 		}
@@ -4834,6 +4839,8 @@ func (s *SMSService) ListUserOrdersPage(ctx context.Context, userID int64, page,
 			return nil, err
 		}
 		order.Capabilities = resolveSMSCapabilities(providerCode, providerBaseURL, capabilities)
+		order.ChannelName = publicVerificationChannelName(order.ChannelCode)
+		order.RefundReason = ""
 		if rate.Valid {
 			order.SuccessRate = &rate.Float64
 		}

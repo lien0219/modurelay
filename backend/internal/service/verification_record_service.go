@@ -485,6 +485,7 @@ func (s *VerificationRecordService) List(ctx context.Context, options Verificati
 		} else {
 			item.UserEmail = ""
 			item.ProviderCode = ""
+			item.ChannelName = publicVerificationChannelName(item.ChannelCode)
 			item.RefundReason = ""
 		}
 		items = append(items, item)
