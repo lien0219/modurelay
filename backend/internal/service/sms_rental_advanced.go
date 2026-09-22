@@ -675,4 +675,3 @@ func (s *SMSService) cleanupExpiredRentalQuotes(ctx context.Context) {
 	_, _ = s.db.ExecContext(ctx, `DELETE FROM sms_rental_service_quotes WHERE expires_at < NOW()-INTERVAL '1 hour'`)
 	_, _ = s.db.ExecContext(ctx, `DELETE FROM sms_rental_restore_quotes WHERE expires_at < NOW()-INTERVAL '1 hour'`)
 }
-
