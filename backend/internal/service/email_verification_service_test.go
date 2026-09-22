@@ -563,3 +563,107 @@ func TestNormalizeEmailAddressTypes(t *testing.T) {
 		t.Fatal("unsupported email address type should fail")
 	}
 }
+
+
+type emailAdminTestSettingRepo struct {
+	values map[string]string
+}
+
+func newEmailAdminTestSettingRepo() *emailAdminTestSettingRepo {
+	return &emailAdminTestSettingRepo{values: map[string]string{}}
+}
+
+func (r *emailAdminTestSettingRepo) Get(_ context.Context, key string) (*Setting, error) {
+	value, ok := r.values[key]
+	if !ok {
+		return nil, ErrSettingNotFound
+	}
+	return &Setting{Key: key, Value: value}, nil
+}
+
+func (r *emailAdminTestSettingRepo) GetValue(_ context.Context, key string) (string, error) {
+	value, ok := r.values[key]
+	if !ok {
+		return "", ErrSettingNotFound
+	}
+	return value, nil
+}
+
+func (r *emailAdminTestSettingRepo) Set(_ context.Context, key, value string) error {
+	r.values[key] = value
+	return nil
+}
+
+func (r *emailAdminTestSettingRepo) GetMultiple(_ context.Context, keys []string) (map[string]string, error) {
+	out := map[string]string{}
+	for _, key := range keys {
+		if value, ok := r.values[key]; ok {
+			out[key] = value
+		}
+	}
+	return out, nil
+}
+
+func (r *emailAdminTestSettingRepo) SetMultiple(_ context.Context, values map[string]string) error {
+	for key, value := range values {
+		r.values[key] = value
+	}
+	return nil
+}
+
+func (r *emailAdminTestSettingRepo) GetAll(context.Context) (map[string]string, error) {
+	out := map[string]string{}
+	for key, value := range r.values {
+		out[key] = value
+	}
+	return out, nil
+}
+
+func (r *emailAdminTestSettingRepo) Delete(_ context.Context, key string) error {
+	delete(r.values, key)
+	return nil
+}
+
+func TestEmailAdminSettingsDefaultsAndUpdate(t *testing.T) {
+	repo := newEmailAdminTestSettingRepo()
+	settings := NewSettingService(repo, nil)
+	svc := &EmailVerificationService{settings: settings}
+
+	defaults := svc.AdminSettings(context.Background())
+	if defaults.Enabled || defaults.FreeDailyLimit != 20 || defaults.FreeActiveLimit != 3 || defaults.FreeGenerationIntervalSec != 5 {
+		t.Fatalf("unexpected defaults: %+v", defaults)
+	}
+
+	want := EmailAdminSettings{
+		Enabled:                   true,
+		FreeDailyLimit:            40,
+		FreeActiveLimit:           4,
+		FreeGenerationIntervalSec: 8,
+	}
+	if err := svc.UpdateAdminSettings(context.Background(), want); err != nil {
+		t.Fatal(err)
+	}
+	got := svc.AdminSettings(context.Background())
+	if got != want {
+		t.Fatalf("settings=%+v want %+v", got, want)
+	}
+}
+
+func TestEmailAdminSettingsRejectInvalidLimits(t *testing.T) {
+	repo := newEmailAdminTestSettingRepo()
+	settings := NewSettingService(repo, nil)
+	svc := &EmailVerificationService{settings: settings}
+
+	for _, tc := range []EmailAdminSettings{
+		{FreeDailyLimit: -1, FreeActiveLimit: 3, FreeGenerationIntervalSec: 5},
+		{FreeDailyLimit: 20, FreeActiveLimit: -1, FreeGenerationIntervalSec: 5},
+		{FreeDailyLimit: 20, FreeActiveLimit: 3, FreeGenerationIntervalSec: -1},
+		{FreeDailyLimit: 100001, FreeActiveLimit: 3, FreeGenerationIntervalSec: 5},
+		{FreeDailyLimit: 20, FreeActiveLimit: 1001, FreeGenerationIntervalSec: 5},
+		{FreeDailyLimit: 20, FreeActiveLimit: 3, FreeGenerationIntervalSec: 3601},
+	} {
+		if err := svc.UpdateAdminSettings(context.Background(), tc); err == nil {
+			t.Fatalf("expected invalid settings rejection for %+v", tc)
+		}
+	}
+}
