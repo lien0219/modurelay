@@ -757,7 +757,7 @@ func TestSMSPVAUndeliveredLegacyCaptureIsReturnedExactlyOnce(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	mock.ExpectQuery(`SELECT o.settlement_status,o.first_sms_received_at,\(SELECT COUNT\(\\*\) FROM sms_messages m WHERE m.order_id=o.id\) FROM sms_orders o WHERE o.id=\$1`).
+	mock.ExpectQuery(`SELECT o.settlement_status,o.first_sms_received_at,\(SELECT COUNT\(\*\) FROM sms_messages m WHERE m.order_id=o.id\) FROM sms_orders o WHERE o.id=\$1`).
 		WithArgs(int64(61)).
 		WillReturnRows(sqlmock.NewRows([]string{"settlement_status", "first_sms_received_at", "count"}).AddRow("captured", nil, 0))
 	mock.ExpectBegin()
@@ -789,7 +789,7 @@ func TestSMSPVAUndeliveredHeldSettlementIsReleasedExactlyOnce(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	mock.ExpectQuery(`SELECT o.settlement_status,o.first_sms_received_at,\(SELECT COUNT\(\\*\) FROM sms_messages m WHERE m.order_id=o.id\) FROM sms_orders o WHERE o.id=\$1`).
+	mock.ExpectQuery(`SELECT o.settlement_status,o.first_sms_received_at,\(SELECT COUNT\(\*\) FROM sms_messages m WHERE m.order_id=o.id\) FROM sms_orders o WHERE o.id=\$1`).
 		WithArgs(int64(62)).
 		WillReturnRows(sqlmock.NewRows([]string{"settlement_status", "first_sms_received_at", "count"}).AddRow("held", nil, 0))
 	mock.ExpectBegin()
@@ -821,7 +821,7 @@ func TestSMSPVADeliveryEvidenceBlocksAutomaticReturn(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	mock.ExpectQuery(`SELECT o.settlement_status,o.first_sms_received_at,\(SELECT COUNT\(\\*\) FROM sms_messages m WHERE m.order_id=o.id\) FROM sms_orders o WHERE o.id=\$1`).
+	mock.ExpectQuery(`SELECT o.settlement_status,o.first_sms_received_at,\(SELECT COUNT\(\*\) FROM sms_messages m WHERE m.order_id=o.id\) FROM sms_orders o WHERE o.id=\$1`).
 		WithArgs(int64(63)).
 		WillReturnRows(sqlmock.NewRows([]string{"settlement_status", "first_sms_received_at", "count"}).AddRow("captured", time.Now(), 1))
 
