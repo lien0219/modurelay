@@ -219,14 +219,15 @@
               </article>
             </div>
 
-            <Pagination
-              v-if="postsPage.total"
-              :page="postsPage.page"
-              :total="postsPage.total"
-              :page-size="postsPage.page_size"
-              :show-page-size-selector="false"
-              @update:page="changePage"
-            />
+            <div v-if="postsPage.total" class="forum-pagination">
+              <Pagination
+                :page="postsPage.page"
+                :total="postsPage.total"
+                :page-size="postsPage.page_size"
+                :show-page-size-selector="false"
+                @update:page="changePage"
+              />
+            </div>
           </section>
 
           <aside class="forum-sidebar">
@@ -991,6 +992,10 @@ onMounted(() => {
   margin-top: 12px;
 }
 
+.forum-pagination {
+  margin-top: 20px;
+}
+
 .forum-post {
   min-width: 0;
   padding: 16px;
@@ -1639,6 +1644,10 @@ onMounted(() => {
 
   .forum-post {
     padding: 14px;
+  }
+
+  .forum-pagination {
+    margin-top: 14px;
   }
 
   .forum-post__footer {
