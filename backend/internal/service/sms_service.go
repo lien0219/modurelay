@@ -3301,6 +3301,32 @@ func (s *SMSService) Purchase(ctx context.Context, userID int64, req SMSPurchase
 	defer finalizeCancel()
 	pricing, _ := s.GetPricingSettings(finalizeCtx)
 	expiresAt := smsOrderExpiresAt(time.Now(), req.ProductType, req.DurationValue, req.DurationUnit, purchased.ExpiresAt, time.Duration(pricing.TemporaryExpiryMinutes)*time.Minute)
+	if strings.EqualFold(providerCode, "smspva") && strings.EqualFold(req.ProductType, "rental") {
+		activationVerified := false
+		activationReason := "SMSPVA rental allocation created; activation has not been verified yet"
+		if purchased.Metadata != nil {
+			if value, ok := purchased.Metadata["activation_verified"].(bool); ok {
+				activationVerified = value
+			}
+			if value, ok := purchased.Metadata["activation_error"].(string); ok && strings.TrimSpace(value) != "" {
+				activationReason = strings.TrimSpace(value)
+			}
+		}
+		if !activationVerified {
+			// SMSPVA documents create and activate as separate rental operations.
+			// Persist the known provider order but keep settlement held until a
+			// worker can positively activate it and confirm it in the provider's
+			// active orders list. This prevents a create-only response from being
+			// exposed or billed as a usable long-term number.
+			if _, persistErr := s.db.ExecContext(finalizeCtx, `UPDATE sms_orders SET provider_order_id=$1,phone_number=COALESCE(NULLIF($2,''),phone_number),expires_at=COALESCE($3,expires_at),provider_cost_snapshot=CASE WHEN $4::numeric>0 THEN $4::numeric ELSE provider_cost_snapshot END,operator_code=COALESCE(NULLIF($5,''),operator_code),status='reconciling',reconciliation_action=$6,reconcile_after=NOW()+($7 * INTERVAL '1 second'),last_provider_error=$8,updated_at=NOW() WHERE id=$9 AND settlement_status='held'`, purchased.ProviderOrderID, purchased.PhoneNumber, expiresAt, purchased.ProviderCost, strings.TrimSpace(purchased.ProviderOperatorCode), smsReconciliationPurchase, int(smsVerificationPollInterval.Seconds()), activationReason, orderID); persistErr != nil {
+				return nil, persistErr
+			}
+			if _, persistErr := s.db.ExecContext(finalizeCtx, `UPDATE sms_order_services SET provider_order_id=CASE WHEN provider_order_id='' THEN $1 ELSE provider_order_id END,status='pending',updated_at=NOW() WHERE order_id=$2`, purchased.ProviderOrderID, orderID); persistErr != nil {
+				return nil, persistErr
+			}
+			return s.GetOrder(finalizeCtx, userID, orderID)
+		}
+	}
 	if err = s.activateSMSOrder(finalizeCtx, orderID, userID, purchased.ProviderOrderID, purchased.PhoneNumber, expiresAt, purchased.ProviderCost, purchased.ProviderOperatorCode, req.ProductType, providerCode); err != nil {
 		// Persist the provider reference before returning an uncertain result so
 		// the reconciliation worker can poll this exact order instead of guessing
@@ -4144,6 +4170,11 @@ func (s *SMSService) pollSMSOrder(ctx context.Context, id int64, providerOrder, 
 	if productType == "rental" {
 		if merged, mergeErr := s.mergeRentalServiceStatuses(ctx, p, id, providerOrder, result); mergeErr == nil {
 			result = merged
+		}
+		if strings.EqualFold(providerCode, "smspva") {
+			if _, relationErr := s.db.ExecContext(ctx, `UPDATE sms_order_services SET provider_order_id=CASE WHEN provider_order_id='' THEN $1 ELSE provider_order_id END,status='active',updated_at=NOW() WHERE order_id=$2`, providerOrder, id); relationErr != nil {
+				return relationErr
+			}
 		}
 	}
 	var expiresAt sql.NullTime

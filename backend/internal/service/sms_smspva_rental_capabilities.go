@@ -326,9 +326,10 @@ func (p *smsPVAProvider) PurchaseRentalMulti(ctx context.Context, req SMSPurchas
 		return nil, err
 	}
 	var data struct {
-		ID    json.RawMessage `json:"id"`
-		Phone string          `json:"pnumber"`
-		Until int64           `json:"until"`
+		ID          json.RawMessage `json:"id"`
+		Phone       string          `json:"pnumber"`
+		CallingCode string          `json:"ccode"`
+		Until       int64           `json:"until"`
 	}
 	if err := json.Unmarshal(env.Data, &data); err != nil {
 		return nil, err
@@ -342,9 +343,28 @@ func (p *smsPVAProvider) PurchaseRentalMulti(ctx context.Context, req SMSPurchas
 		t := time.Unix(data.Until, 0)
 		expires = &t
 	}
-	var activation smsPVARentalEnvelope
-	_ = p.rentalRequestJSON(ctx, url.Values{"method": {"activate"}, "id": {id}}, &activation)
-	return &SMSPurchaseResult{ProviderOrderID: id, PhoneNumber: strings.TrimSpace(data.Phone), ExpiresAt: expires}, nil
+	result := &SMSPurchaseResult{
+		ProviderOrderID: id,
+		PhoneNumber:     smsPVACanonicalPhone(data.Phone, data.CallingCode),
+		ExpiresAt:       expires,
+	}
+	order, activationErr := p.verifyRentalActivation(ctx, id)
+	if activationErr != nil {
+		result.Metadata = map[string]any{
+			"activation_verified": false,
+			"activation_error":    activationErr.Error(),
+		}
+		return result, nil
+	}
+	if strings.TrimSpace(order.PhoneNumber) != "" {
+		result.PhoneNumber = strings.TrimSpace(order.PhoneNumber)
+	}
+	if order.Until > 0 {
+		t := time.Unix(order.Until, 0)
+		result.ExpiresAt = &t
+	}
+	result.Metadata = map[string]any{"activation_verified": true}
+	return result, nil
 }
 
 func (p *smsPVAProvider) AddRentalService(ctx context.Context, id, phone, service string, rentDays int) (*SMSPurchaseResult, error) {

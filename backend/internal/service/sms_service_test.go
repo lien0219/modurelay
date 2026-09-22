@@ -1585,7 +1585,7 @@ func TestSMSPVARentalLifecycleUsesOfficialRentContract(t *testing.T) {
 	if err = p.CancelRental(context.Background(), "501"); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"create", "activate", "activate", "orders", "sms", "prolong", "delete"}
+	want := []string{"create", "activate", "orders", "activate", "orders", "sms", "prolong", "delete"}
 	if len(methods) != len(want) {
 		t.Fatalf("methods=%v", methods)
 	}
@@ -1593,6 +1593,39 @@ func TestSMSPVARentalLifecycleUsesOfficialRentContract(t *testing.T) {
 		if methods[i] != want[i] {
 			t.Fatalf("method[%d]=%q want %q", i, methods[i], want[i])
 		}
+	}
+}
+
+func TestSMSPVARentalPurchaseKeepsAllocationPendingWhenActivationIsUnconfirmed(t *testing.T) {
+	var methods []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		methods = append(methods, r.URL.Query().Get("method"))
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Query().Get("method") {
+		case "create":
+			_, _ = w.Write([]byte(`{"status":1,"data":{"id":"902","pnumber":"2025550199","ccode":"+1","until":1893456000}}`))
+		case "activate":
+			_, _ = w.Write([]byte(`{"status":0,"data":[],"msg":"activation temporarily unavailable"}`))
+		default:
+			t.Fatalf("unexpected method: %s", r.URL.Query().Get("method"))
+		}
+	}))
+	defer server.Close()
+
+	p := providerFor("smspva", server.URL, "secret")
+	order, err := p.PurchaseRental(context.Background(), SMSPurchaseRequest{CountryCode: "US", ServiceCode: "telegram", DurationValue: 1, DurationUnit: "week"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if order.ProviderOrderID != "902" || order.PhoneNumber != "+12025550199" {
+		t.Fatalf("order=%#v", order)
+	}
+	verified, _ := order.Metadata["activation_verified"].(bool)
+	if verified {
+		t.Fatalf("activation must remain unverified: %#v", order.Metadata)
+	}
+	if len(methods) != 2 || methods[0] != "create" || methods[1] != "activate" {
+		t.Fatalf("methods=%v", methods)
 	}
 }
 

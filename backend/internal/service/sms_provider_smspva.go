@@ -1175,25 +1175,65 @@ func (p *smsPVAProvider) PurchaseRental(ctx context.Context, req SMSPurchaseRequ
 		t := time.Unix(data.Until, 0)
 		expires = &t
 	}
-	// Rental numbers must be activated before SMS can be delivered. Activation
-	// is retried by status polling as well, because providers may transiently
-	// reject the immediate post-create activation call.
+	result := &SMSPurchaseResult{
+		ProviderOrderID: id,
+		PhoneNumber:     smsPVACanonicalPhone(data.Phone, data.CallingCode),
+		ExpiresAt:       expires,
+	}
+	// SMSPVA's rental contract requires a separate activate call before the
+	// number can receive SMS. A successful create therefore proves allocation,
+	// not usability. Keep the provider order reference even when activation or
+	// the subsequent active-order verification is temporarily unavailable; the
+	// platform will keep the customer's balance held and reconcile this exact
+	// order instead of charging for an unverified number.
+	order, activationErr := p.verifyRentalActivation(ctx, id)
+	if activationErr != nil {
+		result.Metadata = map[string]any{
+			"activation_verified": false,
+			"activation_error":    activationErr.Error(),
+		}
+		return result, nil
+	}
+	if strings.TrimSpace(order.PhoneNumber) != "" {
+		result.PhoneNumber = strings.TrimSpace(order.PhoneNumber)
+	}
+	if order.Until > 0 {
+		t := time.Unix(order.Until, 0)
+		result.ExpiresAt = &t
+	}
+	result.Metadata = map[string]any{"activation_verified": true}
+	return result, nil
+}
+
+func (p *smsPVAProvider) verifyRentalActivation(ctx context.Context, id string) (*SMSRentalProviderOrder, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return nil, errors.New("SMSPVA rental order id is required")
+	}
 	var activation smsPVARentalEnvelope
-	_ = p.rentalRequestJSON(ctx, url.Values{"method": {"activate"}, "id": {id}}, &activation)
-	return &SMSPurchaseResult{ProviderOrderID: id, PhoneNumber: data.Phone, ExpiresAt: expires}, nil
+	if err := p.rentalRequestJSON(ctx, url.Values{"method": {"activate"}, "id": {id}}, &activation); err != nil {
+		return nil, fmt.Errorf("SMSPVA rental activation failed: %w", err)
+	}
+	order, err := p.RentalOrder(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("SMSPVA rental activation verification failed: %w", err)
+	}
+	if order == nil || strings.TrimSpace(order.ID) != id {
+		return nil, errors.New("SMSPVA rental activation verification returned the wrong order")
+	}
+	return order, nil
 }
 
 func (p *smsPVAProvider) GetRentalStatus(ctx context.Context, id string) (*SMSStatusResult, error) {
-	var activation smsPVARentalEnvelope
-	_ = p.rentalRequestJSON(ctx, url.Values{"method": {"activate"}, "id": {strings.TrimSpace(id)}}, &activation)
-	var phone string
+	order, err := p.verifyRentalActivation(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	phone := strings.TrimSpace(order.PhoneNumber)
 	var expiresAt *time.Time
-	if order, err := p.RentalOrder(ctx, strings.TrimSpace(id)); err == nil && order != nil {
-		phone = strings.TrimSpace(order.PhoneNumber)
-		if order.Until > 0 {
-			t := time.Unix(order.Until, 0)
-			expiresAt = &t
-		}
+	if order.Until > 0 {
+		t := time.Unix(order.Until, 0)
+		expiresAt = &t
 	}
 	var env smsPVARentalEnvelope
 	if err := p.rentalRequestJSON(ctx, url.Values{"method": {"sms"}, "id": {strings.TrimSpace(id)}}, &env); err != nil {
