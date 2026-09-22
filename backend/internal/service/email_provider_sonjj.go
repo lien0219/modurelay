@@ -210,7 +210,6 @@ func (p *sonjjProvider) GetMessage(ctx context.Context, req GetMessageRequest) (
 	msg := &ProviderEmailMessage{
 		ProviderMessageID: strings.TrimSpace(req.ProviderMessageID),
 		ToAddress:         strings.TrimSpace(req.EmailAddress),
-		ReceivedAt:        time.Now().UTC(),
 	}
 	if strings.Contains(strings.ToLower(body), "<html") || strings.Contains(strings.ToLower(body), "<body") {
 		msg.HTMLBody = body
