@@ -122,7 +122,7 @@
                 </div>
                 <div>
                   <div class="text-xs text-gray-500">{{ t('email.user.validFor') }}</div>
-                  <strong class="mt-1 block font-mono text-base text-gray-900 dark:text-white">{{ remainingTime }}</strong>
+                  <strong class="mt-1 block font-mono text-base text-gray-900 dark:text-white">{{ isTerminal(currentOrder) ? t('email.user.windowEnded') : remainingTime }}</strong>
                 </div>
                 <div>
                   <div class="text-xs text-gray-500">{{ t('email.user.code') }}</div>
@@ -308,7 +308,7 @@ const addressTypeOptions = computed(() => activeTab.value === 'private'
 const selectedQuote = computed(() => quotes.value.find(item => item.quote_id === selectedQuoteId.value) || quotes.value[0])
 const latestVerificationCode = computed(() => currentOrder.value?.messages?.find(item => item.verification_code)?.verification_code || '')
 const remainingSeconds = computed(() => {
-  if (!currentOrder.value?.expires_at) return 0
+  if (!currentOrder.value?.expires_at || isTerminal(currentOrder.value)) return 0
   return Math.max(0, Math.floor((new Date(currentOrder.value.expires_at).getTime() - now.value) / 1000))
 })
 const remainingTime = computed(() => {
