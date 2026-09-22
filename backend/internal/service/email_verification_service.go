@@ -19,6 +19,7 @@ import (
 	mathrand "math/rand"
 	"net"
 	"net/http"
+	"net/mail"
 	"net/url"
 	"os"
 	"regexp"
@@ -385,14 +386,17 @@ func firstString(m map[string]any, keys ...string) string {
 }
 func parseProviderTime(v string) time.Time {
 	if v == "" {
-		return time.Now().UTC()
+		return time.Time{}
 	}
-	for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02 15:04:05", "2006-01-02T15:04:05.000Z07:00"} {
+	for _, layout := range []string{time.RFC3339Nano, time.RFC3339, time.RFC1123Z, time.RFC1123, "2006-01-02 15:04:05", "2006-01-02T15:04:05.000Z07:00"} {
 		if t, e := time.Parse(layout, v); e == nil {
 			return t
 		}
 	}
-	return time.Now().UTC()
+	if parsed, err := mail.ParseDate(v); err == nil {
+		return parsed
+	}
+	return time.Time{}
 }
 func hashString(v string) string { h := sha256.Sum256([]byte(v)); return hex.EncodeToString(h[:]) }
 
