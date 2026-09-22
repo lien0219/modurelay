@@ -771,6 +771,11 @@ func (s *EmailVerificationService) Quote(ctx context.Context, serviceCode, addre
 		gradeMultiplier, gradeFixedMarkup := s.emailGradePricing(ctx, grade)
 		providerCost := estimateEmailOrderCost(billing)
 		finalPrice, pricingSnapshot := emailSalePrice(price, providerCost, billing, channelMeta, grade, gradeMultiplier, gradeFixedMarkup)
+		if forceFree, ok := channelMeta["force_free"].(bool); ok && forceFree {
+			finalPrice = 0
+			pricingSnapshot["sale_price"] = 0.0
+			pricingSnapshot["force_free"] = true
+		}
 		expiresAt := time.Now().Add(30 * time.Second)
 		quote := EmailPublicChannel{Code: code, PublicName: name, EmailType: emailType, PrivacyLevel: privacy, SalePrice: finalPrice, SuccessRate: rate, SuccessRateGrade: grade, SuccessRateSampleCount: sample, EstimatedDeliverySeconds: 8, RetentionDescription: s.emailRetentionDescription(ctx), RefundPolicyDescription: refund, QuoteID: makeEmailQuoteID(s.quoteSigningKey, serviceCode, code, addressType, expiresAt), QuoteExpiresAt: expiresAt, Capabilities: p.Capabilities(ctx), ProviderCostEstimate: providerCost, PricingRuleSnapshot: pricingSnapshot}
 		_ = ttl
@@ -921,6 +926,50 @@ func normalizeEmailAddressType(value string) (string, error) {
 	}
 }
 
+func (s *EmailVerificationService) emailSettingInt(ctx context.Context, key string, fallback int) int {
+	if s == nil || s.settings == nil || s.settings.settingRepo == nil {
+		return fallback
+	}
+	raw, err := s.settings.settingRepo.GetValue(ctx, key)
+	if err != nil {
+		return fallback
+	}
+	value, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || value < 0 {
+		return fallback
+	}
+	return value
+}
+
+func (s *EmailVerificationService) allowFreePublicInbox(ctx context.Context, userID int64) error {
+	dailyLimit := s.emailSettingInt(ctx, "email_free_daily_limit", 20)
+	activeLimit := s.emailSettingInt(ctx, "email_free_active_limit", 3)
+	intervalSeconds := s.emailSettingInt(ctx, "email_free_generation_interval_seconds", 5)
+
+	var daily, active int
+	var lastCreated sql.NullTime
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT
+			COUNT(*) FILTER (WHERE o.created_at >= CURRENT_DATE),
+			COUNT(*) FILTER (WHERE o.status IN ('reserved','generating_inbox','reconciling','waiting_email','email_received','verification_extracted')),
+			MAX(o.created_at)
+		FROM email_orders o
+		JOIN email_providers p ON p.id=o.provider_id
+		WHERE o.user_id=$1 AND p.code='temp_tf'`, userID).Scan(&daily, &active, &lastCreated); err != nil {
+		return err
+	}
+	if dailyLimit > 0 && daily >= dailyLimit {
+		return errors.New("free email daily limit reached")
+	}
+	if activeLimit > 0 && active >= activeLimit {
+		return errors.New("too many active free inboxes")
+	}
+	if intervalSeconds > 0 && lastCreated.Valid && time.Since(lastCreated.Time) < time.Duration(intervalSeconds)*time.Second {
+		return errors.New("please wait before creating another free inbox")
+	}
+	return nil
+}
+
 func (s *EmailVerificationService) Purchase(ctx context.Context, userID int64, req EmailPurchaseRequest, idempotencyKey string) (*EmailOrder, error) {
 	if !s.Enabled(ctx) {
 		return nil, ErrEmailFeatureDisabled
@@ -978,6 +1027,11 @@ func (s *EmailVerificationService) Purchase(ctx context.Context, userID int64, r
 	p := emailProviderFor(providerCode, base, cred, metadata, s.encryptor, billing)
 	if p == nil {
 		return nil, ErrEmailChannelUnavailable
+	}
+	if strings.EqualFold(providerCode, "temp_tf") {
+		if err := s.allowFreePublicInbox(ctx, userID); err != nil {
+			return nil, err
+		}
 	}
 	if !s.emailQuotaAllowsNewOrder(ctx, providerID) {
 		return nil, ErrEmailChannelUnavailable
