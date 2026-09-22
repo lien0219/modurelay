@@ -4258,7 +4258,13 @@ func (s *SMSService) convergeSMSProviderStatus(ctx context.Context, id int64, st
 		}
 	case "failed", "cancelled", "canceled", "expired":
 		if settlementStatus == "held" {
-			return s.releaseSMSHold(ctx, id, userID, status, "provider ended the order before allocation was confirmed")
+			if strings.EqualFold(providerCode, "smspva") && strings.EqualFold(productType, "temporary") && firstSMSReceivedAt.Valid {
+				// Delivery evidence wins over a later terminal provider state.
+				// If a previous capture attempt failed, capture the held amount
+				// now rather than giving away a delivered verification SMS.
+				return s.captureSMSSettlement(ctx, id, userID)
+			}
+			return s.releaseSMSHold(ctx, id, userID, status, "provider ended the order before SMS delivery")
 		}
 		if settlementStatus == "captured" && providerCode == "5sim" && (status == "cancelled" || status == "canceled" || status == "expired") {
 			s.markProviderRefund(ctx, id, "succeeded", "5SIM confirmed cancellation/timeout; provider refund is automatic")
