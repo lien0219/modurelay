@@ -102,14 +102,18 @@ func (w *EmailVerificationWorker) runOnce() {
 }
 
 // Reconcile repairs local states after process/DB interruptions without
-// guessing that a timed-out provider request failed. Unknown generation stays
-// in RECONCILING until expiry or an administrator resolves it; no duplicate
-// inbox is generated automatically.
+// guessing that a timed-out provider request failed. Fresh RESERVED/
+// GENERATING_INBOX rows are left alone long enough for the synchronous
+// provider request to finish; only stale rows enter recovery. Unknown
+// generation stays in RECONCILING until expiry or an administrator resolves
+// it; no duplicate inbox is generated automatically.
+const emailGenerationRecoveryGraceSeconds int64 = 60
+
 func (s *EmailVerificationService) Reconcile(ctx context.Context) error {
 	if s == nil || s.db == nil {
 		return nil
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT id,user_id,status,expires_at,refund_policy_snapshot,sale_price_snapshot,provider_inbox_id,email_address FROM email_orders WHERE status IN ('reserved','generating_inbox','reconciling') ORDER BY updated_at LIMIT 100`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id,user_id,status,expires_at,refund_policy_snapshot,sale_price_snapshot,provider_inbox_id,email_address FROM email_orders WHERE status='reconciling' OR (status IN ('reserved','generating_inbox') AND updated_at <= NOW() - ($1 * INTERVAL '1 second')) ORDER BY updated_at LIMIT 100`, emailGenerationRecoveryGraceSeconds)
 	if err != nil {
 		return err
 	}

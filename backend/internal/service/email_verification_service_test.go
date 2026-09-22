@@ -312,7 +312,8 @@ func TestReconcileRefundsUndeliveredInboxForNoRefundAfterDeliveryPolicy(t *testi
 	}
 	defer func() { _ = db.Close() }()
 
-	mock.ExpectQuery(`SELECT id,user_id,status,expires_at,refund_policy_snapshot,sale_price_snapshot,provider_inbox_id,email_address FROM email_orders`).
+	mock.ExpectQuery(`SELECT id,user_id,status,expires_at,refund_policy_snapshot,sale_price_snapshot,provider_inbox_id,email_address FROM email_orders WHERE status='reconciling' OR \(status IN \('reserved','generating_inbox'\) AND updated_at <= NOW\(\) - \(\$1 \* INTERVAL '1 second'\)\)`).
+		WithArgs(emailGenerationRecoveryGraceSeconds).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "user_id", "status", "expires_at", "refund_policy_snapshot", "sale_price_snapshot", "provider_inbox_id", "email_address"}).
 			AddRow(int64(21), int64(8), "reconciling", time.Now().Add(-time.Minute), EmailNoRefundAfterDelivery, 0.75, "", ""))
 	mock.ExpectBegin()
@@ -345,7 +346,8 @@ func TestReconcileCapturesDeliveredInboxForNoRefundAfterDeliveryPolicy(t *testin
 	}
 	defer func() { _ = db.Close() }()
 
-	mock.ExpectQuery(`SELECT id,user_id,status,expires_at,refund_policy_snapshot,sale_price_snapshot,provider_inbox_id,email_address FROM email_orders`).
+	mock.ExpectQuery(`SELECT id,user_id,status,expires_at,refund_policy_snapshot,sale_price_snapshot,provider_inbox_id,email_address FROM email_orders WHERE status='reconciling' OR \(status IN \('reserved','generating_inbox'\) AND updated_at <= NOW\(\) - \(\$1 \* INTERVAL '1 second'\)\)`).
+		WithArgs(emailGenerationRecoveryGraceSeconds).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "user_id", "status", "expires_at", "refund_policy_snapshot", "sale_price_snapshot", "provider_inbox_id", "email_address"}).
 			AddRow(int64(22), int64(9), "reconciling", time.Now().Add(-time.Minute), EmailNoRefundAfterDelivery, 0.8, "inbox-22", "user@gmail.com"))
 	mock.ExpectBegin()
@@ -378,7 +380,8 @@ func TestReconcileCapturesDeliveredInboxForRefundIfNoMessagePolicy(t *testing.T)
 	}
 	defer func() { _ = db.Close() }()
 
-	mock.ExpectQuery(`SELECT id,user_id,status,expires_at,refund_policy_snapshot,sale_price_snapshot,provider_inbox_id,email_address FROM email_orders`).
+	mock.ExpectQuery(`SELECT id,user_id,status,expires_at,refund_policy_snapshot,sale_price_snapshot,provider_inbox_id,email_address FROM email_orders WHERE status='reconciling' OR \(status IN \('reserved','generating_inbox'\) AND updated_at <= NOW\(\) - \(\$1 \* INTERVAL '1 second'\)\)`).
+		WithArgs(emailGenerationRecoveryGraceSeconds).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "user_id", "status", "expires_at", "refund_policy_snapshot", "sale_price_snapshot", "provider_inbox_id", "email_address"}).
 			AddRow(int64(23), int64(10), "reconciling", time.Now().Add(-time.Minute), EmailRefundIfNoMessage, 0.9, "inbox-23", "user@gmail.com"))
 	mock.ExpectBegin()
