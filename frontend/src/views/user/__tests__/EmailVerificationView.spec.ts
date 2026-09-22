@@ -84,7 +84,8 @@ describe('EmailVerificationView', () => {
     })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('email.user.publicPrivacyWarning')
+    expect(wrapper.text()).not.toContain('email.user.publicPrivacyWarning')
+    expect(wrapper.text()).not.toContain('email.user.privatePrivacyHint')
     expect(wrapper.text()).not.toContain('email.user.selectService')
 
     const quoteButton = wrapper.findAll('button').find(button => button.text() === 'email.user.getQuote')

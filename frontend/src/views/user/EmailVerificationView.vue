@@ -46,9 +46,6 @@
             <div>
               <div class="mb-2 text-xs font-semibold text-gray-500">2 · {{ t('email.user.addressType') }}</div>
               <Select v-model="addressType" :options="addressTypeOptions" />
-              <div class="mt-3 rounded-lg border p-3 text-xs leading-5" :class="activeTab === 'public' ? 'border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200' : 'border-blue-200 bg-blue-50 text-blue-900 dark:border-blue-800 dark:bg-blue-950/30 dark:text-blue-200'">
-                {{ activeTab === 'public' ? t('email.user.publicPrivacyWarning') : t('email.user.privatePrivacyHint') }}
-              </div>
             </div>
 
             <div>
