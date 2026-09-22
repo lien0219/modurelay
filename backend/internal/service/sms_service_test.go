@@ -1852,3 +1852,34 @@ func TestListPublicProvidersReturnsChannelAliasesNotSupplierIdentity(t *testing.
 		t.Fatal(err)
 	}
 }
+
+
+func TestPersistProviderServicesReturnsCatalogWriteError(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectQuery(`SELECT id FROM sms_providers WHERE code=\\$1`).
+		WithArgs("smspva").
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(int64(2)))
+	mock.ExpectExec(`INSERT INTO sms_provider_catalog_services`).
+		WithArgs(int64(2), "opt2", "Facebook", "rental", sqlmock.AnyArg()).
+		WillReturnError(errors.New("catalog write failed"))
+
+	svc := &SMSService{db: db}
+	_, err = svc.persistProviderServices(context.Background(), "smspva", []SMSSvcCatalogItem{{
+		Code:             "opt2",
+		Name:             "Facebook",
+		ProviderCode:     "opt2",
+		Category:         "rental",
+		ProviderIconPath: "images/ico/facebook.ico",
+	}})
+	if err == nil || !strings.Contains(err.Error(), "persist SMS provider service catalog") {
+		t.Fatalf("expected catalog persistence error, got %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
