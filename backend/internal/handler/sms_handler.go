@@ -33,6 +33,7 @@ func (h *SMSHandler) Enabled(ctx context.Context) bool {
 type smsQuoteRequest struct {
 	ProviderCode  string `form:"provider" json:"provider_code"`
 	ServiceCode   string `form:"service" json:"service_code"`
+	Services      string `form:"services" json:"services"`
 	CountryCode   string `form:"country" json:"country_code"`
 	ProductType   string `form:"product_type" json:"product_type"`
 	OperatorCode  string `form:"operator" json:"operator_code"`
@@ -85,7 +86,22 @@ func (h *SMSHandler) Quotes(c *gin.Context) {
 	if req.ProductType == "" {
 		req.ProductType = "temporary"
 	}
-	quotes, err := h.svc.Quote(c.Request.Context(), subject.UserID, service.SMSQuoteRequest{ProviderCode: req.ProviderCode, ServiceCode: req.ServiceCode, CountryCode: req.CountryCode, ProductType: req.ProductType, OperatorCode: strings.TrimSpace(req.OperatorCode), VoiceMode: req.VoiceMode, DurationValue: req.DurationValue, DurationUnit: strings.ToLower(strings.TrimSpace(req.DurationUnit))})
+	internalProviderCode := ""
+	if req.ProviderCode != "" {
+		var resolveErr error
+		internalProviderCode, resolveErr = h.svc.ResolvePublicChannelProvider(c.Request.Context(), req.ProviderCode)
+		if resolveErr != nil {
+			response.ErrorWithDetails(c, http.StatusServiceUnavailable, "The selected channel is temporarily unavailable", "PROVIDER_UNAVAILABLE", nil)
+			return
+		}
+	}
+	serviceCodes := []string{}
+	for _, value := range strings.Split(req.Services, ",") {
+		if value = strings.TrimSpace(value); value != "" {
+			serviceCodes = append(serviceCodes, value)
+		}
+	}
+	quotes, err := h.svc.Quote(c.Request.Context(), subject.UserID, service.SMSQuoteRequest{ProviderCode: internalProviderCode, ServiceCode: req.ServiceCode, ServiceCodes: serviceCodes, CountryCode: req.CountryCode, ProductType: req.ProductType, OperatorCode: strings.TrimSpace(req.OperatorCode), VoiceMode: req.VoiceMode, DurationValue: req.DurationValue, DurationUnit: strings.ToLower(strings.TrimSpace(req.DurationUnit))})
 	if err != nil {
 		if err == service.ErrSMSFeatureDisabled {
 			response.ErrorWithDetails(c, http.StatusNotFound, "SMS Verification is unavailable", "FEATURE_DISABLED", nil)
@@ -161,7 +177,12 @@ func (h *SMSHandler) ProviderServices(c *gin.Context) {
 		return
 	}
 	durationValue, _ := strconv.Atoi(strings.TrimSpace(c.DefaultQuery("duration_value", "0")))
-	items, err := h.svc.ProviderServicesForProduct(c.Request.Context(), c.Param("provider"), c.DefaultQuery("product_type", "temporary"), durationValue, c.Query("duration_unit"))
+	providerCode, err := h.svc.ResolvePublicChannelProvider(c.Request.Context(), c.Param("provider"))
+	if err != nil {
+		response.ErrorWithDetails(c, http.StatusServiceUnavailable, "The selected channel is temporarily unavailable", "PROVIDER_UNAVAILABLE", nil)
+		return
+	}
+	items, err := h.svc.ProviderServicesForProduct(c.Request.Context(), providerCode, c.DefaultQuery("product_type", "temporary"), durationValue, c.Query("duration_unit"))
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -224,7 +245,12 @@ func (h *SMSHandler) ProviderOperators(c *gin.Context) {
 		return
 	}
 	durationValue, _ := strconv.Atoi(strings.TrimSpace(c.DefaultQuery("duration_value", "0")))
-	items, err := h.svc.ProviderOperatorsForProduct(c.Request.Context(), c.Param("provider"), c.Param("service"), c.Param("country"), c.DefaultQuery("product_type", "temporary"), voiceMode, durationValue, c.Query("duration_unit"))
+	providerCode, err := h.svc.ResolvePublicChannelProvider(c.Request.Context(), c.Param("provider"))
+	if err != nil {
+		response.ErrorWithDetails(c, http.StatusServiceUnavailable, "The selected channel is temporarily unavailable", "PROVIDER_UNAVAILABLE", nil)
+		return
+	}
+	items, err := h.svc.ProviderOperatorsForProduct(c.Request.Context(), providerCode, c.Param("service"), c.Param("country"), c.DefaultQuery("product_type", "temporary"), voiceMode, durationValue, c.Query("duration_unit"))
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -251,10 +277,18 @@ func (h *SMSHandler) ServiceCountries(c *gin.Context) {
 	}
 	serviceCode := strings.ToLower(strings.TrimSpace(c.Param("service")))
 	durationValue, _ := strconv.Atoi(strings.TrimSpace(c.DefaultQuery("duration_value", "0")))
-	items, err := h.svc.CountriesForProviderServiceProduct(c.Request.Context(), c.Param("provider"), serviceCode, c.DefaultQuery("product_type", "temporary"), durationValue, c.Query("duration_unit"))
+	internalProviderCode, err := h.svc.ResolvePublicChannelProvider(c.Request.Context(), c.Param("provider"))
+	if err != nil {
+		response.ErrorWithDetails(c, http.StatusServiceUnavailable, "The selected channel is temporarily unavailable", "PROVIDER_UNAVAILABLE", nil)
+		return
+	}
+	items, err := h.svc.CountriesForProviderServiceProduct(c.Request.Context(), internalProviderCode, serviceCode, c.DefaultQuery("product_type", "temporary"), durationValue, c.Query("duration_unit"))
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
+	}
+	for i := range items {
+		items[i].ProviderCode = ""
 	}
 	localizeSMSCountryCatalog(items)
 	for i := range items {
@@ -396,6 +430,7 @@ func (h *SMSHandler) ServiceCountries(c *gin.Context) {
 type smsPurchaseRequest struct {
 	ChannelCode   string   `json:"channel_code"`
 	ServiceCode   string   `json:"service_code"`
+	ServiceCodes  []string `json:"service_codes"`
 	CountryCode   string   `json:"country_code"`
 	ProductType   string   `json:"product_type"`
 	OperatorCode  string   `json:"operator_code"`
@@ -424,7 +459,7 @@ func (h *SMSHandler) Purchase(c *gin.Context) {
 	if req.ProductType == "" {
 		req.ProductType = "temporary"
 	}
-	order, err := h.svc.Purchase(c.Request.Context(), subject.UserID, service.SMSPurchaseRequest{ChannelCode: strings.TrimSpace(req.ChannelCode), ServiceCode: strings.ToLower(strings.TrimSpace(req.ServiceCode)), CountryCode: strings.ToUpper(strings.TrimSpace(req.CountryCode)), ProductType: req.ProductType, OperatorCode: strings.TrimSpace(req.OperatorCode), VoiceMode: req.VoiceMode, DurationValue: req.DurationValue, DurationUnit: req.DurationUnit, QuoteID: strings.TrimSpace(req.QuoteID)}, c.GetHeader("Idempotency-Key"), req.ExpectedPrice)
+	order, err := h.svc.Purchase(c.Request.Context(), subject.UserID, service.SMSPurchaseRequest{ChannelCode: strings.TrimSpace(req.ChannelCode), ServiceCode: strings.ToLower(strings.TrimSpace(req.ServiceCode)), ServiceCodes: req.ServiceCodes, CountryCode: strings.ToUpper(strings.TrimSpace(req.CountryCode)), ProductType: req.ProductType, OperatorCode: strings.TrimSpace(req.OperatorCode), VoiceMode: req.VoiceMode, DurationValue: req.DurationValue, DurationUnit: req.DurationUnit, QuoteID: strings.TrimSpace(req.QuoteID)}, c.GetHeader("Idempotency-Key"), req.ExpectedPrice)
 	if err != nil {
 		switch err {
 		case service.ErrSMSFeatureDisabled:
@@ -465,7 +500,7 @@ func (h *SMSHandler) PurchaseBatch(c *gin.Context) {
 	items := make([]service.SMSPurchaseRequest, 0, len(req.Items))
 	prices := make([]*float64, 0, len(req.Items))
 	for _, item := range req.Items {
-		items = append(items, service.SMSPurchaseRequest{ChannelCode: strings.TrimSpace(item.ChannelCode), ServiceCode: strings.ToLower(strings.TrimSpace(item.ServiceCode)), CountryCode: strings.ToUpper(strings.TrimSpace(item.CountryCode)), ProductType: item.ProductType, OperatorCode: strings.TrimSpace(item.OperatorCode), VoiceMode: item.VoiceMode, DurationValue: item.DurationValue, DurationUnit: item.DurationUnit, QuoteID: strings.TrimSpace(item.QuoteID)})
+		items = append(items, service.SMSPurchaseRequest{ChannelCode: strings.TrimSpace(item.ChannelCode), ServiceCode: strings.ToLower(strings.TrimSpace(item.ServiceCode)), ServiceCodes: item.ServiceCodes, CountryCode: strings.ToUpper(strings.TrimSpace(item.CountryCode)), ProductType: item.ProductType, OperatorCode: strings.TrimSpace(item.OperatorCode), VoiceMode: item.VoiceMode, DurationValue: item.DurationValue, DurationUnit: item.DurationUnit, QuoteID: strings.TrimSpace(item.QuoteID)})
 		prices = append(prices, item.ExpectedPrice)
 	}
 	orders, err := h.svc.PurchaseBatch(c.Request.Context(), subject.UserID, items, c.GetHeader("Idempotency-Key"), prices)
@@ -684,6 +719,121 @@ func (h *SMSHandler) RefundStatus(c *gin.Context) {
 	}
 	response.Success(c, gin.H{"status": order.RefundStatus, "reason": order.RefundReason})
 }
+func (h *SMSHandler) RentalServiceOptions(c *gin.Context) {
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	rentDays, err := strconv.Atoi(strings.TrimSpace(c.DefaultQuery("rent_days", "7")))
+	if err != nil || rentDays <= 0 {
+		response.BadRequest(c, "invalid rent_days")
+		return
+	}
+	items, err := h.svc.RentalServiceOptions(c.Request.Context(), subject.UserID, c.Param("id"), rentDays)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, items)
+}
+
+func (h *SMSHandler) RentalServiceQuote(c *gin.Context) {
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	var req struct {
+		ServiceCode string `json:"service_code"`
+		RentDays    int    `json:"rent_days"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.ServiceCode) == "" || req.RentDays <= 0 {
+		response.BadRequest(c, "invalid rental service quote request")
+		return
+	}
+	quote, err := h.svc.CreateRentalServiceQuote(c.Request.Context(), subject.UserID, c.Param("id"), req.ServiceCode, req.RentDays)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, quote)
+}
+
+func (h *SMSHandler) AddRentalService(c *gin.Context) {
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	var req struct {
+		QuoteID       string   `json:"quote_id"`
+		ExpectedPrice *float64 `json:"expected_price"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.QuoteID) == "" {
+		response.BadRequest(c, "invalid rental service purchase request")
+		return
+	}
+	order, err := h.svc.AddRentalService(c.Request.Context(), subject.UserID, c.Param("id"), req.QuoteID, c.GetHeader("Idempotency-Key"), req.ExpectedPrice)
+	if err != nil {
+		switch err {
+		case service.ErrSMSPriceChanged:
+			response.ErrorWithDetails(c, http.StatusConflict, "Price changed; refresh the quote and try again", "PRICE_CHANGED", nil)
+		case service.ErrSMSInsufficientBalance:
+			response.ErrorWithDetails(c, http.StatusPaymentRequired, "Insufficient balance", "INSUFFICIENT_BALANCE", nil)
+		case service.ErrSMSProviderUnknown:
+			response.ErrorWithDetails(c, http.StatusAccepted, "The provider result is being reconciled", "ORDER_RECONCILING", nil)
+		default:
+			response.ErrorFrom(c, err)
+		}
+		return
+	}
+	response.Success(c, order)
+}
+
+func (h *SMSHandler) RentalRestoreQuote(c *gin.Context) {
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	quote, err := h.svc.CreateRentalRestoreQuote(c.Request.Context(), subject.UserID, c.Param("id"))
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, quote)
+}
+
+func (h *SMSHandler) RestoreRental(c *gin.Context) {
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	var req struct {
+		QuoteID       string   `json:"quote_id"`
+		ExpectedPrice *float64 `json:"expected_price"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.QuoteID) == "" {
+		response.BadRequest(c, "invalid rental restore request")
+		return
+	}
+	order, err := h.svc.RestoreRentalOrder(c.Request.Context(), subject.UserID, c.Param("id"), req.QuoteID, c.GetHeader("Idempotency-Key"), req.ExpectedPrice)
+	if err != nil {
+		switch err {
+		case service.ErrSMSPriceChanged:
+			response.ErrorWithDetails(c, http.StatusConflict, "Price changed; refresh the quote and try again", "PRICE_CHANGED", nil)
+		case service.ErrSMSInsufficientBalance:
+			response.ErrorWithDetails(c, http.StatusPaymentRequired, "Insufficient balance", "INSUFFICIENT_BALANCE", nil)
+		default:
+			response.ErrorFrom(c, err)
+		}
+		return
+	}
+	response.Success(c, order)
+}
+
 func (h *SMSHandler) ServiceIcon(c *gin.Context) {
 	// User-facing icon URLs are provider-neutral. The service resolves the
 	// catalog's trusted upstream internally; no provider identifier belongs in

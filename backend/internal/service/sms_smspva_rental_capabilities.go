@@ -97,11 +97,7 @@ func rawBool(v json.RawMessage) bool {
 	return text == "true" || text == "1"
 }
 
-func (p *smsPVAProvider) RentalOrder(ctx context.Context, id string) (*SMSRentalProviderOrder, error) {
-	id = strings.TrimSpace(id)
-	if id == "" {
-		return nil, errors.New("rental order id is required")
-	}
+func (p *smsPVAProvider) RentalOrders(ctx context.Context) ([]SMSRentalProviderOrder, error) {
 	var env smsPVARentalEnvelope
 	if err := p.rentalRequestJSON(ctx, url.Values{"method": {"orders"}}, &env); err != nil {
 		return nil, err
@@ -123,16 +119,13 @@ func (p *smsPVAProvider) RentalOrder(ctx context.Context, id string) (*SMSRental
 	if err := json.Unmarshal(env.Data, &rows); err != nil {
 		return nil, err
 	}
-	var found *SMSRentalProviderOrder
+	out := make([]SMSRentalProviderOrder, 0, len(rows))
 	for _, row := range rows {
 		rowID := rawString(row.ID)
-		if rowID != id {
+		if rowID == "" {
 			continue
 		}
-		if found != nil {
-			return nil, errors.New("SMSPVA returned duplicate rental order ids")
-		}
-		found = &SMSRentalProviderOrder{
+		out = append(out, SMSRentalProviderOrder{
 			ID:              rowID,
 			ServiceCode:     strings.ToLower(strings.TrimSpace(row.ServiceCode)),
 			ServiceName:     strings.TrimSpace(row.ServiceName),
@@ -145,7 +138,30 @@ func (p *smsPVAProvider) RentalOrder(ctx context.Context, id string) (*SMSRental
 			CanProlongMax:   int(rawInt64(row.CanProlongMax)),
 			CanProlongUntil: rawInt64(row.CanProlongUntil),
 			LastOnline:      rawInt64(row.LastOnline),
+		})
+	}
+	return out, nil
+}
+
+func (p *smsPVAProvider) RentalOrder(ctx context.Context, id string) (*SMSRentalProviderOrder, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return nil, errors.New("rental order id is required")
+	}
+	rows, err := p.RentalOrders(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var found *SMSRentalProviderOrder
+	for i := range rows {
+		if rows[i].ID != id {
+			continue
 		}
+		if found != nil {
+			return nil, errors.New("SMSPVA returned duplicate rental order ids")
+		}
+		item := rows[i]
+		found = &item
 	}
 	if found == nil {
 		return nil, errors.New("SMSPVA rental order was not found in active orders")

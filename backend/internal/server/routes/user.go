@@ -208,6 +208,11 @@ func RegisterUserRoutes(
 			sms.GET("/rentals", h.SMS.Orders)
 			sms.GET("/rentals/:id", h.SMS.Order)
 			sms.GET("/rentals/:id/constraints", h.SMS.RentalConstraints)
+			sms.GET("/rentals/:id/services", h.SMS.RentalServiceOptions)
+			sms.POST("/rentals/:id/services/quotes", h.SMS.RentalServiceQuote)
+			sms.POST("/rentals/:id/services", h.SMS.AddRentalService)
+			sms.POST("/rentals/:id/restore-quote", h.SMS.RentalRestoreQuote)
+			sms.POST("/rentals/:id/restore", h.SMS.RestoreRental)
 			sms.POST("/rentals/:id/extend", h.SMS.ExtendRental)
 		}
 

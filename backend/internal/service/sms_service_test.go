@@ -75,6 +75,17 @@ func TestSMSPVAWebhookIsFailClosedBeforeDatabaseLookup(t *testing.T) {
 	}
 }
 
+func TestSMSPVAAdvancedRentalCapabilitiesAreSafelyGated(t *testing.T) {
+	p := providerFor("smspva", "https://example.invalid", "test-key")
+	cap := p.Capabilities(context.Background())
+	if !cap.Rental || !cap.Extend || !cap.RentalConstraints || cap.RentalRestore {
+		t.Fatalf("SMSPVA safe rental capabilities = %#v", cap)
+	}
+	if cap.RentalMultiService || cap.RentalAddService {
+		t.Fatalf("unverified SMSPVA billing features must remain gated: %#v", cap)
+	}
+}
+
 func TestSMSOrderCapabilitiesPreferRegisteredAdapter(t *testing.T) {
 	if got := resolveSMSCapabilities("pingme", "https://example.invalid", []byte(`{}`)); !got.Extend || !got.Rental {
 		t.Fatalf("PingMe adapter capabilities = %#v", got)
@@ -94,8 +105,8 @@ func TestSMSListPublicProvidersUsesOpaqueChannelAllowlist(t *testing.T) {
 
 	mock.ExpectQuery(`(?s)SELECT c\.code,c\.public_name.*WHERE lower\(c\.code\) IN \('channel_1','channel_2'\).*ORDER BY c\.sort_order,c\.id`).
 		WillReturnRows(sqlmock.NewRows([]string{
-			"code", "public_name", "provider_code", "base_url", "enabled", "health_status", "credential_ref", "capabilities", "channel_ready",
-		}).AddRow("channel_2", "Channel 2", "smspva", "https://example.invalid", false, "disabled", "", []byte(`{}`), false))
+			"code", "public_name", "provider_code", "base_url", "enabled", "health_status", "credential_ref", "capabilities", "channel_enabled", "channel_visible", "channel_healthy",
+		}).AddRow("channel_2", "Channel 2", "smspva", "https://example.invalid", false, "disabled", "", []byte(`{}`), false, true, false))
 
 	providers, err := (&SMSService{db: db}).ListPublicProviders(context.Background())
 	if err != nil {
@@ -696,6 +707,9 @@ func TestSMSActivateOrderPersistsFractionalProviderCost(t *testing.T) {
 	mock.ExpectExec(`UPDATE users SET frozen_balance`).
 		WithArgs(5.8, int64(1)).
 		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`UPDATE sms_order_services`).
+		WithArgs("1094764603", int64(28)).
+		WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectCommit()
 
 	svc := &SMSService{db: db}
@@ -1588,9 +1602,9 @@ func newSMSIconServiceTest(t *testing.T, serviceCode, iconPath string) (*SMSServ
 	if err != nil {
 		t.Fatalf("sqlmock.New: %v", err)
 	}
-	mock.ExpectQuery(`SELECT COALESCE\(c\.raw_metadata->>'icon_path',''\)`).
-		WithArgs("smspva", serviceCode).
-		WillReturnRows(sqlmock.NewRows([]string{"icon_path"}).AddRow(iconPath))
+	mock.ExpectQuery(`SELECT p\.code,COALESCE\(c\.raw_metadata->>'icon_path',''\)`).
+		WithArgs(serviceCode).
+		WillReturnRows(sqlmock.NewRows([]string{"provider_code", "icon_path"}).AddRow("smspva", iconPath))
 	return &SMSService{db: db}, db, mock
 }
 
@@ -1649,7 +1663,7 @@ func TestSMSServiceIconRejectsUnsupportedMIME(t *testing.T) {
 		}, nil
 	})})
 	_, _, err := service.ServiceIcon(context.Background(), "", "mime")
-	if err == nil || !strings.Contains(err.Error(), "unsupported content type") {
+	if err == nil || !strings.Contains(err.Error(), "supported image") {
 		t.Fatalf("unsupported MIME should be rejected, err=%v", err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
@@ -1703,16 +1717,16 @@ func TestSMSServiceIconCachesSuccessfulResponse(t *testing.T) {
 	service, db, mock := newSMSIconServiceTest(t, "cached", "images/ico/cached.png")
 	defer db.Close()
 	defer clearSMSIconCache("cached", "images/ico/cached.png")
-	mock.ExpectQuery(`SELECT COALESCE\(c\.raw_metadata->>'icon_path',''\)`).
-		WithArgs("smspva", "cached").
-		WillReturnRows(sqlmock.NewRows([]string{"icon_path"}).AddRow("images/ico/cached.png"))
+	mock.ExpectQuery(`SELECT p\.code,COALESCE\(c\.raw_metadata->>'icon_path',''\)`).
+		WithArgs("cached").
+		WillReturnRows(sqlmock.NewRows([]string{"provider_code", "icon_path"}).AddRow("smspva", "images/ico/cached.png"))
 	requests := 0
 	withSMSIconHTTPClient(t, service, &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		requests++
 		return &http.Response{
 			StatusCode: http.StatusOK,
 			Header:     http.Header{"Content-Type": []string{"image/png; charset=binary"}},
-			Body:       io.NopCloser(strings.NewReader("png")),
+			Body:       io.NopCloser(strings.NewReader(string([]byte{0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a}))),
 			Request:    req,
 		}, nil
 	})})
@@ -1724,11 +1738,115 @@ func TestSMSServiceIconCachesSuccessfulResponse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(first) != "png" || string(second) != "png" || firstType != "image/png" || secondType != "image/png" {
+	if firstType != "image/png" || secondType != "image/png" || len(first) == 0 || len(second) == 0 {
 		t.Fatalf("unexpected cached payload: first=%q/%q second=%q/%q", first, firstType, second, secondType)
 	}
 	if requests != 1 {
 		t.Fatalf("expected one upstream request for cache hit, got %d", requests)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestFilterNewSMSPVARentalOrderRequiresMatchingRestoreEvidence(t *testing.T) {
+	baseline := map[string]struct{}{"old": {}}
+	orders := []SMSRentalProviderOrder{
+		{ID: "old", ServiceCode: "opt9", CountryCode: "LT", PhoneNumber: "37067787324"},
+		{ID: "wrong-phone", ServiceCode: "opt9", CountryCode: "LT", PhoneNumber: "37060000000"},
+		{ID: "wrong-country", ServiceCode: "opt9", CountryCode: "US", PhoneNumber: "37067787324"},
+		{ID: "restored", ServiceCode: "opt9", CountryCode: "LT", PhoneNumber: "+37067787324"},
+	}
+	got := filterNewSMSPVARentalOrder(orders, baseline, "opt9", "LT", "37067787324")
+	if got == nil || got.ID != "restored" {
+		t.Fatalf("restore candidate=%#v", got)
+	}
+}
+
+func TestFilterNewSMSPVARentalOrderFailsClosedOnAmbiguousCandidates(t *testing.T) {
+	orders := []SMSRentalProviderOrder{
+		{ID: "a", ServiceCode: "opt9", CountryCode: "LT", PhoneNumber: "37067787324"},
+		{ID: "b", ServiceCode: "opt9", CountryCode: "LT", PhoneNumber: "+37067787324"},
+	}
+	if got := filterNewSMSPVARentalOrder(orders, map[string]struct{}{}, "opt9", "LT", "37067787324"); got != nil {
+		t.Fatalf("ambiguous restore must fail closed, got %#v", got)
+	}
+}
+
+func TestSMSPVAServiceIconProxyURLDoesNotExposeProviderName(t *testing.T) {
+	item := SMSSvcCatalogItem{Code: "opt9", ProviderIconPath: "images/ico/opt9.png"}
+	if item.ProviderIconPath == "" {
+		t.Fatal("test fixture requires an upstream icon path")
+	}
+	publicURL := "/api/v1/sms/service-icons/" + item.Code
+	if strings.Contains(strings.ToLower(publicURL), "smspva") || strings.Contains(strings.ToLower(publicURL), "5sim") {
+		t.Fatalf("public icon URL leaks provider identity: %s", publicURL)
+	}
+}
+
+func TestResolvePublicChannelProviderUsesOnlyReadyPublicChannel(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectQuery(`SELECT p\.code\s+FROM sms_channels c\s+JOIN sms_providers p ON p\.id=c\.provider_id`).
+		WithArgs("channel_2").
+		WillReturnRows(sqlmock.NewRows([]string{"code"}).AddRow("smspva"))
+
+	svc := &SMSService{db: db}
+	got, err := svc.ResolvePublicChannelProvider(context.Background(), " CHANNEL_2 ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "smspva" {
+		t.Fatalf("resolved provider=%q, want smspva", got)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestListPublicProvidersReturnsChannelAliasesNotSupplierIdentity(t *testing.T) {
+	t.Setenv("SMS_5SIM_API_KEY", "five-key")
+	t.Setenv("SMS_SMSPVA_API_KEY", "pva-key")
+
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	rows := sqlmock.NewRows([]string{
+		"channel_code", "public_name", "provider_code", "base_url", "provider_enabled",
+		"health_status", "credential_ref", "capabilities", "channel_enabled", "visible", "healthy",
+	}).
+		AddRow("channel_1", "渠道1", "5sim", "https://5sim.net/v1", true, "healthy", "", []byte(`{"supports_temporary":true}`), true, true, true).
+		AddRow("channel_2", "渠道2", "smspva", "https://api.smspva.com", true, "healthy", "", []byte(`{"supports_temporary":true,"supports_rental":true}`), true, true, true)
+
+	mock.ExpectQuery(`SELECT c\.code,c\.public_name,p\.code,p\.base_url`).WillReturnRows(rows)
+
+	svc := &SMSService{db: db}
+	items, err := svc.ListPublicProviders(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("providers=%#v", items)
+	}
+	if items[0].Code != "channel_1" || items[0].Name != "渠道1" || items[1].Code != "channel_2" || items[1].Name != "渠道2" {
+		t.Fatalf("public channel aliases=%#v", items)
+	}
+	for _, item := range items {
+		serialized, _ := json.Marshal(item)
+		lower := strings.ToLower(string(serialized))
+		if strings.Contains(lower, "5sim") || strings.Contains(lower, "smspva") {
+			t.Fatalf("public provider response leaked supplier identity: %s", serialized)
+		}
+	}
+	if !items[0].Selectable || !items[1].Selectable {
+		t.Fatalf("ready channels must be selectable: %#v", items)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)

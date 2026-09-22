@@ -77,3 +77,11 @@ CREATE INDEX IF NOT EXISTS idx_sms_rental_multi_quotes_user_expiry
 
 CREATE INDEX IF NOT EXISTS idx_sms_rental_multi_quotes_provider_expiry
     ON sms_rental_multi_service_quotes(provider_id, expires_at);
+
+-- Bind multi-service rental selections to the short-lived quote so a client
+-- cannot swap or append services after price/stock confirmation.
+ALTER TABLE sms_quotes
+    ADD COLUMN IF NOT EXISTS service_codes_snapshot JSONB NOT NULL DEFAULT '[]'::jsonb;
+
+CREATE INDEX IF NOT EXISTS idx_sms_order_services_order_status
+    ON sms_order_services(order_id, status);

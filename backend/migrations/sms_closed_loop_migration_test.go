@@ -71,4 +71,35 @@ func TestSMSClosedLoopMigrationsAreEmbeddedAndAppendOnly(t *testing.T) {
 	batchLimitSQL := strings.Join(strings.Fields(string(batchLimit)), " ")
 	require.Contains(t, batchLimitSQL, "batch_purchase_limit")
 	require.Contains(t, batchLimitSQL, "'5'::jsonb")
+
+	rentalAdvanced, err := FS.ReadFile("258_sms_smspva_rental_advanced.sql")
+	require.NoError(t, err)
+	rentalAdvancedSQL := strings.Join(strings.Fields(string(rentalAdvanced)), " ")
+	require.Contains(t, rentalAdvancedSQL, "CREATE TABLE IF NOT EXISTS sms_order_services")
+	require.Contains(t, rentalAdvancedSQL, "CREATE TABLE IF NOT EXISTS sms_rental_restore_quotes")
+	require.Contains(t, rentalAdvancedSQL, "ON CONFLICT (order_id, service_id) DO NOTHING")
+
+	serviceCharges, err := FS.ReadFile("259_sms_rental_service_charges.sql")
+	require.NoError(t, err)
+	serviceChargesSQL := strings.Join(strings.Fields(string(serviceCharges)), " ")
+	require.Contains(t, serviceChargesSQL, "sms_rental_service_charges")
+	require.Contains(t, serviceChargesSQL, "settlement_status")
+
+	multiQuote, err := FS.ReadFile("260_sms_rental_multi_service_quotes.sql")
+	require.NoError(t, err)
+	multiQuoteSQL := strings.Join(strings.Fields(string(multiQuote)), " ")
+	require.Contains(t, multiQuoteSQL, "service_codes_snapshot")
+
+	recovery, err := FS.ReadFile("261_sms_rental_service_recovery.sql")
+	require.NoError(t, err)
+	recoverySQL := strings.Join(strings.Fields(string(recovery)), " ")
+	require.Contains(t, recoverySQL, "recovery_baseline")
+
+	capabilities, err := FS.ReadFile("262_sms_smspva_advanced_capabilities.sql")
+	require.NoError(t, err)
+	capabilitiesSQL := strings.Join(strings.Fields(string(capabilities)), " ")
+	require.Contains(t, capabilitiesSQL, "\"supports_rental_constraints\": true")
+	require.Contains(t, capabilitiesSQL, "\"supports_rental_multi_service\": false")
+	require.Contains(t, capabilitiesSQL, "\"supports_rental_add_service\": false")
+	require.Contains(t, capabilitiesSQL, "\"supports_rental_restore\": false")
 }

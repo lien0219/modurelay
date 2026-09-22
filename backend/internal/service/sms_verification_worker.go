@@ -142,6 +142,7 @@ func (s *SMSService) Reconcile(ctx context.Context) error {
 	if _, err := s.db.ExecContext(ctx, `DELETE FROM sms_quotes WHERE expires_at < NOW() - INTERVAL '1 hour'`); err != nil && firstErr == nil {
 		firstErr = err
 	}
+	s.cleanupExpiredRentalQuotes(ctx)
 	return firstErr
 }
 
@@ -158,6 +159,29 @@ func (s *SMSService) reconcileSMSAction(ctx context.Context, id, userID int64, p
 			return nil
 		}
 		if time.Since(updatedAt) >= smsVerificationUnknownTimeout {
+			if strings.EqualFold(providerCode, "smspva") && productType == "rental" {
+				var restoreHistoryID string
+				if err := s.db.QueryRowContext(ctx, `SELECT COALESCE(metadata->>'provider_history_order_id','') FROM sms_orders WHERE id=$1`, id).Scan(&restoreHistoryID); err != nil {
+					return err
+				}
+				if strings.TrimSpace(restoreHistoryID) != "" {
+					// Restore is a mutating provider operation. Without positive
+					// evidence that it failed, releasing the hold could create a
+					// free restored rental when the provider committed the write
+					// but our response was lost. Keep the amount frozen and
+					// continue deterministic before/after reconciliation.
+					_, err := s.db.ExecContext(ctx, `UPDATE sms_orders
+						SET status='reconciling',
+						    reconciliation_action=$1,
+						    reconciliation_attempts=reconciliation_attempts+1,
+						    reconcile_after=NOW()+INTERVAL '30 seconds',
+						    last_provider_error='restore outcome remains unconfirmed; automatic release is blocked',
+						    updated_at=updated_at
+						WHERE id=$2 AND settlement_status='held'`,
+						smsReconciliationPurchase, id)
+					return err
+				}
+			}
 			reason := "provider did not create a recoverable order before reconciliation timeout"
 			if strings.EqualFold(providerCode, "smspva") {
 				reason = "provider purchase outcome cannot be deterministically recovered before reconciliation timeout"
