@@ -72,9 +72,11 @@ func (p *smsPVAProvider) Capabilities(context.Context) SMSProviderCapabilities {
 		Temporary: true, Rental: true, RentalCancel: true, Polling: true, Cancel: true, Refund: false,
 		Finish: true, Resend: true,
 		Voice: true, VoiceSMS: true, VoiceCallerID: true, VoiceCall: true,
-		OperatorSelection: true, ServiceSelection: true, Extend: true, RentalConstraints: true,
-		// Restore, multi-service, and add-service remain fail-closed until the
-		// complete user API and exactly-once financial recovery flow is proven.
+		OperatorSelection: true, ServiceSelection: true, Extend: false, RentalConstraints: true,
+		// Prolongation, restore, multi-service, and add-service remain fail-closed
+		// until each operation has an exactly-once user charge and provider-cost
+		// ledger. Calling SMSPVA prolong without a platform settlement would make
+		// the provider charge the platform while the user is charged nothing.
 		RentalRestore: false, RentalMultiService: false, RentalAddService: false, ConversionStats: true,
 	}
 }
