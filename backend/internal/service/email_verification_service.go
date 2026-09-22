@@ -43,6 +43,9 @@ var (
 	ErrEmailNotFound                  = errors.New("email order not found")
 	ErrEmailProviderCredentialMissing = errors.New("email provider credential is not configured")
 	ErrEmailProviderTestCooldown      = errors.New("email provider test connection is cooling down")
+	ErrEmailFreeDailyLimit            = errors.New("free email daily limit reached")
+	ErrEmailFreeActiveLimit           = errors.New("too many active free inboxes")
+	ErrEmailFreeGenerationCooldown    = errors.New("please wait before creating another free inbox")
 )
 
 const (
@@ -1000,13 +1003,13 @@ func (s *EmailVerificationService) allowFreePublicInbox(ctx context.Context, use
 		return err
 	}
 	if dailyLimit > 0 && daily >= dailyLimit {
-		return errors.New("free email daily limit reached")
+		return ErrEmailFreeDailyLimit
 	}
 	if activeLimit > 0 && active >= activeLimit {
-		return errors.New("too many active free inboxes")
+		return ErrEmailFreeActiveLimit
 	}
 	if intervalSeconds > 0 && lastCreated.Valid && time.Since(lastCreated.Time) < time.Duration(intervalSeconds)*time.Second {
-		return errors.New("please wait before creating another free inbox")
+		return ErrEmailFreeGenerationCooldown
 	}
 	return nil
 }
