@@ -1644,6 +1644,27 @@ func (s *EmailVerificationService) PollOrder(ctx context.Context, orderID int64)
 			s.recordProviderUsage(ctx, providerID, orderID, "get_message", err, time.Since(getStarted))
 			return err
 		}
+		// Some providers (notably Sonjj Gmail/Outlook) return routing headers in
+		// the inbox list and the body in a separate message endpoint. Merge the
+		// authoritative list metadata before service matching and persistence.
+		if strings.TrimSpace(msg.ProviderMessageID) == "" {
+			msg.ProviderMessageID = summary.ProviderMessageID
+		}
+		if strings.TrimSpace(msg.FromAddress) == "" {
+			msg.FromAddress = summary.FromAddress
+		}
+		if strings.TrimSpace(msg.FromName) == "" {
+			msg.FromName = summary.FromName
+		}
+		if strings.TrimSpace(msg.ToAddress) == "" {
+			msg.ToAddress = summary.ToAddress
+		}
+		if strings.TrimSpace(msg.Subject) == "" {
+			msg.Subject = summary.Subject
+		}
+		if msg.ReceivedAt.IsZero() || msg.ReceivedAt.After(time.Now().Add(time.Minute)) {
+			msg.ReceivedAt = summary.ReceivedAt
+		}
 		s.recordProviderUsage(ctx, providerID, orderID, "get_message", nil, time.Since(getStarted))
 		if !minimumReceivedAt.IsZero() && msg.ReceivedAt.Before(minimumReceivedAt.Add(-2*time.Minute)) {
 			continue
