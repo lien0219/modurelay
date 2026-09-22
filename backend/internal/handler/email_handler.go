@@ -94,6 +94,12 @@ func (h *EmailHandler) Purchase(c *gin.Context) {
 			response.ErrorWithDetails(c, http.StatusConflict, "The quote is invalid; please request a new quote", "QUOTE_INVALID", nil)
 		case service.ErrEmailProviderUnknown:
 			response.ErrorWithDetails(c, http.StatusAccepted, "The email channel is being reconciled", "ORDER_RECONCILING", nil)
+		case service.ErrEmailFreeDailyLimit:
+			response.ErrorWithDetails(c, http.StatusTooManyRequests, "Free inbox daily limit reached", "FREE_EMAIL_DAILY_LIMIT", nil)
+		case service.ErrEmailFreeActiveLimit:
+			response.ErrorWithDetails(c, http.StatusTooManyRequests, "Too many active free inboxes", "FREE_EMAIL_ACTIVE_LIMIT", nil)
+		case service.ErrEmailFreeGenerationCooldown:
+			response.ErrorWithDetails(c, http.StatusTooManyRequests, "Please wait before creating another free inbox", "FREE_EMAIL_GENERATION_COOLDOWN", nil)
 		default:
 			response.ErrorWithDetails(c, http.StatusUnprocessableEntity, "Email generation failed", "EMAIL_GENERATION_FAILED", nil)
 		}
