@@ -1265,6 +1265,51 @@ func TestSMSPVAQuoteUsesSelectedOperatorPriceAndStock(t *testing.T) {
 	}
 }
 
+func TestSMSPVATemporaryPurchaseAddsCallingCode(t *testing.T) {
+	var paths []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/activation/number/BO/openai":
+			_, _ = w.Write([]byte(`{"statusCode":200,"data":{"orderId":"991","phoneNumber":"78522241","orderExpireIn":600}}`))
+		case "/activation/numberstatus/78522241/openai":
+			_, _ = w.Write([]byte(`{"statusCode":200,"data":{"number":"78522241","orderId":"991","countryCode":"+591"}}`))
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	got, err := providerFor("smspva", server.URL, "secret").PurchaseTemporary(context.Background(), SMSPurchaseRequest{
+		CountryCode: "BO",
+		ServiceCode: "openai",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.PhoneNumber != "+59178522241" {
+		t.Fatalf("phone=%q want +59178522241", got.PhoneNumber)
+	}
+	if len(paths) != 2 {
+		t.Fatalf("paths=%v", paths)
+	}
+}
+
+func TestSMSPVACanonicalPhoneDoesNotDuplicateCallingCode(t *testing.T) {
+	cases := map[string]string{
+		smsPVACanonicalPhone("78522241", "+591"):      "+59178522241",
+		smsPVACanonicalPhone("59178522241", "+591"):   "+59178522241",
+		smsPVACanonicalPhone("+59178522241", "+591"):  "+59178522241",
+		smsPVACanonicalPhone("1 (202) 555-0199", "+1"): "+12025550199",
+	}
+	for got, want := range cases {
+		if got != want {
+			t.Fatalf("canonical phone=%q want %q", got, want)
+		}
+	}
+}
+
 func TestSMSPVAPurchaseCarriesOperatorAndVoice(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/activation/number/US/telegram/att" {
@@ -1306,11 +1351,11 @@ func TestSMSPVARentalLifecycleUsesOfficialRentContract(t *testing.T) {
 			if r.URL.Query().Get("dtype") != "week" || r.URL.Query().Get("dcount") != "1" || r.URL.Query().Get("provider") != "att" {
 				t.Errorf("unexpected create query: %s", r.URL.RawQuery)
 			}
-			_, _ = w.Write([]byte(`{"status":1,"data":{"id":"501","pnumber":"+12025550001","until":1893456000}}`))
+			_, _ = w.Write([]byte(`{"status":1,"data":{"id":"501","pnumber":"2025550001","ccode":"+1","until":1893456000}}`))
 		case "activate":
 			_, _ = w.Write([]byte(`{"status":1,"data":[{"id":"501"}]}`))
 		case "orders":
-			_, _ = w.Write([]byte(`{"status":1,"data":[{"id":"501","scode":"telegram","sname":"Telegram","state":"0","pnumber":"+12025550001","cname":"US","hasnewsms":true,"until":1893456000,"canprolong":true,"canprolongmax":6,"canprolonguntil":1893459600,"lastonline":1893455000}]}`))
+			_, _ = w.Write([]byte(`{"status":1,"data":[{"id":"501","scode":"telegram","sname":"Telegram","state":"0","pnumber":"2025550001","ccode":"+1","cname":"US","hasnewsms":true,"until":1893456000,"canprolong":true,"canprolongmax":6,"canprolonguntil":1893459600,"lastonline":1893455000}]}`))
 		case "sms":
 			_, _ = w.Write([]byte(`{"status":1,"data":{"SmsList":[{"text":"Your code is 482913"}],"OtherSms":[]}}`))
 		case "prolong":
@@ -1327,14 +1372,14 @@ func TestSMSPVARentalLifecycleUsesOfficialRentContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if order.ProviderOrderID != "501" {
+	if order.ProviderOrderID != "501" || order.PhoneNumber != "+12025550001" {
 		t.Fatalf("order=%#v", order)
 	}
 	status, err := p.GetRentalStatus(context.Background(), "501")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(status.Messages) != 1 || status.Messages[0] != "Your code is 482913" {
+	if len(status.Messages) != 1 || status.Messages[0] != "Your code is 482913" || status.PhoneNumber != "+12025550001" {
 		t.Fatalf("status=%#v", status)
 	}
 	if err = p.ExtendRental(context.Background(), "501", 1, "week"); err != nil {
