@@ -144,11 +144,6 @@
                   <code class="rounded bg-white px-2 py-1 font-mono text-lg font-semibold text-gray-900 dark:bg-dark-700 dark:text-white">{{ message.verification_code }}</code>
                   <CopyButton :text="message.verification_code" />
                 </div>
-                <div v-if="message.verification_url" class="mt-2 flex flex-wrap items-center gap-2">
-                  <span class="min-w-0 flex-1 truncate text-xs text-gray-500">{{ message.verification_url }}</span>
-                  <CopyButton :text="message.verification_url" />
-                  <button type="button" class="btn btn-secondary btn-sm" @click="openVerificationURL(message.verification_url)">{{ t('email.user.safeOpen') }}</button>
-                </div>
                 <details class="mt-3">
                   <summary class="cursor-pointer text-sm font-medium text-primary-600 dark:text-primary-300">{{ t('email.user.viewMessage') }}</summary>
                   <pre class="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-gray-700 dark:text-gray-200">{{ message.text_body }}</pre>
@@ -502,17 +497,6 @@ function applyOrderFilters() { Object.assign(orderFilters, orderDraft); orderPag
 function resetOrderFilters() { Object.assign(orderDraft, { keyword: '', status: '' }); Object.assign(orderFilters, orderDraft); orderPagination.page = 1; void loadOrders() }
 function changeOrderPage(page: number) { orderPagination.page = page; void loadOrders() }
 function changeOrderPageSize(pageSize: number) { orderPagination.pageSize = pageSize; orderPagination.page = 1; void loadOrders() }
-
-function openVerificationURL(value?: string) {
-  if (!value) return
-  try {
-    const parsed = new URL(value)
-    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') throw new Error('unsupported')
-    window.open(parsed.toString(), '_blank', 'noopener,noreferrer')
-  } catch {
-    appStore.showError(t('email.user.invalidVerificationURL'))
-  }
-}
 
 function errorMessage(error: unknown, fallback: string) {
   return (error as { message?: string })?.message || fallback
