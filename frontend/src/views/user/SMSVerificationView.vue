@@ -1,445 +1,748 @@
 <template>
   <AppLayout>
-    <div class="mx-auto w-full max-w-[1600px] space-y-5 overflow-x-hidden">
-      <header class="flex flex-wrap items-end justify-between gap-3">
-        <div class="min-w-0">
-          <p class="text-xs font-semibold uppercase tracking-[0.14em] text-cyan-600 dark:text-cyan-400">ModuRelay</p>
-          <h1 class="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">{{ t('nav.smsService') }}</h1>
-        </div>
-        <button type="button" class="btn btn-secondary" :disabled="loading" :title="t('common.refresh')" :aria-label="t('common.refresh')" @click="loadAll">
-          <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" aria-hidden="true" />
-        </button>
-      </header>
+    <main class="sms-page">
+      <div class="sms-shell">
+        <header class="sms-page-header">
+          <div>
+            <p class="sms-eyebrow">MODURELAY</p>
+            <h1>{{ t('nav.smsService') }}</h1>
+            <p>{{ t('sms.user.description') }}</p>
+          </div>
+          <button
+            type="button"
+            class="sms-refresh-button"
+            :disabled="loading"
+            :title="t('common.refresh')"
+            :aria-label="t('common.refresh')"
+            @click="loadAll"
+          >
+            <Icon name="refresh" size="sm" :class="{ 'sms-spin': loading }" aria-hidden="true" />
+            <span>{{ t('sms.user.refreshData') }}</span>
+          </button>
+        </header>
 
-      <div v-if="recentSuccessItems.length" class="flex min-h-11 items-center gap-3 overflow-hidden rounded-xl border border-gray-200 bg-white/70 px-3 py-2 dark:border-dark-700 dark:bg-dark-800/60">
-        <span class="flex shrink-0 items-center gap-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-          <Icon name="checkCircle" size="sm" aria-hidden="true" />
-          {{ t('sms.user.recentSuccess') }}
-        </span>
-        <div class="min-w-0 flex-1 overflow-hidden">
-          <div class="sms-success-track flex w-max items-center gap-2">
-            <div v-for="(item, index) in recentSuccessLoop" :key="`${index}-${item.username}-${item.phone}`" class="flex shrink-0 items-center gap-2 rounded-lg border border-gray-100 bg-gray-50/80 px-3 py-1.5 text-xs text-gray-600 dark:border-dark-700 dark:bg-dark-900/60 dark:text-gray-300">
-              <span class="font-medium text-gray-800 dark:text-gray-100">{{ item.username }}</span>
-              <span :class="flagClass(item.country_code)" class="fi fis rounded-sm shadow-sm" aria-hidden="true"></span>
-              <span>{{ displayRegionName(item.country_code) }}</span>
-              <span class="font-mono text-gray-500">{{ item.phone }}</span>
+        <section v-if="recentSuccessItems.length" class="sms-success-strip" aria-label="recent success">
+          <span class="sms-success-strip__label">
+            <Icon name="checkCircle" size="sm" aria-hidden="true" />
+            {{ t('sms.user.recentSuccess') }}
+          </span>
+          <div class="sms-success-strip__viewport">
+            <div class="sms-success-track">
+              <span
+                v-for="(item, index) in recentSuccessLoop"
+                :key="String(index) + '-' + item.username + '-' + item.phone"
+                class="sms-success-item"
+              >
+                <strong>{{ item.username }}</strong>
+                <span :class="flagClass(item.country_code)" class="fi fis" aria-hidden="true"></span>
+                <span>{{ displayRegionName(item.country_code) }}</span>
+                <code>{{ item.phone }}</code>
+              </span>
             </div>
           </div>
-        </div>
-      </div>
+        </section>
 
-      <div class="flex gap-2 border-b border-gray-200 dark:border-dark-700" role="tablist" :aria-label="t('nav.smsService')">
-        <button v-for="tab in tabs" :key="tab.value" type="button" class="border-b-2 px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-40" :disabled="tab.disabled" :class="productType === tab.value && activeTab !== 'orders' ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500'" role="tab" :aria-selected="productType === tab.value && activeTab !== 'orders'" @click="switchProductType(tab.value)">{{ tab.label }}</button>
-        <button type="button" class="border-b-2 px-3 py-2 text-sm font-medium" :class="activeTab === 'orders' ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500'" role="tab" :aria-selected="activeTab === 'orders'" @click="activeTab = 'orders'; loadOrders()">{{ t('sms.user.orders') }}</button>
-      </div>
+        <nav class="sms-tabs" role="tablist" :aria-label="t('nav.smsService')">
+          <button
+            v-for="tab in tabs"
+            :key="tab.value"
+            type="button"
+            role="tab"
+            :disabled="tab.disabled"
+            :aria-selected="productType === tab.value && activeTab !== 'orders'"
+            :class="{ 'is-active': productType === tab.value && activeTab !== 'orders' }"
+            @click="switchProductType(tab.value)"
+          >
+            {{ tab.label }}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            :aria-selected="activeTab === 'orders'"
+            :class="{ 'is-active': activeTab === 'orders' }"
+            @click="activeTab = 'orders'; loadOrders()"
+          >
+            {{ t('sms.user.orders') }}
+          </button>
+        </nav>
 
-      <section v-if="activeTab !== 'orders'" class="card space-y-5 p-4 sm:p-5">
-        <div>
-          <div class="mb-3 flex items-center justify-between gap-3">
-            <div>
-              <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">1 · {{ t('sms.admin.channels') }}</p>
+        <template v-if="activeTab !== 'orders'">
+          <section class="sms-workspace">
+            <div class="sms-workspace__left">
+              <section class="sms-step sms-step--channels">
+                <header class="sms-step__header">
+                  <span class="sms-step__number">1</span>
+                  <div>
+                    <div class="sms-step__title-line">
+                      <h2>{{ t('sms.user.stepChannelTitle') }}</h2>
+                      <span>{{ t('sms.user.publicChannels') }}</span>
+                    </div>
+                    <p>{{ t('sms.user.stepChannelDescription') }}</p>
+                  </div>
+                </header>
+
+                <div class="sms-provider-grid">
+                  <button
+                    v-for="(provider, index) in providers"
+                    :key="provider.code"
+                    type="button"
+                    class="sms-provider-card"
+                    :class="[
+                      providerCode === provider.code ? 'is-selected border-primary-500' : '',
+                      !isProviderSelectable(provider) ? 'is-disabled' : '',
+                    ]"
+                    :disabled="!isProviderSelectable(provider)"
+                    :title="providerDisabledReason(provider)"
+                    @click="switchProvider(provider.code)"
+                  >
+                    <span class="sms-provider-card__icon" aria-hidden="true">
+                      <span></span><span></span><span></span>
+                    </span>
+                    <span class="sms-provider-card__copy">
+                      <strong>{{ t('sms.user.channel') }}{{ index + 1 }}</strong>
+                      <small v-if="!isProviderSelectable(provider)">{{ providerDisabledReason(provider) }}</small>
+                      <small v-else>{{ providerCode === provider.code ? t('sms.user.channelReadySelected') : t('sms.user.channelReady') }}</small>
+                    </span>
+                    <span v-if="provider.beta" class="sms-provider-card__beta">BETA</span>
+                    <span v-else class="sms-provider-card__state"></span>
+                  </button>
+                </div>
+              </section>
+
+              <section class="sms-step sms-step--service">
+                <header class="sms-step__header">
+                  <span class="sms-step__number">2</span>
+                  <div>
+                    <h2>{{ t('sms.user.stepServiceTitle') }}</h2>
+                    <p>{{ t('sms.user.stepServiceDescription') }}</p>
+                  </div>
+                </header>
+
+                <label class="sms-search-field">
+                  <Icon name="search" size="sm" aria-hidden="true" />
+                  <input v-model.trim="serviceKeyword" :placeholder="t('sms.user.serviceSearch')" />
+                </label>
+
+                <div class="sms-option-list sms-option-list--service">
+                  <button
+                    v-for="option in filteredServiceOptions"
+                    :key="String(option.value)"
+                    type="button"
+                    class="sms-option-card"
+                    :class="{ 'is-selected': serviceCode === option.value }"
+                    @click="selectService(String(option.value))"
+                  >
+                    <span class="sms-option-card__main">
+                      <SMSServiceLogo :icon="option.logo" :label="option.label" class="sms-service-logo" />
+                      <span class="sms-option-card__copy">
+                        <strong>{{ option.label }}</strong>
+                        <small v-if="option.stock != null && option.stock > 0">
+                          {{ t('sms.user.numbersAvailable', { count: option.stock.toLocaleString() }) }}
+                        </small>
+                      </span>
+                    </span>
+                    <span class="sms-option-card__meta">
+                      <strong v-if="option.startingPrice != null && option.startingPrice > 0">
+                        {{ t('sms.user.startingAt', { price: formatPrice(option.startingPrice) }) }}
+                      </strong>
+                      <small>{{ option.value }}</small>
+                    </span>
+                    <span v-if="serviceCode === option.value" class="sms-selected-mark"><Icon name="check" size="xs" /></span>
+                  </button>
+
+                  <div v-if="servicesLoading && !services.length" class="sms-list-state">{{ t('sms.user.loading') }}</div>
+                  <div v-else-if="!filteredServiceOptions.length" class="sms-list-state">{{ t('sms.user.noServiceMatch') }}</div>
+                  <button
+                    v-if="servicePagination.hasMore"
+                    type="button"
+                    class="sms-load-more"
+                    :disabled="servicesLoading"
+                    @click="loadServicePage(false)"
+                  >
+                    {{ servicesLoading ? t('sms.user.loading') : t('sms.user.loadMore') }}
+                  </button>
+                </div>
+              </section>
             </div>
-          </div>
-          <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <button
-              v-for="(provider, index) in providers"
-              :key="provider.code"
-              type="button"
-              class="relative min-h-20 rounded-xl border p-4 text-left transition"
-              :class="[
-                providerCode === provider.code ? 'border-primary-500 bg-primary-50 ring-1 ring-primary-200 dark:bg-primary-900/20' : 'border-gray-200 dark:border-dark-700',
-                !isProviderSelectable(provider) ? 'cursor-not-allowed bg-gray-50 opacity-50 grayscale dark:bg-dark-800' : 'hover:border-primary-300'
-              ]"
-              :disabled="!isProviderSelectable(provider)"
-              :title="providerDisabledReason(provider)"
-              @click="switchProvider(provider.code)"
-            >
-              <div class="flex items-center justify-between gap-2">
-                <span class="font-semibold text-gray-900 dark:text-white">{{ t('sms.user.channel') }}{{ index + 1 }}</span>
-                <span v-if="provider.beta" class="rounded bg-gray-200 px-2 py-0.5 text-[10px] font-bold tracking-wider text-gray-600 dark:bg-dark-600 dark:text-gray-300">BETA</span>
+
+            <section class="sms-step sms-step--country">
+              <header class="sms-step__header">
+                <span class="sms-step__number">3</span>
+                <div>
+                  <h2>{{ t('sms.user.stepCountryTitle') }}</h2>
+                  <p>{{ t('sms.user.stepCountryDescription') }}</p>
+                </div>
+              </header>
+
+              <div class="sms-country-toolbar">
+                <label class="sms-search-field">
+                  <Icon name="search" size="sm" aria-hidden="true" />
+                  <input v-model.trim="countryKeyword" :placeholder="t('sms.user.countrySearch')" :disabled="!serviceCode" />
+                </label>
+                <select
+                  v-if="currentProvider?.capabilities.supports_conversion_stats"
+                  v-model="countrySortMode"
+                  class="sms-native-select"
+                >
+                  <option v-for="item in countrySortOptions" :key="item.value" :value="item.value">{{ item.label }}</option>
+                </select>
               </div>
-              <div v-if="!isProviderSelectable(provider)" class="mt-2 text-xs text-gray-400">{{ providerDisabledReason(provider) }}</div>
-            </button>
-          </div>
-        </div>
 
-        <div class="sms-selection-grid grid gap-4 lg:grid-cols-3 lg:items-start">
-          <div class="grid min-w-0 gap-4 lg:col-span-2 lg:grid-cols-2">
-          <div class="flex min-h-0 min-w-0 flex-col rounded-xl border border-gray-200 p-4 dark:border-dark-700">
-            <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">2 · {{ t('sms.user.service') }}</p>
-            <div class="mt-3"><input v-model.trim="serviceKeyword" class="input h-10 w-full" :placeholder="t('sms.user.serviceSearch')" /></div>
-            <div class="mt-3 min-h-0 space-y-2 overflow-y-auto pr-1 lg:max-h-[440px]">
-              <button v-for="option in filteredServiceOptions" :key="String(option.value)" type="button" class="flex min-h-14 w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left text-sm transition" :class="serviceCode === option.value ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-900/20' : 'border-gray-200 hover:border-primary-300 dark:border-dark-700'" @click="selectService(String(option.value))">
-                <span class="flex min-w-0 items-center gap-3">
-                  <SMSServiceLogo :icon="option.logo" :label="option.label" class="h-9 w-9 text-base" />
-                  <span class="min-w-0">
-                    <span class="block truncate font-medium">{{ option.label }}</span>
-                    <span v-if="option.stock != null && option.stock > 0" class="block text-[11px] text-emerald-600 dark:text-emerald-400">{{ t('sms.user.numbersAvailable', { count: option.stock.toLocaleString() }) }}</span>
-                  </span>
-                </span>
-                <span class="shrink-0 text-right">
-                  <span v-if="option.startingPrice != null && option.startingPrice > 0" class="block font-semibold tabular-nums text-gray-900 dark:text-white">{{ t('sms.user.startingAt', { price: formatPrice(option.startingPrice) }) }}</span>
-                  <span class="block font-mono text-[10px] text-gray-400">{{ option.value }}</span>
-                </span>
-              </button>
-              <div v-if="servicesLoading && !services.length" class="py-8 text-center text-sm text-gray-400">{{ t('sms.user.loading') }}</div>
-              <div v-else-if="!filteredServiceOptions.length" class="py-8 text-center text-sm text-gray-400">{{ t('sms.user.noServiceMatch') }}</div>
-              <button v-if="servicePagination.hasMore" type="button" class="btn btn-secondary w-full" :disabled="servicesLoading" @click="loadServicePage(false)">{{ servicesLoading ? t('sms.user.loading') : t('sms.user.loadMore') }}</button>
-            </div>
-          </div>
-
-          <div class="flex min-h-0 min-w-0 flex-col rounded-xl border border-gray-200 p-4 dark:border-dark-700">
-            <div class="flex items-center justify-between gap-2">
-              <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">3 · {{ t('sms.user.country') }}</p>
-              <select v-if="currentProvider?.capabilities.supports_conversion_stats" v-model="countrySortMode" class="input h-8 w-auto min-w-28 py-1 text-xs">
-                <option v-for="item in countrySortOptions" :key="item.value" :value="item.value">{{ item.label }}</option>
-              </select>
-            </div>
-            <div class="mt-3"><input v-model.trim="countryKeyword" class="input h-10 w-full" :placeholder="t('sms.user.countrySearch')" :disabled="!serviceCode" /></div>
-            <div class="mt-3 min-h-0 space-y-2 overflow-y-auto pr-1 lg:max-h-[440px]">
-              <button v-for="option in filteredCountryOptions" :key="String(option.value)" type="button" class="flex min-h-14 w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left text-sm disabled:cursor-not-allowed disabled:opacity-45" :disabled="option.available === false" :class="countryCode === option.value ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-900/20' : 'border-gray-200 hover:border-primary-300 dark:border-dark-700'" @click="selectCountry(String(option.value))">
-                <span class="flex min-w-0 items-center gap-3">
-                  <span :class="flagClass(String(option.value))" class="fi fis shrink-0 rounded-sm shadow-sm" aria-hidden="true"></span>
-                  <span class="min-w-0">
-                    <span class="flex items-center gap-2">
-                      <span class="block truncate font-medium">{{ option.label }}</span>
-                      <span v-if="option.platform30dSuccessRate != null && option.platform30dSampleSize >= 20 && option.platform30dSuccessRate >= 70" class="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">{{ t('sms.user.platformVerified') }}</span>
-                      <span v-else-if="currentProvider?.capabilities.supports_conversion_stats && option.conversionRate != null && option.conversionRate >= 70" class="rounded-full bg-cyan-100 px-2 py-0.5 text-[10px] font-semibold text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300">{{ t('sms.user.highDeliveryRate') }}</span>
+              <div class="sms-option-list sms-option-list--country">
+                <button
+                  v-for="option in filteredCountryOptions"
+                  :key="String(option.value)"
+                  type="button"
+                  class="sms-country-card"
+                  :class="{ 'is-selected': countryCode === option.value }"
+                  :disabled="option.available === false"
+                  @click="selectCountry(String(option.value))"
+                >
+                  <span class="sms-country-card__flag" :class="flagClass(String(option.value)) + ' fi fis'" aria-hidden="true"></span>
+                  <span class="sms-country-card__copy">
+                    <span class="sms-country-card__name">
+                      <strong>{{ option.label }}</strong>
+                      <small>{{ option.value }}</small>
                     </span>
-                    <span class="block text-[11px] text-gray-400">{{ option.value }}<template v-if="option.stock != null"> · {{ t('sms.user.numbersAvailable', { count: option.stock.toLocaleString() }) }}</template></span>
-                    <span v-if="currentProvider?.capabilities.supports_conversion_stats && option.conversionRate != null && option.conversionRate > 0" class="mt-0.5 block text-[11px] font-medium text-cyan-600 dark:text-cyan-400">
-                      {{ t('sms.user.providerDeliveryRateValue', { rate: option.conversionRate.toFixed(2) }) }}
-                      <template v-if="option.recommendedOperator"> · {{ option.recommendedOperator }}</template>
+                    <span class="sms-country-card__sub">
+                      <template v-if="option.stock != null">{{ t('sms.user.stock') }} {{ option.stock.toLocaleString() }}</template>
+                      <template v-if="currentProvider?.capabilities.supports_conversion_stats && option.conversionRate != null && option.conversionRate > 0">
+                        · {{ t('sms.user.providerDeliveryRateValue', { rate: option.conversionRate.toFixed(2) }) }}
+                      </template>
                     </span>
-                    <span v-if="option.platform30dSuccessRate != null" class="mt-0.5 block text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                    <span v-if="option.platform30dSuccessRate != null" class="sms-country-card__rate">
                       {{ t('sms.user.platform30dRateValue', { rate: option.platform30dSuccessRate.toFixed(2), count: option.platform30dSampleSize }) }}
                     </span>
-                    <span v-else-if="option.platform30dSampleSize > 0" class="mt-0.5 block text-[11px] text-gray-400">
-                      {{ t('sms.user.platform30dInsufficient', { count: option.platform30dSampleSize, minimum: 20 }) }}
-                    </span>
                   </span>
-                </span>
-                <span class="shrink-0 text-right">
-                  <span v-if="option.recommendedStartingPrice != null && option.recommendedStartingPrice > 0 && currentProvider?.capabilities.supports_conversion_stats && option.conversionRate != null && option.conversionRate > 0" class="block font-semibold tabular-nums text-gray-900 dark:text-white">{{ t('sms.user.startingAt', { price: formatPrice(option.recommendedStartingPrice) }) }}</span>
-                  <span v-else-if="option.startingPrice != null && option.startingPrice > 0" class="block font-semibold tabular-nums text-gray-900 dark:text-white">{{ t('sms.user.startingAt', { price: formatPrice(option.startingPrice) }) }}</span>
-                  <span v-if="currentProvider?.capabilities.supports_conversion_stats && option.recommendedOperatorStock != null && option.recommendedOperatorStock > 0" class="block text-[10px] text-gray-400">{{ t('sms.user.recommendedStock', { count: option.recommendedOperatorStock.toLocaleString() }) }}</span>
-                </span>
-              </button>
-              <div v-if="countriesLoading && !countries.length" class="py-8 text-center text-sm text-gray-400">{{ t('sms.user.loading') }}</div>
-              <div v-else-if="serviceCode && !filteredCountryOptions.length" class="py-8 text-center text-sm text-gray-400">{{ t('sms.user.noCountryMatch') }}</div>
-              <button v-if="countryPagination.hasMore" type="button" class="btn btn-secondary w-full" :disabled="countriesLoading" @click="loadCountryPage(false)">{{ countriesLoading ? t('sms.user.loading') : t('sms.user.loadMore') }}</button>
-            </div>
-            <p v-if="!serviceCode" class="mt-3 text-xs text-gray-500">{{ t('sms.user.selectService') }}</p>
-          </div>
-
-          </div>
-
-          <div class="flex min-h-0 min-w-0 flex-col rounded-xl border border-gray-200 p-4 dark:border-dark-700">
-            <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">4 · {{ t('sms.user.confirmSelection') }}</p>
-            <div class="mt-4 space-y-4">
-              <div class="space-y-3 rounded-xl bg-gray-50 p-3 dark:bg-dark-800/60">
-                <div class="flex items-center justify-between gap-3">
-                  <span class="text-xs text-gray-500">{{ t('sms.user.selectedService') }}</span>
-                  <span class="flex min-w-0 items-center gap-2 font-medium text-gray-900 dark:text-white">
-                    <SMSServiceLogo :icon="selectedServiceLogo" :label="serviceLabel(serviceCode)" class="h-8 w-8 text-xs" />
-                    <span class="max-w-44 truncate">{{ serviceLabel(serviceCode) || '-' }}</span>
+                  <span class="sms-country-card__meta">
+                    <strong v-if="option.recommendedStartingPrice != null && option.recommendedStartingPrice > 0">
+                      {{ t('sms.user.startingAt', { price: formatPrice(option.recommendedStartingPrice) }) }}
+                    </strong>
+                    <strong v-else-if="option.startingPrice != null && option.startingPrice > 0">
+                      {{ t('sms.user.startingAt', { price: formatPrice(option.startingPrice) }) }}
+                    </strong>
+                    <small v-if="option.recommendedOperatorStock != null && option.recommendedOperatorStock > 0">
+                      {{ t('sms.user.recommendedStock', { count: option.recommendedOperatorStock.toLocaleString() }) }}
+                    </small>
                   </span>
+                  <span v-if="countryCode === option.value" class="sms-selected-mark"><Icon name="check" size="xs" /></span>
+                </button>
+
+                <div v-if="countriesLoading && !countries.length" class="sms-list-state">{{ t('sms.user.loading') }}</div>
+                <div v-else-if="serviceCode && !filteredCountryOptions.length" class="sms-list-state">{{ t('sms.user.noCountryMatch') }}</div>
+                <button
+                  v-if="countryPagination.hasMore"
+                  type="button"
+                  class="sms-load-more"
+                  :disabled="countriesLoading"
+                  @click="loadCountryPage(false)"
+                >
+                  {{ countriesLoading ? t('sms.user.loading') : t('sms.user.loadMore') }}
+                </button>
+              </div>
+
+              <p v-if="!serviceCode" class="sms-inline-hint">{{ t('sms.user.selectService') }}</p>
+            </section>
+
+            <section class="sms-step sms-step--confirm">
+              <header class="sms-step__header">
+                <span class="sms-step__number">4</span>
+                <div>
+                  <h2>{{ t('sms.user.stepConfirmTitle') }}</h2>
+                  <p>{{ productType === 'rental' ? t('sms.user.stepConfirmRentalDescription') : t('sms.user.stepConfirmDescription') }}</p>
                 </div>
-                <div class="border-t border-gray-200 dark:border-dark-700"></div>
-                <div class="flex items-center justify-between gap-3">
-                  <span class="text-xs text-gray-500">{{ t('sms.user.selectedCountry') }}</span>
-                  <span class="flex items-center gap-2 font-medium text-gray-900 dark:text-white"><span v-if="countryCode" :class="flagClass(countryCode)" class="fi fis rounded-sm shadow-sm" aria-hidden="true"></span>{{ countryLabel(countryCode) || '-' }}</span>
+              </header>
+
+              <div class="sms-selection-summary">
+                <div>
+                  <span>{{ t('sms.user.selectedService') }}</span>
+                  <strong class="sms-selection-summary__entity">
+                    <SMSServiceLogo :icon="selectedServiceLogo" :label="serviceLabel(serviceCode)" class="sms-service-logo sms-service-logo--small" />
+                    <span>{{ serviceLabel(serviceCode) || '-' }}</span>
+                  </strong>
                 </div>
-                <div v-if="countryCode && selectedCountryStats" class="border-t border-gray-200 pt-2 text-[11px] dark:border-dark-700">
-                  <div v-if="currentProvider?.capabilities.supports_conversion_stats && selectedCountryStats.conversion_rate != null && selectedCountryStats.conversion_rate > 0" class="flex items-center justify-between gap-3 text-cyan-600 dark:text-cyan-400">
-                    <span>{{ t('sms.user.providerDeliveryRate') }}</span><span class="font-semibold tabular-nums">{{ selectedCountryStats.conversion_rate.toFixed(2) }}%</span>
-                  </div>
-                  <div class="mt-1 flex items-center justify-between gap-3" :class="selectedCountryStats.platform_30d_success_rate != null ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400'">
-                    <span>{{ t('sms.user.platform30dSuccessRate') }}</span>
-                    <span v-if="selectedCountryStats.platform_30d_success_rate != null" class="font-semibold tabular-nums">{{ selectedCountryStats.platform_30d_success_rate.toFixed(2) }}% · n={{ selectedCountryStats.platform_30d_sample_size || 0 }}</span>
-                    <span v-else>{{ t('sms.user.platform30dInsufficientShort', { count: selectedCountryStats.platform_30d_sample_size || 0 }) }}</span>
-                  </div>
+                <div>
+                  <span>{{ t('sms.user.selectedCountry') }}</span>
+                  <strong class="sms-selection-summary__entity">
+                    <span v-if="countryCode" :class="flagClass(countryCode)" class="fi fis" aria-hidden="true"></span>
+                    <span>{{ countryLabel(countryCode) || '-' }}</span>
+                  </strong>
+                </div>
+                <div v-if="selectedCountryStats">
+                  <span>{{ t('sms.user.platform30dSuccessRate') }}</span>
+                  <strong class="sms-success-value">
+                    <template v-if="selectedCountryStats.platform_30d_success_rate != null">
+                      {{ selectedCountryStats.platform_30d_success_rate.toFixed(2) }}%
+                    </template>
+                    <template v-else>{{ t('sms.user.platform30dInsufficientShort', { count: selectedCountryStats.platform_30d_sample_size || 0 }) }}</template>
+                  </strong>
                 </div>
               </div>
 
-              <div v-if="productType === 'rental' && currentProvider?.capabilities.supports_rental" class="space-y-3">
-                <div class="grid grid-cols-2 gap-2">
-                <label class="block min-w-0"><span class="input-label">{{ t('sms.user.duration') }}</span><input v-model.number="durationValue" class="input h-[42px]" type="number" min="1" @change="reloadRentalCatalog" /></label>
+              <div v-if="productType === 'rental' && currentProvider?.capabilities.supports_rental" class="sms-form-grid">
+                <label>
+                  <span class="sms-field-label">{{ t('sms.user.duration') }}</span>
+                  <input v-model.number="durationValue" class="sms-field" type="number" min="1" @change="reloadRentalCatalog" />
+                </label>
                 <Select v-model="durationUnit" :label="t('sms.user.unit')" :options="durationUnitOptions" @update:model-value="reloadRentalCatalog" />
-                </div>
-                <div v-if="currentProvider?.capabilities.supports_rental_constraints && currentProvider?.capabilities.supports_rental_multi_service" class="rounded-xl border border-gray-200 p-3 dark:border-dark-700">
-                  <div class="flex items-center justify-between gap-2">
-                    <div>
-                      <div class="text-sm font-medium text-gray-900 dark:text-white">{{ t('sms.user.multiServiceRental') }}</div>
-                      <div class="mt-0.5 text-xs text-gray-500">{{ t('sms.user.multiServiceRentalHint') }}</div>
-                    </div>
-                    <span v-if="additionalRentalServiceCodes.length" class="badge">{{ t('sms.user.additionalServiceCount', { count: additionalRentalServiceCodes.length }) }}</span>
-                  </div>
-                  <div class="mt-3 max-h-36 space-y-1.5 overflow-y-auto pr-1">
-                    <label v-for="item in services.filter(item => item.code !== serviceCode)" :key="item.code" class="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-gray-50 dark:hover:bg-dark-800">
-                      <input v-model="additionalRentalServiceCodes" type="checkbox" :value="item.code" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" @change="handleAdditionalRentalServiceChange" />
-                      <SMSServiceLogo :icon="serviceLogo(item.code, item.name) || item.icon || ''" :label="item.name || item.code" class="h-6 w-6 rounded-md text-[10px]" />
-                      <span class="min-w-0 flex-1 truncate">{{ item.name || item.code }}</span>
-                    </label>
-                  </div>
-                </div>
               </div>
-              <label v-if="currentProvider?.capabilities.supports_voice" class="block"><span class="input-label">{{ t('sms.user.verificationType') }}</span><select v-model.number="voiceMode" class="input h-[42px] w-full" @change="changeVoiceMode"><option v-for="item in voiceModeOptions" :key="item.value" :value="item.value">{{ item.label }}</option></select></label>
-              <label v-if="currentProvider?.capabilities.supports_operator_selection" class="block"><span class="input-label">{{ t('sms.user.operator') }}</span><select v-model="operatorCode" class="input h-[42px] w-full" @change="quotes = []; loadQuotes()"><option value="any">{{ t('sms.user.autoOperator') }}</option><option v-for="item in operators.filter(op => op.code !== 'any')" :key="item.code" :value="item.code" :disabled="item.available === false">{{ item.name }}{{ item.provider_rate ? ` · ${t('sms.user.channelReferenceShort')} ${item.provider_rate.toFixed(2)}%` : '' }}{{ item.platform_30d_success_rate != null ? ` · ${t('sms.user.platform30dShort')} ${item.platform_30d_success_rate.toFixed(2)}% (n=${item.platform_30d_sample_size || 0})` : '' }}{{ operatorStockLabel(item) }}</option></select><p v-if="currentProvider?.capabilities.supports_conversion_stats && operatorCode !== 'any'" class="mt-1 text-[11px] text-cyan-600 dark:text-cyan-400">{{ t('sms.user.recommendedOperatorSelected') }}</p></label>
-              <label class="block"><span class="input-label">{{ t('sms.user.quantity') }}</span><input v-model.number="purchaseQuantity" class="input h-[42px] w-full" :class="purchaseQuantityError ? 'border-red-500 focus-visible:border-red-500 focus-visible:ring-red-500/30' : ''" type="number" min="1" :max="batchPurchaseLimit" :aria-invalid="purchaseQuantityError ? 'true' : undefined" :aria-describedby="purchaseQuantityError ? 'sms-quantity-error' : undefined" /><span class="mt-1 block text-xs text-gray-500 dark:text-gray-400">{{ t('sms.user.batchPurchaseHint', { max: batchPurchaseLimit }) }}</span><span v-if="purchaseQuantityError" id="sms-quantity-error" class="mt-1 block text-xs text-red-600 dark:text-red-400" role="alert">{{ purchaseQuantityError }}</span></label>
 
-              <div v-if="bestQuote" class="flex items-center justify-between border-t border-gray-200 pt-3 dark:border-dark-700">
-                <span class="text-sm text-gray-500">{{ t('sms.user.price') }}</span>
-                <span class="text-xl font-semibold tabular-nums text-gray-900 dark:text-white">{{ formatPrice(bestQuote.sale_price) }}</span>
-              </div>
-              <button type="button" class="btn btn-primary w-full" :disabled="!serviceCode || !countryCode || quoting || purchasing || !isPurchaseQuantityValid" @click="confirmSelection">
-                {{ purchasing ? t('sms.user.processing') : quoting ? t('sms.user.quoting') : bestQuote ? t('sms.user.purchase') : t('sms.user.getQuote') }}
-              </button>
-              <p v-if="currentProvider?.capabilities.supports_refund && productType === 'temporary'" class="text-center text-xs text-gray-500">{{ t('sms.user.refundGuarantee') }}</p>
-              <div v-if="countryCode" class="rounded-xl border border-amber-200 bg-amber-50/70 p-3 dark:border-amber-900/50 dark:bg-amber-950/20">
-                <div class="flex gap-2.5">
-                  <span class="mt-0.5 text-amber-600"><Icon name="shield" size="sm" aria-hidden="true" /></span>
-                  <div><div class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('sms.user.deliveryTipTitle') }}</div><div class="mt-1 text-xs leading-5 text-gray-600 dark:text-gray-300">{{ t('sms.user.deliveryTipBody') }}</div></div>
+              <div
+                v-if="productType === 'rental' && currentProvider?.capabilities.supports_rental_constraints && currentProvider?.capabilities.supports_rental_multi_service"
+                class="sms-extra-services"
+              >
+                <div class="sms-extra-services__heading">
+                  <div>
+                    <strong>{{ t('sms.user.multiServiceRental') }}</strong>
+                    <small>{{ t('sms.user.multiServiceRentalHint') }}</small>
+                  </div>
+                  <span v-if="additionalRentalServiceCodes.length">{{ t('sms.user.additionalServiceCount', { count: additionalRentalServiceCodes.length }) }}</span>
+                </div>
+                <div class="sms-extra-services__list">
+                  <label v-for="item in services.filter(item => item.code !== serviceCode)" :key="item.code">
+                    <input v-model="additionalRentalServiceCodes" type="checkbox" :value="item.code" @change="handleAdditionalRentalServiceChange" />
+                    <SMSServiceLogo :icon="serviceLogo(item.code, item.name) || item.icon || ''" :label="item.name || item.code" class="sms-service-logo sms-service-logo--tiny" />
+                    <span>{{ item.name || item.code }}</span>
+                  </label>
                 </div>
               </div>
-            </div>
-          </div>
-        </div>
-      </section>
 
-      <section v-if="activeTab !== 'orders' && liveOrders.length" class="space-y-3">
-        <div v-for="order in liveOrders" :key="order.id" class="card p-5">
-          <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div class="min-w-0">
-              <div class="flex flex-wrap items-center gap-2">
-                <span class="badge" :class="statusClass(order.status)">{{ statusLabel(order.status, order.reconciliation_action) }}</span>
-                <span class="text-sm font-medium text-gray-900 dark:text-white">{{ serviceLabel(order.service_code) }}</span>
-                <span class="text-gray-300 dark:text-dark-600">·</span>
-                <span class="flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-300">
-                  <span :class="flagClass(order.country_code)" class="fi fis rounded-sm shadow-sm" aria-hidden="true"></span>
-                  {{ countryLabel(order.country_code) }}
+              <label v-if="currentProvider?.capabilities.supports_voice" class="sms-form-field">
+                <span class="sms-field-label">{{ t('sms.user.verificationType') }}</span>
+                <select v-model.number="voiceMode" class="sms-field" @change="changeVoiceMode">
+                  <option v-for="item in voiceModeOptions" :key="item.value" :value="item.value">{{ item.label }}</option>
+                </select>
+              </label>
+
+              <label v-if="currentProvider?.capabilities.supports_operator_selection" class="sms-form-field">
+                <span class="sms-field-label">{{ t('sms.user.operator') }}</span>
+                <select v-model="operatorCode" class="sms-field" @change="quotes = []; loadQuotes()">
+                  <option value="any">{{ t('sms.user.autoOperator') }}</option>
+                  <option
+                    v-for="item in operators.filter(op => op.code !== 'any')"
+                    :key="item.code"
+                    :value="item.code"
+                    :disabled="item.available === false"
+                  >
+                    {{ item.name }}{{ operatorStockLabel(item) }}
+                  </option>
+                </select>
+                <small v-if="currentProvider?.capabilities.supports_conversion_stats && operatorCode !== 'any'" class="sms-field-help sms-field-help--success">
+                  {{ t('sms.user.recommendedOperatorSelected') }}
+                </small>
+              </label>
+
+              <label class="sms-form-field">
+                <span class="sms-field-label">{{ t('sms.user.quantity') }}</span>
+                <div class="sms-quantity">
+                  <button type="button" :disabled="purchaseQuantity <= 1" @click="purchaseQuantity = Math.max(1, Number(purchaseQuantity) - 1)">−</button>
+                  <input
+                    v-model.number="purchaseQuantity"
+                    type="number"
+                    min="1"
+                    :max="batchPurchaseLimit"
+                    :aria-invalid="purchaseQuantityError ? 'true' : undefined"
+                    :aria-describedby="purchaseQuantityError ? 'sms-quantity-error' : undefined"
+                  />
+                  <button type="button" :disabled="purchaseQuantity >= batchPurchaseLimit" @click="purchaseQuantity = Math.min(batchPurchaseLimit, Number(purchaseQuantity) + 1)">+</button>
+                </div>
+                <small class="sms-field-help">{{ t('sms.user.batchPurchaseHint', { max: batchPurchaseLimit }) }}</small>
+                <small v-if="purchaseQuantityError" id="sms-quantity-error" class="sms-field-error">{{ purchaseQuantityError }}</small>
+              </label>
+
+              <div v-if="bestQuote" class="sms-price-summary">
+                <div>
+                  <span>{{ t('sms.user.price') }}</span>
+                  <strong>{{ (bestQuote.sale_price * Math.max(1, Number(purchaseQuantity) || 1)).toFixed(4) }}</strong>
+                </div>
+                <small>{{ formatPrice(bestQuote.sale_price) }} × {{ Math.max(1, Number(purchaseQuantity) || 1) }} · {{ t('sms.user.currency') }}</small>
+              </div>
+
+              <button
+                type="button"
+                class="sms-primary-action"
+                :disabled="quoting || purchasing || !serviceCode || !countryCode || !isPurchaseQuantityValid"
+                @click="confirmSelection"
+              >
+                <span v-if="quoting || purchasing" class="sms-action-spinner"></span>
+                <Icon v-else name="bolt" size="sm" aria-hidden="true" />
+                <span>
+                  {{ purchasing
+                    ? t('sms.user.processing')
+                    : bestQuote
+                      ? (purchaseQuantity > 1 ? t('sms.user.batchPurchase') : t('sms.user.purchase'))
+                      : (quoting ? t('sms.user.quoting') : t('sms.user.getQuote')) }}
                 </span>
-              </div>
-              <div v-if="order.status === 'reconciling' && order.reconciliation_action === 'purchase'" class="mt-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-300">
-                {{ t('sms.user.purchaseConfirmingInline') }}
-              </div>
-              <div class="mt-3 flex flex-wrap items-center gap-x-6 gap-y-3">
+                <Icon v-if="!quoting && !purchasing" name="chevronRight" size="sm" aria-hidden="true" />
+              </button>
+
+              <p class="sms-refund-note">{{ t('sms.user.refundGuarantee') }}</p>
+
+              <div class="sms-delivery-tip">
+                <Icon name="infoCircle" size="sm" aria-hidden="true" />
                 <div>
-                  <div class="text-xs text-gray-500">{{ t('sms.user.phone') }}</div>
-                  <div class="mt-1 flex items-center gap-2">
-                    <span class="font-mono text-base font-semibold text-gray-900 dark:text-white">{{ order.phone_number || '-' }}</span>
+                  <strong>{{ t('sms.user.deliveryTipTitle') }}</strong>
+                  <p>{{ t('sms.user.deliveryTipBody') }}</p>
+                </div>
+              </div>
+            </section>
+          </section>
+
+          <section v-if="quotes.length > 1" class="sms-quote-panel">
+            <header>
+              <div>
+                <p class="sms-section-kicker">{{ t('sms.user.quoteOptionsEyebrow') }}</p>
+                <h2>{{ t('sms.user.quoteOptionsTitle') }}</h2>
+              </div>
+              <span>{{ quotes.length }}</span>
+            </header>
+            <div class="sms-quote-grid">
+              <article v-for="quote in quotes" :key="quote.quote_id" class="sms-quote-card">
+                <div>
+                  <strong>{{ smsChannelLabel(quote.channel_code) }}</strong>
+                  <small>{{ t('sms.user.stock') }} {{ quote.stock }} · {{ t('sms.user.eta') }} {{ quote.estimated_delivery_seconds }}{{ t('sms.user.seconds') }}</small>
+                  <small v-if="quote.success_rate != null">{{ t('sms.user.platform30dSuccessRate') }} {{ (quote.success_rate * 100).toFixed(2) }}%</small>
+                </div>
+                <div>
+                  <strong>{{ quote.sale_price.toFixed(4) }}</strong>
+                  <small>{{ t('sms.user.currency') }}</small>
+                </div>
+                <button type="button" :disabled="purchasing || !isPurchaseQuantityValid" @click="purchase(quote)">
+                  {{ t('sms.user.purchase') }}
+                </button>
+              </article>
+            </div>
+          </section>
+
+          <section v-if="liveOrders.length" class="sms-live-orders">
+            <header class="sms-live-orders__header">
+              <div>
+                <span class="sms-live-indicator"></span>
+                <div>
+                  <h2>{{ t('sms.user.liveOrdersTitle', { count: liveOrders.length }) }}</h2>
+                  <p>{{ t('sms.user.liveOrdersDescription') }}</p>
+                </div>
+              </div>
+            </header>
+
+            <div class="sms-live-orders__list">
+              <article v-for="order in liveOrders" :key="order.id" class="sms-live-order">
+                <div class="sms-live-order__service">
+                  <SMSServiceLogo :icon="serviceIcon(order.service_code, serviceLabel(order.service_code))" :label="serviceLabel(order.service_code)" class="sms-service-logo" />
+                  <span>
+                    <strong>{{ serviceLabel(order.service_code) }}</strong>
+                    <small>{{ smsChannelLabel(order.channel_code) }}</small>
+                  </span>
+                </div>
+
+                <div class="sms-live-order__country">
+                  <span :class="flagClass(order.country_code)" class="fi fis" aria-hidden="true"></span>
+                  <span>
+                    <strong>{{ countryLabel(order.country_code) }}</strong>
+                    <small>{{ order.calling_code || '' }}</small>
+                  </span>
+                </div>
+
+                <div class="sms-live-order__phone">
+                  <small>{{ t('sms.user.phone') }}</small>
+                  <span>
+                    <strong>{{ order.phone_number || '-' }}</strong>
                     <SMSPhoneCopy v-if="order.phone_number" :phone="order.phone_number" :calling-code="order.calling_code" />
-                  </div>
+                  </span>
                 </div>
-                <div>
-                  <div class="text-xs text-gray-500">{{ t('sms.user.expiresIn') }}</div>
-                  <div class="mt-1 font-mono text-base font-semibold tabular-nums text-gray-900 dark:text-white">{{ remainingLabel(order) }}</div>
+
+                <div class="sms-live-order__status">
+                  <small>{{ t('sms.user.status') }}</small>
+                  <span class="badge" :class="statusClass(order.status)">{{ statusLabel(order.status, order.reconciliation_action) }}</span>
                 </div>
-                <div>
-                  <div class="text-xs text-gray-500">{{ t('sms.user.code') }}</div>
-                  <div v-if="latestVerificationCode(order)" class="mt-1 flex items-center gap-2">
-                    <code class="rounded bg-emerald-50 px-2 py-1 font-mono text-base font-bold text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">{{ latestVerificationCode(order) }}</code>
+
+                <div class="sms-live-order__expiry">
+                  <small>{{ t('sms.user.expiresIn') }}</small>
+                  <strong>{{ remainingLabel(order) }}</strong>
+                </div>
+
+                <div class="sms-live-order__code">
+                  <small>{{ t('sms.user.code') }}</small>
+                  <span v-if="latestVerificationCode(order)">
+                    <code>{{ latestVerificationCode(order) }}</code>
                     <CopyButton :text="latestVerificationCode(order)" />
-                  </div>
-                  <div v-else class="mt-1 text-sm text-gray-400">{{ isOrderWaiting(order) ? t('sms.user.waitingForCode') : '-' }}</div>
+                  </span>
+                  <span v-else class="sms-waiting-code">{{ isOrderWaiting(order) ? t('sms.user.waitingForCode') : '-' }}</span>
                 </div>
+
+                <div class="sms-live-order__actions">
+                  <button
+                    v-if="showCancelAction(order)"
+                    type="button"
+                    class="sms-live-action sms-live-action--danger"
+                    :disabled="!canCancelOrder(order)"
+                    :title="cancelActionHint(order)"
+                    @click="cancel(order)"
+                  >
+                    {{ t('sms.user.cancel') }}
+                  </button>
+                  <button
+                    v-if="order.status === 'active' && order.product_type === 'temporary' && order.capabilities?.supports_resend"
+                    type="button"
+                    class="sms-live-action"
+                    @click="resend(order.id)"
+                  >
+                    {{ t('sms.user.resend') }}
+                  </button>
+                </div>
+
+                <p v-if="order.status === 'reconciling' && order.reconciliation_action === 'purchase'" class="sms-live-order__notice">
+                  {{ t('sms.user.purchaseConfirmingInline') }}
+                </p>
+              </article>
+            </div>
+          </section>
+
+          <section v-if="!liveOrders.length && !quotes.length && serviceCode && countryCode && !quoting" class="sms-empty-panel">
+            <Icon name="infoCircle" size="md" aria-hidden="true" />
+            <span>{{ t('sms.user.noChannel') }}</span>
+          </section>
+        </template>
+
+        <section v-else class="sms-orders">
+          <form class="sms-order-filters" @submit.prevent="applyOrderFilters">
+            <label>
+              <span>{{ t('verificationRecords.filters.keyword') }}</span>
+              <div class="sms-filter-input">
+                <Icon name="search" size="sm" aria-hidden="true" />
+                <input v-model.trim="orderDraft.keyword" :placeholder="t('verificationRecords.filters.keywordPlaceholder')" />
               </div>
+            </label>
+            <Select
+              v-model="orderDraft.status"
+              :label="t('verificationRecords.filters.outcome')"
+              :options="orderStatusOptions"
+              :placeholder="t('verificationRecords.filters.allOutcomes')"
+              clearable
+              searchable
+            />
+            <div class="sms-order-filters__actions">
+              <button type="submit" class="sms-filter-primary" :disabled="ordersLoading">
+                <Icon name="search" size="sm" aria-hidden="true" />{{ t('common.search') }}
+              </button>
+              <button type="button" class="sms-filter-secondary" :disabled="ordersLoading" @click="resetOrderFilters">
+                <Icon name="eraser" size="sm" aria-hidden="true" />{{ t('common.reset') }}
+              </button>
             </div>
-            <div class="flex shrink-0 flex-wrap gap-2">
-              <button v-if="showCancelAction(order)" type="button" class="btn btn-secondary" :disabled="!canCancelOrder(order)" :title="cancelActionHint(order)" @click="cancel(order)">{{ t('sms.user.cancel') }}</button>
-              <button v-if="order.status === 'active' && order.product_type === 'temporary' && order.capabilities?.supports_resend" type="button" class="btn btn-secondary" @click="resend(order.id)">{{ t('sms.user.resend') }}</button>
-            </div>
-          </div>
-        </div>
-      </section>
+          </form>
 
-      <section v-if="activeTab !== 'orders'" class="space-y-3">
-        <div v-if="quoting" class="card p-8 text-center text-sm text-gray-500">{{ t('sms.user.checkingStock') }}</div>
-        <div v-else-if="!quotes.length" class="card p-8 text-center text-sm text-gray-500">{{ serviceCode && countryCode ? t('sms.user.noChannel') : t('sms.user.chooseForQuote') }}</div>
-        <div v-for="quote in quotes" :key="quote.quote_id" class="card flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
-          <div class="min-w-0">
-            <div class="flex flex-wrap items-center gap-2">
-              <h2 class="font-semibold text-gray-900 dark:text-white">{{ smsChannelLabel(quote.channel_code) }}</h2>
-              <span class="badge" :class="quote.channel_role === 'primary' ? 'badge-info' : 'badge-gray'">{{ quote.channel_role === 'primary' ? t('sms.admin.primary') : t('sms.admin.backup') }}</span>
-            </div>
-            <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500 dark:text-gray-400">
-              <span>{{ t('sms.user.stock') }}: {{ quote.stock }}</span>
-              <span>{{ t('sms.user.eta') }}: {{ quote.estimated_delivery_seconds }}{{ t('sms.user.seconds') }}</span>
-              <span v-if="quote.success_rate != null">{{ t('sms.user.platform30dSuccessRate') }}: {{ (quote.success_rate * 100).toFixed(2) }}% · n={{ quote.success_rate_sample_size || 0 }}{{ t('sms.user.separator') }}{{ quote.success_rate_grade || '-' }}</span>
-              <span v-else>{{ t('sms.user.platform30dInsufficient', { count: quote.success_rate_sample_size || 0, minimum: 20 }) }}</span>
-              <span v-if="productType === 'temporary' && quote.capabilities.supports_cancel && quote.capabilities.supports_refund">{{ t('sms.user.capabilities.cancelRefund') }}</span>
-              <template v-else>
-                <span>{{ quote.capabilities.supports_cancel ? t('sms.user.capabilities.cancel') : t('sms.user.capabilities.noCancel') }}</span>
-                <span>{{ quote.capabilities.supports_refund ? t('sms.user.capabilities.refund') : t('sms.user.capabilities.noRefund') }}</span>
-              </template>
-            </div>
-          </div>
-          <div class="flex items-center justify-between gap-4 sm:justify-end">
-            <div class="text-right"><div class="text-lg font-semibold tabular-nums text-gray-900 dark:text-white">{{ quote.sale_price.toFixed(4) }}</div><div class="text-xs text-gray-500">{{ t('sms.user.currency') }}</div></div>
-            <button type="button" class="btn btn-primary" :disabled="purchasing || !isPurchaseQuantityValid" @click="purchase(quote)">{{ purchasing ? t('sms.user.processing') : purchaseQuantity > 1 ? t('sms.user.batchPurchase') : t('sms.user.purchase') }}</button>
-          </div>
-        </div>
-      </section>
+          <div v-if="ordersLoading" class="sms-orders-state">{{ t('sms.user.loading') }}</div>
+          <div v-else-if="!orders.length" class="sms-orders-state">{{ t('sms.user.noOrders') }}</div>
 
-      <section v-else class="space-y-3">
-        <form class="glass-panel grid items-end gap-3 rounded-xl p-4 md:grid-cols-[minmax(240px,1fr)_220px_auto]" @submit.prevent="applyOrderFilters">
-          <label class="block min-w-0"><span class="input-label">{{ t('verificationRecords.filters.keyword') }}</span><input v-model.trim="orderDraft.keyword" class="input h-[42px]" :placeholder="t('verificationRecords.filters.keywordPlaceholder')" /></label>
-          <Select v-model="orderDraft.status" :label="t('verificationRecords.filters.outcome')" :options="orderStatusOptions" :placeholder="t('verificationRecords.filters.allOutcomes')" clearable searchable />
-          <div class="flex h-[42px] items-center gap-2 self-end"><button type="submit" class="btn btn-primary h-[42px]" :disabled="ordersLoading"><Icon name="search" size="sm" aria-hidden="true" />{{ t('common.search') }}</button><button type="button" class="btn btn-secondary h-[42px]" :disabled="ordersLoading" @click="resetOrderFilters"><Icon name="eraser" size="sm" aria-hidden="true" />{{ t('common.reset') }}</button></div>
-        </form>
-        <div v-if="ordersLoading" class="card p-8 text-center text-sm text-gray-500">{{ t('sms.user.loading') }}</div>
-        <div v-else-if="!orders.length" class="card p-8 text-center text-sm text-gray-500">{{ t('sms.user.noOrders') }}</div>
-        <div
-          v-else
-          class="sms-orders-scroll card max-w-full overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500"
-          tabindex="0"
-          :aria-label="t('sms.user.orders')"
-        >
-          <table class="sms-orders-table w-full min-w-[2200px] table-fixed text-left text-sm">
-            <colgroup>
-              <col class="w-[320px]" />
-              <col class="w-[120px]" />
-              <col class="w-[200px]" />
-              <col class="w-[160px]" />
-              <col class="w-[130px]" />
-              <col class="w-[220px]" />
-              <col class="w-[220px]" />
-              <col class="w-[340px]" />
-              <col class="w-[110px]" />
-              <col class="w-[130px]" />
-              <col class="w-[250px]" />
-            </colgroup>
-            <thead class="whitespace-nowrap bg-gray-50 text-xs uppercase text-gray-500 dark:bg-dark-800">
-              <tr>
-                <th class="px-4 py-3">{{ t('sms.user.order') }}</th>
-                <th class="px-4 py-3">{{ t('sms.user.channel') }}</th>
-                <th class="px-4 py-3">{{ t('sms.user.service') }}</th>
-                <th class="px-4 py-3">{{ t('sms.user.country') }}</th>
-                <th class="px-4 py-3">{{ t('sms.user.operator') }}</th>
-                <th class="px-4 py-3">{{ t('sms.user.phone') }}</th>
-                <th class="px-4 py-3">{{ t('sms.user.status') }}</th>
-                <th class="px-4 py-3">{{ t('sms.user.code') }}</th>
-                <th class="px-4 py-3">{{ t('sms.user.price') }}</th>
-                <th class="px-4 py-3">{{ t('sms.user.expiresIn') }}</th>
-                <th class="px-4 py-3">{{ t('sms.user.actions') }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="order in orders" :key="order.id" class="border-t border-gray-100 align-middle dark:border-dark-700">
-                <td class="whitespace-nowrap px-4 py-3">
-                  <div class="flex items-center gap-2">
-                    <span class="font-mono text-xs">{{ order.id }}</span>
-                    <CopyButton :text="order.id" class="shrink-0" />
-                  </div>
-                </td>
-                <td class="whitespace-nowrap px-4 py-3"><span class="block truncate" :title="smsChannelLabel(order.channel_code)">{{ smsChannelLabel(order.channel_code) }}</span></td>
-                <td class="whitespace-nowrap px-4 py-3">
-                  <div class="flex min-w-0 items-center gap-2">
-                    <SMSServiceLogo :icon="serviceIcon(order.service_code, serviceLabel(order.service_code))" :label="serviceLabel(order.service_code)" class="h-7 w-7 rounded-md text-xs" />
-                    <span class="block min-w-0 truncate" :title="serviceLabel(order.service_code)">{{ serviceLabel(order.service_code) }}</span>
-                  </div>
-                </td>
-                <td class="whitespace-nowrap px-4 py-3">
-                  <div class="flex min-w-0 items-center gap-2">
-                    <span :class="flagClass(order.country_code)" class="fi fis shrink-0 rounded-sm shadow-sm" aria-hidden="true"></span>
-                    <span class="block min-w-0 truncate" :title="countryLabel(order.country_code)">{{ countryLabel(order.country_code) }}</span>
-                  </div>
-                </td>
-                <td class="whitespace-nowrap px-4 py-3 font-mono text-xs"><span class="block truncate" :title="order.operator_code || 'any'">{{ order.operator_code || 'any' }}</span></td>
-                <td class="whitespace-nowrap px-4 py-3">
-                  <div class="flex items-center gap-2">
-                    <span class="font-mono">{{ order.phone_number || '-' }}</span>
-                    <SMSPhoneCopy v-if="order.phone_number" :phone="order.phone_number" :calling-code="order.calling_code" class="shrink-0" />
-                  </div>
-                </td>
-                <td class="whitespace-nowrap px-4 py-3">
-                  <div class="sms-order-statuses flex min-w-max items-center gap-1.5">
-                    <span class="badge whitespace-nowrap" :class="statusClass(order.status)">{{ statusLabel(order.status, order.reconciliation_action) }}</span>
-                    <span v-if="order.refund_status !== 'not_requested'" class="badge badge-warning whitespace-nowrap">{{ refundLabel(order.refund_status) }}</span>
-                  </div>
-                </td>
-                <td class="whitespace-nowrap px-4 py-3">
-                  <div v-if="order.messages?.length" class="space-y-2">
-                    <div v-for="message in order.messages" :key="message.id" class="min-w-0 max-w-[308px]">
-                      <div v-if="message.verification_code" class="flex min-w-0 items-center gap-2">
-                        <code class="block min-w-0 flex-1 truncate font-mono font-semibold" :title="message.verification_code">{{ message.verification_code }}</code>
-                        <CopyButton :text="message.verification_code" class="shrink-0" />
-                      </div>
-                      <div class="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-gray-500 dark:text-gray-400">
-                        <span v-if="message.sender" class="min-w-0 max-w-[14rem] truncate font-medium text-gray-700 dark:text-gray-300" :title="message.sender">{{ message.sender }}</span>
-                        <time v-if="message.provider_received_at" class="shrink-0 tabular-nums" :datetime="message.provider_received_at">{{ formatSMSMessageTime(message.provider_received_at) }}</time>
-                        <span v-if="message.other_sms" class="badge whitespace-nowrap">{{ t('sms.user.otherMessage') }}</span>
-                      </div>
-                      <div class="sms-order-message-text mt-1 block truncate text-xs text-gray-500 dark:text-gray-400" :title="message.message_text || undefined">{{ message.message_text || '-' }}</div>
+          <div
+            v-else
+            class="sms-orders-scroll sms-orders-table-wrap overflow-x-auto"
+            tabindex="0"
+            :aria-label="t('sms.user.orders')"
+          >
+            <table class="sms-orders-table w-full min-w-[2200px] table-fixed text-left text-sm">
+              <colgroup>
+                <col class="w-[320px]" />
+                <col class="w-[120px]" />
+                <col class="w-[200px]" />
+                <col class="w-[160px]" />
+                <col class="w-[130px]" />
+                <col class="w-[220px]" />
+                <col class="w-[220px]" />
+                <col class="w-[340px]" />
+                <col class="w-[110px]" />
+                <col class="w-[130px]" />
+                <col class="w-[250px]" />
+              </colgroup>
+              <thead class="whitespace-nowrap">
+                <tr>
+                  <th>{{ t('sms.user.order') }}</th>
+                  <th>{{ t('sms.user.channel') }}</th>
+                  <th>{{ t('sms.user.service') }}</th>
+                  <th>{{ t('sms.user.country') }}</th>
+                  <th>{{ t('sms.user.operator') }}</th>
+                  <th>{{ t('sms.user.phone') }}</th>
+                  <th>{{ t('sms.user.status') }}</th>
+                  <th>{{ t('sms.user.code') }}</th>
+                  <th>{{ t('sms.user.price') }}</th>
+                  <th>{{ t('sms.user.expiresIn') }}</th>
+                  <th>{{ t('sms.user.actions') }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="order in orders" :key="order.id">
+                  <td class="whitespace-nowrap">
+                    <span class="sms-order-id"><code>{{ order.id }}</code><CopyButton :text="order.id" /></span>
+                  </td>
+                  <td class="whitespace-nowrap">{{ smsChannelLabel(order.channel_code) }}</td>
+                  <td class="whitespace-nowrap">
+                    <span class="sms-order-entity">
+                      <SMSServiceLogo :icon="serviceIcon(order.service_code, serviceLabel(order.service_code))" :label="serviceLabel(order.service_code)" class="sms-service-logo sms-service-logo--tiny" />
+                      <span>{{ serviceLabel(order.service_code) }}</span>
+                    </span>
+                  </td>
+                  <td class="whitespace-nowrap">
+                    <span class="sms-order-entity">
+                      <span :class="flagClass(order.country_code)" class="fi fis" aria-hidden="true"></span>
+                      <span>{{ countryLabel(order.country_code) }}</span>
+                    </span>
+                  </td>
+                  <td class="whitespace-nowrap"><code>{{ order.operator_code || 'any' }}</code></td>
+                  <td class="whitespace-nowrap">
+                    <span class="sms-order-phone">
+                      <code>{{ order.phone_number || '-' }}</code>
+                      <SMSPhoneCopy v-if="order.phone_number" :phone="order.phone_number" :calling-code="order.calling_code" />
+                    </span>
+                  </td>
+                  <td class="whitespace-nowrap">
+                    <div class="sms-order-statuses min-w-max">
+                      <span class="badge" :class="statusClass(order.status)">{{ statusLabel(order.status, order.reconciliation_action) }}</span>
+                      <span v-if="order.refund_status !== 'not_requested'" class="badge badge-warning">{{ refundLabel(order.refund_status) }}</span>
                     </div>
-                  </div>
-                  <span v-else>-</span>
-                </td>
-                <td class="whitespace-nowrap px-4 py-3 tabular-nums">{{ order.price.toFixed(4) }}</td>
-                <td class="whitespace-nowrap px-4 py-3 tabular-nums">{{ remainingLabel(order) }}</td>
-                <td class="whitespace-nowrap px-4 py-3">
-                  <div class="flex min-w-max items-center gap-2">
-                    <button v-if="showCancelAction(order)" type="button" class="btn btn-secondary btn-sm" :disabled="!canCancelOrder(order)" :title="cancelActionHint(order)" @click="cancel(order)">{{ t('sms.user.cancel') }}</button>
-                    <button v-if="order.status === 'active' && order.product_type === 'rental' && order.capabilities?.supports_rental_add_service" type="button" class="btn btn-secondary btn-sm" @click="openRentalServiceModal(order)">{{ t('sms.user.addService') }}</button>
-                    <button v-if="order.status === 'active' && order.product_type === 'rental' && order.capabilities?.supports_extend" type="button" class="btn btn-secondary btn-sm" @click="extend(order.id)">{{ t('sms.user.extend') }}</button>
-                    <button v-if="canRestoreRental(order)" type="button" class="btn btn-secondary btn-sm" @click="restoreRental(order)">{{ t('sms.user.restoreRental') }}</button>
-                    <button v-if="order.status === 'active' && order.product_type === 'temporary' && order.capabilities?.supports_resend" type="button" class="btn btn-secondary btn-sm" @click="resend(order.id)">{{ t('sms.user.resend') }}</button>
-                    <button type="button" class="btn btn-secondary btn-sm" :disabled="refreshingId === order.id" :aria-label="t('common.refresh')" @click="refreshOrder(order.id)"><Icon name="refresh" size="sm" :class="refreshingId === order.id ? 'animate-spin' : ''" aria-hidden="true" /></button>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <div v-if="orderPagination.total > 0" class="card overflow-hidden"><Pagination :page="orderPagination.page" :total="orderPagination.total" :page-size="orderPagination.pageSize" @update:page="changeOrderPage" @update:page-size="changeOrderPageSize" /></div>
-      </section>
+                  </td>
+                  <td class="whitespace-nowrap">
+                    <div v-if="order.messages?.length" class="sms-order-messages">
+                      <div v-for="message in order.messages" :key="message.id">
+                        <div v-if="message.verification_code" class="sms-order-code">
+                          <code>{{ message.verification_code }}</code>
+                          <CopyButton :text="message.verification_code" />
+                        </div>
+                        <div class="sms-order-message-meta">
+                          <span v-if="message.sender">{{ message.sender }}</span>
+                          <time v-if="message.provider_received_at" :datetime="message.provider_received_at">{{ formatSMSMessageTime(message.provider_received_at) }}</time>
+                          <span v-if="message.other_sms" class="badge">{{ t('sms.user.otherMessage') }}</span>
+                        </div>
+                        <div class="sms-order-message-text truncate" :title="message.message_text || undefined">{{ message.message_text || '-' }}</div>
+                      </div>
+                    </div>
+                    <span v-else>-</span>
+                  </td>
+                  <td class="whitespace-nowrap">{{ order.price.toFixed(4) }}</td>
+                  <td class="whitespace-nowrap">{{ remainingLabel(order) }}</td>
+                  <td class="whitespace-nowrap">
+                    <div class="sms-order-actions">
+                      <button
+                        v-if="showCancelAction(order)"
+                        type="button"
+                        class="sms-row-button"
+                        :disabled="!canCancelOrder(order)"
+                        :title="cancelActionHint(order)"
+                        @click="cancel(order)"
+                      >
+                        {{ t('sms.user.cancel') }}
+                      </button>
+                      <button
+                        v-if="order.status === 'active' && order.product_type === 'rental' && order.capabilities?.supports_rental_add_service"
+                        type="button"
+                        class="sms-row-button"
+                        @click="openRentalServiceModal(order)"
+                      >
+                        {{ t('sms.user.addService') }}
+                      </button>
+                      <button
+                        v-if="order.status === 'active' && order.product_type === 'rental' && order.capabilities?.supports_extend"
+                        type="button"
+                        class="sms-row-button"
+                        @click="extend(order.id)"
+                      >
+                        {{ t('sms.user.extend') }}
+                      </button>
+                      <button v-if="canRestoreRental(order)" type="button" class="sms-row-button" @click="restoreRental(order)">
+                        {{ t('sms.user.restoreRental') }}
+                      </button>
+                      <button
+                        v-if="order.status === 'active' && order.product_type === 'temporary' && order.capabilities?.supports_resend"
+                        type="button"
+                        class="sms-row-button"
+                        @click="resend(order.id)"
+                      >
+                        {{ t('sms.user.resend') }}
+                      </button>
+                      <button
+                        type="button"
+                        class="sms-row-button sms-row-button--icon"
+                        :disabled="refreshingId === order.id"
+                        :aria-label="t('common.refresh')"
+                        @click="refreshOrder(order.id)"
+                      >
+                        <Icon name="refresh" size="sm" :class="{ 'sms-spin': refreshingId === order.id }" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
 
-      <div v-if="rentalServiceState.show" class="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4" @click.self="closeRentalServiceModal">
-        <div class="card w-full max-w-lg space-y-4 p-5 shadow-xl">
-          <div class="flex items-start justify-between gap-3">
-            <div>
-              <h3 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('sms.user.addServiceTitle') }}</h3>
-              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('sms.user.addServiceDescription') }}</p>
-            </div>
-            <button type="button" class="btn btn-secondary btn-sm" @click="closeRentalServiceModal">{{ t('common.close') }}</button>
+          <div v-if="orderPagination.total > 0" class="sms-orders__pagination">
+            <Pagination
+              :page="orderPagination.page"
+              :total="orderPagination.total"
+              :page-size="orderPagination.pageSize"
+              @update:page="changeOrderPage"
+              @update:page-size="changeOrderPageSize"
+            />
           </div>
-          <label class="block">
-            <span class="input-label">{{ t('sms.user.rentDays') }}</span>
-            <div class="mt-1 flex gap-2">
-              <input v-model.number="rentalServiceState.rentDays" class="input flex-1" type="number" min="1" max="366" />
-              <button type="button" class="btn btn-secondary" :disabled="rentalServiceState.loading" @click="loadRentalServiceOptions">{{ t('common.refresh') }}</button>
-            </div>
-          </label>
-          <label class="block">
-            <span class="input-label">{{ t('sms.user.service') }}</span>
-            <select v-model="rentalServiceState.selectedService" class="input mt-1 w-full" :disabled="rentalServiceState.loading">
-              <option value="">{{ t('sms.user.selectService') }}</option>
-              <option v-for="item in rentalServiceState.options" :key="item.code" :value="item.code">
-                {{ item.name }} · {{ formatPrice(item.sale_price) }} {{ t('sms.user.currency') }}
-              </option>
-            </select>
-          </label>
-          <div v-if="rentalServiceState.loading" class="py-4 text-center text-sm text-gray-500">{{ t('sms.user.loading') }}</div>
-          <div v-else-if="!rentalServiceState.options.length" class="rounded-lg bg-gray-50 p-3 text-sm text-gray-500 dark:bg-dark-800">{{ t('sms.user.noAdditionalServices') }}</div>
-          <div class="flex justify-end gap-2">
-            <button type="button" class="btn btn-secondary" @click="closeRentalServiceModal">{{ t('common.cancel') }}</button>
-            <button type="button" class="btn btn-primary" :disabled="!rentalServiceState.selectedService || rentalServiceState.loading" @click="quoteRentalServiceAddition">{{ t('sms.user.getQuote') }}</button>
-          </div>
+        </section>
+
+        <div v-if="rentalServiceState.show" class="sms-modal" @click.self="closeRentalServiceModal">
+          <section class="sms-modal__dialog">
+            <header>
+              <div>
+                <h2>{{ t('sms.user.addServiceTitle') }}</h2>
+                <p>{{ t('sms.user.addServiceDescription') }}</p>
+              </div>
+              <button type="button" @click="closeRentalServiceModal">{{ t('common.close') }}</button>
+            </header>
+
+            <label>
+              <span class="sms-field-label">{{ t('sms.user.rentDays') }}</span>
+              <div class="sms-modal__inline">
+                <input v-model.number="rentalServiceState.rentDays" class="sms-field" type="number" min="1" max="366" />
+                <button type="button" class="sms-filter-secondary" :disabled="rentalServiceState.loading" @click="loadRentalServiceOptions">{{ t('common.refresh') }}</button>
+              </div>
+            </label>
+
+            <label>
+              <span class="sms-field-label">{{ t('sms.user.service') }}</span>
+              <select v-model="rentalServiceState.selectedService" class="sms-field" :disabled="rentalServiceState.loading">
+                <option value="">{{ t('sms.user.selectService') }}</option>
+                <option v-for="item in rentalServiceState.options" :key="item.code" :value="item.code">
+                  {{ item.name }} · {{ formatPrice(item.sale_price) }} {{ t('sms.user.currency') }}
+                </option>
+              </select>
+            </label>
+
+            <div v-if="rentalServiceState.loading" class="sms-list-state">{{ t('sms.user.loading') }}</div>
+            <div v-else-if="!rentalServiceState.options.length" class="sms-list-state">{{ t('sms.user.noAdditionalServices') }}</div>
+
+            <footer>
+              <button type="button" class="sms-filter-secondary" @click="closeRentalServiceModal">{{ t('common.cancel') }}</button>
+              <button
+                type="button"
+                class="sms-filter-primary"
+                :disabled="!rentalServiceState.selectedService || rentalServiceState.loading"
+                @click="quoteRentalServiceAddition"
+              >
+                {{ t('sms.user.getQuote') }}
+              </button>
+            </footer>
+          </section>
         </div>
+
+        <ConfirmDialog
+          :show="confirmState.show"
+          :title="confirmState.title"
+          :message="confirmState.message"
+          :confirm-text="confirmState.confirmText"
+          :cancel-text="confirmState.cancelText"
+          :danger="confirmState.danger"
+          :confirming="confirmingAction"
+          @confirm="runConfirmedAction"
+          @cancel="closeConfirm"
+        />
       </div>
-
-      <ConfirmDialog
-        :show="confirmState.show"
-        :title="confirmState.title"
-        :message="confirmState.message"
-        :confirm-text="confirmState.confirmText"
-        :cancel-text="confirmState.cancelText"
-        :danger="confirmState.danger"
-        :confirming="confirmingAction"
-        @confirm="runConfirmedAction"
-        @cancel="closeConfirm"
-      />
-    </div>
+    </main>
   </AppLayout>
 </template>
 
@@ -1458,17 +1761,1727 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.sms-page {
+  min-height: calc(100dvh - 4rem);
+  color: var(--color-text-primary);
+}
+
+.sms-shell {
+  width: min(1480px, calc(100% - 40px));
+  margin-inline: auto;
+  padding: 22px 0 52px;
+}
+
+.sms-page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.sms-eyebrow,
+.sms-section-kicker {
+  margin: 0;
+  color: var(--color-accent);
+  font-size: .7rem;
+  font-weight: 760;
+  letter-spacing: .11em;
+  text-transform: uppercase;
+}
+
+.sms-page-header h1 {
+  margin: .48rem 0 0;
+  font-size: 1.75rem;
+  font-weight: 730;
+  line-height: 1.2;
+  letter-spacing: -.035em;
+}
+
+.sms-page-header p:not(.sms-eyebrow) {
+  max-width: 760px;
+  margin: .42rem 0 0;
+  color: var(--color-text-secondary);
+  font-size: .82rem;
+  line-height: 1.6;
+}
+
+.sms-refresh-button {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: .7rem;
+  font-weight: 630;
+  box-shadow: var(--shadow-xs);
+}
+
+.sms-refresh-button:hover:not(:disabled) {
+  border-color: var(--color-primary-border);
+  color: var(--color-primary);
+}
+
+.sms-success-strip {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+}
+
+.sms-success-strip__label {
+  display: inline-flex;
+  min-height: 42px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  padding: 0 13px;
+  border-right: 1px solid var(--color-border-subtle);
+  background: color-mix(in srgb, var(--color-success) 7%, var(--color-surface));
+  color: var(--color-success);
+  font-size: .67rem;
+  font-weight: 700;
+}
+
+.sms-success-strip__viewport {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
 .sms-success-track {
+  display: flex;
+  width: max-content;
+  align-items: center;
+  gap: 7px;
   animation: sms-success-marquee 38s linear infinite;
 }
+
 .sms-success-track:hover {
   animation-play-state: paused;
 }
+
+.sms-success-item {
+  display: inline-flex;
+  min-height: 29px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  padding: 0 9px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+  background: var(--color-surface-soft);
+  color: var(--color-text-muted);
+  font-size: .63rem;
+}
+
+.sms-success-item strong {
+  color: var(--color-text-secondary);
+  font-weight: 650;
+}
+
+.sms-success-item .fi {
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px var(--color-border-subtle);
+}
+
+.sms-success-item code {
+  color: var(--color-text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.sms-tabs {
+  display: flex;
+  min-height: 52px;
+  align-items: flex-end;
+  gap: 3px;
+  margin-top: 8px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.sms-tabs button {
+  position: relative;
+  min-height: 48px;
+  padding: 0 14px;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: .76rem;
+  font-weight: 630;
+}
+
+.sms-tabs button::after {
+  position: absolute;
+  right: 10px;
+  bottom: -1px;
+  left: 10px;
+  height: 2px;
+  border-radius: 999px;
+  background: transparent;
+  content: '';
+}
+
+.sms-tabs button.is-active {
+  color: var(--color-primary);
+}
+
+.sms-tabs button.is-active::after {
+  background: var(--color-primary);
+}
+
+.sms-tabs button:disabled {
+  cursor: not-allowed;
+  opacity: .4;
+}
+
+.sms-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, .9fr) minmax(330px, .78fr);
+  margin-top: 14px;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.sms-workspace__left,
+.sms-step--country,
+.sms-step--confirm {
+  min-width: 0;
+}
+
+.sms-workspace__left {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  border-right: 1px solid var(--color-border-subtle);
+}
+
+.sms-step {
+  padding: 16px;
+}
+
+.sms-step--channels {
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.sms-step--country {
+  border-right: 1px solid var(--color-border-subtle);
+}
+
+.sms-step__header {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.sms-step__number {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: .72rem;
+  font-weight: 800;
+}
+
+.sms-step__header > div {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.sms-step__header h2 {
+  margin: 1px 0 0;
+  color: var(--color-text-primary);
+  font-size: .82rem;
+  font-weight: 680;
+  line-height: 1.35;
+}
+
+.sms-step__header p {
+  margin: 3px 0 0;
+  color: var(--color-text-muted);
+  font-size: .63rem;
+  line-height: 1.45;
+}
+
+.sms-step__title-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+}
+
+.sms-step__title-line span {
+  color: var(--color-text-muted);
+  font-size: .62rem;
+}
+
+.sms-provider-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.sms-provider-card {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  min-height: 66px;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 11px;
+  border: 1px solid var(--color-border);
+  border-radius: 11px;
+  background: var(--color-surface-raised);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard),
+    background-color var(--motion-fast) var(--ease-standard);
+}
+
+.sms-provider-card:hover:not(:disabled) {
+  border-color: var(--color-primary-border);
+}
+
+.sms-provider-card.is-selected {
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary-soft) 52%, var(--color-surface));
+  box-shadow: 0 0 0 2px var(--color-primary-ring);
+}
+
+.sms-provider-card.is-disabled {
+  cursor: not-allowed;
+  opacity: .48;
+  filter: grayscale(.4);
+}
+
+.sms-provider-card__icon {
+  position: relative;
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--color-primary-soft);
+}
+
+.sms-provider-card__icon span {
+  position: absolute;
+  width: 17px;
+  height: 9px;
+  border: 1.5px solid var(--color-primary);
+  border-radius: 3px;
+  background: var(--color-surface);
+  transform: rotate(-1deg);
+}
+
+.sms-provider-card__icon span:first-child { transform: translateY(-6px); }
+.sms-provider-card__icon span:nth-child(2) { transform: translateY(0); }
+.sms-provider-card__icon span:last-child { transform: translateY(6px); }
+
+.sms-provider-card__copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.sms-provider-card__copy strong {
+  font-size: .75rem;
+  font-weight: 680;
+}
+
+.sms-provider-card__copy small {
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: .61rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sms-provider-card.is-selected .sms-provider-card__copy small {
+  color: var(--color-success);
+}
+
+.sms-provider-card__state {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-success);
+}
+
+.sms-provider-card__beta {
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--color-surface-soft);
+  color: var(--color-text-muted);
+  font-size: .55rem;
+  font-weight: 750;
+  letter-spacing: .05em;
+}
+
+.sms-search-field {
+  position: relative;
+  display: block;
+  margin-top: 12px;
+}
+
+.sms-search-field svg {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  left: 11px;
+  color: var(--color-text-muted);
+  transform: translateY(-50%);
+}
+
+.sms-search-field input {
+  width: 100%;
+  min-height: 40px;
+  padding: 0 11px 0 36px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 9px;
+  outline: none;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: .72rem;
+}
+
+.sms-search-field input:focus,
+.sms-field:focus,
+.sms-native-select:focus,
+.sms-filter-input input:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-ring);
+}
+
+.sms-search-field input:disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
+
+.sms-option-list {
+  display: grid;
+  min-height: 0;
+  gap: 6px;
+  margin-top: 10px;
+  overflow-y: auto;
+  padding-right: 2px;
+  scrollbar-width: thin;
+}
+
+.sms-option-list--service,
+.sms-option-list--country {
+  max-height: 430px;
+}
+
+.sms-option-card,
+.sms-country-card {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface-raised);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    background-color var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard);
+}
+
+.sms-option-card {
+  display: flex;
+  min-height: 56px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 9px;
+  padding: 7px 32px 7px 9px;
+}
+
+.sms-option-card:hover,
+.sms-country-card:hover:not(:disabled) {
+  border-color: var(--color-primary-border);
+}
+
+.sms-option-card.is-selected,
+.sms-country-card.is-selected {
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary-soft) 44%, var(--color-surface));
+  box-shadow: inset 3px 0 0 var(--color-primary);
+}
+
+.sms-option-card__main {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 9px;
+}
+
+.sms-service-logo {
+  width: 34px !important;
+  height: 34px !important;
+  flex: 0 0 34px;
+  border-radius: 9px;
+  font-size: .74rem !important;
+}
+
+.sms-service-logo--small {
+  width: 28px !important;
+  height: 28px !important;
+  flex-basis: 28px;
+}
+
+.sms-service-logo--tiny {
+  width: 24px !important;
+  height: 24px !important;
+  flex-basis: 24px;
+  font-size: .58rem !important;
+}
+
+.sms-option-card__copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.sms-option-card__copy strong {
+  overflow: hidden;
+  font-size: .73rem;
+  font-weight: 660;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sms-option-card__copy small {
+  color: var(--color-success);
+  font-size: .6rem;
+}
+
+.sms-option-card__meta {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 2px;
+  text-align: right;
+}
+
+.sms-option-card__meta strong {
+  color: var(--color-text-primary);
+  font-size: .7rem;
+  font-weight: 680;
+}
+
+.sms-option-card__meta small {
+  color: var(--color-text-muted);
+  font-size: .57rem;
+}
+
+.sms-selected-mark {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  display: grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--color-primary);
+  color: white;
+  transform: translateY(-50%);
+}
+
+.sms-country-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 128px;
+  gap: 8px;
+}
+
+.sms-country-toolbar .sms-search-field {
+  margin-top: 12px;
+}
+
+.sms-native-select {
+  min-height: 40px;
+  align-self: end;
+  margin-top: 12px;
+  padding: 0 9px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 9px;
+  outline: none;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: .66rem;
+}
+
+.sms-country-card {
+  display: grid;
+  min-height: 62px;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 32px 7px 9px;
+}
+
+.sms-country-card:disabled {
+  cursor: not-allowed;
+  opacity: .48;
+}
+
+.sms-country-card__flag {
+  font-size: 1.15rem;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px var(--color-border-subtle);
+}
+
+.sms-country-card__copy {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.sms-country-card__name {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.sms-country-card__name strong {
+  overflow: hidden;
+  font-size: .72rem;
+  font-weight: 670;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sms-country-card__name small {
+  flex: 0 0 auto;
+  color: var(--color-text-muted);
+  font-size: .58rem;
+}
+
+.sms-country-card__sub,
+.sms-country-card__rate {
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: .58rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sms-country-card__rate {
+  color: var(--color-success);
+  font-weight: 610;
+}
+
+.sms-country-card__meta {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 2px;
+  text-align: right;
+}
+
+.sms-country-card__meta strong {
+  color: var(--color-text-primary);
+  font-size: .69rem;
+  font-weight: 680;
+}
+
+.sms-country-card__meta small {
+  color: var(--color-text-muted);
+  font-size: .55rem;
+}
+
+.sms-list-state {
+  display: flex;
+  min-height: 86px;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+  font-size: .68rem;
+  text-align: center;
+}
+
+.sms-load-more {
+  min-height: 34px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: .65rem;
+}
+
+.sms-inline-hint {
+  margin: 9px 0 0;
+  color: var(--color-text-muted);
+  font-size: .64rem;
+}
+
+.sms-step--confirm {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-primary-soft) 28%, var(--color-surface)) 0%, var(--color-surface) 30%);
+}
+
+.sms-selection-summary {
+  margin-top: 12px;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 11px;
+  background: var(--color-surface-raised);
+}
+
+.sms-selection-summary > div {
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.sms-selection-summary > div:last-child {
+  border-bottom: 0;
+}
+
+.sms-selection-summary > div > span:first-child {
+  color: var(--color-text-muted);
+  font-size: .64rem;
+}
+
+.sms-selection-summary strong {
+  color: var(--color-text-primary);
+  font-size: .71rem;
+  font-weight: 670;
+  text-align: right;
+}
+
+.sms-selection-summary__entity {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.sms-selection-summary__entity > span:last-child {
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sms-success-value {
+  color: var(--color-success) !important;
+  font-size: .86rem !important;
+}
+
+.sms-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 11px;
+}
+
+.sms-form-grid :deep(label),
+.sms-form-field {
+  display: block;
+  min-width: 0;
+}
+
+.sms-field-label {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--color-text-secondary);
+  font-size: .64rem;
+  font-weight: 620;
+}
+
+.sms-field {
+  width: 100%;
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 9px;
+  outline: none;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: .7rem;
+}
+
+.sms-form-field {
+  margin-top: 11px;
+}
+
+.sms-field-help {
+  display: block;
+  margin-top: 4px;
+  color: var(--color-text-muted);
+  font-size: .59rem;
+  line-height: 1.4;
+}
+
+.sms-field-help--success {
+  color: var(--color-success);
+}
+
+.sms-field-error {
+  display: block;
+  margin-top: 4px;
+  color: var(--color-danger);
+  font-size: .59rem;
+}
+
+.sms-extra-services {
+  margin-top: 11px;
+  padding: 9px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface-soft);
+}
+
+.sms-extra-services__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sms-extra-services__heading > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.sms-extra-services__heading strong {
+  font-size: .68rem;
+  font-weight: 650;
+}
+
+.sms-extra-services__heading small {
+  color: var(--color-text-muted);
+  font-size: .58rem;
+  line-height: 1.4;
+}
+
+.sms-extra-services__heading > span {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  font-size: .56rem;
+}
+
+.sms-extra-services__list {
+  display: grid;
+  max-height: 122px;
+  gap: 4px;
+  margin-top: 8px;
+  overflow-y: auto;
+}
+
+.sms-extra-services__list label {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 5px;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: .64rem;
+}
+
+.sms-extra-services__list label:hover {
+  background: var(--color-surface);
+}
+
+.sms-extra-services__list input {
+  accent-color: var(--color-primary);
+}
+
+.sms-quantity {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) 36px;
+  min-height: 40px;
+  overflow: hidden;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 9px;
+  background: var(--color-surface);
+}
+
+.sms-quantity button {
+  border: 0;
+  background: var(--color-surface-soft);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: .95rem;
+}
+
+.sms-quantity button:disabled {
+  cursor: not-allowed;
+  opacity: .4;
+}
+
+.sms-quantity input {
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: .72rem;
+  font-weight: 650;
+  text-align: center;
+}
+
+.sms-price-summary {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 10px 11px;
+  border-top: 1px solid var(--color-border-subtle);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.sms-price-summary > div {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.sms-price-summary span {
+  color: var(--color-text-muted);
+  font-size: .65rem;
+}
+
+.sms-price-summary strong {
+  color: var(--color-primary);
+  font-size: 1.24rem;
+  font-weight: 740;
+  font-variant-numeric: tabular-nums;
+}
+
+.sms-price-summary small {
+  color: var(--color-text-muted);
+  font-size: .58rem;
+}
+
+.sms-primary-action {
+  display: flex;
+  width: 100%;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin-top: 11px;
+  border: 1px solid var(--color-primary);
+  border-radius: 9px;
+  background: linear-gradient(90deg, var(--color-primary), color-mix(in srgb, var(--color-primary) 76%, var(--color-accent)));
+  color: white;
+  cursor: pointer;
+  font: inherit;
+  font-size: .74rem;
+  font-weight: 680;
+  box-shadow: var(--shadow-sm);
+}
+
+.sms-primary-action:disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
+
+.sms-action-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid color-mix(in srgb, white 42%, transparent);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: sms-spin .75s linear infinite;
+}
+
+.sms-refund-note {
+  margin: 7px 0 0;
+  color: var(--color-text-muted);
+  font-size: .59rem;
+  text-align: center;
+}
+
+.sms-delivery-tip {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 9px 10px;
+  border: 1px solid color-mix(in srgb, var(--color-warning) 30%, var(--color-border));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-warning) 6%, var(--color-surface));
+  color: var(--color-warning);
+}
+
+.sms-delivery-tip > svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.sms-delivery-tip strong {
+  display: block;
+  color: var(--color-text-primary);
+  font-size: .66rem;
+  font-weight: 670;
+}
+
+.sms-delivery-tip p {
+  margin: 3px 0 0;
+  color: var(--color-text-muted);
+  font-size: .59rem;
+  line-height: 1.45;
+}
+
+.sms-quote-panel,
+.sms-live-orders,
+.sms-empty-panel,
+.sms-orders {
+  margin-top: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 15px;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-xs);
+}
+
+.sms-quote-panel {
+  overflow: hidden;
+}
+
+.sms-quote-panel > header {
+  display: flex;
+  min-height: 60px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.sms-quote-panel h2 {
+  margin: 3px 0 0;
+  font-size: .78rem;
+  font-weight: 670;
+}
+
+.sms-quote-panel > header > span {
+  display: grid;
+  min-width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  font-size: .6rem;
+  font-weight: 700;
+}
+
+.sms-quote-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 10px;
+}
+
+.sms-quote-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface-soft);
+}
+
+.sms-quote-card > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.sms-quote-card strong {
+  font-size: .68rem;
+  font-weight: 670;
+}
+
+.sms-quote-card small {
+  color: var(--color-text-muted);
+  font-size: .58rem;
+}
+
+.sms-quote-card > div:nth-child(2) {
+  text-align: right;
+}
+
+.sms-quote-card > button {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--color-primary);
+  border-radius: 8px;
+  background: var(--color-primary);
+  color: white;
+  cursor: pointer;
+  font: inherit;
+  font-size: .62rem;
+  font-weight: 650;
+}
+
+.sms-live-orders {
+  overflow: hidden;
+}
+
+.sms-live-orders__header {
+  min-height: 58px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.sms-live-orders__header > div {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.sms-live-indicator {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 9px;
+  border-radius: 50%;
+  background: var(--color-success);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-success) 12%, transparent);
+}
+
+.sms-live-orders__header h2 {
+  margin: 0;
+  font-size: .78rem;
+  font-weight: 680;
+}
+
+.sms-live-orders__header p {
+  margin: 2px 0 0;
+  color: var(--color-text-muted);
+  font-size: .6rem;
+}
+
+.sms-live-orders__list {
+  display: grid;
+}
+
+.sms-live-order {
+  position: relative;
+  display: grid;
+  min-width: 980px;
+  grid-template-columns: minmax(180px, 1fr) 150px minmax(190px, 1fr) 135px 110px 170px auto;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.sms-live-order:last-child {
+  border-bottom: 0;
+}
+
+.sms-live-order__service,
+.sms-live-order__country,
+.sms-live-order__phone > span,
+.sms-live-order__code > span {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+}
+
+.sms-live-order__service > span:last-child,
+.sms-live-order__country > span:last-child {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.sms-live-order strong {
+  overflow: hidden;
+  color: var(--color-text-primary);
+  font-size: .7rem;
+  font-weight: 670;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sms-live-order small {
+  display: block;
+  color: var(--color-text-muted);
+  font-size: .57rem;
+}
+
+.sms-live-order__phone > small,
+.sms-live-order__status > small,
+.sms-live-order__expiry > small,
+.sms-live-order__code > small {
+  margin-bottom: 3px;
+}
+
+.sms-live-order__phone code,
+.sms-live-order__code code {
+  color: var(--color-text-primary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: .73rem;
+  font-weight: 680;
+}
+
+.sms-live-order__expiry strong {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: .76rem;
+}
+
+.sms-waiting-code {
+  color: var(--color-text-muted);
+  font-size: .64rem;
+}
+
+.sms-live-order__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.sms-live-action {
+  min-height: 32px;
+  padding: 0 9px;
+  border: 1px solid var(--color-primary-border);
+  border-radius: 8px;
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: .61rem;
+  font-weight: 640;
+}
+
+.sms-live-action--danger {
+  border-color: color-mix(in srgb, var(--color-danger) 30%, var(--color-border));
+  background: color-mix(in srgb, var(--color-danger) 6%, var(--color-surface));
+  color: var(--color-danger);
+}
+
+.sms-live-action:disabled {
+  cursor: not-allowed;
+  opacity: .45;
+}
+
+.sms-live-order__notice {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 7px 9px;
+  border-radius: 8px;
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  font-size: .59rem;
+  line-height: 1.45;
+}
+
+.sms-empty-panel {
+  display: flex;
+  min-height: 78px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  color: var(--color-text-muted);
+  font-size: .68rem;
+}
+
+.sms-orders {
+  overflow: hidden;
+}
+
+.sms-order-filters {
+  display: grid;
+  grid-template-columns: minmax(300px, 1fr) 210px auto;
+  align-items: end;
+  gap: 10px;
+  padding: 14px;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.sms-order-filters > label {
+  display: grid;
+  gap: 5px;
+  color: var(--color-text-secondary);
+  font-size: .64rem;
+  font-weight: 620;
+}
+
+.sms-filter-input {
+  position: relative;
+}
+
+.sms-filter-input svg {
+  position: absolute;
+  top: 50%;
+  left: 11px;
+  color: var(--color-text-muted);
+  transform: translateY(-50%);
+}
+
+.sms-filter-input input {
+  width: 100%;
+  min-height: 40px;
+  padding: 0 10px 0 35px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 9px;
+  outline: none;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: .7rem;
+}
+
+.sms-order-filters__actions {
+  display: flex;
+  gap: 7px;
+}
+
+.sms-filter-primary,
+.sms-filter-secondary {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 12px;
+  border-radius: 9px;
+  cursor: pointer;
+  font: inherit;
+  font-size: .68rem;
+  font-weight: 650;
+}
+
+.sms-filter-primary {
+  border: 1px solid var(--color-primary);
+  background: var(--color-primary);
+  color: white;
+}
+
+.sms-filter-secondary {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+}
+
+.sms-orders-state {
+  display: flex;
+  min-height: 160px;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+  font-size: .7rem;
+}
+
+.sms-orders-table-wrap {
+  max-width: 100%;
+  background: var(--color-surface);
+  outline: none;
+}
+
+.sms-orders-table {
+  border-collapse: collapse;
+}
+
+.sms-orders-table thead {
+  background: var(--color-surface-soft);
+  color: var(--color-text-muted);
+  font-size: .61rem;
+  font-weight: 650;
+  text-transform: uppercase;
+}
+
+.sms-orders-table th,
+.sms-orders-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--color-border-subtle);
+  vertical-align: middle;
+}
+
+.sms-orders-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.sms-orders-table tbody tr:hover {
+  background: var(--color-surface-soft);
+}
+
+.sms-orders-table td {
+  color: var(--color-text-secondary);
+  font-size: .67rem;
+}
+
+.sms-order-id,
+.sms-order-phone,
+.sms-order-entity,
+.sms-order-code,
+.sms-order-statuses,
+.sms-order-actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.sms-order-id code,
+.sms-order-phone code,
+.sms-order-code code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.sms-order-messages {
+  display: grid;
+  gap: 7px;
+}
+
+.sms-order-code code {
+  font-weight: 700;
+}
+
+.sms-order-message-meta {
+  display: flex;
+  max-width: 300px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 7px;
+  margin-top: 3px;
+  color: var(--color-text-muted);
+  font-size: .57rem;
+}
+
+.sms-order-message-text {
+  max-width: 300px;
+  margin-top: 3px;
+  color: var(--color-text-muted);
+  font-size: .61rem;
+}
+
+.sms-row-button {
+  min-height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: .59rem;
+}
+
+.sms-row-button--icon {
+  display: grid;
+  width: 30px;
+  padding: 0;
+  place-items: center;
+}
+
+.sms-row-button:disabled {
+  cursor: not-allowed;
+  opacity: .45;
+}
+
+.sms-orders__pagination {
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.sms-modal {
+  position: fixed;
+  z-index: 60;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(15, 23, 42, .44);
+  -webkit-backdrop-filter: blur(5px);
+  backdrop-filter: blur(5px);
+}
+
+.sms-modal__dialog {
+  display: grid;
+  width: min(520px, 100%);
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-xl);
+}
+
+.sms-modal__dialog > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.sms-modal__dialog h2 {
+  margin: 0;
+  font-size: .92rem;
+  font-weight: 680;
+}
+
+.sms-modal__dialog p {
+  margin: 4px 0 0;
+  color: var(--color-text-muted);
+  font-size: .66rem;
+  line-height: 1.45;
+}
+
+.sms-modal__dialog > header > button {
+  border: 0;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: .66rem;
+}
+
+.sms-modal__inline {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 7px;
+}
+
+.sms-modal__dialog > footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.sms-spin {
+  animation: sms-spin .8s linear infinite;
+}
+
+@keyframes sms-spin {
+  to { transform: rotate(360deg); }
+}
+
 @keyframes sms-success-marquee {
   from { transform: translateX(0); }
   to { transform: translateX(-50%); }
 }
+
+@media (max-width: 1180px) {
+  .sms-workspace {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .sms-workspace__left {
+    border-right: 1px solid var(--color-border-subtle);
+  }
+
+  .sms-step--country {
+    border-right: 0;
+  }
+
+  .sms-step--confirm {
+    grid-column: 1 / -1;
+    border-top: 1px solid var(--color-border-subtle);
+  }
+
+  .sms-step--confirm {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(300px, .8fr);
+    align-items: start;
+    gap: 0 16px;
+  }
+
+  .sms-step--confirm > .sms-step__header,
+  .sms-step--confirm > .sms-selection-summary {
+    grid-column: 1;
+  }
+
+  .sms-step--confirm > :not(.sms-step__header):not(.sms-selection-summary) {
+    grid-column: 2;
+  }
+
+  .sms-quote-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 860px) {
+  .sms-shell {
+    width: min(100% - 28px, 760px);
+  }
+
+  .sms-refresh-button span {
+    display: none;
+  }
+
+  .sms-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .sms-workspace__left,
+  .sms-step--country {
+    border-right: 0;
+  }
+
+  .sms-step--country,
+  .sms-step--confirm {
+    border-top: 1px solid var(--color-border-subtle);
+  }
+
+  .sms-step--confirm {
+    display: block;
+  }
+
+  .sms-country-toolbar {
+    grid-template-columns: minmax(0, 1fr) 120px;
+  }
+
+  .sms-quote-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sms-live-orders {
+    overflow-x: auto;
+  }
+
+  .sms-order-filters {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .sms-order-filters__actions {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 560px) {
+  .sms-shell {
+    width: min(100% - 20px, 520px);
+    padding-top: 16px;
+  }
+
+  .sms-page-header h1 {
+    font-size: 1.55rem;
+  }
+
+  .sms-page-header p:not(.sms-eyebrow) {
+    font-size: .75rem;
+  }
+
+  .sms-success-strip__label {
+    padding-inline: 9px;
+  }
+
+  .sms-tabs {
+    overflow-x: auto;
+  }
+
+  .sms-tabs button {
+    min-width: max-content;
+  }
+
+  .sms-workspace {
+    border-radius: 13px;
+  }
+
+  .sms-step {
+    padding: 13px;
+  }
+
+  .sms-provider-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sms-country-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .sms-native-select {
+    margin-top: 0;
+  }
+
+  .sms-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sms-selection-summary__entity > span:last-child {
+    max-width: 150px;
+  }
+
+  .sms-price-summary {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .sms-quote-card {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .sms-quote-card > button {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .sms-order-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .sms-order-filters__actions {
+    grid-column: auto;
+  }
+
+  .sms-filter-primary,
+  .sms-filter-secondary {
+    flex: 1 1 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .sms-success-track { animation: none; }
+  .sms-success-track,
+  .sms-spin,
+  .sms-action-spinner {
+    animation: none;
+  }
+
+  .sms-provider-card,
+  .sms-option-card,
+  .sms-country-card {
+    transition-duration: 1ms;
+  }
 }
 </style>
