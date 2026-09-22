@@ -4069,6 +4069,24 @@ func (s *SMSService) pollSMSOrder(ctx context.Context, id int64, providerOrder, 
 	if p == nil {
 		return ErrSMSProviderUnavailable
 	}
+
+	// Repair legacy SMSPVA rows that were stored before countryCode was
+	// preserved. This is scoped to an exact local order/provider order pair and
+	// runs only while the stored value is not already canonical.
+	if productType == "temporary" && strings.EqualFold(strings.TrimSpace(providerCode), "smspva") {
+		var storedPhone, serviceCode string
+		if queryErr := s.db.QueryRowContext(ctx, `SELECT o.phone_number,sv.code FROM sms_orders o JOIN sms_services sv ON sv.id=o.service_id WHERE o.id=$1 AND o.provider_order_id=$2`, id, providerOrder).Scan(&storedPhone, &serviceCode); queryErr == nil {
+			if storedPhone = strings.TrimSpace(storedPhone); storedPhone != "" && !strings.HasPrefix(storedPhone, "+") {
+				if smspva, ok := p.(*smsPVAProvider); ok {
+					canonical := smspva.canonicalTemporaryPhone(ctx, providerOrder, serviceCode, storedPhone)
+					if strings.HasPrefix(canonical, "+") {
+						_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET phone_number=$1,updated_at=NOW() WHERE id=$2 AND provider_order_id=$3 AND phone_number=$4`, canonical, id, providerOrder, storedPhone)
+					}
+				}
+			}
+		}
+	}
+
 	var result *SMSStatusResult
 	var err error
 	if productType == "rental" {
