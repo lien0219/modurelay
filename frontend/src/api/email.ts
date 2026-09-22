@@ -1,7 +1,21 @@
 import { apiClient } from './client'
 
 export interface EmailServiceItem { code: string; name: string }
-export interface EmailCapabilities { supports_temporary_inbox: boolean; supports_generate_single: boolean; supports_inbox_list: boolean; supports_message_read: boolean; supports_polling: boolean; supports_verification_code: boolean; supports_verification_url: boolean; supports_html_message: boolean }
+export interface EmailCapabilities {
+  supports_temporary_inbox: boolean
+  supports_generate_single: boolean
+  supports_generate_bulk?: boolean
+  supports_inbox_list: boolean
+  supports_message_read: boolean
+  supports_message_delete?: boolean
+  supports_polling: boolean
+  supports_verification_code: boolean
+  supports_verification_url: boolean
+  supports_html_message: boolean
+  supports_webhook?: boolean
+  supports_private_inbox?: boolean
+  supports_persistent_inbox?: boolean
+}
 export interface EmailQuote {
   channel_code: string
   public_name: string
