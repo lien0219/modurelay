@@ -1,7 +1,7 @@
 import { apiClient } from './client'
 
 export type VerificationType = 'sms' | 'email'
-export type VerificationOutcome = 'processing' | 'success' | 'failed' | 'refunded' | 'cancelled' | 'expired'
+export type VerificationOutcome = 'processing' | 'success' | 'failed' | 'refunded' | 'free' | 'cancelled' | 'expired'
 
 export interface VerificationRecord {
   id: string
@@ -46,6 +46,7 @@ export interface VerificationRecordSummary {
   success: number
   failed: number
   refunded: number
+  free: number
   cancelled: number
   expired: number
   sale_amount: number
