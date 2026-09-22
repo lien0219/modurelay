@@ -653,6 +653,43 @@ func (s *EmailVerificationService) Enabled(ctx context.Context) bool {
 	v, e := s.settings.settingRepo.GetValue(ctx, SettingKeyEmailServiceEnabled)
 	return e == nil && strings.EqualFold(strings.TrimSpace(v), "true")
 }
+type EmailAdminSettings struct {
+	Enabled                   bool `json:"enabled"`
+	FreeDailyLimit            int  `json:"free_daily_limit"`
+	FreeActiveLimit           int  `json:"free_active_limit"`
+	FreeGenerationIntervalSec int  `json:"free_generation_interval_seconds"`
+}
+
+func (s *EmailVerificationService) AdminSettings(ctx context.Context) EmailAdminSettings {
+	return EmailAdminSettings{
+		Enabled:                   s.Enabled(ctx),
+		FreeDailyLimit:            s.emailSettingInt(ctx, "email_free_daily_limit", 20),
+		FreeActiveLimit:           s.emailSettingInt(ctx, "email_free_active_limit", 3),
+		FreeGenerationIntervalSec: s.emailSettingInt(ctx, "email_free_generation_interval_seconds", 5),
+	}
+}
+
+func (s *EmailVerificationService) UpdateAdminSettings(ctx context.Context, values EmailAdminSettings) error {
+	if s == nil || s.settings == nil || s.settings.settingRepo == nil {
+		return errors.New("settings repository unavailable")
+	}
+	if values.FreeDailyLimit < 0 || values.FreeDailyLimit > 100000 {
+		return errors.New("invalid free email daily limit")
+	}
+	if values.FreeActiveLimit < 0 || values.FreeActiveLimit > 1000 {
+		return errors.New("invalid free email active limit")
+	}
+	if values.FreeGenerationIntervalSec < 0 || values.FreeGenerationIntervalSec > 3600 {
+		return errors.New("invalid free email generation interval")
+	}
+	return s.settings.settingRepo.SetMultiple(ctx, map[string]string{
+		SettingKeyEmailServiceEnabled:                 strconv.FormatBool(values.Enabled),
+		"email_free_daily_limit":                     strconv.Itoa(values.FreeDailyLimit),
+		"email_free_active_limit":                    strconv.Itoa(values.FreeActiveLimit),
+		"email_free_generation_interval_seconds":     strconv.Itoa(values.FreeGenerationIntervalSec),
+	})
+}
+
 func (s *EmailVerificationService) SetEnabled(ctx context.Context, enabled bool) error {
 	if s == nil || s.settings == nil || s.settings.settingRepo == nil {
 		return errors.New("settings repository unavailable")
