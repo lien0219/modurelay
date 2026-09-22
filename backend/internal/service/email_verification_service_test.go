@@ -435,7 +435,6 @@ func TestReconcileCapturesDeliveredInboxForRefundIfNoMessagePolicy(t *testing.T)
 	}
 }
 
-
 func TestTempTFProviderGenerateListAndRead(t *testing.T) {
 	var accountQuery string
 	checkCalls := 0
