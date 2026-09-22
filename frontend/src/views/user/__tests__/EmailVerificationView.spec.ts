@@ -154,4 +154,105 @@ describe('EmailVerificationView', () => {
     wrapper.unmount()
   })
 
+
+  it('shows the newest verification code by received_at even when messages are unsorted', async () => {
+    const older = new Date(Date.now() - 120_000).toISOString()
+    const newer = new Date(Date.now() - 30_000).toISOString()
+    emailAPI.purchase.mockResolvedValue({
+      id: 'order-1',
+      channel_code: 'email_channel_1',
+      channel_name: 'Channel 1',
+      status: 'waiting_email',
+      email_address: 'demo@gmail.com',
+      expires_at: new Date(Date.now() + 60_000).toISOString(),
+      messages: [
+        {
+          id: 'message-newer',
+          from_name: 'OpenAI',
+          from_address: 'noreply@example.com',
+          subject: 'New code',
+          received_at: newer,
+          verification_code: '222222',
+          text_body: 'New code 222222',
+        },
+        {
+          id: 'message-older',
+          from_name: 'OpenAI',
+          from_address: 'noreply@example.com',
+          subject: 'Old code',
+          received_at: older,
+          verification_code: '111111',
+          text_body: 'Old code 111111',
+        },
+      ],
+    })
+
+    const wrapper = mount(EmailVerificationView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<main><slot /></main>' },
+          Icon: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    const quoteButton = wrapper.findAll('button').find(button => button.text() === 'email.user.getQuote')
+    await quoteButton!.trigger('click')
+    await flushPromises()
+    const purchaseButton = wrapper.findAll('button').find(button => button.text() === 'email.user.generateFree')
+    await purchaseButton!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('222222')
+    wrapper.unmount()
+  })
+
+  it('shows the newest verification code in the orders table even when message order is reversed', async () => {
+    const older = new Date(Date.now() - 120_000).toISOString()
+    const newer = new Date(Date.now() - 30_000).toISOString()
+    emailAPI.orders.mockResolvedValue({
+      items: [{
+        id: 'order-1',
+        order_no: 'EML-1',
+        service_code: 'openai',
+        channel_code: 'email_channel_1',
+        channel_name: 'Channel 1',
+        email_address: 'demo@gmail.com',
+        address_type: 'gmail',
+        price: 0,
+        status: 'verification_extracted',
+        refund_policy: 'refund_if_no_message',
+        capture_policy: 'on_verification_extracted',
+        created_at: older,
+        refund_status: 'not_applicable',
+        messages: [
+          { id: 'm-new', from_address: 'noreply@example.com', from_name: 'OpenAI', to_address: 'demo@gmail.com', subject: 'New code', text_body: '222222', received_at: newer, verification_code: '222222' },
+          { id: 'm-old', from_address: 'noreply@example.com', from_name: 'OpenAI', to_address: 'demo@gmail.com', subject: 'Old code', text_body: '111111', received_at: older, verification_code: '111111' },
+        ],
+      }],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+
+    const wrapper = mount(EmailVerificationView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<main><slot /></main>' },
+          Icon: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    const ordersTab = wrapper.findAll('button').find(button => button.text() === 'email.user.orders')
+    await ordersTab!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('222222')
+    wrapper.unmount()
+  })
+
 })
