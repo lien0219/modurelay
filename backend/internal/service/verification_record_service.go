@@ -67,6 +67,7 @@ type VerificationRecordSummary struct {
 	Success         int64    `json:"success"`
 	Failed          int64    `json:"failed"`
 	Refunded        int64    `json:"refunded"`
+	Free            int64    `json:"free"`
 	Cancelled       int64    `json:"cancelled"`
 	Expired         int64    `json:"expired"`
 	SaleAmount      float64  `json:"sale_amount"`
@@ -271,15 +272,16 @@ const verificationRecordsCTE = `WITH email_usage AS (
 		''::text AS region,
 		o.status,
 		CASE
-			WHEN o.status = 'refunded' OR o.refund_status = 'approved' THEN 'refunded'
+			WHEN o.sale_price_snapshot = 0 AND o.status IN ('cancelled','expired','refunded') THEN 'free'
+			WHEN o.sale_price_snapshot > 0 AND (o.status = 'refunded' OR o.refund_status = 'approved') THEN 'refunded'
 			WHEN o.status = 'completed' THEN 'success'
 			WHEN o.status = 'failed' THEN 'failed'
 			WHEN o.status = 'cancelled' THEN 'cancelled'
 			WHEN o.status = 'expired' THEN 'expired'
 			ELSE 'processing'
 		END AS outcome,
-		o.refund_status,
-		COALESCE(o.refund_reason, '') AS refund_reason,
+		CASE WHEN o.sale_price_snapshot = 0 THEN 'not_applicable' ELSE o.refund_status END AS refund_status,
+		CASE WHEN o.sale_price_snapshot = 0 THEN '' ELSE COALESCE(o.refund_reason, '') END AS refund_reason,
 		o.sale_price_snapshot::float8 AS sale_amount,
 		CASE
 			WHEN lower(COALESCE(p.billing->>'cost_mode',''))='fixed_per_order' THEN
@@ -291,7 +293,7 @@ const verificationRecordsCTE = `WITH email_usage AS (
 		GREATEST(o.reserved_amount-o.captured_amount-o.released_amount-o.refunded_amount,0)::float8,
 		o.captured_amount::float8,
 		o.released_amount::float8,
-		o.refunded_amount::float8,
+		CASE WHEN o.sale_price_snapshot = 0 THEN 0::float8 ELSE o.refunded_amount::float8 END,
 		'CNY'::text AS currency,
 		GREATEST(o.provider_request_count,COALESCE(eu.request_count,0))::integer AS provider_request_count,
 		COALESCE(o.error_code, '') AS error_code,
@@ -355,6 +357,7 @@ func (s *VerificationRecordService) List(ctx context.Context, options Verificati
 		COUNT(*) FILTER (WHERE outcome = 'success')::bigint,
 		COUNT(*) FILTER (WHERE outcome = 'failed')::bigint,
 		COUNT(*) FILTER (WHERE outcome = 'refunded')::bigint,
+		COUNT(*) FILTER (WHERE outcome = 'free')::bigint,
 		COUNT(*) FILTER (WHERE outcome = 'cancelled')::bigint,
 		COUNT(*) FILTER (WHERE outcome = 'expired')::bigint,
 		COALESCE(SUM(sale_amount), 0)::float8,
@@ -374,6 +377,7 @@ func (s *VerificationRecordService) List(ctx context.Context, options Verificati
 		&summary.Success,
 		&summary.Failed,
 		&summary.Refunded,
+		&summary.Free,
 		&summary.Cancelled,
 		&summary.Expired,
 		&summary.SaleAmount,
@@ -702,7 +706,7 @@ func buildVerificationRecordWhere(options VerificationRecordListOptions, admin b
 
 func isVerificationOutcome(value string) bool {
 	switch value {
-	case "processing", "success", "failed", "refunded", "cancelled", "expired":
+	case "processing", "success", "failed", "refunded", "free", "cancelled", "expired":
 		return true
 	default:
 		return false
