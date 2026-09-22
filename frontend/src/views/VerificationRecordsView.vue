@@ -139,10 +139,10 @@ const { t, locale } = useI18n()
 const route = useRoute()
 const appStore = useAppStore()
 const isAdmin = computed(() => route.meta.requiresAdmin === true)
-const outcomes: VerificationOutcome[] = ['processing', 'success', 'failed', 'refunded', 'cancelled', 'expired']
+const outcomes: VerificationOutcome[] = ['processing', 'success', 'failed', 'refunded', 'free', 'cancelled', 'expired']
 const typeOptions = computed(() => [{ value: 'sms', label: t('verificationRecords.types.sms') }, { value: 'email', label: t('verificationRecords.types.email') }])
 const outcomeOptions = computed(() => outcomes.map(value => ({ value, label: t(`verificationRecords.outcomes.${value}`) })))
-const emptySummary: VerificationRecordSummary = { total: 0, processing: 0, success: 0, failed: 0, refunded: 0, cancelled: 0, expired: 0, sale_amount: 0, user_debit_amount: 0, reserved_amount: 0, captured_amount: 0, released_amount: 0, refunded_amount: 0, net_revenue: 0 }
+const emptySummary: VerificationRecordSummary = { total: 0, processing: 0, success: 0, failed: 0, refunded: 0, free: 0, cancelled: 0, expired: 0, sale_amount: 0, user_debit_amount: 0, reserved_amount: 0, captured_amount: 0, released_amount: 0, refunded_amount: 0, net_revenue: 0 }
 const emptyAnalytics = (): VerificationRecordAnalytics => ({ by_platform: [], by_country: [], by_type: [], financial: [] })
 const records = ref<VerificationRecord[]>([])
 const loading = ref(false)
@@ -210,7 +210,7 @@ const countryLabels = computed(() => {
 const financialValue = (field: 'sale_amount' | 'net_revenue' | 'provider_cost' | 'estimated_profit') => analytics.value.financial.length ? analytics.value.financial.map(item => formatCurrency(item[field], item.currency)).join(' / ') : '-'
 const summaryItems = computed(() => {
   const items: Array<{ key: string; label: string; value: string | number; compact?: boolean }> = [
-    { key: 'total', label: t('verificationRecords.summary.total'), value: summary.value.total }, { key: 'processing', label: t('verificationRecords.summary.processing'), value: summary.value.processing }, { key: 'success', label: t('verificationRecords.summary.success'), value: summary.value.success }, { key: 'failed', label: t('verificationRecords.summary.failed'), value: summary.value.failed }, { key: 'refunded', label: t('verificationRecords.summary.refunded'), value: summary.value.refunded },
+    { key: 'total', label: t('verificationRecords.summary.total'), value: summary.value.total }, { key: 'processing', label: t('verificationRecords.summary.processing'), value: summary.value.processing }, { key: 'success', label: t('verificationRecords.summary.success'), value: summary.value.success }, { key: 'failed', label: t('verificationRecords.summary.failed'), value: summary.value.failed }, { key: 'refunded', label: t('verificationRecords.summary.refunded'), value: summary.value.refunded }, { key: 'free', label: t('verificationRecords.summary.free'), value: summary.value.free },
   ]
   if (isAdmin.value) items.push({ key: 'amount', label: t('verificationRecords.summary.netRevenue'), value: financialValue('net_revenue'), compact: true }, { key: 'cost', label: t('verificationRecords.summary.netProviderCost'), value: financialValue('provider_cost'), compact: true }, { key: 'profit', label: t('verificationRecords.summary.netProfit'), value: financialValue('estimated_profit'), compact: true })
   return items
@@ -218,7 +218,7 @@ const summaryItems = computed(() => {
 const selectedRecords = computed(() => records.value.filter(record => selectedIds.value.has(record.id)))
 const allPageSelected = computed(() => records.value.length > 0 && records.value.every(record => selectedIds.value.has(record.id)))
 
-function outcomeClass(outcome: VerificationOutcome): string { if (outcome === 'success') return 'badge-success'; if (outcome === 'failed') return 'badge-danger'; if (outcome === 'processing') return 'badge-info'; if (outcome === 'cancelled') return 'badge-gray'; return 'badge-warning' }
+function outcomeClass(outcome: VerificationOutcome): string { if (outcome === 'success' || outcome === 'free') return 'badge-success'; if (outcome === 'failed') return 'badge-danger'; if (outcome === 'processing') return 'badge-info'; if (outcome === 'cancelled') return 'badge-gray'; return 'badge-warning' }
 const outcomeLabel = (outcome: VerificationOutcome) => t(`verificationRecords.outcomes.${outcome}`)
 const typeLabel = (type: VerificationType) => t(`verificationRecords.types.${type}`)
 const refundStatuses = new Set(['not_requested', 'pending', 'approved', 'rejected', 'released', 'not_applicable', 'manual_review', 'succeeded'])
