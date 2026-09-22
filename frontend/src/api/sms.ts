@@ -17,6 +17,7 @@ export interface SMSOrder {
   channel_name: string
   service_code: string
   country_code: string
+  calling_code?: string
   phone_number?: string
   operator_code?: string
   voice_mode?: number
