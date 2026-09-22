@@ -255,4 +255,55 @@ describe('EmailVerificationView', () => {
     wrapper.unmount()
   })
 
+
+  it('keeps the orders table mounted during background refresh', async () => {
+    const order = {
+      id: 'order-1',
+      order_no: 'EML-1',
+      service_code: 'openai',
+      channel_code: 'email_channel_1',
+      channel_name: 'Channel 1',
+      email_address: 'demo@gmail.com',
+      address_type: 'gmail',
+      price: 0,
+      status: 'verification_extracted',
+      refund_policy: 'refund_if_no_message',
+      capture_policy: 'on_verification_extracted',
+      created_at: new Date().toISOString(),
+      refund_status: 'not_applicable',
+      messages: [],
+    }
+    let resolveRefresh: ((value: unknown) => void) | undefined
+    emailAPI.orders
+      .mockResolvedValueOnce({ items: [order], total: 1, page: 1, page_size: 20, pages: 1 })
+      .mockImplementationOnce(() => new Promise(resolve => { resolveRefresh = resolve }))
+
+    vi.useFakeTimers()
+    const wrapper = mount(EmailVerificationView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<main><slot /></main>' },
+          Icon: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    const ordersTab = wrapper.findAll('button').find(button => button.text() === 'email.user.orders')
+    await ordersTab!.trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('demo@gmail.com')
+
+    await vi.advanceTimersByTimeAsync(10_000)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('demo@gmail.com')
+    expect(wrapper.text()).not.toContain('email.user.loading')
+
+    resolveRefresh?.({ items: [order], total: 1, page: 1, page_size: 20, pages: 1 })
+    await flushPromises()
+    wrapper.unmount()
+    vi.useRealTimers()
+  })
+
 })
