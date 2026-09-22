@@ -3,7 +3,7 @@ import type { EmailCapabilities } from '../email'
 
 export interface EmailProviderAdmin {
   id: number; code: string; name: string; base_url: string; health_status: string; enabled: boolean
-  credential_configured: boolean; masked_hint?: string; billing?: Record<string, unknown>
+  requires_credential: boolean; credential_configured: boolean; masked_hint?: string; billing?: Record<string, unknown>
   portal_url?: string; today_requests?: number; month_requests?: number
 }
 export interface EmailChannelAdmin {
