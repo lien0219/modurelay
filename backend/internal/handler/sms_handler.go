@@ -845,6 +845,7 @@ func (h *SMSHandler) ServiceIcon(c *gin.Context) {
 		// the browser console during catalog rendering.
 		c.Header("Cache-Control", "public, max-age=300")
 		c.Status(http.StatusNoContent)
+		c.Writer.WriteHeaderNow()
 		return
 	}
 	c.Header("Cache-Control", "public, max-age=43200, stale-while-revalidate=86400")
