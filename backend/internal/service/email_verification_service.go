@@ -701,6 +701,7 @@ func (s *EmailVerificationService) SetEnabled(ctx context.Context, enabled bool)
 	}
 	return s.settings.settingRepo.Set(ctx, SettingKeyEmailServiceEnabled, strconv.FormatBool(enabled))
 }
+
 func (s *EmailVerificationService) ListServices(ctx context.Context) ([]EmailPublicService, error) {
 	if !s.Enabled(ctx) {
 		return nil, ErrEmailFeatureDisabled
