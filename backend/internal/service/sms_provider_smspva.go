@@ -1072,6 +1072,7 @@ func (p *smsPVAProvider) GetTemporaryStatus(ctx context.Context, id string) (*SM
 	var data struct {
 		OrderID       json.RawMessage `json:"orderId"`
 		PhoneNumber   json.RawMessage `json:"phoneNumber"`
+		CountryCode   string          `json:"countryCode"`
 		OrderExpireIn int             `json:"orderExpireIn"`
 		SMS           *struct {
 			Code     string `json:"code"`
