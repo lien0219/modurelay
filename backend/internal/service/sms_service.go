@@ -4289,12 +4289,10 @@ func (s *SMSService) markSMSClosed(ctx context.Context, id int64, status, refund
 	return err
 }
 
-// markSMSCancellationPendingRefund records the boundary SMSPVA exposes: the
-// upstream order accepted cancellation, but the API has no refund-status or
-// refund-confirmation endpoint. Keep the captured settlement untouched and
-// close the local lifecycle exactly once with an explicit pending refund state
-// for administrative review. A terminal local row prevents the worker from
-// issuing a duplicate cancelorder request.
+// settleSMSPVANoDelivery returns a platform reservation only when there is
+// positive local evidence that SMSPVA never delivered an SMS. It is used after
+// a confirmed provider cancellation/expiry and also repairs legacy rows that
+// were captured at allocation time before delayed settlement was introduced.
 func (s *SMSService) settleSMSPVANoDelivery(ctx context.Context, id, userID int64, terminalStatus, reason string) (bool, error) {
 	var settlementStatus string
 	var firstSMS sql.NullTime
@@ -4324,6 +4322,8 @@ func (s *SMSService) settleSMSPVANoDelivery(ctx context.Context, id, userID int6
 	return true, nil
 }
 
+// markSMSCancellationPendingRefund records the fail-closed state used when
+// SMS delivery or cancellation/refund outcome cannot be proven automatically.
 func (s *SMSService) markSMSCancellationPendingRefund(ctx context.Context, id int64, reason string) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE sms_orders SET status='cancelled',refund_status='pending',provider_refund_status='unknown',refund_reason=$1,reconciliation_action='',reconciliation_attempts=0,reconcile_after=NULL,updated_at=NOW() WHERE id=$2 AND status IN ('active','provider_unknown','reconciling')`, reason, id)
 	return err
@@ -4523,6 +4523,16 @@ func (s *SMSService) FinishOrder(ctx context.Context, userID int64, publicID str
 	}
 	if status != "active" || productType != "temporary" || providerOrder == "" {
 		return errors.New("order cannot be finished")
+	}
+	if strings.EqualFold(providerCode, "smspva") {
+		var firstSMS sql.NullTime
+		var messageCount int
+		if err := s.db.QueryRowContext(ctx, `SELECT first_sms_received_at,(SELECT COUNT(*) FROM sms_messages WHERE order_id=$1) FROM sms_orders WHERE id=$1`, id).Scan(&firstSMS, &messageCount); err != nil {
+			return err
+		}
+		if !firstSMS.Valid && messageCount == 0 {
+			return errors.New("order cannot be finished before SMS delivery")
+		}
 	}
 	p := providerFor(providerCode, base, providerAPIKey(providerCode, credential, s.encryptor))
 	action, ok := p.(SMSOrderActionProvider)
