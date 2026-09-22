@@ -106,7 +106,9 @@ describe('EmailVerificationView', () => {
       expected_price: 0.3,
       quote_id: 'quote-1',
     }, expect.stringMatching(/^email-quote-1-/))
-    expect(wrapper.get('div.mx-auto').classes()).toContain('max-w-[1800px]')
+    expect(wrapper.get('.email-shell').exists()).toBe(true)
+    expect(wrapper.get('.email-hero').exists()).toBe(true)
+    expect(wrapper.get('.email-config').exists()).toBe(true)
     wrapper.unmount()
   })
 
