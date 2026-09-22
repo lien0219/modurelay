@@ -1,13 +1,16 @@
 package handler
 
 import (
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -88,4 +91,25 @@ func TestSMSPublicChannelValidationOnlyAcceptsOpaqueChannels(t *testing.T) {
 	for _, value := range []string{"", "smspva", "5sim", "channel_3", "channel_1/smspva"} {
 		require.False(t, isPublicSMSChannel(value), value)
 	}
+}
+
+
+func TestSMSServiceIconMissingIsQuietNoContent(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectQuery(`SELECT p\.code,COALESCE\(c\.raw_metadata->>'icon_path',''\)`).
+		WithArgs("opt204").
+		WillReturnError(sql.ErrNoRows)
+
+	h := NewSMSHandler(service.NewSMSService(db, nil, nil))
+	c, recorder := newSMSPrivacyContext(http.MethodGet, "/api/v1/sms/service-icons/opt204")
+	c.Params = gin.Params{{Key: "service", Value: "opt204"}}
+	h.ServiceIcon(c)
+
+	require.Equal(t, http.StatusNoContent, recorder.Code)
+	require.Empty(t, recorder.Body.String())
+	require.Contains(t, recorder.Header().Get("Cache-Control"), "max-age=300")
+	require.NoError(t, mock.ExpectationsWereMet())
 }
