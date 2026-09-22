@@ -776,6 +776,8 @@ function serviceLogo(code: string, name = '') {
     [/wechat|weixin/, 'logos:wechat-icon'], [/line/, 'logos:line'], [/coinbase/, 'logos:coinbase'],
     [/binance/, 'logos:binance'], [/aliexpress/, 'simple-icons:aliexpress'], [/booking/, 'simple-icons:bookingdotcom'],
     [/doordash/, 'simple-icons:doordash'], [/grab/, 'simple-icons:grab'], [/viber/, 'simple-icons:viber'],
+    [/venmo/, 'simple-icons:venmo'], [/fiverr/, 'simple-icons:fiverr'], [/twilio/, 'simple-icons:twilio'],
+    [/etoro/, 'simple-icons:etoro'], [/enel/, 'simple-icons:enel'],
   ]
   return logos.find(([pattern]) => pattern.test(key))?.[1] || ''
 }
