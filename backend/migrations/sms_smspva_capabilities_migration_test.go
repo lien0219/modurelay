@@ -30,6 +30,7 @@ func TestSMSPVAAdvancedRentalMigrationsAreEmbeddedAndAppendOnly(t *testing.T) {
 		"262_sms_smspva_advanced_capabilities.sql",
 		"263_sms_message_dedup_identity.sql",
 		"264_sms_rental_legacy_constraints.sql",
+		"265_sms_smspva_delivery_settlement.sql",
 	} {
 		content, err := FS.ReadFile(name)
 		require.NoError(t, err, name)
@@ -94,6 +95,29 @@ func TestSMSPVARentalFinancialLedgersAreConstrainedAndRetained(t *testing.T) {
 		require.Contains(t, recovery, fragment)
 	}
 	require.NotContains(t, recovery, "ON DELETE CASCADE")
+}
+
+func TestSMSPVADeliverySettlementMigrationRepairsOnlyUndeliveredRows(t *testing.T) {
+	content, err := FS.ReadFile("265_sms_smspva_delivery_settlement.sql")
+	require.NoError(t, err)
+	sql := strings.Join(strings.Fields(string(content)), " ")
+
+	for _, fragment := range []string{
+		"p.code = 'smspva'",
+		"o.product_type = 'temporary'",
+		"o.first_sms_received_at IS NULL",
+		"NOT EXISTS (SELECT 1 FROM sms_messages m WHERE m.order_id = o.id)",
+		"o.settlement_status = 'captured'",
+		"settlement_status = 'held'",
+		"refund_status = 'approved'",
+		"provider_refund_status = 'not_required'",
+		"SET balance = u.balance + r.amount",
+		"SET frozen_balance = COALESCE(u.frozen_balance,0) + h.amount",
+	} {
+		require.Contains(t, sql, fragment)
+	}
+	require.NotContains(t, strings.ToLower(sql), "delete from sms_orders")
+	require.NotContains(t, strings.ToLower(sql), "drop table")
 }
 
 func TestSMSPVAMultiServiceQuoteSnapshotIsPreparedButCapabilitiesStayClosed(t *testing.T) {
