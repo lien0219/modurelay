@@ -12,11 +12,40 @@
         </button>
       </header>
 
-      <section class="card flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
-        <div class="min-w-0"><h2 class="font-semibold text-gray-900 dark:text-white">{{ t('email.admin.enableTitle') }}</h2><p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('email.admin.enableDescription') }}</p></div>
-        <div class="flex min-h-11 shrink-0 items-center gap-3 self-start sm:self-center">
-          <Toggle v-model="enabled" :label="t('email.admin.switchLabel')" :disabled="savingEnabled" @update:model-value="toggle" />
-          <span class="min-w-12 text-sm font-medium text-gray-700 dark:text-gray-200">{{ enabled ? t('common.enabled') : t('common.disabled') }}</span>
+      <section class="card p-5">
+        <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div class="min-w-0">
+            <h2 class="font-semibold text-gray-900 dark:text-white">{{ t('email.admin.enableTitle') }}</h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('email.admin.enableDescription') }}</p>
+          </div>
+          <div class="flex min-h-11 shrink-0 items-center gap-3 self-start sm:self-center">
+            <Toggle v-model="enabled" :label="t('email.admin.switchLabel')" :disabled="savingEnabled" />
+            <span class="min-w-12 text-sm font-medium text-gray-700 dark:text-gray-200">{{ enabled ? t('common.enabled') : t('common.disabled') }}</span>
+          </div>
+        </div>
+
+        <div class="mt-5 grid gap-4 md:grid-cols-3">
+          <label class="block">
+            <span class="input-label">{{ t('email.admin.freeDailyLimit') }}</span>
+            <input v-model.number="freeDailyLimit" type="number" min="0" max="100000" class="input mt-1" />
+            <span class="mt-1 block text-xs leading-5 text-gray-500 dark:text-gray-400">{{ t('email.admin.freeDailyLimitHint') }}</span>
+          </label>
+          <label class="block">
+            <span class="input-label">{{ t('email.admin.freeActiveLimit') }}</span>
+            <input v-model.number="freeActiveLimit" type="number" min="0" max="1000" class="input mt-1" />
+            <span class="mt-1 block text-xs leading-5 text-gray-500 dark:text-gray-400">{{ t('email.admin.freeActiveLimitHint') }}</span>
+          </label>
+          <label class="block">
+            <span class="input-label">{{ t('email.admin.freeGenerationInterval') }}</span>
+            <input v-model.number="freeGenerationInterval" type="number" min="0" max="3600" class="input mt-1" />
+            <span class="mt-1 block text-xs leading-5 text-gray-500 dark:text-gray-400">{{ t('email.admin.freeGenerationIntervalHint') }}</span>
+          </label>
+        </div>
+
+        <div class="mt-4 flex justify-end">
+          <button type="button" class="btn btn-primary" :disabled="savingEnabled" @click="saveSettings">
+            {{ savingEnabled ? t('email.admin.saving') : t('email.admin.saveSettings') }}
+          </button>
         </div>
       </section>
 
