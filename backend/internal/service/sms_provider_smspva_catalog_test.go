@@ -14,14 +14,14 @@ func TestSMSPVACatalogAcceptsResponseLargerThanDefaultLimit(t *testing.T) {
 	const row = `{"service":"opt20","serviceDescription":"Telegram","country":"US","price":"0.75"}`
 	var body strings.Builder
 	body.Grow(int(smsPVADefaultResponseLimit) + len(row) + 1024)
-	body.WriteString(`{"statusCode":200,"data":[`)
+	_, _ = body.WriteString(`{"statusCode":200,"data":[`)
 	for body.Len() <= int(smsPVADefaultResponseLimit)+1024 {
 		if body.Len() > len(`{"statusCode":200,"data":[`) {
-			body.WriteByte(',')
+			_ = body.WriteByte(',')
 		}
-		body.WriteString(row)
+		_, _ = body.WriteString(row)
 	}
-	body.WriteString(`]}`)
+	_, _ = body.WriteString(`]}`)
 	if int64(body.Len()) <= smsPVADefaultResponseLimit || int64(body.Len()) >= smsPVACatalogResponseLimit {
 		t.Fatalf("fixture size=%d, want between %d and %d", body.Len(), smsPVADefaultResponseLimit, smsPVACatalogResponseLimit)
 	}
@@ -42,7 +42,10 @@ func TestSMSPVACatalogAcceptsResponseLargerThanDefaultLimit(t *testing.T) {
 	defer server.Close()
 
 	provider := providerFor("smspva", server.URL, "secret")
-	catalog := provider.(SMSCatalogProvider)
+	catalog, ok := provider.(SMSCatalogProvider)
+	if !ok {
+		t.Fatal("SMSPVA provider does not implement SMSCatalogProvider")
+	}
 	services, countries, err := catalog.Catalog(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -60,7 +63,10 @@ func TestSMSPVARequestJSONRejectsOversizeResponse(t *testing.T) {
 	}))
 	defer server.Close()
 
-	provider := providerFor("smspva", server.URL, "secret").(*smsPVAProvider)
+	provider, ok := providerFor("smspva", server.URL, "secret").(*smsPVAProvider)
+	if !ok {
+		t.Fatal("SMSPVA provider type assertion failed")
+	}
 	var env smsPVAEnvelope
 	if _, err := provider.requestJSONWithLimit(context.Background(), http.MethodGet, "catalog", nil, int64(len(responseBody)), &env); err != nil {
 		t.Fatalf("exact response limit should succeed: %v", err)
@@ -94,7 +100,10 @@ func TestSMSPVARentalCountriesParseCurrentObjectShape(t *testing.T) {
 	}))
 	defer server.Close()
 
-	provider := providerFor("smspva", server.URL, "secret").(SMSProductServiceCountryProvider)
+	provider, ok := providerFor("smspva", server.URL, "secret").(SMSProductServiceCountryProvider)
+	if !ok {
+		t.Fatal("SMSPVA provider does not implement SMSProductServiceCountryProvider")
+	}
 	items, err := provider.CountriesForServiceProduct(context.Background(), "opt20", "rental", 1, "week")
 	if err != nil {
 		t.Fatal(err)

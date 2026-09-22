@@ -125,12 +125,12 @@ func (p *tempTFProvider) GenerateInbox(ctx context.Context, req GenerateInboxReq
 func (p *tempTFProvider) ListMessages(ctx context.Context, req ListMessagesRequest) (*MessageListResult, error) {
 	var out struct {
 		Data []struct {
-			ID              string         `json:"id"`
-			Subject         string         `json:"subject"`
-			From            string         `json:"from"`
-			Date            string         `json:"date"`
-			Body            string         `json:"body"`
-			BodyContentType string         `json:"bodyContentType"`
+			ID              string           `json:"id"`
+			Subject         string           `json:"subject"`
+			From            string           `json:"from"`
+			Date            string           `json:"date"`
+			Body            string           `json:"body"`
+			BodyContentType string           `json:"bodyContentType"`
 			Attachments     []map[string]any `json:"attachments"`
 		} `json:"data"`
 	}

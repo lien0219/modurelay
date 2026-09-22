@@ -1922,18 +1922,6 @@ func (s *SMSService) resolveSMSProviderAlias(ctx context.Context, value string) 
 	return value
 }
 
-func publicSMSProviderCode(ctx context.Context, db *sql.DB, providerCode string) string {
-	providerCode = strings.ToLower(strings.TrimSpace(providerCode))
-	if providerCode == "" || db == nil {
-		return providerCode
-	}
-	var channelCode string
-	if err := db.QueryRowContext(ctx, `SELECT c.code FROM sms_channels c JOIN sms_providers p ON p.id=c.provider_id WHERE lower(p.code)=lower($1) ORDER BY c.sort_order,c.id LIMIT 1`, providerCode).Scan(&channelCode); err == nil {
-		return strings.ToLower(strings.TrimSpace(channelCode))
-	}
-	return providerCode
-}
-
 type SMSCountryCatalogItem struct {
 	ISO2                     string   `json:"iso2"`
 	ISO3                     string   `json:"iso3,omitempty"`

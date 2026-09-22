@@ -1,4 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import SMSVerificationView from '../SMSVerificationView.vue'
@@ -90,6 +91,7 @@ const order = (status: string, id: string) => ({
 
 describe('SMSVerificationView', () => {
   beforeEach(() => {
+    setActivePinia(createPinia())
     vi.clearAllMocks()
     refreshUser.mockResolvedValue({})
     smsAPI.settings.mockResolvedValue({ batch_purchase_limit: 5 })

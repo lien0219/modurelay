@@ -649,6 +649,7 @@ func (s *EmailVerificationService) recordOrderEvent(ctx context.Context, orderID
 	}
 	_, _ = s.db.ExecContext(ctx, `INSERT INTO email_order_events(email_order_id,event_type,actor,idempotency_key,payload) VALUES($1,$2,'system',$3,$4) ON CONFLICT DO NOTHING`, orderID, eventType, strings.TrimSpace(idempotencyKey), data)
 }
+
 func (s *EmailVerificationService) Enabled(ctx context.Context) bool {
 	if s == nil || s.settings == nil || s.settings.settingRepo == nil {
 		return false
@@ -656,6 +657,7 @@ func (s *EmailVerificationService) Enabled(ctx context.Context) bool {
 	v, e := s.settings.settingRepo.GetValue(ctx, SettingKeyEmailServiceEnabled)
 	return e == nil && strings.EqualFold(strings.TrimSpace(v), "true")
 }
+
 type EmailAdminSettings struct {
 	Enabled                   bool `json:"enabled"`
 	FreeDailyLimit            int  `json:"free_daily_limit"`

@@ -93,7 +93,6 @@ func TestSMSPublicChannelValidationOnlyAcceptsOpaqueChannels(t *testing.T) {
 	}
 }
 
-
 func TestSMSServiceIconMissingIsQuietNoContent(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)

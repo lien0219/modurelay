@@ -1120,7 +1120,7 @@ func TestSMSBatchPurchaseLimitAllowsCompleteIdempotentReplayAfterLimitReduction(
 	defer func() { _ = db.Close() }()
 	svc := &SMSService{db: db, settings: settingService}
 	createdAt := time.Now().Add(-time.Minute)
-	orderColumns := []string{"public_id", "product_type", "status", "reconciliation_action", "channel_code", "channel_name", "service_code", "country_code", "phone_number", "operator_code", "voice_mode", "sale_price_snapshot", "success_rate_snapshot", "success_rate_grade_snapshot", "success_rate_source_snapshot", "refund_status", "refund_reason", "expires_at", "created_at", "provider_code", "base_url", "capabilities"}
+	orderColumns := []string{"public_id", "product_type", "status", "reconciliation_action", "channel_code", "channel_name", "service_code", "country_code", "calling_code", "phone_number", "operator_code", "voice_mode", "sale_price_snapshot", "success_rate_snapshot", "success_rate_grade_snapshot", "success_rate_source_snapshot", "refund_status", "refund_reason", "expires_at", "created_at", "provider_code", "base_url", "capabilities"}
 	for i, orderID := range []int64{101, 102} {
 		itemKey := fmt.Sprintf("replay-key-%d", i)
 		publicID := fmt.Sprintf("00000000-0000-0000-0000-%012d", orderID)
@@ -1129,7 +1129,7 @@ func TestSMSBatchPurchaseLimitAllowsCompleteIdempotentReplayAfterLimitReduction(
 			WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(orderID))
 		mock.ExpectQuery(`SELECT o.public_id::text`).
 			WithArgs(int64(1), orderID).
-			WillReturnRows(sqlmock.NewRows(orderColumns).AddRow(publicID, "temporary", "active", "", "channel_1", "Channel 1", "openai", "US", "+12025550123", "any", 0, 1.25, nil, "", "unavailable", "not_requested", "", nil, createdAt, "5sim", "https://5sim.net", []byte(`{}`)))
+			WillReturnRows(sqlmock.NewRows(orderColumns).AddRow(publicID, "temporary", "active", "", "channel_1", "Channel 1", "openai", "US", "+1", "+12025550123", "any", 0, 1.25, nil, "", "unavailable", "not_requested", "", nil, createdAt, "5sim", "https://5sim.net", []byte(`{}`)))
 		mock.ExpectQuery(`SELECT id,message_text,verification_code,received_at FROM sms_messages`).
 			WithArgs(orderID).
 			WillReturnRows(sqlmock.NewRows([]string{"id", "message_text", "verification_code", "received_at"}))

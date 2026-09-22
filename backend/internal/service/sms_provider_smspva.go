@@ -932,7 +932,7 @@ func smsPVACanonicalPhone(phone, callingCode string) string {
 		var b strings.Builder
 		for _, r := range value {
 			if r >= '0' && r <= '9' {
-				b.WriteRune(r)
+				_, _ = b.WriteRune(r)
 			}
 		}
 		return b.String()
