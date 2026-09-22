@@ -701,6 +701,9 @@ func TestSMSActivateOrderPersistsFractionalProviderCost(t *testing.T) {
 	defer func() { _ = db.Close() }()
 
 	mock.ExpectBegin()
+	mock.ExpectQuery(`SELECT p.code,o.product_type FROM sms_orders o JOIN sms_providers p ON p.id=o.provider_id WHERE o.id=\$1 FOR UPDATE OF o`).
+		WithArgs(int64(28)).
+		WillReturnRows(sqlmock.NewRows([]string{"code", "product_type"}).AddRow("5sim", "rental"))
 	mock.ExpectQuery(`UPDATE sms_orders SET status='active'.*provider_cost_snapshot=CASE WHEN \$4::numeric>0 THEN \$4::numeric`).
 		WithArgs("1094764603", "+44 7536658308", nil, 0.2, "virtual66", int64(28)).
 		WillReturnRows(sqlmock.NewRows([]string{"reserved_amount"}).AddRow(5.8))
@@ -715,6 +718,117 @@ func TestSMSActivateOrderPersistsFractionalProviderCost(t *testing.T) {
 	svc := &SMSService{db: db}
 	if err := svc.activateSMSOrder(context.Background(), 28, 1, "1094764603", "+44 7536658308", nil, 0.2, "virtual66"); err != nil {
 		t.Fatal(err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+
+func TestSMSPVAActivateTemporaryKeepsSettlementHeldUntilDelivery(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectBegin()
+	mock.ExpectQuery(\`SELECT p.code,o.product_type FROM sms_orders o JOIN sms_providers p ON p.id=o.provider_id WHERE o.id=\\$1 FOR UPDATE OF o\`).
+		WithArgs(int64(52)).
+		WillReturnRows(sqlmock.NewRows([]string{"code", "product_type"}).AddRow("smspva", "temporary"))
+	mock.ExpectExec(\`UPDATE sms_orders SET status='active'.*captured_amount=0,settlement_status='held'.*WHERE id=\\$6 AND settlement_status='held'\`).
+		WithArgs("pva-1", "+59178522241", nil, 0.0, "", int64(52)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	svc := &SMSService{db: db}
+	if err := svc.activateSMSOrder(context.Background(), 52, 7, "pva-1", "+59178522241", nil, 0, "", "temporary"); err != nil {
+		t.Fatal(err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSMSPVAUndeliveredLegacyCaptureIsReturnedExactlyOnce(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectQuery(\`SELECT o.settlement_status,o.first_sms_received_at,\\(SELECT COUNT\\(\\*\\) FROM sms_messages m WHERE m.order_id=o.id\\) FROM sms_orders o WHERE o.id=\\$1\`).
+		WithArgs(int64(61)).
+		WillReturnRows(sqlmock.NewRows([]string{"settlement_status", "first_sms_received_at", "count"}).AddRow("captured", nil, 0))
+	mock.ExpectExec(\`UPDATE sms_orders SET provider_refund_status=\\$1\`).
+		WithArgs("not_required", "SMSPVA order ended before SMS delivery; upstream had no delivered-message charge to refund", int64(61)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectBegin()
+	mock.ExpectQuery(\`UPDATE sms_orders SET status=\\$1,refund_status=\\$2.*settlement_status='captured'.*RETURNING reserved_amount\`).
+		WithArgs("cancelled", "approved", "SMSPVA cancellation confirmed before SMS delivery; reserved balance released", "refunded", int64(61)).
+		WillReturnRows(sqlmock.NewRows([]string{"reserved_amount"}).AddRow(5.10))
+	mock.ExpectExec(\`UPDATE users SET balance=balance\\+\\$1,updated_at=NOW\\(\\) WHERE id=\\$2\`).
+		WithArgs(5.10, int64(9)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	svc := &SMSService{db: db}
+	handled, err := svc.settleSMSPVANoDelivery(context.Background(), 61, 9, "cancelled", "SMSPVA cancellation confirmed before SMS delivery; reserved balance released")
+	if err != nil || !handled {
+		t.Fatalf("handled=%v err=%v", handled, err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSMSPVAUndeliveredHeldSettlementIsReleasedExactlyOnce(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectQuery(\`SELECT o.settlement_status,o.first_sms_received_at,\\(SELECT COUNT\\(\\*\\) FROM sms_messages m WHERE m.order_id=o.id\\) FROM sms_orders o WHERE o.id=\\$1\`).
+		WithArgs(int64(62)).
+		WillReturnRows(sqlmock.NewRows([]string{"settlement_status", "first_sms_received_at", "count"}).AddRow("held", nil, 0))
+	mock.ExpectExec(\`UPDATE sms_orders SET provider_refund_status=\\$1\`).
+		WithArgs("not_required", "SMSPVA order ended before SMS delivery; upstream had no delivered-message charge to refund", int64(62)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectBegin()
+	mock.ExpectQuery(\`UPDATE sms_orders SET status=\\$1,refund_status=\\$2.*settlement_status='held'.*RETURNING reserved_amount\`).
+		WithArgs("cancelled", "not_requested", "SMSPVA cancellation confirmed before SMS delivery; reserved balance released", "released", int64(62)).
+		WillReturnRows(sqlmock.NewRows([]string{"reserved_amount"}).AddRow(4.25))
+	mock.ExpectExec(\`UPDATE users SET balance=balance\\+\\$1,frozen_balance\`).
+		WithArgs(4.25, int64(10)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	svc := &SMSService{db: db}
+	handled, err := svc.settleSMSPVANoDelivery(context.Background(), 62, 10, "cancelled", "SMSPVA cancellation confirmed before SMS delivery; reserved balance released")
+	if err != nil || !handled {
+		t.Fatalf("handled=%v err=%v", handled, err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSMSPVADeliveryEvidenceBlocksAutomaticReturn(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectQuery(\`SELECT o.settlement_status,o.first_sms_received_at,\\(SELECT COUNT\\(\\*\\) FROM sms_messages m WHERE m.order_id=o.id\\) FROM sms_orders o WHERE o.id=\\$1\`).
+		WithArgs(int64(63)).
+		WillReturnRows(sqlmock.NewRows([]string{"settlement_status", "first_sms_received_at", "count"}).AddRow("captured", time.Now(), 1))
+
+	svc := &SMSService{db: db}
+	handled, err := svc.settleSMSPVANoDelivery(context.Background(), 63, 10, "cancelled", "should not settle")
+	if err != nil || handled {
+		t.Fatalf("handled=%v err=%v", handled, err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
