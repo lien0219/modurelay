@@ -193,7 +193,7 @@
                 <th class="px-4 py-3">{{ t('email.user.status') }}</th>
                 <th class="px-4 py-3">{{ t('email.user.code') }}</th>
                 <th class="px-4 py-3">{{ t('email.user.price') }}</th>
-                <th class="px-4 py-3">{{ t('common.action') }}</th>
+                <th class="px-4 py-3">{{ t('email.user.action') }}</th>
               </tr>
             </thead>
             <tbody>
