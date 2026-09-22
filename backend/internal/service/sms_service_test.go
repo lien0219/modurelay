@@ -834,7 +834,6 @@ func TestSMSPVADeliveryEvidenceBlocksAutomaticReturn(t *testing.T) {
 	}
 }
 
-
 func TestSMSPVAConvergeKeepsHeldBeforeDelivery(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
