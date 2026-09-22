@@ -432,7 +432,7 @@ function openOrders() {
 
 function openOrder(order: EmailOrder) {
   currentOrder.value = order
-  activeTab.value = order.price === 0 ? 'public' : 'private'
+  activeTab.value = order.channel_code === 'email_channel_1' ? 'public' : 'private'
   startActiveOrderPolling()
 }
 
