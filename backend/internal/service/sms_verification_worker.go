@@ -56,6 +56,21 @@ func (s *SMSService) Reconcile(ctx context.Context) error {
 			continue
 		}
 		if settlementStatus == "held" && (status == "failed" || status == "cancelled" || status == "expired" || status == "refunded") {
+			if strings.EqualFold(providerCode, "smspva") && strings.EqualFold(productType, "temporary") {
+				var firstSMS sql.NullTime
+				if queryErr := s.db.QueryRowContext(ctx, `SELECT first_sms_received_at FROM sms_orders WHERE id=$1`, id).Scan(&firstSMS); queryErr != nil {
+					if firstErr == nil {
+						firstErr = queryErr
+					}
+					continue
+				}
+				if firstSMS.Valid {
+					if err := s.captureSMSSettlement(ctx, id, userID); err != nil && firstErr == nil {
+						firstErr = err
+					}
+					continue
+				}
+			}
 			if err := s.releaseSMSHold(ctx, id, userID, status, "recovered an unsettled SMS order"); err != nil && firstErr == nil {
 				firstErr = err
 			}
