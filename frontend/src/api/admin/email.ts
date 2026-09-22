@@ -17,6 +17,12 @@ export interface EmailOrderAdmin {
   provider_code: string; provider_inbox_id: string; email_address: string; address_type: string; status: string
   sale_price: number; provider_request_count: number; refund_status: string; created_at: string; expires_at?: string
 }
+export interface EmailAdminSettings {
+  enabled: boolean
+  free_daily_limit: number
+  free_active_limit: number
+  free_generation_interval_seconds: number
+}
 const emailAdminAPI = {
   providers: () => apiClient.get<EmailProviderAdmin[]>('/admin/email/providers').then(r => r.data),
   updateProvider: (id: number, payload: { enabled: boolean; base_url?: string; credential_ref?: string; billing?: Record<string, unknown> }) => apiClient.put(`/admin/email/providers/${id}`, payload).then(r => r.data),
@@ -25,7 +31,8 @@ const emailAdminAPI = {
   orders: () => apiClient.get<EmailOrderAdmin[]>('/admin/email/orders').then(r => r.data),
   updateChannel: (id: number, payload: { enabled: boolean; visible: boolean; healthy: boolean; sale_price: number; refund_policy: string; capture_policy: string; base_markup?: number; fixed_markup?: number; minimum_profit?: number; order_ttl_seconds?: number; max_provider_requests_per_order?: number; polling_backoff?: number[] }) => apiClient.put(`/admin/email/channels/${id}`, payload).then(r => r.data),
   stats: () => apiClient.get<Record<string, number | boolean | null>>('/admin/email/stats').then(r => r.data),
-  setEnabled: (enabled: boolean) => apiClient.put('/admin/email/settings', { enabled }).then(r => r.data as { enabled: boolean }),
+  settings: () => apiClient.get<EmailAdminSettings>('/admin/email/settings').then(r => r.data),
+  updateSettings: (payload: EmailAdminSettings) => apiClient.put<EmailAdminSettings>('/admin/email/settings', payload).then(r => r.data),
 }
 export default emailAdminAPI
 export type { EmailCapabilities }
