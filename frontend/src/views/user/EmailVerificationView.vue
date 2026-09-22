@@ -248,6 +248,7 @@ const loading = ref(false)
 const quoting = ref(false)
 const quoteLoaded = ref(false)
 const ordersLoading = ref(false)
+const ordersRefreshing = ref(false)
 const purchasing = ref(false)
 const refreshingId = ref('')
 const actionId = ref('')
@@ -341,6 +342,8 @@ function resetSelection() {
 function switchMode(mode: 'public' | 'private') {
   activeTab.value = mode
   addressType.value = mode === 'public' ? 'gmail' : 'gmail_real'
+  now.value = Date.now()
+  if (currentOrder.value && !isTerminal(currentOrder.value)) startActiveOrderPolling()
   resetSelection()
 }
 
@@ -479,6 +482,7 @@ function cancelOrder(order: EmailOrder) {
 
 function openOrders() {
   activeTab.value = 'orders'
+  stopActiveOrderPolling()
   void loadOrders()
 }
 
@@ -488,8 +492,13 @@ function openOrder(order: EmailOrder) {
   startActiveOrderPolling()
 }
 
-async function loadOrders() {
-  ordersLoading.value = true
+async function loadOrders(options: { silent?: boolean } = {}) {
+  const silent = options.silent === true && orders.value.length > 0
+  if (ordersLoading.value || ordersRefreshing.value) return
+
+  if (silent) ordersRefreshing.value = true
+  else ordersLoading.value = true
+
   try {
     const result = await emailAPI.orders({ page: orderPagination.page, page_size: orderPagination.pageSize, ...orderFilters }) as EmailOrderPage | EmailOrder[]
     if (Array.isArray(result)) {
@@ -502,9 +511,13 @@ async function loadOrders() {
       orderPagination.pageSize = result.page_size
     }
   } catch (error) {
-    appStore.showError(errorMessage(error, t('email.user.errors.orders')))
+    // Background polling must never replace the current table with an error or
+    // cause layout movement. Keep the last successful snapshot until the next
+    // poll; explicit user actions still surface failures.
+    if (!silent) appStore.showError(errorMessage(error, t('email.user.errors.orders')))
   } finally {
-    ordersLoading.value = false
+    if (silent) ordersRefreshing.value = false
+    else ordersLoading.value = false
   }
 }
 
@@ -519,9 +532,13 @@ function errorMessage(error: unknown, fallback: string) {
 
 onMounted(() => {
   void loadAll()
-  clockTimer = window.setInterval(() => { now.value = Date.now() }, 1000)
+  clockTimer = window.setInterval(() => {
+    if (activeTab.value !== 'orders' && currentOrder.value && !isTerminal(currentOrder.value)) {
+      now.value = Date.now()
+    }
+  }, 1000)
   ordersTimer = window.setInterval(() => {
-    if (activeTab.value === 'orders') void loadOrders()
+    if (activeTab.value === 'orders') void loadOrders({ silent: true })
   }, 10000)
 })
 
