@@ -697,7 +697,6 @@ func TestEmailAdminSettingsRejectInvalidLimits(t *testing.T) {
 	}
 }
 
-
 func TestNormalizeEmailServiceCodeDefaultsToGeneric(t *testing.T) {
 	if got := normalizeEmailServiceCode(""); got != "other" {
 		t.Fatalf("empty service code normalized to %q, want other", got)
