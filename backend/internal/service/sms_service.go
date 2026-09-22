@@ -1701,6 +1701,7 @@ type SMSOrder struct {
 	ChannelName            string                  `json:"channel_name"`
 	ServiceCode            string                  `json:"service_code"`
 	CountryCode            string                  `json:"country_code"`
+	CallingCode            string                  `json:"calling_code,omitempty"`
 	PhoneNumber            string                  `json:"phone_number,omitempty"`
 	OperatorCode           string                  `json:"operator_code,omitempty"`
 	VoiceMode              int                     `json:"voice_mode,omitempty"`
@@ -3823,7 +3824,7 @@ func (s *SMSService) GetOrder(ctx context.Context, userID, orderID int64) (*SMSO
 	var exp sql.NullTime
 	var providerCode, providerBaseURL string
 	var capabilities []byte
-	err := s.db.QueryRowContext(ctx, `SELECT o.public_id::text,o.product_type,o.status,o.reconciliation_action,c.code,c.public_name,sv.code,co.iso2,o.phone_number,o.operator_code,o.voice_mode,o.sale_price_snapshot,o.success_rate_snapshot,o.success_rate_grade_snapshot,o.success_rate_source_snapshot,o.refund_status,o.refund_reason,o.expires_at,o.created_at,p.code,p.base_url,p.capabilities FROM sms_orders o JOIN sms_channels c ON c.id=o.channel_id JOIN sms_providers p ON p.id=o.provider_id JOIN sms_services sv ON sv.id=o.service_id JOIN sms_countries co ON co.id=o.country_id WHERE o.user_id=$1 AND o.id=$2`, userID, orderID).Scan(&o.ID, &o.ProductType, &o.Status, &o.ReconciliationAction, &o.ChannelCode, &o.ChannelName, &o.ServiceCode, &o.CountryCode, &o.PhoneNumber, &o.OperatorCode, &o.VoiceMode, &o.Price, &rate, &o.SuccessRateGrade, &o.SuccessRateSource, &o.RefundStatus, &o.RefundReason, &exp, &o.CreatedAt, &providerCode, &providerBaseURL, &capabilities)
+	err := s.db.QueryRowContext(ctx, `SELECT o.public_id::text,o.product_type,o.status,o.reconciliation_action,c.code,c.public_name,sv.code,co.iso2,co.calling_code,o.phone_number,o.operator_code,o.voice_mode,o.sale_price_snapshot,o.success_rate_snapshot,o.success_rate_grade_snapshot,o.success_rate_source_snapshot,o.refund_status,o.refund_reason,o.expires_at,o.created_at,p.code,p.base_url,p.capabilities FROM sms_orders o JOIN sms_channels c ON c.id=o.channel_id JOIN sms_providers p ON p.id=o.provider_id JOIN sms_services sv ON sv.id=o.service_id JOIN sms_countries co ON co.id=o.country_id WHERE o.user_id=$1 AND o.id=$2`, userID, orderID).Scan(&o.ID, &o.ProductType, &o.Status, &o.ReconciliationAction, &o.ChannelCode, &o.ChannelName, &o.ServiceCode, &o.CountryCode, &o.CallingCode, &o.PhoneNumber, &o.OperatorCode, &o.VoiceMode, &o.Price, &rate, &o.SuccessRateGrade, &o.SuccessRateSource, &o.RefundStatus, &o.RefundReason, &exp, &o.CreatedAt, &providerCode, &providerBaseURL, &capabilities)
 	if err != nil {
 		return nil, err
 	}
@@ -4713,7 +4714,7 @@ func (s *SMSService) CancelOrder(ctx context.Context, userID int64, publicID str
 	return s.markSMSClosed(ctx, id, "cancelled", "rejected", "provider cancellation confirmed; refund unsupported")
 }
 func (s *SMSService) ListOrders(ctx context.Context, userID int64, admin bool) ([]SMSOrder, error) {
-	q := `SELECT o.id,o.public_id::text,o.user_id,o.product_type,o.status,o.reconciliation_action,c.code,c.public_name,sv.code,co.iso2,o.phone_number,o.operator_code,o.voice_mode,o.sale_price_snapshot,o.success_rate_snapshot,o.success_rate_grade_snapshot,o.success_rate_source_snapshot,o.refund_status,o.refund_reason,o.expires_at,o.created_at,p.code,p.base_url,p.capabilities FROM sms_orders o JOIN sms_channels c ON c.id=o.channel_id JOIN sms_providers p ON p.id=o.provider_id JOIN sms_services sv ON sv.id=o.service_id JOIN sms_countries co ON co.id=o.country_id`
+	q := `SELECT o.id,o.public_id::text,o.user_id,o.product_type,o.status,o.reconciliation_action,c.code,c.public_name,sv.code,co.iso2,co.calling_code,o.phone_number,o.operator_code,o.voice_mode,o.sale_price_snapshot,o.success_rate_snapshot,o.success_rate_grade_snapshot,o.success_rate_source_snapshot,o.refund_status,o.refund_reason,o.expires_at,o.created_at,p.code,p.base_url,p.capabilities FROM sms_orders o JOIN sms_channels c ON c.id=o.channel_id JOIN sms_providers p ON p.id=o.provider_id JOIN sms_services sv ON sv.id=o.service_id JOIN sms_countries co ON co.id=o.country_id`
 	args := []any{}
 	if !admin {
 		q += ` WHERE o.user_id=$1 AND NOT (o.provider_order_id='' AND o.status='failed')`
@@ -4738,7 +4739,7 @@ func (s *SMSService) ListOrders(ctx context.Context, userID int64, admin bool) (
 		var exp sql.NullTime
 		var providerCode, providerBaseURL string
 		var capabilities []byte
-		if err := rows.Scan(&internalID, &o.ID, &owner, &o.ProductType, &o.Status, &o.ReconciliationAction, &o.ChannelCode, &o.ChannelName, &o.ServiceCode, &o.CountryCode, &o.PhoneNumber, &o.OperatorCode, &o.VoiceMode, &o.Price, &rate, &o.SuccessRateGrade, &o.SuccessRateSource, &o.RefundStatus, &o.RefundReason, &exp, &o.CreatedAt, &providerCode, &providerBaseURL, &capabilities); err != nil {
+		if err := rows.Scan(&internalID, &o.ID, &owner, &o.ProductType, &o.Status, &o.ReconciliationAction, &o.ChannelCode, &o.ChannelName, &o.ServiceCode, &o.CountryCode, &o.CallingCode, &o.PhoneNumber, &o.OperatorCode, &o.VoiceMode, &o.Price, &rate, &o.SuccessRateGrade, &o.SuccessRateSource, &o.RefundStatus, &o.RefundReason, &exp, &o.CreatedAt, &providerCode, &providerBaseURL, &capabilities); err != nil {
 			return nil, err
 		}
 		o.Capabilities = resolveSMSCapabilities(providerCode, providerBaseURL, capabilities)
@@ -4791,7 +4792,7 @@ func (s *SMSService) ListUserOrdersPage(ctx context.Context, userID int64, page,
 	limitPlaceholder := fmt.Sprintf("$%d", len(listArgs))
 	listArgs = append(listArgs, (page-1)*pageSize)
 	offsetPlaceholder := fmt.Sprintf("$%d", len(listArgs))
-	query := `SELECT o.id,o.public_id::text,o.user_id,o.product_type,o.status,o.reconciliation_action,c.code,c.public_name,sv.code,co.iso2,o.phone_number,o.operator_code,o.voice_mode,o.sale_price_snapshot,o.success_rate_snapshot,o.success_rate_grade_snapshot,o.success_rate_source_snapshot,o.refund_status,o.refund_reason,o.expires_at,o.created_at,p.code,p.base_url,p.capabilities` + from + where + ` ORDER BY o.created_at DESC LIMIT ` + limitPlaceholder + ` OFFSET ` + offsetPlaceholder
+	query := `SELECT o.id,o.public_id::text,o.user_id,o.product_type,o.status,o.reconciliation_action,c.code,c.public_name,sv.code,co.iso2,co.calling_code,o.phone_number,o.operator_code,o.voice_mode,o.sale_price_snapshot,o.success_rate_snapshot,o.success_rate_grade_snapshot,o.success_rate_source_snapshot,o.refund_status,o.refund_reason,o.expires_at,o.created_at,p.code,p.base_url,p.capabilities` + from + where + ` ORDER BY o.created_at DESC LIMIT ` + limitPlaceholder + ` OFFSET ` + offsetPlaceholder
 	rows, err := s.db.QueryContext(ctx, query, listArgs...)
 	if err != nil {
 		return nil, err
@@ -4810,7 +4811,7 @@ func (s *SMSService) ListUserOrdersPage(ctx context.Context, userID int64, page,
 		var expiresAt sql.NullTime
 		var providerCode, providerBaseURL string
 		var capabilities []byte
-		if err := rows.Scan(&internalID, &order.ID, &owner, &order.ProductType, &order.Status, &order.ReconciliationAction, &order.ChannelCode, &order.ChannelName, &order.ServiceCode, &order.CountryCode, &order.PhoneNumber, &order.OperatorCode, &order.VoiceMode, &order.Price, &rate, &order.SuccessRateGrade, &order.SuccessRateSource, &order.RefundStatus, &order.RefundReason, &expiresAt, &order.CreatedAt, &providerCode, &providerBaseURL, &capabilities); err != nil {
+		if err := rows.Scan(&internalID, &order.ID, &owner, &order.ProductType, &order.Status, &order.ReconciliationAction, &order.ChannelCode, &order.ChannelName, &order.ServiceCode, &order.CountryCode, &order.CallingCode, &order.PhoneNumber, &order.OperatorCode, &order.VoiceMode, &order.Price, &rate, &order.SuccessRateGrade, &order.SuccessRateSource, &order.RefundStatus, &order.RefundReason, &expiresAt, &order.CreatedAt, &providerCode, &providerBaseURL, &capabilities); err != nil {
 			return nil, err
 		}
 		order.Capabilities = resolveSMSCapabilities(providerCode, providerBaseURL, capabilities)
