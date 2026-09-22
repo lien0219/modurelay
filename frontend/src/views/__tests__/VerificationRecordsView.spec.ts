@@ -70,6 +70,7 @@ const response = {
     success: 0,
     failed: 1,
     refunded: 0,
+    free: 0,
     cancelled: 0,
     expired: 0,
     sale_amount: 3.5,
@@ -220,4 +221,34 @@ describe('VerificationRecordsView', () => {
     expect(cells[12].text()).toContain('3.50')
     expect(cells[13].text()).toContain('verificationRecords.estimated')
   })
+
+  it('renders zero-cost terminal email records as free instead of refunded', async () => {
+    list.mockResolvedValue({
+      ...response,
+      items: [{
+        ...record,
+        sale_amount: 0,
+        user_debit_amount: 0,
+        refunded_amount: 0,
+        status: 'cancelled',
+        outcome: 'free',
+        refund_status: 'not_applicable',
+        refund_reason: '',
+        public_error_message: '',
+      }],
+      summary: {
+        ...response.summary,
+        refunded: 0,
+        free: 1,
+      },
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('verificationRecords.outcomes.free')
+    expect(wrapper.text()).toContain('verificationRecords.summary.free')
+    expect(wrapper.text()).not.toContain('verificationRecords.outcomes.refunded')
+  })
+
 })
