@@ -13,7 +13,7 @@ INSERT INTO email_providers (
 VALUES (
     'temp_tf',
     'temp.tf',
-    'https://temp.tf',
+    'https://temp.tf/api',
     '',
     TRUE,
     'healthy',
@@ -44,7 +44,7 @@ VALUES (
       "provider_concurrency":2
     }'::jsonb,
     '{
-      "portal_url":"https://temp.tf",
+      "portal_url":"https://temp.tf/api",
       "supported_address_types":["gmail","outlook","hotmail"],
       "best_effort":true
     }'::jsonb
