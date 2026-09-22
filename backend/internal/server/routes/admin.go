@@ -157,6 +157,7 @@ func registerEmailAdminRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	email.PUT("/channels/:id", h.Email.AdminChannelUpdate)
 	email.GET("/stats", h.Email.AdminStats)
 	email.GET("/orders", h.Email.AdminOrders)
+	email.GET("/settings", h.Email.AdminSettings)
 	email.PUT("/settings", h.Email.AdminToggle)
 }
 
