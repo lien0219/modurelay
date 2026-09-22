@@ -1796,6 +1796,8 @@ func TestSMSPVAAdvancedRentalContracts(t *testing.T) {
 			_, _ = w.Write([]byte(`{"status":1,"data":{"id":40370,"pnumber":"9096037108","until":1893456000}}`))
 		case "activate":
 			_, _ = w.Write([]byte(`{"status":1,"data":{"id":40370}}`))
+		case "orders":
+			_, _ = w.Write([]byte(`{"status":1,"data":[{"id":40370,"scode":"opt6","sname":"Telegram","state":1,"pnumber":"9096037108","ccode":"+7","cname":"KZ","until":1893456000}]}`))
 		case "add_service_to_order":
 			if r.URL.Query().Get("pnumber") != "9096037108" || r.URL.Query().Get("service") != "opt89" {
 				t.Fatalf("unexpected add-service query: %s", r.URL.RawQuery)
@@ -1897,7 +1899,7 @@ func clearSMSIconCache(serviceCode, iconPath string) {
 
 func TestSMSServiceIconRejectsRedirect(t *testing.T) {
 	service, db, mock := newSMSIconServiceTest(t, "redirect", "images/ico/redirect.png")
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	defer clearSMSIconCache("redirect", "images/ico/redirect.png")
 
 	called := 0
@@ -1927,7 +1929,7 @@ func TestSMSServiceIconRejectsRedirect(t *testing.T) {
 
 func TestSMSServiceIconRejectsUnsupportedMIME(t *testing.T) {
 	service, db, mock := newSMSIconServiceTest(t, "mime", "images/ico/mime.png")
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	defer clearSMSIconCache("mime", "images/ico/mime.png")
 	withSMSIconHTTPClient(t, service, &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		return &http.Response{
@@ -1948,7 +1950,7 @@ func TestSMSServiceIconRejectsUnsupportedMIME(t *testing.T) {
 
 func TestSMSServiceIconRejectsOversizedResponse(t *testing.T) {
 	service, db, mock := newSMSIconServiceTest(t, "large", "images/ico/large.png")
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	defer clearSMSIconCache("large", "images/ico/large.png")
 	withSMSIconHTTPClient(t, service, &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		return &http.Response{
@@ -1969,7 +1971,7 @@ func TestSMSServiceIconRejectsOversizedResponse(t *testing.T) {
 
 func TestSMSServiceIconHonorsTimeout(t *testing.T) {
 	service, db, mock := newSMSIconServiceTest(t, "timeout", "images/ico/timeout.png")
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	defer clearSMSIconCache("timeout", "images/ico/timeout.png")
 	withSMSIconHTTPClient(t, service, &http.Client{
 		Timeout: 10 * time.Millisecond,
@@ -1990,7 +1992,7 @@ func TestSMSServiceIconHonorsTimeout(t *testing.T) {
 
 func TestSMSServiceIconCachesSuccessfulResponse(t *testing.T) {
 	service, db, mock := newSMSIconServiceTest(t, "cached", "images/ico/cached.png")
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	defer clearSMSIconCache("cached", "images/ico/cached.png")
 	mock.ExpectQuery(`SELECT p\.code,COALESCE\(c\.raw_metadata->>'icon_path',''\)`).
 		WithArgs("cached").
@@ -2136,7 +2138,7 @@ func TestPersistProviderServicesReturnsCatalogWriteError(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	mock.ExpectQuery(`SELECT id FROM sms_providers WHERE code=\\$1`).
+	mock.ExpectQuery(`SELECT id FROM sms_providers WHERE code=\$1`).
 		WithArgs("smspva").
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(int64(2)))
 	mock.ExpectExec(`INSERT INTO sms_provider_catalog_services`).
