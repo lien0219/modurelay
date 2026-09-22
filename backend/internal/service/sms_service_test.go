@@ -835,6 +835,57 @@ func TestSMSPVADeliveryEvidenceBlocksAutomaticReturn(t *testing.T) {
 	}
 }
 
+
+func TestSMSPVAConvergeKeepsHeldBeforeDelivery(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectQuery(`SELECT o.user_id,o.settlement_status.*o.first_sms_received_at FROM sms_orders o JOIN sms_providers p ON p.id=o.provider_id WHERE o.id=\$1`).
+		WithArgs(int64(70)).
+		WillReturnRows(sqlmock.NewRows([]string{"user_id", "settlement_status", "reconciliation_action", "provider_refund_status", "code", "product_type", "first_sms_received_at"}).
+			AddRow(int64(8), "held", "", "not_requested", "smspva", "temporary", nil))
+
+	svc := &SMSService{db: db}
+	if err := svc.convergeSMSProviderStatus(context.Background(), 70, "active"); err != nil {
+		t.Fatal(err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSMSPVAConvergeCapturesAfterDelivery(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectQuery(`SELECT o.user_id,o.settlement_status.*o.first_sms_received_at FROM sms_orders o JOIN sms_providers p ON p.id=o.provider_id WHERE o.id=\$1`).
+		WithArgs(int64(71)).
+		WillReturnRows(sqlmock.NewRows([]string{"user_id", "settlement_status", "reconciliation_action", "provider_refund_status", "code", "product_type", "first_sms_received_at"}).
+			AddRow(int64(8), "held", "", "not_requested", "smspva", "temporary", time.Now()))
+	mock.ExpectBegin()
+	mock.ExpectQuery(`UPDATE sms_orders SET captured_amount=reserved_amount.*settlement_status='held'.*RETURNING reserved_amount`).
+		WithArgs(int64(71)).
+		WillReturnRows(sqlmock.NewRows([]string{"reserved_amount"}).AddRow(3.20))
+	mock.ExpectExec(`UPDATE users SET frozen_balance`).
+		WithArgs(3.20, int64(8)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	svc := &SMSService{db: db}
+	if err := svc.convergeSMSProviderStatus(context.Background(), 71, "completed"); err != nil {
+		t.Fatal(err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestSMS5SIMRefundReconciliationCallsCancelOnlyOnce(t *testing.T) {
 	var cancelCalls int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
