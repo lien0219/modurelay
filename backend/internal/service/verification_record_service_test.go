@@ -180,3 +180,12 @@ func TestVerificationRecordCTENetsProviderCostForConfirmedRefundsAndNoDelivery(t
 	require.Contains(t, verificationRecordsCTE, "p.code='smspva' AND o.product_type='temporary' AND o.settlement_status='held' AND o.first_sms_received_at IS NULL")
 	require.Contains(t, verificationRecordsCTE, "LEFT JOIN email_usage eu ON eu.email_order_id=o.id")
 }
+
+func TestVerificationRecordCTEIncludesRentalAddOnLedger(t *testing.T) {
+	require.Contains(t, verificationRecordsCTE, "rental_service_totals AS")
+	require.Contains(t, verificationRecordsCTE, "LEFT JOIN rental_service_totals rt ON rt.order_id=o.id")
+	require.Contains(t, verificationRecordsCTE, "COALESCE(rt.captured_amount,0)")
+	require.Contains(t, verificationRecordsCTE, "COALESCE(rt.released_amount,0)")
+	require.Contains(t, verificationRecordsCTE, "COALESCE(rt.provider_cost,0)")
+	require.Contains(t, verificationRecordsCTE, "GREATEST(o.reserved_amount-o.captured_amount-o.released_amount-o.refunded_amount,0)")
+}
