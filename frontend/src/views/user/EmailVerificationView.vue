@@ -20,7 +20,7 @@
 
       <template v-if="activeTab !== 'orders'">
         <section class="card p-5">
-          <div class="grid gap-4 xl:grid-cols-[1fr_1.2fr_1.2fr_1.2fr]">
+          <div class="grid gap-4 xl:grid-cols-[1fr_1.2fr_1.2fr]">
             <div>
               <div class="mb-2 text-xs font-semibold text-gray-500">1 · {{ t('email.user.channel') }}</div>
               <button type="button" class="w-full rounded-xl border p-4 text-left transition" :class="activeTab === 'public' ? selectedCardClass : normalCardClass" @click="switchMode('public')">
@@ -44,20 +44,7 @@
             </div>
 
             <div>
-              <div class="mb-2 text-xs font-semibold text-gray-500">2 · {{ t('email.user.service') }}</div>
-              <Select v-model="serviceCode" :options="serviceOptions" :placeholder="t('email.user.selectService')" searchable>
-                <template #selected="{ option }">
-                  <VerificationIdentity v-if="option" kind="platform" :code="String(option.value)" :label="String(option.label)" :show-code="false" />
-                  <span v-else>{{ t('email.user.selectService') }}</span>
-                </template>
-                <template #option="{ option }">
-                  <VerificationIdentity kind="platform" :code="String(option.value)" :label="String(option.label)" />
-                </template>
-              </Select>
-            </div>
-
-            <div>
-              <div class="mb-2 text-xs font-semibold text-gray-500">3 · {{ t('email.user.addressType') }}</div>
+              <div class="mb-2 text-xs font-semibold text-gray-500">2 · {{ t('email.user.addressType') }}</div>
               <Select v-model="addressType" :options="addressTypeOptions" />
               <div class="mt-3 rounded-lg border p-3 text-xs leading-5" :class="activeTab === 'public' ? 'border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200' : 'border-blue-200 bg-blue-50 text-blue-900 dark:border-blue-800 dark:bg-blue-950/30 dark:text-blue-200'">
                 {{ activeTab === 'public' ? t('email.user.publicPrivacyWarning') : t('email.user.privatePrivacyHint') }}
@@ -65,10 +52,9 @@
             </div>
 
             <div>
-              <div class="mb-2 text-xs font-semibold text-gray-500">4 · {{ t('email.user.confirmSelection') }}</div>
+              <div class="mb-2 text-xs font-semibold text-gray-500">3 · {{ t('email.user.confirmSelection') }}</div>
               <div class="rounded-xl border border-gray-200 p-4 dark:border-dark-700">
                 <div class="space-y-2 text-sm">
-                  <div class="flex justify-between gap-3"><span class="text-gray-500">{{ t('email.user.selectedService') }}</span><strong class="truncate text-gray-900 dark:text-white">{{ serviceLabel(serviceCode) || '-' }}</strong></div>
                   <div class="flex justify-between gap-3"><span class="text-gray-500">{{ t('email.user.addressType') }}</span><strong class="text-gray-900 dark:text-white">{{ addressTypeLabel(addressType) }}</strong></div>
                   <div class="flex justify-between gap-3"><span class="text-gray-500">{{ t('email.user.privacy') }}</span><strong class="text-gray-900 dark:text-white">{{ activeTab === 'public' ? t('email.user.public') : t('email.user.private') }}</strong></div>
                   <div v-if="selectedQuote" class="flex justify-between gap-3 border-t border-gray-100 pt-2 dark:border-dark-700">
@@ -76,7 +62,7 @@
                     <strong class="text-base text-gray-900 dark:text-white">{{ priceLabel(selectedQuote.sale_price) }}</strong>
                   </div>
                 </div>
-                <button type="button" class="btn btn-primary mt-4 w-full" :disabled="!serviceCode || quoting" @click="loadQuotes">
+                <button type="button" class="btn btn-primary mt-4 w-full" :disabled="quoting" @click="loadQuotes">
                   {{ quoting ? t('email.user.checking') : t('email.user.getQuote') }}
                 </button>
                 <button v-if="selectedQuote" type="button" class="btn btn-primary mt-2 w-full" :disabled="purchasing" @click="purchase(selectedQuote)">
@@ -99,7 +85,7 @@
           </button>
         </section>
 
-        <section v-if="!quoting && serviceCode && quoteLoaded && !quotes.length" class="card p-8 text-center text-sm text-gray-500">
+        <section v-if="!quoting && quoteLoaded && !quotes.length" class="card p-8 text-center text-sm text-gray-500">
           {{ t('email.user.noChannel') }}
         </section>
 
@@ -108,8 +94,6 @@
             <div class="min-w-0">
               <div class="flex flex-wrap items-center gap-2">
                 <span class="font-semibold text-gray-900 dark:text-white">{{ statusLabel(currentOrder.status) }}</span>
-                <VerificationIdentity kind="platform" :code="currentOrder.service_code" :label="serviceLabel(currentOrder.service_code)" :show-code="false" />
-                <span class="text-gray-400">·</span>
                 <span class="text-sm text-gray-500">{{ currentOrder.channel_name }}</span>
               </div>
               <div class="mt-4 grid gap-4 sm:grid-cols-[minmax(260px,1fr)_120px_minmax(220px,1fr)]">
@@ -187,7 +171,6 @@
             <thead class="border-b border-gray-100 bg-gray-50/70 text-left text-xs text-gray-500 dark:border-dark-700 dark:bg-dark-800/50">
               <tr>
                 <th class="px-4 py-3">{{ t('email.user.channel') }}</th>
-                <th class="px-4 py-3">{{ t('email.user.service') }}</th>
                 <th class="px-4 py-3">{{ t('email.user.emailAddress') }}</th>
                 <th class="px-4 py-3">{{ t('email.user.addressType') }}</th>
                 <th class="px-4 py-3">{{ t('email.user.status') }}</th>
@@ -199,7 +182,6 @@
             <tbody>
               <tr v-for="order in orders" :key="order.id" class="border-b border-gray-100 last:border-0 dark:border-dark-700">
                 <td class="px-4 py-3">{{ order.channel_name }}</td>
-                <td class="px-4 py-3"><VerificationIdentity kind="platform" :code="order.service_code" :label="serviceLabel(order.service_code)" :show-code="false" /></td>
                 <td class="px-4 py-3">
                   <div class="flex max-w-[360px] items-center gap-2">
                     <span class="truncate font-mono">{{ order.email_address || '-' }}</span>
@@ -244,8 +226,7 @@ import Pagination from '@/components/common/Pagination.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
-import VerificationIdentity from '@/components/verification/VerificationIdentity.vue'
-import { emailAPI, type EmailOrder, type EmailOrderPage, type EmailQuote, type EmailServiceItem } from '@/api/email'
+import { emailAPI, type EmailOrder, type EmailOrderPage, type EmailQuote } from '@/api/email'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { useAppStore } from '@/stores'
 
@@ -253,10 +234,8 @@ const { t } = useI18n()
 const appStore = useAppStore()
 
 const activeTab = ref<'public' | 'private' | 'orders'>('public')
-const services = ref<EmailServiceItem[]>([])
 const quotes = ref<EmailQuote[]>([])
 const orders = ref<EmailOrder[]>([])
-const serviceCode = ref('')
 const addressType = ref('gmail')
 const selectedQuoteId = ref('')
 const currentOrder = ref<EmailOrder | null>(null)
@@ -291,7 +270,6 @@ const inactiveTabClass = 'border-transparent text-gray-500'
 const selectedCardClass = 'border-primary-500 bg-primary-50/60 ring-1 ring-primary-400 dark:bg-primary-950/20'
 const normalCardClass = 'border-gray-200 hover:border-gray-300 dark:border-dark-700'
 
-const serviceOptions = computed(() => services.value.map(item => ({ value: item.code, label: item.name })))
 const addressTypeOptions = computed(() => activeTab.value === 'private'
   ? [
       { value: 'gmail_real', label: t('email.user.gmailReal') },
@@ -319,7 +297,6 @@ const remainingTime = computed(() => {
 const emailStatuses = ['reserved', 'generating_inbox', 'waiting_email', 'email_received', 'verification_extracted', 'completed', 'reconciling', 'expired', 'refunded', 'failed', 'cancelled']
 const orderStatusOptions = computed(() => emailStatuses.map(value => ({ value, label: statusLabel(value) })))
 
-function serviceLabel(code: string) { return services.value.find(item => item.code === code)?.name || code }
 function statusLabel(status: string) { return t(`email.user.statuses.${status}`, status) }
 function statusClass(status: string) { return ['completed', 'refunded'].includes(status) ? 'badge-success' : status === 'failed' ? 'badge-danger' : ['expired', 'cancelled'].includes(status) ? 'badge-warning' : 'badge-info' }
 function addressTypeLabel(value: string) {
@@ -347,13 +324,11 @@ function switchMode(mode: 'public' | 'private') {
   resetSelection()
 }
 
-watch([serviceCode, addressType], () => resetSelection())
+watch(addressType, () => resetSelection())
 
 async function loadAll() {
   loading.value = true
   try {
-    services.value = await emailAPI.services()
-    if (!serviceCode.value) serviceCode.value = services.value[0]?.code || ''
     if (activeTab.value === 'orders') await loadOrders()
   } catch (error) {
     appStore.showError(errorMessage(error, t('email.user.errors.unavailable')))
@@ -363,11 +338,11 @@ async function loadAll() {
 }
 
 async function loadQuotes() {
-  if (!serviceCode.value || activeTab.value === 'orders') return
+  if (activeTab.value === 'orders') return
   quoting.value = true
   quoteLoaded.value = false
   try {
-    const result = await emailAPI.quotes({ service: serviceCode.value, address_type: addressType.value })
+    const result = await emailAPI.quotes({ address_type: addressType.value })
     const wantedChannel = activeTab.value === 'public' ? 'email_channel_1' : 'email_channel_2'
     quotes.value = result.filter(item => item.channel_code === wantedChannel)
     selectedQuoteId.value = quotes.value[0]?.quote_id || ''
@@ -386,7 +361,6 @@ async function purchase(quote: EmailQuote) {
   try {
     const order = await emailAPI.purchase({
       channel_code: quote.channel_code,
-      service_code: serviceCode.value,
       address_type: addressType.value,
       expected_price: quote.sale_price,
       quote_id: quote.quote_id,

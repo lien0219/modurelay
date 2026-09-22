@@ -735,6 +735,16 @@ func resolveEmailQuoteSigningKey(cfg *config.Config) []byte {
 	return []byte(key)
 }
 
+const defaultEmailServiceCode = "other"
+
+func normalizeEmailServiceCode(value string) string {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	if normalized == "" {
+		return defaultEmailServiceCode
+	}
+	return normalized
+}
+
 func makeEmailQuoteID(signingKey []byte, serviceCode, channelCode, addressType string, expires time.Time) string {
 	nonce := randomID()
 	material := strings.Join([]string{strings.ToLower(serviceCode), channelCode, strings.ToLower(addressType), strconv.FormatInt(expires.Unix(), 10), nonce}, "|")
@@ -775,6 +785,7 @@ func (s *EmailVerificationService) Quote(ctx context.Context, serviceCode, addre
 	if len(s.quoteSigningKey) == 0 {
 		return nil, ErrEmailQuoteInvalid
 	}
+	serviceCode = normalizeEmailServiceCode(serviceCode)
 	var normalizeErr error
 	addressType, normalizeErr = normalizeEmailAddressType(addressType)
 	if normalizeErr != nil {
@@ -1027,6 +1038,7 @@ func (s *EmailVerificationService) Purchase(ctx context.Context, userID int64, r
 		return nil, normalizeErr
 	}
 	req.AddressType = addressType
+	req.ServiceCode = normalizeEmailServiceCode(req.ServiceCode)
 	// Idempotent retries return the original order even when the quote used for
 	// the first request has since expired.
 	var existingID int64

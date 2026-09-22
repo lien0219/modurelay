@@ -5,7 +5,6 @@ import EmailVerificationView from '../EmailVerificationView.vue'
 
 const { emailAPI, showError, showSuccess } = vi.hoisted(() => ({
   emailAPI: {
-    services: vi.fn(),
     quotes: vi.fn(),
     orders: vi.fn(),
     order: vi.fn(),
@@ -44,13 +43,12 @@ const quote = {
 describe('EmailVerificationView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    emailAPI.services.mockResolvedValue([{ code: 'google', name: 'Google' }])
     emailAPI.quotes.mockResolvedValue([quote])
     emailAPI.orders.mockResolvedValue([])
     emailAPI.purchase.mockResolvedValue({ id: 'order-1' })
   })
 
-  it('shows the public-inbox warning and purchases the signed quote idempotently', async () => {
+  it('uses provider-native mailbox flow without requiring a verification platform', async () => {
     const wrapper = mount(EmailVerificationView, {
       global: {
         stubs: {
@@ -61,22 +59,27 @@ describe('EmailVerificationView', () => {
     })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('email.user.privacyWarning')
-    expect(wrapper.text()).toContain('email.user.refundPolicies.refund_if_no_message')
+    expect(wrapper.text()).toContain('email.user.publicPrivacyWarning')
+    expect(wrapper.text()).not.toContain('email.user.selectService')
 
-    const purchase = wrapper.findAll('button').find(button => button.text() === 'email.user.purchase')
+    const quoteButton = wrapper.findAll('button').find(button => button.text() === 'email.user.getQuote')
+    expect(quoteButton).toBeDefined()
+    await quoteButton!.trigger('click')
+    await flushPromises()
+
+    expect(emailAPI.quotes).toHaveBeenCalledWith({ address_type: 'gmail' })
+
+    const purchase = wrapper.findAll('button').find(button => button.text() === 'email.user.generateFree')
     expect(purchase).toBeDefined()
     await purchase!.trigger('click')
     await flushPromises()
 
     expect(emailAPI.purchase).toHaveBeenCalledWith({
       channel_code: 'email_channel_1',
-      service_code: 'google',
       address_type: 'gmail',
       expected_price: 0.3,
       quote_id: 'quote-1',
-    }, 'email-quote-1')
-    expect(emailAPI.orders).toHaveBeenCalledWith(expect.objectContaining({ page: 1, page_size: expect.any(Number) }))
+    }, expect.stringMatching(/^email-quote-1-/))
     expect(wrapper.get('div.mx-auto').classes()).toContain('max-w-[1800px]')
     wrapper.unmount()
   })
