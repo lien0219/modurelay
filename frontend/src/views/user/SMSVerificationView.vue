@@ -516,6 +516,8 @@ const rentalServiceState = reactive({
 let countdownTimer: number | undefined
 let serviceSearchTimer: number | undefined
 let countrySearchTimer: number | undefined
+let countryRequestVersion = 0
+let operatorRequestVersion = 0
 
 const currentProvider = computed(() => providers.value.find(item => item.code === providerCode.value))
 const tabs = computed(() => [
@@ -872,39 +874,76 @@ async function loadServicePage(reset = false) {
 }
 
 async function loadCountryPage(reset = false) {
-  if (!providerCode.value || !serviceCode.value || countriesLoading.value) return
+  if (!providerCode.value || !serviceCode.value) return
+
+  const requestVersion = ++countryRequestVersion
+  const requestedProvider = providerCode.value
+  const requestedService = serviceCode.value
+  const requestedProductType = productType.value
+  const requestedDurationValue = durationValue.value
+  const requestedDurationUnit = durationUnit.value
+  const requestedKeyword = countryKeyword.value
+  const requestedSort = currentProvider.value?.capabilities.supports_conversion_stats ? countrySortMode.value : 'name'
+  const requestedPage = reset ? 1 : countryPagination.page
+
   if (reset) {
     countries.value = []
     operators.value = []
     quotes.value = []
     countryPagination.page = 1
+    countryPagination.total = 0
     countryPagination.hasMore = false
     countryCode.value = ''
     operatorCode.value = 'any'
+    ++operatorRequestVersion
   }
+
   countriesLoading.value = true
   try {
-    const page = await smsAPI.serviceCountriesPage(providerCode.value, serviceCode.value, {
-      page: countryPagination.page,
+    const page = await smsAPI.serviceCountriesPage(requestedProvider, requestedService, {
+      page: requestedPage,
       page_size: countryPagination.pageSize,
-      keyword: countryKeyword.value || undefined,
-      sort: currentProvider.value?.capabilities.supports_conversion_stats ? countrySortMode.value : 'name',
-      product_type: productType.value,
-      duration_value: productType.value === 'rental' ? durationValue.value : undefined,
-      duration_unit: productType.value === 'rental' ? durationUnit.value : undefined,
+      keyword: requestedKeyword || undefined,
+      sort: requestedSort,
+      product_type: requestedProductType,
+      duration_value: requestedProductType === 'rental' ? requestedDurationValue : undefined,
+      duration_unit: requestedProductType === 'rental' ? requestedDurationUnit : undefined,
     })
-    countries.value = reset ? page.items : [...countries.value, ...page.items.filter(item => !countries.value.some(existing => existing.iso2 === item.iso2))]
+
+    // Only the newest country request is allowed to mutate selection state.
+    // A request started for a previously selected service/provider can finish
+    // later and must never overwrite the current service's country list.
+    if (
+      requestVersion !== countryRequestVersion ||
+      requestedProvider !== providerCode.value ||
+      requestedService !== serviceCode.value ||
+      requestedProductType !== productType.value
+    ) {
+      return
+    }
+
+    countries.value = reset
+      ? page.items
+      : [...countries.value, ...page.items.filter(item => !countries.value.some(existing => existing.iso2 === item.iso2))]
     countryPagination.total = page.total
     countryPagination.hasMore = page.has_more
-    if (page.has_more) countryPagination.page += 1
-    if (reset) countryCode.value = countries.value.find(item => item.available !== false)?.iso2 || ''
+    countryPagination.page = page.has_more ? requestedPage + 1 : requestedPage
+
+    if (reset) {
+      countryCode.value = countries.value.find(item => item.available !== false)?.iso2 || ''
+    }
     await loadOperators()
   } finally {
-    countriesLoading.value = false
+    if (requestVersion === countryRequestVersion) {
+      countriesLoading.value = false
+    }
   }
 }
 
 async function loadProviderCatalog() {
+  ++countryRequestVersion
+  ++operatorRequestVersion
+  countriesLoading.value = false
   services.value = []
   countries.value = []
   operators.value = []
@@ -1125,10 +1164,25 @@ async function handleAdditionalRentalServiceChange() {
 
 async function selectService(code: string) {
   if (code === serviceCode.value) return
+
+  // Invalidate any in-flight country/operator request immediately. This keeps
+  // the UI from briefly pairing the new service with stale countries from the
+  // previously selected service.
+  ++countryRequestVersion
+  ++operatorRequestVersion
   serviceCode.value = code
   additionalRentalServiceCodes.value = []
-  countryKeyword.value = ''
+  countries.value = []
+  countryCode.value = ''
+  operators.value = []
+  operatorCode.value = 'any'
   quotes.value = []
+  countryPagination.page = 1
+  countryPagination.total = 0
+  countryPagination.hasMore = false
+  countriesLoading.value = false
+  countryKeyword.value = ''
+
   await loadCountryPage(true)
 }
 
@@ -1142,18 +1196,40 @@ async function selectCountry(code: string) {
 }
 
 async function loadOperators() {
+  const requestVersion = ++operatorRequestVersion
+  const requestedProvider = providerCode.value
+  const requestedService = serviceCode.value
+  const requestedCountry = countryCode.value
+  const requestedProductType = productType.value
+  const requestedVoiceMode = voiceMode.value
+  const requestedDurationValue = durationValue.value
+  const requestedDurationUnit = durationUnit.value
+
   operators.value = []
   operatorCode.value = 'any'
-  if (!providerCode.value || !serviceCode.value || !countryCode.value) return
+  if (!requestedProvider || !requestedService || !requestedCountry) return
   if (!currentProvider.value?.capabilities.supports_operator_selection) return
+
   try {
-    operators.value = await smsAPI.operators(providerCode.value, serviceCode.value, countryCode.value, {
-      voice_mode: voiceMode.value,
-      product_type: productType.value,
-      duration_value: productType.value === 'rental' ? durationValue.value : undefined,
-      duration_unit: productType.value === 'rental' ? durationUnit.value : undefined,
+    const result = await smsAPI.operators(requestedProvider, requestedService, requestedCountry, {
+      voice_mode: requestedVoiceMode,
+      product_type: requestedProductType,
+      duration_value: requestedProductType === 'rental' ? requestedDurationValue : undefined,
+      duration_unit: requestedProductType === 'rental' ? requestedDurationUnit : undefined,
     })
-    const selectedCountry = countries.value.find(item => item.iso2 === countryCode.value)
+
+    if (
+      requestVersion !== operatorRequestVersion ||
+      requestedProvider !== providerCode.value ||
+      requestedService !== serviceCode.value ||
+      requestedCountry !== countryCode.value ||
+      requestedProductType !== productType.value
+    ) {
+      return
+    }
+
+    operators.value = result
+    const selectedCountry = countries.value.find(item => item.iso2 === requestedCountry)
     const recommended = currentProvider.value?.capabilities.supports_conversion_stats
       ? selectedCountry?.recommended_operator
       : ''
@@ -1163,6 +1239,7 @@ async function loadOperators() {
       operatorCode.value = 'any'
     }
   } catch {
+    if (requestVersion !== operatorRequestVersion) return
     operators.value = []
     operatorCode.value = 'any'
   }
@@ -1374,6 +1451,8 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  ++countryRequestVersion
+  ++operatorRequestVersion
   stopOrderPolling()
   if (countdownTimer) window.clearInterval(countdownTimer)
   if (serviceSearchTimer) window.clearTimeout(serviceSearchTimer)
