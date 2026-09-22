@@ -921,6 +921,103 @@ func (p *smsPVAProvider) Quote(ctx context.Context, req SMSQuoteRequest) (*SMSPr
 	}, nil
 }
 
+func smsPVACanonicalPhone(phone, callingCode string) string {
+	phone = strings.TrimSpace(phone)
+	callingCode = strings.TrimSpace(callingCode)
+	if phone == "" {
+		return ""
+	}
+
+	digits := func(value string) string {
+		var b strings.Builder
+		for _, r := range value {
+			if r >= '0' && r <= '9' {
+				b.WriteRune(r)
+			}
+		}
+		return b.String()
+	}
+
+	phoneDigits := digits(phone)
+	if phoneDigits == "" {
+		return phone
+	}
+	if strings.HasPrefix(phone, "+") {
+		return "+" + phoneDigits
+	}
+	codeDigits := digits(callingCode)
+	if codeDigits == "" {
+		return phoneDigits
+	}
+	// SMSPVA rental/add-service responses are not fully consistent: some
+	// endpoints return a national number plus ccode, while others can return an
+	// already-prefixed number. Avoid duplicating the country calling code.
+	if strings.HasPrefix(phoneDigits, codeDigits) && len(phoneDigits) > len(codeDigits)+4 {
+		return "+" + phoneDigits
+	}
+	return "+" + codeDigits + phoneDigits
+}
+
+func (p *smsPVAProvider) canonicalTemporaryPhone(ctx context.Context, orderID, serviceCode, rawPhone string) string {
+	rawPhone = strings.TrimSpace(rawPhone)
+	if rawPhone == "" || strings.HasPrefix(rawPhone, "+") {
+		return smsPVACanonicalPhone(rawPhone, "")
+	}
+
+	// SMSPVA documents phoneNumber as the local/national part. The exact
+	// calling prefix is available from numberstatus. Bind the response to the
+	// just-created order before trusting it.
+	var statusEnv smsPVAEnvelope
+	statusPath := "activation/numberstatus/" + url.PathEscape(rawPhone) + "/" + url.PathEscape(strings.ToLower(strings.TrimSpace(serviceCode)))
+	if _, err := p.requestJSON(ctx, http.MethodGet, statusPath, nil, &statusEnv); err == nil {
+		var status struct {
+			Number      json.RawMessage `json:"number"`
+			OrderID     json.RawMessage `json:"orderId"`
+			CountryCode string          `json:"countryCode"`
+		}
+		if json.Unmarshal(statusEnv.Data, &status) == nil {
+			statusOrderID := rawString(status.OrderID)
+			if statusOrderID == "" || statusOrderID == strings.TrimSpace(orderID) {
+				number := rawString(status.Number)
+				if number == "" {
+					number = rawPhone
+				}
+				if canonical := smsPVACanonicalPhone(number, status.CountryCode); strings.HasPrefix(canonical, "+") {
+					return canonical
+				}
+			}
+		}
+	}
+
+	// Deterministic fallback: activation/orders exposes the calling prefix too.
+	// Only use the row whose provider order id exactly matches this purchase.
+	var ordersEnv smsPVAEnvelope
+	if _, err := p.requestJSON(ctx, http.MethodGet, "activation/orders", nil, &ordersEnv); err == nil {
+		var data struct {
+			Orders []struct {
+				OrderID     json.RawMessage `json:"orderId"`
+				PhoneNumber json.RawMessage `json:"phoneNumber"`
+				CountryCode string          `json:"countryCode"`
+			} `json:"orders"`
+		}
+		if json.Unmarshal(ordersEnv.Data, &data) == nil {
+			for _, item := range data.Orders {
+				if rawString(item.OrderID) != strings.TrimSpace(orderID) {
+					continue
+				}
+				number := rawString(item.PhoneNumber)
+				if number == "" {
+					number = rawPhone
+				}
+				if canonical := smsPVACanonicalPhone(number, item.CountryCode); strings.HasPrefix(canonical, "+") {
+					return canonical
+				}
+			}
+		}
+	}
+	return rawPhone
+}
+
 func (p *smsPVAProvider) PurchaseTemporary(ctx context.Context, req SMSPurchaseRequest) (*SMSPurchaseResult, error) {
 	var env smsPVAEnvelope
 	path := "activation/number/" + url.PathEscape(strings.ToUpper(req.CountryCode)) + "/" + url.PathEscape(strings.ToLower(req.ServiceCode))
@@ -938,6 +1035,7 @@ func (p *smsPVAProvider) PurchaseTemporary(ctx context.Context, req SMSPurchaseR
 	var data struct {
 		OrderID       json.RawMessage `json:"orderId"`
 		PhoneNumber   json.RawMessage `json:"phoneNumber"`
+		CountryCode   string          `json:"countryCode"`
 		OrderExpireIn int             `json:"orderExpireIn"`
 	}
 	if err := json.Unmarshal(env.Data, &data); err != nil {
@@ -948,6 +1046,7 @@ func (p *smsPVAProvider) PurchaseTemporary(ctx context.Context, req SMSPurchaseR
 	if orderID == "" || orderID == "null" {
 		return nil, errors.New("SMSPVA returned no order id")
 	}
+	phone = p.canonicalTemporaryPhone(ctx, orderID, req.ServiceCode, phone)
 	expires := time.Now().Add(time.Duration(data.OrderExpireIn) * time.Second)
 	return &SMSPurchaseResult{
 		ProviderOrderID: orderID,
@@ -996,9 +1095,18 @@ func (p *smsPVAProvider) GetTemporaryStatus(ctx context.Context, id string) (*SM
 	if len(messages) > 0 {
 		status = "completed"
 	}
+	statusPhone := rawString(data.PhoneNumber)
+	if statusPhone != "" {
+		statusPhone = smsPVACanonicalPhone(statusPhone, data.CountryCode)
+		// Do not overwrite a canonical number stored at purchase time with an
+		// unprefixed national number from a later SMS poll.
+		if !strings.HasPrefix(statusPhone, "+") {
+			statusPhone = ""
+		}
+	}
 	return &SMSStatusResult{
 		Status:      status,
-		PhoneNumber: rawString(data.PhoneNumber),
+		PhoneNumber: statusPhone,
 		Messages:    messages,
 	}, nil
 }
@@ -1049,9 +1157,10 @@ func (p *smsPVAProvider) PurchaseRental(ctx context.Context, req SMSPurchaseRequ
 		return nil, err
 	}
 	var data struct {
-		ID    json.RawMessage `json:"id"`
-		Phone string          `json:"pnumber"`
-		Until int64           `json:"until"`
+		ID          json.RawMessage `json:"id"`
+		Phone       string          `json:"pnumber"`
+		CallingCode string          `json:"ccode"`
+		Until       int64           `json:"until"`
 	}
 	if err := json.Unmarshal(env.Data, &data); err != nil {
 		return nil, err
