@@ -733,10 +733,10 @@ func TestSMSPVAActivateTemporaryKeepsSettlementHeldUntilDelivery(t *testing.T) {
 	defer func() { _ = db.Close() }()
 
 	mock.ExpectBegin()
-	mock.ExpectQuery(\`SELECT p.code,o.product_type FROM sms_orders o JOIN sms_providers p ON p.id=o.provider_id WHERE o.id=\\$1 FOR UPDATE OF o\`).
+	mock.ExpectQuery(`SELECT p.code,o.product_type FROM sms_orders o JOIN sms_providers p ON p.id=o.provider_id WHERE o.id=\$1 FOR UPDATE OF o`).
 		WithArgs(int64(52)).
 		WillReturnRows(sqlmock.NewRows([]string{"code", "product_type"}).AddRow("smspva", "temporary"))
-	mock.ExpectExec(\`UPDATE sms_orders SET status='active'.*captured_amount=0,settlement_status='held'.*WHERE id=\\$6 AND settlement_status='held'\`).
+	mock.ExpectExec(`UPDATE sms_orders SET status='active'.*captured_amount=0,settlement_status='held'.*WHERE id=\$6 AND settlement_status='held'`).
 		WithArgs("pva-1", "+59178522241", nil, 0.0, "", int64(52)).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
@@ -757,17 +757,17 @@ func TestSMSPVAUndeliveredLegacyCaptureIsReturnedExactlyOnce(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	mock.ExpectQuery(\`SELECT o.settlement_status,o.first_sms_received_at,\\(SELECT COUNT\\(\\*\\) FROM sms_messages m WHERE m.order_id=o.id\\) FROM sms_orders o WHERE o.id=\\$1\`).
+	mock.ExpectQuery(`SELECT o.settlement_status,o.first_sms_received_at,\(SELECT COUNT\(\\*\) FROM sms_messages m WHERE m.order_id=o.id\) FROM sms_orders o WHERE o.id=\$1`).
 		WithArgs(int64(61)).
 		WillReturnRows(sqlmock.NewRows([]string{"settlement_status", "first_sms_received_at", "count"}).AddRow("captured", nil, 0))
-	mock.ExpectExec(\`UPDATE sms_orders SET provider_refund_status=\\$1\`).
+	mock.ExpectExec(`UPDATE sms_orders SET provider_refund_status=\$1`).
 		WithArgs("not_required", "SMSPVA order ended before SMS delivery; upstream had no delivered-message charge to refund", int64(61)).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectBegin()
-	mock.ExpectQuery(\`UPDATE sms_orders SET status=\\$1,refund_status=\\$2.*settlement_status='captured'.*RETURNING reserved_amount\`).
+	mock.ExpectQuery(`UPDATE sms_orders SET status=\$1,refund_status=\$2.*settlement_status='captured'.*RETURNING reserved_amount`).
 		WithArgs("cancelled", "approved", "SMSPVA cancellation confirmed before SMS delivery; reserved balance released", "refunded", int64(61)).
 		WillReturnRows(sqlmock.NewRows([]string{"reserved_amount"}).AddRow(5.10))
-	mock.ExpectExec(\`UPDATE users SET balance=balance\\+\\$1,updated_at=NOW\\(\\) WHERE id=\\$2\`).
+	mock.ExpectExec(`UPDATE users SET balance=balance\+\$1,updated_at=NOW\(\) WHERE id=\$2`).
 		WithArgs(5.10, int64(9)).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
@@ -789,17 +789,17 @@ func TestSMSPVAUndeliveredHeldSettlementIsReleasedExactlyOnce(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	mock.ExpectQuery(\`SELECT o.settlement_status,o.first_sms_received_at,\\(SELECT COUNT\\(\\*\\) FROM sms_messages m WHERE m.order_id=o.id\\) FROM sms_orders o WHERE o.id=\\$1\`).
+	mock.ExpectQuery(`SELECT o.settlement_status,o.first_sms_received_at,\(SELECT COUNT\(\\*\) FROM sms_messages m WHERE m.order_id=o.id\) FROM sms_orders o WHERE o.id=\$1`).
 		WithArgs(int64(62)).
 		WillReturnRows(sqlmock.NewRows([]string{"settlement_status", "first_sms_received_at", "count"}).AddRow("held", nil, 0))
-	mock.ExpectExec(\`UPDATE sms_orders SET provider_refund_status=\\$1\`).
+	mock.ExpectExec(`UPDATE sms_orders SET provider_refund_status=\$1`).
 		WithArgs("not_required", "SMSPVA order ended before SMS delivery; upstream had no delivered-message charge to refund", int64(62)).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectBegin()
-	mock.ExpectQuery(\`UPDATE sms_orders SET status=\\$1,refund_status=\\$2.*settlement_status='held'.*RETURNING reserved_amount\`).
+	mock.ExpectQuery(`UPDATE sms_orders SET status=\$1,refund_status=\$2.*settlement_status='held'.*RETURNING reserved_amount`).
 		WithArgs("cancelled", "not_requested", "SMSPVA cancellation confirmed before SMS delivery; reserved balance released", "released", int64(62)).
 		WillReturnRows(sqlmock.NewRows([]string{"reserved_amount"}).AddRow(4.25))
-	mock.ExpectExec(\`UPDATE users SET balance=balance\\+\\$1,frozen_balance\`).
+	mock.ExpectExec(`UPDATE users SET balance=balance\+\$1,frozen_balance`).
 		WithArgs(4.25, int64(10)).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
@@ -821,7 +821,7 @@ func TestSMSPVADeliveryEvidenceBlocksAutomaticReturn(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	mock.ExpectQuery(\`SELECT o.settlement_status,o.first_sms_received_at,\\(SELECT COUNT\\(\\*\\) FROM sms_messages m WHERE m.order_id=o.id\\) FROM sms_orders o WHERE o.id=\\$1\`).
+	mock.ExpectQuery(`SELECT o.settlement_status,o.first_sms_received_at,\(SELECT COUNT\(\\*\) FROM sms_messages m WHERE m.order_id=o.id\) FROM sms_orders o WHERE o.id=\$1`).
 		WithArgs(int64(63)).
 		WillReturnRows(sqlmock.NewRows([]string{"settlement_status", "first_sms_received_at", "count"}).AddRow("captured", time.Now(), 1))
 
