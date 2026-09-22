@@ -108,6 +108,7 @@ func (p *smsPVAProvider) RentalOrders(ctx context.Context) ([]SMSRentalProviderO
 		ServiceName     string          `json:"sname"`
 		State           json.RawMessage `json:"state"`
 		PhoneNumber     string          `json:"pnumber"`
+		CallingCode     string          `json:"ccode"`
 		CountryCode     string          `json:"cname"`
 		HasNewSMS       json.RawMessage `json:"hasnewsms"`
 		Until           json.RawMessage `json:"until"`
@@ -130,7 +131,7 @@ func (p *smsPVAProvider) RentalOrders(ctx context.Context) ([]SMSRentalProviderO
 			ServiceCode:     strings.ToLower(strings.TrimSpace(row.ServiceCode)),
 			ServiceName:     strings.TrimSpace(row.ServiceName),
 			State:           rawString(row.State),
-			PhoneNumber:     strings.TrimSpace(row.PhoneNumber),
+			PhoneNumber:     smsPVACanonicalPhone(row.PhoneNumber, row.CallingCode),
 			CountryCode:     strings.ToUpper(strings.TrimSpace(row.CountryCode)),
 			HasNewSMS:       rawBool(row.HasNewSMS),
 			Until:           rawInt64(row.Until),
