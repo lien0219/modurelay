@@ -4156,6 +4156,7 @@ func (s *SMSService) pollSMSOrder(ctx context.Context, id int64, providerOrder, 
 	if _, err = s.db.ExecContext(ctx, `UPDATE sms_orders SET status=$1,phone_number=COALESCE(NULLIF($2,''),phone_number),expires_at=COALESCE($3,expires_at),reconciliation_attempts=0,reconcile_after=NULL,updated_at=NOW() WHERE id=$4 AND status IN ('active','provider_unknown','reconciling')`, newStatus, result.PhoneNumber, result.ExpiresAt, id); err != nil {
 		return err
 	}
+	delivered := false
 	for index, message := range result.Messages {
 		message = strings.TrimSpace(message)
 		if message == "" {
@@ -4164,8 +4165,21 @@ func (s *SMSService) pollSMSOrder(ctx context.Context, id int64, providerOrder, 
 		if err := s.persistSMSMessage(ctx, id, message, result.Metadata, index); err != nil {
 			return err
 		}
+		delivered = true
 		_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET first_sms_received_at=COALESCE(first_sms_received_at,NOW()),delivery_outcome='success',delivery_finalized_at=COALESCE(delivery_finalized_at,NOW()),delivery_failure_reason='' WHERE id=$1`, id)
 		clearSMSPlatformDeliveryStatsCache()
+	}
+	if delivered && strings.EqualFold(providerCode, "smspva") && productType == "temporary" {
+		var userID int64
+		var settlementStatus string
+		if err := s.db.QueryRowContext(ctx, `SELECT user_id,settlement_status FROM sms_orders WHERE id=$1`, id).Scan(&userID, &settlementStatus); err != nil {
+			return err
+		}
+		if settlementStatus == "held" {
+			if err := s.captureSMSSettlement(ctx, id, userID); err != nil {
+				return err
+			}
+		}
 	}
 	return s.convergeSMSProviderStatus(ctx, id, newStatus)
 }
@@ -4213,17 +4227,21 @@ func (s *SMSService) markSMSDeliveryOutcome(ctx context.Context, id int64, provi
 
 func (s *SMSService) convergeSMSProviderStatus(ctx context.Context, id int64, status string) error {
 	var userID int64
-	var settlementStatus, action, providerRefundStatus, providerCode string
-	if err := s.db.QueryRowContext(ctx, `SELECT o.user_id,o.settlement_status,o.reconciliation_action,o.provider_refund_status,p.code FROM sms_orders o JOIN sms_providers p ON p.id=o.provider_id WHERE o.id=$1`, id).Scan(&userID, &settlementStatus, &action, &providerRefundStatus, &providerCode); err != nil {
+	var settlementStatus, action, providerRefundStatus, providerCode, productType string
+	var firstSMSReceivedAt sql.NullTime
+	if err := s.db.QueryRowContext(ctx, `SELECT o.user_id,o.settlement_status,o.reconciliation_action,o.provider_refund_status,p.code,o.product_type,o.first_sms_received_at FROM sms_orders o JOIN sms_providers p ON p.id=o.provider_id WHERE o.id=$1`, id).Scan(&userID, &settlementStatus, &action, &providerRefundStatus, &providerCode, &productType, &firstSMSReceivedAt); err != nil {
 		return err
 	}
 	s.markSMSDeliveryOutcome(ctx, id, status, action)
 	switch status {
 	case "active", "completed":
-		// A held settlement means the provider allocation has now been
-		// confirmed (normally via timeout recovery). Capture exactly once so the
-		// order behaves the same as a normal synchronous purchase.
 		if settlementStatus == "held" {
+			// SMSPVA temporary orders remain reserved after allocation and are
+			// captured only once delivery evidence exists. Other providers keep
+			// their historical allocation-time settlement semantics.
+			if strings.EqualFold(providerCode, "smspva") && strings.EqualFold(productType, "temporary") && !firstSMSReceivedAt.Valid {
+				return nil
+			}
 			return s.captureSMSSettlement(ctx, id, userID)
 		}
 	case "failed", "cancelled", "canceled", "expired":
