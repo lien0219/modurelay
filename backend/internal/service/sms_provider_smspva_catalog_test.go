@@ -133,7 +133,10 @@ func TestSMSPVARentalCountriesKeepLegacyArrayCompatibility(t *testing.T) {
 	}))
 	defer server.Close()
 
-	provider := providerFor("smspva", server.URL, "secret").(SMSProductServiceCountryProvider)
+	provider, ok := providerFor("smspva", server.URL, "secret").(SMSProductServiceCountryProvider)
+	if !ok {
+		t.Fatal("SMSPVA provider does not implement SMSProductServiceCountryProvider")
+	}
 	items, err := provider.CountriesForServiceProduct(context.Background(), "opt20", "rental", 1, "week")
 	if err != nil {
 		t.Fatal(err)
