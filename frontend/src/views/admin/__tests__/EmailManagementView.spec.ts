@@ -8,6 +8,8 @@ const { adminEmail, showError, showSuccess } = vi.hoisted(() => ({
     providers: vi.fn(),
     channels: vi.fn(),
     stats: vi.fn(),
+    settings: vi.fn(),
+    updateSettings: vi.fn(),
     updateProvider: vi.fn(),
     testProvider: vi.fn(),
     updateChannel: vi.fn(),
@@ -39,6 +41,13 @@ describe('EmailManagementView', () => {
       polling_backoff: [2, 4, 7], max_provider_requests_per_order: 60,
     }])
     adminEmail.stats.mockResolvedValue({ feature_enabled: false, orders: 0 })
+    adminEmail.settings.mockResolvedValue({
+      enabled: false,
+      free_daily_limit: 20,
+      free_active_limit: 3,
+      free_generation_interval_seconds: 5,
+    })
+    adminEmail.updateSettings.mockImplementation(async (value: unknown) => value)
     adminEmail.updateChannel.mockResolvedValue({ updated: true })
   })
 
@@ -125,7 +134,11 @@ describe('EmailManagementView', () => {
     expect(scrollRegions).toHaveLength(2)
     expect(scrollRegions.every(region => region.classes().includes('overflow-x-auto'))).toBe(true)
     expect(scrollRegions[0].get('table').classes()).toContain('w-full')
+    expect(scrollRegions[0].get('table').classes()).toContain('min-w-[1400px]')
+    expect(scrollRegions[1].get('table').classes()).toContain('w-full')
     expect(scrollRegions[1].get('table').classes()).toContain('min-w-[2800px]')
+    expect(scrollRegions[0].get('tbody td').classes()).toContain('whitespace-nowrap')
+    expect(scrollRegions[0].findAll('button').filter(button => button.text() === 'email.admin.save' || button.text() === 'email.admin.testConnection').every(button => button.classes().includes('whitespace-nowrap'))).toBe(true)
     expect(wrapper.text()).not.toContain('email.admin.tableScrollHint')
   })
 })
