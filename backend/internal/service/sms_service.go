@@ -4305,13 +4305,11 @@ func (s *SMSService) settleSMSPVANoDelivery(ctx context.Context, id, userID int6
 	if firstSMS.Valid || messageCount > 0 {
 		return false, nil
 	}
-	s.markProviderRefund(ctx, id, "not_required", "SMSPVA order ended before SMS delivery; upstream had no delivered-message charge to refund")
 	switch settlementStatus {
 	case "held":
 		if err := s.releaseSMSHold(ctx, id, userID, terminalStatus, reason); err != nil {
 			return true, err
 		}
-		return true, nil
 	case "captured":
 		// Legacy SMSPVA rows created before delayed capture was introduced may
 		// already be captured even though no SMS was delivered. Return that
@@ -4319,10 +4317,11 @@ func (s *SMSService) settleSMSPVANoDelivery(ctx context.Context, id, userID int6
 		if err := s.refundSMSCapture(ctx, id, userID, terminalStatus, reason); err != nil {
 			return true, err
 		}
-		return true, nil
 	default:
 		return true, nil
 	}
+	s.markProviderRefund(ctx, id, "not_required", "SMSPVA order ended before SMS delivery; upstream had no delivered-message charge to refund")
+	return true, nil
 }
 
 func (s *SMSService) markSMSCancellationPendingRefund(ctx context.Context, id int64, reason string) error {
