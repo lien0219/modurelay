@@ -233,11 +233,10 @@ func (s *SMSService) reconcileSMSAction(ctx context.Context, id, userID int64, p
 				return s.settleSMSExpiry(ctx, id, userID, "cancelled", "approved", "provider cancellation and refund confirmed during reconciliation")
 			}
 			if strings.EqualFold(providerCode, "smspva") {
-				// SMSPVA has no refund-status endpoint. A successful cancelorder
-				// response cannot prove that upstream funds were returned, so keep
-				// the captured balance pending manual/reconciliation review and do
-				// not retry cancelorder.
-				return s.markSMSCancellationPendingRefund(ctx, id, "provider cancellation accepted; upstream refund confirmation is unavailable")
+				if handled, settleErr := s.settleSMSPVANoDelivery(ctx, id, userID, "cancelled", "SMSPVA cancellation confirmed before SMS delivery; reserved balance released"); handled {
+					return settleErr
+				}
+				return s.markSMSCancellationPendingRefund(ctx, id, "provider cancellation accepted after SMS delivery; upstream refund confirmation is unavailable")
 			}
 			return s.markSMSClosed(ctx, id, "cancelled", "rejected", "provider cancellation confirmed during reconciliation; refund unsupported")
 		}
@@ -258,7 +257,10 @@ func (s *SMSService) reconcileSMSAction(ctx context.Context, id, userID int64, p
 		}
 		if !provider.Capabilities(ctx).Refund {
 			if strings.EqualFold(providerCode, "smspva") {
-				return s.markSMSExpiryPendingRefund(ctx, id, "provider cancellation accepted; upstream refund confirmation is unavailable")
+				if handled, settleErr := s.settleSMSPVANoDelivery(ctx, id, userID, "expired", "SMSPVA order expired before SMS delivery; reserved balance released"); handled {
+					return settleErr
+				}
+				return s.markSMSExpiryPendingRefund(ctx, id, "provider cancellation accepted after SMS delivery; upstream refund confirmation is unavailable")
 			}
 			return s.markSMSExpired(ctx, id, "rejected", "provider does not support refunds; administrator review is required")
 		}
@@ -321,7 +323,10 @@ func (s *SMSService) expireSMSOrder(ctx context.Context, id, userID int64, produ
 			if strings.EqualFold(providerCode, "smspva") {
 				cancelErr := provider.CancelTemporary(ctx, providerOrder)
 				if cancelErr == nil {
-					return s.markSMSExpiryPendingRefund(ctx, id, "provider cancellation accepted; upstream refund confirmation is unavailable")
+					if handled, settleErr := s.settleSMSPVANoDelivery(ctx, id, userID, "expired", "SMSPVA cancellation confirmed before SMS delivery; reserved balance released"); handled {
+						return settleErr
+					}
+					return s.markSMSExpiryPendingRefund(ctx, id, "provider cancellation accepted after SMS delivery; upstream refund confirmation is unavailable")
 				}
 				return s.markSMSExpiryPendingRefund(ctx, id, "provider cancellation outcome is ambiguous; upstream refund confirmation is unavailable")
 			}
