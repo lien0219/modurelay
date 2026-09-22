@@ -688,10 +688,10 @@ func (s *EmailVerificationService) UpdateAdminSettings(ctx context.Context, valu
 		return errors.New("invalid free email generation interval")
 	}
 	return s.settings.settingRepo.SetMultiple(ctx, map[string]string{
-		SettingKeyEmailServiceEnabled:                 strconv.FormatBool(values.Enabled),
-		"email_free_daily_limit":                     strconv.Itoa(values.FreeDailyLimit),
-		"email_free_active_limit":                    strconv.Itoa(values.FreeActiveLimit),
-		"email_free_generation_interval_seconds":     strconv.Itoa(values.FreeGenerationIntervalSec),
+		SettingKeyEmailServiceEnabled:            strconv.FormatBool(values.Enabled),
+		"email_free_daily_limit":                 strconv.Itoa(values.FreeDailyLimit),
+		"email_free_active_limit":                strconv.Itoa(values.FreeActiveLimit),
+		"email_free_generation_interval_seconds": strconv.Itoa(values.FreeGenerationIntervalSec),
 	})
 }
 
