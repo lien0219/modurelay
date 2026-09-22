@@ -220,6 +220,18 @@
           <Pagination :page="orderPagination.page" :total="orderPagination.total" :page-size="orderPagination.pageSize" @update:page="changeOrderPage" @update:page-size="changeOrderPageSize" />
         </div>
       </section>
+
+      <ConfirmDialog
+        :show="confirmState.show"
+        :title="confirmState.title"
+        :message="confirmState.message"
+        :confirm-text="confirmState.confirmText"
+        :cancel-text="confirmState.cancelText"
+        :danger="confirmState.danger"
+        :confirming="confirmingAction"
+        @confirm="runConfirmedAction"
+        @cancel="closeConfirm"
+      />
     </div>
   </AppLayout>
 </template>
@@ -231,6 +243,7 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import VerificationIdentity from '@/components/verification/VerificationIdentity.vue'
 import { emailAPI, type EmailOrder, type EmailOrderPage, type EmailQuote, type EmailServiceItem } from '@/api/email'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
@@ -254,6 +267,16 @@ const ordersLoading = ref(false)
 const purchasing = ref(false)
 const refreshingId = ref('')
 const actionId = ref('')
+const confirmingAction = ref(false)
+const confirmState = reactive({
+  show: false,
+  title: '',
+  message: '',
+  confirmText: '',
+  cancelText: '',
+  danger: false,
+  action: null as null | (() => Promise<void>),
+})
 const now = ref(Date.now())
 let activeOrderTimer: number | undefined
 let ordersTimer: number | undefined
@@ -411,18 +434,53 @@ async function refreshCurrentOrder(showError = true) {
   }
 }
 
-async function cancelOrder(order: EmailOrder) {
-  if (!window.confirm(t('email.user.cancelConfirm'))) return
-  actionId.value = order.id
+function askConfirm(options: { title: string; message: string; confirmText?: string; danger?: boolean; action: () => Promise<void> }) {
+  confirmState.title = options.title
+  confirmState.message = options.message
+  confirmState.confirmText = options.confirmText || t('common.confirm')
+  confirmState.cancelText = t('common.cancel')
+  confirmState.danger = options.danger ?? false
+  confirmState.action = options.action
+  confirmState.show = true
+}
+
+function closeConfirm() {
+  if (confirmingAction.value) return
+  confirmState.show = false
+  confirmState.action = null
+}
+
+async function runConfirmedAction() {
+  if (!confirmState.action || confirmingAction.value) return
+  confirmingAction.value = true
   try {
-    await emailAPI.cancel(order.id)
-    if (currentOrder.value?.id === order.id) await refreshCurrentOrder(false)
-    await loadOrders().catch(() => undefined)
-  } catch (error) {
-    appStore.showError(errorMessage(error, t('email.user.errors.cancel')))
+    await confirmState.action()
+    confirmState.show = false
+    confirmState.action = null
   } finally {
-    actionId.value = ''
+    confirmingAction.value = false
   }
+}
+
+function cancelOrder(order: EmailOrder) {
+  askConfirm({
+    title: t('email.user.cancelConfirmTitle'),
+    message: t('email.user.cancelConfirm'),
+    confirmText: t('email.user.cancel'),
+    danger: true,
+    action: async () => {
+      actionId.value = order.id
+      try {
+        await emailAPI.cancel(order.id)
+        if (currentOrder.value?.id === order.id) await refreshCurrentOrder(false)
+        await loadOrders().catch(() => undefined)
+      } catch (error) {
+        appStore.showError(errorMessage(error, t('email.user.errors.cancel')))
+      } finally {
+        actionId.value = ''
+      }
+    },
+  })
 }
 
 function openOrders() {
