@@ -430,7 +430,7 @@ export default {
       expiresIn: 'Expires in',
       actions: 'Actions',
       batchPurchase: 'Buy batch',
-      capabilities: { cancel: 'Cancellation available', noCancel: 'Cancellation unavailable', refund: 'Provider refund supported', noRefund: 'Provider refund unavailable; admin review may be required', cancelRefund: 'Cancel before receiving the verification code for an automatic refund' },
+      capabilities: { cancel: 'Cancellation available', noCancel: 'Cancellation unavailable', refund: 'Provider refund supported', noRefund: 'If no SMS is delivered, cancellation automatically releases the reserved balance; automatic refunds are unavailable after delivery', cancelRefund: 'Cancel before receiving the verification code for an automatic refund' },
       quantity: 'Quantity',
       batchPurchaseHint: 'Buy up to {max} numbers at once; each order is settled independently.',
       cancel: 'Cancel',
