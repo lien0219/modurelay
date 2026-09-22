@@ -136,7 +136,7 @@
             </div>
             <div class="flex items-center gap-2">
               <button v-if="canCancel(currentOrder)" type="button" class="btn btn-secondary btn-sm" :disabled="actionId === currentOrder.id" @click="cancelOrder(currentOrder)">{{ t('email.user.cancel') }}</button>
-              <button type="button" class="btn btn-secondary btn-sm" :disabled="refreshingId === currentOrder.id" @click="refreshCurrentOrder"><Icon name="refresh" size="sm" :class="refreshingId === currentOrder.id ? 'animate-spin' : ''" /></button>
+              <button type="button" class="btn btn-secondary btn-sm" :disabled="refreshingId === currentOrder.id" @click="refreshCurrentOrder()"><Icon name="refresh" size="sm" :class="refreshingId === currentOrder.id ? 'animate-spin' : ''" /></button>
             </div>
           </div>
 
