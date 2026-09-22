@@ -108,6 +108,7 @@ func TestSMSPVADeliverySettlementMigrationRepairsOnlyUndeliveredRows(t *testing.
 		"o.first_sms_received_at IS NULL",
 		"NOT EXISTS (SELECT 1 FROM sms_messages m WHERE m.order_id = o.id)",
 		"o.settlement_status = 'captured'",
+		"o.refund_reason ILIKE '%cancellation accepted%'",
 		"settlement_status = 'held'",
 		"refund_status = 'approved'",
 		"provider_refund_status = 'not_required'",
