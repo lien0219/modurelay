@@ -3607,6 +3607,33 @@ func (s *SMSService) activateSMSOrder(ctx context.Context, orderID, userID int64
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+
+	var providerCode, storedProductType string
+	if err = tx.QueryRowContext(ctx, `SELECT p.code,o.product_type FROM sms_orders o JOIN sms_providers p ON p.id=o.provider_id WHERE o.id=$1 FOR UPDATE OF o`, orderID).Scan(&providerCode, &storedProductType); err != nil {
+		return err
+	}
+	productType := storedProductType
+	if len(productTypes) > 0 && strings.TrimSpace(productTypes[0]) != "" {
+		productType = strings.TrimSpace(productTypes[0])
+	}
+	deferCaptureUntilDelivery := strings.EqualFold(providerCode, "smspva") && strings.EqualFold(productType, "temporary")
+
+	if deferCaptureUntilDelivery {
+		// SMSPVA temporary activations are allocation-first and delivery-billed:
+		// the provider can return a number before any SMS charge exists. Keep
+		// the user's reservation frozen until the first SMS is actually
+		// delivered. A cancellation/expiry before delivery can then release the
+		// hold instead of creating a fake refund workflow.
+		result, updateErr := tx.ExecContext(ctx, `UPDATE sms_orders SET status='active',provider_order_id=$1,phone_number=$2,expires_at=$3,provider_cost_snapshot=CASE WHEN $4::numeric>0 THEN $4::numeric ELSE provider_cost_snapshot END,operator_code=COALESCE(NULLIF($5,''),operator_code),captured_amount=0,settlement_status='held',refund_status='not_requested',provider_refund_status='not_requested',reconciliation_action='',reconciliation_attempts=0,reconcile_after=NULL,updated_at=NOW() WHERE id=$6 AND settlement_status='held'`, providerOrderID, phoneNumber, expiresAt, providerCost, strings.TrimSpace(providerOperatorCode), orderID)
+		if updateErr != nil {
+			return updateErr
+		}
+		if affected, _ := result.RowsAffected(); affected != 1 {
+			return errors.New("sms order settlement is no longer pending")
+		}
+		return tx.Commit()
+	}
+
 	var amount float64
 	if err = tx.QueryRowContext(ctx, `UPDATE sms_orders SET status='active',provider_order_id=$1,phone_number=$2,expires_at=$3,provider_cost_snapshot=CASE WHEN $4::numeric>0 THEN $4::numeric ELSE provider_cost_snapshot END,operator_code=COALESCE(NULLIF($5,''),operator_code),captured_amount=reserved_amount,settlement_status='captured',reconciliation_action='',reconciliation_attempts=0,reconcile_after=NULL,updated_at=NOW() WHERE id=$6 AND settlement_status='held' RETURNING reserved_amount`, providerOrderID, phoneNumber, expiresAt, providerCost, strings.TrimSpace(providerOperatorCode), orderID).Scan(&amount); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -3621,7 +3648,7 @@ func (s *SMSService) activateSMSOrder(ctx context.Context, orderID, userID int64
 	// type (including older tests and recovery helpers); normal temporary
 	// purchases pass "temporary" explicitly and do not need a rental relation
 	// update.
-	if len(productTypes) == 0 || strings.EqualFold(strings.TrimSpace(productTypes[0]), "rental") {
+	if len(productTypes) == 0 || strings.EqualFold(productType, "rental") {
 		if _, err = tx.ExecContext(ctx, `UPDATE sms_order_services
 			SET provider_order_id=CASE WHEN provider_order_id='' THEN $1 ELSE provider_order_id END,
 			    status='active',updated_at=NOW()
