@@ -403,3 +403,163 @@ func TestReconcileCapturesDeliveredInboxForRefundIfNoMessagePolicy(t *testing.T)
 		t.Fatal(err)
 	}
 }
+
+
+func TestTempTFProviderGenerateListAndRead(t *testing.T) {
+	var accountQuery string
+	checkCalls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/account":
+			accountQuery = r.URL.RawQuery
+			_, _ = w.Write([]byte(`{"email":"demo+abc@gmail.com"}`))
+		case "/check":
+			checkCalls++
+			var body map[string]string
+			if json.NewDecoder(r.Body).Decode(&body) != nil || body["email"] != "demo+abc@gmail.com" {
+				http.Error(w, "bad request", http.StatusBadRequest)
+				return
+			}
+			_, _ = w.Write([]byte(`{"data":[{"subject":"Verify your email","from":"noreply@example.com","date":"2026-09-20T12:00:00Z","body":"<p>Your code is 123456</p>","bodyContentType":"html","id":"42"}]}`))
+		case "/stats":
+			_, _ = w.Write([]byte(`{"totalAddresses":10}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	p := &tempTFProvider{code: "temp_tf", baseURL: server.URL, client: server.Client(), limiter: newEmailProviderLimiter(2, 0)}
+	if err := p.Health(context.Background()); err != nil {
+		t.Fatalf("health: %v", err)
+	}
+	inbox, err := p.GenerateInbox(context.Background(), GenerateInboxRequest{AddressType: "gmail"})
+	if err != nil || inbox.EmailAddress != "demo+abc@gmail.com" {
+		t.Fatalf("generate inbox=%+v err=%v", inbox, err)
+	}
+	if !strings.Contains(accountQuery, "providers=gmail") || !strings.Contains(accountQuery, "plus=1") || !strings.Contains(accountQuery, "dot=1") {
+		t.Fatalf("unexpected account query: %s", accountQuery)
+	}
+	list, err := p.ListMessages(context.Background(), ListMessagesRequest{EmailAddress: inbox.EmailAddress})
+	if err != nil || len(list.Messages) != 1 || list.Messages[0].ProviderMessageID != "42" {
+		t.Fatalf("list=%+v err=%v", list, err)
+	}
+	msg, err := p.GetMessage(context.Background(), GetMessageRequest{EmailAddress: inbox.EmailAddress, ProviderMessageID: "42"})
+	if err != nil || msg.TextBody == "" || msg.Subject != "Verify your email" {
+		t.Fatalf("message=%+v err=%v", msg, err)
+	}
+	if checkCalls != 2 {
+		t.Fatalf("check calls=%d want 2", checkCalls)
+	}
+}
+
+func TestSonjjProviderGmailAndOutlookContracts(t *testing.T) {
+	var sawAPIKey bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Api-Key") != "sonjj-key" {
+			http.Error(w, "missing key", http.StatusUnauthorized)
+			return
+		}
+		sawAPIKey = true
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/temp_email/domains":
+			_, _ = w.Write([]byte(`{"domains":["example.test"]}`))
+		case "/v1/temp_gmail/random":
+			if r.URL.Query().Get("type") != "real" {
+				http.Error(w, "wrong type", http.StatusBadRequest)
+				return
+			}
+			_, _ = w.Write([]byte(`{"email":"real@gmail.com","timestamp":1780000000,"type":"real"}`))
+		case "/v1/temp_gmail/inbox":
+			if r.URL.Query().Get("email") != "real@gmail.com" || r.URL.Query().Get("timestamp") != "1780000000" {
+				http.Error(w, "wrong inbox query", http.StatusBadRequest)
+				return
+			}
+			_, _ = w.Write([]byte(`{"messages":[{"mid":"m1","textDate":"Thu, 09 May 2024 01:10:51 +0000 (UTC)","textFrom":"noreply@openai.com","textSubject":"Verify","textTo":"real@gmail.com"}]}`))
+		case "/v1/temp_gmail/message":
+			if r.URL.Query().Get("mid") != "m1" {
+				http.Error(w, "wrong message", http.StatusBadRequest)
+				return
+			}
+			_, _ = w.Write([]byte(`{"body":"Your verification code is 654321"}`))
+		case "/v1/temp_outlook/random":
+			if r.URL.Query().Get("type") != "alias" {
+				http.Error(w, "wrong outlook type", http.StatusBadRequest)
+				return
+			}
+			_, _ = w.Write([]byte(`{"email":"demo+abc@outlook.com","timestamp":1780000100,"type":"alias"}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	p := &sonjjProvider{code: "sonjj", baseURL: server.URL, apiKey: "sonjj-key", client: server.Client(), limiter: newEmailProviderLimiter(4, 0)}
+	if err := p.Health(context.Background()); err != nil {
+		t.Fatalf("health: %v", err)
+	}
+	gmail, err := p.GenerateInbox(context.Background(), GenerateInboxRequest{AddressType: "gmail_real"})
+	if err != nil || gmail.EmailAddress != "real@gmail.com" || !strings.Contains(gmail.ProviderInboxID, "|gmail|real") {
+		t.Fatalf("gmail=%+v err=%v", gmail, err)
+	}
+	list, err := p.ListMessages(context.Background(), ListMessagesRequest{ProviderInboxID: gmail.ProviderInboxID, EmailAddress: gmail.EmailAddress})
+	if err != nil || len(list.Messages) != 1 || list.Messages[0].FromAddress != "noreply@openai.com" {
+		t.Fatalf("list=%+v err=%v", list, err)
+	}
+	if list.Messages[0].ReceivedAt.IsZero() {
+		t.Fatal("Sonjj RFC mail date was not parsed")
+	}
+	msg, err := p.GetMessage(context.Background(), GetMessageRequest{ProviderInboxID: gmail.ProviderInboxID, ProviderMessageID: "m1", EmailAddress: gmail.EmailAddress})
+	if err != nil || !strings.Contains(msg.TextBody, "654321") || !msg.ReceivedAt.IsZero() {
+		t.Fatalf("message=%+v err=%v", msg, err)
+	}
+	outlook, err := p.GenerateInbox(context.Background(), GenerateInboxRequest{AddressType: "outlook_alias"})
+	if err != nil || outlook.EmailAddress != "demo+abc@outlook.com" {
+		t.Fatalf("outlook=%+v err=%v", outlook, err)
+	}
+	if !sawAPIKey {
+		t.Fatal("Sonjj API key header was not sent")
+	}
+}
+
+func TestEmailProviderAddressTypeMatrix(t *testing.T) {
+	cases := []struct {
+		provider string
+		address  string
+		want     bool
+	}{
+		{"temp_tf", "gmail", true},
+		{"temp_tf", "hotmail", true},
+		{"temp_tf", "gmail_real", false},
+		{"sonjj", "gmail_real", true},
+		{"sonjj", "outlook_alias", true},
+		{"sonjj", "hotmail", false},
+		{"emailnator", "gmail", true},
+		{"emailnator", "outlook", false},
+	}
+	for _, tc := range cases {
+		if got := emailProviderSupportsAddressType(tc.provider, tc.address); got != tc.want {
+			t.Fatalf("%s/%s=%v want %v", tc.provider, tc.address, got, tc.want)
+		}
+	}
+	if emailProviderRequiresCredential("temp_tf") {
+		t.Fatal("temp.tf must not require a credential")
+	}
+	if !emailProviderRequiresCredential("sonjj") {
+		t.Fatal("Sonjj must require a credential")
+	}
+}
+
+func TestNormalizeEmailAddressTypes(t *testing.T) {
+	for _, value := range []string{"gmail", "outlook", "hotmail", "gmail_real", "gmail_alias", "outlook_real", "outlook_alias"} {
+		got, err := normalizeEmailAddressType(value)
+		if err != nil || got != value {
+			t.Fatalf("normalize %s => %s err=%v", value, got, err)
+		}
+	}
+	if _, err := normalizeEmailAddressType("unsupported"); err == nil {
+		t.Fatal("unsupported email address type should fail")
+	}
+}
