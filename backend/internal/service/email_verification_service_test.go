@@ -594,7 +594,6 @@ func TestNormalizeEmailAddressTypes(t *testing.T) {
 	}
 }
 
-
 type emailAdminTestSettingRepo struct {
 	values map[string]string
 }
