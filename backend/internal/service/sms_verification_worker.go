@@ -257,10 +257,20 @@ func (s *SMSService) reconcileSMSAction(ctx context.Context, id, userID int64, p
 		}
 		if !provider.Capabilities(ctx).Refund {
 			if strings.EqualFold(providerCode, "smspva") {
-				if handled, settleErr := s.settleSMSPVANoDelivery(ctx, id, userID, "expired", "SMSPVA order expired before SMS delivery; reserved balance released"); handled {
-					return settleErr
+				stateResult, stateErr := provider.GetTemporaryStatus(ctx, providerOrder)
+				if stateErr == nil && stateResult != nil {
+					state := smsStatusFromProvider(stateResult)
+					if state == "cancelled" || state == "expired" {
+						if handled, settleErr := s.settleSMSPVANoDelivery(ctx, id, userID, state, "SMSPVA terminal state confirmed before SMS delivery; reserved balance released"); handled {
+							return settleErr
+						}
+					}
+					if state == "completed" {
+						return s.markSMSExpiryPendingRefund(ctx, id, "SMS delivery already occurred; automatic refund is unavailable")
+					}
 				}
-				return s.markSMSExpiryPendingRefund(ctx, id, "provider cancellation accepted after SMS delivery; upstream refund confirmation is unavailable")
+				s.deferSMSReconciliation(ctx, id, "SMSPVA refund reconciliation is waiting for a terminal provider state", false)
+				return ErrSMSRefundPending
 			}
 			return s.markSMSExpired(ctx, id, "rejected", "provider does not support refunds; administrator review is required")
 		}
