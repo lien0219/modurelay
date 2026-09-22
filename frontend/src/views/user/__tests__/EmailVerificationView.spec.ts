@@ -109,4 +109,49 @@ describe('EmailVerificationView', () => {
     expect(wrapper.get('div.mx-auto').classes()).toContain('max-w-[1800px]')
     wrapper.unmount()
   })
+
+  it('does not expose provider verification URLs in the user inbox', async () => {
+    emailAPI.purchase.mockResolvedValue({
+      id: 'order-1',
+      channel_code: 'email_channel_1',
+      channel_name: 'Channel 1',
+      status: 'waiting_email',
+      email_address: 'demo@gmail.com',
+      expires_at: new Date(Date.now() + 60_000).toISOString(),
+      messages: [{
+        id: 'message-1',
+        from_name: 'OpenAI',
+        from_address: 'noreply@example.com',
+        subject: 'Verification code',
+        received_at: new Date().toISOString(),
+        verification_code: '123456',
+        verification_url: 'https://example.com/verify?token=secret',
+        text_body: 'Your verification code is 123456',
+      }],
+    })
+
+    const wrapper = mount(EmailVerificationView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<main><slot /></main>' },
+          Icon: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    const quoteButton = wrapper.findAll('button').find(button => button.text() === 'email.user.getQuote')
+    await quoteButton!.trigger('click')
+    await flushPromises()
+    const purchaseButton = wrapper.findAll('button').find(button => button.text() === 'email.user.generateFree')
+    await purchaseButton!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('123456')
+    expect(wrapper.text()).toContain('email.user.viewMessage')
+    expect(wrapper.text()).not.toContain('https://example.com/verify?token=secret')
+    expect(wrapper.text()).not.toContain('email.user.safeOpen')
+    wrapper.unmount()
+  })
+
 })
