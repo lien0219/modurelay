@@ -48,6 +48,31 @@ describe('EmailVerificationView', () => {
     emailAPI.purchase.mockResolvedValue({ id: 'order-1' })
   })
 
+  it('renders provider mailbox types through i18n keys', async () => {
+    const wrapper = mount(EmailVerificationView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<main><slot /></main>' },
+          Icon: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    const privateTab = wrapper.findAll('button').find(button => button.text() === 'email.user.privateInbox')
+    expect(privateTab).toBeDefined()
+    await privateTab!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('email.user.gmailReal')
+    expect(wrapper.text()).toContain('email.user.gmailAlias')
+    expect(wrapper.text()).toContain('email.user.outlookReal')
+    expect(wrapper.text()).toContain('email.user.outlookAlias')
+    expect(wrapper.text()).not.toContain('Gmail Real')
+    expect(wrapper.text()).not.toContain('Outlook Alias')
+    wrapper.unmount()
+  })
+
   it('uses provider-native mailbox flow without requiring a verification platform', async () => {
     const wrapper = mount(EmailVerificationView, {
       global: {
