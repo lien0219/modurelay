@@ -178,7 +178,7 @@
                   <div class="mt-3 max-h-36 space-y-1.5 overflow-y-auto pr-1">
                     <label v-for="item in services.filter(item => item.code !== serviceCode)" :key="item.code" class="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-gray-50 dark:hover:bg-dark-800">
                       <input v-model="additionalRentalServiceCodes" type="checkbox" :value="item.code" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" @change="handleAdditionalRentalServiceChange" />
-                      <SMSServiceLogo :icon="item.icon || serviceLogo(item.code, item.name)" :label="item.name || item.code" class="h-6 w-6 rounded-md text-[10px]" />
+                      <SMSServiceLogo :icon="serviceLogo(item.code, item.name) || item.icon || ''" :label="item.name || item.code" class="h-6 w-6 rounded-md text-[10px]" />
                       <span class="min-w-0 flex-1 truncate">{{ item.name || item.code }}</span>
                     </label>
                   </div>
@@ -531,11 +531,11 @@ function providerDisabledReason(provider: SMSProviderItem) {
   return ''
 }
 const selectedService = computed(() => services.value.find(item => item.code === serviceCode.value))
-const selectedServiceLogo = computed(() => selectedService.value?.icon || serviceLogo(selectedService.value?.code || '', selectedService.value?.name || ''))
+const selectedServiceLogo = computed(() => serviceLogo(selectedService.value?.code || '', selectedService.value?.name || '') || selectedService.value?.icon || '')
 const selectedCountryStats = computed(() => countries.value.find(item => item.iso2 === countryCode.value))
 const bestQuote = computed(() => [...quotes.value].sort((a, b) => a.sale_price - b.sale_price)[0])
 const recentSuccessLoop = computed(() => recentSuccessItems.value.length ? [...recentSuccessItems.value, ...recentSuccessItems.value] : [])
-const serviceOptions = computed(() => services.value.map(item => ({ value: item.code, label: item.name || item.code, logo: item.icon || serviceLogo(item.code, item.name), stock: item.stock, startingPrice: item.starting_price })))
+const serviceOptions = computed(() => services.value.map(item => ({ value: item.code, label: item.name || item.code, logo: serviceLogo(item.code, item.name) || item.icon || '', stock: item.stock, startingPrice: item.starting_price })))
 const filteredServiceOptions = computed(() => serviceOptions.value)
 const countryOptions = computed(() => countries.value.map(item => ({
   value: item.iso2,
@@ -757,7 +757,8 @@ function operatorStockLabel(item: SMSOperatorItem) {
 }
 
 function serviceIcon(code: string, name = '') {
-  return services.value.find(item => item.code === code)?.icon || serviceLogo(code, name)
+  const service = services.value.find(item => item.code === code)
+  return serviceLogo(code, name || service?.name || '') || service?.icon || ''
 }
 
 function serviceLogo(code: string, name = '') {
