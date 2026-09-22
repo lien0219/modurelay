@@ -1,9 +1,9 @@
 <template>
-  <section class="space-y-4" :aria-label="t('verificationRecords.analytics.title')">
+  <section class="space-y-4" :aria-label="t(admin ? 'verificationRecords.analytics.adminTitle' : 'verificationRecords.analytics.userTitle')">
     <div class="flex flex-wrap items-end justify-between gap-3">
       <div>
-        <h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('verificationRecords.analytics.title') }}</h2>
-        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('verificationRecords.analytics.description') }}</p>
+        <h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ t(admin ? 'verificationRecords.analytics.adminTitle' : 'verificationRecords.analytics.userTitle') }}</h2>
+        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t(admin ? 'verificationRecords.analytics.adminDescription' : 'verificationRecords.analytics.userDescription') }}</p>
       </div>
       <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('verificationRecords.analytics.terminalHint') }}</span>
     </div>
