@@ -26,13 +26,13 @@ func TestVerificationRecordServiceUserScopeAndRedaction(t *testing.T) {
 	t.Cleanup(func() { _ = db.Close() })
 
 	now := time.Now().UTC().Truncate(time.Second)
-	mock.ExpectQuery(`(?s)WITH records AS \(.*COUNT\(\*\).*FROM records WHERE user_id = \$1 AND verification_type = \$2 AND \(order_no ILIKE \$3`).
+	mock.ExpectQuery(`(?s)WITH .*records AS \(.*COUNT\(\*\).*FROM records WHERE user_id = \$1 AND verification_type = \$2 AND \(order_no ILIKE \$3`).
 		WithArgs(int64(42), "email", "%openai%").
 		WillReturnRows(sqlmock.NewRows([]string{
 			"total", "processing", "success", "failed", "refunded", "cancelled", "expired",
 			"sale", "debit", "reserved", "captured", "released", "refunded_amount", "provider_cost",
 		}).AddRow(1, 0, 0, 1, 0, 0, 0, 3.5, 3.5, 0, 0, 3.5, 0, 0.4))
-	mock.ExpectQuery(`(?s)WITH records AS \(.*SELECT id, order_no.*FROM records WHERE user_id = \$1 AND verification_type = \$2 AND \(order_no ILIKE \$3.*LIMIT \$4 OFFSET \$5`).
+	mock.ExpectQuery(`(?s)WITH .*records AS \(.*SELECT id, order_no.*FROM records WHERE user_id = \$1 AND verification_type = \$2 AND \(order_no ILIKE \$3.*LIMIT \$4 OFFSET \$5`).
 		WithArgs(int64(42), "email", "%openai%", 20, 0).
 		WillReturnRows(sqlmock.NewRows(verificationRecordColumns).AddRow(
 			"record-id", "EML-1", "email", "gmail", int64(42), "user@example.com",
@@ -71,12 +71,12 @@ func TestVerificationRecordServiceAdminIncludesOperationalFields(t *testing.T) {
 	t.Cleanup(func() { _ = db.Close() })
 
 	now := time.Now().UTC().Truncate(time.Second)
-	mock.ExpectQuery(`(?s)WITH records AS \(.*COUNT\(\*\).*FROM records$`).
+	mock.ExpectQuery(`(?s)WITH .*records AS \(.*COUNT\(\*\).*FROM records$`).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"total", "processing", "success", "failed", "refunded", "cancelled", "expired",
 			"sale", "debit", "reserved", "captured", "released", "refunded_amount", "provider_cost",
 		}).AddRow(1, 0, 1, 0, 0, 0, 0, 5.0, 5.0, 0, 5.0, 0, 0, 1.25))
-	mock.ExpectQuery(`(?s)WITH records AS \(.*SELECT id, order_no.*FROM records.*LIMIT \$1 OFFSET \$2`).
+	mock.ExpectQuery(`(?s)WITH .*records AS \(.*SELECT id, order_no.*FROM records.*LIMIT \$1 OFFSET \$2`).
 		WithArgs(25, 25).
 		WillReturnRows(sqlmock.NewRows(verificationRecordColumns).AddRow(
 			"sms-id", "sms-id", "sms", "temporary", int64(9), "admin-visible@example.com",
@@ -125,13 +125,13 @@ func TestVerificationRecordServiceAnalyticsUsesFiltersAndCurrencyGroups(t *testi
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 
-	mock.ExpectQuery(`(?s)WITH records AS \(.*filtered AS \(SELECT \* FROM records WHERE service_code = \$1 AND region = \$2\).*SELECT dimension`).
+	mock.ExpectQuery(`(?s)WITH .*records AS \(.*filtered AS \(SELECT \* FROM records WHERE service_code = \$1 AND region = \$2\).*SELECT dimension`).
 		WithArgs("google", "US").
 		WillReturnRows(sqlmock.NewRows([]string{"dimension", "key", "total", "success", "success_rate"}).
 			AddRow("platform", "google", 10, 8, 0.8).
 			AddRow("country", "US", 7, 6, 6.0/7.0).
 			AddRow("type", "sms", 10, 8, 0.8))
-	mock.ExpectQuery(`(?s)WITH records AS \(.*filtered AS \(SELECT \* FROM records WHERE service_code = \$1 AND region = \$2\).*SELECT currency`).
+	mock.ExpectQuery(`(?s)WITH .*records AS \(.*filtered AS \(SELECT \* FROM records WHERE service_code = \$1 AND region = \$2\).*SELECT currency`).
 		WithArgs("google", "US").
 		WillReturnRows(sqlmock.NewRows([]string{"currency", "sale", "cost", "captured", "refunded", "estimated"}).
 			AddRow("USD", 50.0, 12.5, 45.0, 5.0, false))
