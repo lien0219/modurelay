@@ -305,7 +305,9 @@ describe('SMSVerificationView', () => {
     await ordersTab!.trigger('click')
     await flushPromises()
 
-    expect(wrapper.find('[aria-label="common.copy sms-1"]').exists()).toBe(true)
+    const orderRow = wrapper.findAll('tbody tr').find(row => row.text().includes('sms-1'))
+    expect(orderRow).toBeDefined()
+    expect(orderRow!.find('[aria-label="keys.copyToClipboard"]').exists()).toBe(true)
     expect(wrapper.find('.fi-us').exists()).toBe(true)
     expect(wrapper.text()).toContain('OpenAI')
     expect(wrapper.text()).toContain('美国')
