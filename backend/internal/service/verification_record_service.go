@@ -42,14 +42,16 @@ type VerificationRecord struct {
 	RefundStatus         string     `json:"refund_status"`
 	RefundReason         string     `json:"refund_reason,omitempty"`
 	SaleAmount           float64    `json:"sale_amount"`
-	ProviderCost         *float64   `json:"provider_cost,omitempty"`
-	UserDebitAmount      float64    `json:"user_debit_amount"`
-	ReservedAmount       float64    `json:"reserved_amount"`
-	CapturedAmount       float64    `json:"captured_amount"`
-	ReleasedAmount       float64    `json:"released_amount"`
-	RefundedAmount       float64    `json:"refunded_amount"`
-	Currency             string     `json:"currency"`
-	ProviderRequestCount int        `json:"provider_request_count"`
+	ProviderCost              *float64 `json:"provider_cost,omitempty"`
+	ProviderCostEstimated     bool     `json:"provider_cost_estimated,omitempty"`
+	SettlementEstimated       bool     `json:"settlement_estimated,omitempty"`
+	UserDebitAmount           float64  `json:"user_debit_amount"`
+	ReservedAmount            float64  `json:"reserved_amount"`
+	CapturedAmount            float64  `json:"captured_amount"`
+	ReleasedAmount            float64  `json:"released_amount"`
+	RefundedAmount            float64  `json:"refunded_amount"`
+	Currency                  string   `json:"currency"`
+	ProviderRequestCount      *int     `json:"provider_request_count,omitempty"`
 	ErrorCode            string     `json:"error_code,omitempty"`
 	ErrorMessage         string     `json:"error_message,omitempty"`
 	PublicErrorMessage   string     `json:"public_error_message,omitempty"`
@@ -74,6 +76,7 @@ type VerificationRecordSummary struct {
 	ReleasedAmount  float64  `json:"released_amount"`
 	RefundedAmount  float64  `json:"refunded_amount"`
 	ProviderCost    *float64 `json:"provider_cost,omitempty"`
+	NetRevenue      float64  `json:"net_revenue"`
 	EstimatedProfit *float64 `json:"estimated_profit,omitempty"`
 }
 
@@ -100,7 +103,9 @@ type VerificationRecordFinancialTotal struct {
 	ProviderCost    float64 `json:"provider_cost"`
 	CapturedAmount  float64 `json:"captured_amount"`
 	RefundedAmount  float64 `json:"refunded_amount"`
+	NetRevenue      float64 `json:"net_revenue"`
 	EstimatedProfit float64 `json:"estimated_profit"`
+	Estimated       bool    `json:"estimated"`
 }
 
 type VerificationRecordAnalytics struct {
@@ -141,7 +146,13 @@ func NewVerificationRecordService(db *sql.DB) *VerificationRecordService {
 	return &VerificationRecordService{db: db}
 }
 
-const verificationRecordsCTE = `WITH records AS (
+const verificationRecordsCTE = `WITH email_usage AS (
+	SELECT email_order_id,
+		COUNT(*)::integer AS request_count,
+		COALESCE(SUM(estimated_request_cost),0)::float8 AS usage_cost
+	FROM email_provider_usage
+	GROUP BY email_order_id
+), records AS (
 	SELECT
 		o.public_id::text AS id,
 		o.public_id::text AS order_no,
@@ -167,21 +178,60 @@ const verificationRecordsCTE = `WITH records AS (
 		o.refund_status,
 		COALESCE(o.refund_reason, '') AS refund_reason,
 		o.sale_price_snapshot::float8 AS sale_amount,
-		o.provider_cost_snapshot::float8 AS provider_cost,
-		o.sale_price_snapshot::float8 AS user_debit_amount,
-		CASE WHEN o.status IN ('pending', 'reconciling') THEN o.sale_price_snapshot::float8 ELSE 0::float8 END AS reserved_amount,
-		CASE WHEN o.status IN ('active', 'completed', 'expired') OR (o.status = 'cancelled' AND p.code = 'smspva' AND o.refund_status = 'pending') THEN o.sale_price_snapshot::float8 ELSE 0::float8 END AS captured_amount,
-		CASE WHEN o.status = 'failed' THEN o.sale_price_snapshot::float8 ELSE 0::float8 END AS released_amount,
-		CASE WHEN o.status = 'refunded' OR o.refund_status = 'approved' OR (o.status = 'cancelled' AND NOT (p.code = 'smspva' AND o.refund_status = 'pending')) THEN o.sale_price_snapshot::float8 ELSE 0::float8 END AS refunded_amount,
+		CASE
+			WHEN (o.settlement_status='released' AND o.captured_amount=0)
+			  OR o.provider_refund_status IN ('succeeded','not_required')
+			  OR (p.code='smspva' AND o.product_type='temporary' AND o.settlement_status='held' AND o.first_sms_received_at IS NULL)
+			THEN 0::float8
+			ELSE o.provider_cost_snapshot::float8
+		END AS provider_cost,
+		CASE
+			WHEN o.settlement_status='legacy' THEN
+				CASE
+					WHEN o.refund_status='approved' OR o.status='refunded' THEN o.sale_price_snapshot::float8
+					WHEN o.provider_order_id<>'' AND o.status IN ('active','completed','expired','cancelled','provider_unknown','reconciling') THEN o.sale_price_snapshot::float8
+					ELSE 0::float8
+				END
+			ELSE o.captured_amount::float8
+		END AS user_debit_amount,
+		CASE WHEN o.settlement_status='legacy' THEN 0::float8 ELSE o.reserved_amount::float8 END AS reserved_amount,
+		CASE
+			WHEN o.settlement_status='legacy' THEN
+				CASE
+					WHEN o.refund_status='approved' OR o.status='refunded' THEN o.sale_price_snapshot::float8
+					WHEN o.provider_order_id<>'' AND o.status IN ('active','completed','expired','cancelled','provider_unknown','reconciling') THEN o.sale_price_snapshot::float8
+					ELSE 0::float8
+				END
+			ELSE o.captured_amount::float8
+		END AS captured_amount,
+		CASE
+			WHEN o.settlement_status='legacy' AND o.status='failed' THEN o.sale_price_snapshot::float8
+			WHEN o.settlement_status='legacy' THEN 0::float8
+			ELSE o.released_amount::float8
+		END AS released_amount,
+		CASE
+			WHEN o.settlement_status='legacy' AND (o.status='refunded' OR o.refund_status='approved') THEN o.sale_price_snapshot::float8
+			WHEN o.settlement_status='legacy' THEN 0::float8
+			ELSE o.refunded_amount::float8
+		END AS refunded_amount,
 		COALESCE(NULLIF(o.currency_snapshot, ''), 'USD') AS currency,
-		0::integer AS provider_request_count,
+		NULL::integer AS provider_request_count,
 		''::text AS error_code,
 		COALESCE(o.last_provider_error, '') AS error_message,
 		''::text AS public_error_message,
 		o.created_at,
 		o.updated_at,
 		CASE WHEN o.status = 'completed' THEN o.updated_at ELSE NULL::timestamptz END AS completed_at,
-		o.expires_at
+		o.expires_at,
+		CASE
+			WHEN (o.settlement_status='released' AND o.captured_amount=0)
+			  OR o.provider_refund_status IN ('succeeded','not_required')
+			  OR (p.code='smspva' AND o.product_type='temporary' AND o.settlement_status='held' AND o.first_sms_received_at IS NULL)
+			THEN FALSE
+			WHEN o.provider_cost_snapshot<=0 THEN FALSE
+			ELSE p.code <> '5sim'
+		END AS provider_cost_estimated,
+		(o.settlement_status='legacy') AS settlement_estimated
 	FROM sms_orders o
 	JOIN users u ON u.id = o.user_id
 	JOIN sms_services sv ON sv.id = o.service_id
@@ -216,26 +266,39 @@ const verificationRecordsCTE = `WITH records AS (
 		o.refund_status,
 		COALESCE(o.refund_reason, '') AS refund_reason,
 		o.sale_price_snapshot::float8 AS sale_amount,
-		o.provider_cost_estimate_snapshot::float8 AS provider_cost,
-		o.sale_price_snapshot::float8 AS user_debit_amount,
+		CASE
+			WHEN lower(COALESCE(p.billing->>'cost_mode',''))='fixed_per_order' THEN
+				CASE WHEN o.provider_inbox_id<>'' OR o.email_address<>'' THEN o.provider_cost_estimate_snapshot::float8 ELSE 0::float8 END
+			WHEN COALESCE(eu.request_count,0)>0 THEN COALESCE(eu.usage_cost,0)::float8
+			ELSE o.provider_cost_estimate_snapshot::float8
+		END AS provider_cost,
+		o.captured_amount::float8 AS user_debit_amount,
 		o.reserved_amount::float8,
 		o.captured_amount::float8,
 		o.released_amount::float8,
 		o.refunded_amount::float8,
 		'CNY'::text AS currency,
-		o.provider_request_count,
+		GREATEST(o.provider_request_count,COALESCE(eu.request_count,0))::integer AS provider_request_count,
 		COALESCE(o.error_code, '') AS error_code,
 		COALESCE(o.error_admin_message, '') AS error_message,
 		COALESCE(o.error_public_message, '') AS public_error_message,
 		o.created_at,
 		o.updated_at,
 		o.completed_at,
-		o.expires_at
+		o.expires_at,
+		CASE
+			WHEN lower(COALESCE(p.billing->>'cost_mode',''))='fixed_per_order'
+				THEN o.provider_cost_estimate_snapshot>0 AND (o.provider_inbox_id<>'' OR o.email_address<>'')
+			WHEN COALESCE(eu.request_count,0)>0 THEN COALESCE(eu.usage_cost,0)>0
+			ELSE o.provider_cost_estimate_snapshot>0
+		END AS provider_cost_estimated,
+		FALSE AS settlement_estimated
 	FROM email_orders o
 	JOIN users u ON u.id = o.user_id
 	JOIN email_services sv ON sv.id = o.service_id
 	JOIN email_channels c ON c.id = o.channel_id
 	JOIN email_providers p ON p.id = o.provider_id
+	LEFT JOIN email_usage eu ON eu.email_order_id=o.id
 )`
 
 func (s *VerificationRecordService) List(ctx context.Context, options VerificationRecordListOptions, admin bool) (*VerificationRecordPage, error) {
@@ -309,9 +372,10 @@ func (s *VerificationRecordService) List(ctx context.Context, options Verificati
 	if err != nil {
 		return nil, err
 	}
+	summary.NetRevenue = summary.CapturedAmount - summary.RefundedAmount
 	if admin {
 		summary.ProviderCost = verificationFloat64Ptr(providerCost)
-		summary.EstimatedProfit = verificationFloat64Ptr(summary.CapturedAmount - summary.RefundedAmount - providerCost)
+		summary.EstimatedProfit = verificationFloat64Ptr(summary.NetRevenue - providerCost)
 	}
 
 	listArgs := append([]any{}, args...)
@@ -325,7 +389,8 @@ func (s *VerificationRecordService) List(ctx context.Context, options Verificati
 		status, outcome, refund_status, refund_reason, sale_amount, provider_cost,
 		user_debit_amount, reserved_amount, captured_amount, released_amount,
 		refunded_amount, currency, provider_request_count, error_code, error_message,
-		public_error_message, created_at, updated_at, completed_at, expires_at
+		public_error_message, created_at, updated_at, completed_at, expires_at,
+		provider_cost_estimated, settlement_estimated
 	FROM records` + where + `
 	ORDER BY created_at DESC, id DESC
 	LIMIT ` + limitPlaceholder + ` OFFSET ` + offsetPlaceholder
@@ -340,6 +405,8 @@ func (s *VerificationRecordService) List(ctx context.Context, options Verificati
 		var item VerificationRecord
 		var userID int64
 		var providerItemCost float64
+		var providerRequestCount sql.NullInt64
+		var providerCostEstimated, settlementEstimated bool
 		var errorCode, errorMessage string
 		var completedAt, expiresAt sql.NullTime
 		if err := rows.Scan(
@@ -367,7 +434,7 @@ func (s *VerificationRecordService) List(ctx context.Context, options Verificati
 			&item.ReleasedAmount,
 			&item.RefundedAmount,
 			&item.Currency,
-			&item.ProviderRequestCount,
+			&providerRequestCount,
 			&errorCode,
 			&errorMessage,
 			&item.PublicErrorMessage,
@@ -375,6 +442,8 @@ func (s *VerificationRecordService) List(ctx context.Context, options Verificati
 			&item.UpdatedAt,
 			&completedAt,
 			&expiresAt,
+			&providerCostEstimated,
+			&settlementEstimated,
 		); err != nil {
 			return nil, err
 		}
@@ -387,6 +456,11 @@ func (s *VerificationRecordService) List(ctx context.Context, options Verificati
 		if admin {
 			item.UserID = verificationInt64Ptr(userID)
 			item.ProviderCost = verificationFloat64Ptr(providerItemCost)
+			item.ProviderCostEstimated = providerCostEstimated
+			item.SettlementEstimated = settlementEstimated
+			if providerRequestCount.Valid {
+				item.ProviderRequestCount = verificationIntPtr(int(providerRequestCount.Int64))
+			}
 			item.ErrorCode = errorCode
 			item.ErrorMessage = errorMessage
 		} else {
@@ -472,7 +546,8 @@ func (s *VerificationRecordService) Analytics(ctx context.Context, options Verif
 	}
 	financialQuery := verificationRecordsCTE + `, filtered AS (SELECT * FROM records` + where + `)
 	SELECT currency, COALESCE(SUM(sale_amount),0)::float8, COALESCE(SUM(provider_cost),0)::float8,
-	 COALESCE(SUM(captured_amount),0)::float8, COALESCE(SUM(refunded_amount),0)::float8
+	 COALESCE(SUM(captured_amount),0)::float8, COALESCE(SUM(refunded_amount),0)::float8,
+	 COALESCE(BOOL_OR(provider_cost_estimated OR settlement_estimated),FALSE)
 	FROM filtered GROUP BY currency ORDER BY currency`
 	rows, err = s.db.QueryContext(ctx, financialQuery, args...)
 	if err != nil {
@@ -481,10 +556,11 @@ func (s *VerificationRecordService) Analytics(ctx context.Context, options Verif
 	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var item VerificationRecordFinancialTotal
-		if err := rows.Scan(&item.Currency, &item.SaleAmount, &item.ProviderCost, &item.CapturedAmount, &item.RefundedAmount); err != nil {
+		if err := rows.Scan(&item.Currency, &item.SaleAmount, &item.ProviderCost, &item.CapturedAmount, &item.RefundedAmount, &item.Estimated); err != nil {
 			return nil, err
 		}
-		item.EstimatedProfit = item.CapturedAmount - item.RefundedAmount - item.ProviderCost
+		item.NetRevenue = item.CapturedAmount - item.RefundedAmount
+		item.EstimatedProfit = item.NetRevenue - item.ProviderCost
 		if admin {
 			result.Financial = append(result.Financial, item)
 		}
@@ -618,5 +694,6 @@ func isVerificationOutcome(value string) bool {
 	}
 }
 
+func verificationIntPtr(value int) *int             { return &value }
 func verificationInt64Ptr(value int64) *int64       { return &value }
 func verificationFloat64Ptr(value float64) *float64 { return &value }

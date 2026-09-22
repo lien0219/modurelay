@@ -43,6 +43,7 @@ const record = {
   refund_reason: 'provider rejected request',
   sale_amount: 3.5,
   provider_cost: 0.4,
+  provider_cost_estimated: true,
   user_debit_amount: 3.5,
   reserved_amount: 0,
   captured_amount: 0,
@@ -78,6 +79,7 @@ const response = {
     released_amount: 3.5,
     refunded_amount: 0,
     provider_cost: 0.4,
+    net_revenue: 0,
     estimated_profit: -0.4,
   },
 }
@@ -201,8 +203,9 @@ describe('VerificationRecordsView', () => {
     expect(tableScroller.classes()).toContain('min-w-0')
     expect(wrapper.get('table').classes()).toContain('min-w-[3300px]')
     expect(wrapper.get('table').classes()).toContain('whitespace-nowrap')
-    expect(wrapper.text()).toContain('verificationRecords.summary.totalAmount')
-    expect(wrapper.text()).toContain('verificationRecords.summary.totalCost')
+    expect(wrapper.text()).toContain('verificationRecords.summary.netRevenue')
+    expect(wrapper.text()).toContain('verificationRecords.summary.netProviderCost')
+    expect(wrapper.text()).toContain('verificationRecords.summary.netProfit')
 
     const adminRow = wrapper.get('[aria-label="verificationRecords.adminTableLabel"] tbody tr')
     const cells = adminRow.findAll('td')
@@ -215,5 +218,6 @@ describe('VerificationRecordsView', () => {
     expect(refundFields[1].attributes('title')).toBe('provider rejected request')
     expect(cells[12].classes()).toContain('whitespace-nowrap')
     expect(cells[12].text()).toContain('3.50')
+    expect(cells[13].text()).toContain('verificationRecords.estimated')
   })
 })

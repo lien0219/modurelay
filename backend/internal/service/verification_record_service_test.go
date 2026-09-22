@@ -17,6 +17,7 @@ var verificationRecordColumns = []string{
 	"user_debit_amount", "reserved_amount", "captured_amount", "released_amount",
 	"refunded_amount", "currency", "provider_request_count", "error_code", "error_message",
 	"public_error_message", "created_at", "updated_at", "completed_at", "expires_at",
+	"provider_cost_estimated", "settlement_estimated",
 }
 
 func TestVerificationRecordServiceUserScopeAndRedaction(t *testing.T) {
@@ -38,7 +39,7 @@ func TestVerificationRecordServiceUserScopeAndRedaction(t *testing.T) {
 			"openai", "email_channel_1", "邮箱通道1", "emailnator", "mail@example.com", "",
 			"failed", "failed", "released", "provider rejected request", 3.5, 0.4,
 			3.5, 0, 0, 3.5, 0, "CNY", 2, "EMAIL_GENERATION_FAILED", "secret upstream detail",
-			"邮箱生成失败，金额已退回", now, now, nil, nil,
+			"邮箱生成失败，金额已退回", now, now, nil, nil, true, false,
 		))
 
 	result, err := NewVerificationRecordService(db).List(context.Background(), VerificationRecordListOptions{
@@ -81,7 +82,7 @@ func TestVerificationRecordServiceAdminIncludesOperationalFields(t *testing.T) {
 			"sms-id", "sms-id", "sms", "temporary", int64(9), "admin-visible@example.com",
 			"google", "channel_1", "手机通道1", "5sim", "+15551234567", "US",
 			"completed", "success", "not_requested", "", 5.0, 1.25,
-			5.0, 0, 5.0, 0, 0, "USD", 0, "", "provider trace", "", now, now, now, now.Add(time.Hour),
+			5.0, 0, 5.0, 0, 0, "USD", nil, "", "provider trace", "", now, now, now, now.Add(time.Hour), false, false,
 		))
 
 	result, err := NewVerificationRecordService(db).List(context.Background(), VerificationRecordListOptions{
@@ -132,8 +133,8 @@ func TestVerificationRecordServiceAnalyticsUsesFiltersAndCurrencyGroups(t *testi
 			AddRow("type", "sms", 10, 8, 0.8))
 	mock.ExpectQuery(`(?s)WITH records AS \(.*filtered AS \(SELECT \* FROM records WHERE service_code = \$1 AND region = \$2\).*SELECT currency`).
 		WithArgs("google", "US").
-		WillReturnRows(sqlmock.NewRows([]string{"currency", "sale", "cost", "captured", "refunded"}).
-			AddRow("USD", 50.0, 12.5, 45.0, 5.0))
+		WillReturnRows(sqlmock.NewRows([]string{"currency", "sale", "cost", "captured", "refunded", "estimated"}).
+			AddRow("USD", 50.0, 12.5, 45.0, 5.0, false))
 
 	result, err := NewVerificationRecordService(db).Analytics(context.Background(), VerificationRecordListOptions{ServiceCode: " Google ", Region: "us"}, true)
 	require.NoError(t, err)
@@ -141,7 +142,9 @@ func TestVerificationRecordServiceAnalyticsUsesFiltersAndCurrencyGroups(t *testi
 	require.Equal(t, 0.8, result.ByPlatform[0].SuccessRate)
 	require.Len(t, result.ByCountry, 1)
 	require.Len(t, result.Financial, 1)
+	require.Equal(t, 40.0, result.Financial[0].NetRevenue)
 	require.Equal(t, 27.5, result.Financial[0].EstimatedProfit)
+	require.False(t, result.Financial[0].Estimated)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -162,4 +165,19 @@ func TestVerificationRecordServiceOptionsAreSearchableAndPaginated(t *testing.T)
 	require.Equal(t, int64(1), result.Total)
 	require.Equal(t, "google", result.Items[0].Value)
 	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+
+func TestVerificationRecordCTEUsesDurableSettlementLedger(t *testing.T) {
+	require.Contains(t, verificationRecordsCTE, "ELSE o.captured_amount::float8")
+	require.Contains(t, verificationRecordsCTE, "ELSE o.refunded_amount::float8")
+	require.Contains(t, verificationRecordsCTE, "o.provider_refund_status IN ('succeeded','not_required')")
+	require.Contains(t, verificationRecordsCTE, "o.settlement_status='legacy'")
+	require.NotContains(t, verificationRecordsCTE, "CASE WHEN o.status IN ('active', 'completed', 'expired')")
+}
+
+func TestVerificationRecordCTENetsProviderCostForConfirmedRefundsAndNoDelivery(t *testing.T) {
+	require.Contains(t, verificationRecordsCTE, "o.provider_refund_status IN ('succeeded','not_required')")
+	require.Contains(t, verificationRecordsCTE, "p.code='smspva' AND o.product_type='temporary' AND o.settlement_status='held' AND o.first_sms_received_at IS NULL")
+	require.Contains(t, verificationRecordsCTE, "LEFT JOIN email_usage eu ON eu.email_order_id=o.id")
 }

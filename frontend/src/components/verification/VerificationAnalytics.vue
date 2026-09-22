@@ -36,8 +36,8 @@
         <div class="h-64"><Bar :data="financialData" :options="financialOptions" /></div>
         <div class="overflow-x-auto">
           <table class="w-full min-w-[420px] text-sm">
-            <thead class="text-xs text-gray-500 dark:text-gray-400"><tr><th class="py-2 text-left">{{ t('verificationRecords.analytics.currency') }}</th><th class="py-2 text-right">{{ t('verificationRecords.summary.totalAmount') }}</th><th class="py-2 text-right">{{ t('verificationRecords.summary.totalCost') }}</th><th class="py-2 text-right">{{ t('verificationRecords.summary.profit') }}</th></tr></thead>
-            <tbody><tr v-for="item in analytics.financial" :key="item.currency" class="border-t border-gray-100 dark:border-dark-700"><td class="py-2 font-medium">{{ item.currency }}</td><td class="py-2 text-right tabular-nums">{{ money(item.sale_amount, item.currency) }}</td><td class="py-2 text-right tabular-nums">{{ money(item.provider_cost, item.currency) }}</td><td class="py-2 text-right tabular-nums" :class="item.estimated_profit < 0 ? 'text-red-600 dark:text-red-300' : 'text-green-700 dark:text-green-300'">{{ money(item.estimated_profit, item.currency) }}</td></tr></tbody>
+            <thead class="text-xs text-gray-500 dark:text-gray-400"><tr><th class="py-2 text-left">{{ t('verificationRecords.analytics.currency') }}</th><th class="py-2 text-right">{{ t('verificationRecords.summary.grossAmount') }}</th><th class="py-2 text-right">{{ t('verificationRecords.summary.netRevenue') }}</th><th class="py-2 text-right">{{ t('verificationRecords.summary.netProviderCost') }}</th><th class="py-2 text-right">{{ t('verificationRecords.summary.netProfit') }}</th></tr></thead>
+            <tbody><tr v-for="item in analytics.financial" :key="item.currency" class="border-t border-gray-100 dark:border-dark-700"><td class="py-2 font-medium">{{ item.currency }}<span v-if="item.estimated" class="ml-1 text-[10px] text-amber-600 dark:text-amber-300">{{ t('verificationRecords.estimated') }}</span></td><td class="py-2 text-right tabular-nums">{{ money(item.sale_amount, item.currency) }}</td><td class="py-2 text-right tabular-nums">{{ money(item.net_revenue, item.currency) }}</td><td class="py-2 text-right tabular-nums">{{ money(item.provider_cost, item.currency) }}</td><td class="py-2 text-right tabular-nums" :class="item.estimated_profit < 0 ? 'text-red-600 dark:text-red-300' : 'text-green-700 dark:text-green-300'">{{ money(item.estimated_profit, item.currency) }}</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -105,9 +105,10 @@ const rateOptions = computed(() => ({
 const financialData = computed(() => ({
   labels: props.analytics.financial.map(item => item.currency),
   datasets: [
-    { label: t('verificationRecords.summary.totalAmount'), data: props.analytics.financial.map(item => item.sale_amount), backgroundColor: withChartAlpha(theme.value.primary, 0.72), borderColor: theme.value.primary, borderWidth: 1, borderRadius: 4 },
-    { label: t('verificationRecords.summary.totalCost'), data: props.analytics.financial.map(item => item.provider_cost), backgroundColor: withChartAlpha(theme.value.secondary, 0.72), borderColor: theme.value.secondary, borderWidth: 1, borderRadius: 4 },
-    { label: t('verificationRecords.summary.profit'), data: props.analytics.financial.map(item => item.estimated_profit), backgroundColor: withChartAlpha(theme.value.success, 0.72), borderColor: theme.value.success, borderWidth: 1, borderRadius: 4 },
+    { label: t('verificationRecords.summary.grossAmount'), data: props.analytics.financial.map(item => item.sale_amount), backgroundColor: withChartAlpha(theme.value.primary, 0.72), borderColor: theme.value.primary, borderWidth: 1, borderRadius: 4 },
+    { label: t('verificationRecords.summary.netRevenue'), data: props.analytics.financial.map(item => item.net_revenue), backgroundColor: withChartAlpha(theme.value.secondary, 0.72), borderColor: theme.value.secondary, borderWidth: 1, borderRadius: 4 },
+    { label: t('verificationRecords.summary.netProviderCost'), data: props.analytics.financial.map(item => item.provider_cost), backgroundColor: withChartAlpha(theme.value.primary, 0.48), borderColor: theme.value.primary, borderWidth: 1, borderRadius: 4 },
+    { label: t('verificationRecords.summary.netProfit'), data: props.analytics.financial.map(item => item.estimated_profit), backgroundColor: withChartAlpha(theme.value.success, 0.72), borderColor: theme.value.success, borderWidth: 1, borderRadius: 4 },
   ],
 }))
 

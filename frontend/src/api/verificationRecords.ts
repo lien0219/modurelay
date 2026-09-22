@@ -22,13 +22,15 @@ export interface VerificationRecord {
   refund_reason?: string
   sale_amount: number
   provider_cost?: number
+  provider_cost_estimated?: boolean
+  settlement_estimated?: boolean
   user_debit_amount: number
   reserved_amount: number
   captured_amount: number
   released_amount: number
   refunded_amount: number
   currency: string
-  provider_request_count: number
+  provider_request_count?: number
   error_code?: string
   error_message?: string
   public_error_message?: string
@@ -53,6 +55,7 @@ export interface VerificationRecordSummary {
   released_amount: number
   refunded_amount: number
   provider_cost?: number
+  net_revenue: number
   estimated_profit?: number
 }
 
@@ -69,7 +72,9 @@ export interface VerificationRecordFinancialTotal {
   provider_cost: number
   captured_amount: number
   refunded_amount: number
+  net_revenue: number
   estimated_profit: number
+  estimated: boolean
 }
 
 export interface VerificationRecordAnalytics {
