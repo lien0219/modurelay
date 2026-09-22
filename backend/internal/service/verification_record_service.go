@@ -152,6 +152,17 @@ const verificationRecordsCTE = `WITH email_usage AS (
 		COALESCE(SUM(estimated_request_cost),0)::float8 AS usage_cost
 	FROM email_provider_usage
 	GROUP BY email_order_id
+), rental_service_totals AS (
+	SELECT ch.order_id,
+		COALESCE(SUM(ch.reserved_amount),0)::float8 AS gross_amount,
+		COALESCE(SUM(ch.captured_amount),0)::float8 AS captured_amount,
+		COALESCE(SUM(ch.released_amount),0)::float8 AS released_amount,
+		COALESCE(SUM(CASE WHEN ch.settlement_status='held' THEN ch.reserved_amount ELSE 0 END),0)::float8 AS held_amount,
+		COALESCE(SUM(CASE WHEN ch.settlement_status='captured' THEN q.provider_cost_snapshot ELSE 0 END),0)::float8 AS provider_cost,
+		COALESCE(BOOL_OR(ch.settlement_status='captured' AND q.provider_cost_snapshot>0),FALSE) AS provider_cost_estimated
+	FROM sms_rental_service_charges ch
+	LEFT JOIN sms_rental_service_quotes q ON q.id=ch.quote_id
+	GROUP BY ch.order_id
 ), records AS (
 	SELECT
 		o.public_id::text AS id,
@@ -177,14 +188,14 @@ const verificationRecordsCTE = `WITH email_usage AS (
 		END AS outcome,
 		o.refund_status,
 		COALESCE(o.refund_reason, '') AS refund_reason,
-		o.sale_price_snapshot::float8 AS sale_amount,
-		CASE
+		(o.sale_price_snapshot::float8 + COALESCE(rt.gross_amount,0)) AS sale_amount,
+		(CASE
 			WHEN (o.settlement_status='released' AND o.captured_amount=0)
 			  OR o.provider_refund_status IN ('succeeded','not_required')
 			  OR (p.code='smspva' AND o.product_type='temporary' AND o.settlement_status='held' AND o.first_sms_received_at IS NULL)
 			THEN 0::float8
 			ELSE o.provider_cost_snapshot::float8
-		END AS provider_cost,
+		END + COALESCE(rt.provider_cost,0)) AS provider_cost,
 		CASE
 			WHEN o.settlement_status='legacy' THEN
 				CASE
@@ -193,8 +204,11 @@ const verificationRecordsCTE = `WITH email_usage AS (
 					ELSE 0::float8
 				END
 			ELSE o.captured_amount::float8
-		END AS user_debit_amount,
-		CASE WHEN o.settlement_status='legacy' THEN 0::float8 ELSE o.reserved_amount::float8 END AS reserved_amount,
+		END + COALESCE(rt.captured_amount,0) AS user_debit_amount,
+		(CASE
+			WHEN o.settlement_status='legacy' THEN 0::float8
+			ELSE GREATEST(o.reserved_amount-o.captured_amount-o.released_amount-o.refunded_amount,0)::float8
+		END + COALESCE(rt.held_amount,0)) AS reserved_amount,
 		CASE
 			WHEN o.settlement_status='legacy' THEN
 				CASE
@@ -203,12 +217,12 @@ const verificationRecordsCTE = `WITH email_usage AS (
 					ELSE 0::float8
 				END
 			ELSE o.captured_amount::float8
-		END AS captured_amount,
+		END + COALESCE(rt.captured_amount,0) AS captured_amount,
 		CASE
 			WHEN o.settlement_status='legacy' AND o.status='failed' THEN o.sale_price_snapshot::float8
 			WHEN o.settlement_status='legacy' THEN 0::float8
 			ELSE o.released_amount::float8
-		END AS released_amount,
+		END + COALESCE(rt.released_amount,0) AS released_amount,
 		CASE
 			WHEN o.settlement_status='legacy' AND (o.status='refunded' OR o.refund_status='approved') THEN o.sale_price_snapshot::float8
 			WHEN o.settlement_status='legacy' THEN 0::float8
@@ -228,8 +242,8 @@ const verificationRecordsCTE = `WITH email_usage AS (
 			  OR o.provider_refund_status IN ('succeeded','not_required')
 			  OR (p.code='smspva' AND o.product_type='temporary' AND o.settlement_status='held' AND o.first_sms_received_at IS NULL)
 			THEN FALSE
-			WHEN o.provider_cost_snapshot<=0 THEN FALSE
-			ELSE p.code <> '5sim'
+			WHEN o.provider_cost_snapshot<=0 THEN COALESCE(rt.provider_cost_estimated,FALSE)
+			ELSE (p.code <> '5sim') OR COALESCE(rt.provider_cost_estimated,FALSE)
 		END AS provider_cost_estimated,
 		(o.settlement_status='legacy') AS settlement_estimated
 	FROM sms_orders o
@@ -238,6 +252,7 @@ const verificationRecordsCTE = `WITH email_usage AS (
 	JOIN sms_channels c ON c.id = o.channel_id
 	JOIN sms_providers p ON p.id = o.provider_id
 	JOIN sms_countries co ON co.id = o.country_id
+	LEFT JOIN rental_service_totals rt ON rt.order_id=o.id
 
 	UNION ALL
 
@@ -273,7 +288,7 @@ const verificationRecordsCTE = `WITH email_usage AS (
 			ELSE o.provider_cost_estimate_snapshot::float8
 		END AS provider_cost,
 		o.captured_amount::float8 AS user_debit_amount,
-		o.reserved_amount::float8,
+		GREATEST(o.reserved_amount-o.captured_amount-o.released_amount-o.refunded_amount,0)::float8,
 		o.captured_amount::float8,
 		o.released_amount::float8,
 		o.refunded_amount::float8,
