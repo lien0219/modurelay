@@ -112,6 +112,21 @@ describe('SMSManagementView', () => {
     expect(adminSMS.updatePricing).toHaveBeenCalledWith(expect.objectContaining({ batch_purchase_limit: 8 }))
   })
 
+  it('keeps management tables scrollable instead of compressing columns on narrow screens', async () => {
+    const wrapper = mount(SMSManagementView, {
+      global: { stubs: { AppLayout: { template: '<main><slot /></main>' }, Icon: true } },
+    })
+    await flushPromises()
+
+    const providerTable = wrapper.findAll('table').find(table => table.classes().includes('min-w-[1280px]'))
+    const channelTable = wrapper.findAll('table').find(table => table.classes().includes('min-w-[820px]'))
+
+    expect(providerTable).toBeDefined()
+    expect(channelTable).toBeDefined()
+    expect(providerTable!.get('thead').classes()).toContain('whitespace-nowrap')
+    expect(channelTable!.get('thead').classes()).toContain('whitespace-nowrap')
+  })
+
   it('shows provider-native catalog status instead of mapping configuration', async () => {
     adminSMS.providers.mockResolvedValueOnce([{
       id: 1, code: '5sim', name: '5SIM', base_url: 'https://5sim.net/v1',

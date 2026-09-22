@@ -1,6 +1,6 @@
 <template>
   <AppLayout>
-    <div class="mx-auto w-full max-w-[1600px] space-y-5">
+    <div class="mx-auto w-full min-w-0 max-w-[1600px] space-y-5">
       <header class="flex flex-wrap items-end justify-between gap-3">
         <div class="min-w-0">
           <p class="text-xs font-semibold uppercase tracking-[0.14em] text-cyan-600 dark:text-cyan-400">{{ t('sms.admin.eyebrow') }}</p>
@@ -73,8 +73,8 @@
           <h2 class="font-semibold text-gray-900 dark:text-white">{{ t('sms.admin.providers') }}</h2>
         </div>
         <div class="overflow-x-auto">
-          <table class="min-w-full text-left text-sm">
-            <thead class="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-dark-800">
+          <table class="w-full min-w-[1280px] text-left text-sm">
+            <thead class="whitespace-nowrap bg-gray-50 text-xs uppercase text-gray-500 dark:bg-dark-800">
               <tr>
                 <th class="px-5 py-3">{{ t('sms.admin.name') }}</th>
                 <th class="px-5 py-3">{{ t('sms.admin.code') }}</th>
@@ -89,7 +89,7 @@
             <tbody>
               <tr v-for="provider in providers" :key="provider.id" class="border-t border-gray-100 dark:border-dark-700" :class="isBetaProvider(provider) ? 'bg-gray-50/70 opacity-55 grayscale dark:bg-dark-800/50' : ''">
                 <td class="px-5 py-3 font-medium text-gray-900 dark:text-white">
-                  <div class="flex min-w-40 items-center gap-2">
+                  <div class="flex min-w-max items-center gap-2 whitespace-nowrap">
                     <span>{{ provider.name }}</span><span v-if="isBetaProvider(provider)" class="rounded bg-gray-200 px-2 py-0.5 text-[10px] font-bold tracking-wider text-gray-600 dark:bg-dark-600 dark:text-gray-300">BETA</span>
                     <a
                       v-if="providerPortalUrl(provider)"
@@ -104,14 +104,14 @@
                     </a>
                   </div>
                 </td>
-                <td class="px-5 py-3 font-mono text-xs text-gray-600 dark:text-gray-300">{{ provider.code }}</td>
+                <td class="whitespace-nowrap px-5 py-3 font-mono text-xs text-gray-600 dark:text-gray-300">{{ provider.code }}</td>
                 <td class="px-5 py-3"><input v-model="provider.base_url" class="input min-w-52" :disabled="isBetaProvider(provider)" :aria-label="`${t('sms.admin.baseUrl')} - ${provider.name}`" /></td>
                 <td class="px-5 py-3">
                   <input v-model="credentialDrafts[provider.id]" type="password" :disabled="isBetaProvider(provider)" autocomplete="new-password" class="input min-w-52" :placeholder="t('sms.admin.credentialPlaceholder')" :aria-label="`${t('sms.admin.credential')} - ${provider.name}`" />
                 </td>
-                <td class="px-5 py-3"><span class="badge" :class="provider.health_status === 'healthy' ? 'badge-success' : 'badge-warning'">{{ healthLabel(provider.health_status) }}</span></td>
-                <td class="px-5 py-3">
-                  <div v-if="!isBetaProvider(provider)" class="min-w-48 space-y-1 text-xs text-gray-500 dark:text-gray-400">
+                <td class="whitespace-nowrap px-5 py-3"><span class="badge" :class="provider.health_status === 'healthy' ? 'badge-success' : 'badge-warning'">{{ healthLabel(provider.health_status) }}</span></td>
+                <td class="min-w-[280px] px-5 py-3">
+                  <div v-if="!isBetaProvider(provider)" class="min-w-64 space-y-1 text-xs text-gray-500 dark:text-gray-400">
                     <div class="flex items-center gap-2">
                       <span class="badge" :class="catalogStatus[provider.code]?.status === 'succeeded' && !catalogStatus[provider.code]?.stale ? 'badge-success' : 'badge-warning'">{{ catalogStatusLabel(catalogStatus[provider.code]?.status) }}</span>
                       <button type="button" class="btn btn-secondary btn-sm" :disabled="syncingProviderCode === provider.code || !provider.enabled" @click="syncCatalog(provider)">{{ syncingProviderCode === provider.code ? t('sms.admin.syncingCatalog') : t('sms.admin.syncCatalog') }}</button>
@@ -122,7 +122,7 @@
                   </div>
                   <span v-else class="text-xs text-gray-400">{{ t('sms.admin.catalogBetaPaused') }}</span>
                 </td>
-                <td class="px-5 py-3"><input v-model="provider.enabled" type="checkbox" :disabled="isBetaProvider(provider)" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" :aria-label="t('sms.admin.providerEnabled', { name: provider.name })" @change="saveProvider(provider)" /></td>
+                <td class="w-20 whitespace-nowrap px-5 py-3 text-center"><input v-model="provider.enabled" type="checkbox" :disabled="isBetaProvider(provider)" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" :aria-label="t('sms.admin.providerEnabled', { name: provider.name })" @change="saveProvider(provider)" /></td>
                 <td class="px-5 py-3"><div class="flex min-w-max flex-wrap gap-2"><button type="button" class="btn btn-secondary btn-sm" :disabled="isBetaProvider(provider)" @click="saveProvider(provider)">{{ t('sms.admin.save') }}</button><button v-if="supportsTestConnection(provider)" type="button" class="btn btn-secondary btn-sm" :disabled="testingProviderId === provider.id || isBetaProvider(provider)" :aria-busy="testingProviderId === provider.id" :title="t('sms.admin.testRequestNotice')" @click="testProvider(provider)">{{ testingProviderId === provider.id ? t('sms.admin.testing') : t('sms.admin.testConnection') }}</button></div></td>
               </tr>
             </tbody>
@@ -135,8 +135,8 @@
           <h2 class="font-semibold text-gray-900 dark:text-white">{{ t('sms.admin.channels') }}</h2>
         </div>
         <div class="overflow-x-auto">
-          <table class="min-w-full text-left text-sm">
-            <thead class="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-dark-800">
+          <table class="w-full min-w-[820px] text-left text-sm">
+            <thead class="whitespace-nowrap bg-gray-50 text-xs uppercase text-gray-500 dark:bg-dark-800">
               <tr>
                 <th class="px-5 py-3">{{ t('sms.admin.channels') }}</th>
                 <th class="px-5 py-3">{{ t('sms.admin.providers') }}</th>
@@ -148,12 +148,12 @@
             </thead>
             <tbody>
               <tr v-for="channel in channels" :key="channel.id" class="border-t border-gray-100 dark:border-dark-700" :class="isBetaChannel(channel) ? 'bg-gray-50/70 opacity-55 grayscale dark:bg-dark-800/50' : ''">
-                <td class="px-5 py-3 font-medium text-gray-900 dark:text-white"><span>{{ channel.public_name }}</span> <span class="font-mono text-xs text-gray-500">{{ channel.code }}</span> <span v-if="isBetaChannel(channel)" class="ml-1 rounded bg-gray-200 px-2 py-0.5 text-[10px] font-bold tracking-wider text-gray-600 dark:bg-dark-600 dark:text-gray-300">BETA</span></td>
-                <td class="px-5 py-3"><span class="font-medium text-gray-700 dark:text-gray-200">{{ providerName(channel.provider_id) }}</span></td>
-                <td class="px-5 py-3">{{ roleLabel(channel.role) }}</td>
-                <td class="px-5 py-3"><input v-model="channel.visible" type="checkbox" :disabled="isBetaChannel(channel)" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" :aria-label="t('sms.admin.channelVisible', { name: channel.public_name })" @change="saveChannel(channel)" /></td>
-                <td class="px-5 py-3"><input v-model="channel.healthy" type="checkbox" :disabled="isBetaChannel(channel)" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" :aria-label="t('sms.admin.channelHealthy', { name: channel.public_name })" @change="saveChannel(channel)" /></td>
-                <td class="px-5 py-3"><input v-model="channel.enabled" type="checkbox" :disabled="isBetaChannel(channel)" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" :aria-label="t('sms.admin.channelEnabled', { name: channel.public_name })" @change="saveChannel(channel)" /></td>
+                <td class="min-w-[220px] whitespace-nowrap px-5 py-3 font-medium text-gray-900 dark:text-white"><span>{{ channel.public_name }}</span> <span class="font-mono text-xs text-gray-500">{{ channel.code }}</span> <span v-if="isBetaChannel(channel)" class="ml-1 rounded bg-gray-200 px-2 py-0.5 text-[10px] font-bold tracking-wider text-gray-600 dark:bg-dark-600 dark:text-gray-300">BETA</span></td>
+                <td class="min-w-[140px] whitespace-nowrap px-5 py-3"><span class="font-medium text-gray-700 dark:text-gray-200">{{ providerName(channel.provider_id) }}</span></td>
+                <td class="whitespace-nowrap px-5 py-3">{{ roleLabel(channel.role) }}</td>
+                <td class="w-24 whitespace-nowrap px-5 py-3 text-center"><input v-model="channel.visible" type="checkbox" :disabled="isBetaChannel(channel)" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" :aria-label="t('sms.admin.channelVisible', { name: channel.public_name })" @change="saveChannel(channel)" /></td>
+                <td class="w-24 whitespace-nowrap px-5 py-3 text-center"><input v-model="channel.healthy" type="checkbox" :disabled="isBetaChannel(channel)" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" :aria-label="t('sms.admin.channelHealthy', { name: channel.public_name })" @change="saveChannel(channel)" /></td>
+                <td class="w-24 whitespace-nowrap px-5 py-3 text-center"><input v-model="channel.enabled" type="checkbox" :disabled="isBetaChannel(channel)" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" :aria-label="t('sms.admin.channelEnabled', { name: channel.public_name })" @change="saveChannel(channel)" /></td>
               </tr>
             </tbody>
           </table>
