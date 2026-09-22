@@ -416,26 +416,33 @@ func emailProviderAPIKey(code, credentialRef string, encryptor SecretEncryptor) 
 	}
 	return ""
 }
+func emailProviderRequiresCredential(code string) bool {
+	switch strings.ToLower(strings.TrimSpace(code)) {
+	case "temp_tf":
+		return false
+	default:
+		return true
+	}
+}
+
+func emailProviderSupportsAddressType(code, addressType string) bool {
+	code = strings.ToLower(strings.TrimSpace(code))
+	addressType = strings.ToLower(strings.TrimSpace(addressType))
+	switch code {
+	case "temp_tf":
+		return addressType == "gmail" || addressType == "outlook" || addressType == "hotmail"
+	case "sonjj":
+		return addressType == "gmail_real" || addressType == "gmail_alias" || addressType == "outlook_real" || addressType == "outlook_alias"
+	case "emailnator":
+		return addressType == "gmail"
+	default:
+		return false
+	}
+}
+
 func emailProviderFor(code, baseURL, credentialRef string, metadata map[string]any, encryptor SecretEncryptor, billingValues ...map[string]any) EmailProvider {
-	if strings.ToLower(strings.TrimSpace(code)) != "emailnator" {
-		return nil
-	}
+	code = strings.ToLower(strings.TrimSpace(code))
 	key := emailProviderAPIKey(code, credentialRef, encryptor)
-	host := ""
-	if v, ok := metadata["rapidapi_host"].(string); ok {
-		host = strings.TrimSpace(v)
-	}
-	endpoints := map[string]string{}
-	if raw, ok := metadata["endpoints"].(map[string]any); ok {
-		for k, v := range raw {
-			if s, ok := v.(string); ok {
-				endpoints[k] = s
-			}
-		}
-	}
-	if baseURL == "" {
-		baseURL = "https://gmailnator.p.rapidapi.com"
-	}
 	concurrency := 2
 	interval := time.Second
 	if len(billingValues) > 0 && billingValues[0] != nil {
@@ -449,17 +456,48 @@ func emailProviderFor(code, baseURL, credentialRef string, metadata map[string]a
 				interval = hourlyInterval
 			}
 		}
-		if c := numberFromMap(billing, "provider_concurrency"); c > 0 {
-			concurrency = int(math.Min(32, math.Max(1, c)))
+		if value := numberFromMap(billing, "provider_concurrency"); value > 0 {
+			concurrency = int(math.Min(32, math.Max(1, value)))
 		}
 	}
-	limiterKey := strings.ToLower(strings.TrimSpace(code)) + "|" + strings.TrimRight(baseURL, "/") + "|" + host + "|" + interval.String() + "|" + strconv.Itoa(concurrency)
+	limiterKey := code + "|" + strings.TrimRight(baseURL, "/") + "|" + interval.String() + "|" + strconv.Itoa(concurrency)
 	limiterValue, _ := emailProviderLimiters.LoadOrStore(limiterKey, newEmailProviderLimiter(concurrency, interval))
 	limiter, ok := limiterValue.(*emailProviderLimiter)
 	if !ok {
 		return nil
 	}
-	return &emailnatorProvider{code: code, baseURL: baseURL, rapidAPIKey: key, rapidAPIHost: host, client: &http.Client{Timeout: 20 * time.Second}, cap: emailnatorCapabilities(), endpoints: endpoints, limiter: limiter}
+
+	switch code {
+	case "temp_tf":
+		if baseURL == "" {
+			baseURL = "https://temp.tf"
+		}
+		return &tempTFProvider{code: code, baseURL: baseURL, client: &http.Client{Timeout: 15 * time.Second}, limiter: limiter}
+	case "sonjj":
+		if baseURL == "" {
+			baseURL = "https://app.sonjj.com"
+		}
+		return &sonjjProvider{code: code, baseURL: baseURL, apiKey: key, client: &http.Client{Timeout: 20 * time.Second}, limiter: limiter}
+	case "emailnator":
+		host := ""
+		if v, ok := metadata["rapidapi_host"].(string); ok {
+			host = strings.TrimSpace(v)
+		}
+		endpoints := map[string]string{}
+		if raw, ok := metadata["endpoints"].(map[string]any); ok {
+			for k, v := range raw {
+				if s, ok := v.(string); ok {
+					endpoints[k] = s
+				}
+			}
+		}
+		if baseURL == "" {
+			baseURL = "https://gmailnator.p.rapidapi.com"
+		}
+		return &emailnatorProvider{code: code, baseURL: baseURL, rapidAPIKey: key, rapidAPIHost: host, client: &http.Client{Timeout: 20 * time.Second}, cap: emailnatorCapabilities(), endpoints: endpoints, limiter: limiter}
+	default:
+		return nil
+	}
 }
 
 type emailProviderLimiter struct {
@@ -719,8 +757,11 @@ func (s *EmailVerificationService) Quote(ctx context.Context, serviceCode, addre
 		_ = json.Unmarshal(providerMetaRaw, &providerMeta)
 		_ = json.Unmarshal(billingRaw, &billing)
 		_ = json.Unmarshal(channelMetaRaw, &channelMeta)
+		if !emailProviderSupportsAddressType(pc, addressType) {
+			continue
+		}
 		p := emailProviderFor(pc, base, cred, providerMeta, s.encryptor, billing)
-		if p == nil || strings.TrimSpace(emailProviderAPIKey(pc, cred, s.encryptor)) == "" {
+		if p == nil || (emailProviderRequiresCredential(pc) && strings.TrimSpace(emailProviderAPIKey(pc, cred, s.encryptor)) == "") {
 			continue
 		}
 		if !s.emailQuotaAllowsNewOrder(ctx, providerID) {
@@ -868,10 +909,16 @@ type EmailPurchaseRequest struct {
 
 func normalizeEmailAddressType(value string) (string, error) {
 	value = strings.ToLower(strings.TrimSpace(value))
-	if value == "" || value == "gmail" {
+	if value == "" {
 		return "gmail", nil
 	}
-	return "", errors.New("unsupported email address type")
+	switch value {
+	case "gmail", "outlook", "hotmail",
+		"gmail_real", "gmail_alias", "outlook_real", "outlook_alias":
+		return value, nil
+	default:
+		return "", errors.New("unsupported email address type")
+	}
 }
 
 func (s *EmailVerificationService) Purchase(ctx context.Context, userID int64, req EmailPurchaseRequest, idempotencyKey string) (*EmailOrder, error) {
@@ -2196,7 +2243,7 @@ func (s *EmailVerificationService) AdminTestProvider(ctx context.Context, id int
 	_ = json.Unmarshal(metadataRaw, &metadata)
 	var billing map[string]any
 	_ = json.Unmarshal(billingRaw, &billing)
-	if emailProviderAPIKey(code, cred, s.encryptor) == "" {
+	if emailProviderRequiresCredential(code) && emailProviderAPIKey(code, cred, s.encryptor) == "" {
 		return nil, ErrEmailProviderCredentialMissing
 	}
 	emailProviderTestMu.Lock()
