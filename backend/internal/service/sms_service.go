@@ -4295,6 +4295,36 @@ func (s *SMSService) markSMSClosed(ctx context.Context, id int64, status, refund
 // close the local lifecycle exactly once with an explicit pending refund state
 // for administrative review. A terminal local row prevents the worker from
 // issuing a duplicate cancelorder request.
+func (s *SMSService) settleSMSPVANoDelivery(ctx context.Context, id, userID int64, terminalStatus, reason string) (bool, error) {
+	var settlementStatus string
+	var firstSMS sql.NullTime
+	var messageCount int
+	if err := s.db.QueryRowContext(ctx, `SELECT o.settlement_status,o.first_sms_received_at,(SELECT COUNT(*) FROM sms_messages m WHERE m.order_id=o.id) FROM sms_orders o WHERE o.id=$1`, id).Scan(&settlementStatus, &firstSMS, &messageCount); err != nil {
+		return false, err
+	}
+	if firstSMS.Valid || messageCount > 0 {
+		return false, nil
+	}
+	s.markProviderRefund(ctx, id, "not_required", "SMSPVA order ended before SMS delivery; upstream had no delivered-message charge to refund")
+	switch settlementStatus {
+	case "held":
+		if err := s.releaseSMSHold(ctx, id, userID, terminalStatus, reason); err != nil {
+			return true, err
+		}
+		return true, nil
+	case "captured":
+		// Legacy SMSPVA rows created before delayed capture was introduced may
+		// already be captured even though no SMS was delivered. Return that
+		// amount exactly once and mark the row refunded.
+		if err := s.refundSMSCapture(ctx, id, userID, terminalStatus, reason); err != nil {
+			return true, err
+		}
+		return true, nil
+	default:
+		return true, nil
+	}
+}
+
 func (s *SMSService) markSMSCancellationPendingRefund(ctx context.Context, id int64, reason string) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE sms_orders SET status='cancelled',refund_status='pending',provider_refund_status='unknown',refund_reason=$1,reconciliation_action='',reconciliation_attempts=0,reconcile_after=NULL,updated_at=NOW() WHERE id=$2 AND status IN ('active','provider_unknown','reconciling')`, reason, id)
 	return err
@@ -4646,12 +4676,12 @@ func (s *SMSService) CancelOrder(ctx context.Context, userID int64, publicID str
 		return errors.New("channel refused cancellation")
 	}
 	if strings.EqualFold(providerCode, "smspva") {
-		// SMSPVA documents cancelorder, but does not expose a refund status or
-		// confirmation endpoint. Cancellation acceptance must therefore never
-		// be treated as an upstream refund. Keep the captured settlement intact
-		// and surface an explicit pending/unknown state for reconciliation/admin
-		// review instead of releasing platform funds optimistically.
-		return s.markSMSCancellationPendingRefund(ctx, id, "provider cancellation accepted; upstream refund confirmation is unavailable")
+		if handled, settleErr := s.settleSMSPVANoDelivery(ctx, id, userID, "cancelled", "SMSPVA cancellation confirmed before SMS delivery; reserved balance released"); handled {
+			return settleErr
+		}
+		// If delivery evidence already exists, cancellation does not prove an
+		// upstream refund. Keep the captured amount fail-closed for review.
+		return s.markSMSCancellationPendingRefund(ctx, id, "provider cancellation accepted after SMS delivery; upstream refund confirmation is unavailable")
 	}
 	return s.markSMSClosed(ctx, id, "cancelled", "rejected", "provider cancellation confirmed; refund unsupported")
 }
