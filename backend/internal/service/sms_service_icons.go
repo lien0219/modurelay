@@ -146,11 +146,14 @@ func (s *SMSService) ServiceIcon(ctx context.Context, providerCode, serviceCode 
 	}
 	cacheKey := catalogProviderCode + ":" + normalized
 	if cached, ok := smsProviderIconCache.Load(cacheKey); ok {
-		entry := cached.(smsProviderIconCacheEntry)
-		if time.Now().Before(entry.ExpiresAt) {
+		entry, valid := cached.(smsProviderIconCacheEntry)
+		if !valid {
+			smsProviderIconCache.Delete(cacheKey)
+		} else if time.Now().Before(entry.ExpiresAt) {
 			return append([]byte(nil), entry.Data...), entry.ContentType, nil
+		} else {
+			smsProviderIconCache.Delete(cacheKey)
 		}
-		smsProviderIconCache.Delete(cacheKey)
 	}
 
 	target := "https://smspva.com/" + normalized
