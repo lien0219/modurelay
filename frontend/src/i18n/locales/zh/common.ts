@@ -430,7 +430,7 @@ export default {
       expiresIn: '有效期',
       actions: '操作',
       batchPurchase: '批量购买',
-      capabilities: { cancel: '支持取消', noCancel: '不支持取消', refund: '支持供应商退款', noRefund: '供应商不支持退款，可能需要管理员人工审核', cancelRefund: '未收到验证码之前允许取消订单并自动退款' },
+      capabilities: { cancel: '支持取消', noCancel: '不支持取消', refund: '支持供应商退款', noRefund: '未收到短信时取消会自动释放余额；短信已送达后不支持自动退款', cancelRefund: '未收到验证码之前允许取消订单并自动退款' },
       quantity: '购买数量',
       batchPurchaseHint: '单次最多购买 {max} 个号码，每个订单独立结算',
       cancel: '取消',
