@@ -82,6 +82,9 @@ const providers = ref<EmailProviderAdmin[]>([])
 const channels = ref<EmailChannelAdmin[]>([])
 const stats = ref<Record<string, number | boolean | null>>({})
 const enabled = ref(false)
+const freeDailyLimit = ref(20)
+const freeActiveLimit = ref(3)
+const freeGenerationInterval = ref(5)
 const loading = ref(false)
 const savingEnabled = ref(false)
 const testingProviderId = ref<number | null>(null)
@@ -106,11 +109,14 @@ function setSaving(target: typeof savingProviderIds, id: number, saving: boolean
 async function load() {
   loading.value = true
   try {
-    const [p, c, s] = await Promise.all([adminEmail.providers(), adminEmail.channels(), adminEmail.stats()])
+    const [p, c, s, settings] = await Promise.all([adminEmail.providers(), adminEmail.channels(), adminEmail.stats(), adminEmail.settings()])
     providers.value = p
     channels.value = c
     stats.value = s
-    enabled.value = Boolean(s.feature_enabled)
+    enabled.value = Boolean(settings.enabled)
+    freeDailyLimit.value = settings.free_daily_limit
+    freeActiveLimit.value = settings.free_active_limit
+    freeGenerationInterval.value = settings.free_generation_interval_seconds
     credentialRefs.value = Object.fromEntries(p.map(item => [item.id, '']))
     billingDrafts.value = Object.fromEntries(p.map(item => [item.id, { ...(item.billing || {}) }]))
     channelBackoffDrafts.value = Object.fromEntries(c.map(item => [item.id, (item.polling_backoff || []).join(', ')]))
@@ -121,10 +127,25 @@ async function load() {
   }
 }
 
-async function toggle() {
-  const next = enabled.value
+async function saveSettings() {
   savingEnabled.value = true
-  try { await adminEmail.setEnabled(next); await load() } catch (error) { enabled.value = !next; appStore.showError(errorMessage(error, t('email.admin.enableTitle'))) } finally { savingEnabled.value = false }
+  try {
+    const result = await adminEmail.updateSettings({
+      enabled: enabled.value,
+      free_daily_limit: Math.max(0, Number(freeDailyLimit.value) || 0),
+      free_active_limit: Math.max(0, Number(freeActiveLimit.value) || 0),
+      free_generation_interval_seconds: Math.max(0, Number(freeGenerationInterval.value) || 0),
+    })
+    enabled.value = result.enabled
+    freeDailyLimit.value = result.free_daily_limit
+    freeActiveLimit.value = result.free_active_limit
+    freeGenerationInterval.value = result.free_generation_interval_seconds
+    appStore.showSuccess(t('email.admin.saved'))
+  } catch (error) {
+    appStore.showError(errorMessage(error, t('email.admin.enableTitle')))
+  } finally {
+    savingEnabled.value = false
+  }
 }
 async function saveProvider(provider: EmailProviderAdmin) {
   const credential = (credentialRefs.value[provider.id] || '').trim()
