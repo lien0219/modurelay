@@ -25,6 +25,7 @@ func TestSMSClosedLoopMigrationsAreEmbeddedAndAppendOnly(t *testing.T) {
 		"262_sms_smspva_advanced_capabilities.sql",
 		"263_sms_message_dedup_identity.sql",
 		"264_sms_rental_legacy_constraints.sql",
+		"265_sms_smspva_delivery_settlement.sql",
 	} {
 		content, err := FS.ReadFile(name)
 		require.NoError(t, err, name)
