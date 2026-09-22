@@ -25,6 +25,8 @@ func TestEmailPublicPrivateChannelMigration(t *testing.T) {
 		"'email_free_active_limit'",
 		"'email_free_generation_interval_seconds'",
 		"sale_price=0",
+		"enabled=FALSE",
+		"healthy=FALSE",
 		"visible=FALSE",
 	} {
 		require.Contains(t, sql, fragment)
