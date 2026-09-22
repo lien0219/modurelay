@@ -231,7 +231,7 @@ import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import CopyButton from '@/components/common/CopyButton.vue'
-import { emailAPI, type EmailOrder, type EmailOrderPage, type EmailQuote } from '@/api/email'
+import { emailAPI, type EmailMessage, type EmailOrder, type EmailOrderPage, type EmailQuote } from '@/api/email'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { useAppStore } from '@/stores'
 
@@ -289,7 +289,7 @@ const addressTypeOptions = computed(() => activeTab.value === 'private'
     ])
 
 const selectedQuote = computed(() => quotes.value.find(item => item.quote_id === selectedQuoteId.value) || quotes.value[0])
-const latestVerificationCode = computed(() => currentOrder.value?.messages?.find(item => item.verification_code)?.verification_code || '')
+const latestVerificationCode = computed(() => latestCodeFromMessages(currentOrder.value?.messages))
 const remainingSeconds = computed(() => {
   if (!currentOrder.value?.expires_at || isTerminal(currentOrder.value)) return 0
   return Math.max(0, Math.floor((new Date(currentOrder.value.expires_at).getTime() - now.value) / 1000))
@@ -313,8 +313,23 @@ function addressTypeLabel(value: string) {
   return t(`email.user.${key[value] || 'gmail'}`)
 }
 function privacyLabel(value: string) { return value === 'private_api' ? t('email.user.private') : t('email.user.public') }
-function priceLabel(value: number) { return Number(value) === 0 ? t('email.user.free') : `$${Number(value).toFixed(4)}` }
-function firstCode(order: EmailOrder) { return order.messages?.find(item => item.verification_code)?.verification_code || '' }
+function priceLabel(value: number) { return Number(value) === 0 ? t('email.user.free') : `${Number(value).toFixed(4)}` }
+function latestCodeFromMessages(messages?: EmailMessage[]) {
+  const coded = (messages || []).filter(item => item.verification_code?.trim())
+  if (!coded.length) return ''
+
+  let latest = coded[0]
+  let latestAt = Date.parse(latest.received_at)
+  for (const message of coded.slice(1)) {
+    const receivedAt = Date.parse(message.received_at)
+    if (Number.isFinite(receivedAt) && (!Number.isFinite(latestAt) || receivedAt > latestAt)) {
+      latest = message
+      latestAt = receivedAt
+    }
+  }
+  return latest.verification_code?.trim() || ''
+}
+function firstCode(order: EmailOrder) { return latestCodeFromMessages(order.messages) }
 function canCancel(order: EmailOrder) { return ['reserved', 'generating_inbox', 'reconciling', 'waiting_email', 'email_received', 'verification_extracted'].includes(order.status) }
 
 function resetSelection() {
