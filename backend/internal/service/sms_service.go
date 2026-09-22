@@ -3264,7 +3264,7 @@ func (s *SMSService) Purchase(ctx context.Context, userID int64, req SMSPurchase
 			finalizeCtx, finalizeCancel := context.WithTimeout(context.Background(), 10*time.Second)
 			pricing, _ := s.GetPricingSettings(finalizeCtx)
 			expiresAt := smsOrderExpiresAt(time.Now(), req.ProductType, req.DurationValue, req.DurationUnit, recovered.ExpiresAt, time.Duration(pricing.TemporaryExpiryMinutes)*time.Minute)
-			activateErr := s.activateSMSOrder(finalizeCtx, orderID, userID, recovered.ProviderOrderID, recovered.PhoneNumber, expiresAt, recovered.ProviderCost, recovered.ProviderOperatorCode, req.ProductType)
+			activateErr := s.activateSMSOrder(finalizeCtx, orderID, userID, recovered.ProviderOrderID, recovered.PhoneNumber, expiresAt, recovered.ProviderCost, recovered.ProviderOperatorCode, req.ProductType, providerCode)
 			if activateErr != nil {
 				_, _ = s.db.ExecContext(finalizeCtx, `UPDATE sms_orders SET provider_order_id=$1,phone_number=COALESCE(NULLIF($2,''),phone_number),expires_at=COALESCE($3,expires_at),provider_cost_snapshot=CASE WHEN $4::numeric>0 THEN $4::numeric ELSE provider_cost_snapshot END,operator_code=COALESCE(NULLIF($5,''),operator_code),status='reconciling',reconciliation_action=$6,reconcile_after=NOW()+($7 * INTERVAL '1 second'),last_provider_error=$8,updated_at=NOW() WHERE id=$9 AND settlement_status='held'`, recovered.ProviderOrderID, recovered.PhoneNumber, expiresAt, recovered.ProviderCost, strings.TrimSpace(recovered.ProviderOperatorCode), smsReconciliationPurchase, int(smsVerificationPollInterval.Seconds()), "provider allocation recovered; settlement retry required", orderID)
 			}
@@ -3300,7 +3300,7 @@ func (s *SMSService) Purchase(ctx context.Context, userID int64, req SMSPurchase
 	defer finalizeCancel()
 	pricing, _ := s.GetPricingSettings(finalizeCtx)
 	expiresAt := smsOrderExpiresAt(time.Now(), req.ProductType, req.DurationValue, req.DurationUnit, purchased.ExpiresAt, time.Duration(pricing.TemporaryExpiryMinutes)*time.Minute)
-	if err = s.activateSMSOrder(finalizeCtx, orderID, userID, purchased.ProviderOrderID, purchased.PhoneNumber, expiresAt, purchased.ProviderCost, purchased.ProviderOperatorCode, req.ProductType); err != nil {
+	if err = s.activateSMSOrder(finalizeCtx, orderID, userID, purchased.ProviderOrderID, purchased.PhoneNumber, expiresAt, purchased.ProviderCost, purchased.ProviderOperatorCode, req.ProductType, providerCode); err != nil {
 		// Persist the provider reference before returning an uncertain result so
 		// the reconciliation worker can poll this exact order instead of guessing
 		// from history.
@@ -3608,13 +3608,25 @@ func (s *SMSService) activateSMSOrder(ctx context.Context, orderID, userID int64
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	var providerCode, storedProductType string
-	if err = tx.QueryRowContext(ctx, `SELECT p.code,o.product_type FROM sms_orders o JOIN sms_providers p ON p.id=o.provider_id WHERE o.id=$1 FOR UPDATE OF o`, orderID).Scan(&providerCode, &storedProductType); err != nil {
-		return err
-	}
-	productType := storedProductType
-	if len(productTypes) > 0 && strings.TrimSpace(productTypes[0]) != "" {
+	productType := ""
+	providerCode := ""
+	if len(productTypes) > 0 {
 		productType = strings.TrimSpace(productTypes[0])
+	}
+	if len(productTypes) > 1 {
+		providerCode = strings.TrimSpace(productTypes[1])
+	}
+	if productType == "" || providerCode == "" {
+		var storedProductType, storedProviderCode string
+		if err = tx.QueryRowContext(ctx, `SELECT p.code,o.product_type FROM sms_orders o JOIN sms_providers p ON p.id=o.provider_id WHERE o.id=$1 FOR UPDATE OF o`, orderID).Scan(&storedProviderCode, &storedProductType); err != nil {
+			return err
+		}
+		if productType == "" {
+			productType = storedProductType
+		}
+		if providerCode == "" {
+			providerCode = storedProviderCode
+		}
 	}
 	deferCaptureUntilDelivery := strings.EqualFold(providerCode, "smspva") && strings.EqualFold(productType, "temporary")
 
@@ -4028,7 +4040,7 @@ func (s *SMSService) recoverUnknownSMSPurchase(ctx context.Context, id, userID i
 					fallback := createdAt.Add(time.Duration(restoreDurationDays) * 24 * time.Hour)
 					expiresAt = &fallback
 				}
-				if err := s.activateSMSOrder(ctx, id, userID, recovered.ProviderOrderID, recovered.PhoneNumber, expiresAt, recovered.ProviderCost, recovered.ProviderOperatorCode, productType); err != nil {
+				if err := s.activateSMSOrder(ctx, id, userID, recovered.ProviderOrderID, recovered.PhoneNumber, expiresAt, recovered.ProviderCost, recovered.ProviderOperatorCode, productType, providerCode); err != nil {
 					return false, err
 				}
 				_ = s.pollSMSOrder(ctx, id, recovered.ProviderOrderID, providerCode, base, credential, productType)
@@ -4084,7 +4096,7 @@ func (s *SMSService) recoverUnknownSMSPurchase(ctx context.Context, id, userID i
 	// order creation time. Recovery can happen well after a provider timeout;
 	// using time.Now() here would silently extend an already-running order.
 	expiresAt := smsOrderExpiresAt(createdAt, productType, 0, "", recovered.ExpiresAt, time.Duration(pricing.TemporaryExpiryMinutes)*time.Minute)
-	if err := s.activateSMSOrder(ctx, id, userID, recovered.ProviderOrderID, recovered.PhoneNumber, expiresAt, recovered.ProviderCost, recovered.ProviderOperatorCode, productType); err != nil {
+	if err := s.activateSMSOrder(ctx, id, userID, recovered.ProviderOrderID, recovered.PhoneNumber, expiresAt, recovered.ProviderCost, recovered.ProviderOperatorCode, productType, providerCode); err != nil {
 		return false, err
 	}
 	_ = s.pollSMSOrder(ctx, id, recovered.ProviderOrderID, providerCode, base, credential, productType)
