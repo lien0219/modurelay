@@ -115,6 +115,9 @@ func TestSMSListPublicProvidersUsesOpaqueChannelAllowlist(t *testing.T) {
 	if len(providers) != 1 || providers[0].Code != "channel_2" {
 		t.Fatalf("providers=%#v, want only the opaque channel projection", providers)
 	}
+	if providers[0].Name != "Channel 2" {
+		t.Fatalf("public channel name=%q, want provider-neutral label", providers[0].Name)
+	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("public provider query lost its closed allow-list: %v", err)
 	}

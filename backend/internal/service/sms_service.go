@@ -1989,6 +1989,7 @@ func (s *SMSService) ListPublicProviders(ctx context.Context) ([]SMSPublicProvid
 		credentialReady := providerAPIKey(providerCode, credentialRef, s.encryptor) != ""
 		item.Selectable = providerEnabled && channelEnabled && channelVisible && channelHealthy && !item.Beta && strings.EqualFold(healthStatus, "healthy") && credentialReady
 		item.Capabilities = resolveSMSCapabilities(providerCode, baseURL, raw)
+		item.Name = publicVerificationChannelName(item.Code)
 		out = append(out, item)
 	}
 	return out, rows.Err()
@@ -2909,7 +2910,7 @@ func (s *SMSService) Quote(ctx context.Context, userID int64, req SMSQuoteReques
 		if _, err := s.db.ExecContext(ctx, `INSERT INTO sms_quotes (id,user_id,channel_id,provider_id,service_id,country_id,product_type,provider_service_code,provider_country_code,operator_code,voice_mode,duration_value,duration_unit,service_codes_snapshot,provider_cost_snapshot,sale_price_snapshot,success_rate_snapshot,success_rate_source_snapshot,success_rate_grade_snapshot,success_rate_multiplier_snapshot,fixed_markup_snapshot,stock,estimated_delivery_seconds,expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)`, id, userID, channelID, providerID, serviceID, countryID, req.ProductType, providerServiceCode, providerCountryCode, req.OperatorCode, req.VoiceMode, req.DurationValue, req.DurationUnit, string(serviceCodesJSON), providerCost, salePrice, rate, rateSource(rate), grade, multiplier, fixed, q.Stock, q.EstimatedDeliverySeconds, expiresAt); err != nil {
 			return nil, err
 		}
-		out = append(out, SMSPublicChannel{Code: code, PublicName: name, Role: role, SalePrice: salePrice, Stock: q.Stock, SuccessRate: rate, SuccessRateGrade: grade, SuccessRateSource: rateSource(rate), SuccessRateSampleSize: rateSampleSize, EstimatedDeliverySeconds: q.EstimatedDeliverySeconds, Capabilities: capabilities, QuoteID: id, QuoteExpiresAt: expiresAt, ProviderCost: providerCost, GradeMultiplier: multiplier, GradeFixedMarkup: fixed, ProviderServiceCode: providerServiceCode, ProviderCountryCode: providerCountryCode})
+		out = append(out, SMSPublicChannel{Code: code, PublicName: publicVerificationChannelName(code), Role: role, SalePrice: salePrice, Stock: q.Stock, SuccessRate: rate, SuccessRateGrade: grade, SuccessRateSource: rateSource(rate), SuccessRateSampleSize: rateSampleSize, EstimatedDeliverySeconds: q.EstimatedDeliverySeconds, Capabilities: capabilities, QuoteID: id, QuoteExpiresAt: expiresAt, ProviderCost: providerCost, GradeMultiplier: multiplier, GradeFixedMarkup: fixed, ProviderServiceCode: providerServiceCode, ProviderCountryCode: providerCountryCode})
 	}
 	return out, rows.Err()
 }
