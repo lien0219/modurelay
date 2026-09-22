@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -19,8 +18,6 @@ type tempTFProvider struct {
 	client        *http.Client
 	limiter       *emailProviderLimiter
 }
-
-var tempTFMessageCache sync.Map // key=email|message_id -> ProviderEmailMessage
 
 func tempTFCapabilities() EmailProviderCapabilities {
 	return EmailProviderCapabilities{
@@ -125,10 +122,6 @@ func (p *tempTFProvider) GenerateInbox(ctx context.Context, req GenerateInboxReq
 	}, nil
 }
 
-func tempTFCacheKey(email, id string) string {
-	return strings.ToLower(strings.TrimSpace(email)) + "|" + strings.TrimSpace(id)
-}
-
 func (p *tempTFProvider) ListMessages(ctx context.Context, req ListMessagesRequest) (*MessageListResult, error) {
 	var out struct {
 		Data []struct {
@@ -157,13 +150,41 @@ func (p *tempTFProvider) ListMessages(ctx context.Context, req ListMessagesReque
 		if summary.ProviderMessageID == "" {
 			summary.ProviderMessageID = hashString(summary.FromAddress + summary.Subject + item.Date + item.Body)
 		}
+		result.Messages = append(result.Messages, summary)
+	}
+	return result, nil
+}
+
+func (p *tempTFProvider) GetMessage(ctx context.Context, req GetMessageRequest) (*ProviderEmailMessage, error) {
+	var out struct {
+		Data []struct {
+			ID              string         `json:"id"`
+			Subject         string         `json:"subject"`
+			From            string         `json:"from"`
+			Date            string         `json:"date"`
+			Body            string         `json:"body"`
+			BodyContentType string         `json:"bodyContentType"`
+			Attachments     []map[string]any `json:"attachments"`
+		} `json:"data"`
+	}
+	if err := p.request(ctx, http.MethodPost, "/check", nil, map[string]string{"email": req.EmailAddress}, &out); err != nil {
+		return nil, err
+	}
+	for _, item := range out.Data {
+		id := strings.TrimSpace(item.ID)
+		if id == "" {
+			id = hashString(strings.TrimSpace(item.From) + strings.TrimSpace(item.Subject) + item.Date + item.Body)
+		}
+		if id != strings.TrimSpace(req.ProviderMessageID) {
+			continue
+		}
 		raw, _ := json.Marshal(item)
-		msg := ProviderEmailMessage{
-			ProviderMessageID: summary.ProviderMessageID,
-			FromAddress:       summary.FromAddress,
-			ToAddress:         summary.ToAddress,
-			Subject:           summary.Subject,
-			ReceivedAt:        received,
+		msg := &ProviderEmailMessage{
+			ProviderMessageID: id,
+			FromAddress:       strings.TrimSpace(item.From),
+			ToAddress:         strings.TrimSpace(req.EmailAddress),
+			Subject:           strings.TrimSpace(item.Subject),
+			ReceivedAt:        parseProviderTime(item.Date),
 			RawPayload:        raw,
 		}
 		if strings.EqualFold(item.BodyContentType, "html") {
@@ -172,32 +193,7 @@ func (p *tempTFProvider) ListMessages(ctx context.Context, req ListMessagesReque
 		} else {
 			msg.TextBody = item.Body
 		}
-		tempTFMessageCache.Store(tempTFCacheKey(req.EmailAddress, summary.ProviderMessageID), msg)
-		result.Messages = append(result.Messages, summary)
-	}
-	return result, nil
-}
-
-func (p *tempTFProvider) GetMessage(ctx context.Context, req GetMessageRequest) (*ProviderEmailMessage, error) {
-	if cached, ok := tempTFMessageCache.Load(tempTFCacheKey(req.EmailAddress, req.ProviderMessageID)); ok {
-		if msg, ok := cached.(ProviderEmailMessage); ok {
-			copy := msg
-			return &copy, nil
-		}
-	}
-	list, err := p.ListMessages(ctx, ListMessagesRequest{ProviderInboxID: req.ProviderInboxID, EmailAddress: req.EmailAddress})
-	if err != nil {
-		return nil, err
-	}
-	for _, item := range list.Messages {
-		if item.ProviderMessageID == req.ProviderMessageID {
-			if cached, ok := tempTFMessageCache.Load(tempTFCacheKey(req.EmailAddress, req.ProviderMessageID)); ok {
-				if msg, ok := cached.(ProviderEmailMessage); ok {
-					copy := msg
-					return &copy, nil
-				}
-			}
-		}
+		return msg, nil
 	}
 	return nil, errors.New("email message not found")
 }
