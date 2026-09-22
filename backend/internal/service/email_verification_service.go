@@ -2219,7 +2219,7 @@ func (s *EmailVerificationService) AdminProviders(ctx context.Context) ([]map[st
 				portalURL = parsed.String()
 			}
 		}
-		out = append(out, map[string]any{"id": id, "code": code, "name": name, "base_url": base, "enabled": enabled, "health_status": health, "credential_configured": emailProviderAPIKey(code, cred, s.encryptor) != "", "masked_hint": maskCredential(emailProviderAPIKey(code, cred, s.encryptor)), "billing": json.RawMessage(billing), "portal_url": portalURL, "today_requests": today, "month_requests": month})
+		out = append(out, map[string]any{"id": id, "code": code, "name": name, "base_url": base, "enabled": enabled, "health_status": health, "requires_credential": emailProviderRequiresCredential(code), "credential_configured": !emailProviderRequiresCredential(code) || emailProviderAPIKey(code, cred, s.encryptor) != "", "masked_hint": maskCredential(emailProviderAPIKey(code, cred, s.encryptor)), "billing": json.RawMessage(billing), "portal_url": portalURL, "today_requests": today, "month_requests": month})
 	}
 	return out, rows.Err()
 }
