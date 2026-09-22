@@ -532,11 +532,11 @@ func (s *VerificationRecordService) Analytics(ctx context.Context, options Verif
 	query := verificationRecordsCTE + `, filtered AS (SELECT * FROM records` + where + `)
 	SELECT dimension, key, total, success, CASE WHEN total = 0 THEN 0 ELSE success::float8 / total::float8 END AS success_rate
 	FROM (
-		SELECT 'platform'::text AS dimension, service_code AS key, COUNT(*) FILTER (WHERE outcome <> 'processing')::bigint AS total, COUNT(*) FILTER (WHERE outcome='success')::bigint AS success FROM filtered GROUP BY service_code
+		SELECT 'platform'::text AS dimension, service_code AS key, COUNT(*) FILTER (WHERE outcome NOT IN ('processing','free'))::bigint AS total, COUNT(*) FILTER (WHERE outcome='success')::bigint AS success FROM filtered GROUP BY service_code
 		UNION ALL
-		SELECT 'country'::text, region, COUNT(*) FILTER (WHERE outcome <> 'processing')::bigint, COUNT(*) FILTER (WHERE outcome='success')::bigint FROM filtered WHERE verification_type='sms' AND region <> '' GROUP BY region
+		SELECT 'country'::text, region, COUNT(*) FILTER (WHERE outcome NOT IN ('processing','free'))::bigint, COUNT(*) FILTER (WHERE outcome='success')::bigint FROM filtered WHERE verification_type='sms' AND region <> '' GROUP BY region
 		UNION ALL
-		SELECT 'type'::text, verification_type, COUNT(*) FILTER (WHERE outcome <> 'processing')::bigint, COUNT(*) FILTER (WHERE outcome='success')::bigint FROM filtered GROUP BY verification_type
+		SELECT 'type'::text, verification_type, COUNT(*) FILTER (WHERE outcome NOT IN ('processing','free'))::bigint, COUNT(*) FILTER (WHERE outcome='success')::bigint FROM filtered GROUP BY verification_type
 	) breakdown ORDER BY dimension, total DESC, key`
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
