@@ -760,9 +760,6 @@ func TestSMSPVAUndeliveredLegacyCaptureIsReturnedExactlyOnce(t *testing.T) {
 	mock.ExpectQuery(`SELECT o.settlement_status,o.first_sms_received_at,\(SELECT COUNT\(\\*\) FROM sms_messages m WHERE m.order_id=o.id\) FROM sms_orders o WHERE o.id=\$1`).
 		WithArgs(int64(61)).
 		WillReturnRows(sqlmock.NewRows([]string{"settlement_status", "first_sms_received_at", "count"}).AddRow("captured", nil, 0))
-	mock.ExpectExec(`UPDATE sms_orders SET provider_refund_status=\$1`).
-		WithArgs("not_required", "SMSPVA order ended before SMS delivery; upstream had no delivered-message charge to refund", int64(61)).
-		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectBegin()
 	mock.ExpectQuery(`UPDATE sms_orders SET status=\$1,refund_status=\$2.*settlement_status='captured'.*RETURNING reserved_amount`).
 		WithArgs("cancelled", "approved", "SMSPVA cancellation confirmed before SMS delivery; reserved balance released", "refunded", int64(61)).
@@ -771,6 +768,9 @@ func TestSMSPVAUndeliveredLegacyCaptureIsReturnedExactlyOnce(t *testing.T) {
 		WithArgs(5.10, int64(9)).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
+	mock.ExpectExec(`UPDATE sms_orders SET provider_refund_status=\$1`).
+		WithArgs("not_required", "SMSPVA order ended before SMS delivery; upstream had no delivered-message charge to refund", int64(61)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
 
 	svc := &SMSService{db: db}
 	handled, err := svc.settleSMSPVANoDelivery(context.Background(), 61, 9, "cancelled", "SMSPVA cancellation confirmed before SMS delivery; reserved balance released")
@@ -792,9 +792,6 @@ func TestSMSPVAUndeliveredHeldSettlementIsReleasedExactlyOnce(t *testing.T) {
 	mock.ExpectQuery(`SELECT o.settlement_status,o.first_sms_received_at,\(SELECT COUNT\(\\*\) FROM sms_messages m WHERE m.order_id=o.id\) FROM sms_orders o WHERE o.id=\$1`).
 		WithArgs(int64(62)).
 		WillReturnRows(sqlmock.NewRows([]string{"settlement_status", "first_sms_received_at", "count"}).AddRow("held", nil, 0))
-	mock.ExpectExec(`UPDATE sms_orders SET provider_refund_status=\$1`).
-		WithArgs("not_required", "SMSPVA order ended before SMS delivery; upstream had no delivered-message charge to refund", int64(62)).
-		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectBegin()
 	mock.ExpectQuery(`UPDATE sms_orders SET status=\$1,refund_status=\$2.*settlement_status='held'.*RETURNING reserved_amount`).
 		WithArgs("cancelled", "not_requested", "SMSPVA cancellation confirmed before SMS delivery; reserved balance released", "released", int64(62)).
@@ -803,6 +800,9 @@ func TestSMSPVAUndeliveredHeldSettlementIsReleasedExactlyOnce(t *testing.T) {
 		WithArgs(4.25, int64(10)).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
+	mock.ExpectExec(`UPDATE sms_orders SET provider_refund_status=\$1`).
+		WithArgs("not_required", "SMSPVA order ended before SMS delivery; upstream had no delivered-message charge to refund", int64(62)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
 
 	svc := &SMSService{db: db}
 	handled, err := svc.settleSMSPVANoDelivery(context.Background(), 62, 10, "cancelled", "SMSPVA cancellation confirmed before SMS delivery; reserved balance released")
