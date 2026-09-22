@@ -251,4 +251,24 @@ describe('VerificationRecordsView', () => {
     expect(wrapper.text()).not.toContain('verificationRecords.outcomes.refunded')
   })
 
+
+  it('uses success-only analytics copy for users and financial copy for admins', async () => {
+    const userWrapper = mountView()
+    await flushPromises()
+
+    expect(userWrapper.text()).toContain('verificationRecords.analytics.userTitle')
+    expect(userWrapper.text()).toContain('verificationRecords.analytics.userDescription')
+    expect(userWrapper.text()).not.toContain('verificationRecords.analytics.adminTitle')
+    expect(userWrapper.text()).not.toContain('verificationRecords.analytics.adminDescription')
+    userWrapper.unmount()
+
+    route.meta.requiresAdmin = true
+    const adminWrapper = mountView()
+    await flushPromises()
+
+    expect(adminWrapper.text()).toContain('verificationRecords.analytics.adminTitle')
+    expect(adminWrapper.text()).toContain('verificationRecords.analytics.adminDescription')
+    adminWrapper.unmount()
+  })
+
 })
