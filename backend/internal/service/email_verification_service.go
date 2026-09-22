@@ -470,7 +470,7 @@ func emailProviderFor(code, baseURL, credentialRef string, metadata map[string]a
 	switch code {
 	case "temp_tf":
 		if baseURL == "" {
-			baseURL = "https://temp.tf"
+			baseURL = "https://temp.tf/api"
 		}
 		return &tempTFProvider{code: code, baseURL: baseURL, client: &http.Client{Timeout: 15 * time.Second}, limiter: limiter}
 	case "sonjj":
