@@ -228,7 +228,7 @@
                   <div class="text-xs text-gray-500">{{ t('sms.user.phone') }}</div>
                   <div class="mt-1 flex items-center gap-2">
                     <span class="font-mono text-base font-semibold text-gray-900 dark:text-white">{{ order.phone_number || '-' }}</span>
-                    <button v-if="order.phone_number" type="button" class="btn btn-secondary btn-sm" @click="copyText(order.phone_number)">{{ t('common.copy') }}</button>
+                    <SMSPhoneCopy v-if="order.phone_number" :phone="order.phone_number" :calling-code="order.calling_code" />
                   </div>
                 </div>
                 <div>
@@ -349,7 +349,7 @@
                 <td class="whitespace-nowrap px-4 py-3">
                   <div class="flex items-center gap-2">
                     <span class="font-mono">{{ order.phone_number || '-' }}</span>
-                    <button v-if="order.phone_number" type="button" class="btn btn-secondary btn-sm shrink-0" @click="copyText(order.phone_number)">{{ t('common.copy') }}</button>
+                    <SMSPhoneCopy v-if="order.phone_number" :phone="order.phone_number" :calling-code="order.calling_code" class="shrink-0" />
                   </div>
                 </td>
                 <td class="whitespace-nowrap px-4 py-3">
@@ -453,6 +453,7 @@ import Select from '@/components/common/Select.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import SMSServiceLogo from '@/components/sms/SMSServiceLogo.vue'
+import SMSPhoneCopy from '@/components/sms/SMSPhoneCopy.vue'
 import { smsAPI, type SMSCountryItem, type SMSOperatorItem, type SMSOrder, type SMSOrderPage, type SMSProviderItem, type SMSQuote, type SMSRecentSuccessItem, type SMSRentalServiceOption, type SMSServiceItem } from '@/api/sms'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { useAppStore, useAuthStore } from '@/stores'
