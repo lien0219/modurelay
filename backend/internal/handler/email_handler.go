@@ -316,12 +316,30 @@ func (h *EmailHandler) AdminSettings(c *gin.Context) {
 }
 
 func (h *EmailHandler) AdminToggle(c *gin.Context) {
-	var req service.EmailAdminSettings
+	var req struct {
+		Enabled                   *bool `json:"enabled"`
+		FreeDailyLimit            *int  `json:"free_daily_limit"`
+		FreeActiveLimit           *int  `json:"free_active_limit"`
+		FreeGenerationIntervalSec *int  `json:"free_generation_interval_seconds"`
+	}
 	if e := c.ShouldBindJSON(&req); e != nil {
 		response.BadRequest(c, "invalid email settings request")
 		return
 	}
-	if e := h.svc.UpdateAdminSettings(c.Request.Context(), req); e != nil {
+	current := h.svc.AdminSettings(c.Request.Context())
+	if req.Enabled != nil {
+		current.Enabled = *req.Enabled
+	}
+	if req.FreeDailyLimit != nil {
+		current.FreeDailyLimit = *req.FreeDailyLimit
+	}
+	if req.FreeActiveLimit != nil {
+		current.FreeActiveLimit = *req.FreeActiveLimit
+	}
+	if req.FreeGenerationIntervalSec != nil {
+		current.FreeGenerationIntervalSec = *req.FreeGenerationIntervalSec
+	}
+	if e := h.svc.UpdateAdminSettings(c.Request.Context(), current); e != nil {
 		response.ErrorFrom(c, e)
 		return
 	}
