@@ -78,7 +78,7 @@ func TestSMSPVAWebhookIsFailClosedBeforeDatabaseLookup(t *testing.T) {
 func TestSMSPVAAdvancedRentalCapabilitiesAreSafelyGated(t *testing.T) {
 	p := providerFor("smspva", "https://example.invalid", "test-key")
 	cap := p.Capabilities(context.Background())
-	if !cap.Rental || !cap.Extend || !cap.RentalConstraints || cap.RentalRestore {
+	if !cap.Rental || cap.Extend || !cap.RentalConstraints || cap.RentalRestore {
 		t.Fatalf("SMSPVA safe rental capabilities = %#v", cap)
 	}
 	if cap.RentalMultiService || cap.RentalAddService {
