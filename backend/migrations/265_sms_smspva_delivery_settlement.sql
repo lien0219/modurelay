@@ -59,6 +59,7 @@ WITH returned_terminal AS (
       AND o.status IN ('cancelled','expired')
       AND o.settlement_status = 'captured'
       AND o.refund_status = 'pending'
+      AND o.refund_reason ILIKE '%cancellation accepted%'
       AND o.first_sms_received_at IS NULL
       AND NOT EXISTS (SELECT 1 FROM sms_messages m WHERE m.order_id = o.id)
     RETURNING o.user_id, o.reserved_amount
