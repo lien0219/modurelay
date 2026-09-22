@@ -106,7 +106,7 @@
                   <strong class="mt-1 block font-mono text-base text-gray-900 dark:text-white">{{ isTerminal(currentOrder) ? t('email.user.windowEnded') : remainingTime }}</strong>
                 </div>
                 <div>
-                  <div class="text-xs text-gray-500">{{ t('email.user.code') }}</div>
+                  <div class="text-xs text-gray-500">{{ t('email.user.latestCode') }}</div>
                   <div v-if="latestVerificationCode" class="mt-1 flex items-center gap-2">
                     <code class="font-mono text-xl font-semibold text-gray-900 dark:text-white">{{ latestVerificationCode }}</code>
                     <CopyButton :text="latestVerificationCode" />
@@ -121,27 +121,39 @@
             </div>
           </div>
 
-          <div v-if="currentOrder.messages?.length" class="mt-5 space-y-3 border-t border-gray-100 pt-4 dark:border-dark-700">
-            <div v-for="message in currentOrder.messages" :key="message.id" class="rounded-xl bg-gray-50 p-4 dark:bg-dark-800">
-              <div class="flex flex-wrap justify-between gap-2 text-sm">
-                <span class="font-medium text-gray-900 dark:text-white">{{ message.from_name || message.from_address }}</span>
-                <time class="text-xs text-gray-500">{{ new Date(message.received_at).toLocaleString() }}</time>
+          <div class="mt-5 border-t border-gray-100 pt-4 dark:border-dark-700">
+            <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div class="flex items-center gap-2">
+                <h3 class="font-semibold text-gray-900 dark:text-white">{{ t('email.user.inbox') }}</h3>
+                <span class="badge badge-gray">{{ t('email.user.messageCount', { count: currentOrder.messages?.length || 0 }) }}</span>
               </div>
-              <p class="mt-1 text-sm text-gray-700 dark:text-gray-200">{{ message.subject }}</p>
-              <div v-if="message.verification_code" class="mt-3 flex flex-wrap items-center gap-2">
-                <span class="text-xs text-gray-500">{{ t('email.user.code') }}</span>
-                <code class="rounded bg-white px-2 py-1 font-mono text-lg font-semibold text-gray-900 dark:bg-dark-700 dark:text-white">{{ message.verification_code }}</code>
-                <CopyButton :text="message.verification_code" />
+              <span v-if="!isTerminal(currentOrder)" class="text-xs text-gray-500">{{ t('email.user.inboxReceiving') }}</span>
+            </div>
+            <div v-if="!currentOrder.messages?.length" class="rounded-xl bg-gray-50 p-6 text-center text-sm text-gray-500 dark:bg-dark-800">
+              {{ t('email.user.inboxEmpty') }}
+            </div>
+            <div v-else class="space-y-3">
+              <div v-for="message in currentOrder.messages" :key="message.id" class="rounded-xl bg-gray-50 p-4 dark:bg-dark-800">
+                <div class="flex flex-wrap justify-between gap-2 text-sm">
+                  <span class="font-medium text-gray-900 dark:text-white">{{ message.from_name || message.from_address }}</span>
+                  <time class="text-xs text-gray-500">{{ new Date(message.received_at).toLocaleString() }}</time>
+                </div>
+                <p class="mt-1 text-sm text-gray-700 dark:text-gray-200">{{ message.subject }}</p>
+                <div v-if="message.verification_code" class="mt-3 flex flex-wrap items-center gap-2">
+                  <span class="text-xs text-gray-500">{{ t('email.user.code') }}</span>
+                  <code class="rounded bg-white px-2 py-1 font-mono text-lg font-semibold text-gray-900 dark:bg-dark-700 dark:text-white">{{ message.verification_code }}</code>
+                  <CopyButton :text="message.verification_code" />
+                </div>
+                <div v-if="message.verification_url" class="mt-2 flex flex-wrap items-center gap-2">
+                  <span class="min-w-0 flex-1 truncate text-xs text-gray-500">{{ message.verification_url }}</span>
+                  <CopyButton :text="message.verification_url" />
+                  <button type="button" class="btn btn-secondary btn-sm" @click="openVerificationURL(message.verification_url)">{{ t('email.user.safeOpen') }}</button>
+                </div>
+                <details class="mt-3">
+                  <summary class="cursor-pointer text-sm font-medium text-primary-600 dark:text-primary-300">{{ t('email.user.viewMessage') }}</summary>
+                  <pre class="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-gray-700 dark:text-gray-200">{{ message.text_body }}</pre>
+                </details>
               </div>
-              <div v-if="message.verification_url" class="mt-2 flex flex-wrap items-center gap-2">
-                <span class="min-w-0 flex-1 truncate text-xs text-gray-500">{{ message.verification_url }}</span>
-                <CopyButton :text="message.verification_url" />
-                <button type="button" class="btn btn-secondary btn-sm" @click="openVerificationURL(message.verification_url)">{{ t('email.user.safeOpen') }}</button>
-              </div>
-              <details class="mt-3">
-                <summary class="cursor-pointer text-sm font-medium text-primary-600 dark:text-primary-300">{{ t('email.user.viewMessage') }}</summary>
-                <pre class="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-gray-700 dark:text-gray-200">{{ message.text_body }}</pre>
-              </details>
             </div>
           </div>
         </section>

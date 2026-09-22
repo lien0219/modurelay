@@ -258,6 +258,34 @@ func TestRecordProviderUsageUsesNullOrderForAdminHealthCheck(t *testing.T) {
 	}
 }
 
+func TestCaptureEmailOrderKeepsInboxActive(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectBegin()
+	mock.ExpectExec(`UPDATE email_orders SET captured_amount=sale_price_snapshot,refund_status='not_applicable'.*status IN \('email_received','verification_extracted'\)`).
+		WithArgs(int64(31)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`UPDATE users SET frozen_balance`).
+		WithArgs(int64(31), int64(11)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+	mock.ExpectExec(`INSERT INTO email_order_events`).
+		WithArgs(int64(31), "balance_captured", "email_capture:31", sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	svc := &EmailVerificationService{db: db}
+	if err = svc.captureEmailOrder(context.Background(), 31, 11); err != nil {
+		t.Fatal(err)
+	}
+	if err = mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestExpireEmailOrderCapturesAfterTargetMessage(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
@@ -265,9 +293,9 @@ func TestExpireEmailOrderCapturesAfterTargetMessage(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 	messageAt := time.Now().Add(-time.Minute)
-	mock.ExpectQuery(`SELECT status,refund_policy_snapshot,sale_price_snapshot,first_message_at FROM email_orders`).WithArgs(int64(12)).WillReturnRows(sqlmock.NewRows([]string{"status", "refund_policy_snapshot", "sale_price_snapshot", "first_message_at"}).AddRow("email_received", EmailRefundIfNoMessage, 1.25, messageAt))
+	mock.ExpectQuery(`SELECT status,refund_policy_snapshot,sale_price_snapshot,first_message_at,captured_amount,refund_status FROM email_orders`).WithArgs(int64(12)).WillReturnRows(sqlmock.NewRows([]string{"status", "refund_policy_snapshot", "sale_price_snapshot", "first_message_at", "captured_amount", "refund_status"}).AddRow("email_received", EmailRefundIfNoMessage, 1.25, messageAt, 0.0, "not_requested"))
 	mock.ExpectBegin()
-	mock.ExpectExec(`UPDATE email_orders SET status='expired',refund_status='not_applicable',captured_amount=sale_price_snapshot`).WithArgs(int64(12)).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`UPDATE email_orders SET status='completed',completed_at=NOW\(\),refund_status='not_applicable',captured_amount=sale_price_snapshot`).WithArgs(int64(12)).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec(`UPDATE users SET frozen_balance`).WithArgs(1.25, int64(9)).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 	mock.ExpectExec(`INSERT INTO email_order_events`).WithArgs(int64(12), "balance_captured", "email_capture:12", sqlmock.AnyArg()).WillReturnResult(sqlmock.NewResult(1, 1))

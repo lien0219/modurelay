@@ -1404,10 +1404,10 @@ func (s *EmailVerificationService) GetOrder(ctx context.Context, userID int64, p
 // settled according to the order's snapshotted platform policy.
 func (s *EmailVerificationService) CancelOrder(ctx context.Context, userID int64, publicID string) error {
 	var id int64
-	var status, policy string
-	var price float64
+	var status, policy, refundStatus string
+	var price, capturedAmount float64
 	var first sql.NullTime
-	if err := s.db.QueryRowContext(ctx, `SELECT id,status,refund_policy_snapshot,sale_price_snapshot,first_message_at FROM email_orders WHERE user_id=$1 AND public_id=$2::uuid`, userID, strings.TrimSpace(publicID)).Scan(&id, &status, &policy, &price, &first); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT id,status,refund_policy_snapshot,sale_price_snapshot,first_message_at,captured_amount,refund_status FROM email_orders WHERE user_id=$1 AND public_id=$2::uuid`, userID, strings.TrimSpace(publicID)).Scan(&id, &status, &policy, &price, &first, &capturedAmount, &refundStatus); err != nil {
 		return ErrEmailNotFound
 	}
 	if status == "completed" || status == "refunded" || status == "expired" || status == "cancelled" || status == "failed" {
@@ -1418,7 +1418,8 @@ func (s *EmailVerificationService) CancelOrder(ctx context.Context, userID int64
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	var balanceBack bool
+
+	var balanceBack, captureNow bool
 	var query string
 	if status == "reserved" || status == "generating_inbox" || status == "reconciling" {
 		query = `UPDATE email_orders SET status='cancelled',cancelled_at=NOW(),refund_status='released',released_amount=sale_price_snapshot,updated_at=NOW() WHERE id=$1 AND user_id=$2 AND status IN ('reserved','generating_inbox','reconciling') AND released_amount=0`
@@ -1426,8 +1427,13 @@ func (s *EmailVerificationService) CancelOrder(ctx context.Context, userID int64
 	} else if policy == EmailRefundIfNoMessage && !first.Valid {
 		query = `UPDATE email_orders SET status='cancelled',cancelled_at=NOW(),refund_status='approved',refund_reason='cancelled before target email',refunded_amount=sale_price_snapshot,updated_at=NOW() WHERE id=$1 AND user_id=$2 AND status IN ('waiting_email','email_received','verification_extracted') AND first_message_at IS NULL AND refunded_amount=0 AND captured_amount=0`
 		balanceBack = true
+	} else if capturedAmount > 0 || refundStatus == "not_applicable" {
+		// The first target message may already have settled the hold. Stopping
+		// the inbox must not debit the user a second time.
+		query = `UPDATE email_orders SET status='cancelled',cancelled_at=NOW(),refund_status='not_applicable',updated_at=NOW() WHERE id=$1 AND user_id=$2 AND status IN ('waiting_email','email_received','verification_extracted')`
 	} else {
 		query = `UPDATE email_orders SET status='cancelled',cancelled_at=NOW(),refund_status='not_applicable',captured_amount=sale_price_snapshot,updated_at=NOW() WHERE id=$1 AND user_id=$2 AND status IN ('waiting_email','email_received','verification_extracted') AND captured_amount=0`
+		captureNow = true
 	}
 	res, err := tx.ExecContext(ctx, query, id, userID)
 	if err != nil {
@@ -1440,7 +1446,7 @@ func (s *EmailVerificationService) CancelOrder(ctx context.Context, userID int64
 		if _, err = tx.ExecContext(ctx, `UPDATE users SET balance=balance+$1,frozen_balance=GREATEST(0,COALESCE(frozen_balance,0)-$1),updated_at=NOW() WHERE id=$2`, price, userID); err != nil {
 			return err
 		}
-	} else {
+	} else if captureNow {
 		if _, err = tx.ExecContext(ctx, `UPDATE users SET frozen_balance=GREATEST(0,COALESCE(frozen_balance,0)-$1),updated_at=NOW() WHERE id=$2`, price, userID); err != nil {
 			return err
 		}
@@ -1448,7 +1454,7 @@ func (s *EmailVerificationService) CancelOrder(ctx context.Context, userID int64
 	if err = tx.Commit(); err != nil {
 		return err
 	}
-	s.recordOrderEvent(ctx, id, "cancel_requested", "email_cancel:"+strconv.FormatInt(id, 10), map[string]any{"refunded": balanceBack})
+	s.recordOrderEvent(ctx, id, "cancel_requested", "email_cancel:"+strconv.FormatInt(id, 10), map[string]any{"refunded": balanceBack, "captured_now": captureNow})
 	return nil
 }
 
@@ -1572,7 +1578,12 @@ func (s *EmailVerificationService) captureEmailOrder(ctx context.Context, orderI
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	res, err := tx.ExecContext(ctx, `UPDATE email_orders SET status='completed',completed_at=NOW(),captured_amount=sale_price_snapshot,updated_at=NOW() WHERE id=$1 AND status IN ('email_received','verification_extracted') AND captured_amount=0`, orderID)
+
+	// Billing settlement and inbox lifetime are separate concerns. Capturing
+	// the reserved amount must not mark the order completed, otherwise polling
+	// would stop after the first message. refund_status is also an idempotency
+	// marker for free inboxes whose captured_amount remains zero.
+	res, err := tx.ExecContext(ctx, `UPDATE email_orders SET captured_amount=sale_price_snapshot,refund_status='not_applicable',updated_at=NOW() WHERE id=$1 AND status IN ('email_received','verification_extracted') AND captured_amount=0 AND refund_status<>'not_applicable'`, orderID)
 	if err != nil {
 		return err
 	}
@@ -1629,7 +1640,9 @@ func (s *EmailVerificationService) PollOrder(ctx context.Context, orderID int64)
 		return nil
 	}
 	if status == "verification_extracted" || (status == "email_received" && capturePolicy != EmailCaptureOnExtracted) {
-		return s.captureEmailOrder(ctx, orderID, userID)
+		if err := s.captureEmailOrder(ctx, orderID, userID); err != nil {
+			return err
+		}
 	}
 	if expires.Valid && time.Now().After(expires.Time) {
 		return s.expireOrderV2(ctx, orderID, userID)
@@ -1856,13 +1869,13 @@ func (s *EmailVerificationService) expireOrder(ctx context.Context, id, userID i
 // so upgrades remain source-compatible while all new polling uses the
 // idempotent transaction below.
 func (s *EmailVerificationService) expireOrderV2(ctx context.Context, id, userID int64) error {
-	var status, policy string
-	var price float64
+	var status, policy, refundStatus string
+	var price, capturedAmount float64
 	var firstMessage sql.NullTime
-	if err := s.db.QueryRowContext(ctx, `SELECT status,refund_policy_snapshot,sale_price_snapshot,first_message_at FROM email_orders WHERE id=$1`, id).Scan(&status, &policy, &price, &firstMessage); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT status,refund_policy_snapshot,sale_price_snapshot,first_message_at,captured_amount,refund_status FROM email_orders WHERE id=$1`, id).Scan(&status, &policy, &price, &firstMessage, &capturedAmount, &refundStatus); err != nil {
 		return err
 	}
-	if status == "completed" || status == "refunded" || status == "expired" {
+	if status == "completed" || status == "refunded" || status == "expired" || status == "cancelled" || status == "failed" {
 		return nil
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -1887,22 +1900,35 @@ func (s *EmailVerificationService) expireOrderV2(ctx context.Context, id, userID
 			eventPayload = map[string]any{"amount": price, "reason": "no_target_message"}
 		}
 	case policy == EmailNoRefundAfterDelivery || (policy == EmailRefundIfNoMessage && firstMessage.Valid):
-		res, execErr := tx.ExecContext(ctx, `UPDATE email_orders SET status='expired',refund_status='not_applicable',captured_amount=sale_price_snapshot,updated_at=NOW() WHERE id=$1 AND status IN ('waiting_email','email_received','verification_extracted') AND captured_amount=0`, id)
-		if execErr != nil {
-			_ = tx.Rollback()
-			return execErr
-		}
-		if n, _ := res.RowsAffected(); n == 1 {
-			if _, err = tx.ExecContext(ctx, `UPDATE users SET frozen_balance=GREATEST(0,COALESCE(frozen_balance,0)-$1),updated_at=NOW() WHERE id=$2`, price, userID); err != nil {
+		needsCapture := capturedAmount == 0 && refundStatus != "not_applicable"
+		if needsCapture {
+			res, execErr := tx.ExecContext(ctx, `UPDATE email_orders SET status='completed',completed_at=NOW(),refund_status='not_applicable',captured_amount=sale_price_snapshot,updated_at=NOW() WHERE id=$1 AND status IN ('waiting_email','email_received','verification_extracted') AND captured_amount=0`, id)
+			if execErr != nil {
 				_ = tx.Rollback()
-				return err
+				return execErr
 			}
-			eventType, eventKey = "balance_captured", "email_capture:"+strconv.FormatInt(id, 10)
-			reason := "delivery_policy"
-			if firstMessage.Valid {
-				reason = "target_email_received"
+			if n, _ := res.RowsAffected(); n == 1 {
+				if _, err = tx.ExecContext(ctx, `UPDATE users SET frozen_balance=GREATEST(0,COALESCE(frozen_balance,0)-$1),updated_at=NOW() WHERE id=$2`, price, userID); err != nil {
+					_ = tx.Rollback()
+					return err
+				}
+				eventType, eventKey = "balance_captured", "email_capture:"+strconv.FormatInt(id, 10)
+				reason := "delivery_policy"
+				if firstMessage.Valid {
+					reason = "target_email_received"
+				}
+				eventPayload = map[string]any{"amount": price, "reason": reason, "receive_window_closed": true}
 			}
-			eventPayload = map[string]any{"amount": price, "reason": reason}
+		} else {
+			res, execErr := tx.ExecContext(ctx, `UPDATE email_orders SET status='completed',completed_at=NOW(),refund_status='not_applicable',updated_at=NOW() WHERE id=$1 AND status IN ('waiting_email','email_received','verification_extracted')`, id)
+			if execErr != nil {
+				_ = tx.Rollback()
+				return execErr
+			}
+			if n, _ := res.RowsAffected(); n == 1 {
+				eventType, eventKey = "inbox_completed", "email_inbox_completed:"+strconv.FormatInt(id, 10)
+				eventPayload = map[string]any{"receive_window_closed": true}
+			}
 		}
 	default:
 		// Manual review keeps the hold explicit for an operator; it is not
