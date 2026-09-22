@@ -1,29 +1,23 @@
 <template>
-  <div v-if="phone" class="inline-flex items-center gap-1">
-    <button
-      type="button"
-      class="btn btn-secondary btn-sm whitespace-nowrap"
-      :title="t('sms.user.copyWithCallingCode')"
-      @click="copy(fullNumber, t('sms.user.copyWithCallingCodeSuccess'))"
-    >
-      {{ t('sms.user.copyWithCallingCodeShort') }}
-    </button>
-    <button
-      type="button"
-      class="btn btn-secondary btn-sm whitespace-nowrap"
-      :disabled="!canCopyLocal"
-      :title="canCopyLocal ? t('sms.user.copyWithoutCallingCode') : t('sms.user.copyWithoutCallingCodeUnavailable')"
-      @click="copy(localNumber, t('sms.user.copyWithoutCallingCodeSuccess'))"
-    >
-      {{ t('sms.user.copyWithoutCallingCodeShort') }}
-    </button>
+  <div v-if="phone" class="inline-flex items-center gap-0.5">
+    <CopyButton
+      :text="fullNumber"
+      :label="t('sms.user.copyWithCallingCode')"
+      :success-message="t('sms.user.copyWithCallingCodeSuccess')"
+    />
+    <CopyButton
+      v-if="canCopyLocal"
+      :text="localNumber"
+      :label="t('sms.user.copyWithoutCallingCode')"
+      :success-message="t('sms.user.copyWithoutCallingCodeSuccess')"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useAppStore } from '@/stores'
+import CopyButton from '@/components/common/CopyButton.vue'
 
 const props = defineProps<{
   phone?: string
@@ -31,7 +25,6 @@ const props = defineProps<{
 }>()
 
 const { t } = useI18n()
-const appStore = useAppStore()
 
 function digits(value?: string) {
   return String(value || '').replace(/\D/g, '')
@@ -59,14 +52,4 @@ const localNumber = computed(() => {
 })
 
 const canCopyLocal = computed(() => Boolean(localNumber.value))
-
-async function copy(value: string, successMessage: string) {
-  if (!value) return
-  try {
-    await navigator.clipboard.writeText(value)
-    appStore.showSuccess(successMessage)
-  } catch {
-    appStore.showError(t('sms.user.copyFailed'))
-  }
-}
 </script>

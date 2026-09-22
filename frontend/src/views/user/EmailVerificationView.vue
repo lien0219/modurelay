@@ -98,7 +98,7 @@
                   <div class="text-xs text-gray-500">{{ t('email.user.emailAddress') }}</div>
                   <div class="mt-1 flex min-w-0 items-center gap-2">
                     <strong class="min-w-0 break-all font-mono text-base text-gray-900 dark:text-white">{{ currentOrder.email_address || '...' }}</strong>
-                    <button v-if="currentOrder.email_address" type="button" class="btn btn-secondary btn-sm shrink-0" @click="copy(currentOrder.email_address)">{{ t('common.copy') }}</button>
+                    <CopyButton v-if="currentOrder.email_address" :text="currentOrder.email_address" class="shrink-0" />
                   </div>
                 </div>
                 <div>
@@ -109,7 +109,7 @@
                   <div class="text-xs text-gray-500">{{ t('email.user.code') }}</div>
                   <div v-if="latestVerificationCode" class="mt-1 flex items-center gap-2">
                     <code class="font-mono text-xl font-semibold text-gray-900 dark:text-white">{{ latestVerificationCode }}</code>
-                    <button type="button" class="btn btn-secondary btn-sm" @click="copy(latestVerificationCode)">{{ t('common.copy') }}</button>
+                    <CopyButton :text="latestVerificationCode" />
                   </div>
                   <div v-else class="mt-1 text-sm text-gray-500">{{ t('email.user.waiting') }}</div>
                 </div>
@@ -131,11 +131,11 @@
               <div v-if="message.verification_code" class="mt-3 flex flex-wrap items-center gap-2">
                 <span class="text-xs text-gray-500">{{ t('email.user.code') }}</span>
                 <code class="rounded bg-white px-2 py-1 font-mono text-lg font-semibold text-gray-900 dark:bg-dark-700 dark:text-white">{{ message.verification_code }}</code>
-                <button type="button" class="btn btn-secondary btn-sm" @click="copy(message.verification_code)">{{ t('common.copy') }}</button>
+                <CopyButton :text="message.verification_code" />
               </div>
               <div v-if="message.verification_url" class="mt-2 flex flex-wrap items-center gap-2">
                 <span class="min-w-0 flex-1 truncate text-xs text-gray-500">{{ message.verification_url }}</span>
-                <button type="button" class="btn btn-secondary btn-sm" @click="copy(message.verification_url)">{{ t('common.copy') }}</button>
+                <CopyButton :text="message.verification_url" />
                 <button type="button" class="btn btn-secondary btn-sm" @click="openVerificationURL(message.verification_url)">{{ t('email.user.safeOpen') }}</button>
               </div>
               <details class="mt-3">
@@ -182,7 +182,7 @@
                 <td class="px-4 py-3">
                   <div class="flex max-w-[360px] items-center gap-2">
                     <span class="truncate font-mono">{{ order.email_address || '-' }}</span>
-                    <button v-if="order.email_address" type="button" class="btn btn-secondary btn-sm" @click="copy(order.email_address)">{{ t('common.copy') }}</button>
+                    <CopyButton v-if="order.email_address" :text="order.email_address" class="shrink-0" />
                   </div>
                 </td>
                 <td class="px-4 py-3">{{ addressTypeLabel(order.address_type) }}</td>
@@ -223,6 +223,7 @@ import Pagination from '@/components/common/Pagination.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
+import CopyButton from '@/components/common/CopyButton.vue'
 import { emailAPI, type EmailOrder, type EmailOrderPage, type EmailQuote } from '@/api/email'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { useAppStore } from '@/stores'
@@ -489,15 +490,6 @@ function applyOrderFilters() { Object.assign(orderFilters, orderDraft); orderPag
 function resetOrderFilters() { Object.assign(orderDraft, { keyword: '', status: '' }); Object.assign(orderFilters, orderDraft); orderPagination.page = 1; void loadOrders() }
 function changeOrderPage(page: number) { orderPagination.page = page; void loadOrders() }
 function changeOrderPageSize(pageSize: number) { orderPagination.pageSize = pageSize; orderPagination.page = 1; void loadOrders() }
-
-async function copy(value: string) {
-  try {
-    await navigator.clipboard.writeText(value)
-    appStore.showSuccess(t('email.user.copied'))
-  } catch {
-    appStore.showError(t('common.copyFailed'))
-  }
-}
 
 function openVerificationURL(value?: string) {
   if (!value) return

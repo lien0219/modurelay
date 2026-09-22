@@ -239,7 +239,7 @@
                   <div class="text-xs text-gray-500">{{ t('sms.user.code') }}</div>
                   <div v-if="latestVerificationCode(order)" class="mt-1 flex items-center gap-2">
                     <code class="rounded bg-emerald-50 px-2 py-1 font-mono text-base font-bold text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">{{ latestVerificationCode(order) }}</code>
-                    <button type="button" class="btn btn-secondary btn-sm" @click="copyText(latestVerificationCode(order))">{{ t('common.copy') }}</button>
+                    <CopyButton :text="latestVerificationCode(order)" />
                   </div>
                   <div v-else class="mt-1 text-sm text-gray-400">{{ isOrderWaiting(order) ? t('sms.user.waitingForCode') : '-' }}</div>
                 </div>
@@ -329,7 +329,7 @@
                 <td class="whitespace-nowrap px-4 py-3">
                   <div class="flex items-center gap-2">
                     <span class="font-mono text-xs">{{ order.id }}</span>
-                    <button type="button" class="btn btn-secondary btn-sm shrink-0" :title="t('common.copy')" :aria-label="`${t('common.copy')} ${order.id}`" @click="copyText(order.id)"><Icon name="copy" size="xs" aria-hidden="true" /></button>
+                    <CopyButton :text="order.id" class="shrink-0" />
                   </div>
                 </td>
                 <td class="whitespace-nowrap px-4 py-3"><span class="block truncate" :title="order.channel_name || order.channel_code">{{ order.channel_name || order.channel_code }}</span></td>
@@ -363,7 +363,7 @@
                     <div v-for="message in order.messages" :key="message.id" class="min-w-0 max-w-[308px]">
                       <div v-if="message.verification_code" class="flex min-w-0 items-center gap-2">
                         <code class="block min-w-0 flex-1 truncate font-mono font-semibold" :title="message.verification_code">{{ message.verification_code }}</code>
-                        <button type="button" class="btn btn-secondary btn-sm shrink-0" @click="copyText(message.verification_code)">{{ t('common.copy') }}</button>
+                        <CopyButton :text="message.verification_code" class="shrink-0" />
                       </div>
                       <div class="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-gray-500 dark:text-gray-400">
                         <span v-if="message.sender" class="min-w-0 max-w-[14rem] truncate font-medium text-gray-700 dark:text-gray-300" :title="message.sender">{{ message.sender }}</span>
@@ -451,6 +451,7 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import Select from '@/components/common/Select.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
+import CopyButton from '@/components/common/CopyButton.vue'
 import Icon from '@/components/icons/Icon.vue'
 import SMSServiceLogo from '@/components/sms/SMSServiceLogo.vue'
 import SMSPhoneCopy from '@/components/sms/SMSPhoneCopy.vue'
@@ -1139,16 +1140,6 @@ function cancel(order: SMSOrder) {
       }
     },
   })
-}
-
-async function copyText(value?: string) {
-  if (!value) return
-  try {
-    await navigator.clipboard.writeText(value)
-    appStore.showSuccess(t('sms.user.copySuccess'))
-  } catch {
-    appStore.showError(t('sms.user.copyFailed'))
-  }
 }
 
 async function resend(id: string) {
