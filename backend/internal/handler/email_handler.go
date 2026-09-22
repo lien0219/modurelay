@@ -305,17 +305,19 @@ func (h *EmailHandler) AdminOrders(c *gin.Context) {
 	}
 	response.Success(c, items)
 }
+func (h *EmailHandler) AdminSettings(c *gin.Context) {
+	response.Success(c, h.svc.AdminSettings(c.Request.Context()))
+}
+
 func (h *EmailHandler) AdminToggle(c *gin.Context) {
-	var req struct {
-		Enabled bool `json:"enabled"`
-	}
+	var req service.EmailAdminSettings
 	if e := c.ShouldBindJSON(&req); e != nil {
-		response.BadRequest(c, "invalid feature flag request")
+		response.BadRequest(c, "invalid email settings request")
 		return
 	}
-	if e := h.svc.SetEnabled(c.Request.Context(), req.Enabled); e != nil {
+	if e := h.svc.UpdateAdminSettings(c.Request.Context(), req); e != nil {
 		response.ErrorFrom(c, e)
 		return
 	}
-	response.Success(c, gin.H{"enabled": req.Enabled})
+	response.Success(c, h.svc.AdminSettings(c.Request.Context()))
 }
