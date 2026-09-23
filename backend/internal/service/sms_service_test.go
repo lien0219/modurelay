@@ -2112,7 +2112,7 @@ func TestListPublicProvidersReturnsChannelAliasesNotSupplierIdentity(t *testing.
 	if len(items) != 2 {
 		t.Fatalf("providers=%#v", items)
 	}
-	if items[0].Code != "channel_1" || items[0].Name != "渠道1" || items[1].Code != "channel_2" || items[1].Name != "渠道2" {
+	if items[0].Code != "channel_1" || items[0].Name != "Channel 1" || items[1].Code != "channel_2" || items[1].Name != "Channel 2" {
 		t.Fatalf("public channel aliases=%#v", items)
 	}
 	for _, item := range items {

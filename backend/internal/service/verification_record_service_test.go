@@ -125,7 +125,7 @@ func TestVerificationRecordServiceAnalyticsUsesFiltersAndCurrencyGroups(t *testi
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 
-	mock.ExpectQuery(`(?s)WITH .*records AS \(.*filtered AS \(SELECT \* FROM records WHERE service_code = \$1 AND region = \$2\).*SELECT dimension`).
+	mock.ExpectQuery(`(?s)WITH .*records AS \(.*filtered AS \(SELECT \* FROM records WHERE service_code = \$1 AND region = \$2\).*SELECT dimension.*COUNT\(\*\) FILTER \(WHERE outcome NOT IN \('processing','free'\)\)`).
 		WithArgs("google", "US").
 		WillReturnRows(sqlmock.NewRows([]string{"dimension", "key", "total", "success", "success_rate"}).
 			AddRow("platform", "google", 10, 8, 0.8).
@@ -190,12 +190,10 @@ func TestVerificationRecordCTEIncludesRentalAddOnLedger(t *testing.T) {
 	require.Contains(t, verificationRecordsCTE, "GREATEST(o.reserved_amount-o.captured_amount-o.released_amount-o.refunded_amount,0)")
 }
 
-
 func TestVerificationRecordCTEClassifiesZeroCostEmailTerminalOrdersAsFree(t *testing.T) {
 	require.Contains(t, verificationRecordsCTE, "WHEN o.sale_price_snapshot = 0 AND o.status IN ('cancelled','expired','refunded') THEN 'free'")
 	require.Contains(t, verificationRecordsCTE, "CASE WHEN o.sale_price_snapshot = 0 THEN 'not_applicable' ELSE o.refund_status END AS refund_status")
 	require.Contains(t, verificationRecordsCTE, "CASE WHEN o.sale_price_snapshot = 0 THEN 0::float8 ELSE o.refunded_amount::float8 END")
-	require.Contains(t, verificationRecordsCTE, "COUNT(*) FILTER (WHERE outcome NOT IN ('processing','free'))::bigint")
 }
 
 func TestVerificationRecordServiceAcceptsFreeOutcomeFilter(t *testing.T) {

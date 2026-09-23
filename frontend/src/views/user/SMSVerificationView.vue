@@ -376,7 +376,12 @@
                 <Icon v-if="!quoting && !purchasing" name="chevronRight" size="sm" aria-hidden="true" />
               </button>
 
-              <p class="sms-refund-note">{{ t('sms.user.refundGuarantee') }}</p>
+              <p v-if="productType === 'temporary' && bestQuote?.capabilities?.supports_cancel && bestQuote?.capabilities?.supports_refund" class="sms-refund-note">
+                {{ t('sms.user.capabilities.cancelRefund') }}
+              </p>
+              <p v-else-if="productType === 'temporary' && currentProvider?.capabilities.supports_refund" class="sms-refund-note">
+                {{ t('sms.user.refundGuarantee') }}
+              </p>
 
               <div class="sms-delivery-tip">
                 <Icon name="infoCircle" size="sm" aria-hidden="true" />

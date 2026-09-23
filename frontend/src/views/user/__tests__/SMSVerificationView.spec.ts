@@ -41,12 +41,17 @@ vi.mock('vue-i18n', async (importOriginal) => {
     'sms.user.statuses.confirmingPurchase': '正在确认下单',
     'sms.user.statuses.unknown': '未知状态',
     'sms.user.capabilities.cancelRefund': '未收到验证码之前允许取消订单并自动退款',
+    'sms.user.providerDeliveryRateValue': 'Provider rate {rate}',
+    'sms.user.platform30dRateValue': 'Platform 30d {rate}% · sample {count}',
   }
   return {
     ...actual,
     useI18n: () => ({
       locale: { value: 'zh-CN' },
-      t: (key: string) => messages[key] || key,
+      t: (key: string, params?: Record<string, unknown>) => Object.entries(params || {}).reduce(
+        (value, [name, replacement]) => value.replace(`{${name}}`, String(replacement)),
+        messages[key] || key,
+      ),
     }),
   }
 })
@@ -166,10 +171,10 @@ describe('SMSVerificationView', () => {
     })
     await flushPromises()
 
-    const logos = wrapper.findAll('[data-test="sms-service-logo"]')
-    expect(logos).toHaveLength(2)
-    expect(logos[0].attributes('data-icon')).toBe(icon)
-    expect(logos[1].attributes('data-icon')).toBe(icon)
+    const serviceListLogo = wrapper.get('.sms-option-card [data-test="sms-service-logo"]')
+    const selectedPreviewLogo = wrapper.get('.sms-selection-summary [data-test="sms-service-logo"]')
+    expect(serviceListLogo.attributes('data-icon')).toBe(icon)
+    expect(selectedPreviewLogo.attributes('data-icon')).toBe(icon)
     wrapper.unmount()
   })
 
