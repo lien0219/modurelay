@@ -67,7 +67,6 @@ func enforceEmailRefundSafety(policy string, salePrice float64) string {
 	return policy
 }
 
-
 type EmailProviderCapabilities struct {
 	TemporaryInbox   bool `json:"supports_temporary_inbox"`
 	GenerateSingle   bool `json:"supports_generate_single"`

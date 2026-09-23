@@ -339,7 +339,7 @@ func TestEmailRefundRechecksNoMessageConditionInsideTransaction(t *testing.T) {
 	mock.ExpectQuery(`SELECT id,status,refund_policy_snapshot,sale_price_snapshot,first_message_at FROM email_orders`).
 		WithArgs(int64(7), "order-id").
 		WillReturnRows(sqlmock.NewRows([]string{"id", "status", "refund_policy_snapshot", "sale_price_snapshot", "first_message_at"}).
-			AddRow(int64(14), "waiting_email", EmailRefundIfNoMessage, 0.5, nil))
+			AddRow(int64(14), "waiting_email", EmailRefundIfNoMessage, 0, nil))
 	mock.ExpectBegin()
 	mock.ExpectExec(`UPDATE email_orders SET status='refunded'.*first_message_at IS NULL`).
 		WithArgs(int64(14), int64(7)).
@@ -723,7 +723,6 @@ func TestNormalizeEmailServiceCodeDefaultsToGeneric(t *testing.T) {
 	}
 }
 
-
 func TestEnforceEmailRefundSafetyMakesPaidInboxNonRefundable(t *testing.T) {
 	if got := enforceEmailRefundSafety(EmailRefundIfNoMessage, 0.05); got != EmailNoRefundAfterDelivery {
 		t.Fatalf("paid refund policy=%q want %q", got, EmailNoRefundAfterDelivery)
@@ -735,30 +734,42 @@ func TestEnforceEmailRefundSafetyMakesPaidInboxNonRefundable(t *testing.T) {
 
 func TestCancelPaidReconcilingEmailKeepsBalanceHeld(t *testing.T) {
 	db, mock, err := sqlmock.New()
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer func() { _ = db.Close() }()
+
 	mock.ExpectQuery(`SELECT id,status,refund_policy_snapshot,sale_price_snapshot,first_message_at,captured_amount,refund_status FROM email_orders`).
 		WithArgs(int64(7), "order-id").
-		WillReturnRows(sqlmock.NewRows([]string{"id","status","refund_policy_snapshot","sale_price_snapshot","first_message_at","captured_amount","refund_status"}).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "status", "refund_policy_snapshot", "sale_price_snapshot", "first_message_at", "captured_amount", "refund_status"}).
 			AddRow(int64(14), "reconciling", EmailRefundIfNoMessage, 0.05, nil, 0.0, "not_requested"))
+
 	svc := &EmailVerificationService{db: db}
 	if err = svc.CancelOrder(context.Background(), 7, "order-id"); !errors.Is(err, ErrEmailProviderUnknown) {
 		t.Fatalf("CancelOrder error=%v want ErrEmailProviderUnknown", err)
 	}
-	if err = mock.ExpectationsWereMet(); err != nil { t.Fatal(err) }
+	if err = mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestRequestRefundRejectsLegacyPaidRefundIfNoMessagePolicy(t *testing.T) {
 	db, mock, err := sqlmock.New()
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer func() { _ = db.Close() }()
+
 	mock.ExpectQuery(`SELECT id,status,refund_policy_snapshot,sale_price_snapshot,first_message_at FROM email_orders`).
 		WithArgs(int64(7), "order-id").
-		WillReturnRows(sqlmock.NewRows([]string{"id","status","refund_policy_snapshot","sale_price_snapshot","first_message_at"}).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "status", "refund_policy_snapshot", "sale_price_snapshot", "first_message_at"}).
 			AddRow(int64(15), "waiting_email", EmailRefundIfNoMessage, 0.05, nil))
+
 	svc := &EmailVerificationService{db: db}
 	if err = svc.RequestRefund(context.Background(), 7, "order-id"); err == nil {
 		t.Fatal("paid inbox refund must be rejected after provider delivery")
 	}
-	if err = mock.ExpectationsWereMet(); err != nil { t.Fatal(err) }
+	if err = mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
 }

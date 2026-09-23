@@ -31,7 +31,7 @@ describe('EmailManagementView', () => {
     vi.clearAllMocks()
     adminEmail.providers.mockResolvedValue([{
       id: 1, code: 'emailnator', name: 'Emailnator', base_url: 'https://gmailnator.p.rapidapi.com',
-      health_status: 'unknown', enabled: false, credential_configured: false, billing: {},
+      health_status: 'unknown', enabled: false, requires_credential: true, credential_configured: false, billing: {},
     }])
     adminEmail.channels.mockResolvedValue([{
       id: 2, code: 'email_channel_1', public_name: 'Public channel 1', provider_name: 'emailnator',

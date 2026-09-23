@@ -140,7 +140,9 @@ func (s *EmailVerificationService) Reconcile(ctx context.Context) error {
 				  AND provider_inbox_id=''
 				  AND email_address=''
 				  AND refund_status='not_requested'`, id)
-			if txErr != nil { return txErr }
+			if txErr != nil {
+				return txErr
+			}
 			if affected, _ := res.RowsAffected(); affected == 1 {
 				s.recordOrderEvent(ctx, id, "manual_review", "email_reconcile:"+strconv.FormatInt(id, 10), map[string]any{"reason": "provider_commit_unknown"})
 			}

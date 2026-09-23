@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import Select from '@/components/common/Select.vue'
 import EmailVerificationView from '../EmailVerificationView.vue'
 
 const { emailAPI, showError, showSuccess } = vi.hoisted(() => ({
@@ -18,6 +19,7 @@ const { emailAPI, showError, showSuccess } = vi.hoisted(() => ({
 
 vi.mock('@/api/email', () => ({ emailAPI }))
 vi.mock('@/stores', () => ({ useAppStore: () => ({ showError, showSuccess }) }))
+vi.mock('@/stores/app', () => ({ useAppStore: () => ({ showError, showSuccess }) }))
 vi.mock('vue-i18n', async (importOriginal) => {
   const actual = await importOriginal<typeof import('vue-i18n')>()
   return { ...actual, useI18n: () => ({ t: (key: string) => key }) }
@@ -28,7 +30,7 @@ const quote = {
   public_name: 'Public channel 1',
   email_type: 'temporary_gmail',
   privacy_level: 'public_temporary',
-  sale_price: 0.3,
+  sale_price: 0,
   success_rate: 0.96,
   success_rate_grade: 'S',
   success_rate_sample_count: 30,
@@ -64,10 +66,13 @@ describe('EmailVerificationView', () => {
     await privateTab!.trigger('click')
     await flushPromises()
 
-    expect(wrapper.text()).toContain('email.user.gmailReal')
-    expect(wrapper.text()).toContain('email.user.gmailAlias')
-    expect(wrapper.text()).toContain('email.user.outlookReal')
-    expect(wrapper.text()).toContain('email.user.outlookAlias')
+    const typeSelect = wrapper.findComponent(Select)
+    expect(typeSelect.props('options')).toEqual([
+      { value: 'gmail_real', label: 'email.user.gmailReal' },
+      { value: 'gmail_alias', label: 'email.user.gmailAlias' },
+      { value: 'outlook_real', label: 'email.user.outlookReal' },
+      { value: 'outlook_alias', label: 'email.user.outlookAlias' },
+    ])
     expect(wrapper.text()).not.toContain('Gmail Real')
     expect(wrapper.text()).not.toContain('Outlook Alias')
     wrapper.unmount()
@@ -103,7 +108,7 @@ describe('EmailVerificationView', () => {
     expect(emailAPI.purchase).toHaveBeenCalledWith({
       channel_code: 'email_channel_1',
       address_type: 'gmail',
-      expected_price: 0.3,
+      expected_price: 0,
       quote_id: 'quote-1',
     }, expect.stringMatching(/^email-quote-1-/))
     expect(wrapper.get('.email-shell').exists()).toBe(true)
