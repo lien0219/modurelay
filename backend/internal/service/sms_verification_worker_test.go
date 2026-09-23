@@ -34,7 +34,6 @@ func TestSMSProviderPollDelayBacksOffOnlySMSPVA(t *testing.T) {
 	}
 }
 
-
 func TestSMSPurchaseNeedsFailClosedReview(t *testing.T) {
 	if !smsPurchaseNeedsFailClosedReview("smspva") {
 		t.Fatal("SMSPVA ambiguous purchases must fail closed")
@@ -46,7 +45,9 @@ func TestSMSPurchaseNeedsFailClosedReview(t *testing.T) {
 
 func TestHoldUnknownSMSPurchaseForManualReviewDoesNotReleaseFunds(t *testing.T) {
 	db, mock, err := sqlmock.New()
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer func() { _ = db.Close() }()
 
 	mock.ExpectExec(`UPDATE sms_orders[[:space:]]+SET status='reconciling'`).
@@ -57,6 +58,10 @@ func TestHoldUnknownSMSPurchaseForManualReviewDoesNotReleaseFunds(t *testing.T) 
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	svc := &SMSService{db: db}
-	if err := svc.holdUnknownSMSPurchaseForManualReview(context.Background(), 42, "ambiguous purchase"); err != nil { t.Fatal(err) }
-	if err := mock.ExpectationsWereMet(); err != nil { t.Fatal(err) }
+	if err := svc.holdUnknownSMSPurchaseForManualReview(context.Background(), 42, "ambiguous purchase"); err != nil {
+		t.Fatal(err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
 }
