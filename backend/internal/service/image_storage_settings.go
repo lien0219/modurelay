@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"sync"
 
@@ -33,6 +34,7 @@ type ImageStorageSettings struct {
 	Bucket           string `json:"bucket"` // 留空且复用备份时，沿用备份桶
 	Prefix           string `json:"prefix"`
 	PublicBaseURL    string `json:"public_base_url"`
+	PublicEndpoint   string `json:"public_endpoint"`
 	PresignExpiry    int    `json:"presign_expiry_hours"`
 	MaxDownloadBytes int64  `json:"max_download_bytes"`
 
@@ -58,10 +60,13 @@ type ImageStorageSettingService struct {
 	// 保证升级前已用配置文件开启该功能的部署不被打断。
 	fallback config.ImageStorageConfig
 
-	mu       sync.Mutex
-	resolved bool
-	uploader *ImageResultUploader
-	enabled  bool
+	mu          sync.Mutex
+	resolved    bool
+	uploader    *ImageResultUploader
+	canvasStore CanvasObjectStore
+	enabled     bool
+	cspResolved bool
+	cspOrigins  []string
 }
 
 func NewImageStorageSettingService(
@@ -99,7 +104,7 @@ func (s *ImageStorageSettingService) resolve() (*ImageResultUploader, bool) {
 
 	ctx := context.Background()
 	s.resolved = true
-	s.uploader, s.enabled = nil, false
+	s.uploader, s.canvasStore, s.enabled = nil, nil, false
 
 	cfg, err := s.effectiveConfig(ctx)
 	if err != nil {
@@ -121,6 +126,7 @@ func (s *ImageStorageSettingService) resolve() (*ImageResultUploader, bool) {
 		return nil, false
 	}
 	s.uploader = NewImageResultUploader(storage, cfg.Prefix, cfg.MaxDownloadByte, nil)
+	s.canvasStore, _ = storage.(CanvasObjectStore)
 	s.enabled = true
 	return s.uploader, true
 }
@@ -133,8 +139,56 @@ func (s *ImageStorageSettingService) Invalidate() {
 	s.mu.Lock()
 	s.resolved = false
 	s.uploader = nil
+	s.canvasStore = nil
 	s.enabled = false
+	s.cspResolved = false
+	s.cspOrigins = nil
 	s.mu.Unlock()
+}
+
+// CanvasCSPOrigins returns the exact browser-facing origin needed for canvas
+// image fetches and media playback. It never exposes credentials or object keys.
+func (s *ImageStorageSettingService) CanvasCSPOrigins() []string {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.cspResolved {
+		return append([]string(nil), s.cspOrigins...)
+	}
+
+	cfg, err := s.effectiveConfig(context.Background())
+	if err == nil && cfg.Enabled {
+		if origin := firstBrowserOrigin(cfg.PublicBaseURL, cfg.PublicEndpoint, cfg.Endpoint); origin != "" {
+			s.cspOrigins = []string{origin}
+		}
+	}
+	s.cspResolved = true
+	return append([]string(nil), s.cspOrigins...)
+}
+
+func firstBrowserOrigin(rawURLs ...string) string {
+	for _, rawURL := range rawURLs {
+		parsed, err := url.Parse(strings.TrimSpace(rawURL))
+		scheme := strings.ToLower(parsed.Scheme)
+		if err == nil && parsed.User == nil && parsed.Host != "" && (scheme == "http" || scheme == "https") {
+			return scheme + "://" + parsed.Host
+		}
+	}
+	return ""
+}
+
+func (s *ImageStorageSettingService) CanvasStoreResolver() CanvasStoreResolver {
+	return func() (CanvasObjectStore, bool) {
+		if s == nil {
+			return nil, false
+		}
+		_, enabled := s.resolve()
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		return s.canvasStore, enabled && s.canvasStore != nil
+	}
 }
 
 // Get 返回后台设置（SecretAccessKey 已脱敏）。从未保存过时返回 config.yaml 的等价值。
@@ -243,6 +297,7 @@ func (s *ImageStorageSettingService) toImageStorageConfig(ctx context.Context, i
 		Bucket:          in.Bucket,
 		Prefix:          in.Prefix,
 		PublicBaseURL:   in.PublicBaseURL,
+		PublicEndpoint:  in.PublicEndpoint,
 		PresignExpiry:   in.PresignExpiry,
 		MaxDownloadByte: in.MaxDownloadBytes,
 		Endpoint:        in.Endpoint,
@@ -310,6 +365,7 @@ func settingsFromConfig(cfg config.ImageStorageConfig) *ImageStorageSettings {
 		Bucket:           cfg.Bucket,
 		Prefix:           cfg.Prefix,
 		PublicBaseURL:    cfg.PublicBaseURL,
+		PublicEndpoint:   cfg.PublicEndpoint,
 		PresignExpiry:    cfg.PresignExpiry,
 		MaxDownloadBytes: cfg.MaxDownloadByte,
 		Endpoint:         cfg.Endpoint,
@@ -327,6 +383,7 @@ func normalizeImageStorageSettings(in *ImageStorageSettings) {
 	in.AccessKeyID = strings.TrimSpace(in.AccessKeyID)
 	in.SecretAccessKey = strings.TrimSpace(in.SecretAccessKey)
 	in.PublicBaseURL = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(in.PublicBaseURL), "/"))
+	in.PublicEndpoint = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(in.PublicEndpoint), "/"))
 
 	in.Prefix = strings.TrimSpace(in.Prefix)
 	if in.Prefix == "" {

@@ -13,8 +13,17 @@
       <AppHeader />
 
       <!-- Main Content -->
-      <main class="app-main p-4 md:p-6 lg:p-8">
-        <div class="app-main-content">
+      <main
+        class="app-main"
+        :class="workspace ? 'app-main--workspace p-0' : (fullBleed ? 'p-0' : 'p-4 md:p-6 lg:p-8')"
+      >
+        <div
+          class="app-main-content"
+          :class="{
+            'app-main-content--workspace': workspace,
+            'app-main-content--full-bleed': fullBleed,
+          }"
+        >
           <slot />
         </div>
       </main>
@@ -36,8 +45,12 @@ import AppHeader from './AppHeader.vue'
 
 const props = withDefaults(defineProps<{
   enableOnboarding?: boolean
+  workspace?: boolean
+  fullBleed?: boolean
 }>(), {
-  enableOnboarding: true
+  enableOnboarding: true,
+  workspace: false,
+  fullBleed: false,
 })
 
 const appStore = useAppStore()
@@ -70,3 +83,26 @@ onMounted(() => {
 
 defineExpose({ replayTour })
 </script>
+
+<style scoped>
+.app-main--workspace {
+  height: calc(100dvh - 4rem);
+  min-height: 36rem;
+  overflow: hidden;
+}
+
+.app-main-content--workspace {
+  height: 100%;
+  max-width: none;
+}
+
+.app-main-content--full-bleed {
+  max-width: none;
+}
+
+@media (max-height: 720px) {
+  .app-main--workspace {
+    min-height: 30rem;
+  }
+}
+</style>

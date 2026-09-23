@@ -25,7 +25,7 @@
         :transition="iconTransition"
       >
         <Icon :name="copied ? 'check' : 'clipboard'" size="sm" :stroke-width="copied ? 2 : undefined" />
-        <span v-if="showLabel || copied" class="text-xs font-medium whitespace-nowrap">
+        <span v-if="showLabel" class="whitespace-nowrap text-xs font-medium">
           {{ copied ? copiedLabel : copyLabel }}
         </span>
       </motion.span>
@@ -44,6 +44,7 @@ import { usePrefersReducedMotion } from '@/composables/usePrefersReducedMotion'
 interface Props {
   text: string
   showLabel?: boolean
+  label?: string
   successMessage?: string
   resetMs?: number
 }
@@ -65,7 +66,7 @@ const copied = ref(false)
 const pressed = ref(false)
 let resetTimer: ReturnType<typeof setTimeout> | null = null
 
-const copyLabel = computed(() => t('keys.copyToClipboard'))
+const copyLabel = computed(() => props.label || t('keys.copyToClipboard'))
 const copiedLabel = computed(() => t('common.copied'))
 
 const iconInitial = computed(() =>

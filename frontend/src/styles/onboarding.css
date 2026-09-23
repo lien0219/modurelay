@@ -188,6 +188,7 @@
   padding: 8px 16px !important;
   font-size: 13px !important;
   font-weight: 500 !important;
+  text-shadow: none !important;
   border-radius: 6px !important;
   cursor: pointer !important;
   transition: color 160ms ease, background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease !important;

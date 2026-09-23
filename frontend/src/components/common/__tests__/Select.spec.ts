@@ -192,6 +192,20 @@ describe('Select remote search', () => {
     expect(dropdown.querySelector('.select-empty')?.textContent).toContain('common.loading')
   })
 
+  it('emits loadMore from a paginated remote option list', async () => {
+    const wrapper = mountRemoteSelect({ hasMore: true, loadMoreText: 'Load next page' })
+    await wrapper.get('button').trigger('click')
+    await nextTick()
+
+    const dropdown = await openDropdown()
+    const loadMore = dropdown.querySelector<HTMLElement>('.select-load-more')
+    expect(loadMore?.textContent).toContain('Load next page')
+    loadMore!.click()
+    await nextTick()
+
+    expect(wrapper.emitted('loadMore')).toHaveLength(1)
+  })
+
   it('keeps local filtering and emits nothing when remote is not set', async () => {
     vi.useFakeTimers()
     const wrapper = mount(Select, {

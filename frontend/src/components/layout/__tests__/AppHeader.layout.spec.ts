@@ -9,6 +9,11 @@ const headerSource = readFileSync(resolve(directory, '../AppHeader.vue'), 'utf8'
 const layoutFixesSource = readFileSync(resolve(directory, '../../../styles/layout-fixes.css'), 'utf8')
 
 describe('AppHeader account dropdown layout', () => {
+  it('keeps account text collapsed until wide desktop layouts', () => {
+    expect(headerSource).toContain('class="hidden text-left xl:block"')
+    expect(headerSource).not.toContain('class="hidden text-left md:block"')
+  })
+
   it('wraps long email addresses within the actual app header dropdown', () => {
     expect(headerSource).toContain('class="app-menu-meta user-menu-email text-xs"')
     expect(layoutFixesSource).toContain('.app-header .dropdown.glass-popover.w-56')

@@ -1,6 +1,8 @@
 export default {
   batchImage: {
     columns: {
+      customId: 'Custom ID',
+      prompt: 'Prompt',
       taskName: 'Task name',
       model: 'Model',
       apiKey: 'API key',

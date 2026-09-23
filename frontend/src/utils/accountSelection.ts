@@ -23,6 +23,7 @@ export async function fetchAllAccountIds(
   const requestFilters = {
     ...filters,
     lite: '1',
+    include_health_score: '0',
     include_scheduler_score: '0'
   }
   const firstPage = await fetchPage(1, SELECT_ALL_PAGE_SIZE, requestFilters)

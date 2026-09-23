@@ -34,4 +34,19 @@ describe('BaseDialog', () => {
     expect(document.body.querySelector<HTMLElement>('.modal-body')?.scrollTop).toBe(0)
     wrapper.unmount()
   })
+
+  it('uses stable surfaces for the viewport scrim and scrollable panel', async () => {
+    const wrapper = mount(BaseDialog, {
+      attachTo: document.body,
+      props: { show: true, title: 'Details' },
+      slots: { default: '<div>content</div>' },
+      global: { stubs: { Icon: true } }
+    })
+
+    await nextTick()
+
+    expect(document.body.querySelector('.modal-overlay')?.classList).toContain('viewport-scrim')
+    expect(document.body.querySelector('.modal-content')?.classList).not.toContain('glass-panel')
+    wrapper.unmount()
+  })
 })

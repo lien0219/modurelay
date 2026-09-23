@@ -25,6 +25,7 @@ func TestLoadImageStorageFromEnv(t *testing.T) {
 	t.Setenv("IMAGE_STORAGE_ACCESS_KEY_ID", "ak")
 	t.Setenv("IMAGE_STORAGE_SECRET_ACCESS_KEY", "sk")
 	t.Setenv("IMAGE_STORAGE_PUBLIC_BASE_URL", "https://cdn.example.com")
+	t.Setenv("IMAGE_STORAGE_PUBLIC_ENDPOINT", "https://assets.example.com")
 
 	cfg, err := Load()
 	require.NoError(t, err)
@@ -35,6 +36,7 @@ func TestLoadImageStorageFromEnv(t *testing.T) {
 	require.Equal(t, "ak", cfg.ImageStorage.AccessKeyID)
 	require.Equal(t, "sk", cfg.ImageStorage.SecretAccessKey)
 	require.Equal(t, "https://cdn.example.com", cfg.ImageStorage.PublicBaseURL)
+	require.Equal(t, "https://assets.example.com", cfg.ImageStorage.PublicEndpoint)
 
 	require.True(t, cfg.ImageStorage.IsConfigured())
 	require.True(t, cfg.ImageStorage.Active(), "async image tasks must be active when every credential is supplied via env")

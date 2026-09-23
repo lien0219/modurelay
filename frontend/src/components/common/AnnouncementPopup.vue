@@ -3,7 +3,7 @@
     <div
       v-if="displayedAnnouncement"
       data-testid="announcement-popup-overlay"
-      class="fixed inset-0 z-[120] flex items-start justify-center overflow-y-auto bg-black/60 p-4 pt-[8vh] backdrop-blur-sm"
+      class="viewport-scrim fixed inset-0 z-[120] flex items-start justify-center overflow-y-auto bg-black/60 p-4 pt-[8vh]"
       role="dialog"
       aria-modal="true"
       :aria-labelledby="`announcement-popup-title-${displayedAnnouncement.id ?? 'preview'}`"

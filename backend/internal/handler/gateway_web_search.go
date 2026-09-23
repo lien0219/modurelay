@@ -188,6 +188,7 @@ func (h *GatewayHandler) WebSearch(c *gin.Context) {
 		if !errors.As(err, &failoverErr) || !failoverErr.ShouldRetryNextAccount() {
 			break
 		}
+		h.gatewayService.ObserveAccountHealthFailure(c.Request.Context(), account.ID, failoverErr)
 		failedAccounts[account.ID] = struct{}{}
 		if accountReleaseFunc != nil {
 			accountReleaseFunc()
@@ -210,6 +211,7 @@ func (h *GatewayHandler) WebSearch(c *gin.Context) {
 		}})
 		return
 	}
+	h.gatewayService.ObserveAccountHealthSuccess(c.Request.Context(), account, 0)
 
 	userAgent := c.GetHeader("User-Agent")
 	clientIP := ip.GetClientIP(c)

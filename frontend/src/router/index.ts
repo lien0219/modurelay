@@ -50,6 +50,17 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/about',
+    name: 'About',
+    component: () => import('@/views/AboutView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'About us',
+      titleKey: 'nav.aboutUs'
+    }
+  },
+  {
     path: '/login',
     name: 'Login',
     component: () => import('@/views/auth/LoginView.vue'),
@@ -214,6 +225,43 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/canvas',
+    name: 'CanvasHome',
+    component: () => import('@/views/user/CanvasAppRedirectView.vue'),
+    beforeEnter: (to) => {
+      if (!to.query.project) return true
+      return { name: 'CanvasEditor', query: to.query, hash: to.hash }
+    },
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Infinite canvas',
+      titleKey: 'nav.canvas'
+    }
+  },
+  {
+    path: '/canvas/editor',
+    name: 'CanvasEditor',
+    component: () => import('@/views/user/CanvasView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Infinite canvas',
+      titleKey: 'nav.canvas'
+    }
+  },
+  {
+    path: '/canvas/video',
+    name: 'CanvasVideo',
+    component: () => import('@/views/user/CanvasVideoView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Video workbench',
+      titleKey: 'canvas.video.title'
+    }
+  },
+  {
     path: '/quick-start',
     name: 'QuickStart',
     alias: '/docs/quick-start',
@@ -224,6 +272,30 @@ const routes: RouteRecordRaw[] = [
       title: 'Quick start',
       titleKey: 'nav.quickStart',
       descriptionKey: 'quickStart.description'
+    }
+  },
+  {
+    path: '/tools',
+    name: 'Tools',
+    component: () => import('@/views/user/ToolboxView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Toolbox',
+      titleKey: 'nav.tools',
+      descriptionKey: 'tools.description'
+    }
+  },
+  {
+    path: '/tools/:toolId',
+    name: 'ToolWorkspace',
+    component: () => import('@/views/user/ToolboxView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Toolbox',
+      titleKey: 'nav.tools',
+      descriptionKey: 'tools.description'
     }
   },
   {
@@ -368,8 +440,15 @@ const routes: RouteRecordRaw[] = [
       requiresAdmin: false,
       title: 'My Subscriptions',
       titleKey: 'userSubscriptions.title',
-      descriptionKey: 'userSubscriptions.description'
+      descriptionKey: 'userSubscriptions.description',
+      requiresSubscription: true
     }
+  },
+  {
+    path: '/plan-catalog',
+    name: 'PlanCatalog',
+    component: () => import('@/views/user/PlanCatalogView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: false, title: 'Plans', titleKey: 'nav.planCatalog' }
   },
   {
     path: '/purchase',
@@ -406,6 +485,41 @@ const routes: RouteRecordRaw[] = [
       title: 'My Orders',
       titleKey: 'nav.myOrders',
       requiresPayment: true
+    }
+  },
+  {
+    path: '/sms',
+    name: 'SMSVerification',
+    component: () => import('@/views/user/SMSVerificationView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      requiresSms: true,
+      title: 'SMS Verification',
+      titleKey: 'nav.smsService'
+    }
+  },
+  {
+    path: '/email',
+    name: 'EmailVerification',
+    component: () => import('@/views/user/EmailVerificationView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      requiresEmail: true,
+      title: 'Email Verification',
+      titleKey: 'nav.emailService'
+    }
+  },
+  {
+    path: '/verification-records',
+    name: 'VerificationRecords',
+    component: () => import('@/views/VerificationRecordsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Verification Records',
+      titleKey: 'nav.verificationRecords'
     }
   },
   {
@@ -678,6 +792,45 @@ const routes: RouteRecordRaw[] = [
       titleKey: 'admin.settings.title',
       descriptionKey: 'admin.settings.description'
     }
+  },
+  {
+    path: '/admin/sms',
+    name: 'AdminSMS',
+    component: () => import('@/views/admin/SMSManagementView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'SMS Verification Management',
+      titleKey: 'nav.smsManagement'
+    }
+  },
+  {
+    path: '/admin/email',
+    name: 'AdminEmail',
+    component: () => import('@/views/admin/EmailManagementView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Email Management',
+      titleKey: 'nav.emailManagement'
+    }
+  },
+  {
+    path: '/admin/verification-records',
+    name: 'AdminVerificationRecords',
+    component: () => import('@/views/VerificationRecordsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Verification Records',
+      titleKey: 'nav.verificationRecords'
+    }
+  },
+  {
+    path: '/admin/plan-catalog',
+    name: 'AdminPlanCatalog',
+    component: () => import('@/views/admin/PlanCatalogView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true, title: 'Plan Catalog', titleKey: 'nav.planCatalogManagement' }
   },
   {
     path: '/admin/resource-center',
@@ -1036,6 +1189,66 @@ router.beforeEach(async (to, _from, next) => {
     }
   }
 
+  if (to.meta.requiresSms && !authStore.isAdmin) {
+    if (!appStore.publicSettingsLoaded) {
+      try { await appStore.fetchPublicSettings() } catch { /* backend remains the source of truth */ }
+    }
+    if (appStore.publicSettingsLoaded && appStore.cachedPublicSettings?.sms_service_enabled !== true) {
+      next('/dashboard')
+      return
+    }
+  }
+
+  if (to.meta.requiresEmail && !authStore.isAdmin) {
+    if (!appStore.publicSettingsLoaded) {
+      try { await appStore.fetchPublicSettings() } catch { /* backend remains the source of truth */ }
+    }
+    if (appStore.publicSettingsLoaded && appStore.cachedPublicSettings?.email_service_enabled !== true) {
+      next('/dashboard')
+      return
+    }
+  }
+
+  if (to.path.startsWith('/canvas')) {
+    if (!appStore.publicSettingsLoaded) {
+      try { await appStore.fetchPublicSettings() } catch { /* backend remains the source of truth */ }
+    }
+    if (appStore.publicSettingsLoaded && appStore.cachedPublicSettings?.canvas_enabled !== true) {
+      next('/dashboard')
+      return
+    }
+  }
+
+  if (to.path === '/tools' || to.path.startsWith('/tools/')) {
+    if (!appStore.publicSettingsLoaded) {
+      try { await appStore.fetchPublicSettings() } catch { /* backend remains the source of truth */ }
+    }
+    // Toolbox is a local-only surface, so its public-settings flag is the
+    // authorization boundary. Unknown settings state must not expose a deep
+    // link after a failed or incomplete settings load.
+    if (!appStore.publicSettingsLoaded || appStore.cachedPublicSettings?.tool_center_enabled !== true) {
+      next('/dashboard')
+      return
+    }
+  }
+
+  // The backend remains the source of truth for the catalog, while this guard
+  // keeps a disabled user-facing entry from rendering after a direct deep link.
+  if (to.path === '/plan-catalog' && !authStore.isAdmin) {
+    if (!appStore.publicSettingsLoaded) {
+      try {
+        await appStore.fetchPublicSettings()
+      } catch {
+        // Do not block on a transient settings fetch failure; the API will
+        // still enforce the feature flag when the page loads.
+      }
+    }
+    if (appStore.publicSettingsLoaded && appStore.cachedPublicSettings?.plan_catalog_enabled !== true) {
+      next('/dashboard')
+      return
+    }
+  }
+
   if (requiresAdmin && authStore.isAdmin) {
     const adminComplianceStore = useAdminComplianceStore()
     if (!adminComplianceStore.initialized) {
@@ -1054,7 +1267,7 @@ router.beforeEach(async (to, _from, next) => {
   // 公共设置可能尚未加载（App.vue 的 onMounted 异步拉取晚于首次导航，且纯静态部署
   // 无 __APP_CONFIG__ 注入）。此时 cachedPublicSettings 为空会把 payment/risk_control
   // 误判为“未启用”而错误拦截，故这里先确保设置加载完成。
-  if ((to.meta.requiresPayment || to.meta.requiresRiskControl) && !appStore.publicSettingsLoaded) {
+  if ((to.meta.requiresPayment || to.meta.requiresRiskControl || to.meta.requiresSubscription) && !appStore.publicSettingsLoaded) {
     try {
       await appStore.fetchPublicSettings()
     } catch (error) {
@@ -1082,10 +1295,19 @@ router.beforeEach(async (to, _from, next) => {
     return
   }
 
+  // 订阅功能是 opt-out 开关：只有显式 false 才拦截「我的订阅」页直达。
+  if (
+    to.meta.requiresSubscription &&
+    appStore.publicSettingsLoaded &&
+    appStore.cachedPublicSettings?.subscription_enabled === false
+  ) {
+    next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
+    return
+  }
+
   // 简易模式下限制访问某些页面
   if (authStore.isSimpleMode) {
     const restrictedPaths = [
-      '/admin/groups',
       '/admin/subscriptions',
       '/admin/redeem',
       '/subscriptions',

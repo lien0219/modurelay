@@ -32,16 +32,17 @@ var (
 // ImageTaskRecord is the private Redis representation of an asynchronous image
 // request. Ownership fields are intentionally omitted from the public view.
 type ImageTaskRecord struct {
-	ID          string          `json:"id"`
-	UserID      int64           `json:"user_id"`
-	APIKeyID    int64           `json:"api_key_id"`
-	Status      string          `json:"status"`
-	HTTPStatus  int             `json:"http_status,omitempty"`
-	Result      json.RawMessage `json:"result,omitempty"`
-	Error       json.RawMessage `json:"error,omitempty"`
-	CreatedAt   int64           `json:"created_at"`
-	CompletedAt *int64          `json:"completed_at,omitempty"`
-	ExpiresAt   int64           `json:"expires_at"`
+	ID           string             `json:"id"`
+	UserID       int64              `json:"user_id"`
+	APIKeyID     int64              `json:"api_key_id"`
+	Status       string             `json:"status"`
+	HTTPStatus   int                `json:"http_status,omitempty"`
+	Result       json.RawMessage    `json:"result,omitempty"`
+	Error        json.RawMessage    `json:"error,omitempty"`
+	CreatedAt    int64              `json:"created_at"`
+	CompletedAt  *int64             `json:"completed_at,omitempty"`
+	ExpiresAt    int64              `json:"expires_at"`
+	StoredAssets []StoredImageAsset `json:"stored_assets,omitempty"`
 }
 
 // ImageTask is the API-safe task representation returned to callers.
@@ -191,16 +192,18 @@ func (s *ImageTaskService) Complete(ctx context.Context, id string, statusCode i
 	if !json.Valid(result) {
 		return s.Fail(ctx, id, http.StatusBadGateway, imageTaskErrorJSON("api_error", "upstream returned a non-JSON image response"))
 	}
+	var stored []StoredImageAsset
 	if uploader, _ := s.current(); uploader != nil {
-		rewritten, err := uploader.Rewrite(ctx, id, result)
+		rewritten, assets, err := uploader.RewriteWithAssets(ctx, id, result)
 		if err != nil {
 			// 转存失败不回退存 base64，避免大 blob 撑爆 Redis：直接把任务标记为失败。
 			logger.L().Error("image_task.offload_failed", zap.String("task_id", id), zap.Error(err))
 			return s.Fail(ctx, id, http.StatusBadGateway, imageTaskErrorJSON("api_error", "failed to store generated image to object storage"))
 		}
 		result = rewritten
+		stored = assets
 	}
-	return s.finish(ctx, id, ImageTaskStatusCompleted, statusCode, result, nil)
+	return s.finishWithAssets(ctx, id, ImageTaskStatusCompleted, statusCode, result, nil, stored)
 }
 
 func (s *ImageTaskService) Fail(ctx context.Context, id string, statusCode int, taskErr json.RawMessage) error {
@@ -211,6 +214,10 @@ func (s *ImageTaskService) Fail(ctx context.Context, id string, statusCode int, 
 }
 
 func (s *ImageTaskService) finish(ctx context.Context, id, status string, statusCode int, result, taskErr json.RawMessage) error {
+	return s.finishWithAssets(ctx, id, status, statusCode, result, taskErr, nil)
+}
+
+func (s *ImageTaskService) finishWithAssets(ctx context.Context, id, status string, statusCode int, result, taskErr json.RawMessage, stored []StoredImageAsset) error {
 	if s == nil || s.store == nil {
 		return ErrImageTaskUnavailable
 	}
@@ -227,12 +234,32 @@ func (s *ImageTaskService) finish(ctx context.Context, id, status string, status
 	task.HTTPStatus = statusCode
 	task.Result = result
 	task.Error = taskErr
+	if stored != nil {
+		task.StoredAssets = stored
+	}
 	task.CompletedAt = &completedAt
 	task.ExpiresAt = now.Add(s.ttl).Unix()
 	if err := s.store.Save(ctx, task, s.ttl); err != nil {
 		return ErrImageTaskUnavailable.WithCause(err)
 	}
 	return nil
+}
+
+func (s *ImageTaskService) StoredAssetsForUser(ctx context.Context, userID int64, id string) ([]StoredImageAsset, error) {
+	if s == nil || s.store == nil {
+		return nil, ErrImageTaskUnavailable
+	}
+	task, err := s.store.Get(ctx, strings.TrimSpace(id))
+	if err != nil {
+		if errors.Is(err, ErrImageTaskNotFound) {
+			return nil, ErrImageTaskNotFound
+		}
+		return nil, ErrImageTaskUnavailable.WithCause(err)
+	}
+	if task.UserID != userID || task.Status != ImageTaskStatusCompleted || len(task.StoredAssets) == 0 {
+		return nil, ErrImageTaskNotFound
+	}
+	return append([]StoredImageAsset(nil), task.StoredAssets...), nil
 }
 
 func imageTaskToPublic(task *ImageTaskRecord) *ImageTask {

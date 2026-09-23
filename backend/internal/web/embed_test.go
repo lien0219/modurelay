@@ -332,7 +332,7 @@ func TestFrontendServer_ServeIndexHTML(t *testing.T) {
 		assert.Contains(t, w2.Body.String(), `nonce="nonce2"`)
 	})
 
-	t.Run("sets_etag_header", func(t *testing.T) {
+	t.Run("does_not_revalidate_nonce_html", func(t *testing.T) {
 		provider := &mockSettingsProvider{
 			settings: map[string]string{"test": "value"},
 		}
@@ -340,50 +340,40 @@ func TestFrontendServer_ServeIndexHTML(t *testing.T) {
 		server, err := NewFrontendServer(provider)
 		require.NoError(t, err)
 
-		w := httptest.NewRecorder()
-		c, _ := gin.CreateTestContext(w)
-		c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
-		c.Set(middleware.CSPNonceKey, "nonce123")
-
-		server.serveIndexHTML(c)
-
-		etag := w.Header().Get("ETag")
-		assert.NotEmpty(t, etag)
-		assert.True(t, strings.HasPrefix(etag, `"`))
-		assert.True(t, strings.HasSuffix(etag, `"`))
-	})
-
-	t.Run("returns_304_for_matching_etag", func(t *testing.T) {
-		provider := &mockSettingsProvider{
-			settings: map[string]string{"test": "value"},
-		}
-
-		server, err := NewFrontendServer(provider)
-		require.NoError(t, err)
-
-		// Use a real router for proper 304 handling
 		router := gin.New()
-		router.Use(func(c *gin.Context) {
-			c.Set(middleware.CSPNonceKey, "test-nonce")
-			c.Next()
-		})
+		router.Use(middleware.SecurityHeaders(config.CSPConfig{
+			Enabled: true,
+			Policy:  config.DefaultCSPPolicy,
+		}, nil))
 		router.Use(server.Middleware())
 
-		// First request to populate cache and get ETag
 		w1 := httptest.NewRecorder()
 		req1 := httptest.NewRequest(http.MethodGet, "/", nil)
 		router.ServeHTTP(w1, req1)
-		etag := w1.Header().Get("ETag")
-		require.NotEmpty(t, etag)
+		require.Equal(t, http.StatusOK, w1.Code)
+		require.Equal(t, "no-store", w1.Header().Get("Cache-Control"))
+		require.Empty(t, w1.Header().Get("ETag"))
 
-		// Second request with If-None-Match
+		firstNonce := extractCSPNonceForTest(t, w1.Header().Get("Content-Security-Policy"))
+		require.Contains(t, w1.Body.String(), `nonce="`+firstNonce+`"`)
+		cached := server.cache.Get()
+		require.NotNil(t, cached)
+		require.NotEmpty(t, cached.ETag)
+
 		w2 := httptest.NewRecorder()
 		req2 := httptest.NewRequest(http.MethodGet, "/", nil)
-		req2.Header.Set("If-None-Match", etag)
+		req2.Header.Set("If-None-Match", cached.ETag)
 		router.ServeHTTP(w2, req2)
 
-		assert.Equal(t, http.StatusNotModified, w2.Code)
-		assert.Empty(t, w2.Body.String())
+		require.Equal(t, http.StatusOK, w2.Code)
+		require.Equal(t, "no-store", w2.Header().Get("Cache-Control"))
+		require.Empty(t, w2.Header().Get("ETag"))
+		require.NotEmpty(t, w2.Body.String())
+		require.Equal(t, 1, provider.called, "rendered settings should still use the server-side cache")
+
+		secondNonce := extractCSPNonceForTest(t, w2.Header().Get("Content-Security-Policy"))
+		require.NotEqual(t, firstNonce, secondNonce)
+		require.Contains(t, w2.Body.String(), `nonce="`+secondNonce+`"`)
 	})
 
 	t.Run("sets_cache_control_header", func(t *testing.T) {
@@ -401,7 +391,7 @@ func TestFrontendServer_ServeIndexHTML(t *testing.T) {
 
 		server.serveIndexHTML(c)
 
-		assert.Equal(t, "no-cache", w.Header().Get("Cache-Control"))
+		assert.Equal(t, "no-store", w.Header().Get("Cache-Control"))
 	})
 
 	t.Run("fallback_on_settings_error", func(t *testing.T) {
@@ -426,6 +416,17 @@ func TestFrontendServer_ServeIndexHTML(t *testing.T) {
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Contains(t, w.Header().Get("Content-Type"), "text/html")
 	})
+}
+
+func extractCSPNonceForTest(t *testing.T, policy string) string {
+	t.Helper()
+	const prefix = "'nonce-"
+	start := strings.Index(policy, prefix)
+	require.NotEqual(t, -1, start)
+	valueStart := start + len(prefix)
+	end := strings.Index(policy[valueStart:], "'")
+	require.NotEqual(t, -1, end)
+	return policy[valueStart : valueStart+end]
 }
 
 func TestFrontendServer_InvalidateCache(t *testing.T) {
@@ -678,6 +679,56 @@ func TestFrontendServer_Middleware(t *testing.T) {
 		assert.Equal(t, staticAssetsCacheControl, assetWriter.Header().Get("Cache-Control"))
 	})
 
+	t.Run("serves_infinite_canvas_root_and_deep_routes_with_nonce", func(t *testing.T) {
+		provider := &mockSettingsProvider{settings: map[string]string{"test": "value"}}
+		server, err := NewFrontendServer(provider)
+		require.NoError(t, err)
+		require.NotEmpty(t, server.infiniteCanvasHTML, "build the vendored Infinite Canvas frontend before embed tests")
+
+		router := gin.New()
+		router.Use(func(c *gin.Context) {
+			c.Set(middleware.CSPNonceKey, "canvas-nonce")
+			c.Next()
+		})
+		router.Use(server.Middleware())
+
+		for _, requestPath := range []string{
+			"/infinite-canvas/",
+			"/infinite-canvas/canvas",
+			"/infinite-canvas/canvas/project-1",
+		} {
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, requestPath, nil)
+			router.ServeHTTP(w, req)
+
+			assert.Equal(t, http.StatusOK, w.Code, requestPath)
+			assert.Contains(t, w.Header().Get("Content-Type"), "text/html", requestPath)
+			assert.Equal(t, "no-store", w.Header().Get("Cache-Control"), requestPath)
+			assert.Contains(t, w.Body.String(), `nonce="canvas-nonce"`, requestPath)
+			assert.NotContains(t, w.Body.String(), NonceHTMLPlaceholder, requestPath)
+		}
+	})
+
+	t.Run("returns_404_for_missing_infinite_canvas_assets", func(t *testing.T) {
+		provider := &mockSettingsProvider{settings: map[string]string{"test": "value"}}
+		server, err := NewFrontendServer(provider)
+		require.NoError(t, err)
+
+		router := gin.New()
+		router.Use(server.Middleware())
+
+		for _, requestPath := range []string{
+			"/infinite-canvas/assets/missing.js",
+			"/infinite-canvas/plugins/missing.js",
+			"/infinite-canvas/icons/missing.svg",
+		} {
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, requestPath, nil)
+			router.ServeHTTP(w, req)
+			assert.Equal(t, http.StatusNotFound, w.Code, requestPath)
+		}
+	})
+
 	t.Run("returns_404_for_missing_threeui_assets", func(t *testing.T) {
 		provider := &mockSettingsProvider{
 			settings: map[string]string{"test": "value"},
@@ -753,6 +804,7 @@ func TestNewFrontendServer(t *testing.T) {
 		assert.NotNil(t, server.distFS)
 		assert.NotNil(t, server.fileServer)
 		assert.NotNil(t, server.baseHTML)
+		assert.NotEmpty(t, server.infiniteCanvasHTML)
 		assert.NotNil(t, server.cache)
 		assert.Equal(t, provider, server.settings)
 	})
@@ -825,6 +877,39 @@ func TestServeEmbeddedFrontend(t *testing.T) {
 				assert.Equal(t, http.StatusOK, w.Code)
 				assert.Contains(t, w.Header().Get("Content-Type"), "text/html")
 			})
+		}
+	})
+
+	t.Run("serves_infinite_canvas_deep_routes", func(t *testing.T) {
+		for _, path := range []string{
+			"/infinite-canvas/",
+			"/infinite-canvas/canvas",
+			"/infinite-canvas/canvas/project-1",
+		} {
+			t.Run(path, func(t *testing.T) {
+				w := httptest.NewRecorder()
+				req := httptest.NewRequest(http.MethodGet, path, nil)
+				router := gin.New()
+				router.Use(ServeEmbeddedFrontend())
+				router.ServeHTTP(w, req)
+				assert.Equal(t, http.StatusOK, w.Code)
+				assert.Contains(t, w.Header().Get("Content-Type"), "text/html")
+			})
+		}
+	})
+
+	t.Run("returns_404_for_missing_infinite_canvas_assets", func(t *testing.T) {
+		for _, path := range []string{
+			"/infinite-canvas/assets/missing.js",
+			"/infinite-canvas/plugins/missing.js",
+			"/infinite-canvas/icons/missing.svg",
+		} {
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			router := gin.New()
+			router.Use(ServeEmbeddedFrontend())
+			router.ServeHTTP(w, req)
+			assert.Equal(t, http.StatusNotFound, w.Code, path)
 		}
 	})
 

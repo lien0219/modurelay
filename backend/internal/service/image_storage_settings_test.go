@@ -135,7 +135,10 @@ func TestImageStorageSettingsReuseBackupCredentials(t *testing.T) {
 		Prefix: "backups/", ForcePathStyle: true,
 	})
 
-	_, err := svc.Update(ctx, ImageStorageSettings{Enabled: true, ReuseBackupS3: true, Prefix: "images"})
+	_, err := svc.Update(ctx, ImageStorageSettings{
+		Enabled: true, ReuseBackupS3: true, Prefix: "images",
+		PublicEndpoint: "https://assets.example.com/",
+	})
 	require.NoError(t, err)
 	_, enabled := svc.resolve()
 	require.True(t, enabled)
@@ -149,6 +152,7 @@ func TestImageStorageSettingsReuseBackupCredentials(t *testing.T) {
 	require.True(t, got.ForcePathStyle)
 	require.Equal(t, "backup-bucket", got.Bucket, "an empty bucket falls back to the backup bucket")
 	require.Equal(t, "images/", got.Prefix, "images stay under their own prefix so they never collide with backups/")
+	require.Equal(t, "https://assets.example.com", got.PublicEndpoint, "browser-facing presign endpoint stays independent from reused credentials")
 
 	// Reusing must not duplicate the secret into a second row.
 	raw, err := repo.GetValue(ctx, settingKeyImageStorageConfig)
@@ -239,7 +243,7 @@ func TestImageStorageSettingsFallBackToConfigFile(t *testing.T) {
 	svc, _, built := newImageStorageFixture(t, config.ImageStorageConfig{
 		Enabled: true, Endpoint: "https://acct.r2.cloudflarestorage.com", Region: "auto",
 		Bucket: "yaml-bucket", AccessKeyID: "yaml-ak", SecretAccessKey: "yaml-sk",
-		Prefix: "images/", MaxDownloadByte: 1024,
+		Prefix: "images/", PublicEndpoint: "https://assets.example.com", MaxDownloadByte: 1024,
 	})
 
 	_, enabled := svc.resolve()
@@ -250,5 +254,68 @@ func TestImageStorageSettingsFallBackToConfigFile(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, fetched.Enabled)
 	require.Equal(t, "yaml-bucket", fetched.Bucket)
+	require.Equal(t, "https://assets.example.com", fetched.PublicEndpoint)
 	require.Empty(t, fetched.SecretAccessKey)
+}
+
+func TestImageStorageSettingsCanvasCSPOrigins(t *testing.T) {
+	t.Run("uses_first_valid_browser_facing_origin", func(t *testing.T) {
+		svc, _, _ := newImageStorageFixture(t, config.ImageStorageConfig{
+			Enabled:        true,
+			PublicBaseURL:  "https://cdn.example.com/canvas/assets/",
+			PublicEndpoint: "http://127.0.0.1:19000/minio/",
+			Endpoint:       "http://minio:9000",
+		})
+
+		require.Equal(t, []string{"https://cdn.example.com"}, svc.CanvasCSPOrigins())
+	})
+
+	t.Run("falls_through_invalid_values_and_normalizes_scheme", func(t *testing.T) {
+		svc, _, _ := newImageStorageFixture(t, config.ImageStorageConfig{
+			Enabled:        true,
+			PublicBaseURL:  "javascript:alert(1)",
+			PublicEndpoint: " HTTP://127.0.0.1:19000/canvas ",
+			Endpoint:       "http://minio:9000",
+		})
+
+		require.Equal(t, []string{"http://127.0.0.1:19000"}, svc.CanvasCSPOrigins())
+	})
+
+	t.Run("falls_back_to_internal_endpoint_when_it_is_browser_reachable", func(t *testing.T) {
+		svc, _, _ := newImageStorageFixture(t, config.ImageStorageConfig{
+			Enabled:  true,
+			Endpoint: "https://objects.example.com/bucket",
+		})
+
+		require.Equal(t, []string{"https://objects.example.com"}, svc.CanvasCSPOrigins())
+	})
+
+	t.Run("disabled_storage_adds_no_origin", func(t *testing.T) {
+		svc, _, _ := newImageStorageFixture(t, config.ImageStorageConfig{
+			Endpoint: "https://objects.example.com",
+		})
+
+		require.Empty(t, svc.CanvasCSPOrigins())
+	})
+}
+
+func TestImageStorageSettingsUpdateInvalidatesCanvasCSPOrigins(t *testing.T) {
+	svc, repo, _ := newImageStorageFixture(t, config.ImageStorageConfig{
+		Enabled:        true,
+		PublicEndpoint: "https://old-assets.example.com",
+	})
+	seedBackupS3(t, repo, BackupS3Config{
+		Endpoint: "https://acct.r2.cloudflarestorage.com", Region: "auto",
+		Bucket: "backup-bucket", AccessKeyID: "ak", SecretAccessKey: "sk",
+	})
+
+	require.Equal(t, []string{"https://old-assets.example.com"}, svc.CanvasCSPOrigins())
+
+	_, err := svc.Update(context.Background(), ImageStorageSettings{
+		Enabled:        true,
+		ReuseBackupS3:  true,
+		PublicEndpoint: "http://127.0.0.1:19000/canvas/",
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"http://127.0.0.1:19000"}, svc.CanvasCSPOrigins())
 }

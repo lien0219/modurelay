@@ -189,6 +189,54 @@ func (f CompositeModelRouteFunc) Mutate(ctx context.Context, m ent.Mutation) (en
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CompositeModelRouteMutation", m)
 }
 
+// The EmailChannelFunc type is an adapter to allow the use of ordinary
+// function as EmailChannel mutator.
+type EmailChannelFunc func(context.Context, *ent.EmailChannelMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f EmailChannelFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.EmailChannelMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.EmailChannelMutation", m)
+}
+
+// The EmailMessageFunc type is an adapter to allow the use of ordinary
+// function as EmailMessage mutator.
+type EmailMessageFunc func(context.Context, *ent.EmailMessageMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f EmailMessageFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.EmailMessageMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.EmailMessageMutation", m)
+}
+
+// The EmailOrderFunc type is an adapter to allow the use of ordinary
+// function as EmailOrder mutator.
+type EmailOrderFunc func(context.Context, *ent.EmailOrderMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f EmailOrderFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.EmailOrderMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.EmailOrderMutation", m)
+}
+
+// The EmailProviderFunc type is an adapter to allow the use of ordinary
+// function as EmailProvider mutator.
+type EmailProviderFunc func(context.Context, *ent.EmailProviderMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f EmailProviderFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.EmailProviderMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.EmailProviderMutation", m)
+}
+
 // The ErrorPassthroughRuleFunc type is an adapter to allow the use of ordinary
 // function as ErrorPassthroughRule mutator.
 type ErrorPassthroughRuleFunc func(context.Context, *ent.ErrorPassthroughRuleMutation) (ent.Value, error)
@@ -415,6 +463,42 @@ func (f SettingFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, err
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SettingMutation", m)
+}
+
+// The SmsChannelFunc type is an adapter to allow the use of ordinary
+// function as SmsChannel mutator.
+type SmsChannelFunc func(context.Context, *ent.SmsChannelMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f SmsChannelFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.SmsChannelMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SmsChannelMutation", m)
+}
+
+// The SmsOrderFunc type is an adapter to allow the use of ordinary
+// function as SmsOrder mutator.
+type SmsOrderFunc func(context.Context, *ent.SmsOrderMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f SmsOrderFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.SmsOrderMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SmsOrderMutation", m)
+}
+
+// The SmsProviderFunc type is an adapter to allow the use of ordinary
+// function as SmsProvider mutator.
+type SmsProviderFunc func(context.Context, *ent.SmsProviderMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f SmsProviderFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.SmsProviderMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SmsProviderMutation", m)
 }
 
 // The SubscriptionPlanFunc type is an adapter to allow the use of ordinary

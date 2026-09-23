@@ -1,34 +1,45 @@
 <template>
-  <article class="border-l border-gray-200 pl-4 dark:border-dark-600" :class="comment.parent_id ? 'ml-5 sm:ml-10' : ''">
-    <div class="flex items-start gap-3">
-      <div class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-primary-50 text-sm font-semibold text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
-        {{ comment.author.username.slice(0, 1).toUpperCase() }}
-      </div>
-      <div class="min-w-0 flex-1">
-        <div class="flex flex-wrap items-center gap-2 text-xs">
-          <span class="font-semibold text-gray-900 dark:text-white">{{ comment.author.username }}</span>
-          <span
-            class="inline-flex items-center rounded-full px-2 py-0.5 font-medium"
-            :class="comment.author.role === 'admin' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300' : 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-300'"
-          >
-            <Icon :name="comment.author.role === 'admin' ? 'badge' : 'user'" size="xs" class="mr-1" />
+  <article class="resource-comment" :class="{ 'resource-comment--reply': comment.parent_id }">
+    <div class="resource-comment__avatar">{{ comment.author.username.slice(0, 1).toUpperCase() }}</div>
+    <div class="resource-comment__body">
+      <header class="resource-comment__header">
+        <div class="resource-comment__identity">
+          <strong>{{ comment.author.username }}</strong>
+          <span :class="{ 'is-official': comment.author.role === 'admin' }">
+            <Icon :name="comment.author.role === 'admin' ? 'badge' : 'user'" size="xs" />
             {{ comment.author.role === 'admin' ? t('resourceCenter.official') : t('resourceCenter.member') }}
           </span>
-          <time class="text-gray-400 dark:text-gray-500">{{ formatDate(comment.created_at) }}</time>
+          <time>{{ formatDate(comment.created_at) }}</time>
         </div>
-        <ResourceRichContent class="mt-2" :content="comment.content" />
-        <p v-if="comment.status === 'deleted'" class="mt-2 text-xs text-red-500">{{ t('resourceCenter.deleted') }}</p>
-        <div class="mt-2 flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
-          <button v-if="comment.status !== 'deleted'" type="button" class="inline-flex items-center gap-1 hover:text-primary-600" @click="$emit('like', comment)">
-            <Icon name="check" size="xs" :class="comment.liked ? 'text-primary-600' : ''" />
-            {{ comment.like_count }}
-          </button>
-          <button v-if="comment.status !== 'deleted'" type="button" class="inline-flex items-center gap-1 hover:text-primary-600" @click="$emit('reply', comment)">
-            <Icon name="chatBubble" size="xs" /> {{ t('resourceCenter.reply') }}
-          </button>
-          <button v-if="canDelete && comment.status !== 'deleted'" type="button" class="ml-auto inline-flex items-center gap-1 text-red-500 hover:text-red-700" :title="t('admin.resourceCenter.deleteComment')" @click="$emit('delete', comment)"><Icon name="trash" size="xs" /></button>
-        </div>
-      </div>
+        <button
+          v-if="canDelete && comment.status !== 'deleted'"
+          type="button"
+          class="resource-comment__delete"
+          :title="t('admin.resourceCenter.deleteComment')"
+          @click="$emit('delete', comment)"
+        >
+          <Icon name="trash" size="xs" />
+        </button>
+      </header>
+
+      <ResourceRichContent class="resource-comment__content" :content="comment.content" />
+      <p v-if="comment.status === 'deleted'" class="resource-comment__deleted">{{ t('resourceCenter.deleted') }}</p>
+
+      <footer class="resource-comment__actions">
+        <button
+          v-if="comment.status !== 'deleted'"
+          type="button"
+          :class="{ 'is-active': comment.liked }"
+          @click="$emit('like', comment)"
+        >
+          <Icon name="check" size="xs" />
+          {{ comment.like_count }}
+        </button>
+        <button v-if="comment.status !== 'deleted'" type="button" @click="$emit('reply', comment)">
+          <Icon name="chatBubble" size="xs" />
+          {{ t('resourceCenter.reply') }}
+        </button>
+      </footer>
     </div>
   </article>
 </template>
@@ -48,3 +59,153 @@ function formatDate(value: string): string {
   return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
 }
 </script>
+
+<style scoped>
+.resource-comment {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 10px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.resource-comment:last-child {
+  border-bottom: 0;
+}
+
+.resource-comment--reply {
+  margin-left: 42px;
+  padding-left: 12px;
+  border-left: 2px solid var(--color-primary-border);
+}
+
+.resource-comment__avatar {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  font-size: .72rem;
+  font-weight: 700;
+}
+
+.resource-comment__body {
+  min-width: 0;
+}
+
+.resource-comment__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.resource-comment__identity {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+}
+
+.resource-comment__identity strong {
+  color: var(--color-text-primary);
+  font-size: .75rem;
+  font-weight: 670;
+}
+
+.resource-comment__identity > span {
+  display: inline-flex;
+  min-height: 22px;
+  align-items: center;
+  gap: 4px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--color-surface-soft);
+  color: var(--color-text-muted);
+  font-size: .62rem;
+  font-weight: 600;
+}
+
+.resource-comment__identity > span.is-official {
+  background: color-mix(in srgb, var(--color-warning) 9%, var(--color-surface));
+  color: var(--color-warning);
+}
+
+.resource-comment__identity time {
+  color: var(--color-text-disabled);
+  font-size: .62rem;
+}
+
+.resource-comment__delete {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.resource-comment__delete:hover {
+  background: color-mix(in srgb, var(--color-danger) 8%, transparent);
+  color: var(--color-danger);
+}
+
+.resource-comment__content {
+  margin-top: 7px;
+  color: var(--color-text-secondary);
+  font-size: .78rem;
+  line-height: 1.65;
+}
+
+.resource-comment__deleted {
+  margin: 6px 0 0;
+  color: var(--color-danger);
+  font-size: .66rem;
+}
+
+.resource-comment__actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.resource-comment__actions button {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: .66rem;
+}
+
+.resource-comment__actions button:hover,
+.resource-comment__actions button.is-active {
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+
+.resource-comment button:focus-visible {
+  outline: 2px solid var(--color-primary-ring);
+  outline-offset: 2px;
+}
+
+@media (max-width: 560px) {
+  .resource-comment--reply {
+    margin-left: 18px;
+    padding-left: 9px;
+  }
+}
+</style>

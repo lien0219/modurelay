@@ -14,6 +14,12 @@ export default {
         payment: 'Payment',
       },
       features: {
+        toolCenter: {
+          title: 'Tool Center',
+          description: 'Expose the local-first developer utilities under the user navigation.',
+          enabled: 'Enable Tool Center',
+          hint: 'When disabled, the navigation entry is hidden and /tools routes redirect to the dashboard.',
+        },
         channelMonitor: {
           title: 'Channel Monitor',
           description: 'Choose either V1 active probes or V2 passive usage monitoring. When disabled, both background jobs stop and the user entry is hidden.',
@@ -34,6 +40,9 @@ export default {
           showQuota: 'Show channel usage/balance to users',
           showQuotaHint:
             'When on, quota-mode channel monitors expose the linked account usage windows/balance on the user Channel Status page. Disabled by default; admins always see it.',
+          hideUserRanking: 'Hide user ranking from users',
+          hideUserRankingHint:
+            'When on, the user Channel Monitor V2 page hides the user ranking tab and the user API returns no ranking rows. Admins still see the ranking.',
         },
         availableChannels: {
           title: 'Available Channels',
@@ -41,6 +50,27 @@ export default {
           configureLink: 'Configure model pricing in Channel Management > Channel Pricing',
           enabled: 'Enable Available Channels',
           enabledHint: 'When off, the sidebar entry is hidden and the endpoint returns an empty list.',
+        },
+        canvas: {
+          title: 'Infinite canvas',
+          description: 'Enable the authenticated canvas workspace after storage and migration checks pass.',
+          enabled: 'Canvas runtime',
+          enabledHint: 'Feature is fail-closed until explicitly enabled.',
+        },
+        siteBillingMode: {
+          title: 'Site Billing Mode',
+          description: 'Controls which purchase options users see. Defaults to "Recharge & Subscription".',
+          label: 'Purchase options',
+          options: {
+            rechargeAndSubscription: 'Recharge & Subscription',
+            rechargeOnly: 'Recharge only',
+            subscriptionOnly: 'Subscription only',
+          },
+          hints: {
+            rechargeAndSubscription: 'Users can both top up their balance and buy subscription plans.',
+            rechargeOnly: 'Hides "My Subscriptions", the purchase-page subscription tab, the header subscription badge and the usage billing-type filter; direct visits to "My Subscriptions" return to the dashboard. The admin sidebar also hides the "Subscription Management" entry (the page stays reachable by URL). Existing subscription billing and redeem-code subscriptions are unaffected.',
+            subscriptionOnly: 'The purchase page only offers subscription plans and the sidebar entry reads "Subscription"; balance top-up orders are rejected. Redeem codes, affiliate payouts and other balance credits are unaffected.',
+          },
         },
         modelPlaza: {
           title: 'Model Plaza',
@@ -404,7 +434,7 @@ export default {
         subscriptionGroup: 'Subscription Group',
         subscriptionValidityDays: 'Validity (days)',
         defaultPlatformQuotas: 'Default Platform Quotas (on signup)',
-        defaultPlatformQuotasHint: 'Automatically assigned to new users on signup; existing users are not affected. Leave blank = unlimited.',
+        defaultPlatformQuotasHint: 'Applied to new users on signup; existing users are not affected. Leave blank = no limit for that platform and window.',
         platformQuotaNotice: 'Monthly quota uses a 30-day rolling window, not a calendar month.',
       },
       platformQuota: {
@@ -467,13 +497,25 @@ export default {
         saved: 'Ollama Cloud usage refresh settings saved',
         saveFailed: 'Failed to save Ollama Cloud usage refresh settings'
       },
+      opencodeGoUsage: {
+        title: 'OpenCode Go Usage Refresh',
+        description: 'Refresh usage windows reported by the upstream OpenCode Go account for individually opted-in accounts. Disabled by default.',
+        enabled: 'Enable global automatic refresh',
+        enabledHint: 'Only accounts with their own automatic refresh switch enabled are refreshed. Manual refresh remains available.',
+        intervalMinutes: 'Max wait while requests continue (minutes)',
+        intervalHint: 'Range: 5–1440 minutes. When continuous requests keep sliding the debounce, force a refresh after this wait.',
+        debounceMinutes: 'Quiet period after last request (minutes)',
+        debounceHint: 'Range: 1–60 minutes, and must be less than the refresh interval. Refresh after the latest model request has been quiet for this long.',
+        saved: 'OpenCode Go usage refresh settings saved',
+        saveFailed: 'Failed to save OpenCode Go usage refresh settings'
+      },
       gatewayForwarding: {
         title: 'Request Forwarding',
         description: 'Control how requests are forwarded to upstream OAuth accounts',
         grokDefaultTextModel: 'Default Grok text model',
         grokDefaultTextModelHint: 'Used for empty model values and, only when the switch is enabled, requests from other client model namespaces. Custom Grok model IDs are accepted.',
         grokCrossClientMap: 'Map other clients to Grok',
-        grokCrossClientMapHint: 'Disabled by default. When enabled, GPT, Codex, o-series, and Claude model IDs are routed to the default Grok text model above.',
+        grokCrossClientMapHint: 'Enabled by default for client compatibility. GPT, Codex, o-series, and Claude model IDs are routed to the default Grok text model above. Disable this to require Grok model IDs.',
         grokDefaultBaseURLMode: 'Default Grok upstream',
         grokDefaultBaseURLModeHint: 'Used only when a Grok account has no explicit base URL. Media and voice endpoints continue to use their official API hosts.',
         grokBaseURLModeCLI: 'CLI chat proxy',
@@ -532,6 +574,11 @@ export default {
         openaiCodexVersionAutoSync: 'Auto-sync Codex version',
         openaiCodexVersionAutoSyncHint: 'Fetches the latest stable client version from the official repository every 6 hours, so you never need to upgrade this service just to keep the version current. When disabled, only the version above or the built-in default is used.',
         openaiCodexVersionSyncedValue: 'Currently synced: {version}',
+        claudeCodeClientVersion: 'Claude Code client version',
+        claudeCodeClientVersionHint: "The client version this gateway declares upstream when impersonating the official Claude Code CLI. Leave empty to use the auto-synced latest official release; setting a value pins it and stops following auto-sync. The SUB2API_CLAUDE_CLI_VERSION environment variable or built-in version is used only when neither the manual nor synced value is valid.",
+        claudeCodeVersionAutoSync: 'Auto-sync Claude Code version',
+        claudeCodeVersionAutoSyncHint: 'Fetches the latest Claude Code client version from the official release channel every hour, so you never need to upgrade this service just to keep the version current. When disabled, fetching stops but the previously synced version remains available. The manual version above always takes priority.',
+        claudeCodeVersionSyncedValue: 'Currently synced: {version}',
         codexHardeningTitle: "Codex Settings",
         codexClientRestrictionTitle: "Codex client restriction",
         codexHardeningDesc:
@@ -682,6 +729,7 @@ export default {
         namePlaceholder: 'e.g. Help Center',
         url: 'Page URL',
         urlPlaceholder: 'https://example.com/page',
+        hideOpenButton: 'Hide the “Open in new tab” button',
         iconSvg: 'SVG Icon',
         iconSvgPlaceholder: '<svg>...</svg>',
         iconPreview: 'Icon Preview',
@@ -763,7 +811,7 @@ export default {
         validationFieldRequired: '{field} is required',
         validationEasyPayCustomMethodRequired: 'Each custom EasyPay method requires both a payment type and an upstream type',
         validationEasyPayCustomMethodTypeInvalid: 'Custom EasyPay payment types may only contain lowercase letters, digits, underscores, and hyphens',
-        validationEasyPayCustomMethodUpstreamTypeInvalid: 'EasyPay upstream types may only contain lowercase letters, digits, underscores, and hyphens',
+        validationEasyPayCustomMethodUpstreamTypeInvalid: 'EasyPay upstream types may only contain lowercase letters, digits, periods, underscores, and hyphens',
         validationEasyPayCustomMethodReserved: 'Custom EasyPay payment types cannot use built-in alipay or wxpay',
         validationEasyPayCustomMethodPrefixReserved: 'Custom EasyPay payment types cannot start with alipay or wxpay',
         validationEasyPayCustomMethodDuplicate: 'Custom EasyPay payment types must be unique',
@@ -1089,7 +1137,7 @@ export default {
       },
       openaiFastPolicy: {
         title: 'OpenAI Fast/Flex Policy',
-        description: 'Intercept, filter, or pass OpenAI fast(priority), ultrafast, or flex requests based on the request body service_tier field. Applies to the OpenAI gateway only.',
+        description: 'Intercept, filter, or pass OpenAI fast(priority), ultrafast, or flex requests based on the request body service_tier field. Applies to the OpenAI gateway only. "All tier values" includes explicitly sent tiers only.',
         empty: 'No rules configured. Click the button below to add one.',
         ruleHeader: 'Rule #{index}',
         removeRule: 'Remove rule',
@@ -1097,6 +1145,7 @@ export default {
         saveHint: 'Saved together with system settings (click the global Save button at the bottom of the page).',
         serviceTier: 'service_tier match',
         tierAll: 'All tier values',
+        tierMissing: 'Omitted tier',
         tierPriority: 'priority (fast)',
         tierUltrafast: 'ultrafast',
         tierFlex: 'flex',
@@ -1207,8 +1256,9 @@ export default {
         lowRatePriorityTitle: 'Prefer lower rates',
         lowRatePriorityDescription: 'When enabled, accounts with lower billing rates are preferred. If rates are equal, account priority, current load, and other scheduling factors are considered. This switch is ignored when the experimental scheduler is enabled.',
         oauthRateTitle: 'OAuth scheduling reference rate',
-        oauthRatePriorityDescription: 'When a group contains both API Key and OAuth accounts, this rate is used to order OAuth accounts alongside probed API Key billing rates.',
-        oauthRateWeightedDescription: 'When a group contains both API Key and OAuth accounts, this rate is used for OAuth accounts when calculating the billing-rate score.',
+        oauthRatePriorityDescription: 'OAuth accounts use this reference rate for low-rate-first ordering. Leave blank to use each account\'s own rate. API Key accounts use a valid probed rate when available, otherwise their account rate.',
+        oauthRateWeightedDescription: 'OAuth accounts use this reference rate for the billing-rate score. Leave blank to use each account\'s own rate. API Key accounts use a valid probed rate when available, otherwise their account rate.',
+        oauthRateInvalid: 'The OAuth scheduling reference rate must be a non-negative number, or blank to use account rates.',
         stickyWeightedTitle: 'Sticky weighting',
         stickyWeightedDescription: 'When enabled, previous_response_id and session_hash affinity are scored by the advanced scheduler. When disabled, sticky accounts keep the legacy hard-hit behavior.',
         subscriptionPriorityTitle: 'Subscription priority',

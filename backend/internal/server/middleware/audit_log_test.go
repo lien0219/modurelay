@@ -152,6 +152,18 @@ func TestPasskeyLoginAuditUsesCanonicalLoginActionAndOmitsCredentialBody(t *test
 	require.Contains(t, auditBodyOmittedRoutes, route)
 }
 
+func TestCanvasModelFetchAuditOmitsCredentialBody(t *testing.T) {
+	route := "POST /api/v1/canvas/models/fetch"
+	require.Equal(t, "canvas.models.fetch", auditActionOverrides[route])
+	require.Contains(t, auditBodyOmittedRoutes, route)
+}
+
+func TestCanvasProviderProxyAuditOmitsCredentialBody(t *testing.T) {
+	route := "POST /api/v1/canvas/upstream"
+	require.Equal(t, "canvas.provider.proxy", auditActionOverrides[route])
+	require.Contains(t, auditBodyOmittedRoutes, route)
+}
+
 // Ollama 会话保存的请求体整体就是浏览器 Cookie 明文，键级脱敏清单曾漏掉裸键
 // "session"，必须走整体不入库路径，防止会话凭证长期留存在 audit_logs。
 func TestOllamaCloudUsageSessionRouteOmitsAuditBody(t *testing.T) {

@@ -191,6 +191,7 @@ export interface CustomMenuItem {
   icon_svg: string
   url: string
   page_slug?: string
+  hide_open_button?: boolean
   visibility: 'user' | 'admin'
   sort_order: number
 }
@@ -208,6 +209,9 @@ export interface LoginAgreementDocument {
 }
 
 export interface PublicSettings {
+  tool_center_enabled?: boolean
+  plan_catalog_enabled?: boolean
+  canvas_enabled?: boolean
   registration_enabled: boolean
   email_verify_enabled: boolean
   force_email_on_third_party_signup: boolean
@@ -278,7 +282,15 @@ export interface PublicSettings {
   channel_monitor_hide_throughput?: boolean
   /** When true, user monitor shows account quota/balance snapshots (default off). */
   channel_monitor_show_quota?: boolean
+  /** When true, user monitor hides the user ranking tab and /users payload. */
+  channel_monitor_hide_user_ranking?: boolean
   available_channels_enabled: boolean
+  sms_service_enabled?: boolean
+  email_service_enabled?: boolean
+  /** When false, the whole user-facing subscription surface is hidden. Default true. */
+  subscription_enabled: boolean
+  /** Mirrors payment config BALANCE_PAYMENT_DISABLED; true = balance top-up closed (subscription-only site). */
+  payment_balance_disabled: boolean
   model_plaza_enabled: boolean
   model_plaza_require_auth: boolean
   plugin_management_enabled: boolean
@@ -733,7 +745,7 @@ export interface PaginationConfig {
 
 // ==================== API Key & Group Types ====================
 
-export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok' | 'kimi' | 'zhipu' | 'deepseek' | 'composite'
+export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok' | 'kimi' | 'zhipu' | 'deepseek' | 'minimax' | 'opencode_go' | 'composite'
 
 export type VideoModelPrices = Record<string, Record<string, number>>
 
@@ -845,14 +857,14 @@ export interface AdminGroup extends Group {
   // OpenAI Messages 调度配置（仅 openai 平台使用）
   default_mapped_model?: string
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
-  models_list_config?: ModelsListConfig
+  model_allowlist?: ModelAllowlist
   codex_models_manifest_config?: CodexModelsManifestConfig
 
   // 分组排序
   sort_order: number
 }
 
-export interface ModelsListConfig {
+export interface ModelAllowlist {
   enabled: boolean
   models: string[]
 }
@@ -1028,7 +1040,7 @@ export interface CreateGroupRequest {
   fallback_group_id_on_invalid_request?: number | null
   mcp_xml_inject?: boolean
   supported_model_scopes?: string[]
-  models_list_config?: ModelsListConfig
+  model_allowlist?: ModelAllowlist
   codex_models_manifest_config?: CodexModelsManifestConfig
   allow_messages_dispatch?: boolean
   allow_live?: boolean
@@ -1094,7 +1106,7 @@ export interface UpdateGroupRequest {
   fallback_group_id_on_invalid_request?: number | null
   mcp_xml_inject?: boolean
   supported_model_scopes?: string[]
-  models_list_config?: ModelsListConfig
+  model_allowlist?: ModelAllowlist
   codex_models_manifest_config?: CodexModelsManifestConfig
   allow_messages_dispatch?: boolean
   allow_live?: boolean
@@ -1113,7 +1125,7 @@ export interface UpdateGroupRequest {
 
 // ==================== Account & Proxy Types ====================
 
-export type AccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok' | 'kimi' | 'zhipu' | 'deepseek'
+export type AccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok' | 'kimi' | 'zhipu' | 'deepseek' | 'minimax' | 'opencode_go'
 export type AccountType = 'oauth' | 'setup-token' | 'apikey' | 'upstream' | 'bedrock' | 'service_account'
 export type OAuthAddMethod = 'oauth' | 'setup-token'
 export type ProxyProtocol = 'http' | 'https' | 'socks5' | 'socks5h'
@@ -1400,6 +1412,46 @@ export interface OllamaCloudUsageSettings {
   debounce_minutes: number
 }
 
+export type OpenCodeGoUsageStatus = 'ok' | 'unauthorized' | 'failed'
+
+export interface OpenCodeGoUsageWindow {
+  status?: string
+  percent: number
+  resets_at?: string
+}
+
+export interface OpenCodeGoUsageData {
+  rolling?: OpenCodeGoUsageWindow
+  weekly?: OpenCodeGoUsageWindow
+  monthly?: OpenCodeGoUsageWindow
+}
+
+export interface OpenCodeGoUsageSnapshot {
+  status: OpenCodeGoUsageStatus
+  data?: OpenCodeGoUsageData
+  fetched_at?: string
+  last_attempt_at?: string
+  next_refresh_at?: string
+  failure_count?: number
+  http_status?: number
+  last_error?: string
+}
+
+export interface OpenCodeGoUsageState {
+  account_id: number
+  eligible: boolean
+  auto_refresh_enabled: boolean
+  snapshot?: OpenCodeGoUsageSnapshot
+}
+
+export interface OpenCodeGoUsageSettings {
+  enabled: boolean
+  /** Max wait while model requests keep arriving (minutes). */
+  interval_minutes: number
+  /** Trailing quiet period after the latest model request (minutes). */
+  debounce_minutes: number
+}
+
 export interface Account {
   id: number
   name: string
@@ -1413,6 +1465,7 @@ export interface Account {
   credentials?: Record<string, unknown>
   credentials_status?: Record<string, boolean>
   ollama_cloud_usage?: OllamaCloudUsageState
+  opencode_go_usage?: OpenCodeGoUsageState
   // Extra fields including Codex usage, OpenAI compact capability, and model-level rate limits.
   extra?: (CodexUsageSnapshot & OpenAICompactState & {
     model_rate_limits?: Record<string, { rate_limited_at: string; rate_limit_reset_at: string }>
@@ -1425,6 +1478,11 @@ export interface Account {
       available_count?: number
       credits?: { expires_at?: string }[]
     }
+    codex_credits_snapshot?: {
+      credits: { has_credits: boolean; unlimited: boolean; balance: string | null } | null
+      fetched_at: number
+    }
+    codex_referral_snapshot?: import('./openaiReferrals').OpenAIReferralEligibility | null
     auto_reset_credit_enabled?: boolean
     auto_reset_credit_5h_threshold?: number
     auto_reset_credit_7d_threshold?: number
@@ -1443,6 +1501,7 @@ export interface Account {
   concurrency: number
   load_factor?: number | null
   current_concurrency?: number // Real-time concurrency count from Redis
+  health?: AccountHealthSnapshot | null
   scheduler_score?: {
     base_score: number
     sticky_score?: number
@@ -1538,6 +1597,19 @@ export interface Account {
   parent_privacy_mode?: string
   parent_subscription_expires_at?: string
   parent_chatgpt_account_id?: string
+}
+
+export interface AccountHealthSnapshot {
+  score: number
+  state: 'warming' | 'healthy' | 'degraded' | 'open' | 'half_open'
+  sample_count: number
+  error_rate_ewma: number
+  latency_ewma_ms: number
+  consecutive_failures: number
+  open_count: number
+  open_until_unix?: number
+  last_failure_reason?: string
+  updated_at_unix: number
 }
 
 // The admin account list may return this compact shape when lite=1. Detail
@@ -1701,7 +1773,7 @@ export interface CodexUsageSnapshot {
 
 export type OpenAICompactMode = 'auto' | 'force_on' | 'force_off'
 export type OpenAIResponsesMode = 'auto' | 'force_responses' | 'force_chat_completions'
-export type OpenAIEndpointCapability = 'chat_completions' | 'embeddings'
+export type OpenAIEndpointCapability = 'chat_completions' | 'embeddings' | 'seedance'
 
 export interface OpenAICompactState {
   openai_compact_mode?: OpenAICompactMode
@@ -1757,6 +1829,15 @@ export interface UpdateAccountRequest {
   upstream_billing_new_api_user_access_token?: string
   upstream_billing_new_api_user_id?: number
   confirm_mixed_channel_risk?: boolean
+}
+
+export type GrokMediaEligibilityMode = 'auto' | 'enabled' | 'disabled'
+
+export interface GrokMediaEligibilityState {
+  account_id: number
+  mode: GrokMediaEligibilityMode
+  eligible: boolean
+  reason: string
 }
 
 export interface CheckMixedChannelRequest {

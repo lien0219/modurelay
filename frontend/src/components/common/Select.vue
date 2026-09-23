@@ -58,10 +58,11 @@
         <div
           v-if="isOpen"
           ref="dropdownRef"
-          class="select-dropdown-portal glass-popover"
+          class="select-dropdown-portal glass-popover scrollable-popover"
           :class="[instanceId]"
           :style="dropdownStyle"
           role="listbox"
+          tabindex="-1"
           @click.stop
           @mousedown.stop
           @keydown="onDropdownKeyDown"
@@ -120,6 +121,19 @@
             <div v-if="filteredOptions.length === 0" class="select-empty">
               {{ props.loading ? t('common.loading') : emptyTextDisplay }}
             </div>
+
+            <div
+              v-if="hasMore && !props.loading"
+              class="select-load-more"
+              role="option"
+              aria-selected="false"
+              tabindex="0"
+              @click.stop="emit('loadMore')"
+              @keydown.enter.stop.prevent="emit('loadMore')"
+              @keydown.space.stop.prevent="emit('loadMore')"
+            >
+              {{ loadMoreText || t('common.loadMore') }}
+            </div>
           </div>
         </div>
       </Transition>
@@ -170,12 +184,15 @@ interface Props {
   remote?: boolean
   /** 远程搜索模式下的加载态：options 为空时下拉显示 loading 文案 */
   loading?: boolean
+  hasMore?: boolean
+  loadMoreText?: string
 }
 
 interface Emits {
   (e: 'update:modelValue', value: string | number | boolean | null): void
   (e: 'change', value: string | number | boolean | null, option: SelectOption | null): void
   (e: 'search', query: string): void
+  (e: 'loadMore'): void
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -190,7 +207,8 @@ const props = withDefaults(defineProps<Props>(), {
   valueKey: 'value',
   labelKey: 'label',
   remote: false,
-  loading: false
+  loading: false,
+  hasMore: false
 })
 
 const emit = defineEmits<Emits>()
@@ -358,6 +376,12 @@ const findPrevEnabledIndex = (startIndex: number): number => {
   return -1
 }
 
+watch(filteredOptions, () => {
+  if (!isOpen.value) return
+  focusedIndex.value = findNextEnabledIndex(0)
+  if (focusedIndex.value >= 0) scrollToFocused()
+})
+
 const handleOptionMouseEnter = (option: any, index: number) => {
   if (isOptionDisabled(option) || isGroupHeaderOption(option)) return
   focusedIndex.value = index
@@ -409,6 +433,8 @@ watch(isOpen, (open) => {
 
     if (isSearchable.value) {
       nextTick(() => searchInputRef.value?.focus())
+    } else {
+      nextTick(() => dropdownRef.value?.focus())
     }
     // Add scroll listener to update position
     window.addEventListener('scroll', updateTriggerRect, { capture: true, passive: true })
@@ -531,7 +557,8 @@ onUnmounted(() => {
 <style scoped>
 .select-trigger {
   @apply flex w-full items-center justify-between gap-2;
-  @apply rounded-xl px-4 py-2.5 text-sm;
+  @apply rounded-xl px-4 text-sm;
+  height: 42px;
   color: var(--color-text-primary);
   background-color: var(--color-surface);
   border: 1px solid var(--color-border);
@@ -644,6 +671,19 @@ onUnmounted(() => {
 .select-dropdown-portal .select-empty {
   @apply px-4 py-8 text-center text-sm;
   @apply text-gray-500 dark:text-dark-400;
+}
+
+.select-dropdown-portal .select-load-more {
+  @apply cursor-pointer border-t px-4 py-2.5 text-center text-sm font-medium;
+  color: var(--color-primary);
+  border-color: var(--color-border-subtle);
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.select-dropdown-portal .select-load-more:hover,
+.select-dropdown-portal .select-load-more:focus-visible {
+  background-color: var(--color-primary-soft);
+  outline: none;
 }
 
 .select-dropdown-enter-active,

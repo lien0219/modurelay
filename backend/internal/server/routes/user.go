@@ -1,7 +1,10 @@
 package routes
 
 import (
+	"context"
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -16,7 +19,15 @@ func RegisterUserRoutes(
 	auditLog middleware.AuditLogMiddleware,
 	settingService *service.SettingService,
 	panelRateLimiter *middleware.PanelRateLimiter,
+	cfg *config.Config,
 ) {
+	if h.SMS != nil {
+		v1.POST("/sms/webhooks/:provider", h.SMS.Webhook)
+		// Service icons are deliberately provider-neutral on the user surface.
+		// The handler resolves the catalog internally and never exposes the
+		// upstream provider name in a browser-visible URL.
+		v1.GET("/sms/service-icons/:service", h.SMS.ServiceIcon)
+	}
 	authenticated := v1.Group("")
 	authenticated.Use(gin.HandlerFunc(jwtAuth))
 	authenticated.Use(middleware.BackendModeUserGuard(settingService))
@@ -146,6 +157,82 @@ func RegisterUserRoutes(
 			activities.POST("/:slug/claim", h.Activity.Claim)
 		}
 
+		if h.Canvas != nil {
+			canvas := authenticated.Group("/canvas")
+			{
+				canvas.POST("/models/fetch", panelRateLimiter.Heavy(), h.Canvas.FetchModels)
+				canvas.GET("/upstream", h.Canvas.ProxyProvider)
+				canvas.POST("/upstream", middleware.RequestBodyLimit(cfg.Gateway.MaxBodySize), h.Canvas.ProxyProvider)
+				canvas.GET("/projects", h.Canvas.List)
+				canvas.POST("/projects", h.Canvas.Create)
+				canvas.GET("/projects/:id", h.Canvas.Get)
+				canvas.PUT("/projects/:id", h.Canvas.Save)
+				canvas.DELETE("/projects/:id", h.Canvas.Delete)
+				canvas.GET("/projects/:id/revisions", h.Canvas.Revisions)
+				canvas.POST("/projects/:id/checkpoints", h.Canvas.Checkpoint)
+				canvas.POST("/projects/:id/revisions/:revision_id/restore", h.Canvas.Restore)
+				canvas.POST("/projects/:id/assets", h.Canvas.Upload)
+				canvas.POST("/projects/:id/assets/from-task", h.Canvas.Promote)
+			}
+			canvasAssets := authenticated.Group("/canvas/assets")
+			{
+				canvasAssets.GET("/:id/url", h.Canvas.AssetURL)
+				canvasAssets.DELETE("/:id", h.Canvas.DeleteAsset)
+			}
+		}
+
+		if h.PlanCatalog != nil {
+			authenticated.GET("/plan-catalog", h.PlanCatalog.List)
+		}
+
+		if h.SMS != nil {
+			sms := authenticated.Group("/sms")
+			sms.Use(smsFeatureGuard(h.SMS))
+			sms.GET("/settings", h.SMS.Settings)
+			sms.GET("/services", h.SMS.Services)
+			sms.GET("/providers", h.SMS.Providers)
+			sms.GET("/recent-successes", h.SMS.RecentSuccesses)
+			sms.GET("/providers/:provider/services", h.SMS.ProviderServices)
+			sms.GET("/countries", h.SMS.Countries)
+			sms.GET("/providers/:provider/services/:service/countries", h.SMS.ServiceCountries)
+			sms.GET("/providers/:provider/services/:service/countries/:country/operators", h.SMS.ProviderOperators)
+			sms.GET("/quotes", h.SMS.Quotes)
+			sms.POST("/orders", h.SMS.Purchase)
+			sms.POST("/orders/batch", h.SMS.PurchaseBatch)
+			sms.GET("/orders", h.SMS.Orders)
+			sms.GET("/orders/:id", h.SMS.Order)
+			sms.POST("/orders/:id/cancel", h.SMS.Cancel)
+			sms.POST("/orders/:id/resend", h.SMS.Resend)
+			sms.GET("/orders/:id/refund-status", h.SMS.RefundStatus)
+			sms.POST("/orders/:id/refund", h.SMS.Refund)
+			sms.GET("/rentals", h.SMS.Orders)
+			sms.GET("/rentals/:id", h.SMS.Order)
+			sms.GET("/rentals/:id/constraints", h.SMS.RentalConstraints)
+			sms.GET("/rentals/:id/services", h.SMS.RentalServiceOptions)
+			sms.POST("/rentals/:id/services/quotes", h.SMS.RentalServiceQuote)
+			sms.POST("/rentals/:id/services", h.SMS.AddRentalService)
+			sms.POST("/rentals/:id/restore-quote", h.SMS.RentalRestoreQuote)
+			sms.POST("/rentals/:id/restore", h.SMS.RestoreRental)
+			sms.POST("/rentals/:id/extend", h.SMS.ExtendRental)
+		}
+
+		if h.Email != nil {
+			email := authenticated.Group("/email")
+			email.Use(emailFeatureGuard(h.Email))
+			email.GET("/services", h.Email.Services)
+			email.GET("/quotes", h.Email.Quotes)
+			email.POST("/orders", h.Email.Purchase)
+			email.GET("/orders", h.Email.Orders)
+			email.GET("/orders/:id", h.Email.Order)
+			email.POST("/orders/:id/cancel", h.Email.Cancel)
+			email.GET("/orders/:id/refund-status", h.Email.RefundStatus)
+			email.POST("/orders/:id/refund", h.Email.Refund)
+		}
+		if h.VerificationRecords != nil {
+			authenticated.GET("/verification-records", h.VerificationRecords.List)
+			authenticated.GET("/verification-records/options", h.VerificationRecords.Options)
+		}
+
 		// 卡密兑换
 		redeem := authenticated.Group("/redeem")
 		{
@@ -181,5 +268,27 @@ func RegisterUserRoutes(
 			monitorV2.GET("/errors", h.ChannelMonitorV2.Errors)
 			monitorV2.GET("/users", h.ChannelMonitorV2.Users)
 		}
+	}
+}
+
+func smsFeatureGuard(svc interface{ Enabled(context.Context) bool }) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if !svc.Enabled(c.Request.Context()) {
+			response.ErrorWithDetails(c, 404, "SMS Verification is unavailable", "FEATURE_DISABLED", nil)
+			c.Abort()
+			return
+		}
+		c.Next()
+	}
+}
+
+func emailFeatureGuard(svc interface{ Enabled(context.Context) bool }) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if !svc.Enabled(c.Request.Context()) {
+			response.ErrorWithDetails(c, 404, "Email service is unavailable", "FEATURE_DISABLED", nil)
+			c.Abort()
+			return
+		}
+		c.Next()
 	}
 }

@@ -8,6 +8,8 @@ const componentPath = resolve(dirname(fileURLToPath(import.meta.url)), '../AppSi
 const componentSource = readFileSync(componentPath, 'utf8')
 const stylePath = resolve(dirname(fileURLToPath(import.meta.url)), '../../../style.css')
 const styleSource = readFileSync(stylePath, 'utf8')
+const versionBadgePath = resolve(dirname(fileURLToPath(import.meta.url)), '../../common/VersionBadge.vue')
+const versionBadgeSource = readFileSync(versionBadgePath, 'utf8')
 
 describe('AppSidebar custom SVG styles', () => {
   it('does not override uploaded SVG fill or stroke colors', () => {
@@ -40,6 +42,15 @@ describe('AppSidebar scroll position persistence', () => {
     expect(componentSource).toContain('appStore.sidebarScrollTop')
     expect(componentSource).toContain('nextTick')
   })
+
+  it('keeps its scroll container off a live backdrop-filter layer', () => {
+    const sidebarBlock = styleSource.match(/\.sidebar\s*\{[\s\S]*?\n {2}\}/)
+    const navBlock = styleSource.match(/\.sidebar-nav\s*\{[\s\S]*?\n {2}\}/)
+
+    expect(sidebarBlock?.[0]).toContain('background-color: var(--color-surface)')
+    expect(sidebarBlock?.[0]).toContain('backdrop-filter: none')
+    expect(navBlock?.[0]).toContain('overscroll-behavior: contain')
+  })
 })
 
 describe('AppSidebar collapsible groups', () => {
@@ -61,6 +72,16 @@ describe('AppSidebar header styles', () => {
     expect(sidebarHeaderBlockMatch?.[0]).not.toContain('@apply overflow-hidden;')
     expect(sidebarBrandBlockMatch?.[0]).not.toContain('overflow: hidden;')
   })
+
+  it('stacks the version below the brand and bounds long build identifiers', () => {
+    const sidebarBrandBlockMatch = componentSource.match(/\.sidebar-brand\s*\{[\s\S]*?\n\}/)
+
+    expect(sidebarBrandBlockMatch?.[0]).toContain('flex-direction: column;')
+    expect(sidebarBrandBlockMatch?.[0]).toContain('align-items: flex-start;')
+    expect(versionBadgeSource).toContain('version-badge relative min-w-0 max-w-full')
+    expect(versionBadgeSource).toContain('min-w-0 truncate font-medium')
+    expect(versionBadgeSource).toContain(':title="versionBadgeLabel"')
+  })
 })
 
 describe('AppSidebar activity center navigation', () => {
@@ -72,6 +93,134 @@ describe('AppSidebar activity center navigation', () => {
   it('uses a distinct activity icon while keeping the gift icon for redeem', () => {
     expect(componentSource).toContain("{ path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true }")
     expect(componentSource).toContain("{ path: '/admin/activities', label: t('nav.activityManagement'), icon: CalendarIcon }")
+  })
+})
+
+describe('AppSidebar canvas workspace transition', () => {
+  it('uses a dedicated canvas icon distinct from AI learning', () => {
+    expect(componentSource).toContain("render: () => h(Icon, { name: 'group' })")
+    expect(componentSource).toContain("{ path: '/canvas', label: t('nav.canvas'), icon: CanvasIcon, featureFlag: flagCanvas }")
+    expect(componentSource).toContain("{ path: '/ai-learning', label: t('nav.aiLearning'), icon: AILearningIcon }")
+  })
+
+  it('hands primary canvas navigation directly to the standalone app', () => {
+    expect(componentSource).toContain("import { navigateToWorkspaceUrlWithTransition } from '@/utils/workspaceModeTransition'")
+    expect(componentSource).toContain("itemPath === '/canvas'")
+    expect(componentSource).toContain('@click.capture="handleMenuItemClick(item.path, $event)"')
+    expect(componentSource).toContain("navigateToWorkspaceUrlWithTransition('/infinite-canvas/canvas', 'to-canvas')")
+  })
+})
+
+describe('AppSidebar website navigation', () => {
+  it('exposes the official home and authenticated about page in a dedicated section', () => {
+    expect(componentSource).toContain("{{ t('nav.website') }}")
+    expect(componentSource).toContain("{ path: '/home', label: t('nav.home'), icon: SiteHomeIcon }")
+    expect(componentSource).toContain("{ path: '/about', label: t('nav.aboutUs'), icon: AboutIcon }")
+  })
+
+  it('uses distinct existing icons and matches hash routes precisely', () => {
+    expect(componentSource).toContain("render: () => h(Icon, { name: 'home' })")
+    expect(componentSource).toContain("render: () => h(Icon, { name: 'infoCircle' })")
+    expect(componentSource).toContain("route.hash === `#${hash}`")
+  })
+})
+
+describe('AppSidebar personal navigation order', () => {
+  it('groups workbench, verification, guidance, and billing entries in task order', () => {
+    const navBlock = componentSource.slice(
+      componentSource.indexOf('function buildSelfNavItems'),
+      componentSource.indexOf('// finalizeNav')
+    )
+    const expectedPaths = [
+      '/canvas',
+      '/batch-image',
+      '/keys',
+      '/usage',
+      '/available-channels',
+      '/monitor',
+      '/sms',
+      '/email',
+      '/verification-records',
+      '/quick-start',
+      '/tools',
+      '/ai-learning',
+      '/plan-catalog',
+      '/subscriptions',
+      '/purchase',
+      '/recharge',
+      '/orders',
+      '/activities',
+      '/resource-center',
+      '/redeem',
+      '/affiliate',
+      '/distribution',
+      '/profile'
+    ]
+    const positions = expectedPaths.map(path => navBlock.indexOf(`path: '${path}'`))
+
+    expect(positions.every(position => position >= 0)).toBe(true)
+    expect(positions).toEqual([...positions].sort((left, right) => left - right))
+  })
+})
+
+describe('AppSidebar administrator navigation order', () => {
+  it('groups administration by overview, operations, content, and audit workflow', () => {
+    const navBlock = componentSource.slice(
+      componentSource.indexOf('const adminNavItems = computed'),
+      componentSource.indexOf('\n\n  const visible = applyFeatureFlags(baseItems)')
+    )
+    const expectedPaths = [
+      '/admin/dashboard',
+      '/admin/ops',
+      '/admin/users',
+      '/admin/groups',
+      '/admin/channels',
+      '/admin/accounts',
+      '/admin/proxies',
+      '/admin/plugins',
+      '/admin/plan-catalog',
+      '/admin/subscriptions',
+      '/admin/orders',
+      '/admin/sms',
+      '/admin/email',
+      '/admin/verification-records',
+      '/admin/usage',
+      '/admin/announcements',
+      '/admin/resource-center',
+      '/admin/activities',
+      '/admin/security-audit',
+      '/admin/redeem',
+      '/admin/promo-codes',
+      '/admin/distribution',
+      '/admin/affiliates',
+      '/admin/audit-logs'
+    ]
+    const positions = expectedPaths.map(path => navBlock.indexOf(`path: '${path}'`))
+
+    expect(positions.every(position => position >= 0)).toBe(true)
+    expect(positions).toEqual([...positions].sort((left, right) => left - right))
+  })
+})
+
+describe('AppSidebar forum and label contracts', () => {
+  it('keeps the user forum in My Account while admin exposes only forum management', () => {
+    const selfNavBlock = componentSource.slice(
+      componentSource.indexOf('function buildSelfNavItems'),
+      componentSource.indexOf('// finalizeNav')
+    )
+    const adminNavBlock = componentSource.slice(
+      componentSource.indexOf('const adminNavItems = computed'),
+      componentSource.indexOf('\n\n  const visible = applyFeatureFlags(baseItems)')
+    )
+
+    expect(selfNavBlock).toContain("{ path: '/resource-center', label: t('nav.resourceCenter'), icon: ResourceCenterIcon, featureFlag: flagResourceCenter }")
+    expect(adminNavBlock).not.toContain("{ path: '/resource-center', label: t('nav.resourceCenter'), icon: ResourceCenterIcon }")
+    expect(adminNavBlock).toContain("{ path: '/admin/resource-center', label: t('nav.resourceCenterAdmin'), icon: ResourceCenterIcon }")
+  })
+
+  it('uses the requested tool-center and plan-store labels', () => {
+    expect(componentSource).toContain("{ path: '/tools', label: t('nav.tools'), icon: PluginIcon, featureFlag: flagToolCenter }")
+    expect(componentSource).toContain("{ path: '/plan-catalog', label: t('nav.planCatalog'), icon: CreditCardIcon, featureFlag: flagPlanCatalog }")
   })
 })
 
@@ -93,5 +242,23 @@ describe('AppSidebar footer controls', () => {
   it('keeps collapsed icon actions accessible by name', () => {
     expect(componentSource).toContain(`:aria-label="isDark ? t('nav.lightMode') : t('nav.darkMode')"`)
     expect(componentSource).toContain(`:aria-label="sidebarCollapsed ? t('nav.expand') : t('nav.collapse')"`)
+  })
+})
+
+describe('AppSidebar subscription feature flag', () => {
+  it('gates the My Subscriptions entry behind the subscription public-settings flag', () => {
+    expect(componentSource).toContain('const flagSubscription = makeSidebarFlag(FeatureFlags.subscription)')
+    expect(componentSource).toMatch(/path: '\/subscriptions'[^\n]*featureFlag: flagSubscription/)
+  })
+
+  it('also hides the admin Subscription Management entry on recharge-only sites', () => {
+    expect(componentSource).toMatch(/path: '\/admin\/subscriptions'[^\n]*featureFlag: flagSubscription/)
+  })
+
+  it('derives the purchase entry label from the site billing mode', () => {
+    expect(componentSource).toContain("import { resolveSiteBillingMode } from '@/utils/siteBillingMode'")
+    expect(componentSource).toMatch(/case 'recharge_only':\s*return t\('nav\.recharge'\)/)
+    expect(componentSource).toMatch(/case 'subscription_only':\s*return t\('nav\.subscribe'\)/)
+    expect(componentSource).toMatch(/path: '\/purchase'[^\n]*label: purchaseNavLabel\.value/)
   })
 })

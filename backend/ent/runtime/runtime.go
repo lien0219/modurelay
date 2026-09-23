@@ -20,6 +20,10 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorrequesttemplate"
 	"github.com/Wei-Shaw/sub2api/ent/compositemodelroute"
+	"github.com/Wei-Shaw/sub2api/ent/emailchannel"
+	"github.com/Wei-Shaw/sub2api/ent/emailmessage"
+	"github.com/Wei-Shaw/sub2api/ent/emailorder"
+	"github.com/Wei-Shaw/sub2api/ent/emailprovider"
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
@@ -40,6 +44,9 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/schema"
 	"github.com/Wei-Shaw/sub2api/ent/securitysecret"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
+	"github.com/Wei-Shaw/sub2api/ent/smschannel"
+	"github.com/Wei-Shaw/sub2api/ent/smsorder"
+	"github.com/Wei-Shaw/sub2api/ent/smsprovider"
 	"github.com/Wei-Shaw/sub2api/ent/subscriptionplan"
 	"github.com/Wei-Shaw/sub2api/ent/tlsfingerprintprofile"
 	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
@@ -932,6 +939,348 @@ func init() {
 	compositemodelrouteDescEnabled := compositemodelrouteFields[7].Descriptor()
 	// compositemodelroute.DefaultEnabled holds the default value on creation for the enabled field.
 	compositemodelroute.DefaultEnabled = compositemodelrouteDescEnabled.Default.(bool)
+	emailchannelFields := schema.EmailChannel{}.Fields()
+	_ = emailchannelFields
+	// emailchannelDescCode is the schema descriptor for code field.
+	emailchannelDescCode := emailchannelFields[0].Descriptor()
+	// emailchannel.CodeValidator is a validator for the "code" field. It is called by the builders before save.
+	emailchannel.CodeValidator = func() func(string) error {
+		validators := emailchannelDescCode.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(code string) error {
+			for _, fn := range fns {
+				if err := fn(code); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// emailchannelDescPublicName is the schema descriptor for public_name field.
+	emailchannelDescPublicName := emailchannelFields[1].Descriptor()
+	// emailchannel.PublicNameValidator is a validator for the "public_name" field. It is called by the builders before save.
+	emailchannel.PublicNameValidator = func() func(string) error {
+		validators := emailchannelDescPublicName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(public_name string) error {
+			for _, fn := range fns {
+				if err := fn(public_name); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// emailchannelDescRole is the schema descriptor for role field.
+	emailchannelDescRole := emailchannelFields[2].Descriptor()
+	// emailchannel.DefaultRole holds the default value on creation for the role field.
+	emailchannel.DefaultRole = emailchannelDescRole.Default.(string)
+	// emailchannel.RoleValidator is a validator for the "role" field. It is called by the builders before save.
+	emailchannel.RoleValidator = emailchannelDescRole.Validators[0].(func(string) error)
+	// emailchannelDescEmailType is the schema descriptor for email_type field.
+	emailchannelDescEmailType := emailchannelFields[4].Descriptor()
+	// emailchannel.DefaultEmailType holds the default value on creation for the email_type field.
+	emailchannel.DefaultEmailType = emailchannelDescEmailType.Default.(string)
+	// emailchannel.EmailTypeValidator is a validator for the "email_type" field. It is called by the builders before save.
+	emailchannel.EmailTypeValidator = emailchannelDescEmailType.Validators[0].(func(string) error)
+	// emailchannelDescPrivacyLevel is the schema descriptor for privacy_level field.
+	emailchannelDescPrivacyLevel := emailchannelFields[5].Descriptor()
+	// emailchannel.DefaultPrivacyLevel holds the default value on creation for the privacy_level field.
+	emailchannel.DefaultPrivacyLevel = emailchannelDescPrivacyLevel.Default.(string)
+	// emailchannel.PrivacyLevelValidator is a validator for the "privacy_level" field. It is called by the builders before save.
+	emailchannel.PrivacyLevelValidator = emailchannelDescPrivacyLevel.Validators[0].(func(string) error)
+	// emailchannelDescEnabled is the schema descriptor for enabled field.
+	emailchannelDescEnabled := emailchannelFields[6].Descriptor()
+	// emailchannel.DefaultEnabled holds the default value on creation for the enabled field.
+	emailchannel.DefaultEnabled = emailchannelDescEnabled.Default.(bool)
+	// emailchannelDescVisible is the schema descriptor for visible field.
+	emailchannelDescVisible := emailchannelFields[7].Descriptor()
+	// emailchannel.DefaultVisible holds the default value on creation for the visible field.
+	emailchannel.DefaultVisible = emailchannelDescVisible.Default.(bool)
+	// emailchannelDescHealthy is the schema descriptor for healthy field.
+	emailchannelDescHealthy := emailchannelFields[8].Descriptor()
+	// emailchannel.DefaultHealthy holds the default value on creation for the healthy field.
+	emailchannel.DefaultHealthy = emailchannelDescHealthy.Default.(bool)
+	// emailchannelDescSalePrice is the schema descriptor for sale_price field.
+	emailchannelDescSalePrice := emailchannelFields[9].Descriptor()
+	// emailchannel.DefaultSalePrice holds the default value on creation for the sale_price field.
+	emailchannel.DefaultSalePrice = emailchannelDescSalePrice.Default.(float64)
+	// emailchannelDescOrderTTLSeconds is the schema descriptor for order_ttl_seconds field.
+	emailchannelDescOrderTTLSeconds := emailchannelFields[10].Descriptor()
+	// emailchannel.DefaultOrderTTLSeconds holds the default value on creation for the order_ttl_seconds field.
+	emailchannel.DefaultOrderTTLSeconds = emailchannelDescOrderTTLSeconds.Default.(int)
+	// emailchannelDescCapturePolicy is the schema descriptor for capture_policy field.
+	emailchannelDescCapturePolicy := emailchannelFields[11].Descriptor()
+	// emailchannel.DefaultCapturePolicy holds the default value on creation for the capture_policy field.
+	emailchannel.DefaultCapturePolicy = emailchannelDescCapturePolicy.Default.(string)
+	// emailchannel.CapturePolicyValidator is a validator for the "capture_policy" field. It is called by the builders before save.
+	emailchannel.CapturePolicyValidator = emailchannelDescCapturePolicy.Validators[0].(func(string) error)
+	// emailchannelDescRefundPolicy is the schema descriptor for refund_policy field.
+	emailchannelDescRefundPolicy := emailchannelFields[12].Descriptor()
+	// emailchannel.DefaultRefundPolicy holds the default value on creation for the refund_policy field.
+	emailchannel.DefaultRefundPolicy = emailchannelDescRefundPolicy.Default.(string)
+	// emailchannel.RefundPolicyValidator is a validator for the "refund_policy" field. It is called by the builders before save.
+	emailchannel.RefundPolicyValidator = emailchannelDescRefundPolicy.Validators[0].(func(string) error)
+	// emailchannelDescMaxProviderRequestsPerOrder is the schema descriptor for max_provider_requests_per_order field.
+	emailchannelDescMaxProviderRequestsPerOrder := emailchannelFields[14].Descriptor()
+	// emailchannel.DefaultMaxProviderRequestsPerOrder holds the default value on creation for the max_provider_requests_per_order field.
+	emailchannel.DefaultMaxProviderRequestsPerOrder = emailchannelDescMaxProviderRequestsPerOrder.Default.(int)
+	// emailchannelDescSortOrder is the schema descriptor for sort_order field.
+	emailchannelDescSortOrder := emailchannelFields[15].Descriptor()
+	// emailchannel.DefaultSortOrder holds the default value on creation for the sort_order field.
+	emailchannel.DefaultSortOrder = emailchannelDescSortOrder.Default.(int)
+	emailmessageFields := schema.EmailMessage{}.Fields()
+	_ = emailmessageFields
+	// emailmessageDescProviderMessageID is the schema descriptor for provider_message_id field.
+	emailmessageDescProviderMessageID := emailmessageFields[1].Descriptor()
+	// emailmessage.DefaultProviderMessageID holds the default value on creation for the provider_message_id field.
+	emailmessage.DefaultProviderMessageID = emailmessageDescProviderMessageID.Default.(string)
+	// emailmessage.ProviderMessageIDValidator is a validator for the "provider_message_id" field. It is called by the builders before save.
+	emailmessage.ProviderMessageIDValidator = emailmessageDescProviderMessageID.Validators[0].(func(string) error)
+	// emailmessageDescFromAddress is the schema descriptor for from_address field.
+	emailmessageDescFromAddress := emailmessageFields[2].Descriptor()
+	// emailmessage.DefaultFromAddress holds the default value on creation for the from_address field.
+	emailmessage.DefaultFromAddress = emailmessageDescFromAddress.Default.(string)
+	// emailmessage.FromAddressValidator is a validator for the "from_address" field. It is called by the builders before save.
+	emailmessage.FromAddressValidator = emailmessageDescFromAddress.Validators[0].(func(string) error)
+	// emailmessageDescFromName is the schema descriptor for from_name field.
+	emailmessageDescFromName := emailmessageFields[3].Descriptor()
+	// emailmessage.DefaultFromName holds the default value on creation for the from_name field.
+	emailmessage.DefaultFromName = emailmessageDescFromName.Default.(string)
+	// emailmessage.FromNameValidator is a validator for the "from_name" field. It is called by the builders before save.
+	emailmessage.FromNameValidator = emailmessageDescFromName.Validators[0].(func(string) error)
+	// emailmessageDescToAddress is the schema descriptor for to_address field.
+	emailmessageDescToAddress := emailmessageFields[4].Descriptor()
+	// emailmessage.DefaultToAddress holds the default value on creation for the to_address field.
+	emailmessage.DefaultToAddress = emailmessageDescToAddress.Default.(string)
+	// emailmessage.ToAddressValidator is a validator for the "to_address" field. It is called by the builders before save.
+	emailmessage.ToAddressValidator = emailmessageDescToAddress.Validators[0].(func(string) error)
+	// emailmessageDescSubject is the schema descriptor for subject field.
+	emailmessageDescSubject := emailmessageFields[5].Descriptor()
+	// emailmessage.DefaultSubject holds the default value on creation for the subject field.
+	emailmessage.DefaultSubject = emailmessageDescSubject.Default.(string)
+	// emailmessageDescTextBody is the schema descriptor for text_body field.
+	emailmessageDescTextBody := emailmessageFields[6].Descriptor()
+	// emailmessage.DefaultTextBody holds the default value on creation for the text_body field.
+	emailmessage.DefaultTextBody = emailmessageDescTextBody.Default.(string)
+	// emailmessageDescHTMLBody is the schema descriptor for html_body field.
+	emailmessageDescHTMLBody := emailmessageFields[7].Descriptor()
+	// emailmessage.DefaultHTMLBody holds the default value on creation for the html_body field.
+	emailmessage.DefaultHTMLBody = emailmessageDescHTMLBody.Default.(string)
+	// emailmessageDescVerificationCode is the schema descriptor for verification_code field.
+	emailmessageDescVerificationCode := emailmessageFields[8].Descriptor()
+	// emailmessage.DefaultVerificationCode holds the default value on creation for the verification_code field.
+	emailmessage.DefaultVerificationCode = emailmessageDescVerificationCode.Default.(string)
+	// emailmessage.VerificationCodeValidator is a validator for the "verification_code" field. It is called by the builders before save.
+	emailmessage.VerificationCodeValidator = emailmessageDescVerificationCode.Validators[0].(func(string) error)
+	// emailmessageDescVerificationURL is the schema descriptor for verification_url field.
+	emailmessageDescVerificationURL := emailmessageFields[9].Descriptor()
+	// emailmessage.DefaultVerificationURL holds the default value on creation for the verification_url field.
+	emailmessage.DefaultVerificationURL = emailmessageDescVerificationURL.Default.(string)
+	// emailmessage.VerificationURLValidator is a validator for the "verification_url" field. It is called by the builders before save.
+	emailmessage.VerificationURLValidator = emailmessageDescVerificationURL.Validators[0].(func(string) error)
+	// emailmessageDescVerificationConfidence is the schema descriptor for verification_confidence field.
+	emailmessageDescVerificationConfidence := emailmessageFields[10].Descriptor()
+	// emailmessage.DefaultVerificationConfidence holds the default value on creation for the verification_confidence field.
+	emailmessage.DefaultVerificationConfidence = emailmessageDescVerificationConfidence.Default.(float64)
+	// emailmessageDescVerificationMethod is the schema descriptor for verification_method field.
+	emailmessageDescVerificationMethod := emailmessageFields[11].Descriptor()
+	// emailmessage.DefaultVerificationMethod holds the default value on creation for the verification_method field.
+	emailmessage.DefaultVerificationMethod = emailmessageDescVerificationMethod.Default.(string)
+	// emailmessage.VerificationMethodValidator is a validator for the "verification_method" field. It is called by the builders before save.
+	emailmessage.VerificationMethodValidator = emailmessageDescVerificationMethod.Validators[0].(func(string) error)
+	// emailmessageDescDedupeHash is the schema descriptor for dedupe_hash field.
+	emailmessageDescDedupeHash := emailmessageFields[13].Descriptor()
+	// emailmessage.DedupeHashValidator is a validator for the "dedupe_hash" field. It is called by the builders before save.
+	emailmessage.DedupeHashValidator = emailmessageDescDedupeHash.Validators[0].(func(string) error)
+	emailorderFields := schema.EmailOrder{}.Fields()
+	_ = emailorderFields
+	// emailorderDescOrderNo is the schema descriptor for order_no field.
+	emailorderDescOrderNo := emailorderFields[1].Descriptor()
+	// emailorder.OrderNoValidator is a validator for the "order_no" field. It is called by the builders before save.
+	emailorder.OrderNoValidator = emailorderDescOrderNo.Validators[0].(func(string) error)
+	// emailorderDescProviderInboxID is the schema descriptor for provider_inbox_id field.
+	emailorderDescProviderInboxID := emailorderFields[6].Descriptor()
+	// emailorder.DefaultProviderInboxID holds the default value on creation for the provider_inbox_id field.
+	emailorder.DefaultProviderInboxID = emailorderDescProviderInboxID.Default.(string)
+	// emailorder.ProviderInboxIDValidator is a validator for the "provider_inbox_id" field. It is called by the builders before save.
+	emailorder.ProviderInboxIDValidator = emailorderDescProviderInboxID.Validators[0].(func(string) error)
+	// emailorderDescEmailAddress is the schema descriptor for email_address field.
+	emailorderDescEmailAddress := emailorderFields[7].Descriptor()
+	// emailorder.DefaultEmailAddress holds the default value on creation for the email_address field.
+	emailorder.DefaultEmailAddress = emailorderDescEmailAddress.Default.(string)
+	// emailorder.EmailAddressValidator is a validator for the "email_address" field. It is called by the builders before save.
+	emailorder.EmailAddressValidator = emailorderDescEmailAddress.Validators[0].(func(string) error)
+	// emailorderDescAddressType is the schema descriptor for address_type field.
+	emailorderDescAddressType := emailorderFields[8].Descriptor()
+	// emailorder.DefaultAddressType holds the default value on creation for the address_type field.
+	emailorder.DefaultAddressType = emailorderDescAddressType.Default.(string)
+	// emailorder.AddressTypeValidator is a validator for the "address_type" field. It is called by the builders before save.
+	emailorder.AddressTypeValidator = emailorderDescAddressType.Validators[0].(func(string) error)
+	// emailorderDescStatus is the schema descriptor for status field.
+	emailorderDescStatus := emailorderFields[9].Descriptor()
+	// emailorder.DefaultStatus holds the default value on creation for the status field.
+	emailorder.DefaultStatus = emailorderDescStatus.Default.(string)
+	// emailorder.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	emailorder.StatusValidator = emailorderDescStatus.Validators[0].(func(string) error)
+	// emailorderDescSalePriceSnapshot is the schema descriptor for sale_price_snapshot field.
+	emailorderDescSalePriceSnapshot := emailorderFields[10].Descriptor()
+	// emailorder.DefaultSalePriceSnapshot holds the default value on creation for the sale_price_snapshot field.
+	emailorder.DefaultSalePriceSnapshot = emailorderDescSalePriceSnapshot.Default.(float64)
+	// emailorderDescProviderCostEstimateSnapshot is the schema descriptor for provider_cost_estimate_snapshot field.
+	emailorderDescProviderCostEstimateSnapshot := emailorderFields[11].Descriptor()
+	// emailorder.DefaultProviderCostEstimateSnapshot holds the default value on creation for the provider_cost_estimate_snapshot field.
+	emailorder.DefaultProviderCostEstimateSnapshot = emailorderDescProviderCostEstimateSnapshot.Default.(float64)
+	// emailorderDescSuccessRateGradeSnapshot is the schema descriptor for success_rate_grade_snapshot field.
+	emailorderDescSuccessRateGradeSnapshot := emailorderFields[14].Descriptor()
+	// emailorder.DefaultSuccessRateGradeSnapshot holds the default value on creation for the success_rate_grade_snapshot field.
+	emailorder.DefaultSuccessRateGradeSnapshot = emailorderDescSuccessRateGradeSnapshot.Default.(string)
+	// emailorder.SuccessRateGradeSnapshotValidator is a validator for the "success_rate_grade_snapshot" field. It is called by the builders before save.
+	emailorder.SuccessRateGradeSnapshotValidator = emailorderDescSuccessRateGradeSnapshot.Validators[0].(func(string) error)
+	// emailorderDescRefundPolicySnapshot is the schema descriptor for refund_policy_snapshot field.
+	emailorderDescRefundPolicySnapshot := emailorderFields[15].Descriptor()
+	// emailorder.DefaultRefundPolicySnapshot holds the default value on creation for the refund_policy_snapshot field.
+	emailorder.DefaultRefundPolicySnapshot = emailorderDescRefundPolicySnapshot.Default.(string)
+	// emailorder.RefundPolicySnapshotValidator is a validator for the "refund_policy_snapshot" field. It is called by the builders before save.
+	emailorder.RefundPolicySnapshotValidator = emailorderDescRefundPolicySnapshot.Validators[0].(func(string) error)
+	// emailorderDescCapturePolicySnapshot is the schema descriptor for capture_policy_snapshot field.
+	emailorderDescCapturePolicySnapshot := emailorderFields[16].Descriptor()
+	// emailorder.DefaultCapturePolicySnapshot holds the default value on creation for the capture_policy_snapshot field.
+	emailorder.DefaultCapturePolicySnapshot = emailorderDescCapturePolicySnapshot.Default.(string)
+	// emailorder.CapturePolicySnapshotValidator is a validator for the "capture_policy_snapshot" field. It is called by the builders before save.
+	emailorder.CapturePolicySnapshotValidator = emailorderDescCapturePolicySnapshot.Validators[0].(func(string) error)
+	// emailorderDescReservedAmount is the schema descriptor for reserved_amount field.
+	emailorderDescReservedAmount := emailorderFields[17].Descriptor()
+	// emailorder.DefaultReservedAmount holds the default value on creation for the reserved_amount field.
+	emailorder.DefaultReservedAmount = emailorderDescReservedAmount.Default.(float64)
+	// emailorderDescCapturedAmount is the schema descriptor for captured_amount field.
+	emailorderDescCapturedAmount := emailorderFields[18].Descriptor()
+	// emailorder.DefaultCapturedAmount holds the default value on creation for the captured_amount field.
+	emailorder.DefaultCapturedAmount = emailorderDescCapturedAmount.Default.(float64)
+	// emailorderDescReleasedAmount is the schema descriptor for released_amount field.
+	emailorderDescReleasedAmount := emailorderFields[19].Descriptor()
+	// emailorder.DefaultReleasedAmount holds the default value on creation for the released_amount field.
+	emailorder.DefaultReleasedAmount = emailorderDescReleasedAmount.Default.(float64)
+	// emailorderDescRefundedAmount is the schema descriptor for refunded_amount field.
+	emailorderDescRefundedAmount := emailorderFields[20].Descriptor()
+	// emailorder.DefaultRefundedAmount holds the default value on creation for the refunded_amount field.
+	emailorder.DefaultRefundedAmount = emailorderDescRefundedAmount.Default.(float64)
+	// emailorderDescPollCount is the schema descriptor for poll_count field.
+	emailorderDescPollCount := emailorderFields[27].Descriptor()
+	// emailorder.DefaultPollCount holds the default value on creation for the poll_count field.
+	emailorder.DefaultPollCount = emailorderDescPollCount.Default.(int)
+	// emailorderDescProviderRequestCount is the schema descriptor for provider_request_count field.
+	emailorderDescProviderRequestCount := emailorderFields[30].Descriptor()
+	// emailorder.DefaultProviderRequestCount holds the default value on creation for the provider_request_count field.
+	emailorder.DefaultProviderRequestCount = emailorderDescProviderRequestCount.Default.(int)
+	// emailorderDescErrorCode is the schema descriptor for error_code field.
+	emailorderDescErrorCode := emailorderFields[31].Descriptor()
+	// emailorder.DefaultErrorCode holds the default value on creation for the error_code field.
+	emailorder.DefaultErrorCode = emailorderDescErrorCode.Default.(string)
+	// emailorder.ErrorCodeValidator is a validator for the "error_code" field. It is called by the builders before save.
+	emailorder.ErrorCodeValidator = emailorderDescErrorCode.Validators[0].(func(string) error)
+	// emailorderDescErrorPublicMessage is the schema descriptor for error_public_message field.
+	emailorderDescErrorPublicMessage := emailorderFields[32].Descriptor()
+	// emailorder.DefaultErrorPublicMessage holds the default value on creation for the error_public_message field.
+	emailorder.DefaultErrorPublicMessage = emailorderDescErrorPublicMessage.Default.(string)
+	// emailorder.ErrorPublicMessageValidator is a validator for the "error_public_message" field. It is called by the builders before save.
+	emailorder.ErrorPublicMessageValidator = emailorderDescErrorPublicMessage.Validators[0].(func(string) error)
+	// emailorderDescErrorAdminMessage is the schema descriptor for error_admin_message field.
+	emailorderDescErrorAdminMessage := emailorderFields[33].Descriptor()
+	// emailorder.DefaultErrorAdminMessage holds the default value on creation for the error_admin_message field.
+	emailorder.DefaultErrorAdminMessage = emailorderDescErrorAdminMessage.Default.(string)
+	// emailorderDescRefundStatus is the schema descriptor for refund_status field.
+	emailorderDescRefundStatus := emailorderFields[34].Descriptor()
+	// emailorder.DefaultRefundStatus holds the default value on creation for the refund_status field.
+	emailorder.DefaultRefundStatus = emailorderDescRefundStatus.Default.(string)
+	// emailorder.RefundStatusValidator is a validator for the "refund_status" field. It is called by the builders before save.
+	emailorder.RefundStatusValidator = emailorderDescRefundStatus.Validators[0].(func(string) error)
+	// emailorderDescRefundReason is the schema descriptor for refund_reason field.
+	emailorderDescRefundReason := emailorderFields[35].Descriptor()
+	// emailorder.DefaultRefundReason holds the default value on creation for the refund_reason field.
+	emailorder.DefaultRefundReason = emailorderDescRefundReason.Default.(string)
+	// emailorderDescIdempotencyKey is the schema descriptor for idempotency_key field.
+	emailorderDescIdempotencyKey := emailorderFields[36].Descriptor()
+	// emailorder.IdempotencyKeyValidator is a validator for the "idempotency_key" field. It is called by the builders before save.
+	emailorder.IdempotencyKeyValidator = emailorderDescIdempotencyKey.Validators[0].(func(string) error)
+	emailproviderFields := schema.EmailProvider{}.Fields()
+	_ = emailproviderFields
+	// emailproviderDescCode is the schema descriptor for code field.
+	emailproviderDescCode := emailproviderFields[0].Descriptor()
+	// emailprovider.CodeValidator is a validator for the "code" field. It is called by the builders before save.
+	emailprovider.CodeValidator = func() func(string) error {
+		validators := emailproviderDescCode.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(code string) error {
+			for _, fn := range fns {
+				if err := fn(code); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// emailproviderDescName is the schema descriptor for name field.
+	emailproviderDescName := emailproviderFields[1].Descriptor()
+	// emailprovider.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	emailprovider.NameValidator = func() func(string) error {
+		validators := emailproviderDescName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(name string) error {
+			for _, fn := range fns {
+				if err := fn(name); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// emailproviderDescBaseURL is the schema descriptor for base_url field.
+	emailproviderDescBaseURL := emailproviderFields[2].Descriptor()
+	// emailprovider.BaseURLValidator is a validator for the "base_url" field. It is called by the builders before save.
+	emailprovider.BaseURLValidator = func() func(string) error {
+		validators := emailproviderDescBaseURL.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(base_url string) error {
+			for _, fn := range fns {
+				if err := fn(base_url); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// emailproviderDescCredentialRef is the schema descriptor for credential_ref field.
+	emailproviderDescCredentialRef := emailproviderFields[3].Descriptor()
+	// emailprovider.DefaultCredentialRef holds the default value on creation for the credential_ref field.
+	emailprovider.DefaultCredentialRef = emailproviderDescCredentialRef.Default.(string)
+	// emailprovider.CredentialRefValidator is a validator for the "credential_ref" field. It is called by the builders before save.
+	emailprovider.CredentialRefValidator = emailproviderDescCredentialRef.Validators[0].(func(string) error)
+	// emailproviderDescEnabled is the schema descriptor for enabled field.
+	emailproviderDescEnabled := emailproviderFields[4].Descriptor()
+	// emailprovider.DefaultEnabled holds the default value on creation for the enabled field.
+	emailprovider.DefaultEnabled = emailproviderDescEnabled.Default.(bool)
+	// emailproviderDescHealthStatus is the schema descriptor for health_status field.
+	emailproviderDescHealthStatus := emailproviderFields[5].Descriptor()
+	// emailprovider.DefaultHealthStatus holds the default value on creation for the health_status field.
+	emailprovider.DefaultHealthStatus = emailproviderDescHealthStatus.Default.(string)
+	// emailprovider.HealthStatusValidator is a validator for the "health_status" field. It is called by the builders before save.
+	emailprovider.HealthStatusValidator = emailproviderDescHealthStatus.Validators[0].(func(string) error)
 	errorpassthroughruleMixin := schema.ErrorPassthroughRule{}.Mixin()
 	errorpassthroughruleMixinFields0 := errorpassthroughruleMixin[0].Fields()
 	_ = errorpassthroughruleMixinFields0
@@ -1188,10 +1537,10 @@ func init() {
 	groupDescMessagesDispatchModelConfig := groupFields[53].Descriptor()
 	// group.DefaultMessagesDispatchModelConfig holds the default value on creation for the messages_dispatch_model_config field.
 	group.DefaultMessagesDispatchModelConfig = groupDescMessagesDispatchModelConfig.Default.(domain.OpenAIMessagesDispatchModelConfig)
-	// groupDescModelsListConfig is the schema descriptor for models_list_config field.
-	groupDescModelsListConfig := groupFields[54].Descriptor()
-	// group.DefaultModelsListConfig holds the default value on creation for the models_list_config field.
-	group.DefaultModelsListConfig = groupDescModelsListConfig.Default.(domain.GroupModelsListConfig)
+	// groupDescModelAllowlist is the schema descriptor for model_allowlist field.
+	groupDescModelAllowlist := groupFields[54].Descriptor()
+	// group.DefaultModelAllowlist holds the default value on creation for the model_allowlist field.
+	group.DefaultModelAllowlist = groupDescModelAllowlist.Default.(domain.GroupModelAllowlist)
 	// groupDescCodexModelsManifestConfig is the schema descriptor for codex_models_manifest_config field.
 	groupDescCodexModelsManifestConfig := groupFields[55].Descriptor()
 	// group.DefaultCodexModelsManifestConfig holds the default value on creation for the codex_models_manifest_config field.
@@ -2109,6 +2458,210 @@ func init() {
 	setting.DefaultUpdatedAt = settingDescUpdatedAt.Default.(func() time.Time)
 	// setting.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	setting.UpdateDefaultUpdatedAt = settingDescUpdatedAt.UpdateDefault.(func() time.Time)
+	smschannelFields := schema.SmsChannel{}.Fields()
+	_ = smschannelFields
+	// smschannelDescCode is the schema descriptor for code field.
+	smschannelDescCode := smschannelFields[0].Descriptor()
+	// smschannel.CodeValidator is a validator for the "code" field. It is called by the builders before save.
+	smschannel.CodeValidator = func() func(string) error {
+		validators := smschannelDescCode.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(code string) error {
+			for _, fn := range fns {
+				if err := fn(code); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// smschannelDescPublicName is the schema descriptor for public_name field.
+	smschannelDescPublicName := smschannelFields[1].Descriptor()
+	// smschannel.PublicNameValidator is a validator for the "public_name" field. It is called by the builders before save.
+	smschannel.PublicNameValidator = func() func(string) error {
+		validators := smschannelDescPublicName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(public_name string) error {
+			for _, fn := range fns {
+				if err := fn(public_name); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// smschannelDescRole is the schema descriptor for role field.
+	smschannelDescRole := smschannelFields[2].Descriptor()
+	// smschannel.DefaultRole holds the default value on creation for the role field.
+	smschannel.DefaultRole = smschannelDescRole.Default.(string)
+	// smschannel.RoleValidator is a validator for the "role" field. It is called by the builders before save.
+	smschannel.RoleValidator = smschannelDescRole.Validators[0].(func(string) error)
+	// smschannelDescEnabled is the schema descriptor for enabled field.
+	smschannelDescEnabled := smschannelFields[4].Descriptor()
+	// smschannel.DefaultEnabled holds the default value on creation for the enabled field.
+	smschannel.DefaultEnabled = smschannelDescEnabled.Default.(bool)
+	// smschannelDescVisible is the schema descriptor for visible field.
+	smschannelDescVisible := smschannelFields[5].Descriptor()
+	// smschannel.DefaultVisible holds the default value on creation for the visible field.
+	smschannel.DefaultVisible = smschannelDescVisible.Default.(bool)
+	// smschannelDescHealthy is the schema descriptor for healthy field.
+	smschannelDescHealthy := smschannelFields[6].Descriptor()
+	// smschannel.DefaultHealthy holds the default value on creation for the healthy field.
+	smschannel.DefaultHealthy = smschannelDescHealthy.Default.(bool)
+	// smschannelDescSortOrder is the schema descriptor for sort_order field.
+	smschannelDescSortOrder := smschannelFields[7].Descriptor()
+	// smschannel.DefaultSortOrder holds the default value on creation for the sort_order field.
+	smschannel.DefaultSortOrder = smschannelDescSortOrder.Default.(int)
+	smsorderFields := schema.SmsOrder{}.Fields()
+	_ = smsorderFields
+	// smsorderDescProductType is the schema descriptor for product_type field.
+	smsorderDescProductType := smsorderFields[6].Descriptor()
+	// smsorder.ProductTypeValidator is a validator for the "product_type" field. It is called by the builders before save.
+	smsorder.ProductTypeValidator = smsorderDescProductType.Validators[0].(func(string) error)
+	// smsorderDescStatus is the schema descriptor for status field.
+	smsorderDescStatus := smsorderFields[7].Descriptor()
+	// smsorder.DefaultStatus holds the default value on creation for the status field.
+	smsorder.DefaultStatus = smsorderDescStatus.Default.(string)
+	// smsorder.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	smsorder.StatusValidator = smsorderDescStatus.Validators[0].(func(string) error)
+	// smsorderDescProviderOrderID is the schema descriptor for provider_order_id field.
+	smsorderDescProviderOrderID := smsorderFields[8].Descriptor()
+	// smsorder.DefaultProviderOrderID holds the default value on creation for the provider_order_id field.
+	smsorder.DefaultProviderOrderID = smsorderDescProviderOrderID.Default.(string)
+	// smsorder.ProviderOrderIDValidator is a validator for the "provider_order_id" field. It is called by the builders before save.
+	smsorder.ProviderOrderIDValidator = smsorderDescProviderOrderID.Validators[0].(func(string) error)
+	// smsorderDescPhoneNumber is the schema descriptor for phone_number field.
+	smsorderDescPhoneNumber := smsorderFields[9].Descriptor()
+	// smsorder.DefaultPhoneNumber holds the default value on creation for the phone_number field.
+	smsorder.DefaultPhoneNumber = smsorderDescPhoneNumber.Default.(string)
+	// smsorder.PhoneNumberValidator is a validator for the "phone_number" field. It is called by the builders before save.
+	smsorder.PhoneNumberValidator = smsorderDescPhoneNumber.Validators[0].(func(string) error)
+	// smsorderDescProviderCostSnapshot is the schema descriptor for provider_cost_snapshot field.
+	smsorderDescProviderCostSnapshot := smsorderFields[10].Descriptor()
+	// smsorder.DefaultProviderCostSnapshot holds the default value on creation for the provider_cost_snapshot field.
+	smsorder.DefaultProviderCostSnapshot = smsorderDescProviderCostSnapshot.Default.(float64)
+	// smsorderDescSalePriceSnapshot is the schema descriptor for sale_price_snapshot field.
+	smsorderDescSalePriceSnapshot := smsorderFields[11].Descriptor()
+	// smsorder.DefaultSalePriceSnapshot holds the default value on creation for the sale_price_snapshot field.
+	smsorder.DefaultSalePriceSnapshot = smsorderDescSalePriceSnapshot.Default.(float64)
+	// smsorderDescSuccessRateSourceSnapshot is the schema descriptor for success_rate_source_snapshot field.
+	smsorderDescSuccessRateSourceSnapshot := smsorderFields[13].Descriptor()
+	// smsorder.DefaultSuccessRateSourceSnapshot holds the default value on creation for the success_rate_source_snapshot field.
+	smsorder.DefaultSuccessRateSourceSnapshot = smsorderDescSuccessRateSourceSnapshot.Default.(string)
+	// smsorder.SuccessRateSourceSnapshotValidator is a validator for the "success_rate_source_snapshot" field. It is called by the builders before save.
+	smsorder.SuccessRateSourceSnapshotValidator = smsorderDescSuccessRateSourceSnapshot.Validators[0].(func(string) error)
+	// smsorderDescSuccessRateGradeSnapshot is the schema descriptor for success_rate_grade_snapshot field.
+	smsorderDescSuccessRateGradeSnapshot := smsorderFields[14].Descriptor()
+	// smsorder.DefaultSuccessRateGradeSnapshot holds the default value on creation for the success_rate_grade_snapshot field.
+	smsorder.DefaultSuccessRateGradeSnapshot = smsorderDescSuccessRateGradeSnapshot.Default.(string)
+	// smsorder.SuccessRateGradeSnapshotValidator is a validator for the "success_rate_grade_snapshot" field. It is called by the builders before save.
+	smsorder.SuccessRateGradeSnapshotValidator = smsorderDescSuccessRateGradeSnapshot.Validators[0].(func(string) error)
+	// smsorderDescSuccessRateMultiplierSnapshot is the schema descriptor for success_rate_multiplier_snapshot field.
+	smsorderDescSuccessRateMultiplierSnapshot := smsorderFields[15].Descriptor()
+	// smsorder.DefaultSuccessRateMultiplierSnapshot holds the default value on creation for the success_rate_multiplier_snapshot field.
+	smsorder.DefaultSuccessRateMultiplierSnapshot = smsorderDescSuccessRateMultiplierSnapshot.Default.(float64)
+	// smsorderDescCurrencySnapshot is the schema descriptor for currency_snapshot field.
+	smsorderDescCurrencySnapshot := smsorderFields[16].Descriptor()
+	// smsorder.DefaultCurrencySnapshot holds the default value on creation for the currency_snapshot field.
+	smsorder.DefaultCurrencySnapshot = smsorderDescCurrencySnapshot.Default.(string)
+	// smsorder.CurrencySnapshotValidator is a validator for the "currency_snapshot" field. It is called by the builders before save.
+	smsorder.CurrencySnapshotValidator = smsorderDescCurrencySnapshot.Validators[0].(func(string) error)
+	// smsorderDescIdempotencyKey is the schema descriptor for idempotency_key field.
+	smsorderDescIdempotencyKey := smsorderFields[18].Descriptor()
+	// smsorder.IdempotencyKeyValidator is a validator for the "idempotency_key" field. It is called by the builders before save.
+	smsorder.IdempotencyKeyValidator = smsorderDescIdempotencyKey.Validators[0].(func(string) error)
+	// smsorderDescRefundStatus is the schema descriptor for refund_status field.
+	smsorderDescRefundStatus := smsorderFields[19].Descriptor()
+	// smsorder.DefaultRefundStatus holds the default value on creation for the refund_status field.
+	smsorder.DefaultRefundStatus = smsorderDescRefundStatus.Default.(string)
+	// smsorder.RefundStatusValidator is a validator for the "refund_status" field. It is called by the builders before save.
+	smsorder.RefundStatusValidator = smsorderDescRefundStatus.Validators[0].(func(string) error)
+	// smsorderDescRefundReason is the schema descriptor for refund_reason field.
+	smsorderDescRefundReason := smsorderFields[20].Descriptor()
+	// smsorder.DefaultRefundReason holds the default value on creation for the refund_reason field.
+	smsorder.DefaultRefundReason = smsorderDescRefundReason.Default.(string)
+	// smsorderDescLastProviderError is the schema descriptor for last_provider_error field.
+	smsorderDescLastProviderError := smsorderFields[21].Descriptor()
+	// smsorder.DefaultLastProviderError holds the default value on creation for the last_provider_error field.
+	smsorder.DefaultLastProviderError = smsorderDescLastProviderError.Default.(string)
+	smsproviderFields := schema.SmsProvider{}.Fields()
+	_ = smsproviderFields
+	// smsproviderDescCode is the schema descriptor for code field.
+	smsproviderDescCode := smsproviderFields[0].Descriptor()
+	// smsprovider.CodeValidator is a validator for the "code" field. It is called by the builders before save.
+	smsprovider.CodeValidator = func() func(string) error {
+		validators := smsproviderDescCode.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(code string) error {
+			for _, fn := range fns {
+				if err := fn(code); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// smsproviderDescName is the schema descriptor for name field.
+	smsproviderDescName := smsproviderFields[1].Descriptor()
+	// smsprovider.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	smsprovider.NameValidator = func() func(string) error {
+		validators := smsproviderDescName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(name string) error {
+			for _, fn := range fns {
+				if err := fn(name); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// smsproviderDescBaseURL is the schema descriptor for base_url field.
+	smsproviderDescBaseURL := smsproviderFields[2].Descriptor()
+	// smsprovider.BaseURLValidator is a validator for the "base_url" field. It is called by the builders before save.
+	smsprovider.BaseURLValidator = func() func(string) error {
+		validators := smsproviderDescBaseURL.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(base_url string) error {
+			for _, fn := range fns {
+				if err := fn(base_url); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// smsproviderDescCredentialRef is the schema descriptor for credential_ref field.
+	smsproviderDescCredentialRef := smsproviderFields[3].Descriptor()
+	// smsprovider.DefaultCredentialRef holds the default value on creation for the credential_ref field.
+	smsprovider.DefaultCredentialRef = smsproviderDescCredentialRef.Default.(string)
+	// smsprovider.CredentialRefValidator is a validator for the "credential_ref" field. It is called by the builders before save.
+	smsprovider.CredentialRefValidator = smsproviderDescCredentialRef.Validators[0].(func(string) error)
+	// smsproviderDescEnabled is the schema descriptor for enabled field.
+	smsproviderDescEnabled := smsproviderFields[4].Descriptor()
+	// smsprovider.DefaultEnabled holds the default value on creation for the enabled field.
+	smsprovider.DefaultEnabled = smsproviderDescEnabled.Default.(bool)
+	// smsproviderDescHealthStatus is the schema descriptor for health_status field.
+	smsproviderDescHealthStatus := smsproviderFields[5].Descriptor()
+	// smsprovider.DefaultHealthStatus holds the default value on creation for the health_status field.
+	smsprovider.DefaultHealthStatus = smsproviderDescHealthStatus.Default.(string)
+	// smsprovider.HealthStatusValidator is a validator for the "health_status" field. It is called by the builders before save.
+	smsprovider.HealthStatusValidator = smsproviderDescHealthStatus.Validators[0].(func(string) error)
 	subscriptionplanFields := schema.SubscriptionPlan{}.Fields()
 	_ = subscriptionplanFields
 	// subscriptionplanDescName is the schema descriptor for name field.

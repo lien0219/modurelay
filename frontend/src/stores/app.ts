@@ -445,6 +445,7 @@ export const useAppStore = defineStore('app', () => {
         return Promise.resolve({ ...cachedPublicSettings.value })
       }
       return Promise.resolve({
+        tool_center_enabled: true,
         registration_enabled: false,
         email_verify_enabled: false,
         force_email_on_third_party_signup: false,
@@ -470,6 +471,8 @@ export const useAppStore = defineStore('app', () => {
         purchase_subscription_enabled: false,
         purchase_subscription_url: '',
         activity_center_enabled: false,
+        canvas_enabled: false,
+        plan_catalog_enabled: false,
         payment_enabled: false,
         table_default_page_size: 20,
         table_page_size_options: [10, 20, 50, 100],
@@ -493,6 +496,10 @@ export const useAppStore = defineStore('app', () => {
         channel_monitor_enabled: true,
         channel_monitor_default_interval_seconds: 60,
         available_channels_enabled: false,
+        sms_service_enabled: false,
+        email_service_enabled: false,
+        subscription_enabled: true,
+        payment_balance_disabled: false,
         model_plaza_enabled: false,
         model_plaza_require_auth: false,
         plugin_management_enabled: false,

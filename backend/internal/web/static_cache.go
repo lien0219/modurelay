@@ -16,6 +16,7 @@ const staticAssetsCacheControl = "public, max-age=31536000, immutable"
 // a Vite asset whose filename contains the default eight-character build hash.
 func isFingerprintedEmbeddedAssetPath(cleanPath string) bool {
 	cleanPath = strings.TrimPrefix(cleanPath, "/")
+	cleanPath = strings.TrimPrefix(cleanPath, "infinite-canvas/")
 	if !strings.HasPrefix(cleanPath, "assets/") {
 		return false
 	}

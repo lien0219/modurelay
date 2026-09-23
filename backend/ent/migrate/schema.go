@@ -623,7 +623,7 @@ var (
 		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "name", Type: field.TypeString, Size: 100},
-		{Name: "provider", Type: field.TypeEnum, Enums: []string{"openai", "anthropic", "gemini", "grok", "antigravity", "kimi", "zhipu", "deepseek"}},
+		{Name: "provider", Type: field.TypeEnum, Enums: []string{"openai", "anthropic", "gemini", "grok", "antigravity", "kimi", "zhipu", "deepseek", "minimax", "opencode_go"}},
 		{Name: "check_mode", Type: field.TypeString, Size: 32, Default: "probe"},
 		{Name: "account_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "api_mode", Type: field.TypeString, Size: 32, Default: "chat_completions"},
@@ -776,7 +776,7 @@ var (
 		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "name", Type: field.TypeString, Size: 100},
-		{Name: "provider", Type: field.TypeEnum, Enums: []string{"openai", "anthropic", "gemini", "grok", "antigravity", "kimi", "zhipu", "deepseek"}},
+		{Name: "provider", Type: field.TypeEnum, Enums: []string{"openai", "anthropic", "gemini", "grok", "antigravity", "kimi", "zhipu", "deepseek", "minimax", "opencode_go"}},
 		{Name: "api_mode", Type: field.TypeString, Size: 32, Default: "chat_completions"},
 		{Name: "description", Type: field.TypeString, Nullable: true, Size: 500, Default: ""},
 		{Name: "extra_headers", Type: field.TypeJSON},
@@ -862,6 +862,133 @@ var (
 				Columns: []*schema.Column{CompositeModelRoutesColumns[9]},
 			},
 		},
+	}
+	// EmailChannelsColumns holds the columns for the "email_channels" table.
+	EmailChannelsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "code", Type: field.TypeString, Unique: true, Size: 64},
+		{Name: "public_name", Type: field.TypeString, Size: 128},
+		{Name: "role", Type: field.TypeString, Size: 16, Default: "primary"},
+		{Name: "provider_id", Type: field.TypeInt64},
+		{Name: "email_type", Type: field.TypeString, Size: 32, Default: "temporary_gmail"},
+		{Name: "privacy_level", Type: field.TypeString, Size: 32, Default: "public_temporary"},
+		{Name: "enabled", Type: field.TypeBool, Default: false},
+		{Name: "visible", Type: field.TypeBool, Default: true},
+		{Name: "healthy", Type: field.TypeBool, Default: false},
+		{Name: "sale_price", Type: field.TypeFloat64, Default: 0},
+		{Name: "order_ttl_seconds", Type: field.TypeInt, Default: 900},
+		{Name: "capture_policy", Type: field.TypeString, Size: 64, Default: "on_target_email_received"},
+		{Name: "refund_policy", Type: field.TypeString, Size: 64, Default: "refund_if_no_message"},
+		{Name: "polling_backoff", Type: field.TypeJSON},
+		{Name: "max_provider_requests_per_order", Type: field.TypeInt, Default: 60},
+		{Name: "sort_order", Type: field.TypeInt, Default: 0},
+		{Name: "metadata", Type: field.TypeJSON},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// EmailChannelsTable holds the schema information for the "email_channels" table.
+	EmailChannelsTable = &schema.Table{
+		Name:       "email_channels",
+		Columns:    EmailChannelsColumns,
+		PrimaryKey: []*schema.Column{EmailChannelsColumns[0]},
+	}
+	// EmailMessagesColumns holds the columns for the "email_messages" table.
+	EmailMessagesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "email_order_id", Type: field.TypeInt64},
+		{Name: "provider_message_id", Type: field.TypeString, Size: 256, Default: ""},
+		{Name: "from_address", Type: field.TypeString, Size: 320, Default: ""},
+		{Name: "from_name", Type: field.TypeString, Size: 256, Default: ""},
+		{Name: "to_address", Type: field.TypeString, Size: 320, Default: ""},
+		{Name: "subject", Type: field.TypeString, Default: "", SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "text_body", Type: field.TypeString, Default: "", SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "html_body", Type: field.TypeString, Default: "", SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "verification_code", Type: field.TypeString, Size: 32, Default: ""},
+		{Name: "verification_url", Type: field.TypeString, Size: 2048, Default: ""},
+		{Name: "verification_confidence", Type: field.TypeFloat64, Default: 0},
+		{Name: "verification_method", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "received_at", Type: field.TypeTime},
+		{Name: "dedupe_hash", Type: field.TypeString, Size: 128},
+		{Name: "raw_payload", Type: field.TypeJSON},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// EmailMessagesTable holds the schema information for the "email_messages" table.
+	EmailMessagesTable = &schema.Table{
+		Name:       "email_messages",
+		Columns:    EmailMessagesColumns,
+		PrimaryKey: []*schema.Column{EmailMessagesColumns[0]},
+	}
+	// EmailOrdersColumns holds the columns for the "email_orders" table.
+	EmailOrdersColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "public_id", Type: field.TypeUUID, Unique: true},
+		{Name: "order_no", Type: field.TypeString, Unique: true, Size: 64},
+		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "channel_id", Type: field.TypeInt64},
+		{Name: "provider_id", Type: field.TypeInt64},
+		{Name: "service_id", Type: field.TypeInt64},
+		{Name: "provider_inbox_id", Type: field.TypeString, Size: 256, Default: ""},
+		{Name: "email_address", Type: field.TypeString, Size: 320, Default: ""},
+		{Name: "address_type", Type: field.TypeString, Size: 32, Default: "gmail"},
+		{Name: "status", Type: field.TypeString, Size: 32, Default: "creating"},
+		{Name: "sale_price_snapshot", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "numeric(20,8)"}},
+		{Name: "provider_cost_estimate_snapshot", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "numeric(20,8)"}},
+		{Name: "pricing_rule_snapshot", Type: field.TypeJSON},
+		{Name: "success_rate_snapshot", Type: field.TypeFloat64, Nullable: true},
+		{Name: "success_rate_grade_snapshot", Type: field.TypeString, Size: 2, Default: ""},
+		{Name: "refund_policy_snapshot", Type: field.TypeString, Size: 64, Default: "refund_if_no_message"},
+		{Name: "capture_policy_snapshot", Type: field.TypeString, Size: 64, Default: "on_target_email_received"},
+		{Name: "reserved_amount", Type: field.TypeFloat64, Default: 0},
+		{Name: "captured_amount", Type: field.TypeFloat64, Default: 0},
+		{Name: "released_amount", Type: field.TypeFloat64, Default: 0},
+		{Name: "refunded_amount", Type: field.TypeFloat64, Default: 0},
+		{Name: "inbox_created_at", Type: field.TypeTime, Nullable: true},
+		{Name: "waiting_started_at", Type: field.TypeTime, Nullable: true},
+		{Name: "first_message_at", Type: field.TypeTime, Nullable: true},
+		{Name: "completed_at", Type: field.TypeTime, Nullable: true},
+		{Name: "cancelled_at", Type: field.TypeTime, Nullable: true},
+		{Name: "expires_at", Type: field.TypeTime, Nullable: true},
+		{Name: "poll_count", Type: field.TypeInt, Default: 0},
+		{Name: "next_poll_at", Type: field.TypeTime, Nullable: true},
+		{Name: "last_polled_at", Type: field.TypeTime, Nullable: true},
+		{Name: "provider_request_count", Type: field.TypeInt, Default: 0},
+		{Name: "error_code", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "error_public_message", Type: field.TypeString, Size: 256, Default: ""},
+		{Name: "error_admin_message", Type: field.TypeString, Default: "", SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "refund_status", Type: field.TypeString, Size: 32, Default: "not_requested"},
+		{Name: "refund_reason", Type: field.TypeString, Default: "", SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "idempotency_key", Type: field.TypeString, Size: 128},
+		{Name: "metadata", Type: field.TypeJSON},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// EmailOrdersTable holds the schema information for the "email_orders" table.
+	EmailOrdersTable = &schema.Table{
+		Name:       "email_orders",
+		Columns:    EmailOrdersColumns,
+		PrimaryKey: []*schema.Column{EmailOrdersColumns[0]},
+	}
+	// EmailProvidersColumns holds the columns for the "email_providers" table.
+	EmailProvidersColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "code", Type: field.TypeString, Unique: true, Size: 64},
+		{Name: "name", Type: field.TypeString, Size: 128},
+		{Name: "base_url", Type: field.TypeString, Size: 512},
+		{Name: "credential_ref", Type: field.TypeString, Size: 256, Default: ""},
+		{Name: "enabled", Type: field.TypeBool, Default: false},
+		{Name: "health_status", Type: field.TypeString, Size: 32, Default: "unknown"},
+		{Name: "capabilities", Type: field.TypeJSON},
+		{Name: "billing", Type: field.TypeJSON},
+		{Name: "metadata", Type: field.TypeJSON},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// EmailProvidersTable holds the schema information for the "email_providers" table.
+	EmailProvidersTable = &schema.Table{
+		Name:       "email_providers",
+		Columns:    EmailProvidersColumns,
+		PrimaryKey: []*schema.Column{EmailProvidersColumns[0]},
 	}
 	// ErrorPassthroughRulesColumns holds the columns for the "error_passthrough_rules" table.
 	ErrorPassthroughRulesColumns = []*schema.Column{
@@ -960,7 +1087,7 @@ var (
 		{Name: "require_privacy_set", Type: field.TypeBool, Default: false},
 		{Name: "default_mapped_model", Type: field.TypeString, Size: 100, Default: ""},
 		{Name: "messages_dispatch_model_config", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
-		{Name: "models_list_config", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "model_allowlist", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
 		{Name: "codex_models_manifest_config", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
 		{Name: "rpm_limit", Type: field.TypeInt, Default: 0},
 		{Name: "max_reasoning_effort", Type: field.TypeString, Size: 20, Default: ""},
@@ -1413,7 +1540,7 @@ var (
 		{Name: "expires_at", Type: field.TypeTime, Nullable: true},
 		{Name: "fallback_mode", Type: field.TypeString, Size: 20, Default: "none"},
 		{Name: "expiry_warn_days", Type: field.TypeInt, Default: 7},
-		{Name: "backup_proxy_id", Type: field.TypeInt64, Unique: true, Nullable: true},
+		{Name: "backup_proxy_id", Type: field.TypeInt64, Nullable: true},
 	}
 	// ProxiesTable holds the schema information for the "proxies" table.
 	ProxiesTable = &schema.Table{
@@ -1648,6 +1775,81 @@ var (
 		Name:       "settings",
 		Columns:    SettingsColumns,
 		PrimaryKey: []*schema.Column{SettingsColumns[0]},
+	}
+	// SmsChannelsColumns holds the columns for the "sms_channels" table.
+	SmsChannelsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "code", Type: field.TypeString, Unique: true, Size: 64},
+		{Name: "public_name", Type: field.TypeString, Size: 128},
+		{Name: "role", Type: field.TypeString, Size: 16, Default: "primary"},
+		{Name: "provider_id", Type: field.TypeInt64},
+		{Name: "enabled", Type: field.TypeBool, Default: false},
+		{Name: "visible", Type: field.TypeBool, Default: true},
+		{Name: "healthy", Type: field.TypeBool, Default: false},
+		{Name: "sort_order", Type: field.TypeInt, Default: 0},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// SmsChannelsTable holds the schema information for the "sms_channels" table.
+	SmsChannelsTable = &schema.Table{
+		Name:       "sms_channels",
+		Columns:    SmsChannelsColumns,
+		PrimaryKey: []*schema.Column{SmsChannelsColumns[0]},
+	}
+	// SmsOrdersColumns holds the columns for the "sms_orders" table.
+	SmsOrdersColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "public_id", Type: field.TypeUUID, Unique: true},
+		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "channel_id", Type: field.TypeInt64},
+		{Name: "provider_id", Type: field.TypeInt64},
+		{Name: "service_id", Type: field.TypeInt64},
+		{Name: "country_id", Type: field.TypeInt64},
+		{Name: "product_type", Type: field.TypeString, Size: 16},
+		{Name: "status", Type: field.TypeString, Size: 32, Default: "pending"},
+		{Name: "provider_order_id", Type: field.TypeString, Size: 256, Default: ""},
+		{Name: "phone_number", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "provider_cost_snapshot", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "numeric(20,8)"}},
+		{Name: "sale_price_snapshot", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "numeric(20,8)"}},
+		{Name: "success_rate_snapshot", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "numeric(8,5)"}},
+		{Name: "success_rate_source_snapshot", Type: field.TypeString, Size: 32, Default: "unavailable"},
+		{Name: "success_rate_grade_snapshot", Type: field.TypeString, Size: 2, Default: ""},
+		{Name: "success_rate_multiplier_snapshot", Type: field.TypeFloat64, Default: 1, SchemaType: map[string]string{"postgres": "numeric(20,8)"}},
+		{Name: "currency_snapshot", Type: field.TypeString, Size: 8, Default: "USD"},
+		{Name: "expires_at", Type: field.TypeTime, Nullable: true},
+		{Name: "idempotency_key", Type: field.TypeString, Size: 128},
+		{Name: "refund_status", Type: field.TypeString, Size: 32, Default: "not_requested"},
+		{Name: "refund_reason", Type: field.TypeString, Default: "", SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "last_provider_error", Type: field.TypeString, Default: "", SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "metadata", Type: field.TypeJSON},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// SmsOrdersTable holds the schema information for the "sms_orders" table.
+	SmsOrdersTable = &schema.Table{
+		Name:       "sms_orders",
+		Columns:    SmsOrdersColumns,
+		PrimaryKey: []*schema.Column{SmsOrdersColumns[0]},
+	}
+	// SmsProvidersColumns holds the columns for the "sms_providers" table.
+	SmsProvidersColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "code", Type: field.TypeString, Unique: true, Size: 64},
+		{Name: "name", Type: field.TypeString, Size: 128},
+		{Name: "base_url", Type: field.TypeString, Size: 512},
+		{Name: "credential_ref", Type: field.TypeString, Size: 256, Default: ""},
+		{Name: "enabled", Type: field.TypeBool, Default: false},
+		{Name: "health_status", Type: field.TypeString, Size: 32, Default: "unknown"},
+		{Name: "capabilities", Type: field.TypeJSON},
+		{Name: "metadata", Type: field.TypeJSON},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// SmsProvidersTable holds the schema information for the "sms_providers" table.
+	SmsProvidersTable = &schema.Table{
+		Name:       "sms_providers",
+		Columns:    SmsProvidersColumns,
+		PrimaryKey: []*schema.Column{SmsProvidersColumns[0]},
 	}
 	// SubscriptionPlansColumns holds the columns for the "subscription_plans" table.
 	SubscriptionPlansColumns = []*schema.Column{
@@ -2217,6 +2419,10 @@ var (
 		ChannelMonitorHistoriesTable,
 		ChannelMonitorRequestTemplatesTable,
 		CompositeModelRoutesTable,
+		EmailChannelsTable,
+		EmailMessagesTable,
+		EmailOrdersTable,
+		EmailProvidersTable,
 		ErrorPassthroughRulesTable,
 		GroupsTable,
 		IdempotencyRecordsTable,
@@ -2236,6 +2442,9 @@ var (
 		ResourcePostsTable,
 		SecuritySecretsTable,
 		SettingsTable,
+		SmsChannelsTable,
+		SmsOrdersTable,
+		SmsProvidersTable,
 		SubscriptionPlansTable,
 		TLSFingerprintProfilesTable,
 		UsageCleanupTasksTable,
@@ -2309,6 +2518,18 @@ func init() {
 	CompositeModelRoutesTable.Annotation = &entsql.Annotation{
 		Table: "composite_model_routes",
 	}
+	EmailChannelsTable.Annotation = &entsql.Annotation{
+		Table: "email_channels",
+	}
+	EmailMessagesTable.Annotation = &entsql.Annotation{
+		Table: "email_messages",
+	}
+	EmailOrdersTable.Annotation = &entsql.Annotation{
+		Table: "email_orders",
+	}
+	EmailProvidersTable.Annotation = &entsql.Annotation{
+		Table: "email_providers",
+	}
 	ErrorPassthroughRulesTable.Annotation = &entsql.Annotation{
 		Table: "error_passthrough_rules",
 	}
@@ -2374,6 +2595,15 @@ func init() {
 	}
 	SettingsTable.Annotation = &entsql.Annotation{
 		Table: "settings",
+	}
+	SmsChannelsTable.Annotation = &entsql.Annotation{
+		Table: "sms_channels",
+	}
+	SmsOrdersTable.Annotation = &entsql.Annotation{
+		Table: "sms_orders",
+	}
+	SmsProvidersTable.Annotation = &entsql.Annotation{
+		Table: "sms_providers",
 	}
 	SubscriptionPlansTable.Annotation = &entsql.Annotation{
 		Table: "subscription_plans",

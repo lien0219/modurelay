@@ -18,6 +18,10 @@ type TempUnscheduler interface {
 	TempUnscheduleRetryableError(ctx context.Context, accountID int64, failoverErr *service.UpstreamFailoverError)
 }
 
+type accountHealthFailureObserver interface {
+	ObserveAccountHealthFailure(ctx context.Context, accountID int64, observedErr error)
+}
+
 // FailoverAction 表示 failover 错误处理后的下一步动作
 type FailoverAction int
 
@@ -236,6 +240,9 @@ func (s *FailoverState) HandleFailoverError(
 	// 同账号重试用尽，执行临时封禁
 	if failoverErr.RetryableOnSameAccount {
 		gatewayService.TempUnscheduleRetryableError(ctx, accountID, failoverErr)
+	}
+	if observer, ok := gatewayService.(accountHealthFailureObserver); ok {
+		observer.ObserveAccountHealthFailure(ctx, accountID, failoverErr)
 	}
 
 	// 加入失败列表

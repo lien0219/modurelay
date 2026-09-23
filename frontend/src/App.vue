@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import { RouterView, useRouter, useRoute } from 'vue-router'
-import { defineAsyncComponent, onMounted, onBeforeUnmount, watch } from 'vue'
+import { computed, defineAsyncComponent, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import NavigationProgress from '@/components/common/NavigationProgress.vue'
+import WorkspaceModeTransition from '@/components/common/WorkspaceModeTransition.vue'
 import { resolveRouteDocumentTitle } from '@/router/title'
 import { brand } from '@/config/brand'
 import { useAppStore, useAuthStore, useSubscriptionStore, useAnnouncementStore, useAdminComplianceStore, useAdminSettingsStore, useOnboardingStore } from '@/stores'
 import { getSetupStatus } from '@/api/setup'
 import { updateFavicon } from '@/utils/branding'
 import { disposeOnboardingTour, removeOnboardingArtifacts } from '@/utils/onboardingCleanup'
+import { FeatureFlags, isFeatureFlagEnabled } from '@/utils/featureFlags'
+import { resolveSiteBillingMode } from '@/utils/siteBillingMode'
 
 // These overlays are not needed to render the current route. Loading them
 // asynchronously keeps their animation/Markdown dependencies out of the
@@ -25,6 +28,7 @@ const announcementStore = useAnnouncementStore()
 const adminComplianceStore = useAdminComplianceStore()
 const adminSettingsStore = useAdminSettingsStore()
 const onboardingStore = useOnboardingStore()
+const routeStageRef = ref<HTMLElement | null>(null)
 const HOME_ROUTE_PATH = '/home'
 const ONBOARDING_DISABLED_PATHS = new Set([HOME_ROUTE_PATH, '/ai-learning', '/activities'])
 let homeOverlayObserver: MutationObserver | null = null
@@ -93,7 +97,9 @@ function updateDocumentTitle() {
     ...(appStore.cachedPublicSettings?.custom_menu_items ?? []),
     ...(authStore.isAdmin ? adminSettingsStore.customMenuItems : []),
   ]
-  document.title = resolveRouteDocumentTitle(route, appStore.siteName, customMenuItems)
+  document.title = resolveRouteDocumentTitle(route, appStore.siteName, customMenuItems, {
+    billingMode: resolveSiteBillingMode(appStore.cachedPublicSettings),
+  })
 }
 
 // Watch for site settings changes and update favicon/title
@@ -120,6 +126,8 @@ watch(
     () => route.meta.titleKey,
     () => appStore.siteName,
     () => appStore.cachedPublicSettings?.custom_menu_items,
+    () => appStore.cachedPublicSettings?.subscription_enabled,
+    () => appStore.cachedPublicSettings?.payment_balance_disabled,
     () => authStore.isAdmin,
     () => adminSettingsStore.customMenuItems,
   ],
@@ -139,6 +147,25 @@ function onAdminComplianceRequired(event: Event) {
   adminComplianceStore.requireAcknowledgement(detail)
 }
 
+// 订阅功能开关（opt-out）。关闭后不再预加载/轮询订阅接口；开关在登录后才到达时补启动，反向则清空。
+const subscriptionFeatureEnabled = computed(() => isFeatureFlagEnabled(FeatureFlags.subscription))
+
+function startSubscriptionSync() {
+  subscriptionStore.fetchActiveSubscriptions().catch((error) => {
+    console.error('Failed to preload subscriptions:', error)
+  })
+  subscriptionStore.startPolling()
+}
+
+watch(subscriptionFeatureEnabled, (enabled) => {
+  if (!authStore.isAuthenticated) return
+  if (enabled) {
+    startSubscriptionSync()
+  } else {
+    subscriptionStore.clear()
+  }
+})
+
 watch(
   () => authStore.isAuthenticated,
   (isAuthenticated, oldValue) => {
@@ -149,11 +176,11 @@ watch(
         })
       }
 
-      // User logged in: preload subscriptions and start polling
-      subscriptionStore.fetchActiveSubscriptions().catch((error) => {
-        console.error('Failed to preload subscriptions:', error)
-      })
-      subscriptionStore.startPolling()
+      // User logged in: preload subscriptions and start polling (skipped when the
+      // subscription feature is switched off; see the flag watcher below)
+      if (subscriptionFeatureEnabled.value) {
+        startSubscriptionSync()
+      }
 
       // Announcements: new login vs page refresh restore
       if (oldValue === false) {
@@ -240,8 +267,18 @@ onMounted(async () => {
 
 <template>
   <NavigationProgress />
-  <RouterView />
+  <div ref="routeStageRef" class="app-route-stage">
+    <RouterView />
+  </div>
+  <WorkspaceModeTransition :route-stage="routeStageRef" />
   <Toast />
   <AnnouncementPopup v-if="authStore.isAuthenticated" />
   <AdminComplianceDialog v-if="authStore.isAuthenticated && authStore.isAdmin" />
 </template>
+
+<style>
+.app-route-stage {
+  min-height: 100dvh;
+  transform-origin: center center;
+}
+</style>

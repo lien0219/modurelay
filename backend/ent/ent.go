@@ -27,6 +27,10 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorrequesttemplate"
 	"github.com/Wei-Shaw/sub2api/ent/compositemodelroute"
+	"github.com/Wei-Shaw/sub2api/ent/emailchannel"
+	"github.com/Wei-Shaw/sub2api/ent/emailmessage"
+	"github.com/Wei-Shaw/sub2api/ent/emailorder"
+	"github.com/Wei-Shaw/sub2api/ent/emailprovider"
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
@@ -46,6 +50,9 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/resourcepost"
 	"github.com/Wei-Shaw/sub2api/ent/securitysecret"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
+	"github.com/Wei-Shaw/sub2api/ent/smschannel"
+	"github.com/Wei-Shaw/sub2api/ent/smsorder"
+	"github.com/Wei-Shaw/sub2api/ent/smsprovider"
 	"github.com/Wei-Shaw/sub2api/ent/subscriptionplan"
 	"github.com/Wei-Shaw/sub2api/ent/tlsfingerprintprofile"
 	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
@@ -131,6 +138,10 @@ func checkColumn(t, c string) error {
 			channelmonitorhistory.Table:         channelmonitorhistory.ValidColumn,
 			channelmonitorrequesttemplate.Table: channelmonitorrequesttemplate.ValidColumn,
 			compositemodelroute.Table:           compositemodelroute.ValidColumn,
+			emailchannel.Table:                  emailchannel.ValidColumn,
+			emailmessage.Table:                  emailmessage.ValidColumn,
+			emailorder.Table:                    emailorder.ValidColumn,
+			emailprovider.Table:                 emailprovider.ValidColumn,
 			errorpassthroughrule.Table:          errorpassthroughrule.ValidColumn,
 			group.Table:                         group.ValidColumn,
 			idempotencyrecord.Table:             idempotencyrecord.ValidColumn,
@@ -150,6 +161,9 @@ func checkColumn(t, c string) error {
 			resourcepost.Table:                  resourcepost.ValidColumn,
 			securitysecret.Table:                securitysecret.ValidColumn,
 			setting.Table:                       setting.ValidColumn,
+			smschannel.Table:                    smschannel.ValidColumn,
+			smsorder.Table:                      smsorder.ValidColumn,
+			smsprovider.Table:                   smsprovider.ValidColumn,
 			subscriptionplan.Table:              subscriptionplan.ValidColumn,
 			tlsfingerprintprofile.Table:         tlsfingerprintprofile.ValidColumn,
 			usagecleanuptask.Table:              usagecleanuptask.ValidColumn,

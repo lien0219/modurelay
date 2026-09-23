@@ -31,11 +31,13 @@ describe('fetchAllAccountIds', () => {
     expect(fetchPage).toHaveBeenNthCalledWith(1, 1, 1000, {
       ...filters,
       lite: '1',
+      include_health_score: '0',
       include_scheduler_score: '0'
     })
     expect(fetchPage).toHaveBeenNthCalledWith(3, 3, 1000, {
       ...filters,
       lite: '1',
+      include_health_score: '0',
       include_scheduler_score: '0'
     })
   })

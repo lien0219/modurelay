@@ -1,6 +1,8 @@
 # 本地杂项文档、测试数据和外部项目副本
 /docs-local/
 .codex
+# 本地参考仓库副本（仅用于对照，不随 ModuRelay 发布）
+/.reference/
 
 # ===================
 # Go 后端
@@ -30,9 +32,22 @@ vendor/
 backend/.gocache/
 backend/.gomodcache/
 backend/.gopath/
+# Go validation commands may be launched from a nested backend working
+# directory; keep their module and toolchain caches out of the worktree too.
+**/.gomodcache/
+**/.gopath/
+**/.gocache-codex/
+# Repository-local Go caches used by focused validation runs
+/.tmp-go-cache*/
+backend/.tmp-go-cache*/
+# Repository-root Go cache used by Email validation runs
+/.tmp-email-gocache/
+/backend/.tmp-email-gocache/
 
 # Local package-manager caches
 .corepack/
+third_party/infinite-canvas/web/node_modules/
+third_party/infinite-canvas/web/.tmp-bun-cache/
 
 # ===================
 # Node.js / Vue 前端
@@ -85,6 +100,7 @@ Desktop.ini
 # ===================
 tmp/
 temp/
+.tmp/
 *.tmp
 *.temp
 *.log
@@ -99,6 +115,7 @@ temp/
 dist/
 build/
 release/
+third_party/infinite-canvas/web/dist/
 
 # 后端嵌入的前端构建产物
 # Keep a placeholder file so `//go:embed all:dist` always has a match in CI/lint,
@@ -154,11 +171,14 @@ docs/*
 !docs/COMPOSITE_GROUPS.md
 !docs/PLUGIN_DEVELOPMENT.md
 !docs/channel-monitor-v2-safe-defaults.md
+!docs/codex-credits.md
 !docs/legal/
 !docs/legal/*.md
 !docs/screenshots/
 docs/screenshots/*
 !docs/screenshots/mobile-account-actions-menu.png
+!docs/screenshots/codex-referral-dialog.png
+!docs/screenshots/codex-referral-success.png
 .serena/
 .codex/
 frontend/coverage/
@@ -167,6 +187,7 @@ frontend/coverage/
 aicodex
 output/
 .codegraph/
+issues/
 
 # Vitest / Vite cache at repo root
 .vite/

@@ -194,7 +194,7 @@ func TestResolvedIPPinnedRequestNegotiatesFreshHTTP2(t *testing.T) {
 			return newUpstreamDialer().DialContext(ctx, network, server.Listener.Addr().String())
 		},
 	}
-	_, err = enableOpenAIHTTP2KeepAlive(transport)
+	_, err = enableHTTP2KeepAlive(transport, upstreamProtocolModeOpenAIH2)
 	require.NoError(t, err)
 	configureResolvedIPPinnedTransport(transport, nil)
 

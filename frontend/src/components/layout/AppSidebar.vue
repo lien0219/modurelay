@@ -31,6 +31,27 @@
 
     <!-- Navigation -->
     <nav ref="sidebarNavRef" class="sidebar-nav scrollbar-hide">
+      <div class="sidebar-section">
+        <div class="sidebar-section-title" :class="{ 'sidebar-section-title-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">
+          <span class="sidebar-section-title-text" :class="{ 'sidebar-section-title-text-collapsed': sidebarCollapsed }">
+            {{ t('nav.website') }}
+          </span>
+        </div>
+
+        <router-link
+          v-for="item in siteNavItems"
+          :key="item.path"
+          :to="item.path"
+          class="sidebar-link mb-1"
+          :class="{ 'sidebar-link-active': isActive(item.path), 'sidebar-link-collapsed': sidebarCollapsed }"
+          :title="sidebarCollapsed ? item.label : undefined"
+          @click="handleMenuItemClick(item.path)"
+        >
+          <component :is="item.icon" class="h-5 w-5 flex-shrink-0" aria-hidden="true" />
+          <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">{{ item.label }}</span>
+        </router-link>
+      </div>
+
       <!-- Admin View: Admin menu first, then personal menu -->
       <template v-if="isAdmin">
         <!-- Admin Section -->
@@ -92,7 +113,7 @@
                       ? 'sidebar-wallet'
                       : undefined
               "
-              @click="handleMenuItemClick(item.path)"
+              @click.capture="handleMenuItemClick(item.path, $event)"
             >
               <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
               <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
@@ -117,7 +138,7 @@
             :class="{ 'sidebar-link-active': isActive(item.path), 'sidebar-link-collapsed': sidebarCollapsed }"
             :title="sidebarCollapsed ? item.label : undefined"
             :data-tour="item.path === '/keys' ? 'sidebar-my-keys' : undefined"
-            @click="handleMenuItemClick(item.path)"
+            @click.capture="handleMenuItemClick(item.path, $event)"
           >
             <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
             <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
@@ -137,7 +158,7 @@
             :class="{ 'sidebar-link-active': isActive(item.path), 'sidebar-link-collapsed': sidebarCollapsed }"
             :title="sidebarCollapsed ? item.label : undefined"
             :data-tour="item.path === '/keys' ? 'sidebar-my-keys' : undefined"
-            @click="handleMenuItemClick(item.path)"
+            @click.capture="handleMenuItemClick(item.path, $event)"
           >
             <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
             <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
@@ -202,8 +223,10 @@ import Icon from '@/components/icons/Icon.vue'
 import { sanitizeSvg } from '@/utils/sanitize'
 import { sanitizeUrl } from '@/utils/url'
 import { FeatureFlags, makeSidebarFlag } from '@/utils/featureFlags'
+import { resolveSiteBillingMode } from '@/utils/siteBillingMode'
 import { useBatchImageAccess } from '@/composables/useBatchImageAccess'
 import { toggleThemeWithTransition } from '@/utils/themeTransition'
+import { navigateToWorkspaceUrlWithTransition } from '@/utils/workspaceModeTransition'
 
 interface NavItem {
   path: string
@@ -335,6 +358,12 @@ const ChartIcon = {
         })
       ]
     )
+}
+
+const MessageIcon = {
+  render: () => h('svg', { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' }, [
+    h('path', { 'stroke-linecap': 'round', 'stroke-linejoin': 'round', d: 'M8.625 9.75h6.75m-6.75 3h4.5M5.25 19.5l1.64-2.05A8.25 8.25 0 1 1 19.5 12c0 4.556-3.358 7.5-7.5 7.5H5.25Z' })
+  ])
 }
 
 const GiftIcon = {
@@ -507,6 +536,18 @@ const DistributionIcon = {
 
 const QuickStartIcon = {
   render: () => h(Icon, { name: 'terminal' })
+}
+
+const CanvasIcon = {
+  render: () => h(Icon, { name: 'group' })
+}
+
+const SiteHomeIcon = {
+  render: () => h(Icon, { name: 'home' })
+}
+
+const AboutIcon = {
+  render: () => h(Icon, { name: 'infoCircle' })
 }
 
 const BellIcon = {
@@ -761,6 +802,21 @@ const flagChannelMonitor = makeSidebarFlag(FeatureFlags.channelMonitor)
 const flagPayment = makeSidebarFlag(FeatureFlags.payment)
 const flagRechargeCenter = makeSidebarFlag(FeatureFlags.rechargeCenter)
 const flagAvailableChannels = makeSidebarFlag(FeatureFlags.availableChannels)
+const flagSmsService = makeSidebarFlag(FeatureFlags.smsService)
+const flagEmailService = makeSidebarFlag(FeatureFlags.emailService)
+const flagSubscription = makeSidebarFlag(FeatureFlags.subscription)
+
+// 购买入口文案随站点计费模式切换：仅充值 → 「充值」，仅订阅 → 「订阅」，否则「充值/订阅」。
+const purchaseNavLabel = computed(() => {
+  switch (resolveSiteBillingMode(appStore.cachedPublicSettings)) {
+    case 'recharge_only':
+      return t('nav.recharge')
+    case 'subscription_only':
+      return t('nav.subscribe')
+    default:
+      return t('nav.buySubscription')
+  }
+})
 const flagAffiliate = makeSidebarFlag(FeatureFlags.affiliate)
 const flagRiskControl = makeSidebarFlag(FeatureFlags.riskControl)
 const flagPluginManagement = makeSidebarFlag(FeatureFlags.pluginManagement)
@@ -769,32 +825,47 @@ const flagAdminPayment = () => adminSettingsStore.paymentEnabled
 const flagBatchImageAccess = () => canUseBatchImage.value
 const flagResourceCenter = makeSidebarFlag(FeatureFlags.resourceCenter)
 const flagActivityCenter = makeSidebarFlag(FeatureFlags.activityCenter)
+const flagCanvas = makeSidebarFlag(FeatureFlags.canvas)
+const flagPlanCatalog = makeSidebarFlag(FeatureFlags.planCatalog)
+const flagToolCenter = makeSidebarFlag(FeatureFlags.toolCenter)
+
+const siteNavItems = computed((): NavItem[] => [
+  { path: '/home', label: t('nav.home'), icon: SiteHomeIcon },
+  { path: '/about', label: t('nav.aboutUs'), icon: AboutIcon },
+])
 
 // buildSelfNavItems 构造用户自己的导航项（用户端主菜单和管理员的"我的账户"子菜单共享这组声明）。
 // withDashboard=true 时包含仪表盘（用户端），false 时不含（管理员的个人区已经有独立仪表盘入口）。
 //
-// 条目顺序：密钥 → 用量 → 可用渠道 → 渠道状态 → 订阅/支付 → 兑换/资料。
-// 可用渠道紧挨渠道状态之上，让用户"先看自己能用什么、再看对应状态"。
+// 条目顺序按用户完成任务的路径组织：工作区 → API 与用量 → 渠道与接码 →
+// 上手/工具 → 订阅支付 → 活动社区 → 分销/资料。
+// 可用渠道和渠道状态相邻，接码服务及记录也保持在同一组内。
 function buildSelfNavItems(withDashboard: boolean): NavItem[] {
   const items: NavItem[] = []
   if (withDashboard) {
     items.push({ path: '/dashboard', label: t('nav.dashboard'), icon: DashboardIcon })
   }
   items.push(
-    { path: '/quick-start', label: t('nav.quickStart'), icon: QuickStartIcon },
-    { path: '/ai-learning', label: t('nav.aiLearning'), icon: AILearningIcon },
-    { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
+    { path: '/canvas', label: t('nav.canvas'), icon: CanvasIcon, featureFlag: flagCanvas },
     { path: '/batch-image', label: t('nav.batchImage'), icon: BatchImageIcon, hideInSimpleMode: true, featureFlag: flagBatchImageAccess },
+    { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
     { path: '/available-channels', label: t('nav.availableChannels'), icon: ChannelIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
     { path: '/monitor', label: t('nav.channelStatus'), icon: SignalIcon, featureFlag: flagChannelMonitor },
-    { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },
-    { path: '/purchase', label: t('nav.buySubscription'), icon: RechargeSubscriptionIcon, hideInSimpleMode: true, featureFlag: flagPayment },
+    { path: '/sms', label: t('nav.smsService'), icon: MessageIcon, hideInSimpleMode: true, featureFlag: flagSmsService },
+    { path: '/email', label: t('nav.emailService'), icon: MessageIcon, hideInSimpleMode: true, featureFlag: flagEmailService },
+    { path: '/verification-records', label: t('nav.verificationRecords'), icon: OrderIcon, hideInSimpleMode: true },
+    { path: '/quick-start', label: t('nav.quickStart'), icon: QuickStartIcon },
+    { path: '/tools', label: t('nav.tools'), icon: PluginIcon, featureFlag: flagToolCenter },
+    { path: '/ai-learning', label: t('nav.aiLearning'), icon: AILearningIcon },
+    { path: '/plan-catalog', label: t('nav.planCatalog'), icon: CreditCardIcon, featureFlag: flagPlanCatalog },
+    { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true, featureFlag: flagSubscription },
+    { path: '/purchase', label: purchaseNavLabel.value, icon: RechargeSubscriptionIcon, hideInSimpleMode: true, featureFlag: flagPayment },
     { path: '/recharge', label: t('nav.rechargeCenter'), icon: RechargeSubscriptionIcon, featureFlag: flagRechargeCenter },
     { path: '/orders', label: t('nav.myOrders'), icon: OrderListIcon, hideInSimpleMode: true, featureFlag: flagPayment },
     { path: '/activities', label: t('nav.activityCenter'), icon: CalendarIcon, featureFlag: flagActivityCenter },
+    { path: '/resource-center', label: t('nav.resourceCenter'), icon: ResourceCenterIcon, featureFlag: flagResourceCenter },
     { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true },
-    ...(withDashboard ? [{ path: '/resource-center', label: t('nav.resourceCenter'), icon: ResourceCenterIcon, featureFlag: flagResourceCenter }] : []),
     { path: '/affiliate', label: t('nav.affiliate'), icon: UsersIcon, hideInSimpleMode: true, featureFlag: flagAffiliate },
     { path: '/distribution', label: t('nav.distribution'), icon: DistributionIcon },
     ...customMenuItemsForUser.value.map((item): NavItem => ({
@@ -842,7 +913,7 @@ const adminNavItems = computed((): NavItem[] => {
     { path: '/admin/dashboard', label: t('nav.dashboard'), icon: DashboardIcon },
     { path: '/admin/ops', label: t('nav.ops'), icon: ChartIcon, featureFlag: flagOpsMonitoring },
     { path: '/admin/users', label: t('nav.users'), icon: UsersIcon, hideInSimpleMode: true },
-    { path: '/admin/groups', label: t('nav.groups'), icon: FolderIcon, hideInSimpleMode: true },
+    { path: '/admin/groups', label: t('nav.groups'), icon: FolderIcon },
     {
       path: '/admin/channels',
       label: t('nav.channelManagement'),
@@ -854,14 +925,32 @@ const adminNavItems = computed((): NavItem[] => {
         { path: '/admin/channels/monitor', label: t('nav.channelMonitor'), icon: SignalIcon, featureFlag: flagChannelMonitor },
       ],
     },
-    { path: '/admin/subscriptions', label: t('nav.subscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },
     { path: '/admin/accounts', label: t('nav.accounts'), icon: GlobeIcon },
+    { path: '/admin/proxies', label: t('nav.proxies'), icon: ServerIcon },
     { path: '/admin/plugins', label: t('nav.plugins'), icon: PluginIcon, featureFlag: flagPluginManagement },
+    { path: '/admin/plan-catalog', label: t('nav.planCatalogManagement'), icon: CreditCardIcon },
+    // 「仅充值」站点连管理端的「订阅管理」入口也一并收起（路由本身不拦截）。
+    { path: '/admin/subscriptions', label: t('nav.subscriptions'), icon: CreditCardIcon, hideInSimpleMode: true, featureFlag: flagSubscription },
+    {
+      path: '/admin/orders',
+      label: t('nav.orderManagement'),
+      icon: OrderIcon,
+      hideInSimpleMode: true,
+      expandOnly: true,
+      featureFlag: flagAdminPayment,
+      children: [
+        { path: '/admin/orders/dashboard', label: t('nav.paymentDashboard'), icon: ChartIcon },
+        { path: '/admin/orders', label: t('nav.orderManagement'), icon: OrderIcon },
+        { path: '/admin/orders/plans', label: t('nav.paymentPlans'), icon: CreditCardIcon },
+      ],
+    },
+    { path: '/admin/sms', label: t('nav.smsManagement'), icon: MessageIcon, hideInSimpleMode: true },
+    { path: '/admin/email', label: t('nav.emailManagement'), icon: MessageIcon, hideInSimpleMode: true },
+    { path: '/admin/verification-records', label: t('nav.verificationRecords'), icon: OrderIcon, hideInSimpleMode: true },
+    { path: '/admin/usage', label: t('nav.usage'), icon: ChartIcon },
     { path: '/admin/announcements', label: t('nav.announcements'), icon: BellIcon },
-    { path: '/resource-center', label: t('nav.resourceCenter'), icon: ResourceCenterIcon },
     { path: '/admin/resource-center', label: t('nav.resourceCenterAdmin'), icon: ResourceCenterIcon },
     { path: '/admin/activities', label: t('nav.activityManagement'), icon: CalendarIcon },
-    { path: '/admin/proxies', label: t('nav.proxies'), icon: ServerIcon },
     {
       path: '/admin/security-audit',
       label: t('nav.securityAudit'),
@@ -889,20 +978,6 @@ const adminNavItems = computed((): NavItem[] => {
         { path: '/admin/affiliates/transfers', label: t('nav.affiliateTransferRecords'), icon: CreditCardIcon },
       ],
     },
-    {
-      path: '/admin/orders',
-      label: t('nav.orderManagement'),
-      icon: OrderIcon,
-      hideInSimpleMode: true,
-      expandOnly: true,
-      featureFlag: flagAdminPayment,
-      children: [
-        { path: '/admin/orders/dashboard', label: t('nav.paymentDashboard'), icon: ChartIcon },
-        { path: '/admin/orders', label: t('nav.orderManagement'), icon: OrderIcon },
-        { path: '/admin/orders/plans', label: t('nav.paymentPlans'), icon: CreditCardIcon },
-      ],
-    },
-    { path: '/admin/usage', label: t('nav.usage'), icon: ChartIcon },
     { path: '/admin/audit-logs', label: t('nav.auditLogs'), icon: ShieldIcon, hideInSimpleMode: true }
   ]
 
@@ -938,7 +1013,19 @@ function closeMobile() {
   appStore.setMobileOpen(false)
 }
 
-function handleMenuItemClick(itemPath: string) {
+function handleMenuItemClick(itemPath: string, event?: MouseEvent) {
+  const shouldAnimateCanvasNavigation = itemPath === '/canvas'
+    && event?.button === 0
+    && !event.metaKey
+    && !event.ctrlKey
+    && !event.shiftKey
+    && !event.altKey
+
+  if (shouldAnimateCanvasNavigation) {
+    event.preventDefault()
+    void navigateToWorkspaceUrlWithTransition('/infinite-canvas/canvas', 'to-canvas')
+  }
+
   if (mobileOpen.value) {
     setTimeout(() => {
       appStore.setMobileOpen(false)
@@ -959,7 +1046,10 @@ function handleMenuItemClick(itemPath: string) {
 }
 
 function isActive(path: string): boolean {
-  return route.path === path || route.path.startsWith(path + '/')
+  const [routePath, hash = ''] = path.split('#')
+  if (hash) return route.path === routePath && route.hash === `#${hash}`
+  if (routePath === '/home' && route.hash) return false
+  return route.path === routePath || route.path.startsWith(routePath + '/')
 }
 
 function isGroupActive(item: NavItem): boolean {
@@ -1061,8 +1151,12 @@ onBeforeUnmount(() => {
 }
 
 .sidebar-brand {
+  display: flex;
   min-width: 0;
   flex: 1 1 auto;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
   white-space: nowrap;
   transition:
     max-width 0.22s ease,
@@ -1081,6 +1175,7 @@ onBeforeUnmount(() => {
 
 .sidebar-brand-title {
   display: block;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

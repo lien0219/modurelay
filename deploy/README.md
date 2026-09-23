@@ -42,7 +42,7 @@ Apple-silicon Macs running macOS 26 can run the complete Sub2API, PostgreSQL, an
 ./apple-container.sh logs app -f
 ```
 
-The script uses Apple named volumes, starts dependencies in order, and performs live readiness checks. It does not provide a continuous restart supervisor; run `./apple-container.sh up` after a host reboot. Docker Compose remains the recommended production deployment path.
+The script uses Apple named volumes, starts dependencies in order, and performs live readiness checks. The application container supervises the Sub2API process so the Web UI's update-and-restart flow can relaunch an updated binary. It does not provide host-level automatic startup; run `./apple-container.sh up` after a host reboot. Docker Compose remains the recommended production deployment path.
 
 See [APPLE_CONTAINER.md](./APPLE_CONTAINER.md) for configuration, upgrades, persistence, networking behavior, and limitations.
 
@@ -270,6 +270,8 @@ docker compose down -v
 | `POSTGRES_PASSWORD` | **Yes** | - | PostgreSQL password |
 | `JWT_SECRET` | **Recommended** | *(auto-generated)* | JWT secret (fixed for persistent sessions) |
 | `TOTP_ENCRYPTION_KEY` | **Recommended** | *(auto-generated)* | TOTP encryption key (fixed for persistent 2FA) |
+| `EMAIL_EMAILNATOR_API_KEY` | No | *(empty)* | Emailnator / Gmailnator RapidAPI credential. Supplying it does not enable the disabled-by-default email feature, provider, or channel. |
+| `EMAIL_QUOTE_SIGNING_KEY` | No | *(JWT secret)* | Optional dedicated HMAC key for short-lived email quotes. |
 | `SERVER_PORT` | No | `8080` | Server port |
 | `ADMIN_EMAIL` | No | `admin@sub2api.local` | Admin email |
 | `ADMIN_PASSWORD` | No | *(auto-generated)* | Admin password |

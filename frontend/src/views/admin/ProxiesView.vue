@@ -24,7 +24,7 @@
               v-model="filters.protocol"
               :options="protocolOptions"
               :placeholder="t('admin.proxies.allProtocols')"
-              @change="loadProxies"
+              @change="handleFilterChange"
             />
           </div>
           <div class="w-full sm:w-36">
@@ -32,7 +32,7 @@
               v-model="filters.status"
               :options="statusOptions"
               :placeholder="t('admin.proxies.allStatus')"
-              @change="loadProxies"
+              @change="handleFilterChange"
             />
           </div>
 
@@ -140,25 +140,35 @@
                   type="button"
                   class="rounded p-0.5 text-gray-400 hover:text-primary-600 dark:hover:text-primary-400"
                   :title="t('admin.proxies.copyProxyUrl')"
+                  aria-haspopup="menu"
+                  :aria-expanded="copyMenuProxyId === row.id"
                   @click.stop="copyProxyUrl(row)"
-                  @contextmenu.prevent="toggleCopyMenu(row.id)"
+                  @contextmenu.prevent.stop="toggleCopyMenu(row.id, $event)"
+                  @keydown.shift.f10.prevent.stop="toggleCopyMenu(row.id, $event)"
                 >
                   <Icon name="copy" size="sm" />
                 </button>
                 <!-- 右键展开格式选择菜单 -->
-                <div
-                  v-if="copyMenuProxyId === row.id"
-                  class="absolute left-0 top-full z-50 mt-1 w-auto min-w-[180px] rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-dark-500 dark:bg-dark-700"
-                >
-                  <button
-                    v-for="fmt in getCopyFormats(row)"
-                    :key="fmt.label"
-                    class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-gray-100 dark:hover:bg-dark-600"
-                    @click.stop="copyFormat(fmt.value)"
+                <Teleport to="body">
+                  <div
+                    v-if="copyMenuProxyId === row.id && copyMenuPosition"
+                    class="proxy-copy-menu glass-popover scrollable-popover fixed z-[9999] overflow-y-auto py-1"
+                    :style="floatingPanelStyle(copyMenuPosition)"
+                    role="menu"
+                    @click.stop
                   >
-                    <span class="truncate font-mono text-gray-600 dark:text-gray-300">{{ fmt.label }}</span>
-                  </button>
-                </div>
+                    <button
+                      v-for="fmt in getCopyFormats(row)"
+                      :key="fmt.label"
+                      type="button"
+                      class="flex w-full min-w-0 items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500 dark:hover:bg-dark-600"
+                      role="menuitem"
+                      @click.stop="copyFormat(fmt.value)"
+                    >
+                      <span class="min-w-0 truncate font-mono text-gray-600 dark:text-gray-300">{{ fmt.label }}</span>
+                    </button>
+                  </div>
+                </Teleport>
               </div>
             </div>
           </template>
@@ -185,11 +195,11 @@
 
           <template #cell-location="{ row }">
             <div class="flex items-center gap-2">
-              <img
+              <span
                 v-if="row.country_code"
-                :src="flagUrl(row.country_code)"
-                :alt="row.country || row.country_code"
-                class="h-4 w-6 rounded-sm"
+                class="fi shrink-0 text-base"
+                :class="`fi-${row.country_code.toLowerCase()}`"
+                aria-hidden="true"
               />
               <span v-if="formatLocation(row)" class="text-sm text-gray-700 dark:text-gray-200">
                 {{ formatLocation(row) }}
@@ -513,7 +523,7 @@
             class="input mb-2"
             :placeholder="t('admin.proxies.expiryDaysPlaceholder')"
           />
-          <input v-model="createForm.expires_at" type="date" class="input" />
+          <input v-model="createForm.expires_at" type="date" max="9999-12-31" class="input" />
         </div>
         <div>
           <label class="input-label">{{ t('admin.proxies.fallbackMode') }}</label>
@@ -746,7 +756,7 @@
             class="input mb-2"
             :placeholder="t('admin.proxies.expiryDaysPlaceholder')"
           />
-          <input v-model="editForm.expires_at" type="date" class="input" />
+          <input v-model="editForm.expires_at" type="date" max="9999-12-31" class="input" />
         </div>
         <div>
           <label class="input-label">{{ t('admin.proxies.fallbackMode') }}</label>
@@ -987,11 +997,20 @@ import { useSwipeSelect } from '@/composables/useSwipeSelect'
 import { useTableSelection } from '@/composables/useTableSelection'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { formatDateTime } from '@/utils/format'
+import { getFloatingPanelPosition, type FloatingPanelPosition } from '@/utils/floatingPanel'
 import { proxyExpiryBadgeClass, proxyExpiryLabelKey } from '@/utils/proxyExpiry'
 
 const { t } = useI18n()
 const appStore = useAppStore()
 const { copyToClipboard } = useClipboard()
+
+const floatingPanelStyle = (position: FloatingPanelPosition) => ({
+  top: position.top == null ? 'auto' : `${position.top}px`,
+  bottom: position.bottom == null ? 'auto' : `${position.bottom}px`,
+  left: `${position.left}px`,
+  width: `${position.width}px`,
+  maxHeight: `${position.maxHeight}px`
+})
 
 const columns = computed<Column[]>(() => [
   { key: 'select', label: '', sortable: false },
@@ -1040,6 +1059,7 @@ const editStatusOptions = computed(() => [
 const proxies = ref<Proxy[]>([])
 const visiblePasswordIds = reactive(new Set<number>())
 const copyMenuProxyId = ref<number | null>(null)
+const copyMenuPosition = ref<FloatingPanelPosition | null>(null)
 const loading = ref(false)
 const searchQuery = ref('')
 const filters = reactive({
@@ -1219,6 +1239,11 @@ const loadProxies = async () => {
       abortController = null
     }
   }
+}
+
+const handleFilterChange = () => {
+  pagination.page = 1
+  loadProxies()
 }
 
 let searchTimeout: ReturnType<typeof setTimeout>
@@ -1456,7 +1481,7 @@ const handleUpdateProxy = async () => {
       protocol: editForm.protocol,
       host: editForm.host.trim(),
       port: editForm.port,
-      username: editForm.username.trim() || null,
+      username: editForm.username.trim(),
       status: editForm.status,
       expires_at: editForm.expires_at ? Math.floor(new Date(editForm.expires_at).getTime() / 1000) : null,
       fallback_mode: editForm.fallback_mode,
@@ -1466,7 +1491,7 @@ const handleUpdateProxy = async () => {
 
     // Only include password if user actually modified the field
     if (editPasswordDirty.value) {
-      updateData.password = editForm.password.trim() || null
+      updateData.password = editForm.password.trim()
     }
 
     await adminAPI.proxies.update(editingProxy.value.id, updateData)
@@ -1537,9 +1562,6 @@ const formatLocation = (proxy: Proxy) => {
   const parts = [proxy.country, proxy.city].filter(Boolean) as string[]
   return parts.join(' · ')
 }
-
-const flagUrl = (code: string) =>
-  `https://unpkg.com/flag-icons/flags/4x3/${code.toLowerCase()}.svg`
 
 const startTestingProxy = (proxyId: number) => {
   testingProxyIds.value = new Set([...testingProxyIds.value, proxyId])
@@ -1786,6 +1808,14 @@ const qualityTargetLabel = (target: string) => {
       return 'Gemini'
     case 'grok':
       return 'Grok'
+    case 'kimi':
+      return 'Kimi'
+    case 'zhipu':
+      return 'Zhipu GLM'
+    case 'deepseek':
+      return 'DeepSeek'
+    case 'minimax':
+      return 'MiniMax'
     default:
       return target
   }
@@ -2046,31 +2076,49 @@ function getCopyFormats(row: any) {
 
 function copyProxyUrl(row: any) {
   copyToClipboard(buildProxyUrl(row), t('admin.proxies.urlCopied'))
-  copyMenuProxyId.value = null
+  closeCopyMenu()
 }
 
-function toggleCopyMenu(id: number) {
-  copyMenuProxyId.value = copyMenuProxyId.value === id ? null : id
+function toggleCopyMenu(id: number, event: MouseEvent | KeyboardEvent) {
+  if (copyMenuProxyId.value === id) {
+    closeCopyMenu()
+    return
+  }
+
+  const trigger = event.currentTarget as HTMLElement | null
+  if (!trigger) return
+  copyMenuPosition.value = getFloatingPanelPosition(
+    trigger.getBoundingClientRect(),
+    window.innerWidth,
+    window.innerHeight,
+    { viewportPadding: 8, gap: 4, maxWidth: 360, maxHeightRatio: 0.5, minComfortableHeight: 160 }
+  )
+  copyMenuProxyId.value = id
 }
 
 function copyFormat(value: string) {
   copyToClipboard(value, t('admin.proxies.urlCopied'))
-  copyMenuProxyId.value = null
+  closeCopyMenu()
 }
 
 function closeCopyMenu() {
   copyMenuProxyId.value = null
+  copyMenuPosition.value = null
 }
 
 onMounted(() => {
   loadProxies()
   loadBackupProxyOptions()
   document.addEventListener('click', closeCopyMenu)
+  window.addEventListener('scroll', closeCopyMenu, true)
+  window.addEventListener('resize', closeCopyMenu)
 })
 
 onUnmounted(() => {
   clearTimeout(searchTimeout)
   abortController?.abort()
   document.removeEventListener('click', closeCopyMenu)
+  window.removeEventListener('scroll', closeCopyMenu, true)
+  window.removeEventListener('resize', closeCopyMenu)
 })
 </script>

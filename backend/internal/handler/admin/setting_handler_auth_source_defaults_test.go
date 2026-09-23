@@ -130,6 +130,8 @@ func TestSettingHandler_GetSettings_InjectsAuthSourceDefaults(t *testing.T) {
 		values: map[string]string{
 			service.SettingKeyRegistrationEnabled:                 "true",
 			service.SettingKeyPromoCodeEnabled:                    "true",
+			service.SettingKeyCanvasEnabled:                       "true",
+			service.SettingKeyEmailServiceEnabled:                 "true",
 			service.SettingKeyAuthSourceDefaultEmailBalance:       "9.5",
 			service.SettingKeyAuthSourceDefaultEmailConcurrency:   "8",
 			service.SettingKeyAuthSourceDefaultEmailSubscriptions: `[{"group_id":31,"validity_days":15}]`,
@@ -153,6 +155,8 @@ func TestSettingHandler_GetSettings_InjectsAuthSourceDefaults(t *testing.T) {
 	require.Equal(t, 9.5, data["auth_source_default_email_balance"])
 	require.Equal(t, float64(8), data["auth_source_default_email_concurrency"])
 	require.Equal(t, true, data["force_email_on_third_party_signup"])
+	require.Equal(t, true, data["canvas_enabled"])
+	require.Equal(t, true, data["email_service_enabled"])
 
 	subscriptions, ok := data["auth_source_default_email_subscriptions"].([]any)
 	require.True(t, ok)
@@ -476,6 +480,38 @@ func TestSettingHandler_UpdateSettings_DoesNotPersistPartialSystemSettingsWhenAu
 	require.Equal(t, http.StatusInternalServerError, rec.Code)
 	require.Equal(t, "false", repo.values[service.SettingKeyRegistrationEnabled])
 	require.Equal(t, "9.5", repo.values[service.SettingKeyAuthSourceDefaultEmailBalance])
+}
+
+func TestSettingHandler_UpdateSettings_ClearsLegacyPurchaseURLWhenDisabled(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := &settingHandlerRepoStub{
+		values: map[string]string{
+			service.SettingKeyPurchaseSubscriptionEnabled: "false",
+			service.SettingKeyPurchaseSubscriptionURL:     "admin@modurelay.local",
+			service.SettingKeyCanvasEnabled:               "false",
+		},
+	}
+	svc := service.NewSettingService(repo, &config.Config{Default: config.DefaultConfig{UserConcurrency: 5}})
+	handler := NewSettingHandler(svc, nil, nil, nil, nil, nil, nil)
+
+	body := map[string]any{
+		"purchase_subscription_enabled": false,
+		"purchase_subscription_url":     "admin@modurelay.local",
+		"canvas_enabled":                true,
+	}
+	rawBody, err := json.Marshal(body)
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/admin/settings", bytes.NewReader(rawBody))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler.UpdateSettings(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "", repo.values[service.SettingKeyPurchaseSubscriptionURL])
+	require.Equal(t, "true", repo.values[service.SettingKeyCanvasEnabled])
 }
 
 func TestDiffSettings_IncludesAuthSourceDefaultsAndForceEmail(t *testing.T) {
