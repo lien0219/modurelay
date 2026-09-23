@@ -1392,6 +1392,9 @@ func (s *EmailVerificationService) listMessagesPublic(ctx context.Context, id in
 		if e = rows.Scan(&m.ID, &m.FromAddress, &m.FromName, &m.ToAddress, &m.Subject, &m.TextBody, &m.HTMLBody, &m.VerificationCode, &m.VerificationURL, &m.VerificationConfidence, &m.VerificationMethod, &m.ReceivedAt); e != nil {
 			return nil, e
 		}
+		// Normalize on read as well so historical rows saved before body
+		// normalization do not expose provider CSS/template source to users.
+		m.TextBody = normalizeEmailText(m.TextBody, m.HTMLBody)
 		out = append(out, m)
 	}
 	return out, rows.Err()
@@ -1747,13 +1750,14 @@ func (s *EmailVerificationService) PollOrder(ctx context.Context, orderID int64)
 			continue
 		}
 		safeHTML := SanitizeEmailHTML(msg.HTMLBody)
-		extract := ExtractVerification(msg.Subject, msg.TextBody, safeHTML)
+		normalizedText := normalizeEmailText(msg.TextBody, msg.HTMLBody)
+		extract := ExtractVerification(msg.Subject, normalizedText, safeHTML)
 		dedupe := hashString(msg.ProviderMessageID + msg.Subject + msg.ReceivedAt.Format(time.RFC3339Nano))
 		// The normalized, sanitized fields are sufficient for product behavior.
 		// Persisting the provider's raw body would duplicate verification secrets
 		// and unsanitized HTML outside the retention controls.
 		rawPayload := []byte(`{}`)
-		_, e = s.db.ExecContext(ctx, `INSERT INTO email_messages(email_order_id,provider_message_id,from_address,from_name,to_address,subject,text_body,html_body,verification_code,verification_url,verification_confidence,verification_method,received_at,dedupe_hash,raw_payload) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) ON CONFLICT(email_order_id,dedupe_hash) DO NOTHING`, orderID, msg.ProviderMessageID, msg.FromAddress, msg.FromName, msg.ToAddress, msg.Subject, msg.TextBody, safeHTML, extract.Code, extract.URL, extract.Confidence, extract.Method, msg.ReceivedAt, dedupe, rawPayload)
+		_, e = s.db.ExecContext(ctx, `INSERT INTO email_messages(email_order_id,provider_message_id,from_address,from_name,to_address,subject,text_body,html_body,verification_code,verification_url,verification_confidence,verification_method,received_at,dedupe_hash,raw_payload) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) ON CONFLICT(email_order_id,dedupe_hash) DO NOTHING`, orderID, msg.ProviderMessageID, msg.FromAddress, msg.FromName, msg.ToAddress, msg.Subject, normalizedText, safeHTML, extract.Code, extract.URL, extract.Confidence, extract.Method, msg.ReceivedAt, dedupe, rawPayload)
 		if e != nil {
 			return e
 		}
@@ -2233,6 +2237,12 @@ func HTMLToText(raw string) string {
 	var b strings.Builder
 	var walk func(*xhtml.Node)
 	walk = func(n *xhtml.Node) {
+		if n.Type == xhtml.ElementNode {
+			switch strings.ToLower(n.Data) {
+			case "style", "script", "head", "noscript", "template", "svg":
+				return
+			}
+		}
 		if n.Type == xhtml.TextNode {
 			_, _ = b.WriteString(n.Data)
 			_ = b.WriteByte(' ')
@@ -2243,6 +2253,129 @@ func HTMLToText(raw string) string {
 	}
 	walk(doc)
 	return strings.Join(strings.Fields(b.String()), " ")
+}
+
+func normalizeEmailText(textBody, htmlBody string) string {
+	text := strings.TrimSpace(textBody)
+	if html := strings.TrimSpace(htmlBody); html != "" {
+		if htmlText := HTMLToText(html); htmlText != "" {
+			text = htmlText
+		}
+	} else if looksLikeEmailHTML(text) {
+		if htmlText := HTMLToText(text); htmlText != "" {
+			text = htmlText
+		}
+	}
+	text = stripEmbeddedEmailCSS(text)
+	return strings.Join(strings.Fields(text), " ")
+}
+
+func looksLikeEmailHTML(value string) bool {
+	lower := strings.ToLower(value)
+	for _, marker := range []string{"<!doctype", "<html", "<body", "<head", "<style", "<table", "<div", "<span", "<p", "<br", "<td", "<a "} {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func stripEmbeddedEmailCSS(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return ""
+	}
+	lower := strings.ToLower(value)
+	start := -1
+	for _, marker := range []string{"@font-face", "@media", ".externalclass", "#outlook", "#bodytable", "#bodycell", "body {", "table {", "img {", "html {"} {
+		if idx := strings.Index(lower, marker); idx >= 0 && (start < 0 || idx < start) {
+			start = idx
+		}
+	}
+	if start < 0 {
+		return value
+	}
+
+	pos := start
+	end := start
+	consumed := false
+	for pos < len(value) {
+		for pos < len(value) {
+			switch value[pos] {
+			case ' ', '\t', '\r', '\n':
+				pos++
+			default:
+				goto selector
+			}
+		}
+	selector:
+		if pos >= len(value) {
+			break
+		}
+		openRel := strings.IndexByte(value[pos:], '{')
+		if openRel < 0 || openRel > 1400 {
+			break
+		}
+		open := pos + openRel
+		selectorText := strings.TrimSpace(value[pos:open])
+		if !looksLikeCSSSelector(selectorText) {
+			break
+		}
+		depth := 0
+		closeAt := -1
+		for i := open; i < len(value); i++ {
+			switch value[i] {
+			case '{':
+				depth++
+			case '}':
+				depth--
+				if depth == 0 {
+					closeAt = i + 1
+					i = len(value)
+				}
+			}
+		}
+		if closeAt < 0 {
+			break
+		}
+		consumed = true
+		end = closeAt
+		pos = closeAt
+	}
+	if !consumed {
+		return value
+	}
+
+	prefix := strings.TrimSpace(value[:start])
+	suffix := strings.TrimSpace(value[end:])
+	switch {
+	case prefix == "":
+		return suffix
+	case suffix == "":
+		return prefix
+	default:
+		return prefix + " " + suffix
+	}
+}
+
+func looksLikeCSSSelector(selector string) bool {
+	selector = strings.TrimSpace(selector)
+	if selector == "" || len(selector) > 1400 {
+		return false
+	}
+	lower := strings.ToLower(selector)
+	if strings.HasPrefix(lower, "@") || strings.ContainsAny(selector, ".#[],:>+~*") {
+		return true
+	}
+	first := lower
+	if fields := strings.Fields(lower); len(fields) > 0 {
+		first = fields[0]
+	}
+	switch strings.Trim(first, ",") {
+	case "html", "body", "table", "tbody", "thead", "tr", "td", "th", "img", "a", "p", "div", "span", "font":
+		return true
+	default:
+		return false
+	}
 }
 func SanitizeEmailHTML(raw string) string {
 	doc, e := xhtml.Parse(strings.NewReader(raw))

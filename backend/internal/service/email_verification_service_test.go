@@ -34,6 +34,28 @@ func TestExtractVerificationPrefersContextAndRejectsNoise(t *testing.T) {
 	}
 }
 
+func TestNormalizeEmailTextRemovesTemplateCSSNoise(t *testing.T) {
+	raw := "你的 ChatGPT 临时验证码 @font-face { font-family: 'Sohne'; src: url(https://cdn.example/font.woff2); font-display: swap; } .ExternalClass, .ExternalClass div, .ExternalClass p { line-height: 100%; } #outlook a { padding: 0; } body, table, td { margin: 0; padding: 0; } 输入此临时验证码以继续：788519 如果并非你本人尝试创建 ChatGPT 帐户，请忽略此电子邮件。"
+	got := normalizeEmailText(raw, "")
+	if strings.Contains(got, "@font-face") || strings.Contains(got, ".ExternalClass") || strings.Contains(got, "#outlook") || strings.Contains(got, "font-family") {
+		t.Fatalf("CSS noise survived normalization: %s", got)
+	}
+	if !strings.Contains(got, "788519") || !strings.Contains(got, "输入此临时验证码以继续") {
+		t.Fatalf("meaningful email content was lost: %s", got)
+	}
+}
+
+func TestNormalizeEmailTextPrefersHTMLAndSkipsStyleScript(t *testing.T) {
+	html := "<html><head><style>@font-face { font-family: bad; } .x { color: red; }</style><script>alert(1)</script></head><body><h1>验证邮箱</h1><p>验证码 <strong>654321</strong></p></body></html>"
+	got := normalizeEmailText("fallback @font-face { color: red; } garbage", html)
+	if strings.Contains(got, "@font-face") || strings.Contains(got, "alert(1)") || strings.Contains(got, "color: red") {
+		t.Fatalf("style/script content survived normalization: %s", got)
+	}
+	if !strings.Contains(got, "验证邮箱") || !strings.Contains(got, "654321") {
+		t.Fatalf("HTML message content was lost: %s", got)
+	}
+}
+
 func TestSanitizeEmailHTMLRemovesActiveContentAndRemoteAttributes(t *testing.T) {
 	clean := SanitizeEmailHTML(`<div onclick="alert(1)"><script>alert(1)</script><img src="https://tracker.test/pixel"><a href="javascript:alert(1)">bad</a><a href="https://example.test/verify">verify</a></div>`)
 	if strings.Contains(strings.ToLower(clean), "script") || strings.Contains(strings.ToLower(clean), "onclick") || strings.Contains(strings.ToLower(clean), "javascript:") {
