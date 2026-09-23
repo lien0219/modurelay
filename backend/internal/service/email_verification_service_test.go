@@ -366,7 +366,7 @@ func TestReconcileKeepsPaidUnknownInboxForManualReview(t *testing.T) {
 		WithArgs(emailGenerationRecoveryGraceSeconds).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "user_id", "status", "expires_at", "refund_policy_snapshot", "sale_price_snapshot", "provider_inbox_id", "email_address"}).
 			AddRow(int64(21), int64(8), "reconciling", time.Now().Add(-time.Minute), EmailNoRefundAfterDelivery, 0.75, "", ""))
-	mock.ExpectExec(`UPDATE email_orders[[:space:]]+SET status='expired'.*refund_status='manual_review'`).
+	mock.ExpectExec(`UPDATE email_orders[[:space:]]+SET status='expired',[[:space:]]+refund_status='manual_review'`).
 		WithArgs(int64(21)).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec(`INSERT INTO email_order_events`).
