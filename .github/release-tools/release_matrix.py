@@ -42,7 +42,9 @@ def archive_name(version, target):
     if not VERSION_RE.fullmatch(version) or target not in targets():
         raise ValueError('invalid release version or target')
     suffix = 'zip' if target['goos'] == 'windows' else 'tar.gz'
-    return f"sub2api_{version}_{target['goos']}_{target['goarch']}.{suffix}"
+    # GoReleaser archives use the project branding; the embedded runtime
+    # binary intentionally remains named ``sub2api`` for service compatibility.
+    return f"modurelay_{version}_{target['goos']}_{target['goarch']}.{suffix}"
 
 
 def sha256(path):
@@ -95,9 +97,10 @@ def generate_config(args):
         data['before'] = {'hooks': []}
         data['builds'] = [{'id': 'sub2api', 'skip': True}]
         data['archives'] = []
-        extra = [{'glob': 'release-input/sub2api_*.tar.gz'}, {'glob': 'release-input/sub2api_*.zip'}]
+        extra = [{'glob': 'release-input/modurelay_*.tar.gz'}, {'glob': 'release-input/modurelay_*.zip'}]
         if args.simple:
             data['checksum'] = {'disable': True}
+            data['release']['skip_upload'] = True
         else:
             data['release']['extra_files'] = extra
             data['checksum'] = {'name_template': 'checksums.txt', 'algorithm': 'sha256', 'extra_files': extra}

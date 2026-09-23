@@ -161,7 +161,7 @@ func TestSuccessfulPublicRedeemDoesNotMutateFailureCounter(t *testing.T) {
 	userRepo := &mockUserRepo{getByIDUser: &User{ID: userID}}
 	userRepo.updateBalanceFn = func(context.Context, int64, float64) error { return nil }
 	cache := &redeemRateLimitCacheStub{count: 7}
-	svc := NewRedeemService(redeemRepo, userRepo, nil, cache, nil, client, nil, nil)
+	svc := NewRedeemService(redeemRepo, userRepo, nil, cache, nil, client, nil, nil, nil)
 
 	result, err := svc.Redeem(ctx, userID, code.Code)
 

@@ -78,12 +78,14 @@ class ReleaseMatrixTest(unittest.TestCase):
                 self.assertTrue(data['builds'][0]['skip'])
                 self.assertFalse(data['archives'])
                 self.assertFalse(data['dockers'])
-                self.assertEqual(data['release']['header'], original['release']['header'])
-                self.assertEqual(data['release']['footer'], original['release']['footer'])
                 if simple:
                     self.assertTrue(data['checksum']['disable'])
                     self.assertTrue(data['release']['skip_upload'])
+                    self.assertNotIn('header', data['release'])
+                    self.assertNotIn('footer', data['release'])
                 else:
+                    self.assertEqual(data['release']['header'], original['release']['header'])
+                    self.assertEqual(data['release']['footer'], original['release']['footer'])
                     self.assertEqual(data['checksum']['extra_files'], data['release']['extra_files'])
 
     def test_collect_and_verify_hash_and_source_binding(self):
@@ -147,7 +149,7 @@ class ReleaseMatrixTest(unittest.TestCase):
         docker.chmod(0o755)
         env = {**os.environ, 'PATH': str(fake_bin.resolve()) + os.pathsep + os.environ['PATH'],
                'DOCKER_LOG': str(Path('docker.log').resolve()), 'RUNNER_TEMP': self.temp.name,
-               'RELEASE_VERSION': '9.8.7', 'RELEASE_SHA': 'a' * 40, 'GITHUB_REPOSITORY': 'ExampleOwner/sub2api',
+               'RELEASE_VERSION': '9.8.7', 'RELEASE_SHA': 'a' * 40, 'GITHUB_REPOSITORY': 'ExampleOwner/modurelay',
                'DRY_RUN': 'true', 'SIMPLE_RELEASE': 'false', 'DOCKERHUB_USERNAME': 'skip'}
         subprocess.run(['bash', str(ROOT / '.github/release-tools/release-images.sh')], env=env, check=True)
         log = Path('docker.log').read_text()
@@ -155,8 +157,8 @@ class ReleaseMatrixTest(unittest.TestCase):
         self.assertIn('linux/arm64', log)
         self.assertNotIn('--push', log)
         self.assertNotIn('imagetools', log)
-        self.assertNotIn('skip/sub2api', log)
-        self.assertIn('ghcr.io/exampleowner/sub2api', log)
+        self.assertNotIn('skip/modurelay', log)
+        self.assertIn('ghcr.io/exampleowner/modurelay', log)
 
 
     def test_published_full_and_simple_image_tags(self):
@@ -170,7 +172,7 @@ class ReleaseMatrixTest(unittest.TestCase):
                 log_path = Path(f'docker-{simple}.log').resolve()
                 env = {**os.environ, 'PATH': str(fake_bin.resolve()) + os.pathsep + os.environ['PATH'],
                        'DOCKER_LOG': str(log_path), 'RUNNER_TEMP': self.temp.name,
-                       'RELEASE_VERSION': '9.8.7', 'RELEASE_SHA': 'a' * 40, 'GITHUB_REPOSITORY': 'ExampleOwner/sub2api',
+                       'RELEASE_VERSION': '9.8.7', 'RELEASE_SHA': 'a' * 40, 'GITHUB_REPOSITORY': 'ExampleOwner/modurelay',
                        'DRY_RUN': 'false', 'SIMPLE_RELEASE': str(simple).lower(), 'DOCKERHUB_USERNAME': 'fixturehub'}
                 subprocess.run(['bash', str(ROOT / '.github/release-tools/release-images.sh')], env=env, check=True)
                 log = log_path.read_text()
@@ -179,11 +181,11 @@ class ReleaseMatrixTest(unittest.TestCase):
                 if simple:
                     self.assertNotIn('fixturehub', log)
                     self.assertNotIn('imagetools', log)
-                    self.assertIn('ghcr.io/exampleowner/sub2api:latest', log)
+                    self.assertIn('ghcr.io/exampleowner/modurelay:latest', log)
                 else:
                     self.assertEqual(log.count('imagetools create'), 2)
-                    self.assertIn('fixturehub/sub2api:9.8', log)
-                    self.assertIn('ghcr.io/exampleowner/sub2api:9', log)
+                    self.assertIn('fixturehub/modurelay:9.8', log)
+                    self.assertIn('ghcr.io/exampleowner/modurelay:9', log)
 
 
 

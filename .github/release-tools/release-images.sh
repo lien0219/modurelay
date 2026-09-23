@@ -2,9 +2,10 @@
 set -euo pipefail
 : "${RELEASE_VERSION:?}" "${RELEASE_SHA:?}" "${GITHUB_REPOSITORY:?}" "${RUNNER_TEMP:?}"
 owner=${GITHUB_REPOSITORY%%/*}
-registries=("ghcr.io/${owner,,}/sub2api")
+production_image=${PRODUCTION_IMAGE:-"ghcr.io/${owner,,}/modurelay"}
+registries=("$production_image")
 if [[ ${SIMPLE_RELEASE:-false} != true && ${DOCKERHUB_USERNAME:-skip} != skip ]]; then
-  registries+=("${DOCKERHUB_USERNAME}/sub2api")
+  registries+=("${DOCKERHUB_USERNAME}/modurelay")
 fi
 arches=(amd64 arm64)
 if [[ ${SIMPLE_RELEASE:-false} == true ]]; then arches=(amd64); fi
@@ -20,7 +21,7 @@ for arch in "${arches[@]}"; do
     fi
   done
   if [[ ${DRY_RUN:-false} == true ]]; then
-    args+=(--output "type=oci,dest=$RUNNER_TEMP/sub2api-$arch.oci.tar")
+    args+=(--output "type=oci,dest=$RUNNER_TEMP/modurelay-$arch.oci.tar")
   else
     args+=(--push)
   fi
