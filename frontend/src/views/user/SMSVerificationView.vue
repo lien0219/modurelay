@@ -1954,24 +1954,26 @@ onBeforeUnmount(() => {
 .sms-workspace {
   display: grid;
   grid-template-columns: minmax(0, 1.05fr) minmax(0, .9fr) minmax(330px, .78fr);
+  align-items: start;
+  gap: 12px;
   margin-top: 14px;
-  overflow: hidden;
-  border: 1px solid var(--color-border);
-  border-radius: 16px;
-  background: var(--color-surface);
-  box-shadow: var(--shadow-sm);
 }
 
 .sms-workspace__left,
 .sms-step--country,
 .sms-step--confirm {
   min-width: 0;
+  align-self: start;
 }
 
 .sms-workspace__left {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  border-right: 1px solid var(--color-border-subtle);
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-xs);
 }
 
 .sms-step {
@@ -1982,8 +1984,12 @@ onBeforeUnmount(() => {
   border-bottom: 1px solid var(--color-border-subtle);
 }
 
-.sms-step--country {
-  border-right: 1px solid var(--color-border-subtle);
+.sms-step--country,
+.sms-step--confirm {
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-xs);
 }
 
 .sms-step__header {
@@ -3023,10 +3029,11 @@ onBeforeUnmount(() => {
 
 .sms-empty-panel {
   display: flex;
-  min-height: 78px;
+  min-height: 54px;
   align-items: center;
   justify-content: center;
   gap: 7px;
+  padding: 10px 14px;
   color: var(--color-text-muted);
   font-size: .68rem;
 }
@@ -3312,17 +3319,8 @@ onBeforeUnmount(() => {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
 
-  .sms-workspace__left {
-    border-right: 1px solid var(--color-border-subtle);
-  }
-
-  .sms-step--country {
-    border-right: 0;
-  }
-
   .sms-step--confirm {
     grid-column: 1 / -1;
-    border-top: 1px solid var(--color-border-subtle);
   }
 
   .sms-step--confirm {
@@ -3357,16 +3355,6 @@ onBeforeUnmount(() => {
 
   .sms-workspace {
     grid-template-columns: 1fr;
-  }
-
-  .sms-workspace__left,
-  .sms-step--country {
-    border-right: 0;
-  }
-
-  .sms-step--country,
-  .sms-step--confirm {
-    border-top: 1px solid var(--color-border-subtle);
   }
 
   .sms-step--confirm {
@@ -3421,6 +3409,12 @@ onBeforeUnmount(() => {
   }
 
   .sms-workspace {
+    gap: 10px;
+  }
+
+  .sms-workspace__left,
+  .sms-step--country,
+  .sms-step--confirm {
     border-radius: 13px;
   }
 
