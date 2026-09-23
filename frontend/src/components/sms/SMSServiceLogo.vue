@@ -36,8 +36,9 @@ const isImageURL = computed(() => {
   const value = resolvedIcon.value
   return value.startsWith('/') || value.startsWith('data:image/')
 })
+const isOptionalServiceIconURL = computed(() => resolvedIcon.value.startsWith('/api/v1/sms/service-icons/'))
 const fallback = computed(() => String(props.label || '?').trim().slice(0, 1).toUpperCase() || '?')
-const showFallback = computed(() => !resolvedIcon.value || failed.value || (isImageURL.value && !imageObjectURL.value))
+const showFallback = computed(() => !resolvedIcon.value || failed.value || isOptionalServiceIconURL.value || (isImageURL.value && !imageObjectURL.value))
 
 function clearObjectURL() {
   if (imageObjectURL.value.startsWith('blob:')) URL.revokeObjectURL(imageObjectURL.value)
@@ -51,6 +52,13 @@ async function loadImageURL(value: string) {
   failed.value = false
 
   if (!value || !isImageURL.value) return
+  // Provider service icons are optional and the catalog exposes the proxy URL
+  // even when the provider has no icon. Don't request it: a 404 is still
+  // reported by the browser console even when fetch errors are caught.
+  if (isOptionalServiceIconURL.value) {
+    failed.value = true
+    return
+  }
   if (value.startsWith('data:image/')) {
     imageObjectURL.value = value
     return
