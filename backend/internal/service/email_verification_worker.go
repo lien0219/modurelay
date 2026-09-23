@@ -127,6 +127,25 @@ func (s *EmailVerificationService) Reconcile(ctx context.Context) error {
 			return err
 		}
 		inboxDelivered := strings.TrimSpace(providerInboxID) != "" && strings.TrimSpace(emailAddress) != ""
+		policy = enforceEmailRefundSafety(policy, price)
+		if !expires.IsZero() && time.Now().After(expires) && !inboxDelivered && price > 0 {
+			res, txErr := s.db.ExecContext(ctx, `UPDATE email_orders
+				SET status='expired',
+				    refund_status='manual_review',
+				    refund_reason='provider inbox creation outcome is unconfirmed; automatic refund is blocked',
+				    error_public_message='邮箱订单正在核对中',
+				    updated_at=NOW()
+				WHERE id=$1
+				  AND status IN ('reserved','generating_inbox','reconciling')
+				  AND provider_inbox_id=''
+				  AND email_address=''
+				  AND refund_status='not_requested'`, id)
+			if txErr != nil { return txErr }
+			if affected, _ := res.RowsAffected(); affected == 1 {
+				s.recordOrderEvent(ctx, id, "manual_review", "email_reconcile:"+strconv.FormatInt(id, 10), map[string]any{"reason": "provider_commit_unknown"})
+			}
+			continue
+		}
 		if !expires.IsZero() && time.Now().After(expires) && !inboxDelivered && (policy == EmailRefundIfNoMessage || policy == EmailNoRefundAfterDelivery) {
 			tx, txErr := s.db.BeginTx(ctx, nil)
 			if txErr != nil {

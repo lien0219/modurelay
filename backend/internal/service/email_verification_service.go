@@ -56,6 +56,18 @@ const (
 	EmailCaptureOnExtracted      = "on_verification_extracted"
 )
 
+func enforceEmailRefundSafety(policy string, salePrice float64) string {
+	policy = strings.TrimSpace(policy)
+	if policy == "" {
+		policy = EmailRefundIfNoMessage
+	}
+	if salePrice > 0 && policy == EmailRefundIfNoMessage {
+		return EmailNoRefundAfterDelivery
+	}
+	return policy
+}
+
+
 type EmailProviderCapabilities struct {
 	TemporaryInbox   bool `json:"supports_temporary_inbox"`
 	GenerateSingle   bool `json:"supports_generate_single"`
@@ -1105,9 +1117,7 @@ func (s *EmailVerificationService) Purchase(ctx context.Context, userID int64, r
 		return nil, e
 	}
 	var orderID int64
-	if refundPolicy == "" {
-		refundPolicy = EmailRefundIfNoMessage
-	}
+	refundPolicy = enforceEmailRefundSafety(refundPolicy, selected.SalePrice)
 	if capturePolicy == "" {
 		capturePolicy = EmailCaptureOnTargetReceived
 	}
@@ -1421,6 +1431,10 @@ func (s *EmailVerificationService) CancelOrder(ctx context.Context, userID int64
 	if status == "completed" || status == "refunded" || status == "expired" || status == "cancelled" || status == "failed" {
 		return errors.New("email order cannot be cancelled")
 	}
+	policy = enforceEmailRefundSafety(policy, price)
+	if price > 0 && (status == "generating_inbox" || status == "reconciling") {
+		return ErrEmailProviderUnknown
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -1474,6 +1488,7 @@ func (s *EmailVerificationService) RequestRefund(ctx context.Context, userID int
 	if err := s.db.QueryRowContext(ctx, `SELECT id,status,refund_policy_snapshot,sale_price_snapshot,first_message_at FROM email_orders WHERE user_id=$1 AND public_id=$2::uuid`, userID, strings.TrimSpace(publicID)).Scan(&id, &status, &policy, &price, &first); err != nil {
 		return ErrEmailNotFound
 	}
+	policy = enforceEmailRefundSafety(policy, price)
 	if policy != EmailRefundIfNoMessage || first.Valid || (status != "waiting_email" && status != "email_received") {
 		return errors.New("email order is not eligible for refund")
 	}

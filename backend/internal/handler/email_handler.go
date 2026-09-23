@@ -158,6 +158,10 @@ func (h *EmailHandler) Cancel(c *gin.Context) {
 			response.ErrorWithDetails(c, http.StatusNotFound, "Email order not found", "NOT_FOUND", nil)
 			return
 		}
+		if err == service.ErrEmailProviderUnknown {
+			response.ErrorWithDetails(c, http.StatusAccepted, "The email order is being reconciled", "ORDER_RECONCILING", nil)
+			return
+		}
 		response.ErrorWithDetails(c, http.StatusUnprocessableEntity, "Email order cannot be cancelled", "CANCEL_REJECTED", nil)
 		return
 	}

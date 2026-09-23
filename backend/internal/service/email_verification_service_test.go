@@ -355,7 +355,7 @@ func TestEmailRefundRechecksNoMessageConditionInsideTransaction(t *testing.T) {
 	}
 }
 
-func TestReconcileRefundsUndeliveredInboxForNoRefundAfterDeliveryPolicy(t *testing.T) {
+func TestReconcileKeepsPaidUnknownInboxForManualReview(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
 		t.Fatal(err)
@@ -366,16 +366,11 @@ func TestReconcileRefundsUndeliveredInboxForNoRefundAfterDeliveryPolicy(t *testi
 		WithArgs(emailGenerationRecoveryGraceSeconds).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "user_id", "status", "expires_at", "refund_policy_snapshot", "sale_price_snapshot", "provider_inbox_id", "email_address"}).
 			AddRow(int64(21), int64(8), "reconciling", time.Now().Add(-time.Minute), EmailNoRefundAfterDelivery, 0.75, "", ""))
-	mock.ExpectBegin()
-	mock.ExpectExec(`UPDATE email_orders SET status='refunded'.*provider_inbox_id='' AND email_address=''`).
+	mock.ExpectExec(`UPDATE email_orders[[:space:]]+SET status='expired'.*refund_status='manual_review'`).
 		WithArgs(int64(21)).
 		WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectExec(`UPDATE users SET balance=balance\+\$1`).
-		WithArgs(0.75, int64(8)).
-		WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectCommit()
 	mock.ExpectExec(`INSERT INTO email_order_events`).
-		WithArgs(int64(21), "reconciled", "email_reconcile:21", sqlmock.AnyArg()).
+		WithArgs(int64(21), "manual_review", "email_reconcile:21", sqlmock.AnyArg()).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectQuery(`SELECT id,user_id,status,refund_status,sale_price_snapshot`).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "user_id", "status", "refund_status", "sale_price_snapshot", "reserved_amount", "captured_amount", "released_amount", "refunded_amount"}))
@@ -726,4 +721,44 @@ func TestNormalizeEmailServiceCodeDefaultsToGeneric(t *testing.T) {
 	if got := normalizeEmailServiceCode("  GOOGLE  "); got != "google" {
 		t.Fatalf("explicit service code normalized to %q, want google", got)
 	}
+}
+
+
+func TestEnforceEmailRefundSafetyMakesPaidInboxNonRefundable(t *testing.T) {
+	if got := enforceEmailRefundSafety(EmailRefundIfNoMessage, 0.05); got != EmailNoRefundAfterDelivery {
+		t.Fatalf("paid refund policy=%q want %q", got, EmailNoRefundAfterDelivery)
+	}
+	if got := enforceEmailRefundSafety(EmailRefundIfNoMessage, 0); got != EmailRefundIfNoMessage {
+		t.Fatalf("free refund policy=%q want %q", got, EmailRefundIfNoMessage)
+	}
+}
+
+func TestCancelPaidReconcilingEmailKeepsBalanceHeld(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil { t.Fatal(err) }
+	defer func() { _ = db.Close() }()
+	mock.ExpectQuery(`SELECT id,status,refund_policy_snapshot,sale_price_snapshot,first_message_at,captured_amount,refund_status FROM email_orders`).
+		WithArgs(int64(7), "order-id").
+		WillReturnRows(sqlmock.NewRows([]string{"id","status","refund_policy_snapshot","sale_price_snapshot","first_message_at","captured_amount","refund_status"}).
+			AddRow(int64(14), "reconciling", EmailRefundIfNoMessage, 0.05, nil, 0.0, "not_requested"))
+	svc := &EmailVerificationService{db: db}
+	if err = svc.CancelOrder(context.Background(), 7, "order-id"); !errors.Is(err, ErrEmailProviderUnknown) {
+		t.Fatalf("CancelOrder error=%v want ErrEmailProviderUnknown", err)
+	}
+	if err = mock.ExpectationsWereMet(); err != nil { t.Fatal(err) }
+}
+
+func TestRequestRefundRejectsLegacyPaidRefundIfNoMessagePolicy(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil { t.Fatal(err) }
+	defer func() { _ = db.Close() }()
+	mock.ExpectQuery(`SELECT id,status,refund_policy_snapshot,sale_price_snapshot,first_message_at FROM email_orders`).
+		WithArgs(int64(7), "order-id").
+		WillReturnRows(sqlmock.NewRows([]string{"id","status","refund_policy_snapshot","sale_price_snapshot","first_message_at"}).
+			AddRow(int64(15), "waiting_email", EmailRefundIfNoMessage, 0.05, nil))
+	svc := &EmailVerificationService{db: db}
+	if err = svc.RequestRefund(context.Background(), 7, "order-id"); err == nil {
+		t.Fatal("paid inbox refund must be rejected after provider delivery")
+	}
+	if err = mock.ExpectationsWereMet(); err != nil { t.Fatal(err) }
 }

@@ -58,7 +58,7 @@ jobs:
       - name: Install frontend dependencies
         working-directory: frontend
         run: pnpm install --frozen-lockfile
-      - name: Frontend typecheck and critical vitest
+      - name: Frontend lint, typecheck, production build and critical vitest
         run: make test-frontend
 
   golangci-lint:

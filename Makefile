@@ -9,7 +9,11 @@ FRONTEND_CRITICAL_VITEST := \
 	src/views/user/__tests__/PaymentView.spec.ts \
 	src/views/user/__tests__/PaymentResultView.spec.ts \
 	src/views/user/__tests__/SMSVerificationView.spec.ts \
+	src/views/user/__tests__/smsPolling.spec.ts \
+	src/views/user/__tests__/EmailVerificationView.spec.ts \
 	src/views/admin/__tests__/SMSManagementView.spec.ts \
+	src/views/admin/__tests__/EmailManagementView.spec.ts \
+	src/views/__tests__/VerificationRecordsView.spec.ts \
 	src/views/user/__tests__/ChannelStatusView.mode.spec.ts \
 	src/components/user/profile/__tests__/ProfileInfoCard.spec.ts \
 	src/views/admin/__tests__/SettingsView.spec.ts \
@@ -43,6 +47,7 @@ test-backend:
 test-frontend:
 	@pnpm --dir frontend run lint:check
 	@pnpm --dir frontend run typecheck
+	@pnpm --dir frontend run build
 	@$(MAKE) test-frontend-critical
 
 test-frontend-critical:

@@ -1,8 +1,11 @@
 package service
 
 import (
+	"context"
 	"testing"
 	"time"
+
+	"github.com/DATA-DOG/go-sqlmock"
 )
 
 func TestSMSProviderPollDelayKeepsFiveSIMBaseline(t *testing.T) {
@@ -29,4 +32,31 @@ func TestSMSProviderPollDelayBacksOffOnlySMSPVA(t *testing.T) {
 			t.Fatalf("SMSPVA age %s: got %s, want %s", tc.age, got, tc.want)
 		}
 	}
+}
+
+
+func TestSMSPurchaseNeedsFailClosedReview(t *testing.T) {
+	if !smsPurchaseNeedsFailClosedReview("smspva") {
+		t.Fatal("SMSPVA ambiguous purchases must fail closed")
+	}
+	if smsPurchaseNeedsFailClosedReview("5sim") {
+		t.Fatal("5SIM must preserve its deterministic recovery path")
+	}
+}
+
+func TestHoldUnknownSMSPurchaseForManualReviewDoesNotReleaseFunds(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil { t.Fatal(err) }
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectExec(`UPDATE sms_orders[[:space:]]+SET status='reconciling'`).
+		WithArgs(smsReconciliationPurchase, int(smsVerificationManualReviewRetry.Seconds()), "ambiguous purchase", int64(42)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`INSERT INTO sms_order_events`).
+		WithArgs(int64(42)).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	svc := &SMSService{db: db}
+	if err := svc.holdUnknownSMSPurchaseForManualReview(context.Background(), 42, "ambiguous purchase"); err != nil { t.Fatal(err) }
+	if err := mock.ExpectationsWereMet(); err != nil { t.Fatal(err) }
 }

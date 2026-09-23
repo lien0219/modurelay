@@ -9,8 +9,9 @@ import (
 )
 
 const (
-	smsVerificationPollInterval   = 5 * time.Second
-	smsVerificationUnknownTimeout = 15 * time.Minute
+	smsVerificationPollInterval      = 5 * time.Second
+	smsVerificationUnknownTimeout    = 15 * time.Minute
+	smsVerificationManualReviewRetry = 6 * time.Hour
 )
 
 // smsProviderPollDelay is deliberately conservative.  SMSPVA does not
@@ -29,6 +30,42 @@ func smsProviderPollDelay(providerCode string, createdAt, now time.Time) time.Du
 		return 10 * time.Second
 	}
 	return 25 * time.Second
+}
+
+// smsPurchaseNeedsFailClosedReview identifies providers whose purchase history
+// cannot deterministically prove whether an allocation was created after a
+// transport-level timeout. Unknown commit must never be treated as a
+// definitive failure for these providers.
+func smsPurchaseNeedsFailClosedReview(providerCode string) bool {
+	return strings.EqualFold(strings.TrimSpace(providerCode), "smspva")
+}
+
+func (s *SMSService) holdUnknownSMSPurchaseForManualReview(ctx context.Context, id int64, reason string) error {
+	if strings.TrimSpace(reason) == "" {
+		reason = "provider purchase outcome remains unconfirmed; automatic balance release is blocked pending administrator review"
+	}
+	res, err := s.db.ExecContext(ctx, `UPDATE sms_orders
+		SET status='reconciling',
+		    reconciliation_action=$1,
+		    reconciliation_attempts=reconciliation_attempts+1,
+		    reconcile_after=NOW()+($2 * INTERVAL '1 second'),
+		    last_provider_error=$3,
+		    updated_at=updated_at
+		WHERE id=$4 AND settlement_status='held' AND provider_order_id=''`,
+		smsReconciliationPurchase,
+		int(smsVerificationManualReviewRetry.Seconds()),
+		reason,
+		id,
+	)
+	if err != nil {
+		return err
+	}
+	if affected, _ := res.RowsAffected(); affected == 1 {
+		_, _ = s.db.ExecContext(ctx, `INSERT INTO sms_order_events(order_id,event_type,actor,idempotency_key,payload)
+			VALUES($1,'manual_review','system','purchase_unknown','{"reason":"provider_commit_unknown"}'::jsonb)
+			ON CONFLICT (order_id,event_type,idempotency_key) DO NOTHING`, id)
+	}
+	return nil
 }
 
 // Reconcile polls active SMS orders and repairs purchases that were left in an
@@ -144,7 +181,11 @@ func (s *SMSService) Reconcile(ctx context.Context) error {
 
 		if status == "reconciling" && providerOrder == "" {
 			if time.Since(updatedAt) >= smsVerificationUnknownTimeout {
-				if err := s.releaseSMSHold(ctx, id, userID, "failed", "provider result was not confirmed before reconciliation timeout"); err != nil && firstErr == nil {
+				if smsPurchaseNeedsFailClosedReview(providerCode) {
+					if err := s.holdUnknownSMSPurchaseForManualReview(ctx, id, "provider purchase outcome remains unconfirmed; automatic balance release is blocked pending administrator review"); err != nil && firstErr == nil {
+						firstErr = err
+					}
+				} else if err := s.releaseSMSHold(ctx, id, userID, "failed", "provider result was not confirmed before reconciliation timeout"); err != nil && firstErr == nil {
 					firstErr = err
 				}
 			}
@@ -197,16 +238,18 @@ func (s *SMSService) reconcileSMSAction(ctx context.Context, id, userID int64, p
 					return err
 				}
 			}
-			reason := "provider did not create a recoverable order before reconciliation timeout"
-			if strings.EqualFold(providerCode, "smspva") {
-				reason = "provider purchase outcome cannot be deterministically recovered before reconciliation timeout"
+			if smsPurchaseNeedsFailClosedReview(providerCode) {
+				return s.holdUnknownSMSPurchaseForManualReview(ctx, id, "provider purchase outcome cannot be deterministically recovered; automatic balance release is blocked pending administrator review")
 			}
-			return s.failSMSPurchase(ctx, id, userID, reason)
+			return s.failSMSPurchase(ctx, id, userID, "provider did not create a recoverable order before reconciliation timeout")
 		}
 		return nil
 	}
 	if providerOrder == "" {
 		if settlementStatus == "held" {
+			if smsPurchaseNeedsFailClosedReview(providerCode) {
+				return s.holdUnknownSMSPurchaseForManualReview(ctx, id, "provider order reference is missing and allocation outcome cannot be proven; automatic balance release is blocked pending administrator review")
+			}
 			return s.failSMSPurchase(ctx, id, userID, "provider order reference is missing and no allocation was confirmed")
 		}
 		return errors.New("provider order reference is missing during reconciliation")
