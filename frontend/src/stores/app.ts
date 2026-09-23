@@ -498,6 +498,8 @@ export const useAppStore = defineStore('app', () => {
         available_channels_enabled: false,
         sms_service_enabled: false,
         email_service_enabled: false,
+        subscription_enabled: true,
+        payment_balance_disabled: false,
         model_plaza_enabled: false,
         model_plaza_require_auth: false,
         plugin_management_enabled: false,
