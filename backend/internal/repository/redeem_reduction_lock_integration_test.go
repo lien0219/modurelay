@@ -59,7 +59,7 @@ func newReductionLockFixture(t *testing.T, name string) (*service.RedeemService,
 		require.NoError(t, codes.Create(ctx, &service.RedeemCode{Code: value, Type: service.RedeemTypeSubscription, Status: service.StatusUnused, ValidityDays: -1, GroupID: &group.ID}))
 	}
 	subscriptions := service.NewSubscriptionService(nil, repo, nil, client, nil)
-	redeem := service.NewRedeemService(codes, NewUserRepository(client, integrationDB), subscriptions, nil, nil, client, nil, nil)
+	redeem := service.NewRedeemService(codes, NewUserRepository(client, integrationDB), subscriptions, nil, nil, client, nil, nil, nil)
 	return redeem, repo, userSubscriptionEntityToService(sub), user.ID, values
 }
 func TestRedeemReductionPreservesRenewal(t *testing.T) {

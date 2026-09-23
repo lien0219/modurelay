@@ -38,7 +38,7 @@ func TestRedeemReductionPreservesPartialDay(t *testing.T) {
 	code := &service.RedeemCode{Code: "REDUCE-ONE-DAY", Type: service.RedeemTypeSubscription, Status: service.StatusUnused, ValidityDays: -1, GroupID: &group.ID}
 	require.NoError(t, codes.Create(ctx, code))
 	subscriptions := service.NewSubscriptionService(nil, repo, nil, client, nil)
-	redeem := service.NewRedeemService(codes, NewUserRepository(client, integrationDB), subscriptions, nil, nil, client, nil, nil)
+	redeem := service.NewRedeemService(codes, NewUserRepository(client, integrationDB), subscriptions, nil, nil, client, nil, nil, nil)
 	_, err = redeem.RedeemForAdminFulfillment(ctx, user.ID, code.Code)
 	require.NoError(t, err)
 	got, err := repo.GetByID(ctx, sub.ID)
