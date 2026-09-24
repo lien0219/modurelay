@@ -149,7 +149,6 @@ func TestGrokMediaUsageFromResponseVideoStatusBillsOnOfficialDone(t *testing.T) 
 	require.Equal(t, 0, completed.VideoCount)
 }
 
-
 func TestParseGrokMediaRequestVideoCompatibilityFields(t *testing.T) {
 	t.Parallel()
 
