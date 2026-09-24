@@ -1,6 +1,7 @@
 package service
 
 import (
+	"mime/multipart"
 	"testing"
 	"time"
 
@@ -146,4 +147,41 @@ func TestGrokMediaUsageFromResponseVideoStatusBillsOnOfficialDone(t *testing.T) 
 		[]byte(`{"status":"completed","video":{"url":"https://vidgen.x.ai/a.mp4","duration":9}}`),
 	)
 	require.Equal(t, 0, completed.VideoCount)
+}
+
+
+func TestParseGrokMediaRequestVideoCompatibilityFields(t *testing.T) {
+	t.Parallel()
+
+	t.Run("legacy json fields", func(t *testing.T) {
+		info := ParseGrokMediaRequest("application/json", []byte(`{
+			"model":"grok-imagine-video-1.5",
+			"seconds":"10",
+			"resolution_name":"720p"
+		}`))
+		require.Equal(t, "grok-imagine-video-1.5", info.Model)
+		require.Equal(t, VideoBillingResolution720P, info.Resolution)
+		require.Equal(t, 10, info.DurationSeconds)
+	})
+
+	t.Run("aistars metadata resolution", func(t *testing.T) {
+		info := ParseGrokMediaRequest("application/json", []byte(`{
+			"model":"62:wan-3.0",
+			"seconds":"6",
+			"metadata":{"resolution":"1080p"}
+		}`))
+		require.Equal(t, VideoBillingResolution1080P, info.Resolution)
+		require.Equal(t, 6, info.DurationSeconds)
+	})
+
+	t.Run("multipart legacy fields", func(t *testing.T) {
+		body, contentType := buildGrokVideoMultipart(t, func(writer *multipart.Writer) {
+			require.NoError(t, writer.WriteField("model", "grok-imagine-video-1.5"))
+			require.NoError(t, writer.WriteField("seconds", "5"))
+			require.NoError(t, writer.WriteField("resolution_name", "720p"))
+		})
+		info := ParseGrokMediaRequest(contentType, body)
+		require.Equal(t, VideoBillingResolution720P, info.Resolution)
+		require.Equal(t, 5, info.DurationSeconds)
+	})
 }
