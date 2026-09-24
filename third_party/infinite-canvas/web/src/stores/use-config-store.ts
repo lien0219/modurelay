@@ -146,7 +146,7 @@ type ConfigStore = {
     clearPromptContinue: () => void;
 };
 
-const VIDEO_KEYWORDS = ["video", "sora", "veo", "kling", "wan", "hailuo", "seedance", "grok", "minimax", "happyhorse"];
+const VIDEO_KEYWORDS = ["video", "sora", "veo", "kling", "wan", "hailuo", "seedance", "minimax", "happyhorse"];
 
 export function boolConfig(value: string, fallback: boolean) {
     return value ? value === "true" : fallback;
@@ -157,7 +157,8 @@ const IMAGE_KEYWORDS = ["seedream", "gpt-image", "image", "dall-e", "dalle", "im
 /** Best-effort default capability for a freshly fetched model name; user can override in the channel editor. */
 export function guessCapability(name: string): ModelCapability {
     const value = name.toLowerCase();
-    if (value.includes("gemini-omni") || VIDEO_KEYWORDS.some((keyword) => value.includes(keyword))) return "video";
+    const grokVideo = /grok(?:[-_.:/\s].*)?(?:video|imagine[-_.]?video)|grok[-_.]?imagine[-_.]?video/.test(value);
+    if (value.includes("gemini-omni") || grokVideo || VIDEO_KEYWORDS.some((keyword) => value.includes(keyword))) return "video";
     if (AUDIO_KEYWORDS.some((keyword) => value.includes(keyword))) return "audio";
     if (IMAGE_KEYWORDS.some((keyword) => value.includes(keyword))) return "image";
     return "text";
