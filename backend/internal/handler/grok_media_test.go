@@ -85,6 +85,14 @@ func TestShouldRecordGrokMediaUsage(t *testing.T) {
 	}
 }
 
+func TestGrokMediaRequiresLegacyImagePermission(t *testing.T) {
+	require.True(t, grokMediaRequiresLegacyImagePermission(service.GrokMediaEndpointImagesGenerations, false))
+	require.True(t, grokMediaRequiresLegacyImagePermission(service.GrokMediaEndpointVideosGenerations, false))
+	require.False(t, grokMediaRequiresLegacyImagePermission(service.GrokMediaEndpointVideosGenerations, true))
+	require.False(t, grokMediaRequiresLegacyImagePermission(service.SeedanceEndpointCreate, false))
+	require.False(t, grokMediaRequiresLegacyImagePermission(service.GrokMediaEndpointVideoStatus, false))
+}
+
 func TestGrokMediaRequiredCapability(t *testing.T) {
 	tests := []struct {
 		name            string

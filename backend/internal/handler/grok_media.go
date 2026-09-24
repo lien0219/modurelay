@@ -153,7 +153,7 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 	setOpsEndpointContext(c, "", int16(service.RequestTypeSync))
 
 	if endpoint.IsGenerationRequest() {
-		if !service.GroupAllowsImageGeneration(apiKey.Group) {
+		if grokMediaRequiresLegacyImagePermission(endpoint, compatibleVideo) && !service.GroupAllowsImageGeneration(apiKey.Group) {
 			h.errorResponse(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
 			return
 		}
@@ -589,6 +589,16 @@ func (h *OpenAIGatewayHandler) ensureGrokMediaAccountEligibility(ctx context.Con
 		return false, "billing_probe_unavailable", errors.New("grok media eligibility probe is not configured")
 	}
 	return h.grokMediaEligibilityProber.ProbeMediaEligibility(ctx, account.ID)
+}
+
+func grokMediaRequiresLegacyImagePermission(endpoint service.GrokMediaEndpoint, compatibleVideo bool) bool {
+	if !endpoint.IsGenerationRequest() {
+		return false
+	}
+	// The legacy image-generation group switch historically guarded Grok media.
+	// Keep that behavior for Grok, but do not make Seedance or generic
+	// OpenAI-compatible video providers depend on an unrelated image flag.
+	return !endpoint.IsSeedance() && !compatibleVideo
 }
 
 func grokMediaRequiredCapability(endpoint service.GrokMediaEndpoint, compatibleVideo bool) service.OpenAIEndpointCapability {
