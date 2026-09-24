@@ -150,9 +150,23 @@ func parseGrokMediaJSONRequest(body []byte, info *GrokMediaRequestInfo) {
 	info.Prompt = strings.TrimSpace(gjson.GetBytes(body, "prompt").String())
 	info.Size = strings.TrimSpace(gjson.GetBytes(body, "size").String())
 	info.AspectRatio = strings.TrimSpace(gjson.GetBytes(body, "aspect_ratio").String())
-	assignGrokMediaResolution(strings.TrimSpace(gjson.GetBytes(body, "resolution").String()), info)
-	if duration := gjson.GetBytes(body, "duration"); duration.Exists() && duration.Type == gjson.Number {
-		info.DurationSeconds = int(duration.Int())
+	for _, field := range []string{"resolution", "resolution_name", "metadata.resolution"} {
+		if resolution := strings.TrimSpace(gjson.GetBytes(body, field).String()); resolution != "" {
+			assignGrokMediaResolution(resolution, info)
+			break
+		}
+	}
+	for _, field := range []string{"duration", "seconds"} {
+		duration := gjson.GetBytes(body, field)
+		if !duration.Exists() {
+			continue
+		}
+		if duration.Type == gjson.Number {
+			info.DurationSeconds = int(duration.Int())
+		} else if parsed, err := strconv.Atoi(strings.TrimSpace(duration.String())); err == nil {
+			info.DurationSeconds = parsed
+		}
+		break
 	}
 	if n := gjson.GetBytes(body, "n"); n.Exists() && n.Type == gjson.Number {
 		info.N = int(n.Int())
@@ -178,6 +192,7 @@ func parseGrokMediaJSONRequest(body []byte, info *GrokMediaRequestInfo) {
 	appendJSONImageURLs(gjson.GetBytes(body, "images"))
 	appendJSONImageURLs(gjson.GetBytes(body, "reference_images"))
 	appendJSONImageURLs(gjson.GetBytes(body, "last_frame"))
+	appendJSONImageURLs(gjson.GetBytes(body, "metadata.images"))
 	info.MaskImageURL = extractGrokMediaImageURL(gjson.GetBytes(body, "mask"))
 }
 
@@ -250,7 +265,7 @@ func parseGrokMediaMultipartRequest(contentType string, body []byte, info *GrokM
 				info.MaskUpload = &upload
 				continue
 			}
-			if name == "image" || strings.HasPrefix(name, "image[") {
+			if name == "image" || strings.HasPrefix(name, "image[") || name == "first_frame" || name == "last_frame" {
 				info.Uploads = append(info.Uploads, upload)
 			}
 			continue
@@ -266,9 +281,9 @@ func parseGrokMediaMultipartRequest(contentType string, body []byte, info *GrokM
 			info.Size = value
 		case "aspect_ratio":
 			info.AspectRatio = value
-		case "resolution":
+		case "resolution", "resolution_name":
 			assignGrokMediaResolution(value, info)
-		case "duration":
+		case "duration", "seconds":
 			if duration, err := strconv.Atoi(value); err == nil {
 				info.DurationSeconds = duration
 			}
