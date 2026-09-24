@@ -3,7 +3,7 @@ import { ListPlus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { defaultBaseUrlForApiFormat, guessCapability, normalizeChannelModels, type ApiCallFormat, type ChannelModel, type ModelCapability, type ModelChannel } from "@/stores/use-config-store";
+import { defaultBaseUrlForApiFormat, guessCapability, normalizeChannelModels, type ApiCallFormat, type ChannelModel, type ModelCapability, type ModelChannel, type ModelRequestProfile } from "@/stores/use-config-store";
 import { ModelScriptEditor } from "./model-script-editor";
 import { ModelSelectModal } from "./model-select-modal";
 
@@ -19,6 +19,13 @@ export function ChannelEditorDrawer({ open, channel, onSave, onClose }: { open: 
         { label: "Gemini", value: "gemini" },
     ];
     const capabilityOptions: Array<{ label: string; value: ModelCapability }> = ["image", "video", "text", "audio"].map((value) => ({ label: t(`config.channelEditor.capabilities.${value}`), value: value as ModelCapability }));
+    const requestProfileOptions: Array<{ label: string; value: ModelRequestProfile }> = [
+        { label: t("config.channelEditor.requestProfiles.auto"), value: "auto" },
+        { label: t("config.channelEditor.requestProfiles.openaiMultipart"), value: "openai-multipart" },
+        { label: t("config.channelEditor.requestProfiles.compatibleJson"), value: "compatible-json" },
+        { label: t("config.channelEditor.requestProfiles.aistarsJson"), value: "aistars-json" },
+        { label: t("config.channelEditor.requestProfiles.xaiJson"), value: "xai-json" },
+    ];
 
     useEffect(() => {
         if (open && channel) setDraft(channel);
@@ -40,6 +47,7 @@ export function ChannelEditorDrawer({ open, channel, onSave, onClose }: { open: 
     };
 
     const setCapability = (name: string, capability: ModelCapability) => setModels(draft.models.map((model) => (model.name === name ? { ...model, capability } : model)));
+    const setRequestProfile = (name: string, requestProfile: ModelRequestProfile) => setModels(draft.models.map((model) => (model.name === name ? { ...model, requestProfile: requestProfile === "auto" ? undefined : requestProfile } : model)));
     const setScript = (name: string, script: string) => setModels(draft.models.map((model) => (model.name === name ? { ...model, script: script || undefined } : model)));
     const removeModel = (name: string) => setModels(draft.models.filter((model) => model.name !== name));
 
@@ -100,8 +108,16 @@ export function ChannelEditorDrawer({ open, channel, onSave, onClose }: { open: 
                             <span className="min-w-0 flex-1 truncate text-sm" title={model.name}>
                                 {model.name}
                             </span>
-                            <div className="flex shrink-0 items-center gap-2">
+                            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
                                 <Segmented size="small" value={model.capability} options={capabilityOptions} onChange={(value) => setCapability(model.name, value as ModelCapability)} />
+                                <Select
+                                    size="small"
+                                    className="w-[160px]"
+                                    value={model.requestProfile || "auto"}
+                                    options={requestProfileOptions}
+                                    aria-label={t("config.channelEditor.requestProfile")}
+                                    onChange={(value) => setRequestProfile(model.name, value)}
+                                />
                                 <Button size="small" type={model.script ? "primary" : "default"} ghost={Boolean(model.script)} onClick={() => setScriptTarget({ name: model.name, capability: model.capability, value: model.script || "" })}>
                                     {t(model.script ? "config.channelEditor.scriptReady" : "config.channelEditor.script")}
                                 </Button>

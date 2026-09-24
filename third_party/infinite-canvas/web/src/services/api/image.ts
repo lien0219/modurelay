@@ -1,9 +1,10 @@
 import axios from "axios";
 
 import i18n from "@/i18n";
-import { buildApiUrl, resolveModelRequestConfig, resolveModelScript, withLocalProxy, type AiConfig, type ModelChannel } from "@/stores/use-config-store";
+import { buildApiUrl, resolveModelRequestConfig, resolveModelRequestProfile, resolveModelScript, withLocalProxy, type AiConfig, type ModelChannel, type ModelRequestProfile } from "@/stores/use-config-store";
 import { normalizePluginImages, runModelPlugin } from "./model-plugin";
 import { providerAxios, providerFetch } from "./provider-transport";
+import { isJsonReferenceImageFamily } from "./media-adapters";
 import { nanoid } from "nanoid";
 import { dataUrlToFile } from "@/lib/image-utils";
 import { buildImageReferencePromptText } from "@/lib/image-reference-prompt";
@@ -247,20 +248,33 @@ function parseImagePayload(payload: ImageApiResponse) {
     if (typeof payload.code === "number" && payload.code !== 0) {
         throw new Error(payload.msg || apiText("requestFailed"));
     }
-    // Support data, images, and results response fields used by different APIs.
-    const imageList = payload.data || ((payload as Record<string, unknown>).images as Array<Record<string, unknown>> | undefined) || ((payload as Record<string, unknown>).results as Array<Record<string, unknown>> | undefined) || [];
-    const images = imageList
-        .map(resolveImageSource)
-        .filter((value): value is string => Boolean(value))
-        .map((dataUrl) => ({ id: nanoid(), dataUrl }));
+    const sources = collectImageSources(payload, 0);
+    const images = Array.from(new Set(sources)).map((dataUrl) => ({ id: nanoid(), dataUrl }));
 
     if (images.length === 0) {
-        // Check whether the response contains data in an unrecognized format.
         const rawKeys = Object.keys(payload).filter((k) => k !== "code" && k !== "msg" && k !== "error");
         throw new Error(rawKeys.length > 0 ? apiText("unknownImageResponse", { fields: rawKeys.join(", ") }) : apiText("noImageReturned"));
     }
 
     return images;
+}
+
+function collectImageSources(value: unknown, depth: number): string[] {
+    if (depth > 6 || value == null) return [];
+    if (typeof value === "string") {
+        if (/^data:image\//i.test(value) || /^https?:\/\//i.test(value)) return [value];
+        return [];
+    }
+    if (Array.isArray(value)) return value.flatMap((item) => collectImageSources(item, depth + 1));
+    if (typeof value !== "object") return [];
+
+    const record = value as Record<string, unknown>;
+    const direct = resolveImageSource(record);
+    const sources = direct ? [direct] : [];
+    for (const key of ["data", "images", "results", "output", "result", "content", "items"]) {
+        if (key in record) sources.push(...collectImageSources(record[key], depth + 1));
+    }
+    return sources;
 }
 
 function readApiErrorMessage(value: unknown): string {
@@ -754,6 +768,7 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
     const requestConfig = resolveModelRequestConfig(config, config.model || config.imageModel);
     const n = Math.max(1, Math.min(15, Math.floor(Math.abs(Number(config.count)) || 1)));
     const requestPrompt = buildImageReferencePromptText(prompt, references);
+    const requestProfile = resolveModelRequestProfile(config, config.model || config.imageModel);
     const script = resolveModelScript(config, config.model || config.imageModel);
     if (script) {
         const quality = normalizeQuality(config.quality);
@@ -809,12 +824,62 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
     files.forEach((file) => formData.append(imageField, file));
 
     try {
-        const response = await providerAxios.post<ImageApiResponse>(aiApiUrl(requestConfig, "/images/edits"), formData, { headers: aiHeaders(requestConfig), signal: options?.signal });
-        const images = await parseImagePayload(response.data);
-        return images;
+        if (requestProfile === "compatible-json" || requestProfile === "aistars-json" || requestProfile === "xai-json") {
+            return await requestImageEditJSON(requestConfig, requestPrompt, references, n, quality, requestSize, background, requestProfile, options);
+        }
+        try {
+            const response = await providerAxios.post<ImageApiResponse>(aiApiUrl(requestConfig, "/images/edits"), formData, { headers: aiHeaders(requestConfig), signal: options?.signal });
+            return await parseImagePayload(response.data);
+        } catch (error) {
+            if (!shouldRetryImageEditAsJSON(error, requestConfig.model, requestProfile)) throw error;
+            return await requestImageEditJSON(requestConfig, requestPrompt, references, n, quality, requestSize, background, requestProfile, options);
+        }
     } catch (error) {
         throw new Error(readAxiosError(error, apiText("requestFailed")));
     }
+}
+
+async function requestImageEditJSON(
+    config: AiConfig,
+    prompt: string,
+    references: ReferenceImage[],
+    n: number,
+    quality: string | undefined,
+    requestSize: string | undefined,
+    background: string | undefined,
+    profile: ModelRequestProfile,
+    options?: RequestOptions,
+) {
+    const refs = await Promise.all(references.map((image) => imageToDataUrl(image)));
+    const base = {
+        model: config.model,
+        prompt: withSystemPrompt(config, prompt),
+        n,
+        ...(quality ? { quality } : {}),
+        ...(requestSize ? { size: requestSize } : {}),
+        ...(background ? { background } : {}),
+        output_format: IMAGE_OUTPUT_FORMAT,
+    };
+    const payload =
+        profile === "xai-json"
+            ? { ...base, image: refs[0], ...(refs.length > 1 ? { reference_images: refs.map((url) => ({ url })) } : {}) }
+            : profile === "aistars-json"
+              ? { ...base, metadata: { images: refs } }
+              : { ...base, image: refs[0], ...(refs.length > 1 ? { images: refs } : {}) };
+    const response = await providerAxios.post<ImageApiResponse>(
+        aiApiUrl(config, "/images/edits"),
+        payload,
+        { headers: aiHeaders(config, "application/json"), signal: options?.signal },
+    );
+    return parseImagePayload(response.data);
+}
+
+function shouldRetryImageEditAsJSON(error: unknown, model: string, profile: ModelRequestProfile) {
+    if (profile === "openai-multipart") return false;
+    if (!axios.isAxiosError(error)) return false;
+    if (error.response?.status === 415) return true;
+    if (profile !== "auto") return error.response?.status === 400 || error.response?.status === 422;
+    return isJsonReferenceImageFamily(model) && (error.response?.status === 400 || error.response?.status === 422);
 }
 
 export async function requestImageQuestion(config: AiConfig, messages: AiTextMessage[], onDelta: (text: string) => void, options?: RequestOptions) {

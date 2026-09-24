@@ -7,11 +7,13 @@ import i18n from "@/i18n";
 
 export type ApiCallFormat = "openai" | "gemini";
 export type ModelCapability = "image" | "video" | "text" | "audio";
+export type ModelRequestProfile = "auto" | "openai-multipart" | "compatible-json" | "aistars-json" | "xai-json";
 export type ReasoningEffort = "auto" | "low" | "medium" | "high" | "xhigh";
 
 export type ChannelModel = {
     name: string;
     capability: ModelCapability;
+    requestProfile?: ModelRequestProfile;
     script?: string;
 };
 
@@ -146,7 +148,7 @@ type ConfigStore = {
     clearPromptContinue: () => void;
 };
 
-const VIDEO_KEYWORDS = ["video", "sora", "veo", "kling", "wan", "hailuo"];
+const VIDEO_KEYWORDS = ["video", "sora", "veo", "kling", "wan", "hailuo", "seedance", "minimax", "happyhorse"];
 
 export function boolConfig(value: string, fallback: boolean) {
     return value ? value === "true" : fallback;
@@ -157,7 +159,8 @@ const IMAGE_KEYWORDS = ["seedream", "gpt-image", "image", "dall-e", "dalle", "im
 /** Best-effort default capability for a freshly fetched model name; user can override in the channel editor. */
 export function guessCapability(name: string): ModelCapability {
     const value = name.toLowerCase();
-    if (VIDEO_KEYWORDS.some((keyword) => value.includes(keyword))) return "video";
+    const grokVideo = /grok(?:[-_.:/\s].*)?(?:video|imagine[-_.]?video)|grok[-_.]?imagine[-_.]?video/.test(value);
+    if (value.includes("gemini-omni") || grokVideo || VIDEO_KEYWORDS.some((keyword) => value.includes(keyword))) return "video";
     if (AUDIO_KEYWORDS.some((keyword) => value.includes(keyword))) return "audio";
     if (IMAGE_KEYWORDS.some((keyword) => value.includes(keyword))) return "image";
     return "text";
@@ -196,6 +199,10 @@ export function selectableModelsByCapability(config: AiConfig, capability?: Mode
 /** The user script (if any) attached to a model; empty string means use the system default call. */
 export function resolveModelScript(config: AiConfig, value: string) {
     return findChannelModel(config, value)?.model.script?.trim() || "";
+}
+
+export function resolveModelRequestProfile(config: AiConfig, value: string): ModelRequestProfile {
+    return normalizeModelRequestProfile(findChannelModel(config, value)?.model.requestProfile);
 }
 
 function isAiConfigReady(config: AiConfig, model: string) {
@@ -294,8 +301,9 @@ export function normalizeChannelModels(models: Array<string | ChannelModel> | un
         if (!name || seen.has(name)) continue;
         seen.add(name);
         const capability = typeof item === "string" ? guessCapability(name) : item.capability || guessCapability(name);
+        const requestProfile = typeof item === "string" ? "auto" : normalizeModelRequestProfile(item.requestProfile);
         const script = typeof item === "string" ? undefined : item.script?.trim() || undefined;
-        result.push({ name, capability, script });
+        result.push({ name, capability, ...(requestProfile !== "auto" ? { requestProfile } : {}), script });
     }
     return result;
 }
@@ -458,6 +466,18 @@ function normalizeChannels(config: AiConfig) {
         );
     }
     return channels;
+}
+
+export function normalizeModelRequestProfile(value: unknown): ModelRequestProfile {
+    switch (value) {
+        case "openai-multipart":
+        case "compatible-json":
+        case "aistars-json":
+        case "xai-json":
+            return value;
+        default:
+            return "auto";
+    }
 }
 
 export function defaultBaseUrlForApiFormat(apiFormat: ApiCallFormat) {

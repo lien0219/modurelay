@@ -39,6 +39,7 @@ import pluginsAPI from './plugins'
 import activityAdminAPI from './activity'
 import smsAdminAPI from './sms'
 import emailAdminAPI from './email'
+import detectionCenterAPI from './detectionCenter'
 
 /**
  * Unified admin API object for convenient access
@@ -79,7 +80,8 @@ export const adminAPI = {
   plugins: pluginsAPI,
   activities: activityAdminAPI,
   sms: smsAdminAPI,
-  email: emailAdminAPI
+  email: emailAdminAPI,
+  detectionCenter: detectionCenterAPI
 }
 
 export {
@@ -118,7 +120,8 @@ export {
   pluginsAPI,
   activityAdminAPI,
   smsAdminAPI,
-  emailAdminAPI
+  emailAdminAPI,
+  detectionCenterAPI
 }
 
 export default adminAPI

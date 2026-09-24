@@ -6,7 +6,7 @@ export default {
   quickStart: {
     eyebrow: 'QUICK START GUIDE',
     title: 'Quick start',
-    description: 'Create one API key, copy this instance URL, and connect the clients you already use. You do not need access to the administrator channel list.',
+    description: 'Create an API key, save this instance URL, then follow the guides below to configure your client and start using the service.',
     openKeys: 'Create API key',
     noticeTitle: 'Your API key is shown only once',
     noticeDescription: 'After creating a key, keep the key and the API URL together. The client examples below use the same OpenAI-compatible /v1 endpoint.',
@@ -21,7 +21,7 @@ export default {
       },
       connection: {
         title: 'Keep the URL and key together',
-        description: 'Use the instance URL with the /v1 suffix and the API key from step 1. Do not look for a user-facing channel list.',
+        description: 'Use the instance URL with the /v1 suffix and the API key from step 1, then query available models and finish configuring your client.',
         action: 'Jump to model query'
       },
       codex: {
@@ -129,7 +129,7 @@ export default {
       title: 'Common questions',
       items: {
         key: { question: 'Where should I store an API key?', answer: 'Inject it through a local environment variable or a client secret store. Do not put it in frontend code, logs, screenshots, or public repositories.' },
-        endpoint: { question: 'Which API endpoint should I use?', answer: 'Use the instance address shown on this page and keep the /v1 path. Users do not need access to administrator channel pages.' },
+        endpoint: { question: 'Which API endpoint should I use?', answer: 'Use the instance address shown on this page and keep the /v1 path.' },
         lookup: { question: 'Why did the model query fail in the browser?', answer: 'The gateway must allow browser CORS requests from the current site. A command-line client can still work when the endpoint blocks browser origins; the API key is never sent to ModuRelay frontend storage.' }
       }
     }

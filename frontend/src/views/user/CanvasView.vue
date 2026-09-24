@@ -510,7 +510,7 @@
               <div v-else-if="selectedNode.data.generationMode === 'video'" class="canvas-option-grid">
                 <label class="canvas-field"><span>{{ t('canvas.aspectRatio') }}</span><select v-model="selectedNode.data.aspectRatio" @change="markCanvasChanged"><option>16:9</option><option>9:16</option><option>1:1</option></select></label>
                 <label class="canvas-field"><span>{{ t('canvas.duration') }}</span><select v-model.number="selectedNode.data.seconds" @change="markCanvasChanged"><option :value="6">6s</option><option :value="8">8s</option><option :value="10">10s</option></select></label>
-                <label class="canvas-field"><span>{{ t('canvas.resolution') }}</span><select v-model="selectedNode.data.resolution" @change="markCanvasChanged"><option>480p</option><option>720p</option></select></label>
+                <label class="canvas-field"><span>{{ t('canvas.resolution') }}</span><select v-model="selectedNode.data.resolution" @change="markCanvasChanged"><option>480p</option><option>720p</option><option>1080p</option></select></label>
               </div>
               <div v-else-if="selectedNode.data.generationMode === 'audio'" class="canvas-option-grid">
                 <label class="canvas-field"><span>{{ t('canvas.voice') }}</span><select v-model="selectedNode.data.voice" @change="markCanvasChanged"><option v-for="voice in CANVAS_GROK_TTS_VOICES" :key="voice" :value="voice">{{ voice }}</option></select></label>

@@ -857,6 +857,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/detection-center',
+    name: 'AdminDetectionCenter',
+    component: () => import('@/views/admin/DetectionCenterView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Detection Center',
+      titleKey: 'admin.detectionCenter.title',
+      descriptionKey: 'admin.detectionCenter.description'
+    }
+  },
+  {
     path: '/admin/risk-control',
     name: 'AdminRiskControl',
     component: () => import('@/views/admin/RiskControlView.vue'),

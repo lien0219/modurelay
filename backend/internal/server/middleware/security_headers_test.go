@@ -361,10 +361,10 @@ func TestSecurityHeaders(t *testing.T) {
 		assert.Equal(t, http.StatusOK, w.Code)
 	})
 
-	t.Run("allows_blob_modules_only_for_infinite_canvas", func(t *testing.T) {
+	t.Run("allows_blob_resources_only_for_infinite_canvas", func(t *testing.T) {
 		cfg := config.CSPConfig{
 			Enabled: true,
-			Policy:  "default-src 'self'; script-src 'self' __CSP_NONCE__",
+			Policy:  "default-src 'self'; script-src 'self' __CSP_NONCE__; connect-src 'self'; media-src 'self'",
 		}
 		middleware := SecurityHeaders(cfg, nil)
 
@@ -378,8 +378,12 @@ func TestSecurityHeaders(t *testing.T) {
 		dashboardContext.Request = httptest.NewRequest(http.MethodGet, "/dashboard", nil)
 		middleware(dashboardContext)
 
-		assert.Equal(t, 1, countDirectiveValue(canvasWriter.Header().Get("Content-Security-Policy"), "script-src", "blob:"))
-		assert.Zero(t, countDirectiveValue(dashboardWriter.Header().Get("Content-Security-Policy"), "script-src", "blob:"))
+		canvasCSP := canvasWriter.Header().Get("Content-Security-Policy")
+		dashboardCSP := dashboardWriter.Header().Get("Content-Security-Policy")
+		for _, directive := range []string{"script-src", "connect-src", "media-src"} {
+			assert.Equal(t, 1, countDirectiveValue(canvasCSP, directive, "blob:"))
+			assert.Zero(t, countDirectiveValue(dashboardCSP, directive, "blob:"))
+		}
 	})
 
 	t.Run("nonce_unique_per_request", func(t *testing.T) {

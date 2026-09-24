@@ -1062,6 +1062,14 @@ export default {
             selectModels: "Select models",
             scriptReady: "Script set",
             script: "Request script",
+            requestProfile: "Request profile",
+            requestProfiles: {
+                auto: "Auto detect",
+                openaiMultipart: "OpenAI Multipart",
+                compatibleJson: "Compatible JSON",
+                aistarsJson: "Aistars JSON",
+                xaiJson: "xAI JSON",
+            },
             empty: "Select models to fetch or manually add models.",
             capabilities: {
                 image: "Image",
