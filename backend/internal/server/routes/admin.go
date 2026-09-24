@@ -990,7 +990,6 @@ func channelMonitorModeV2Guard(settingService *service.SettingService) gin.Handl
 	}
 }
 
-
 func registerDetectionCenterRoutes(admin *gin.RouterGroup) {
 	h := adminhandler.NewDetectionCenterHandler()
 	detection := admin.Group("/detection-center")
