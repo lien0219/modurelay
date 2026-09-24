@@ -290,7 +290,12 @@ func probeAnthropicContextManagement(ctx context.Context, target *detectionTarge
 		"model":model,
 		"max_tokens":180,
 		"messages":messages,
-		"context_management":map[string]any{"edits":[]any{map[string]any{"type":"clear_tool_uses_20250919"}}},
+		"context_management":map[string]any{"edits":[]any{map[string]any{
+			"type":"clear_tool_uses_20250919",
+			"trigger":map[string]any{"type":"input_tokens","value":1},
+			"keep":map[string]any{"type":"tool_uses","value":0},
+			"clear_at_least":map[string]any{"type":"input_tokens","value":0},
+		}}},
 	}
 	headers := http.Header{"Anthropic-Beta":[]string{"context-management-2025-06-27"}}
 	valid, validErr := target.doJSON(ctx, detectionProtocolAnthropic, http.MethodPost, "/v1/messages", headers, body)
