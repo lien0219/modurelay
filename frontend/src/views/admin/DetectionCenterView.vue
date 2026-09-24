@@ -282,7 +282,7 @@ function statusText(status:string) {
   const known = ['success','failed','partial','inconclusive','not_applicable','unavailable']
   return known.includes(status) ? t('admin.detectionCenter.status.' + status) : status
 }
-function badgeClass(status:string) { return 'badge-' + status.replaceAll('_', '-') }
+function badgeClass(status:string) { return 'badge-' + status.replace(/_/g, '-') }
 function confidence(value:number) { return Math.round(Math.min(1, Math.max(0, value)) * 100) + '%' }
 
 async function discoverModels() {
