@@ -7,11 +7,13 @@ import i18n from "@/i18n";
 
 export type ApiCallFormat = "openai" | "gemini";
 export type ModelCapability = "image" | "video" | "text" | "audio";
+export type ModelRequestProfile = "auto" | "openai-multipart" | "compatible-json" | "aistars-json" | "xai-json";
 export type ReasoningEffort = "auto" | "low" | "medium" | "high" | "xhigh";
 
 export type ChannelModel = {
     name: string;
     capability: ModelCapability;
+    requestProfile?: ModelRequestProfile;
     script?: string;
 };
 
@@ -199,6 +201,10 @@ export function resolveModelScript(config: AiConfig, value: string) {
     return findChannelModel(config, value)?.model.script?.trim() || "";
 }
 
+export function resolveModelRequestProfile(config: AiConfig, value: string): ModelRequestProfile {
+    return normalizeModelRequestProfile(findChannelModel(config, value)?.model.requestProfile);
+}
+
 function isAiConfigReady(config: AiConfig, model: string) {
     const channel = resolveModelChannel(config, model);
     return Boolean(model.trim() && channel.baseUrl.trim() && channel.apiKey.trim());
@@ -295,8 +301,9 @@ export function normalizeChannelModels(models: Array<string | ChannelModel> | un
         if (!name || seen.has(name)) continue;
         seen.add(name);
         const capability = typeof item === "string" ? guessCapability(name) : item.capability || guessCapability(name);
+        const requestProfile = typeof item === "string" ? "auto" : normalizeModelRequestProfile(item.requestProfile);
         const script = typeof item === "string" ? undefined : item.script?.trim() || undefined;
-        result.push({ name, capability, script });
+        result.push({ name, capability, ...(requestProfile !== "auto" ? { requestProfile } : {}), script });
     }
     return result;
 }
@@ -459,6 +466,18 @@ function normalizeChannels(config: AiConfig) {
         );
     }
     return channels;
+}
+
+export function normalizeModelRequestProfile(value: unknown): ModelRequestProfile {
+    switch (value) {
+        case "openai-multipart":
+        case "compatible-json":
+        case "aistars-json":
+        case "xai-json":
+            return value;
+        default:
+            return "auto";
+    }
 }
 
 export function defaultBaseUrlForApiFormat(apiFormat: ApiCallFormat) {
