@@ -63,6 +63,18 @@ const (
 	OpenAIImagesCapabilityAPIKey OpenAIImagesCapability = "images-apikey"
 )
 
+// IsOpenAICompatibleImagePlatform reports platforms that can safely use the
+// OpenAI-compatible /v1/images/* passthrough. Grok keeps its dedicated media
+// contract and Gemini keeps its native endpoint family.
+func IsOpenAICompatibleImagePlatform(platform string) bool {
+	switch strings.TrimSpace(platform) {
+	case PlatformOpenAI, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo:
+		return true
+	default:
+		return false
+	}
+}
+
 type OpenAIImagesUpload struct {
 	FieldName   string
 	FileName    string
@@ -231,7 +243,7 @@ func (s *OpenAIGatewayService) ParseOpenAIImagesRequest(c *gin.Context, body []b
 	applyOpenAIImagesDefaults(req)
 	// Composite middleware preserves multipart bodies, including their public
 	// alias. Validate and forward the resolved model without altering uploads.
-	if platform, _ := ResolvedTargetPlatformFromContext(c.Request.Context()); platform == PlatformOpenAI {
+	if platform, _ := ResolvedTargetPlatformFromContext(c.Request.Context()); IsOpenAICompatibleImagePlatform(platform) {
 		if model, ok := ResolvedUpstreamModelFromContext(c.Request.Context()); ok {
 			req.Model = model
 		}
@@ -511,17 +523,48 @@ func isGeminiCompatibleImageModel(model string) bool {
 		(strings.HasSuffix(model, "-image") || strings.Contains(model, "-image-"))
 }
 
-func validateCompatibleImagesModel(model string) error {
+func isAPIKeyCompatibleImageModel(model string) bool {
+	if isOpenAIImageGenerationModel(model) {
+		return false
+	}
 	if isGeminiCompatibleImageModel(model) {
+		return true
+	}
+	value := strings.ToLower(strings.TrimSpace(model))
+	if value == "" {
+		return false
+	}
+	// Common image model families exposed by OpenAI-compatible aggregators.
+	// This stays narrower than "any unknown model" so ordinary text models still
+	// fail fast at the Images endpoint.
+	for _, marker := range []string{
+		"image", "seedream", "flux", "recraft", "ideogram", "dall-e", "imagen",
+		"stable-diffusion", "stable_diffusion", "sdxl", "kolors", "cogview",
+		"hidream", "wanx", "jimeng", "dreamina", "nano-banana", "nano_banana",
+		"t2i", "i2i",
+	} {
+		if strings.Contains(value, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func validateCompatibleImagesModel(model string) error {
+	if isOpenAIImageGenerationModel(model) || isAPIKeyCompatibleImageModel(model) {
 		return nil
 	}
-	return validateOpenAIImagesModel(model)
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return fmt.Errorf("images endpoint requires an image model")
+	}
+	return fmt.Errorf("images endpoint requires an image model, got %q", model)
 }
 
 // RequiredCapabilityForModel also applies the API-key-only fence when channel
 // mapping introduces a compatible provider model after request parsing.
 func (req *OpenAIImagesRequest) RequiredCapabilityForModel(model string) OpenAIImagesCapability {
-	if isGeminiCompatibleImageModel(model) {
+	if isAPIKeyCompatibleImageModel(model) {
 		return OpenAIImagesCapabilityAPIKey
 	}
 	return req.RequiredCapability
@@ -543,7 +586,7 @@ func classifyOpenAIImagesCapability(req *OpenAIImagesRequest) OpenAIImagesCapabi
 	if req == nil {
 		return OpenAIImagesCapabilityNative
 	}
-	if isGeminiCompatibleImageModel(req.Model) {
+	if isAPIKeyCompatibleImageModel(req.Model) {
 		return OpenAIImagesCapabilityAPIKey
 	}
 	if req.ExplicitModel || req.ExplicitSize {

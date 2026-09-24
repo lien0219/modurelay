@@ -80,12 +80,8 @@ func RegisterGatewayRoutes(
 		return getGroupPlatform(c) == service.PlatformOpenAI
 	}
 	imagesHandler := func(c *gin.Context) {
-		switch getGroupPlatform(c) {
-		case service.PlatformOpenAI:
-			h.OpenAIGateway.Images(c)
-		case service.PlatformGrok:
-			h.OpenAIGateway.GrokImages(c)
-		default:
+		platform := getGroupPlatform(c)
+		if !imageGatewayPlatformSupported(platform) {
 			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
 			c.JSON(http.StatusNotFound, gin.H{
 				"error": gin.H{
@@ -93,7 +89,13 @@ func RegisterGatewayRoutes(
 					"message": "Images API is not supported for this platform",
 				},
 			})
+			return
 		}
+		if platform == service.PlatformGrok {
+			h.OpenAIGateway.GrokImages(c)
+			return
+		}
+		h.OpenAIGateway.Images(c)
 	}
 	videoGatewaySupported := func(c *gin.Context) bool {
 		return videoGatewayPlatformSupported(getGroupPlatform(c))
@@ -499,6 +501,12 @@ func RegisterGatewayRoutes(
 		antigravityV1Beta.POST("/models/*modelAction", h.Gateway.GeminiV1BetaModels)
 	}
 
+}
+
+func imageGatewayPlatformSupported(platform string) bool {
+	return platform == service.PlatformGrok ||
+		platform == service.PlatformComposite ||
+		service.IsOpenAICompatibleImagePlatform(platform)
 }
 
 func videoGatewayPlatformSupported(platform string) bool {

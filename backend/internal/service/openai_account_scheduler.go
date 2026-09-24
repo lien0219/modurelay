@@ -2146,14 +2146,21 @@ func (s *OpenAIGatewayService) SelectAccountWithSchedulerForImages(
 	requestedModel string,
 	excludedIDs map[int64]struct{},
 	requiredCapability OpenAIImagesCapability,
+	platformOverride ...string,
 ) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
-	selection, decision, err := s.selectAccountWithScheduler(ctx, groupID, "", sessionHash, requestedModel, excludedIDs, OpenAIUpstreamTransportHTTPSSE, "", requiredCapability, false, PlatformOpenAI, false, false)
+	platform := PlatformOpenAI
+	if len(platformOverride) > 0 && strings.TrimSpace(platformOverride[0]) != "" {
+		platform = NormalizeOpenAICompatiblePlatform(platformOverride[0])
+	}
+	selection, decision, err := s.selectAccountWithScheduler(ctx, groupID, "", sessionHash, requestedModel, excludedIDs, OpenAIUpstreamTransportHTTPSSE, "", requiredCapability, false, platform, false, false)
 	if err == nil && selection != nil && selection.Account != nil {
 		return selection, decision, nil
 	}
-	// 如果要求 native 能力（如指定了模型）但没有可用的 APIKey 账号，回退到 basic（OAuth 账号）
-	if requiredCapability == OpenAIImagesCapabilityNative {
-		return s.selectAccountWithScheduler(ctx, groupID, "", sessionHash, requestedModel, excludedIDs, OpenAIUpstreamTransportHTTPSSE, "", OpenAIImagesCapabilityBasic, false, PlatformOpenAI, false, false)
+	// The native -> basic OAuth fallback is an OpenAI-only compatibility path.
+	// Third-party compatible providers are API-key-only and must stay on their
+	// resolved platform instead of silently falling back into the OpenAI pool.
+	if requiredCapability == OpenAIImagesCapabilityNative && platform == PlatformOpenAI {
+		return s.selectAccountWithScheduler(ctx, groupID, "", sessionHash, requestedModel, excludedIDs, OpenAIUpstreamTransportHTTPSSE, "", OpenAIImagesCapabilityBasic, false, platform, false, false)
 	}
 	return selection, decision, err
 }

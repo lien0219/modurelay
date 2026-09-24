@@ -80,7 +80,14 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 	if resolvedModel, ok := service.ResolvedUpstreamModelFromContext(c.Request.Context()); ok {
 		routingModel = resolvedModel
 	}
-	if !compositeTargetPlatformAllowed(c, apiKey, requestModel, service.PlatformOpenAI) {
+	imagePlatform := openAICompatibleRequestPlatform(c.Request.Context(), apiKey)
+	if !service.IsOpenAICompatibleImagePlatform(imagePlatform) {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Model is not supported by this OpenAI-compatible Images endpoint")
+		return
+	}
+	if !compositeTargetPlatformAllowed(c, apiKey, requestModel,
+		service.PlatformOpenAI, service.PlatformKimi, service.PlatformZhipu,
+		service.PlatformDeepseek, service.PlatformMiniMax, service.PlatformOpenCodeGo) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Model is not supported by this OpenAI-compatible endpoint for composite groups")
 		return
 	}
@@ -88,6 +95,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 	reqLog = reqLog.With(
 		zap.String("model", clientRequestModel),
 		zap.String("routing_model", routingModel),
+		zap.String("platform", imagePlatform),
 		zap.Bool("stream", parsed.Stream),
 		zap.Bool("multipart", parsed.Multipart),
 		zap.String("capability", string(parsed.RequiredCapability)),
@@ -166,6 +174,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 			routingModel,
 			failedAccountIDs,
 			parsed.RequiredCapabilityForModel(channelMapping.MappedModel),
+			imagePlatform,
 		)
 		if err != nil {
 			if failoverClientGone(c) {
@@ -177,7 +186,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
 			)
 			if len(failedAccountIDs) == 0 {
-				cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, clientRequestModel, routingModel, service.PlatformOpenAI)
+				cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, clientRequestModel, routingModel, imagePlatform)
 				if !cls.ModelNotFound {
 					markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
 				}
@@ -196,7 +205,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 			return
 		}
 		if selection == nil || selection.Account == nil {
-			cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, clientRequestModel, routingModel, service.PlatformOpenAI)
+			cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, clientRequestModel, routingModel, imagePlatform)
 			if !cls.ModelNotFound {
 				markOpsRoutingCapacityLimited(c)
 			}
