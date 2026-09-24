@@ -110,6 +110,7 @@ type detectionReport struct {
 }
 
 func (h *DetectionCenterHandler) Discover(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
 	var req detectionDiscoveryRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "invalid request body")
@@ -126,6 +127,7 @@ func (h *DetectionCenterHandler) Discover(c *gin.Context) {
 }
 
 func (h *DetectionCenterHandler) Run(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
 	var req detectionRunRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "invalid request body")
