@@ -9,6 +9,7 @@ import { imageToDataUrl } from "@/services/image-storage";
 import { boolConfig, buildApiUrl, modelOptionName, resolveModelRequestConfig, resolveModelScript, withLocalProxy, type AiConfig } from "@/stores/use-config-store";
 import { runModelPlugin } from "./model-plugin";
 import { providerAxios, providerFetch } from "./provider-transport";
+import { videoTransportKind } from "./media-adapters";
 import type { ReferenceImage } from "@/types/image";
 import type { ReferenceAudio, ReferenceVideo } from "@/types/media";
 
@@ -161,55 +162,68 @@ export async function storeGeneratedVideo(result: VideoGenerationResult): Promis
 async function createOpenAIVideoTask(config: AiConfig, model: string, prompt: string, references: ReferenceImage[], options?: VideoMediaOptions): Promise<VideoGenerationTask> {
     const upstreamModel = modelOptionName(model);
     const mode = resolveVideoMode(config.videoMode, references.length);
+    const transport = videoTransportKind(upstreamModel);
 
     try {
         let response: ApiVideoResponse;
-        if (isWan30VideoModel(upstreamModel)) {
-            response = (
-                await providerAxios.post<ApiVideoResponse>(
-                    aiApiUrl(config, "/videos"),
-                    await buildWan30VideoPayload(config, upstreamModel, prompt, references, mode, options),
-                    { headers: aiHeaders(config, "application/json"), signal: options?.signal },
-                )
-            ).data;
-        } else {
-            const images = await Promise.all(references.map(async (image) => dataUrlToFile({ ...image, dataUrl: await imageToDataUrl(image) })));
-            const videos = await Promise.all((options?.videos || []).map((video) => referenceMediaToFile(video, "ref.mp4", "invalidReferenceVideo", options)));
-            const audios = await Promise.all((options?.audios || []).map((audio) => referenceMediaToFile(audio, "ref.mp3", "invalidReferenceAudio", options)));
-            const body = new FormData();
-            body.append("model", upstreamModel);
-            body.append("prompt", prompt);
-            body.append("seconds", normalizeVideoSeconds(config.videoSeconds));
-            body.append("size", normalizeVideoSize(config.size, config.vquality) || "1280x720");
-            body.append("resolution_name", normalizeVideoResolution(config.vquality));
-            body.append("generate_audio", String(boolConfig(config.videoGenerateAudio, true)));
-            body.append("watermark", String(boolConfig(config.videoWatermark, false)));
-            body.append("mode", mode);
-            if (mode === "frames") {
-                if (images[0]) body.append("first_frame", images[0], "first.png");
-                if (images[1]) body.append("last_frame", images[1], "last.png");
-            } else {
-                images.forEach((file) => body.append("image[]", file, "ref.png"));
+        if (transport === "xai-json") {
+            response = await postVideoJSON(
+                config,
+                await buildXaiVideoPayload(config, upstreamModel, prompt, references, mode),
+                options,
+            );
+        } else if (transport === "compatible-json") {
+            try {
+                response = await postVideoJSON(
+                    config,
+                    await buildCompatibleVideoPayload(config, upstreamModel, prompt, references, mode, options),
+                    options,
+                );
+            } catch (error) {
+                if (!isUnsupportedMediaTypeError(error)) throw error;
+                response = await postVideoMultipart(config, upstreamModel, prompt, references, mode, options);
             }
-            videos.forEach((file) => body.append("video[]", file));
-            audios.forEach((file) => body.append("audio[]", file));
-            response = (await providerAxios.post<ApiVideoResponse>(aiApiUrl(config, "/videos"), body, { headers: aiHeaders(config), signal: options?.signal })).data;
+        } else {
+            try {
+                response = await postVideoMultipart(config, upstreamModel, prompt, references, mode, options);
+            } catch (error) {
+                if (!isUnsupportedMediaTypeError(error)) throw error;
+                response = await postVideoJSON(
+                    config,
+                    await buildCompatibleVideoPayload(config, upstreamModel, prompt, references, mode, options),
+                    options,
+                );
+            }
         }
 
         const created = unwrapVideoResponse(response);
         const taskId = videoTaskId(created);
-        if (!taskId) throw new Error(apiText("noVideoTaskId"));
+        if (!taskId) {
+            const directUrl = videoResultUrl(created);
+            if (directUrl) {
+                const id = nanoid();
+                pluginVideoResults.set(id, await videoResultFromUrl(directUrl, options));
+                return { id, provider: "plugin", model };
+            }
+            throw new Error(apiText("noVideoTaskId"));
+        }
         return { id: taskId, provider: "openai", model };
     } catch (error) {
         throw new Error(readAxiosError(error, apiText("videoTaskCreateFailed")));
     }
 }
 
-function isWan30VideoModel(model: string) {
-    return /(?:^|[:/_.-])wan[-_.]?3(?:\.0)?(?:$|[:/_.-])/i.test(model);
+async function postVideoJSON(config: AiConfig, body: Record<string, unknown>, options?: RequestOptions) {
+    return (
+        await providerAxios.post<ApiVideoResponse>(
+            aiApiUrl(config, "/videos"),
+            body,
+            { headers: aiHeaders(config, "application/json"), signal: options?.signal },
+        )
+    ).data;
 }
 
-async function buildWan30VideoPayload(
+async function postVideoMultipart(
     config: AiConfig,
     model: string,
     prompt: string,
@@ -217,6 +231,37 @@ async function buildWan30VideoPayload(
     mode: "frames" | "reference",
     options?: VideoMediaOptions,
 ) {
+    const images = await Promise.all(references.map(async (image) => dataUrlToFile({ ...image, dataUrl: await imageToDataUrl(image) })));
+    const videos = await Promise.all((options?.videos || []).map((video) => referenceMediaToFile(video, "ref.mp4", "invalidReferenceVideo", options)));
+    const audios = await Promise.all((options?.audios || []).map((audio) => referenceMediaToFile(audio, "ref.mp3", "invalidReferenceAudio", options)));
+    const body = new FormData();
+    body.append("model", model);
+    body.append("prompt", prompt);
+    body.append("seconds", normalizeVideoSeconds(config.videoSeconds));
+    body.append("size", normalizeVideoSize(config.size, config.vquality) || "1280x720");
+    body.append("resolution_name", normalizeVideoResolution(config.vquality));
+    body.append("generate_audio", String(boolConfig(config.videoGenerateAudio, true)));
+    body.append("watermark", String(boolConfig(config.videoWatermark, false)));
+    body.append("mode", mode);
+    if (mode === "frames") {
+        if (images[0]) body.append("first_frame", images[0], "first.png");
+        if (images[1]) body.append("last_frame", images[1], "last.png");
+    } else {
+        images.forEach((file) => body.append("image[]", file, "ref.png"));
+    }
+    videos.forEach((file) => body.append("video[]", file));
+    audios.forEach((file) => body.append("audio[]", file));
+    return (await providerAxios.post<ApiVideoResponse>(aiApiUrl(config, "/videos"), body, { headers: aiHeaders(config), signal: options?.signal })).data;
+}
+
+async function buildCompatibleVideoPayload(
+    config: AiConfig,
+    model: string,
+    prompt: string,
+    references: ReferenceImage[],
+    mode: "frames" | "reference",
+    options?: VideoMediaOptions,
+): Promise<Record<string, unknown>> {
     const imageDataUrls = await Promise.all(references.map((image) => imageToDataUrl(image)));
     const media: Array<{ type: "first_frame" | "last_frame" | "reference_image" | "reference_video" | "reference_audio"; url: string }> = [];
 
@@ -243,9 +288,39 @@ async function buildWan30VideoPayload(
         resolution: normalizeVideoResolution(config.vquality).toUpperCase(),
         aspect_ratio: videoAspectRatio(config.size),
         audio: boolConfig(config.videoGenerateAudio, true),
+        generate_audio: boolConfig(config.videoGenerateAudio, true),
         watermark: boolConfig(config.videoWatermark, false),
         ...(media.length ? { media } : {}),
     };
+}
+
+async function buildXaiVideoPayload(
+    config: AiConfig,
+    model: string,
+    prompt: string,
+    references: ReferenceImage[],
+    mode: "frames" | "reference",
+): Promise<Record<string, unknown>> {
+    const images = await Promise.all(references.map((image) => imageToDataUrl(image)));
+    const payload: Record<string, unknown> = {
+        model,
+        prompt,
+        duration: Number(normalizeVideoSeconds(config.videoSeconds)) || 5,
+        resolution: normalizeVideoResolution(config.vquality),
+        aspect_ratio: videoAspectRatio(config.size),
+        generate_audio: boolConfig(config.videoGenerateAudio, true),
+    };
+    if (mode === "frames") {
+        if (images[0]) payload.image = { url: images[0] };
+        if (images[1]) payload.last_frame = { url: images[1] };
+    } else if (images.length) {
+        payload.reference_images = images.slice(0, 7).map((url) => ({ url }));
+    }
+    return payload;
+}
+
+function isUnsupportedMediaTypeError(error: unknown) {
+    return axios.isAxiosError(error) && error.response?.status === 415;
 }
 
 async function pollOpenAIVideoTask(config: AiConfig, task: VideoGenerationTask, options?: RequestOptions): Promise<VideoGenerationTaskState> {
