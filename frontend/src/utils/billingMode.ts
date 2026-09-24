@@ -24,7 +24,7 @@ export function getBillingModeBadgeClass(mode: string | null | undefined): strin
 interface ImageBillingRow {
   image_count: number
   billing_mode?: string | null
-  total_cost: number
+  total_cost?: number | null
 }
 
 export function isImageUsage(row: Pick<ImageBillingRow, 'image_count' | 'billing_mode'> | null | undefined): boolean {
