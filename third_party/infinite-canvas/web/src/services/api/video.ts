@@ -159,29 +159,44 @@ export async function storeGeneratedVideo(result: VideoGenerationResult): Promis
 }
 
 async function createOpenAIVideoTask(config: AiConfig, model: string, prompt: string, references: ReferenceImage[], options?: VideoMediaOptions): Promise<VideoGenerationTask> {
-    const images = await Promise.all(references.map(async (image) => dataUrlToFile({ ...image, dataUrl: await imageToDataUrl(image) })));
-    const videos = await Promise.all((options?.videos || []).map((video) => referenceMediaToFile(video, "ref.mp4", "invalidReferenceVideo", options)));
-    const audios = await Promise.all((options?.audios || []).map((audio) => referenceMediaToFile(audio, "ref.mp3", "invalidReferenceAudio", options)));
-    const mode = resolveVideoMode(config.videoMode, images.length);
-    const body = new FormData();
-    body.append("model", modelOptionName(model));
-    body.append("prompt", prompt);
-    body.append("seconds", normalizeVideoSeconds(config.videoSeconds));
-    body.append("size", normalizeVideoSize(config.size, config.vquality) || "1280x720");
-    body.append("resolution_name", normalizeVideoResolution(config.vquality));
-    body.append("generate_audio", String(boolConfig(config.videoGenerateAudio, true)));
-    body.append("watermark", String(boolConfig(config.videoWatermark, false)));
-    body.append("mode", mode);
-    if (mode === "frames") {
-        if (images[0]) body.append("first_frame", images[0], "first.png");
-        if (images[1]) body.append("last_frame", images[1], "last.png");
-    } else {
-        images.forEach((file) => body.append("image[]", file, "ref.png"));
-    }
-    videos.forEach((file) => body.append("video[]", file));
-    audios.forEach((file) => body.append("audio[]", file));
+    const upstreamModel = modelOptionName(model);
+    const mode = resolveVideoMode(config.videoMode, references.length);
+
     try {
-        const created = unwrapVideoResponse((await providerAxios.post<ApiVideoResponse>(aiApiUrl(config, "/videos"), body, { headers: aiHeaders(config), signal: options?.signal })).data);
+        let response: ApiVideoResponse;
+        if (isWan30VideoModel(upstreamModel)) {
+            response = (
+                await providerAxios.post<ApiVideoResponse>(
+                    aiApiUrl(config, "/videos"),
+                    await buildWan30VideoPayload(config, upstreamModel, prompt, references, mode, options),
+                    { headers: aiHeaders(config, "application/json"), signal: options?.signal },
+                )
+            ).data;
+        } else {
+            const images = await Promise.all(references.map(async (image) => dataUrlToFile({ ...image, dataUrl: await imageToDataUrl(image) })));
+            const videos = await Promise.all((options?.videos || []).map((video) => referenceMediaToFile(video, "ref.mp4", "invalidReferenceVideo", options)));
+            const audios = await Promise.all((options?.audios || []).map((audio) => referenceMediaToFile(audio, "ref.mp3", "invalidReferenceAudio", options)));
+            const body = new FormData();
+            body.append("model", upstreamModel);
+            body.append("prompt", prompt);
+            body.append("seconds", normalizeVideoSeconds(config.videoSeconds));
+            body.append("size", normalizeVideoSize(config.size, config.vquality) || "1280x720");
+            body.append("resolution_name", normalizeVideoResolution(config.vquality));
+            body.append("generate_audio", String(boolConfig(config.videoGenerateAudio, true)));
+            body.append("watermark", String(boolConfig(config.videoWatermark, false)));
+            body.append("mode", mode);
+            if (mode === "frames") {
+                if (images[0]) body.append("first_frame", images[0], "first.png");
+                if (images[1]) body.append("last_frame", images[1], "last.png");
+            } else {
+                images.forEach((file) => body.append("image[]", file, "ref.png"));
+            }
+            videos.forEach((file) => body.append("video[]", file));
+            audios.forEach((file) => body.append("audio[]", file));
+            response = (await providerAxios.post<ApiVideoResponse>(aiApiUrl(config, "/videos"), body, { headers: aiHeaders(config), signal: options?.signal })).data;
+        }
+
+        const created = unwrapVideoResponse(response);
         const taskId = videoTaskId(created);
         if (!taskId) throw new Error(apiText("noVideoTaskId"));
         return { id: taskId, provider: "openai", model };
@@ -190,17 +205,60 @@ async function createOpenAIVideoTask(config: AiConfig, model: string, prompt: st
     }
 }
 
+function isWan30VideoModel(model: string) {
+    return /(?:^|[:/_.-])wan[-_.]?3(?:\.0)?(?:$|[:/_.-])/i.test(model);
+}
+
+async function buildWan30VideoPayload(
+    config: AiConfig,
+    model: string,
+    prompt: string,
+    references: ReferenceImage[],
+    mode: "frames" | "reference",
+    options?: VideoMediaOptions,
+) {
+    const imageDataUrls = await Promise.all(references.map((image) => imageToDataUrl(image)));
+    const media: Array<{ type: "first_frame" | "last_frame" | "reference_image" | "reference_video" | "reference_audio"; url: string }> = [];
+
+    if (mode === "frames") {
+        if (imageDataUrls[0]) media.push({ type: "first_frame", url: imageDataUrls[0] });
+        if (imageDataUrls[1]) media.push({ type: "last_frame", url: imageDataUrls[1] });
+    } else {
+        imageDataUrls.forEach((url) => media.push({ type: "reference_image", url }));
+    }
+
+    for (const video of options?.videos || []) {
+        const file = await referenceMediaToFile(video, "ref.mp4", "invalidReferenceVideo", options);
+        media.push({ type: "reference_video", url: await readFileAsDataUrl(file) });
+    }
+    for (const audio of options?.audios || []) {
+        const file = await referenceMediaToFile(audio, "ref.mp3", "invalidReferenceAudio", options);
+        media.push({ type: "reference_audio", url: await readFileAsDataUrl(file) });
+    }
+
+    return {
+        model,
+        prompt,
+        duration: Number(normalizeVideoSeconds(config.videoSeconds)) || 5,
+        resolution: normalizeVideoResolution(config.vquality).toUpperCase(),
+        aspect_ratio: videoAspectRatio(config.size),
+        audio: boolConfig(config.videoGenerateAudio, true),
+        watermark: boolConfig(config.videoWatermark, false),
+        ...(media.length ? { media } : {}),
+    };
+}
+
 async function pollOpenAIVideoTask(config: AiConfig, task: VideoGenerationTask, options?: RequestOptions): Promise<VideoGenerationTaskState> {
     try {
         const video = unwrapVideoResponse((await providerAxios.get<ApiVideoResponse>(aiApiUrl(config, `/videos/${task.id}`), { headers: aiHeaders(config), signal: options?.signal })).data);
         const url = videoResultUrl(video);
         if (url) return { status: "completed", result: await videoResultFromUrl(url, options) };
-        if (video.status === "completed" || video.status === "done") {
+        if (video.status === "completed" || video.status === "done" || video.status === "succeeded" || video.status === "success") {
             const content = await providerAxios.get<Blob>(aiApiUrl(config, `/videos/${task.id}/content`), { headers: aiHeaders(config), responseType: "blob", signal: options?.signal });
             await assertVideoBlob(content.data);
             return { status: "completed", result: { blob: content.data } };
         }
-        if (video.status === "failed" || video.status === "cancelled" || video.status === "expired") {
+        if (video.status === "failed" || video.status === "cancelled" || video.status === "expired" || video.status === "error") {
             return { status: "failed", error: readApiErrorMessage(video.error?.message) || apiText("videoGenerationFailed") };
         }
         return { status: "pending" };
@@ -375,7 +433,36 @@ function videoTaskId(payload: VideoResponse | null | undefined): string {
 }
 
 function videoResultUrl(payload: VideoResponse) {
-    return [payload.video_url, payload.result_url, payload.url, payload.content?.video_url, payload.content?.url].find((url) => typeof url === "string" && (isPublicMediaUrl(url) || /\.mp4(\?|#|$)/i.test(url)));
+    const direct = [payload.video_url, payload.result_url, payload.url, payload.content?.video_url, payload.content?.url].find(
+        (url) => typeof url === "string" && (isPublicMediaUrl(url) || /\.mp4(\?|#|$)/i.test(url)),
+    );
+    if (direct) return direct;
+    return nestedVideoResultUrl(payload, 0);
+}
+
+function nestedVideoResultUrl(value: unknown, depth: number): string | undefined {
+    if (depth > 5 || value == null) return undefined;
+    if (typeof value === "string") return isPublicMediaUrl(value) || /\.mp4(\?|#|$)/i.test(value) ? value : undefined;
+    if (Array.isArray(value)) {
+        for (const item of value) {
+            const found = nestedVideoResultUrl(item, depth + 1);
+            if (found) return found;
+        }
+        return undefined;
+    }
+    if (typeof value !== "object") return undefined;
+
+    const record = value as Record<string, unknown>;
+    for (const key of ["video_url", "result_url", "url"]) {
+        const candidate = record[key];
+        if (typeof candidate === "string" && (isPublicMediaUrl(candidate) || /\.mp4(\?|#|$)/i.test(candidate))) return candidate;
+    }
+    for (const key of ["output", "result", "data", "media", "content", "videos", "items"]) {
+        if (!(key in record)) continue;
+        const found = nestedVideoResultUrl(record[key], depth + 1);
+        if (found) return found;
+    }
+    return undefined;
 }
 
 function readApiErrorMessage(value: unknown): string {
