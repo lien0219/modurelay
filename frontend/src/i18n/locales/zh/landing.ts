@@ -6,7 +6,7 @@ export default {
   quickStart: {
     eyebrow: '快速接入指南',
     title: '快速启动',
-    description: '创建一个 API Key，复制当前实例 URL，然后连接你正在使用的客户端。用户不需要查看管理员渠道列表。',
+    description: '创建一个 API Key，保存当前实例 URL，然后按照下方教程完成客户端配置，即可开始使用。',
     openKeys: '创建 API Key',
     noticeTitle: 'API Key 只会完整显示一次',
     noticeDescription: '创建 Key 后请同时保存 Key 和 API URL。下面的客户端示例都使用同一个 OpenAI 兼容的 /v1 地址。',
@@ -21,7 +21,7 @@ export default {
       },
       connection: {
         title: '保存 URL 和 Key',
-        description: '使用带 /v1 后缀的实例 URL，以及第 1 步创建的 API Key。不需要查找用户侧渠道列表。',
+        description: '使用带 /v1 后缀的实例 URL 和第 1 步创建的 API Key，然后查询可用模型并完成客户端配置。',
         action: '跳转到模型查询'
       },
       codex: {
@@ -129,7 +129,7 @@ export default {
       title: '常见问题',
       items: {
         key: { question: 'API Key 应该放在哪里？', answer: '建议通过本地环境变量或客户端的密钥存储注入，不要写入前端代码、日志、截图或公开仓库。' },
-        endpoint: { question: 'API 地址需要怎么填写？', answer: '使用本页显示的当前实例地址，并保留 /v1 路径。用户不需要访问管理员渠道页面。' },
+        endpoint: { question: 'API 地址需要怎么填写？', answer: '使用本页显示的当前实例地址，并保留 /v1 路径即可。' },
         lookup: { question: '为什么浏览器查询模型失败？', answer: '网关需要允许当前站点发起浏览器 CORS 请求。如果网关禁止浏览器来源，命令行客户端仍可能正常工作；API Key 不会保存到 ModuRelay 前端。' }
       }
     }
