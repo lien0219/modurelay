@@ -31,6 +31,9 @@ type RequestOptions = { signal?: AbortSignal };
 type VideoMediaOptions = RequestOptions & { videos?: ReferenceVideo[]; audios?: ReferenceAudio[] };
 const apiText = (key: string, options?: Record<string, unknown>) => i18n.t(`apiErrors.${key}`, options);
 
+export const VIDEO_TASK_POLL_INTERVAL_MS = 2500;
+export const VIDEO_TASK_POLL_TIMEOUT_MS = 60 * 60 * 1000;
+
 export type VideoGenerationResult = { blob?: Blob; url?: string; mimeType?: string };
 export type VideoGenerationTask = { id: string; provider: "openai" | "gemini" | "plugin"; model: string };
 type GeminiInlineData = { bytesBase64Encoded: string; mimeType: string };
@@ -61,15 +64,15 @@ export async function requestVideoGeneration(config: AiConfig, prompt: string, r
 }
 
 export async function waitForVideoGenerationTask(config: AiConfig, task: VideoGenerationTask, options?: RequestOptions): Promise<VideoGenerationResult> {
-    for (let attempt = 0; attempt < 120; attempt += 1) {
+    const deadline = Date.now() + VIDEO_TASK_POLL_TIMEOUT_MS;
+    for (;;) {
         if (options?.signal?.aborted) throw new DOMException("Aborted", "AbortError");
         const state = await pollVideoGenerationTask(config, task, options);
         if (state.status === "completed") return state.result;
         if (state.status === "failed") throw videoTaskFailed(state.error);
-        if (attempt === 119) throw new Error(apiText("videoTimeout", { provider: "" }));
-        await delay(2500, options?.signal);
+        if (Date.now() >= deadline) throw new Error(apiText("videoTimeout", { provider: "" }));
+        await delay(VIDEO_TASK_POLL_INTERVAL_MS, options?.signal);
     }
-    throw new Error(apiText("videoTimeout", { provider: "" }));
 }
 
 export function isVideoTaskFailed(error: unknown) {
@@ -398,18 +401,34 @@ async function pollOpenAIVideoTask(config: AiConfig, task: VideoGenerationTask, 
         const video = unwrapVideoResponse((await providerAxios.get<ApiVideoResponse>(aiApiUrl(config, `/videos/${task.id}`), { headers: aiHeaders(config), signal: options?.signal })).data);
         const url = videoResultUrl(video);
         if (url) return { status: "completed", result: await videoResultFromUrl(url, options) };
-        if (video.status === "completed" || video.status === "done" || video.status === "succeeded" || video.status === "success") {
-            const content = await providerAxios.get<Blob>(aiApiUrl(config, `/videos/${task.id}/content`), { headers: aiHeaders(config), responseType: "blob", signal: options?.signal });
-            await assertVideoBlob(content.data);
-            return { status: "completed", result: { blob: content.data } };
+
+        const status = String(video.status || "").trim().toLowerCase();
+        if (status === "completed" || status === "done" || status === "succeeded" || status === "success" || status === "finished") {
+            try {
+                const content = await providerAxios.get<Blob>(aiApiUrl(config, `/videos/${task.id}/content`), { headers: aiHeaders(config), responseType: "blob", signal: options?.signal });
+                await assertVideoBlob(content.data);
+                return { status: "completed", result: { blob: content.data } };
+            } catch (error) {
+                // Some compatible providers report a terminal task state before
+                // the generated media is replicated to the content endpoint.
+                // Keep polling instead of turning that short propagation window
+                // into a false generation failure.
+                if (isTransientVideoContentError(error)) return { status: "pending" };
+                throw error;
+            }
         }
-        if (video.status === "failed" || video.status === "cancelled" || video.status === "expired" || video.status === "error") {
+        if (status === "failed" || status === "cancelled" || status === "canceled" || status === "expired" || status === "error" || status === "rejected") {
             return { status: "failed", error: readApiErrorMessage(video.error?.message) || apiText("videoGenerationFailed") };
         }
         return { status: "pending" };
     } catch (error) {
         throw new Error(readAxiosError(error, apiText("videoTaskQueryFailed")));
     }
+}
+
+function isTransientVideoContentError(error: unknown) {
+    if (!axios.isAxiosError(error)) return false;
+    return [404, 409, 425, 429, 500, 502, 503, 504].includes(error.response?.status || 0);
 }
 
 async function videoResultFromUrl(url: string, options?: RequestOptions): Promise<VideoGenerationResult> {
