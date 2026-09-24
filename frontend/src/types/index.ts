@@ -2035,7 +2035,7 @@ export interface UsageLog {
   output_cost: number
   cache_creation_cost: number
   cache_read_cost: number
-  total_cost: number
+  total_cost?: number
   actual_cost: number
   rate_multiplier: number
   long_context_billing_applied: boolean

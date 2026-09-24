@@ -136,6 +136,8 @@ export default {
           open: '熔断',
           half_open: '恢复探测'
         },
+        samplingPaused: '已暂停采样',
+        samplingPausedHint: '调度已关闭，正常业务请求不再产生健康采样；当前分数保留停止调度前的最后健康快照。',
         samples: '样本数：{count}',
         errorRate: '错误率：{value}',
         consecutiveFailures: '连续失败：{count}',

@@ -410,17 +410,25 @@
           </template>
           <template #cell-health_score="{ row }">
             <div v-if="row.health" class="flex min-w-[8rem] items-center gap-1.5">
-              <span class="font-mono text-sm font-semibold tabular-nums text-gray-800 dark:text-gray-100">
+              <span
+                class="font-mono text-sm font-semibold tabular-nums"
+                :class="row.schedulable ? 'text-gray-800 dark:text-gray-100' : 'text-gray-400 dark:text-dark-400'"
+              >
                 {{ formatHealthScore(row.health.score) }}
               </span>
-              <AccountHealthLiquidGauge :score="row.health.score" :state="row.health.state" />
+              <AccountHealthLiquidGauge
+                :score="row.health.score"
+                :state="row.health.state"
+                :class="{ 'grayscale opacity-60': !row.schedulable }"
+              />
               <span
+                data-testid="account-health-state"
                 class="inline-flex whitespace-nowrap rounded px-1.5 py-0.5 text-xs font-medium"
-                :class="healthStateClass(row.health.state)"
+                :class="healthStateClass(row.health.state, row.schedulable)"
               >
-                {{ healthStateLabel(row.health.state) }}
+                {{ healthStateLabel(row.health.state, row.schedulable) }}
               </span>
-              <HelpTooltip :content="formatHealthDetails(row.health)" width-class="w-80" />
+              <HelpTooltip :content="formatHealthDetails(row.health, row.schedulable)" width-class="w-80" />
             </div>
             <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
           </template>
@@ -973,10 +981,15 @@ const formatHealthScore = (value: unknown): string => {
   return Math.max(0, Math.min(100, score)).toFixed(0)
 }
 
-const healthStateLabel = (state: AccountHealthSnapshot['state']): string =>
-  t(`admin.accounts.healthScore.states.${state}`)
+const healthStateLabel = (state: AccountHealthSnapshot['state'], schedulable = true): string =>
+  schedulable
+    ? t(`admin.accounts.healthScore.states.${state}`)
+    : t('admin.accounts.healthScore.samplingPaused')
 
-const healthStateClass = (state: AccountHealthSnapshot['state']): string => {
+const healthStateClass = (state: AccountHealthSnapshot['state'], schedulable = true): string => {
+  if (!schedulable) {
+    return 'bg-gray-100 text-gray-500 dark:bg-dark-700 dark:text-dark-300'
+  }
   switch (state) {
     case 'healthy':
       return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
@@ -991,13 +1004,16 @@ const healthStateClass = (state: AccountHealthSnapshot['state']): string => {
   }
 }
 
-const formatHealthDetails = (health: AccountHealthSnapshot): string => {
-  const details = [
+const formatHealthDetails = (health: AccountHealthSnapshot, schedulable = true): string => {
+  const details = schedulable
+    ? []
+    : [t('admin.accounts.healthScore.samplingPausedHint')]
+  details.push(
     t('admin.accounts.healthScore.samples', { count: health.sample_count }),
     t('admin.accounts.healthScore.errorRate', { value: `${(health.error_rate_ewma * 100).toFixed(1)}%` }),
     t('admin.accounts.healthScore.consecutiveFailures', { count: health.consecutive_failures }),
     t('admin.accounts.healthScore.latency', { value: Math.round(health.latency_ewma_ms) })
-  ]
+  )
   if (health.last_failure_reason) {
     details.push(t('admin.accounts.healthScore.lastFailure', { reason: health.last_failure_reason }))
   }

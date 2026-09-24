@@ -285,6 +285,8 @@ export default {
           open: 'Circuit open',
           half_open: 'Recovery probe'
         },
+        samplingPaused: 'Sampling paused',
+        samplingPausedHint: 'Scheduling is disabled, so normal traffic no longer produces health samples; the score shown is the last health snapshot from before scheduling was disabled.',
         samples: 'Samples: {count}',
         errorRate: 'Error rate: {value}',
         consecutiveFailures: 'Consecutive failures: {count}',

@@ -190,9 +190,25 @@ describe('admin AccountsView scheduler score column', () => {
           id: 3,
           name: 'no-score',
           platform: 'anthropic'
+        },
+        {
+          ...baseAccount,
+          id: 4,
+          name: 'paused-openai',
+          schedulable: false,
+          health: {
+            score: 100,
+            state: 'warming',
+            sample_count: 0,
+            error_rate_ewma: 0,
+            latency_ewma_ms: 0,
+            consecutive_failures: 0,
+            open_count: 0,
+            updated_at_unix: 1767225600
+          }
         }
       ],
-      total: 3,
+      total: 4,
       page: 1,
       page_size: 20,
       pages: 1
@@ -233,6 +249,21 @@ describe('admin AccountsView scheduler score column', () => {
     expect(healthCell.exists()).toBe(true)
     expect(healthCell.text()).toContain('92')
     expect(healthCell.text()).toContain('admin.accounts.healthScore.states.healthy')
+  })
+
+  it('marks health sampling as paused and grays it out when scheduling is disabled', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+
+    const healthCell = wrapper.find('[data-test="health-score-4"]')
+    expect(healthCell.exists()).toBe(true)
+    expect(healthCell.text()).toContain('100')
+    expect(healthCell.text()).toContain('admin.accounts.healthScore.samplingPaused')
+    expect(healthCell.text()).not.toContain('admin.accounts.healthScore.states.warming')
+
+    const state = healthCell.find('[data-testid="account-health-state"]')
+    expect(state.classes()).toContain('bg-gray-100')
+    expect(state.classes()).toContain('text-gray-500')
   })
 
   it('omits the health lookup when the health column is hidden', async () => {
