@@ -689,7 +689,7 @@ const exportToCSV = async () => {
       log.cache_creation_tokens,
       log.rate_multiplier,
       log.actual_cost.toFixed(8),
-      log.total_cost.toFixed(8),
+      typeof log.total_cost === 'number' && Number.isFinite(log.total_cost) ? log.total_cost.toFixed(8) : '',
       log.first_token_ms ?? '',
       log.duration_ms ?? '',
     ].map(escapeCSVValue))

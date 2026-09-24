@@ -421,7 +421,8 @@ function formatResetTime(iso: string | null | undefined): string {
 }
 
 const formatNumber = (n: number) => n.toLocaleString()
-const formatCost = (c: number) => c.toFixed(4)
+const formatCost = (c: number | null | undefined) =>
+  typeof c === 'number' && Number.isFinite(c) ? c.toFixed(4) : '0.0000'
 const formatTokens = (t: number) => {
   if (t >= 1_000_000) return `${(t / 1_000_000).toFixed(1)}M`
   if (t >= 1000) return `${(t / 1000).toFixed(1)}K`
