@@ -87,22 +87,26 @@ func TestShouldRecordGrokMediaUsage(t *testing.T) {
 
 func TestGrokMediaRequiredCapability(t *testing.T) {
 	tests := []struct {
-		name     string
-		endpoint service.GrokMediaEndpoint
-		want     service.OpenAIEndpointCapability
+		name            string
+		endpoint        service.GrokMediaEndpoint
+		compatibleVideo bool
+		want            service.OpenAIEndpointCapability
 	}{
-		{name: "image generation", endpoint: service.GrokMediaEndpointImagesGenerations, want: service.OpenAIEndpointCapabilityGrokMediaGeneration},
-		{name: "image edit", endpoint: service.GrokMediaEndpointImagesEdits, want: service.OpenAIEndpointCapabilityGrokMediaGeneration},
-		{name: "video generation", endpoint: service.GrokMediaEndpointVideosGenerations, want: service.OpenAIEndpointCapabilityGrokMediaGeneration},
-		{name: "video edit", endpoint: service.GrokMediaEndpointVideosEdits, want: service.OpenAIEndpointCapabilityGrokMediaGeneration},
-		{name: "video extension", endpoint: service.GrokMediaEndpointVideosExtensions, want: service.OpenAIEndpointCapabilityGrokMediaGeneration},
-		{name: "video status preserves lookup", endpoint: service.GrokMediaEndpointVideoStatus, want: ""},
-		{name: "video content preserves lookup", endpoint: service.GrokMediaEndpointVideoContent, want: ""},
+		{name: "grok image generation", endpoint: service.GrokMediaEndpointImagesGenerations, want: service.OpenAIEndpointCapabilityGrokMediaGeneration},
+		{name: "grok image edit", endpoint: service.GrokMediaEndpointImagesEdits, want: service.OpenAIEndpointCapabilityGrokMediaGeneration},
+		{name: "grok video generation", endpoint: service.GrokMediaEndpointVideosGenerations, want: service.OpenAIEndpointCapabilityGrokMediaGeneration},
+		{name: "grok video edit", endpoint: service.GrokMediaEndpointVideosEdits, want: service.OpenAIEndpointCapabilityGrokMediaGeneration},
+		{name: "grok video extension", endpoint: service.GrokMediaEndpointVideosExtensions, want: service.OpenAIEndpointCapabilityGrokMediaGeneration},
+		{name: "compatible video generation", endpoint: service.GrokMediaEndpointVideosGenerations, compatibleVideo: true, want: service.OpenAIEndpointCapabilityVideos},
+		{name: "compatible video edit", endpoint: service.GrokMediaEndpointVideosEdits, compatibleVideo: true, want: service.OpenAIEndpointCapabilityVideos},
+		{name: "compatible video extension", endpoint: service.GrokMediaEndpointVideosExtensions, compatibleVideo: true, want: service.OpenAIEndpointCapabilityVideos},
+		{name: "video status preserves lookup", endpoint: service.GrokMediaEndpointVideoStatus, compatibleVideo: true, want: ""},
+		{name: "video content preserves lookup", endpoint: service.GrokMediaEndpointVideoContent, compatibleVideo: true, want: ""},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.want, grokMediaRequiredCapability(tt.endpoint))
+			require.Equal(t, tt.want, grokMediaRequiredCapability(tt.endpoint, tt.compatibleVideo))
 		})
 	}
 }

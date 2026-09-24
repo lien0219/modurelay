@@ -302,7 +302,7 @@ func TestGatewayRoutesCompositeChatCompletionsWithGrokModelUsesOpenAIGateway(t *
 	}
 }
 
-func TestGatewayRoutesNonGrokVideosAreRejectedAtPlatformGate(t *testing.T) {
+func TestGatewayRoutesOpenAIVideosPassPlatformGate(t *testing.T) {
 	router := newGatewayRoutesTestRouter(service.PlatformOpenAI)
 
 	for _, tc := range []struct {
@@ -310,14 +310,14 @@ func TestGatewayRoutesNonGrokVideosAreRejectedAtPlatformGate(t *testing.T) {
 		path   string
 		body   string
 	}{
-		{http.MethodPost, "/v1/videos/generations", `{"model":"grok-imagine-video-1.5","prompt":"waves"}`},
-		{http.MethodPost, "/v1/videos", `{"model":"grok-imagine-video-1.5","prompt":"waves"}`},
-		{http.MethodPost, "/videos", `{"model":"grok-imagine-video-1.5","prompt":"waves"}`},
-		{http.MethodPost, "/videos/generations", `{"model":"grok-imagine-video-1.5","prompt":"waves"}`},
-		{http.MethodPost, "/v1/videos/edits", `{"model":"grok-imagine-video","prompt":"waves","video":{"url":"https://example.com/in.mp4"}}`},
-		{http.MethodPost, "/videos/edits", `{"model":"grok-imagine-video","prompt":"waves","video":{"url":"https://example.com/in.mp4"}}`},
-		{http.MethodPost, "/v1/videos/extensions", `{"model":"grok-imagine-video","prompt":"waves","video":{"url":"https://example.com/in.mp4"}}`},
-		{http.MethodPost, "/videos/extensions", `{"model":"grok-imagine-video","prompt":"waves","video":{"url":"https://example.com/in.mp4"}}`},
+		{http.MethodPost, "/v1/videos/generations", `{"model":"wan-3.0","prompt":"waves"}`},
+		{http.MethodPost, "/v1/videos", `{"model":"wan-3.0","prompt":"waves"}`},
+		{http.MethodPost, "/videos", `{"model":"wan-3.0","prompt":"waves"}`},
+		{http.MethodPost, "/videos/generations", `{"model":"wan-3.0","prompt":"waves"}`},
+		{http.MethodPost, "/v1/videos/edits", `{"model":"wan-3.0","prompt":"waves","video":{"url":"https://example.com/in.mp4"}}`},
+		{http.MethodPost, "/videos/edits", `{"model":"wan-3.0","prompt":"waves","video":{"url":"https://example.com/in.mp4"}}`},
+		{http.MethodPost, "/v1/videos/extensions", `{"model":"wan-3.0","prompt":"waves","video":{"url":"https://example.com/in.mp4"}}`},
+		{http.MethodPost, "/videos/extensions", `{"model":"wan-3.0","prompt":"waves","video":{"url":"https://example.com/in.mp4"}}`},
 		{http.MethodGet, "/v1/videos/request-123", ""},
 		{http.MethodGet, "/videos/request-123", ""},
 		{http.MethodGet, "/v1/videos/generations/request-123", ""},
@@ -340,8 +340,10 @@ func TestGatewayRoutesNonGrokVideosAreRejectedAtPlatformGate(t *testing.T) {
 		w := httptest.NewRecorder()
 
 		router.ServeHTTP(w, req)
-		require.Equal(t, http.StatusNotFound, w.Code, "method=%s path=%s", tc.method, tc.path)
-		require.Contains(t, w.Body.String(), "Videos API is not supported for this platform")
+		// The route test router intentionally lacks full gateway dependencies, so
+		// downstream handlers may return 4xx/5xx. What matters here is that the
+		// old local platform gate no longer rejects compatible video requests.
+		require.NotContains(t, w.Body.String(), "Videos API is not supported for this platform", "method=%s path=%s", tc.method, tc.path)
 	}
 }
 
