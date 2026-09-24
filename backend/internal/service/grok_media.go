@@ -1055,14 +1055,14 @@ func prepareGrokVideoGenerationForwardBody(body []byte, contentType string) ([]b
 	payload := make(map[string]any)
 	reader := multipart.NewReader(bytes.NewReader(body), boundary)
 	var (
-		mode           string
-		size           string
-		aspectRatio    string
-		resolution     string
-		duration       int
-		generateAudio  *bool
-		firstFrame     map[string]string
-		lastFrame      map[string]string
+		mode            string
+		size            string
+		aspectRatio     string
+		resolution      string
+		duration        int
+		generateAudio   *bool
+		firstFrame      map[string]string
+		lastFrame       map[string]string
 		referenceImages []map[string]string
 	)
 
