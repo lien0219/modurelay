@@ -147,8 +147,10 @@ export async function getImageBlob(storageKey: string) {
 
 export async function setImageBlob(storageKey: string, blob: Blob) {
     await store.setItem(storageKey, blob);
+    const previousUrl = objectUrls.get(storageKey);
     const url = URL.createObjectURL(blob);
     objectUrls.set(storageKey, url);
+    if (previousUrl && previousUrl !== url) URL.revokeObjectURL(previousUrl);
     return url;
 }
 

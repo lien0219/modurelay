@@ -80,6 +80,7 @@ export default function VideoPage() {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const dragDepthRef = useRef(0);
     const activeLogIdsRef = useRef<Set<string>>(new Set());
+    const visibleLogIdRef = useRef<string | null>(null);
     const config = useConfigStore((state) => state.config);
     const effectiveConfig = useEffectiveConfig();
     const updateConfig = useConfigStore((state) => state.updateConfig);
@@ -196,6 +197,7 @@ export default function VideoPage() {
         try {
             const task = await createVideoGenerationTask(snapshot.config, snapshot.text, snapshot.references);
             const log = buildLog({ prompt: snapshot.text, model, config: snapshot.config, references: snapshot.references, durationMs: 0, status: "pending", task });
+            visibleLogIdRef.current = log.id;
             await saveLog(log, false);
             void pollGenerationLog(log, snapshot.config, agentTaskId);
         } catch (error) {
@@ -276,6 +278,7 @@ export default function VideoPage() {
     };
 
     const createSession = () => {
+        visibleLogIdRef.current = null;
         setPrompt("");
         setReferences([]);
         setResults([]);
@@ -312,9 +315,12 @@ export default function VideoPage() {
     };
 
     const resumePendingLogs = (items: GenerationLog[]) => {
-        for (const log of items) {
-            if (log.status === "pending" && log.task) void pollGenerationLog(log);
+        const pendingLogs = items.filter((log) => log.status === "pending" && log.task);
+        if (!visibleLogIdRef.current && pendingLogs[0]) {
+            visibleLogIdRef.current = pendingLogs[0].id;
+            setResults([{ id: pendingLogs[0].id, status: "pending" }]);
         }
+        for (const log of pendingLogs) void pollGenerationLog(log);
     };
 
     const pollGenerationLog = async (log: GenerationLog, configOverride?: AiConfig, agentTaskId?: string) => {
@@ -323,7 +329,9 @@ export default function VideoPage() {
         setRunning(true);
         setStartedAt((value) => value || log.createdAt || Date.now());
         setNowMs(Date.now());
-        setResults((value) => (value.length ? value : [{ id: log.id, status: "pending" }]));
+        if (visibleLogIdRef.current === log.id) {
+            setResults((value) => (value.length ? value : [{ id: log.id, status: "pending" }]));
+        }
         const taskConfig = buildVideoConfig({ ...effectiveConfig, ...log.config }, log.task.model || log.model);
         try {
             const deadline = log.createdAt + VIDEO_TASK_POLL_TIMEOUT_MS;
@@ -342,7 +350,9 @@ export default function VideoPage() {
                         mimeType: stored.mimeType,
                     };
                     const completedLog: GenerationLog = { ...log, status: "success", durationMs: nextVideo.durationMs, video: nextVideo, error: undefined };
-                    setResults([{ id: nextVideo.id, status: "success", video: nextVideo }]);
+                    if (visibleLogIdRef.current === log.id) {
+                        setResults([{ id: nextVideo.id, status: "success", video: nextVideo }]);
+                    }
                     setPreviewLog((value) => (value?.id === log.id ? completedLog : value));
                     if (agentTaskId) updateAgentTask(agentTaskId, { status: "succeeded", successCount: 1, failCount: 0, error: undefined });
                     await saveLog(completedLog);
@@ -356,7 +366,9 @@ export default function VideoPage() {
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : t("workbench.generationFailed");
             const failedLog: GenerationLog = { ...log, status: "failed", durationMs: Date.now() - log.createdAt, error: errorMessage };
-            setResults([{ id: log.id, status: "failed", error: errorMessage }]);
+            if (visibleLogIdRef.current === log.id) {
+                setResults([{ id: log.id, status: "failed", error: errorMessage }]);
+            }
             setPreviewLog((value) => (value?.id === log.id ? failedLog : value));
             if (agentTaskId) updateAgentTask(agentTaskId, { status: "failed", successCount: 0, failCount: 1, error: errorMessage });
             await saveLog(failedLog);
@@ -371,6 +383,7 @@ export default function VideoPage() {
     };
 
     const previewGenerationLog = (log: GenerationLog) => {
+        visibleLogIdRef.current = log.id;
         setPreviewLog(log);
         setLogsOpen(false);
         setPrompt(log.prompt);

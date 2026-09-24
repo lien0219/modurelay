@@ -6,10 +6,19 @@ import { providerFetch } from "@/services/api/provider-transport";
 export type UploadedFile = { url: string; storageKey: string; bytes: number; mimeType: string; width?: number; height?: number; durationMs?: number };
 
 const store = localforage.createInstance({ name: "infinite-canvas", storeName: "media_files" });
+const videoLogStore = localforage.createInstance({ name: "infinite-canvas", storeName: "video_generation_logs" });
 const objectUrls = new Map<string, string>();
 
 export async function uploadMediaFile(input: string | Blob, prefix = "file"): Promise<UploadedFile> {
-    const blob = typeof input === "string" ? await (await providerFetch(input)).blob() : input;
+    let blob: Blob;
+    if (typeof input === "string") {
+        const response = await providerFetch(input);
+        if (!response.ok) throw new Error(`Media download failed (${response.status})`);
+        blob = await response.blob();
+    } else {
+        blob = input;
+    }
+    validateStoredMediaBlob(blob, prefix);
     const storageKey = `${prefix}:${nanoid()}`;
     await store.setItem(storageKey, blob);
     const url = URL.createObjectURL(blob);
@@ -35,8 +44,10 @@ export async function getMediaBlob(storageKey: string) {
 
 export async function setMediaBlob(storageKey: string, blob: Blob) {
     await store.setItem(storageKey, blob);
+    const previousUrl = objectUrls.get(storageKey);
     const url = URL.createObjectURL(blob);
     objectUrls.set(storageKey, url);
+    if (previousUrl && previousUrl !== url) URL.revokeObjectURL(previousUrl);
     return url;
 }
 
@@ -53,11 +64,14 @@ export async function deleteStoredMedia(keys: Iterable<string>) {
 
 export async function cleanupUnusedMedia(usedData: unknown) {
     const usedKeys = collectMediaStorageKeys(usedData);
+    await videoLogStore.iterate((value) => {
+        collectMediaStorageKeys(value, usedKeys);
+    });
     const unused: string[] = [];
     await store.iterate((_value, key) => {
         if (!usedKeys.has(key)) unused.push(key);
     });
-    await Promise.all(unused.map((key) => store.removeItem(key)));
+    await deleteStoredMedia(unused);
 }
 
 export function collectMediaStorageKeys(value: unknown, keys = new Set<string>()) {
@@ -65,6 +79,14 @@ export function collectMediaStorageKeys(value: unknown, keys = new Set<string>()
     if ("storageKey" in value && typeof value.storageKey === "string" && value.storageKey.includes(":")) keys.add(value.storageKey);
     Object.values(value).forEach((item) => (Array.isArray(item) ? item.forEach((child) => collectMediaStorageKeys(child, keys)) : collectMediaStorageKeys(item, keys)));
     return keys;
+}
+
+function validateStoredMediaBlob(blob: Blob, prefix: string) {
+    if (!blob.size) throw new Error("Media response is empty");
+    const mimeType = blob.type.toLowerCase();
+    if (!mimeType || mimeType.includes("octet-stream")) return;
+    if (prefix.startsWith("video") && !mimeType.startsWith("video/")) throw new Error("Video response is not playable media");
+    if (prefix.startsWith("audio") && !mimeType.startsWith("audio/")) throw new Error("Audio response is not playable media");
 }
 
 function readVideoMeta(url: string) {

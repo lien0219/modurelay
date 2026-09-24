@@ -828,10 +828,21 @@ function InfiniteCanvasPage() {
         [effectiveConfig.canvasImageCount, effectiveConfig.count, effectiveConfig.imageModel, effectiveConfig.model, effectiveConfig.size, getCanvasCenter],
     );
 
+    const abortGenerationRequestsForNodeIds = useCallback((ids: Set<string>) => {
+        generationRequestsRef.current.forEach((request, targetNodeId) => {
+            if (!ids.has(targetNodeId) && !ids.has(request.originNodeId) && !ids.has(request.runningNodeId)) return;
+            request.controller.abort();
+            generationRequestsRef.current.delete(targetNodeId);
+            videoPollIdsRef.current.delete(targetNodeId);
+        });
+        ids.forEach((id) => videoPollIdsRef.current.delete(id));
+    }, []);
+
     const deleteNodes = useCallback(
         (ids: Set<string>) => {
             if (!ids.size) return;
             const allIds = new Set(ids);
+            abortGenerationRequestsForNodeIds(allIds);
             setNodes((prev) => {
                 const next = prev.filter((node) => !allIds.has(node.id));
                 return next.map((node) => {
@@ -857,7 +868,7 @@ function InfiniteCanvasPage() {
             setContextMenu((current) => (current?.type === "node" && allIds.has(current.nodeId) ? null : current));
             cleanupCanvasFiles({ projectId, nodes: nodesRef.current.filter((node) => !allIds.has(node.id)), chatSessions });
         },
-        [chatSessions, cleanupCanvasFiles, projectId],
+        [abortGenerationRequestsForNodeIds, chatSessions, cleanupCanvasFiles, projectId],
     );
 
     const groupSelection = useCallback(() => {
@@ -944,6 +955,10 @@ function InfiniteCanvasPage() {
     }, [cancelPendingConnectionCreate]);
 
     const clearCanvas = useCallback(() => {
+        const allNodeIds = new Set(nodesRef.current.map((node) => node.id));
+        abortGenerationRequestsForNodeIds(allNodeIds);
+        generationRequestsRef.current.clear();
+        videoPollIdsRef.current.clear();
         setNodes([]);
         setConnections([]);
         setInfoNodeId(null);
@@ -955,7 +970,7 @@ function InfiniteCanvasPage() {
         deselectCanvas();
         setClearConfirmOpen(false);
         cleanupCanvasFiles({ projectId, nodes: [], chatSessions: [] });
-    }, [cleanupCanvasFiles, deselectCanvas, projectId]);
+    }, [abortGenerationRequestsForNodeIds, cleanupCanvasFiles, deselectCanvas, projectId]);
 
     const duplicateNode = useCallback((nodeId: string) => {
         const source = nodesRef.current.find((node) => node.id === nodeId);
