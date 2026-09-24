@@ -1017,6 +1017,14 @@ export default {
             selectModels: "选择模型",
             scriptReady: "脚本已设",
             script: "调用脚本",
+            requestProfile: "请求协议",
+            requestProfiles: {
+                auto: "自动识别",
+                openaiMultipart: "OpenAI Multipart",
+                compatibleJson: "通用 JSON",
+                aistarsJson: "Aistars JSON",
+                xaiJson: "xAI JSON",
+            },
             empty: "点击「选择模型」拉取或手动增加模型。",
             capabilities: {
                 image: "生图",
