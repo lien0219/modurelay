@@ -61,7 +61,7 @@ export default {
     copyReport: '复制 JSON',
     copied: '已复制',
     downloadReport: '下载 JSON',
-    total: '检测项', success: '成功', failed: '失败', partial: '部分', inconclusive: '无法确认', notApplicable: '不适用', unavailable: '不可用/无权限',
+    total: '检测项', success: '成功', failed: '失败', partial: '部分', partialAvailable: '部分可用', unavailableSimple: '不可用', inconclusive: '无法确认', notApplicable: '不适用', unavailable: '不可用/无权限',
     confidence: '置信度', failureReason: '失败原因', reasonCode: '原因代码', possibleCauses: '可能原因', recommendations: '排查建议', evidence: '证据链',
     expected: '期望', actual: '实际', responseExcerpt: '脱敏响应摘要', notes: '报告说明',
     emptyReport: '完成检测后，这里会显示每项能力的成功/失败、失败原因、证据与排查建议。',
