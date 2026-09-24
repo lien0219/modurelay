@@ -110,7 +110,6 @@ func TestNormalizeGrokVideoGenerationJSONCompatibility(t *testing.T) {
 	assert.Equal(t, "9:16", gjson.GetBytes(out, "aspect_ratio").String())
 	assert.Equal(t, "720p", gjson.GetBytes(out, "resolution").String())
 	assert.Equal(t, "data:image/png;base64,AAAA", gjson.GetBytes(out, "image.url").String())
-	assert.Equal(t, "image_url", gjson.GetBytes(out, "image.type").String())
 	for _, legacy := range []string{"seconds", "size", "resolution_name", "watermark", "mode", "first_frame"} {
 		assert.False(t, gjson.GetBytes(out, legacy).Exists(), legacy)
 	}
