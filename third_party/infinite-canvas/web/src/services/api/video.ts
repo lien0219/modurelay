@@ -174,11 +174,10 @@ async function createOpenAIVideoTask(config: AiConfig, model: string, prompt: st
             );
         } else if (transport === "compatible-json") {
             try {
-                response = await postVideoJSON(
-                    config,
-                    await buildCompatibleVideoPayload(config, upstreamModel, prompt, references, mode, options),
-                    options,
-                );
+                const payload = usesAistarsLabVideoContract(config, upstreamModel)
+                    ? await buildAistarsLabVideoPayload(config, upstreamModel, prompt, references, mode, options)
+                    : await buildCompatibleVideoPayload(config, upstreamModel, prompt, references, mode, options);
+                response = await postVideoJSON(config, payload, options);
             } catch (error) {
                 if (!isUnsupportedMediaTypeError(error)) throw error;
                 response = await postVideoMultipart(config, upstreamModel, prompt, references, mode, options);
@@ -252,6 +251,60 @@ async function postVideoMultipart(
     videos.forEach((file) => body.append("video[]", file));
     audios.forEach((file) => body.append("audio[]", file));
     return (await providerAxios.post<ApiVideoResponse>(aiApiUrl(config, "/videos"), body, { headers: aiHeaders(config), signal: options?.signal })).data;
+}
+
+function usesAistarsLabVideoContract(config: AiConfig, model: string) {
+    const baseUrl = config.baseUrl.trim().toLowerCase();
+    return /(^|\.)aistarslab\.com(?:\/|$)/.test(baseUrl.replace(/^https?:\/\//, "")) || /^\d+\s*:/.test(model.trim());
+}
+
+async function buildAistarsLabVideoPayload(
+    config: AiConfig,
+    model: string,
+    prompt: string,
+    references: ReferenceImage[],
+    mode: "frames" | "reference",
+    options?: VideoMediaOptions,
+): Promise<Record<string, unknown>> {
+    const images = await Promise.all(references.map((image) => imageToDataUrl(image)));
+    const videos: string[] = [];
+    const audios: string[] = [];
+
+    for (const video of options?.videos || []) {
+        const file = await referenceMediaToFile(video, "ref.mp4", "invalidReferenceVideo", options);
+        videos.push(await readFileAsDataUrl(file));
+    }
+    for (const audio of options?.audios || []) {
+        const file = await referenceMediaToFile(audio, "ref.mp3", "invalidReferenceAudio", options);
+        audios.push(await readFileAsDataUrl(file));
+    }
+
+    const metadata: Record<string, unknown> = {
+        resolution: normalizeVideoResolution(config.vquality),
+    };
+
+    if (images.length > 0) metadata.images = images;
+    if (videos.length > 0) metadata.videos = videos;
+    if (audios.length > 0) metadata.audios = audios;
+
+    // AistarsLab's OpenAI-compatible endpoint distinguishes task mode inside metadata.
+    // frames2video requires exactly two images; one image must use image2video.
+    if (mode === "frames" && images.length === 2) {
+        metadata.mode_type = "frames2video";
+    } else if (images.length > 0) {
+        metadata.mode_type = "image2video";
+    } else if (videos.length === 0 && audios.length === 0) {
+        metadata.mode_type = "text2video";
+    }
+
+    return {
+        model,
+        prompt,
+        seconds: normalizeVideoSeconds(config.videoSeconds),
+        size: videoAspectRatio(config.size),
+        n: 1,
+        metadata,
+    };
 }
 
 async function buildCompatibleVideoPayload(
@@ -532,7 +585,7 @@ function nestedVideoResultUrl(value: unknown, depth: number): string | undefined
         const candidate = record[key];
         if (typeof candidate === "string" && (isPublicMediaUrl(candidate) || /\.mp4(\?|#|$)/i.test(candidate))) return candidate;
     }
-    for (const key of ["output", "result", "data", "media", "content", "videos", "items"]) {
+    for (const key of ["output", "result", "data", "metadata", "media", "content", "videos", "items"]) {
         if (!(key in record)) continue;
         const found = nestedVideoResultUrl(record[key], depth + 1);
         if (found) return found;
