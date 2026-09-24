@@ -1,7 +1,7 @@
 import axios from "axios";
 
 import i18n from "@/i18n";
-import { buildApiUrl, resolveModelRequestConfig, resolveModelScript, withLocalProxy, type AiConfig, type ModelChannel } from "@/stores/use-config-store";
+import { buildApiUrl, resolveModelRequestConfig, resolveModelRequestProfile, resolveModelScript, withLocalProxy, type AiConfig, type ModelChannel, type ModelRequestProfile } from "@/stores/use-config-store";
 import { normalizePluginImages, runModelPlugin } from "./model-plugin";
 import { providerAxios, providerFetch } from "./provider-transport";
 import { isJsonReferenceImageFamily } from "./media-adapters";
@@ -768,6 +768,7 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
     const requestConfig = resolveModelRequestConfig(config, config.model || config.imageModel);
     const n = Math.max(1, Math.min(15, Math.floor(Math.abs(Number(config.count)) || 1)));
     const requestPrompt = buildImageReferencePromptText(prompt, references);
+    const requestProfile = resolveModelRequestProfile(config, config.model || config.imageModel);
     const script = resolveModelScript(config, config.model || config.imageModel);
     if (script) {
         const quality = normalizeQuality(config.quality);
@@ -823,38 +824,62 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
     files.forEach((file) => formData.append(imageField, file));
 
     try {
+        if (requestProfile === "compatible-json" || requestProfile === "aistars-json" || requestProfile === "xai-json") {
+            return await requestImageEditJSON(requestConfig, requestPrompt, references, n, quality, requestSize, background, requestProfile, options);
+        }
         try {
             const response = await providerAxios.post<ImageApiResponse>(aiApiUrl(requestConfig, "/images/edits"), formData, { headers: aiHeaders(requestConfig), signal: options?.signal });
             return await parseImagePayload(response.data);
         } catch (error) {
-            if (!shouldRetryImageEditAsJSON(error, requestConfig.model)) throw error;
-            const refs = await Promise.all(references.map((image) => imageToDataUrl(image)));
-            const response = await providerAxios.post<ImageApiResponse>(
-                aiApiUrl(requestConfig, "/images/edits"),
-                {
-                    model: requestConfig.model,
-                    prompt: withSystemPrompt(requestConfig, requestPrompt),
-                    n,
-                    ...(quality ? { quality } : {}),
-                    ...(requestSize ? { size: requestSize } : {}),
-                    ...(background ? { background } : {}),
-                    image: refs[0],
-                    images: refs,
-                    reference_images: refs,
-                    output_format: IMAGE_OUTPUT_FORMAT,
-                },
-                { headers: aiHeaders(requestConfig, "application/json"), signal: options?.signal },
-            );
-            return await parseImagePayload(response.data);
+            if (!shouldRetryImageEditAsJSON(error, requestConfig.model, requestProfile)) throw error;
+            return await requestImageEditJSON(requestConfig, requestPrompt, references, n, quality, requestSize, background, requestProfile, options);
         }
     } catch (error) {
         throw new Error(readAxiosError(error, apiText("requestFailed")));
     }
 }
 
-function shouldRetryImageEditAsJSON(error: unknown, model: string) {
-    if (!axios.isAxiosError(error) || error.response?.status !== 415) return false;
-    return isJsonReferenceImageFamily(model) || Boolean(model.trim());
+async function requestImageEditJSON(
+    config: AiConfig,
+    prompt: string,
+    references: ReferenceImage[],
+    n: number,
+    quality: string | undefined,
+    requestSize: string | undefined,
+    background: string | undefined,
+    profile: ModelRequestProfile,
+    options?: RequestOptions,
+) {
+    const refs = await Promise.all(references.map((image) => imageToDataUrl(image)));
+    const base = {
+        model: config.model,
+        prompt: withSystemPrompt(config, prompt),
+        n,
+        ...(quality ? { quality } : {}),
+        ...(requestSize ? { size: requestSize } : {}),
+        ...(background ? { background } : {}),
+        output_format: IMAGE_OUTPUT_FORMAT,
+    };
+    const payload =
+        profile === "xai-json"
+            ? { ...base, image: refs[0], ...(refs.length > 1 ? { reference_images: refs.map((url) => ({ url })) } : {}) }
+            : profile === "aistars-json"
+              ? { ...base, metadata: { images: refs } }
+              : { ...base, image: refs[0], ...(refs.length > 1 ? { images: refs } : {}) };
+    const response = await providerAxios.post<ImageApiResponse>(
+        aiApiUrl(config, "/images/edits"),
+        payload,
+        { headers: aiHeaders(config, "application/json"), signal: options?.signal },
+    );
+    return parseImagePayload(response.data);
+}
+
+function shouldRetryImageEditAsJSON(error: unknown, model: string, profile: ModelRequestProfile) {
+    if (profile === "openai-multipart") return false;
+    if (!axios.isAxiosError(error)) return false;
+    if (error.response?.status === 415) return true;
+    if (profile !== "auto") return error.response?.status === 400 || error.response?.status === 422;
+    return isJsonReferenceImageFamily(model) && (error.response?.status === 400 || error.response?.status === 422);
 }
 
 export async function requestImageQuestion(config: AiConfig, messages: AiTextMessage[], onDelta: (text: string) => void, options?: RequestOptions) {
