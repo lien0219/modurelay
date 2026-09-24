@@ -4,24 +4,24 @@ export default {
     description: 'Enter an API URL and key, discover models, and verify real capabilities with protocol, behavioral, negative-parameter, and consistency evidence.',
     securityNotice: 'The API key is used only for this test and is not persisted or included in reports. Only public HTTPS targets are allowed.',
     configTitle: 'Target',
-    configDescription: 'Configure the endpoint. The system will discover available models and run a comprehensive check.'
+    configDescription: 'Configure the endpoint. The system will discover available models and run a comprehensive check.',
     baseUrl: 'API Base URL',
     baseUrlPlaceholder: 'e.g. https://api.openai.com/v1',
-    baseUrlHint: 'Enter a publicly reachable HTTPS API base URL.'
+    baseUrlHint: 'Enter a publicly reachable HTTPS API base URL.',
     apiKey: 'API Key',
     apiKeyPlaceholder: 'Enter the key for this test',
-    keyHint: 'Used only for this detection session and never persisted.'
+    keyHint: 'Used only for this detection session and never persisted.',
     showKey: 'Show',
     hideKey: 'Hide',
     protocol: 'Protocol',
-    protocolHint: 'The system can auto-detect the protocol, or you can choose one manually.'
+    protocolHint: 'The system can auto-detect the protocol, or you can choose one manually.',
     protocols: { auto: 'Auto detect', openai: 'OpenAI Compatible', anthropic: 'Anthropic', gemini: 'Gemini Native' },
     discover: 'Fetch models',
     discovering: 'Detecting and fetching models…',
     model: 'Model',
     modelSearch: 'Search models',
     modelPlaceholder: 'Select a model or fetch models first',
-    modelHint: 'Choose a discovered model before starting detection.'
+    modelHint: 'Choose a discovered model before starting detection.',
     noModels: 'No usable models detected. Check URL/key or select a protocol manually.',
     mode: 'Detection mode',
     modes: { standard: 'Standard', deep: 'Deep' },
