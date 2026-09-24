@@ -349,10 +349,12 @@ import detectionCenterAPI, {
   type DetectionReport,
 } from '@/api/admin/detectionCenter'
 
+type CapabilityIcon = 'link' | 'cube' | 'document' | 'cpu' | 'refresh' | 'focus' | 'eye' | 'database' | 'clipboard'
+
 type CapabilityRow = {
   id: string
   name: string
-  icon: string
+  icon: CapabilityIcon
   status: DetectionProbeResult['status'] | 'pending'
 }
 
@@ -437,7 +439,7 @@ function selectCapability(id: string) {
   selectedProbeId.value = id
 }
 
-function capabilityIcon(category: string) {
+function capabilityIcon(category: string): CapabilityIcon {
   const value = category.toLowerCase()
   if (value.includes('stream')) return 'refresh'
   if (value.includes('tool')) return 'focus'
