@@ -86,7 +86,7 @@ func validateDetectionSchemaPayload(text, expectedProbe string, expectedCount in
 	if len(obj) != 2 {
 		return false, fmt.Sprintf("JSON 字段数量为 %d，期望严格等于 2", len(obj))
 	}
-	if stringValue(obj["probe"]) != expectedProbe {
+	if !strings.EqualFold(stringValue(obj["probe"]), expectedProbe) {
 		return false, fmt.Sprintf("probe=%q，期望 %q", stringValue(obj["probe"]), expectedProbe)
 	}
 	if numberValue(obj["count"]) != expectedCount {
