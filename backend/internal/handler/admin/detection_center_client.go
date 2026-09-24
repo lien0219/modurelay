@@ -119,6 +119,8 @@ func (t *detectionTarget) do(ctx context.Context, protocol, method, endpoint str
 	}
 
 	started := time.Now()
+	// The URL is restricted to public HTTPS, resolved/pinned immediately above, and redirects are disabled.
+	//nolint:gosec // G704: outbound target is guarded by urlvalidator plus pinned-IP dialing against DNS rebinding.
 	resp, err := t.client.Do(req)
 	duration := time.Since(started)
 	if err != nil {
