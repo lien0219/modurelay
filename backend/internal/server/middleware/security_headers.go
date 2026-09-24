@@ -155,6 +155,8 @@ func SecurityHeadersWithCanvasOrigins(
 		}
 		if isInfiniteCanvasPath(c) {
 			finalPolicy = addToDirective(finalPolicy, "script-src", "blob:")
+			finalPolicy = addToDirective(finalPolicy, "connect-src", "blob:")
+			finalPolicy = addToDirective(finalPolicy, "media-src", "blob:")
 		}
 
 		c.Header("X-Content-Type-Options", "nosniff")
