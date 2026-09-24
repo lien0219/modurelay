@@ -221,7 +221,9 @@ func discoverDetectionModels(ctx context.Context, target *detectionTarget, reque
 
 func discoverDetectionModelsForProtocol(ctx context.Context, target *detectionTarget, protocol string) ([]detectedModel, detectionAttempt) {
 	endpoint := "/v1/models"
-	if protocol == detectionProtocolGemini {
+	if protocol == detectionProtocolAnthropic {
+		endpoint = "/v1/models?limit=1000"
+	} else if protocol == detectionProtocolGemini {
 		endpoint = "/v1beta/models?pageSize=1000"
 	}
 	result, err := target.doJSON(ctx, protocol, http.MethodGet, endpoint, nil, nil)
