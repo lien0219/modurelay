@@ -1214,6 +1214,7 @@ export default {
           chatCompletions: 'Chat Completions',
           embeddings: 'Embeddings',
           images: 'Images',
+          videos: 'Videos',
           gemini: 'Gemini Native'
         },
         match: {

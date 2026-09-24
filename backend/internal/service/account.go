@@ -98,6 +98,7 @@ const openAILongContextBillingEnabledKey = "openai_long_context_billing_enabled"
 const (
 	OpenAIEndpointCapabilityChatCompletions OpenAIEndpointCapability = "chat_completions"
 	OpenAIEndpointCapabilityEmbeddings      OpenAIEndpointCapability = "embeddings"
+	OpenAIEndpointCapabilityVideos          OpenAIEndpointCapability = "videos"
 	OpenAIEndpointCapabilityAlphaSearch     OpenAIEndpointCapability = "alpha_search"
 	OpenAIEndpointCapabilityLive            OpenAIEndpointCapability = "live"
 	// OpenAIEndpointCapabilityGrokMediaGeneration keeps image/video generation
@@ -1891,6 +1892,28 @@ func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapa
 		if a.Type != AccountTypeAPIKey {
 			return false
 		}
+	case OpenAIEndpointCapabilityVideos:
+		// Videos is a newly introduced passthrough capability. Existing API-key
+		// accounts may already have a legacy openai_capabilities list which could
+		// not contain "videos"; do not silently disable them after an upgrade.
+		// A dedicated explicit switch is therefore authoritative when present.
+		if a.Type != AccountTypeAPIKey {
+			return false
+		}
+		if a.Credentials != nil {
+			if raw, exists := a.Credentials["openai_video_enabled"]; exists {
+				switch value := raw.(type) {
+				case bool:
+					return value
+				case string:
+					enabled, err := strconv.ParseBool(strings.TrimSpace(value))
+					if err == nil {
+						return enabled
+					}
+				}
+			}
+		}
+		return true
 	default:
 		return false
 	}
