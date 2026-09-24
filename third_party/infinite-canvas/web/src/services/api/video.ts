@@ -6,7 +6,7 @@ import { dataUrlToFile, readFileAsDataUrl } from "@/lib/image-utils";
 import { clampVideoSeconds, computeVideoSize, inferVideoRatio, parseVideoResolution } from "@/lib/media-size";
 import { getMediaBlob, resolveMediaUrl, uploadMediaFile, type UploadedFile } from "@/services/file-storage";
 import { imageToDataUrl } from "@/services/image-storage";
-import { boolConfig, buildApiUrl, modelOptionName, resolveModelRequestConfig, resolveModelScript, withLocalProxy, type AiConfig } from "@/stores/use-config-store";
+import { boolConfig, buildApiUrl, modelOptionName, resolveModelRequestConfig, resolveModelRequestProfile, resolveModelScript, withLocalProxy, type AiConfig, type ModelRequestProfile } from "@/stores/use-config-store";
 import { runModelPlugin } from "./model-plugin";
 import { providerAxios, providerFetch } from "./provider-transport";
 import { videoTransportKind } from "./media-adapters";
@@ -162,7 +162,8 @@ export async function storeGeneratedVideo(result: VideoGenerationResult): Promis
 async function createOpenAIVideoTask(config: AiConfig, model: string, prompt: string, references: ReferenceImage[], options?: VideoMediaOptions): Promise<VideoGenerationTask> {
     const upstreamModel = modelOptionName(model);
     const mode = resolveVideoMode(config.videoMode, references.length);
-    const transport = videoTransportKind(upstreamModel);
+    const requestProfile = resolveModelRequestProfile(config, model);
+    const transport = resolveVideoTransport(requestProfile, upstreamModel);
 
     try {
         let response: ApiVideoResponse;
@@ -174,7 +175,7 @@ async function createOpenAIVideoTask(config: AiConfig, model: string, prompt: st
             );
         } else if (transport === "compatible-json") {
             try {
-                const payload = usesAistarsLabVideoContract(config, upstreamModel)
+                const payload = shouldUseAistarsLabVideoContract(requestProfile, config, upstreamModel)
                     ? await buildAistarsLabVideoPayload(config, upstreamModel, prompt, references, mode, options)
                     : await buildCompatibleVideoPayload(config, upstreamModel, prompt, references, mode, options);
                 response = await postVideoJSON(config, payload, options);
@@ -253,9 +254,25 @@ async function postVideoMultipart(
     return (await providerAxios.post<ApiVideoResponse>(aiApiUrl(config, "/videos"), body, { headers: aiHeaders(config), signal: options?.signal })).data;
 }
 
-function usesAistarsLabVideoContract(config: AiConfig, model: string) {
+function resolveVideoTransport(profile: ModelRequestProfile, model: string) {
+    switch (profile) {
+        case "xai-json":
+            return "xai-json" as const;
+        case "compatible-json":
+        case "aistars-json":
+            return "compatible-json" as const;
+        case "openai-multipart":
+            return "multipart" as const;
+        default:
+            return videoTransportKind(model);
+    }
+}
+
+function shouldUseAistarsLabVideoContract(profile: ModelRequestProfile, config: AiConfig, model: string) {
+    if (profile === "aistars-json") return true;
+    if (profile !== "auto") return false;
     const baseUrl = config.baseUrl.trim().toLowerCase();
-    return /(^|\.)aistarslab\.com(?:\/|$)/.test(baseUrl.replace(/^https?:\/\//, "")) || /^\d+\s*:/.test(model.trim());
+    return /(^|\.)aistarslab\.com(?:\/|$)/.test(baseUrl.replace(/^https?:\/\//, ""));
 }
 
 async function buildAistarsLabVideoPayload(
