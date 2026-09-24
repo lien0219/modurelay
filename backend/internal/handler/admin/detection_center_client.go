@@ -126,7 +126,7 @@ func (t *detectionTarget) do(ctx context.Context, protocol, method, endpoint str
 	if err != nil {
 		return detectionHTTPResult{Duration: duration}, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	limited := io.LimitReader(resp.Body, detectionMaxResponseBytes+1)
 	data, err := io.ReadAll(limited)
 	if err != nil {
@@ -223,9 +223,10 @@ func discoverDetectionModels(ctx context.Context, target *detectionTarget, reque
 
 func discoverDetectionModelsForProtocol(ctx context.Context, target *detectionTarget, protocol string) ([]detectedModel, detectionAttempt) {
 	endpoint := "/v1/models"
-	if protocol == detectionProtocolAnthropic {
+	switch protocol {
+	case detectionProtocolAnthropic:
 		endpoint = "/v1/models?limit=1000"
-	} else if protocol == detectionProtocolGemini {
+	case detectionProtocolGemini:
 		endpoint = "/v1beta/models?pageSize=1000"
 	}
 	result, err := target.doJSON(ctx, protocol, http.MethodGet, endpoint, nil, nil)
