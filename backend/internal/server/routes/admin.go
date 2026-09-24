@@ -3,6 +3,7 @@ package routes
 
 import (
 	"github.com/Wei-Shaw/sub2api/internal/handler"
+	adminhandler "github.com/Wei-Shaw/sub2api/internal/handler/admin"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -36,6 +37,9 @@ func RegisterAdminRoutes(
 
 		// 仪表盘
 		registerDashboardRoutes(admin, h)
+
+		// 检测中心：独立 URL + Key API 兼容性/能力检测，仅管理员可访问
+		registerDetectionCenterRoutes(admin)
 
 		// 用户管理
 		registerUserManagementRoutes(admin, h)
@@ -983,5 +987,15 @@ func channelMonitorModeV2Guard(settingService *service.SettingService) gin.Handl
 			return
 		}
 		c.Next()
+	}
+}
+
+
+func registerDetectionCenterRoutes(admin *gin.RouterGroup) {
+	h := adminhandler.NewDetectionCenterHandler()
+	detection := admin.Group("/detection-center")
+	{
+		detection.POST("/discover", h.Discover)
+		detection.POST("/run", h.Run)
 	}
 }
