@@ -64,7 +64,7 @@ jobs:
         run: make test-frontend
       - name: Install Infinite Canvas dependencies
         working-directory: third_party/infinite-canvas/web
-        run: npm ci
+        run: npm ci --legacy-peer-deps
       - name: Infinite Canvas typecheck
         working-directory: third_party/infinite-canvas/web
         run: npm run typecheck
