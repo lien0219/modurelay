@@ -1,53 +1,28 @@
 <template>
   <AppLayout>
     <div class="detection-center">
-      <div class="topline">
-        <button class="back-btn" type="button" @click="goBack">
-          <Icon name="arrowLeft" size="sm" :stroke-width="2" />
-          <span>{{ t('admin.detectionCenter.back') }}</span>
-        </button>
-        <div class="breadcrumb">
-          <span>{{ t('admin.detectionCenter.admin') }}</span>
-          <Icon name="chevronRight" size="xs" />
-          <strong>{{ t('admin.detectionCenter.title') }}</strong>
-        </div>
-      </div>
-
-      <header class="hero">
-        <div class="hero-main">
-          <span class="hero-icon">
-            <Icon name="beaker" size="lg" :stroke-width="2" />
-          </span>
-          <div class="hero-copy">
-            <h1>{{ t('admin.detectionCenter.title') }}</h1>
-            <p>{{ t('admin.detectionCenter.description') }}</p>
-          </div>
-        </div>
-        <div class="security-note">
-          <span class="security-icon">
-            <Icon name="lock" size="sm" :stroke-width="2" />
-          </span>
-          <span>{{ t('admin.detectionCenter.securityNotice') }}</span>
+      <header class="page-hero">
+        <span class="page-icon">
+          <Icon name="beaker" size="lg" :stroke-width="2" />
+        </span>
+        <div>
+          <h1>{{ t('admin.detectionCenter.title') }}</h1>
+          <p>{{ t('admin.detectionCenter.description') }}</p>
         </div>
       </header>
 
-      <section class="surface target-panel">
-        <div class="section-head">
-          <div class="section-title">
-            <span class="section-icon">
-              <Icon name="focus" size="sm" :stroke-width="2" />
-            </span>
-            <div>
-              <h2>{{ t('admin.detectionCenter.configTitle') }}</h2>
-              <p>{{ t('admin.detectionCenter.configDescription') }}</p>
-            </div>
-          </div>
+      <section class="panel config-panel">
+        <div class="panel-title">
+          <span class="panel-title-icon">
+            <Icon name="focus" size="sm" :stroke-width="2" />
+          </span>
+          <h2>{{ t('admin.detectionCenter.configTitle') }}</h2>
         </div>
 
-        <div class="form-grid">
-          <label class="field field-wide">
-            <span class="label">{{ t('admin.detectionCenter.baseUrl') }} <em>*</em></span>
-            <div class="input-shell">
+        <div class="config-grid">
+          <label class="field field-half">
+            <span>{{ t('admin.detectionCenter.baseUrl') }} <em>*</em></span>
+            <div class="control-shell">
               <Icon name="link" size="sm" />
               <input
                 v-model.trim="form.base_url"
@@ -57,12 +32,11 @@
                 :disabled="busy"
               />
             </div>
-            <small>{{ t('admin.detectionCenter.baseUrlHint') }}</small>
           </label>
 
-          <label class="field">
-            <span class="label">{{ t('admin.detectionCenter.apiKey') }} <em>*</em></span>
-            <div class="input-shell">
+          <label class="field field-half">
+            <span>{{ t('admin.detectionCenter.apiKey') }} <em>*</em></span>
+            <div class="control-shell">
               <Icon name="lock" size="sm" />
               <input
                 v-model="form.api_key"
@@ -73,7 +47,7 @@
                 :disabled="busy"
               />
               <button
-                class="icon-btn"
+                class="icon-action"
                 type="button"
                 :title="showKey ? t('admin.detectionCenter.hideKey') : t('admin.detectionCenter.showKey')"
                 :aria-label="showKey ? t('admin.detectionCenter.hideKey') : t('admin.detectionCenter.showKey')"
@@ -82,13 +56,12 @@
                 <Icon :name="showKey ? 'eyeOff' : 'eye'" size="sm" />
               </button>
             </div>
-            <small>{{ t('admin.detectionCenter.keyHint') }}</small>
           </label>
 
           <label class="field">
-            <span class="label">{{ t('admin.detectionCenter.protocol') }} <em>*</em></span>
-            <div class="input-shell">
-              <Icon name="cube" size="sm" />
+            <span>{{ t('admin.detectionCenter.protocol') }} <em>*</em></span>
+            <div class="control-shell">
+              <Icon name="database" size="sm" />
               <select v-model="form.protocol" :disabled="busy" @change="clearDiscovery">
                 <option value="auto">{{ t('admin.detectionCenter.protocols.auto') }}</option>
                 <option value="openai">{{ t('admin.detectionCenter.protocols.openai') }}</option>
@@ -96,13 +69,12 @@
                 <option value="gemini">{{ t('admin.detectionCenter.protocols.gemini') }}</option>
               </select>
             </div>
-            <small>{{ t('admin.detectionCenter.protocolHint') }}</small>
           </label>
 
           <label class="field">
-            <span class="label">{{ t('admin.detectionCenter.model') }} <em>*</em></span>
-            <div class="input-shell">
-              <Icon name="cpu" size="sm" />
+            <span>{{ t('admin.detectionCenter.model') }} <em>*</em></span>
+            <div class="control-shell">
+              <Icon name="cube" size="sm" />
               <select v-model="form.model" :disabled="running || !discovery?.models.length">
                 <option value="" disabled>{{ t('admin.detectionCenter.modelPlaceholder') }}</option>
                 <option v-for="model in filteredModels" :key="modelKey(model)" :value="model.id">
@@ -110,7 +82,8 @@
                 </option>
               </select>
               <button
-                class="icon-btn"
+                v-if="discovery?.models.length"
+                class="icon-action"
                 type="button"
                 :title="t('admin.detectionCenter.discover')"
                 :aria-label="t('admin.detectionCenter.discover')"
@@ -120,327 +93,243 @@
                 <Icon name="refresh" size="sm" :class="{ spinning: discovering }" />
               </button>
             </div>
-            <small>{{ t('admin.detectionCenter.modelHint') }}</small>
           </label>
 
-          <div class="field mode-field">
-            <span class="label">{{ t('admin.detectionCenter.mode') }} <em>*</em></span>
-            <div class="mode-switch" role="radiogroup" :aria-label="t('admin.detectionCenter.mode')">
-              <button
-                type="button"
-                :class="{ active: form.mode === 'standard' }"
-                role="radio"
-                :aria-checked="form.mode === 'standard'"
-                :disabled="running"
-                @click="form.mode = 'standard'"
-              >
-                <Icon name="checkCircle" size="sm" />
-                {{ t('admin.detectionCenter.modes.standard') }}
-              </button>
-              <button
-                type="button"
-                :class="{ active: form.mode === 'deep' }"
-                role="radio"
-                :aria-checked="form.mode === 'deep'"
-                :disabled="running"
-                @click="form.mode = 'deep'"
-              >
-                <Icon name="search" size="sm" />
-                {{ t('admin.detectionCenter.modes.deep') }}
-              </button>
+          <label class="field">
+            <span>{{ t('admin.detectionCenter.mode') }} <em>*</em></span>
+            <div class="control-shell">
+              <Icon name="cpu" size="sm" />
+              <select v-model="form.mode" :disabled="running">
+                <option value="standard">{{ t('admin.detectionCenter.modes.standard') }}</option>
+                <option value="deep">{{ t('admin.detectionCenter.modes.deep') }}</option>
+              </select>
             </div>
-            <small>{{ t('admin.detectionCenter.modeHint') }}</small>
-          </div>
+          </label>
         </div>
 
-        <div class="target-actions">
-          <button class="btn secondary" type="button" :disabled="busy" @click="resetAll">
-            <Icon name="refresh" size="sm" />
-            {{ t('admin.detectionCenter.reset') }}
-          </button>
-          <button class="btn secondary strong" type="button" :disabled="busy || !canDiscover" @click="discoverModels">
-            <Icon name="database" size="sm" />
+        <div class="config-actions">
+          <button class="btn btn-secondary" type="button" :disabled="busy || !canDiscover" @click="discoverModels">
+            <Icon name="refresh" size="sm" :class="{ spinning: discovering }" />
             {{ discovering ? t('admin.detectionCenter.discovering') : t('admin.detectionCenter.discover') }}
           </button>
-          <button class="btn primary" type="button" :disabled="running || !form.model" @click="runDetection">
-            <Icon v-if="!running" name="play" size="sm" />
-            <span v-else class="spinner" />
+          <button class="btn btn-primary" type="button" :disabled="running || !form.model" @click="runDetection">
+            <span v-if="running" class="spinner" />
+            <Icon v-else name="play" size="sm" />
             {{ running ? t('admin.detectionCenter.running') : t('admin.detectionCenter.start') }}
           </button>
         </div>
 
-        <div v-if="errorMessage" class="alert alert-error" role="alert">
+        <div v-if="errorMessage" class="inline-error" role="alert">
           <Icon name="xCircle" size="sm" />
           <span>{{ errorMessage }}</span>
-          <button class="alert-close" type="button" aria-label="关闭" @click="errorMessage = ''">
+          <button type="button" aria-label="关闭" @click="errorMessage = ''">
             <Icon name="x" size="xs" />
           </button>
         </div>
       </section>
 
-      <section v-if="discovery" class="surface discovery-panel">
-        <div class="section-head discovery-heading">
-          <div class="section-title">
-            <span class="section-icon">
-              <Icon name="database" size="sm" :stroke-width="2" />
-            </span>
-            <div>
-              <h2>{{ t('admin.detectionCenter.discoveredTitle') }}</h2>
-              <p>{{ t('admin.detectionCenter.discoveryDescription') }}</p>
-            </div>
+      <section class="summary-row" aria-label="检测汇总">
+        <article class="summary-card summary-success">
+          <span class="summary-status-icon"><Icon name="checkCircle" size="md" /></span>
+          <div class="summary-copy">
+            <strong>{{ summaryStats.success }}</strong>
+            <span>{{ t('admin.detectionCenter.success') }}</span>
           </div>
-          <button class="btn compact secondary" type="button" :disabled="busy || !canDiscover" @click="discoverModels">
-            <Icon name="refresh" size="xs" />
-            {{ t('admin.detectionCenter.rediscover') }}
-          </button>
-        </div>
+          <span class="summary-wave" />
+        </article>
 
-        <div class="discovery-body">
-          <div class="protocol-summary">
-            <div class="protocol-summary-top">
-              <span class="success-dot">
-                <Icon name="checkCircle" size="sm" />
-              </span>
-              <strong>{{ t('admin.detectionCenter.detectedProtocols') }}</strong>
-              <span v-for="protocol in discovery.protocols" :key="protocol" class="protocol-chip">
-                {{ protocolLabel(protocol) }}
-              </span>
-            </div>
-            <div class="base-row">
-              <span>{{ t('admin.detectionCenter.baseAddress') }}</span>
-              <code>{{ form.base_url }}</code>
-            </div>
+        <article class="summary-card summary-failed">
+          <span class="summary-status-icon"><Icon name="xCircle" size="md" /></span>
+          <div class="summary-copy">
+            <strong>{{ summaryStats.failed }}</strong>
+            <span>{{ t('admin.detectionCenter.failed') }}</span>
           </div>
+          <span class="summary-wave" />
+        </article>
 
-          <div class="model-summary">
-            <div class="model-summary-title">
-              <strong>{{ t('admin.detectionCenter.foundModels', { count: discovery.models.length }) }}</strong>
-              <span>{{ t('admin.detectionCenter.suggestedProtocol') }}: {{ discovery.suggested_protocol }}</span>
-            </div>
-            <div class="model-chips">
-              <button
-                v-for="model in visibleModels"
-                :key="modelKey(model)"
-                type="button"
-                :class="['model-chip', { selected: form.model === model.id }]"
-                @click="form.model = model.id"
-              >
-                <Icon name="cube" size="xs" />
-                <span>{{ model.id }}</span>
-              </button>
-              <span v-if="remainingModelCount > 0" class="more-chip">+{{ remainingModelCount }}</span>
-            </div>
+        <article class="summary-card summary-partial">
+          <span class="summary-status-icon"><Icon name="exclamationTriangle" size="md" /></span>
+          <div class="summary-copy">
+            <strong>{{ summaryStats.partial }}</strong>
+            <span>{{ t('admin.detectionCenter.partialAvailable') }}</span>
           </div>
-        </div>
+          <span class="summary-wave" />
+        </article>
 
-        <div class="attempt-row">
-          <div v-for="attempt in discovery.attempts" :key="attempt.protocol" class="attempt-item">
-            <span class="attempt-name">{{ attempt.protocol }}</span>
-            <span :class="['status-pill', statusClass(attempt.status)]">{{ statusText(attempt.status) }}</span>
-            <span class="attempt-meta" v-if="attempt.http_status">HTTP {{ attempt.http_status }}</span>
-            <span class="attempt-meta" v-if="attempt.latency_ms">{{ attempt.latency_ms }} ms</span>
+        <article class="summary-card summary-unavailable">
+          <span class="summary-status-icon"><Icon name="minus" size="md" /></span>
+          <div class="summary-copy">
+            <strong>{{ summaryStats.unavailable }}</strong>
+            <span>{{ t('admin.detectionCenter.unavailableSimple') }}</span>
           </div>
-        </div>
+          <span class="summary-wave" />
+        </article>
       </section>
 
-      <section class="surface report-panel">
-        <div class="section-head report-heading">
-          <div class="section-title">
-            <span class="section-icon">
-              <Icon name="document" size="sm" :stroke-width="2" />
-            </span>
-            <div>
-              <h2>{{ t('admin.detectionCenter.reportTitle') }}</h2>
-              <p v-if="report">
-                <code>{{ report.report_id }}</code>
-                <span class="dot-sep">·</span>
-                {{ report.protocol }}
-                <span class="dot-sep">·</span>
-                <code>{{ report.model }}</code>
-              </p>
-              <p v-else>{{ t('admin.detectionCenter.emptyReport') }}</p>
+      <section class="results-grid">
+        <aside class="panel capability-panel">
+          <div class="result-panel-head">
+            <div class="panel-title">
+              <span class="panel-title-icon">
+                <Icon name="clipboard" size="sm" :stroke-width="2" />
+              </span>
+              <h2>{{ t('admin.detectionCenter.capabilityItems') }}</h2>
             </div>
+            <span class="count-text">{{ t('admin.detectionCenter.itemCount', { count: report?.probes.length || 0 }) }}</span>
           </div>
 
-          <div v-if="report" class="report-actions">
-            <span class="report-time">{{ reportTime }}</span>
-            <button class="btn compact secondary" type="button" @click="copyReport">
-              <Icon name="copy" size="xs" />
-              {{ copied ? t('admin.detectionCenter.copied') : t('admin.detectionCenter.copyReport') }}
+          <div class="capability-list">
+            <button
+              v-for="item in capabilityRows"
+              :key="item.id"
+              type="button"
+              :class="['capability-row', { active: selectedProbe?.id === item.id, disabled: !report }]"
+              :disabled="!report"
+              @click="selectCapability(item.id)"
+            >
+              <span class="capability-row-icon">
+                <Icon :name="item.icon" size="sm" />
+              </span>
+              <span class="capability-name">{{ item.name }}</span>
+              <span v-if="item.status === 'pending'" class="pending-dot">
+                <Icon name="minus" size="xs" />
+              </span>
+              <span v-else :class="['status-dot', statusClass(item.status)]">
+                <Icon v-if="item.status === 'success'" name="checkCircle" size="xs" />
+                <Icon v-else-if="item.status === 'failed'" name="xCircle" size="xs" />
+                <Icon v-else-if="item.status === 'partial'" name="exclamationTriangle" size="xs" />
+                <Icon v-else name="minus" size="xs" />
+              </span>
             </button>
-            <button class="btn compact secondary" type="button" @click="downloadReport">
-              <Icon name="download" size="xs" />
-              {{ t('admin.detectionCenter.downloadReport') }}
-            </button>
           </div>
-        </div>
+        </aside>
 
-        <template v-if="report">
-          <div class="summary-grid">
-            <article class="summary-card summary-total">
-              <span class="summary-icon primary-soft"><Icon name="clipboard" size="sm" /></span>
-              <div><span>{{ t('admin.detectionCenter.total') }}</span><strong>{{ report.summary.total }}</strong></div>
-            </article>
-            <article class="summary-card">
-              <span class="summary-icon success-soft"><Icon name="checkCircle" size="sm" /></span>
-              <div><span>{{ t('admin.detectionCenter.success') }}</span><strong class="success-text">{{ report.summary.success }}</strong><small>{{ percent(report.summary.success) }}</small></div>
-            </article>
-            <article class="summary-card">
-              <span class="summary-icon danger-soft"><Icon name="xCircle" size="sm" /></span>
-              <div><span>{{ t('admin.detectionCenter.failed') }}</span><strong class="danger-text">{{ report.summary.failed }}</strong><small>{{ percent(report.summary.failed) }}</small></div>
-            </article>
-            <article class="summary-card">
-              <span class="summary-icon warning-soft"><Icon name="exclamationTriangle" size="sm" /></span>
-              <div><span>{{ t('admin.detectionCenter.partial') }}</span><strong class="warning-text">{{ report.summary.partial }}</strong><small>{{ percent(report.summary.partial) }}</small></div>
-            </article>
-            <article class="summary-card">
-              <span class="summary-icon info-soft"><Icon name="infoCircle" size="sm" /></span>
-              <div><span>{{ t('admin.detectionCenter.inconclusive') }}</span><strong>{{ report.summary.inconclusive }}</strong><small>{{ percent(report.summary.inconclusive) }}</small></div>
-            </article>
-            <article class="summary-card muted-card">
-              <span class="summary-icon neutral-soft"><Icon name="minus" size="sm" /></span>
-              <div><span>{{ t('admin.detectionCenter.notApplicable') }}</span><strong>{{ report.summary.not_applicable }}</strong></div>
-            </article>
-            <article class="summary-card muted-card">
-              <span class="summary-icon neutral-soft"><Icon name="ban" size="sm" /></span>
-              <div><span>{{ t('admin.detectionCenter.unavailable') }}</span><strong>{{ report.summary.unavailable }}</strong></div>
-            </article>
-          </div>
+        <article class="panel detail-panel">
+          <div class="result-panel-head">
+            <div class="panel-title">
+              <span class="panel-title-icon">
+                <Icon name="document" size="sm" :stroke-width="2" />
+              </span>
+              <h2>{{ t('admin.detectionCenter.resultDetails') }}</h2>
+            </div>
 
-          <div class="result-workbench">
-            <aside class="capability-list" aria-label="能力检测结果">
-              <div class="capability-list-head">
-                <div>
-                  <strong>{{ t('admin.detectionCenter.capabilityResults') }}</strong>
-                  <span>{{ report.probes.length }}</span>
-                </div>
-              </div>
-              <button
-                v-for="probe in report.probes"
-                :key="probe.id"
-                type="button"
-                :class="['capability-item', { active: selectedProbe?.id === probe.id }]"
-                @click="selectedProbeId = probe.id"
-              >
-                <span class="capability-icon">
-                  <Icon name="cpu" size="sm" />
-                </span>
-                <span class="capability-copy">
-                  <strong>{{ probe.name }}</strong>
-                  <small>{{ probe.category }}</small>
-                </span>
-                <span :class="['status-pill', statusClass(probe.status)]">{{ statusText(probe.status) }}</span>
-                <Icon name="chevronRight" size="xs" class="capability-chevron" />
+            <div v-if="report" class="detail-actions">
+              <button class="mini-action" type="button" :title="t('admin.detectionCenter.copyReport')" @click="copyReport">
+                <Icon name="copy" size="xs" />
               </button>
-            </aside>
-
-            <article v-if="selectedProbe" class="probe-detail">
-              <div class="probe-detail-head">
-                <div class="probe-detail-title">
-                  <span :class="['detail-icon', statusClass(selectedProbe.status)]">
-                    <Icon v-if="selectedProbe.status === 'success'" name="checkCircle" size="md" />
-                    <Icon v-else-if="selectedProbe.status === 'failed'" name="xCircle" size="md" />
-                    <Icon v-else-if="selectedProbe.status === 'partial'" name="exclamationTriangle" size="md" />
-                    <Icon v-else name="infoCircle" size="md" />
-                  </span>
-                  <div>
-                    <div class="title-line">
-                      <h3>{{ selectedProbe.name }}</h3>
-                      <span :class="['status-pill', statusClass(selectedProbe.status)]">{{ statusText(selectedProbe.status) }}</span>
-                    </div>
-                    <p>{{ selectedProbe.summary }}</p>
-                  </div>
-                </div>
-                <div class="confidence-box">
-                  <span>{{ t('admin.detectionCenter.confidence') }}</span>
-                  <strong>{{ confidence(selectedProbe.confidence) }}</strong>
-                </div>
-              </div>
-
-              <div :class="['result-banner', statusClass(selectedProbe.status)]">
-                <Icon v-if="selectedProbe.status === 'success'" name="checkCircle" size="sm" />
-                <Icon v-else-if="selectedProbe.status === 'failed'" name="xCircle" size="sm" />
-                <Icon v-else-if="selectedProbe.status === 'partial'" name="exclamationTriangle" size="sm" />
-                <Icon v-else name="infoCircle" size="sm" />
-                <div>
-                  <strong>{{ t('admin.detectionCenter.result') }}：{{ statusText(selectedProbe.status) }}</strong>
-                  <span>{{ selectedProbe.failure_reason || selectedProbe.summary }}</span>
-                </div>
-              </div>
-
-              <div class="detail-grid">
-                <div class="diagnosis-column">
-                  <div v-if="selectedProbe.reason_code" class="info-row">
-                    <span>{{ t('admin.detectionCenter.reasonCode') }}</span>
-                    <code>{{ selectedProbe.reason_code }}</code>
-                  </div>
-                  <div v-if="selectedProbe.failure_reason" class="info-row">
-                    <span>{{ t('admin.detectionCenter.failureReason') }}</span>
-                    <p>{{ selectedProbe.failure_reason }}</p>
-                  </div>
-                  <div v-if="selectedProbe.possible_causes?.length" class="info-block">
-                    <span>{{ t('admin.detectionCenter.possibleCauses') }}</span>
-                    <ul><li v-for="item in selectedProbe.possible_causes" :key="item">{{ item }}</li></ul>
-                  </div>
-                  <div v-if="selectedProbe.recommendations?.length" class="info-block">
-                    <span>{{ t('admin.detectionCenter.recommendations') }}</span>
-                    <ul><li v-for="item in selectedProbe.recommendations" :key="item">{{ item }}</li></ul>
-                  </div>
-                  <div v-if="!selectedProbe.failure_reason && !selectedProbe.possible_causes?.length && !selectedProbe.recommendations?.length" class="success-detail">
-                    <Icon name="checkCircle" size="sm" />
-                    <span>{{ selectedProbe.summary }}</span>
-                  </div>
-                </div>
-
-                <div class="evidence-column">
-                  <div class="evidence-head">
-                    <div>
-                      <strong>{{ t('admin.detectionCenter.evidence') }}</strong>
-                      <span>{{ selectedProbe.evidence?.length || 0 }} {{ t('admin.detectionCenter.items') }}</span>
-                    </div>
-                  </div>
-                  <div v-if="selectedProbe.evidence?.length" class="evidence-stack">
-                    <article v-for="(evidence, index) in selectedProbe.evidence" :key="selectedProbe.id + '-' + index" class="evidence-card">
-                      <div class="evidence-title">
-                        <strong>{{ evidence.label }}</strong>
-                        <div>
-                          <span v-if="evidence.http_status">HTTP {{ evidence.http_status }}</span>
-                          <span v-if="evidence.duration_ms">{{ evidence.duration_ms }} ms</span>
-                        </div>
-                      </div>
-                      <dl>
-                        <template v-if="evidence.expected">
-                          <dt>{{ t('admin.detectionCenter.expected') }}</dt>
-                          <dd>{{ evidence.expected }}</dd>
-                        </template>
-                        <template v-if="evidence.actual">
-                          <dt>{{ t('admin.detectionCenter.actual') }}</dt>
-                          <dd>{{ evidence.actual }}</dd>
-                        </template>
-                      </dl>
-                      <pre v-if="evidence.response_excerpt">{{ evidence.response_excerpt }}</pre>
-                    </article>
-                  </div>
-                  <div v-else class="evidence-empty">{{ t('admin.detectionCenter.noEvidence') }}</div>
-                </div>
-              </div>
-            </article>
+              <button class="mini-action" type="button" :title="t('admin.detectionCenter.downloadReport')" @click="downloadReport">
+                <Icon name="download" size="xs" />
+              </button>
+            </div>
+            <span v-else class="empty-status">{{ t('admin.detectionCenter.noResult') }}</span>
           </div>
 
-          <div v-if="report.notes?.length" class="report-notes">
-            <Icon name="infoCircle" size="sm" />
-            <div>
-              <strong>{{ t('admin.detectionCenter.notes') }}</strong>
-              <ul><li v-for="note in report.notes" :key="note">{{ note }}</li></ul>
+          <div v-if="!report || !selectedProbe" class="empty-state">
+            <span class="empty-illustration">
+              <Icon name="document" size="lg" />
+              <span class="sparkle sparkle-one">✦</span>
+              <span class="sparkle sparkle-two">✦</span>
+            </span>
+            <strong>{{ t('admin.detectionCenter.noResult') }}</strong>
+            <p>{{ t('admin.detectionCenter.noResultHint') }}</p>
+            <button class="btn btn-primary empty-start" type="button" :disabled="running || !form.model" @click="runDetection">
+              <Icon name="play" size="sm" />
+              {{ t('admin.detectionCenter.start') }}
+            </button>
+          </div>
+
+          <div v-else class="probe-view">
+            <div class="probe-header">
+              <div class="probe-heading">
+                <span :class="['probe-state-icon', statusClass(selectedProbe.status)]">
+                  <Icon v-if="selectedProbe.status === 'success'" name="checkCircle" size="md" />
+                  <Icon v-else-if="selectedProbe.status === 'failed'" name="xCircle" size="md" />
+                  <Icon v-else-if="selectedProbe.status === 'partial'" name="exclamationTriangle" size="md" />
+                  <Icon v-else name="infoCircle" size="md" />
+                </span>
+                <div>
+                  <div class="probe-title-line">
+                    <h3>{{ selectedProbe.name }}</h3>
+                    <span :class="['status-pill', statusClass(selectedProbe.status)]">{{ statusText(selectedProbe.status) }}</span>
+                  </div>
+                  <p>{{ selectedProbe.summary }}</p>
+                </div>
+              </div>
+
+              <div class="confidence">
+                <span>{{ t('admin.detectionCenter.confidence') }}</span>
+                <strong>{{ confidenceText(selectedProbe.confidence) }}</strong>
+              </div>
+            </div>
+
+            <div v-if="selectedProbe.reason_code || selectedProbe.failure_reason" class="diagnosis-card">
+              <div v-if="selectedProbe.reason_code" class="diagnosis-row">
+                <span>{{ t('admin.detectionCenter.reasonCode') }}</span>
+                <code>{{ selectedProbe.reason_code }}</code>
+              </div>
+              <div v-if="selectedProbe.failure_reason" class="diagnosis-row">
+                <span>{{ t('admin.detectionCenter.failureReason') }}</span>
+                <p>{{ selectedProbe.failure_reason }}</p>
+              </div>
+            </div>
+
+            <div class="probe-columns">
+              <div class="probe-column">
+                <section v-if="selectedProbe.possible_causes?.length" class="info-section">
+                  <h4>{{ t('admin.detectionCenter.possibleCauses') }}</h4>
+                  <ul>
+                    <li v-for="item in selectedProbe.possible_causes" :key="item">{{ item }}</li>
+                  </ul>
+                </section>
+
+                <section v-if="selectedProbe.recommendations?.length" class="info-section">
+                  <h4>{{ t('admin.detectionCenter.recommendations') }}</h4>
+                  <ul>
+                    <li v-for="item in selectedProbe.recommendations" :key="item">{{ item }}</li>
+                  </ul>
+                </section>
+
+                <section v-if="!selectedProbe.possible_causes?.length && !selectedProbe.recommendations?.length" class="success-note">
+                  <Icon name="checkCircle" size="sm" />
+                  <span>{{ selectedProbe.summary }}</span>
+                </section>
+              </div>
+
+              <div class="probe-column evidence-column">
+                <div class="evidence-title-row">
+                  <h4>{{ t('admin.detectionCenter.evidence') }}</h4>
+                  <span>{{ selectedProbe.evidence?.length || 0 }}</span>
+                </div>
+
+                <div v-if="selectedProbe.evidence?.length" class="evidence-list">
+                  <article
+                    v-for="(evidence, index) in selectedProbe.evidence"
+                    :key="selectedProbe.id + '-' + index"
+                    class="evidence-card"
+                  >
+                    <div class="evidence-head">
+                      <strong>{{ evidence.label }}</strong>
+                      <span v-if="evidence.http_status">HTTP {{ evidence.http_status }}</span>
+                      <span v-if="evidence.duration_ms">{{ evidence.duration_ms }} ms</span>
+                    </div>
+                    <dl>
+                      <template v-if="evidence.expected">
+                        <dt>{{ t('admin.detectionCenter.expected') }}</dt>
+                        <dd>{{ evidence.expected }}</dd>
+                      </template>
+                      <template v-if="evidence.actual">
+                        <dt>{{ t('admin.detectionCenter.actual') }}</dt>
+                        <dd>{{ evidence.actual }}</dd>
+                      </template>
+                    </dl>
+                    <pre v-if="evidence.response_excerpt">{{ evidence.response_excerpt }}</pre>
+                  </article>
+                </div>
+                <div v-else class="evidence-empty">{{ t('admin.detectionCenter.noEvidence') }}</div>
+              </div>
             </div>
           </div>
-        </template>
-
-        <div v-else class="report-empty">
-          <span class="empty-icon"><Icon name="document" size="lg" /></span>
-          <strong>{{ t('admin.detectionCenter.emptyReportTitle') }}</strong>
-          <p>{{ t('admin.detectionCenter.emptyReport') }}</p>
-        </div>
+        </article>
       </section>
     </div>
   </AppLayout>
@@ -449,7 +338,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import detectionCenterAPI, {
@@ -457,11 +345,18 @@ import detectionCenterAPI, {
   type DetectionDiscoveryResponse,
   type DetectionMode,
   type DetectionProtocol,
+  type DetectionProbeResult,
   type DetectionReport,
 } from '@/api/admin/detectionCenter'
 
+type CapabilityRow = {
+  id: string
+  name: string
+  icon: string
+  status: DetectionProbeResult['status'] | 'pending'
+}
+
 const { t } = useI18n()
-const router = useRouter()
 
 const form = reactive<{
   base_url: string
@@ -474,7 +369,7 @@ const form = reactive<{
   api_key: '',
   protocol: 'auto',
   model: '',
-  mode: 'deep'
+  mode: 'standard'
 })
 
 const showKey = ref(false)
@@ -482,77 +377,76 @@ const discovering = ref(false)
 const running = ref(false)
 const copied = ref(false)
 const errorMessage = ref('')
-const modelSearch = ref('')
 const discovery = ref<DetectionDiscoveryResponse | null>(null)
 const report = ref<DetectionReport | null>(null)
 const selectedProbeId = ref('')
 
 const busy = computed(() => discovering.value || running.value)
 const canDiscover = computed(() => Boolean(form.base_url.trim() && form.api_key.trim()))
+const filteredModels = computed(() => discovery.value?.models ?? [])
 
-const filteredModels = computed(() => {
-  const query = modelSearch.value.toLowerCase()
-  const models = discovery.value?.models ?? []
-  if (!query) return models
-  return models.filter(model =>
-    (model.id + ' ' + model.name + ' ' + (model.provider ?? '')).toLowerCase().includes(query)
-  )
+const placeholderCapabilities = computed<CapabilityRow[]>(() => [
+  { id: 'placeholder-basic', name: t('admin.detectionCenter.capabilities.basic'), icon: 'link', status: 'pending' },
+  { id: 'placeholder-models', name: t('admin.detectionCenter.capabilities.models'), icon: 'cube', status: 'pending' },
+  { id: 'placeholder-text', name: t('admin.detectionCenter.capabilities.text'), icon: 'document', status: 'pending' },
+  { id: 'placeholder-multi', name: t('admin.detectionCenter.capabilities.multiTurn'), icon: 'cpu', status: 'pending' },
+  { id: 'placeholder-stream', name: t('admin.detectionCenter.capabilities.streaming'), icon: 'refresh', status: 'pending' },
+  { id: 'placeholder-tools', name: t('admin.detectionCenter.capabilities.tools'), icon: 'focus', status: 'pending' },
+  { id: 'placeholder-vision', name: t('admin.detectionCenter.capabilities.vision'), icon: 'eye', status: 'pending' },
+])
+
+const capabilityRows = computed<CapabilityRow[]>(() => {
+  if (!report.value) return placeholderCapabilities.value
+  return report.value.probes.map(probe => ({
+    id: probe.id,
+    name: probe.name,
+    icon: capabilityIcon(probe.category),
+    status: probe.status,
+  }))
 })
-
-const visibleModels = computed(() => (discovery.value?.models ?? []).slice(0, 4))
-const remainingModelCount = computed(() => Math.max(0, (discovery.value?.models.length ?? 0) - visibleModels.value.length))
 
 const selectedProbe = computed(() => {
   if (!report.value?.probes.length) return null
   return report.value.probes.find(probe => probe.id === selectedProbeId.value) ?? report.value.probes[0]
 })
 
-const reportTime = computed(() => {
-  if (!report.value?.completed_at) return ''
-  const date = new Date(report.value.completed_at)
-  return Number.isNaN(date.getTime()) ? report.value.completed_at : date.toLocaleString()
+const summaryStats = computed(() => {
+  const summary = report.value?.summary
+  if (!summary) return { success: 0, failed: 0, partial: 0, unavailable: 0 }
+  return {
+    success: summary.success,
+    failed: summary.failed,
+    partial: summary.partial,
+    unavailable: summary.inconclusive + summary.not_applicable + summary.unavailable,
+  }
 })
 
 function modelKey(model: DetectedModel) {
   return model.id + ':' + model.protocols.join(',')
 }
 
-function protocolLabel(protocol: string) {
-  if (protocol === 'openai') return t('admin.detectionCenter.protocols.openai')
-  if (protocol === 'anthropic') return t('admin.detectionCenter.protocols.anthropic')
-  if (protocol === 'gemini') return t('admin.detectionCenter.protocols.gemini')
-  return protocol
-}
-
 function clearDiscovery() {
   discovery.value = null
   report.value = null
-  form.model = ''
-  modelSearch.value = ''
   selectedProbeId.value = ''
+  form.model = ''
 }
 
-function resetAll() {
-  form.base_url = ''
-  form.api_key = ''
-  form.protocol = 'auto'
-  form.model = ''
-  form.mode = 'deep'
-  discovery.value = null
-  report.value = null
-  selectedProbeId.value = ''
-  modelSearch.value = ''
-  errorMessage.value = ''
-  showKey.value = false
+function selectCapability(id: string) {
+  if (!report.value) return
+  selectedProbeId.value = id
 }
 
-function goBack() {
-  const previous = window.history.state?.back
-  if (previous) {
-    router.back()
-    return
-  }
-  router.push('/admin/dashboard')
+function capabilityIcon(category: string) {
+  const value = category.toLowerCase()
+  if (value.includes('stream')) return 'refresh'
+  if (value.includes('tool')) return 'focus'
+  if (value.includes('structured')) return 'document'
+  if (value.includes('cache')) return 'database'
+  if (value.includes('citation')) return 'document'
+  if (value.includes('reason')) return 'cpu'
+  if (value.includes('context')) return 'clipboard'
+  return 'link'
 }
 
 function statusText(status: string) {
@@ -564,13 +458,8 @@ function statusClass(status: string) {
   return 'status-' + status.replace(/_/g, '-')
 }
 
-function confidence(value: number) {
+function confidenceText(value: number) {
   return Math.round(Math.min(1, Math.max(0, value)) * 100) + '%'
-}
-
-function percent(value: number) {
-  const total = report.value?.summary.total || 0
-  return total > 0 ? ((value / total) * 100).toFixed(1) + '%' : '0%'
 }
 
 async function discoverModels() {
@@ -589,8 +478,9 @@ async function discoverModels() {
     discovery.value = await detectionCenterAPI.discover({
       base_url: form.base_url,
       api_key: form.api_key,
-      protocol: form.protocol
+      protocol: form.protocol,
     })
+
     if (discovery.value.models.length === 1) {
       form.model = discovery.value.models[0].id
     }
@@ -618,11 +508,13 @@ async function runDetection() {
       api_key: form.api_key,
       protocol: form.protocol,
       model: form.model,
-      mode: form.mode
+      mode: form.mode,
     })
+
     const preferred = report.value.probes.find(probe => probe.status === 'failed')
       ?? report.value.probes.find(probe => probe.status === 'partial')
       ?? report.value.probes[0]
+
     selectedProbeId.value = preferred?.id ?? ''
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('admin.detectionCenter.errors.runFailed')
@@ -664,166 +556,64 @@ function downloadReport() {
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: 16px;
+  gap: 18px;
   padding-bottom: 28px;
 }
 
-.topline {
+.page-hero {
   display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.back-btn,
-.breadcrumb,
-.btn,
-.icon-btn,
-.mode-switch button,
-.model-chip,
-.capability-item {
-  transition:
-    border-color var(--motion-fast) var(--ease-standard),
-    background-color var(--motion-fast) var(--ease-standard),
-    color var(--motion-fast) var(--ease-standard),
-    box-shadow var(--motion-fast) var(--ease-standard),
-    transform var(--motion-fast) var(--ease-standard);
-}
-
-.back-btn {
-  display: inline-flex;
-  min-height: 34px;
-  align-items: center;
-  gap: 6px;
-  border: 1px solid var(--color-border);
-  border-radius: 9px;
-  background: var(--color-surface);
-  padding: 0 11px;
-  color: var(--color-text-primary);
-  font-size: 13px;
-  font-weight: 650;
-  box-shadow: var(--shadow-xs);
-}
-
-.back-btn:hover {
-  border-color: var(--color-primary-border);
-  color: var(--color-primary);
-}
-
-.breadcrumb {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 6px;
-  color: var(--color-text-muted);
-  font-size: 12px;
-}
-
-.breadcrumb strong {
-  color: var(--color-text-secondary);
-  font-weight: 650;
-}
-
-.hero {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-}
-
-.hero-main {
-  display: flex;
-  min-width: 0;
   align-items: center;
   gap: 14px;
+  padding: 4px 2px 2px;
 }
 
-.hero-icon {
+.page-icon {
   display: inline-flex;
-  height: 48px;
-  width: 48px;
-  flex: 0 0 48px;
+  height: 54px;
+  width: 54px;
+  flex: 0 0 54px;
   align-items: center;
   justify-content: center;
   border: 1px solid var(--color-primary-border);
-  border-radius: 14px;
-  background: var(--color-primary-soft);
+  border-radius: 16px;
+  background: linear-gradient(145deg, var(--color-primary-soft), var(--color-surface));
   color: var(--color-primary);
+  box-shadow: 0 10px 26px color-mix(in srgb, var(--color-primary) 12%, transparent);
 }
 
-.hero-copy {
-  min-width: 0;
-}
-
-.hero-copy h1 {
+.page-hero h1 {
   margin: 0;
   color: var(--color-text-primary);
-  font-size: 24px;
-  font-weight: 750;
-  line-height: 1.2;
+  font-size: 28px;
+  font-weight: 780;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
 }
 
-.hero-copy p {
-  max-width: 760px;
-  margin: 5px 0 0;
+.page-hero p {
+  margin: 6px 0 0;
   color: var(--color-text-secondary);
   font-size: 13px;
-  line-height: 1.6;
 }
 
-.security-note {
-  display: flex;
-  max-width: 470px;
-  align-items: flex-start;
-  gap: 9px;
-  border: 1px solid color-mix(in srgb, var(--color-warning) 26%, var(--color-border));
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--color-warning) 8%, var(--color-surface));
-  padding: 10px 12px;
-  color: var(--color-text-secondary);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.security-icon {
-  display: inline-flex;
-  height: 28px;
-  width: 28px;
-  flex: 0 0 28px;
-  align-items: center;
-  justify-content: center;
-  border-radius: 9px;
-  background: color-mix(in srgb, var(--color-warning) 14%, transparent);
-  color: var(--color-warning);
-}
-
-.surface {
+.panel {
   border: 1px solid var(--color-border);
-  border-radius: 16px;
-  background: var(--color-surface);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--color-surface) 96%, transparent);
   box-shadow: var(--shadow-xs);
 }
 
-.target-panel,
-.discovery-panel,
-.report-panel {
-  padding: 18px;
+.config-panel {
+  padding: 20px 22px 18px;
 }
 
-.section-head {
+.panel-title {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 14px;
+  align-items: center;
+  gap: 9px;
 }
 
-.section-title {
-  display: flex;
-  min-width: 0;
-  align-items: flex-start;
-  gap: 10px;
-}
-
-.section-icon {
+.panel-title-icon {
   display: inline-flex;
   height: 30px;
   width: 30px;
@@ -835,61 +625,47 @@ function downloadReport() {
   color: var(--color-primary);
 }
 
-.section-title h2 {
+.panel-title h2 {
   margin: 0;
   color: var(--color-text-primary);
   font-size: 16px;
-  font-weight: 720;
+  font-weight: 730;
 }
 
-.section-title p,
-.report-heading p {
-  margin: 4px 0 0;
-  color: var(--color-text-muted);
-  font-size: 12px;
-  line-height: 1.55;
-}
-
-.form-grid {
+.config-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr) minmax(300px, 0.72fr);
-  gap: 14px 16px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 16px;
   margin-top: 18px;
 }
 
 .field {
   display: flex;
   min-width: 0;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.field-wide {
   grid-column: span 2;
+  flex-direction: column;
+  gap: 7px;
 }
 
-.field .label {
+.field-half {
+  grid-column: span 3;
+}
+
+.field > span {
   color: var(--color-text-primary);
   font-size: 12px;
   font-weight: 680;
 }
 
-.field .label em {
+.field em {
   color: var(--color-danger);
   font-style: normal;
 }
 
-.field small {
-  min-height: 18px;
-  color: var(--color-text-muted);
-  font-size: 11px;
-  line-height: 1.5;
-}
-
-.input-shell {
+.control-shell {
   display: flex;
   min-width: 0;
-  min-height: 40px;
+  min-height: 42px;
   align-items: center;
   gap: 8px;
   border: 1px solid var(--color-border);
@@ -897,15 +673,16 @@ function downloadReport() {
   background: var(--color-surface);
   padding: 0 10px;
   color: var(--color-text-muted);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 38%);
 }
 
-.input-shell:focus-within {
+.control-shell:focus-within {
   border-color: var(--color-primary);
   box-shadow: 0 0 0 3px var(--color-primary-ring);
 }
 
-.input-shell input,
-.input-shell select {
+.control-shell input,
+.control-shell select {
   min-width: 0;
   flex: 1;
   border: 0;
@@ -915,20 +692,13 @@ function downloadReport() {
   outline: none;
 }
 
-.input-shell input::placeholder {
+.control-shell input::placeholder {
   color: var(--color-text-muted);
 }
 
-.input-shell input:disabled,
-.input-shell select:disabled {
-  color: var(--color-text-disabled);
-}
-
-.icon-btn {
+.icon-action,
+.mini-action {
   display: inline-flex;
-  height: 30px;
-  width: 30px;
-  flex: 0 0 30px;
   align-items: center;
   justify-content: center;
   border: 0;
@@ -937,125 +707,79 @@ function downloadReport() {
   color: var(--color-text-muted);
 }
 
-.icon-btn:hover:not(:disabled) {
+.icon-action {
+  height: 30px;
+  width: 30px;
+  flex: 0 0 30px;
+}
+
+.icon-action:hover:not(:disabled),
+.mini-action:hover {
   background: var(--color-surface-soft);
   color: var(--color-primary);
 }
 
-.mode-field {
-  min-width: 0;
-}
-
-.mode-switch {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
-  min-height: 40px;
-  border: 1px solid var(--color-border);
-  border-radius: 10px;
-  background: var(--color-surface-soft);
-  padding: 3px;
-}
-
-.mode-switch button {
-  display: inline-flex;
-  min-width: 0;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--color-text-secondary);
-  font-size: 12px;
-  font-weight: 650;
-}
-
-.mode-switch button.active {
-  border-color: var(--color-primary-border);
-  background: var(--color-surface);
-  color: var(--color-primary);
-  box-shadow: var(--shadow-xs);
-}
-
-.target-actions {
+.config-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
-  margin-top: 6px;
+  gap: 10px;
+  margin-top: 18px;
 }
 
 .btn {
   display: inline-flex;
-  min-height: 38px;
+  min-height: 42px;
   align-items: center;
   justify-content: center;
-  gap: 7px;
+  gap: 8px;
   border: 1px solid transparent;
-  border-radius: 9px;
-  padding: 0 14px;
+  border-radius: 10px;
+  padding: 0 18px;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 720;
+  transition:
+    transform var(--motion-fast) var(--ease-standard),
+    background-color var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard);
 }
 
-.btn.compact {
-  min-height: 34px;
-  padding: 0 11px;
+.btn-secondary {
+  border-color: var(--color-primary-border);
+  background: var(--color-surface);
+  color: var(--color-primary);
 }
 
-.btn.primary {
+.btn-primary {
   border-color: var(--color-primary);
-  background: var(--color-primary);
+  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-hover));
   color: white;
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--color-primary) 20%, transparent);
 }
 
-.btn.primary:hover:not(:disabled) {
-  border-color: var(--color-primary-hover);
-  background: var(--color-primary-hover);
+.btn:hover:not(:disabled) {
   transform: translateY(-1px);
 }
 
-.btn.secondary {
-  border-color: var(--color-border);
-  background: var(--color-surface);
-  color: var(--color-text-secondary);
-}
-
-.btn.secondary.strong {
-  border-color: var(--color-primary-border);
-  color: var(--color-primary);
-}
-
-.btn.secondary:hover:not(:disabled) {
-  border-color: var(--color-primary-border);
-  background: var(--color-surface-soft);
-  color: var(--color-primary);
-}
-
 .btn:disabled,
-.icon-btn:disabled,
-.mode-switch button:disabled {
+.icon-action:disabled {
   cursor: not-allowed;
   opacity: 0.5;
 }
 
-.alert {
+.inline-error {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 14px;
-  border-radius: 10px;
-  padding: 9px 11px;
-  font-size: 12px;
-}
-
-.alert-error {
-  border: 1px solid color-mix(in srgb, var(--color-danger) 32%, var(--color-border));
+  margin-top: 12px;
+  border: 1px solid color-mix(in srgb, var(--color-danger) 28%, var(--color-border));
+  border-radius: 9px;
   background: color-mix(in srgb, var(--color-danger) 7%, var(--color-surface));
+  padding: 9px 11px;
   color: var(--color-danger);
+  font-size: 11px;
 }
 
-.alert-close {
+.inline-error button {
   display: inline-flex;
   margin-left: auto;
   border: 0;
@@ -1063,289 +787,444 @@ function downloadReport() {
   color: inherit;
 }
 
-.discovery-heading {
-  align-items: center;
-}
-
-.discovery-body {
+.summary-row {
   display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
-  gap: 18px;
-  margin-top: 16px;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: 12px;
-  background: var(--color-surface-soft);
-  padding: 13px 14px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
 }
 
-.protocol-summary {
-  min-width: 0;
-  border-right: 1px solid var(--color-border);
-  padding-right: 18px;
-}
-
-.protocol-summary-top {
+.summary-card {
+  position: relative;
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 7px;
-}
-
-.protocol-summary-top strong,
-.model-summary-title strong {
-  color: var(--color-text-primary);
-  font-size: 12px;
-}
-
-.success-dot {
-  display: inline-flex;
-  color: var(--color-success);
-}
-
-.protocol-chip,
-.more-chip {
-  display: inline-flex;
-  min-height: 24px;
-  align-items: center;
-  border: 1px solid color-mix(in srgb, var(--color-success) 24%, var(--color-border));
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--color-success) 8%, var(--color-surface));
-  padding: 0 8px;
-  color: var(--color-success);
-  font-size: 10px;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.base-row {
-  display: grid;
-  grid-template-columns: 70px minmax(0, 1fr);
-  gap: 8px;
-  margin-top: 11px;
-  align-items: center;
-  color: var(--color-text-muted);
-  font-size: 11px;
-}
-
-.base-row code {
   min-width: 0;
-  overflow-wrap: anywhere;
-  border-radius: 7px;
+  min-height: 94px;
+  align-items: center;
+  gap: 14px;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
   background: var(--color-surface);
-  padding: 6px 8px;
+  padding: 16px;
+  box-shadow: var(--shadow-xs);
+}
+
+.summary-status-icon {
+  position: relative;
+  z-index: 2;
+  display: inline-flex;
+  height: 44px;
+  width: 44px;
+  flex: 0 0 44px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 13px;
+}
+
+.summary-copy {
+  position: relative;
+  z-index: 2;
+}
+
+.summary-copy strong {
+  display: block;
+  color: var(--color-text-primary);
+  font-size: 24px;
+  font-weight: 780;
+  line-height: 1;
+}
+
+.summary-copy span {
+  display: block;
+  margin-top: 6px;
   color: var(--color-text-secondary);
   font-size: 11px;
+  font-weight: 650;
 }
 
-.model-summary {
-  min-width: 0;
+.summary-wave {
+  position: absolute;
+  right: -18px;
+  bottom: -26px;
+  height: 84px;
+  width: 190px;
+  transform: rotate(-4deg);
+  border-radius: 52% 48% 0 0;
+  opacity: 0.9;
 }
 
-.model-summary-title {
+.summary-card::after {
+  position: absolute;
+  right: 16px;
+  bottom: 10px;
+  left: 96px;
+  height: 5px;
+  border-radius: 999px;
+  content: '';
+  opacity: 0.4;
+}
+
+.summary-success .summary-status-icon { background: color-mix(in srgb, var(--color-success) 12%, white); color: var(--color-success); }
+.summary-success .summary-wave { background: linear-gradient(180deg, color-mix(in srgb, var(--color-success) 14%, transparent), transparent); }
+.summary-success::after { background: var(--color-success); }
+
+.summary-failed .summary-status-icon { background: color-mix(in srgb, var(--color-danger) 11%, white); color: var(--color-danger); }
+.summary-failed .summary-wave { background: linear-gradient(180deg, color-mix(in srgb, var(--color-danger) 13%, transparent), transparent); }
+.summary-failed::after { background: var(--color-danger); }
+
+.summary-partial .summary-status-icon { background: color-mix(in srgb, var(--color-warning) 14%, white); color: var(--color-warning); }
+.summary-partial .summary-wave { background: linear-gradient(180deg, color-mix(in srgb, var(--color-warning) 16%, transparent), transparent); }
+.summary-partial::after { background: var(--color-warning); }
+
+.summary-unavailable .summary-status-icon { background: var(--color-surface-soft); color: var(--color-text-muted); }
+.summary-unavailable .summary-wave { background: linear-gradient(180deg, color-mix(in srgb, var(--color-info) 10%, transparent), transparent); }
+.summary-unavailable::after { background: var(--color-text-muted); }
+
+.results-grid {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.72fr) minmax(0, 1.58fr);
+  gap: 14px;
+  align-items: stretch;
+}
+
+.capability-panel,
+.detail-panel {
+  min-height: 360px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.result-panel-head {
   display: flex;
+  min-height: 54px;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  border-bottom: 1px solid var(--color-border-subtle);
+  padding: 0 16px;
 }
 
-.model-summary-title span {
+.count-text,
+.empty-status {
   color: var(--color-text-muted);
   font-size: 10px;
 }
 
-.model-chips {
+.capability-list {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 10px;
+  flex-direction: column;
 }
 
-.model-chip {
-  display: inline-flex;
-  max-width: 220px;
-  min-height: 30px;
+.capability-row {
+  display: grid;
+  width: 100%;
+  min-height: 43px;
+  grid-template-columns: 28px minmax(0, 1fr) 26px;
+  gap: 9px;
   align-items: center;
-  gap: 6px;
-  border: 1px solid var(--color-border);
-  border-radius: 9px;
-  background: var(--color-surface);
-  padding: 0 10px;
-  color: var(--color-text-secondary);
-  font-size: 11px;
+  border: 0;
+  border-bottom: 1px solid var(--color-border-subtle);
+  background: transparent;
+  padding: 0 14px;
+  text-align: left;
+  transition: background-color var(--motion-fast) var(--ease-standard);
 }
 
-.model-chip span {
+.capability-row:last-child {
+  border-bottom: 0;
+}
+
+.capability-row:not(.disabled):hover {
+  background: var(--color-surface-soft);
+}
+
+.capability-row.active {
+  background: var(--color-primary-soft);
+}
+
+.capability-row.disabled {
+  cursor: default;
+}
+
+.capability-row-icon {
+  display: inline-flex;
+  height: 28px;
+  width: 28px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: var(--color-text-secondary);
+}
+
+.capability-name {
+  min-width: 0;
   overflow: hidden;
+  color: var(--color-text-primary);
+  font-size: 11px;
+  font-weight: 620;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.model-chip:hover,
-.model-chip.selected {
-  border-color: var(--color-primary-border);
+.pending-dot,
+.status-dot {
+  display: inline-flex;
+  height: 24px;
+  width: 24px;
+  align-items: center;
+  justify-content: center;
+  justify-self: end;
+  border-radius: 999px;
+}
+
+.pending-dot {
+  background: var(--color-surface-soft);
+  color: var(--color-text-muted);
+}
+
+.status-success { color: var(--color-success); }
+.status-failed { color: var(--color-danger); }
+.status-partial,
+.status-inconclusive { color: var(--color-warning); }
+.status-not-applicable,
+.status-unavailable { color: var(--color-text-muted); }
+
+.detail-actions {
+  display: flex;
+  gap: 5px;
+}
+
+.mini-action {
+  height: 28px;
+  width: 28px;
+}
+
+.empty-state {
+  display: flex;
+  min-height: 304px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 28px;
+  text-align: center;
+}
+
+.empty-illustration {
+  position: relative;
+  display: inline-flex;
+  height: 86px;
+  width: 104px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 48%;
+  background: radial-gradient(circle at center, var(--color-primary-soft), transparent 70%);
   color: var(--color-primary);
 }
 
-.model-chip.selected {
-  background: var(--color-primary-soft);
-}
-
-.more-chip {
-  border-color: var(--color-border);
+.empty-illustration::before {
+  position: absolute;
+  height: 58px;
+  width: 58px;
+  border: 1px solid var(--color-primary-border);
+  border-radius: 17px;
   background: var(--color-surface);
-  color: var(--color-text-muted);
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--color-primary) 14%, transparent);
+  content: '';
 }
 
-.attempt-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 10px;
+.empty-illustration :deep(svg) {
+  position: relative;
+  z-index: 2;
 }
 
-.attempt-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: 9px;
-  background: var(--color-surface);
-  padding: 6px 8px;
+.sparkle {
+  position: absolute;
+  z-index: 3;
+  color: color-mix(in srgb, var(--color-primary) 72%, white);
+  font-size: 14px;
 }
 
-.attempt-name {
+.sparkle-one { top: 12px; right: 6px; }
+.sparkle-two { bottom: 12px; left: 4px; font-size: 10px; }
+
+.empty-state strong {
+  margin-top: 12px;
   color: var(--color-text-primary);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 10px;
-  font-weight: 700;
+  font-size: 14px;
 }
 
-.attempt-meta {
+.empty-state p {
+  margin: 6px 0 0;
   color: var(--color-text-muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 
-.report-heading {
-  align-items: center;
-}
-
-.report-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 7px;
-}
-
-.report-time {
-  margin-right: 4px;
-  color: var(--color-text-muted);
-  font-size: 10px;
-}
-
-.dot-sep {
-  margin: 0 5px;
-}
-
-.summary-grid {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 10px;
+.empty-start {
+  min-height: 38px;
   margin-top: 16px;
+  padding: 0 16px;
 }
 
-.summary-card {
+.probe-view {
+  padding: 16px;
+}
+
+.probe-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.probe-heading {
   display: flex;
   min-width: 0;
+  gap: 10px;
+}
+
+.probe-state-icon {
+  display: inline-flex;
+  height: 40px;
+  width: 40px;
+  flex: 0 0 40px;
   align-items: center;
-  gap: 9px;
-  border: 1px solid var(--color-border);
+  justify-content: center;
   border-radius: 12px;
-  background: var(--color-surface);
-  padding: 11px;
+  background: var(--color-surface-soft);
 }
 
-.summary-card > div {
-  min-width: 0;
+.probe-title-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
 }
 
-.summary-card span {
-  display: block;
-  color: var(--color-text-muted);
-  font-size: 10px;
-}
-
-.summary-card strong {
-  display: inline-block;
-  margin-top: 2px;
+.probe-title-line h3 {
+  margin: 0;
   color: var(--color-text-primary);
-  font-size: 20px;
-  line-height: 1;
+  font-size: 15px;
 }
 
-.summary-card small {
-  margin-left: 6px;
+.probe-heading p {
+  margin: 5px 0 0;
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.status-pill {
+  display: inline-flex;
+  min-height: 22px;
+  align-items: center;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  padding: 0 7px;
+  font-size: 9px;
+  font-weight: 720;
+}
+
+.confidence {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
   color: var(--color-text-muted);
   font-size: 9px;
 }
 
-.summary-icon {
-  display: inline-flex !important;
-  height: 34px;
-  width: 34px;
-  flex: 0 0 34px;
-  align-items: center;
-  justify-content: center;
-  border-radius: 10px;
+.confidence strong {
+  color: var(--color-text-primary);
+  font-size: 17px;
 }
 
-.primary-soft { background: var(--color-primary-soft); color: var(--color-primary) !important; }
-.success-soft { background: color-mix(in srgb, var(--color-success) 11%, var(--color-surface)); color: var(--color-success) !important; }
-.danger-soft { background: color-mix(in srgb, var(--color-danger) 9%, var(--color-surface)); color: var(--color-danger) !important; }
-.warning-soft { background: color-mix(in srgb, var(--color-warning) 10%, var(--color-surface)); color: var(--color-warning) !important; }
-.info-soft { background: color-mix(in srgb, var(--color-info) 9%, var(--color-surface)); color: var(--color-info) !important; }
-.neutral-soft { background: var(--color-surface-soft); color: var(--color-text-muted) !important; }
-.success-text { color: var(--color-success) !important; }
-.danger-text { color: var(--color-danger) !important; }
-.warning-text { color: var(--color-warning) !important; }
-
-.result-workbench {
-  display: grid;
-  grid-template-columns: minmax(280px, 0.72fr) minmax(0, 1.7fr);
-  gap: 12px;
-  margin-top: 12px;
-}
-
-.capability-list,
-.probe-detail {
-  min-width: 0;
+.diagnosis-card {
+  margin-top: 14px;
   border: 1px solid var(--color-border);
-  border-radius: 13px;
-  background: var(--color-surface);
+  border-radius: 10px;
+  background: var(--color-surface-soft);
+  padding: 4px 10px;
 }
 
-.capability-list {
-  align-self: start;
-  overflow: hidden;
-}
-
-.capability-list-head {
-  padding: 12px 13px;
+.diagnosis-row {
+  display: grid;
+  grid-template-columns: 78px minmax(0, 1fr);
+  gap: 10px;
   border-bottom: 1px solid var(--color-border-subtle);
+  padding: 8px 0;
 }
 
-.capability-list-head > div {
+.diagnosis-row:last-child {
+  border-bottom: 0;
+}
+
+.diagnosis-row > span {
+  color: var(--color-text-muted);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.diagnosis-row code,
+.diagnosis-row p {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 10px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.probe-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.probe-column {
+  min-width: 0;
+}
+
+.evidence-column {
+  border-left: 1px solid var(--color-border-subtle);
+  padding-left: 14px;
+}
+
+.info-section + .info-section {
+  margin-top: 14px;
+}
+
+.info-section h4,
+.evidence-title-row h4 {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: 11px;
+}
+
+.info-section ul {
+  margin: 7px 0 0;
+  padding-left: 16px;
+  color: var(--color-text-secondary);
+  font-size: 10px;
+  line-height: 1.7;
+}
+
+.success-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-success) 7%, var(--color-surface));
+  padding: 10px;
+  color: var(--color-success);
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.evidence-title-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 
-.capability-list-head strong {
-  color: var(--color-text-primary);
-  font-size: 12px;
-}
-
-.capability-list-head span {
+.evidence-title-row span {
   display: inline-flex;
   min-width: 22px;
   height: 22px;
@@ -1354,328 +1233,37 @@ function downloadReport() {
   border-radius: 999px;
   background: var(--color-surface-soft);
   color: var(--color-text-muted);
-  font-size: 10px;
-}
-
-.capability-item {
-  display: grid;
-  width: 100%;
-  grid-template-columns: 28px minmax(0, 1fr) auto 14px;
-  gap: 8px;
-  align-items: center;
-  border: 0;
-  border-bottom: 1px solid var(--color-border-subtle);
-  background: transparent;
-  padding: 9px 11px;
-  text-align: left;
-}
-
-.capability-item:last-child {
-  border-bottom: 0;
-}
-
-.capability-item:hover {
-  background: var(--color-surface-soft);
-}
-
-.capability-item.active {
-  background: var(--color-primary-soft);
-}
-
-.capability-icon {
-  display: inline-flex;
-  height: 28px;
-  width: 28px;
-  align-items: center;
-  justify-content: center;
-  border-radius: 8px;
-  background: var(--color-surface-soft);
-  color: var(--color-text-muted);
-}
-
-.capability-item.active .capability-icon {
-  background: var(--color-surface);
-  color: var(--color-primary);
-}
-
-.capability-copy {
-  min-width: 0;
-}
-
-.capability-copy strong {
-  display: block;
-  overflow: hidden;
-  color: var(--color-text-primary);
-  font-size: 11px;
-  font-weight: 670;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.capability-copy small {
-  display: block;
-  margin-top: 2px;
-  color: var(--color-text-muted);
   font-size: 9px;
 }
 
-.capability-chevron {
-  color: var(--color-text-muted);
-}
-
-.status-pill {
-  display: inline-flex;
-  min-height: 22px;
-  align-items: center;
-  border: 1px solid var(--color-border);
-  border-radius: 999px;
-  padding: 0 7px;
-  font-size: 9px;
-  font-weight: 750;
-  white-space: nowrap;
-}
-
-.status-success {
-  border-color: color-mix(in srgb, var(--color-success) 24%, var(--color-border));
-  background: color-mix(in srgb, var(--color-success) 8%, var(--color-surface));
-  color: var(--color-success);
-}
-
-.status-failed {
-  border-color: color-mix(in srgb, var(--color-danger) 24%, var(--color-border));
-  background: color-mix(in srgb, var(--color-danger) 7%, var(--color-surface));
-  color: var(--color-danger);
-}
-
-.status-partial,
-.status-inconclusive {
-  border-color: color-mix(in srgb, var(--color-warning) 28%, var(--color-border));
-  background: color-mix(in srgb, var(--color-warning) 8%, var(--color-surface));
-  color: var(--color-warning);
-}
-
-.status-not-applicable,
-.status-unavailable {
-  border-color: var(--color-border);
-  background: var(--color-surface-soft);
-  color: var(--color-text-muted);
-}
-
-.probe-detail {
-  padding: 14px;
-}
-
-.probe-detail-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 14px;
-}
-
-.probe-detail-title {
-  display: flex;
-  min-width: 0;
-  gap: 10px;
-}
-
-.detail-icon {
-  display: inline-flex;
-  height: 38px;
-  width: 38px;
-  flex: 0 0 38px;
-  align-items: center;
-  justify-content: center;
-  border-radius: 11px;
-}
-
-.title-line {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-
-.title-line h3 {
-  margin: 0;
-  color: var(--color-text-primary);
-  font-size: 15px;
-  font-weight: 730;
-}
-
-.probe-detail-title p {
-  margin: 4px 0 0;
-  color: var(--color-text-muted);
-  font-size: 11px;
-  line-height: 1.55;
-}
-
-.confidence-box {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 2px;
-  color: var(--color-text-muted);
-  font-size: 9px;
-}
-
-.confidence-box strong {
-  color: var(--color-text-primary);
-  font-size: 16px;
-}
-
-.result-banner {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  margin-top: 13px;
-  border: 1px solid currentColor;
-  border-radius: 10px;
-  padding: 10px 11px;
-}
-
-.result-banner > div {
-  min-width: 0;
-}
-
-.result-banner strong,
-.result-banner span {
-  display: block;
-}
-
-.result-banner strong {
-  font-size: 11px;
-}
-
-.result-banner span {
-  margin-top: 2px;
-  color: var(--color-text-secondary);
-  font-size: 10px;
-  line-height: 1.5;
-}
-
-.detail-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
-  gap: 14px;
-  margin-top: 14px;
-}
-
-.diagnosis-column {
-  min-width: 0;
-  padding-right: 14px;
-  border-right: 1px solid var(--color-border-subtle);
-}
-
-.info-row,
-.info-block {
-  display: grid;
-  grid-template-columns: 82px minmax(0, 1fr);
-  gap: 8px;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--color-border-subtle);
-}
-
-.info-row > span,
-.info-block > span {
-  color: var(--color-text-muted);
-  font-size: 10px;
-  font-weight: 700;
-}
-
-.info-row p {
-  margin: 0;
-  color: var(--color-text-secondary);
-  font-size: 11px;
-  line-height: 1.55;
-}
-
-.info-row code {
-  overflow-wrap: anywhere;
-  color: var(--color-text-primary);
-  font-size: 10px;
-}
-
-.info-block ul {
-  margin: 0;
-  padding-left: 16px;
-  color: var(--color-text-secondary);
-  font-size: 11px;
-  line-height: 1.7;
-}
-
-.success-detail {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--color-success) 8%, var(--color-surface));
-  padding: 10px 11px;
-  color: var(--color-success);
-  font-size: 11px;
-}
-
-.evidence-column {
-  min-width: 0;
-}
-
-.evidence-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.evidence-head > div {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-}
-
-.evidence-head strong {
-  color: var(--color-text-primary);
-  font-size: 11px;
-}
-
-.evidence-head span {
-  color: var(--color-text-muted);
-  font-size: 9px;
-}
-
-.evidence-stack {
+.evidence-list {
   display: grid;
   gap: 8px;
   margin-top: 8px;
 }
 
 .evidence-card {
-  min-width: 0;
   border: 1px solid var(--color-border);
   border-radius: 10px;
   background: var(--color-surface-soft);
   padding: 9px;
 }
 
-.evidence-title {
+.evidence-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  gap: 7px;
 }
 
-.evidence-title strong {
-  min-width: 0;
+.evidence-head strong {
+  margin-right: auto;
   color: var(--color-text-primary);
   font-size: 10px;
 }
 
-.evidence-title > div {
-  display: flex;
-  gap: 6px;
-}
-
-.evidence-title span {
+.evidence-head span {
   color: var(--color-text-muted);
   font-size: 9px;
-  white-space: nowrap;
 }
 
 .evidence-card dl {
@@ -1695,8 +1283,7 @@ function downloadReport() {
   margin: 0;
   color: var(--color-text-secondary);
   font-size: 10px;
-  line-height: 1.5;
-  overflow-wrap: anywhere;
+  line-height: 1.55;
 }
 
 .evidence-card pre {
@@ -1705,9 +1292,8 @@ function downloadReport() {
   overflow: auto;
   border-radius: 8px;
   background: var(--color-bg-deep);
-  padding: 9px;
+  padding: 8px;
   color: var(--color-text-primary);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 9px;
   line-height: 1.55;
   white-space: pre-wrap;
@@ -1722,66 +1308,6 @@ function downloadReport() {
   color: var(--color-text-muted);
   font-size: 10px;
   text-align: center;
-}
-
-.report-notes {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  margin-top: 12px;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: 10px;
-  background: var(--color-surface-soft);
-  padding: 10px 11px;
-  color: var(--color-info);
-}
-
-.report-notes strong {
-  color: var(--color-text-primary);
-  font-size: 10px;
-}
-
-.report-notes ul {
-  margin: 5px 0 0;
-  padding-left: 16px;
-  color: var(--color-text-secondary);
-  font-size: 10px;
-  line-height: 1.6;
-}
-
-.report-empty {
-  display: flex;
-  min-height: 210px;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 32px;
-  color: var(--color-text-muted);
-  text-align: center;
-}
-
-.empty-icon {
-  display: inline-flex;
-  height: 52px;
-  width: 52px;
-  align-items: center;
-  justify-content: center;
-  border-radius: 14px;
-  background: var(--color-surface-soft);
-  color: var(--color-text-muted);
-}
-
-.report-empty strong {
-  margin-top: 12px;
-  color: var(--color-text-primary);
-  font-size: 13px;
-}
-
-.report-empty p {
-  max-width: 480px;
-  margin: 5px 0 0;
-  font-size: 11px;
-  line-height: 1.55;
 }
 
 .spinner,
@@ -1808,94 +1334,53 @@ select:focus-visible {
   outline: none;
 }
 
-.back-btn:focus-visible,
 .btn:focus-visible,
-.icon-btn:focus-visible,
-.mode-switch button:focus-visible,
-.model-chip:focus-visible,
-.capability-item:focus-visible {
+.icon-action:focus-visible,
+.mini-action:focus-visible,
+.capability-row:focus-visible {
   box-shadow: 0 0 0 3px var(--color-primary-ring);
 }
 
-@media (max-width: 1280px) {
-  .form-grid {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+@media (max-width: 1180px) {
+  .config-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .field-wide {
+  .field,
+  .field-half {
     grid-column: span 1;
   }
 
-  .summary-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 980px) {
-  .hero {
-    align-items: flex-start;
-    flex-direction: column;
+  .summary-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .security-note {
-    max-width: none;
-  }
-
-  .discovery-body,
-  .detail-grid,
-  .result-workbench {
+  .results-grid {
     grid-template-columns: 1fr;
-  }
-
-  .protocol-summary,
-  .diagnosis-column {
-    border-right: 0;
-    border-bottom: 1px solid var(--color-border);
-    padding-right: 0;
-    padding-bottom: 12px;
-  }
-
-  .summary-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 720px) {
-  .detection-center {
-    gap: 13px;
+  .page-hero h1 {
+    font-size: 24px;
   }
 
-  .topline,
-  .report-heading,
-  .section-head {
-    align-items: flex-start;
-    flex-direction: column;
+  .page-icon {
+    height: 48px;
+    width: 48px;
+    flex-basis: 48px;
   }
 
-  .hero-main {
-    align-items: flex-start;
+  .config-panel {
+    padding: 16px;
   }
 
-  .hero-icon {
-    height: 42px;
-    width: 42px;
-    flex-basis: 42px;
-  }
-
-  .target-panel,
-  .discovery-panel,
-  .report-panel {
-    padding: 14px;
-  }
-
-  .form-grid,
-  .summary-grid {
+  .config-grid,
+  .summary-row {
     grid-template-columns: 1fr;
   }
 
-  .target-actions,
-  .report-actions {
-    width: 100%;
+  .config-actions {
     flex-direction: column;
   }
 
@@ -1903,37 +1388,29 @@ select:focus-visible {
     width: 100%;
   }
 
-  .model-summary-title {
-    align-items: flex-start;
+  .probe-header {
     flex-direction: column;
   }
 
-  .capability-item {
-    grid-template-columns: 28px minmax(0, 1fr) auto;
-  }
-
-  .capability-chevron {
-    display: none;
-  }
-
-  .probe-detail-head {
+  .confidence {
     align-items: flex-start;
-    flex-direction: column;
   }
 
-  .confidence-box {
-    align-items: flex-start;
+  .probe-columns {
+    grid-template-columns: 1fr;
+  }
+
+  .evidence-column {
+    border-left: 0;
+    border-top: 1px solid var(--color-border-subtle);
+    padding-top: 14px;
+    padding-left: 0;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .back-btn,
-  .breadcrumb,
   .btn,
-  .icon-btn,
-  .mode-switch button,
-  .model-chip,
-  .capability-item {
+  .capability-row {
     transition-duration: 0.01ms;
   }
 
