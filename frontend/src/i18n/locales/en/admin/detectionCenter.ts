@@ -61,7 +61,7 @@ export default {
     copyReport: 'Copy JSON',
     copied: 'Copied',
     downloadReport: 'Download JSON',
-    total: 'Checks', success: 'Passed', failed: 'Failed', partial: 'Partial', inconclusive: 'Inconclusive', notApplicable: 'N/A', unavailable: 'Unavailable',
+    total: 'Checks', success: 'Passed', failed: 'Failed', partial: 'Partial', partialAvailable: 'Partially available', unavailableSimple: 'Unavailable', inconclusive: 'Inconclusive', notApplicable: 'N/A', unavailable: 'Unavailable',
     confidence: 'Confidence', failureReason: 'Failure reason', reasonCode: 'Reason code', possibleCauses: 'Possible causes', recommendations: 'Recommendations', evidence: 'Evidence',
     expected: 'Expected', actual: 'Actual', responseExcerpt: 'Redacted response excerpt', notes: 'Report notes',
     emptyReport: 'Run detection to see pass/fail status, failure reasons, evidence, and recommendations for every capability.',
