@@ -285,7 +285,7 @@ async function buildCompatibleVideoPayload(
         model,
         prompt,
         duration: Number(normalizeVideoSeconds(config.videoSeconds)) || 5,
-        resolution: normalizeVideoResolution(config.vquality).toUpperCase(),
+        resolution: normalizeVideoResolution(config.vquality),
         aspect_ratio: videoAspectRatio(config.size),
         audio: boolConfig(config.videoGenerateAudio, true),
         generate_audio: boolConfig(config.videoGenerateAudio, true),
