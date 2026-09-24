@@ -1,9 +1,9 @@
 export default {
   detectionCenter: {
     title: '检测中心',
-    description: '输入 API URL 与 Key，自动发现模型并通过协议、行为、负向参数和一致性证据检测真实能力。',
+    description: '检测 API 连接与模型能力状态',
     securityNotice: 'API Key 仅用于本次检测，不保存到数据库或报告；目标地址仅允许公网 HTTPS。',
-    configTitle: '检测目标',
+    configTitle: '检测配置',
     configDescription: '配置要检测的接口信息，系统会自动发现可用模型并进行全面检测。',
     baseUrl: 'API Base URL',
     baseUrlPlaceholder: '例如：https://api.openai.com/v1',
@@ -38,6 +38,20 @@ export default {
     detectedProtocols: '已识别协议',
     reportTitle: '详细检测报告',
     capabilityResults: '能力检测结果',
+    capabilityItems: '能力检测项目',
+    resultDetails: '检测结果详情',
+    itemCount: '共 {count} 项',
+    noResult: '暂无检测结果',
+    noResultHint: '请先配置 API 连接并开始检测',
+    capabilities: {
+      basic: '基础连接',
+      models: '模型列表',
+      text: '文本生成',
+      multiTurn: '多轮对话',
+      streaming: '流式输出',
+      tools: '函数调用',
+      vision: '视觉理解'
+    },
     result: '检测结果',
     items: '项',
     noEvidence: '当前探针没有可展示的证据明细。',
