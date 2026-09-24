@@ -150,8 +150,9 @@ func probeAnthropicStructured(ctx context.Context, target *detectionTarget, mode
 }
 
 func probeAnthropicThinking(ctx context.Context, target *detectionTarget, model string) detectionProbeResult {
-	validBody := anthropicMessageBody(model, "Solve carefully: find the smallest positive integer divisible by 7 and 11 whose decimal digits sum to 18. Briefly verify the final answer.", 900)
+	validBody := anthropicMessageBody(model, "Solve carefully: find the smallest positive integer divisible by 7 and 11 whose decimal digits sum to 18. Briefly verify the final answer.", 2048)
 	validBody["thinking"] = map[string]any{"type":"adaptive","display":"summarized"}
+	validBody["output_config"] = map[string]any{"effort":"high"}
 	valid, validErr := target.doJSON(ctx, detectionProtocolAnthropic, http.MethodPost, "/v1/messages", nil, validBody)
 	validEv := requestEvidence("Adaptive Thinking", "请求参数被识别；若模型选择思考并允许显示，应出现 thinking 块", valid, target)
 
@@ -200,8 +201,15 @@ func probeAnthropicCitations(ctx context.Context, target *detectionTarget, model
 	valid, validErr := target.doJSON(ctx, detectionProtocolAnthropic, http.MethodPost, "/v1/messages", nil, validBody)
 	validEv := requestEvidence("Citations 文档引用", "text block 内存在结构化 citations metadata", valid, target)
 
+	conflictBody := anthropicMessageBody(model, content, 200)
+	conflictBody["output_config"] = map[string]any{"format":map[string]any{"type":"json_schema","schema":map[string]any{
+		"type":"object","properties":map[string]any{"answer":map[string]any{"type":"string"}},"required":[]string{"answer"},"additionalProperties":false,
+	}}}
+	conflict, conflictErr := target.doJSON(ctx, detectionProtocolAnthropic, http.MethodPost, "/v1/messages", nil, conflictBody)
+	conflictEv := requestEvidence("Citations + Structured Outputs 冲突负向探针", "官方不兼容组合应返回 HTTP 4xx", conflict, target)
+
 	if validErr != nil || valid.StatusCode < 200 || valid.StatusCode >= 300 {
-		return unavailableProbe("anthropic.citations", "Citations", "Citations", "citations 请求未被当前模型/接口接受："+classifyHTTPFailure(valid, validErr, target), validEv)
+		return unavailableProbe("anthropic.citations", "Citations", "Citations", "citations 请求未被当前模型/接口接受："+classifyHTTPFailure(valid, validErr, target), validEv, conflictEv)
 	}
 	hasCitation := false
 	for _, item := range sliceValue(parseJSONMap(valid.Body)["content"]) {
@@ -211,10 +219,20 @@ func probeAnthropicCitations(ctx context.Context, target *detectionTarget, model
 			break
 		}
 	}
-	if hasCitation {
-		return detectionProbeResult{ID:"anthropic.citations", Name:"Citations", Category:"Citations", Status:"success", Confidence:1, Summary:"已返回结构化 citations metadata，引用能力真实生效", Evidence:[]detectionEvidence{validEv}}
+	conflictRejected := conflictErr == nil && conflict.StatusCode >= 400 && conflict.StatusCode < 500
+	if hasCitation && conflictRejected {
+		return detectionProbeResult{ID:"anthropic.citations", Name:"Citations", Category:"Citations", Status:"success", Confidence:1, Summary:"结构化 citations metadata 与不兼容组合拒绝均已验证，引用能力真实生效", Evidence:[]detectionEvidence{validEv, conflictEv}}
 	}
-	return failedProbe("anthropic.citations", "Citations", "Citations", "CITATION_METADATA_MISSING", "HTTP 200 且模型能回答文档事实，但没有任何结构化引用", "不能把模型自行生成的 [1]、URL 或自然语言来源说明当成 Citations 成功；必须验证结构化 citation metadata", .98, validEv)
+	if !hasCitation && conflictErr == nil && conflict.StatusCode >= 200 && conflict.StatusCode < 300 {
+		result := failedProbe("anthropic.citations", "Citations", "Citations", "PROTOCOL_FIELD_DROPPED", "HTTP 200 但 Citations 没有真正生效", "主探针没有结构化引用，同时本应返回 400 的 Citations + Structured Outputs 冲突组合也被正常接受；citations 字段高度疑似被过滤或降级", .995, validEv, conflictEv)
+		result.PossibleCauses = []string{"document.citations 未透传", "document 被兼容层降级为普通文本", "响应转换层丢失 citations metadata"}
+		result.Recommendations = []string{"对比客户端请求与实际上游 outbound document block", "检查响应转换是否保留 citations 数组", "用直连上游复现同一冲突请求确认 400 基准"}
+		return result
+	}
+	if !hasCitation {
+		return failedProbe("anthropic.citations", "Citations", "Citations", "CITATION_METADATA_MISSING", "HTTP 200 且模型能回答文档事实，但没有任何结构化引用", "不能把模型自行生成的 [1]、URL 或自然语言来源说明当成 Citations 成功；必须验证结构化 citation metadata", .98, validEv, conflictEv)
+	}
+	return detectionProbeResult{ID:"anthropic.citations", Name:"Citations", Category:"Citations", Status:"partial", Confidence:.9, Summary:"结构化引用存在，但 Citations 与 Structured Outputs 的冲突错误语义异常", ReasonCode:"ERROR_SEMANTICS_MISMATCH", Evidence:[]detectionEvidence{validEv, conflictEv}}
 }
 
 func probeAnthropicPromptCache(ctx context.Context, target *detectionTarget, model string) detectionProbeResult {
