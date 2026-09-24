@@ -31,11 +31,11 @@ func TestValidateDetectionSchemaPayloadIsStrict(t *testing.T) {
 
 func TestMergeDetectedModelsPreservesProtocols(t *testing.T) {
 	models := mergeDetectedModels([]detectedModel{
-		{ID:"same-model", Name:"Same", Protocols:[]string{"openai"}},
-		{ID:"same-model", Name:"Same", Protocols:[]string{"anthropic"}},
+		{ID: "same-model", Name: "Same", Protocols: []string{"openai"}},
+		{ID: "same-model", Name: "Same", Protocols: []string{"anthropic"}},
 	})
 	require.Len(t, models, 1)
-	require.Equal(t, []string{"anthropic","openai"}, models[0].Protocols)
+	require.Equal(t, []string{"anthropic", "openai"}, models[0].Protocols)
 }
 
 func TestSanitizeDetectionTextRedactsKey(t *testing.T) {
@@ -44,7 +44,14 @@ func TestSanitizeDetectionTextRedactsKey(t *testing.T) {
 }
 
 func TestSummarizeDetectionProbes(t *testing.T) {
-	s := summarizeDetectionProbes([]detectionProbeResult{{Status:"success"},{Status:"failed"},{Status:"partial"},{Status:"inconclusive"},{Status:"not_applicable"},{Status:"unavailable"}})
+	s := summarizeDetectionProbes([]detectionProbeResult{
+		{Status: "success"},
+		{Status: "failed"},
+		{Status: "partial"},
+		{Status: "inconclusive"},
+		{Status: "not_applicable"},
+		{Status: "unavailable"},
+	})
 	require.Equal(t, 6, s.Total)
 	require.Equal(t, 1, s.Success)
 	require.Equal(t, 1, s.Failed)
