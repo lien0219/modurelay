@@ -306,7 +306,7 @@ func TestCompleteBalancePaymentGrantsQualificationExactlyOnce(t *testing.T) {
 
 	mock.ExpectBegin()
 	mock.ExpectExec("UPDATE payment_orders").
-		WithArgs(int64(101), completedAt, leaseVersion).
+		WithArgs(int64(101), completedAt, leaseVersion, service.OrderStatusCompleted, service.OrderStatusRecharging).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectQuery("SELECT EXISTS").
 		WithArgs(service.SettingKeyActivityCenterEnabled).
@@ -334,7 +334,7 @@ func TestCompleteBalancePaymentGrantsQualificationExactlyOnce(t *testing.T) {
 
 	mock.ExpectBegin()
 	mock.ExpectExec("UPDATE payment_orders").
-		WithArgs(int64(101), completedAt, leaseVersion).
+		WithArgs(int64(101), completedAt, leaseVersion, service.OrderStatusCompleted, service.OrderStatusRecharging).
 		WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectQuery("SELECT status FROM payment_orders").
 		WithArgs(int64(101)).
