@@ -4,24 +4,24 @@ export default {
     description: '输入 API URL 与 Key，自动发现模型并通过协议、行为、负向参数和一致性证据检测真实能力。',
     securityNotice: 'API Key 仅用于本次检测，不保存到数据库或报告；目标地址仅允许公网 HTTPS。',
     configTitle: '检测目标',
-    configDescription: '配置要检测的接口信息，系统会自动发现可用模型并进行全面检测。'
+    configDescription: '配置要检测的接口信息，系统会自动发现可用模型并进行全面检测。',
     baseUrl: 'API Base URL',
     baseUrlPlaceholder: '例如：https://api.openai.com/v1',
-    baseUrlHint: '请输入模型服务的基础地址，必须为公开可访问的 HTTPS 地址。'
+    baseUrlHint: '请输入模型服务的基础地址，必须为公开可访问的 HTTPS 地址。',
     apiKey: 'API Key',
     apiKeyPlaceholder: '输入本次检测使用的 Key',
-    keyHint: '仅用于本次检测，不会被保存。'
+    keyHint: '仅用于本次检测，不会被保存。',
     showKey: '显示',
     hideKey: '隐藏',
     protocol: '协议',
-    protocolHint: '系统将自动识别接口协议类型，也可手动指定。'
+    protocolHint: '系统将自动识别接口协议类型，也可手动指定。',
     protocols: { auto: '自动识别', openai: 'OpenAI Compatible', anthropic: 'Anthropic', gemini: 'Gemini Native' },
     discover: '获取模型',
     discovering: '正在识别并获取模型…',
     model: '模型',
     modelSearch: '搜索模型',
     modelPlaceholder: '请选择或点击「获取模型」自动发现',
-    modelHint: '选择一个模型或先获取模型列表。'
+    modelHint: '选择一个模型或先获取模型列表。',
     noModels: '没有识别到可用模型，请检查 URL、Key 或手动指定协议。',
     mode: '检测模式',
     modes: { standard: '标准检测', deep: '深度检测' },
