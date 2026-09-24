@@ -639,8 +639,14 @@ func (r *activityRepository) completeBalancePaymentOnce(ctx context.Context, inp
 	defer func() { _ = tx.Rollback() }()
 	result, err := tx.ExecContext(ctx, `
 UPDATE payment_orders
-SET status = 'completed', completed_at = $2, updated_at = $2
-WHERE id = $1 AND status = 'recharging' AND updated_at = $3`, input.OrderID, input.CompletedAt, input.LeaseVersion)
+SET status = $4, completed_at = $2, updated_at = $2
+WHERE id = $1 AND status = $5 AND updated_at = $3`,
+		input.OrderID,
+		input.CompletedAt,
+		input.LeaseVersion,
+		service.OrderStatusCompleted,
+		service.OrderStatusRecharging,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("complete payment order: %w", err)
 	}
