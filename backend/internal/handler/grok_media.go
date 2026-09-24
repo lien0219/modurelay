@@ -53,6 +53,7 @@ func (h *OpenAIGatewayHandler) GrokVideoContent(c *gin.Context) {
 
 func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.GrokMediaEndpoint, requestID string) {
 	platform := service.PlatformGrok
+	compatibleVideo := false
 	noAccountCode, noAccountMessage := "grok_media_no_eligible_account", "No eligible Grok media accounts"
 	if endpoint.IsSeedance() {
 		platform = service.PlatformOpenAI
@@ -66,6 +67,22 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 	if !ok {
 		h.errorResponse(c, http.StatusUnauthorized, "authentication_error", "Invalid API key")
 		return
+	}
+	if !endpoint.IsSeedance() && isOpenAICompatibleVideoEndpoint(endpoint) {
+		groupPlatform := ""
+		if apiKey.Group != nil {
+			groupPlatform = apiKey.Group.Platform
+			if groupPlatform == service.PlatformComposite {
+				if resolved, found := service.ResolvedTargetPlatformFromContext(c.Request.Context()); found {
+					groupPlatform = resolved
+				}
+			}
+		}
+		if service.IsOpenAICompatibleVideoPlatform(groupPlatform) {
+			platform = groupPlatform
+			compatibleVideo = true
+			noAccountCode, noAccountMessage = "video_no_eligible_account", "No eligible compatible video accounts"
+		}
 	}
 	subject, ok := middleware2.GetAuthSubjectFromContext(c)
 	if !ok {
@@ -113,7 +130,15 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 		}
 	}
 	requestModel := requestInfo.Model
-	routingModel := service.NormalizeGrokMediaModelForEndpoint(endpoint, requestModel, requestInfo.HasInputImage())
+	routingModel := requestModel
+	if !compatibleVideo {
+		routingModel = service.NormalizeGrokMediaModelForEndpoint(endpoint, requestModel, requestInfo.HasInputImage())
+	}
+	if compatibleVideo {
+		if resolvedModel, found := service.ResolvedUpstreamModelFromContext(c.Request.Context()); found && strings.TrimSpace(resolvedModel) != "" {
+			routingModel = resolvedModel
+		}
+	}
 	if endpoint.IsGenerationRequest() && strings.TrimSpace(requestModel) == "" {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "model is required")
 		return
@@ -189,6 +214,26 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 			h.errorResponse(c, http.StatusNotFound, "not_found_error", "Video request not found")
 			return
 		}
+		if !endpoint.IsSeedance() && isOpenAICompatibleVideoEndpoint(endpoint) {
+			boundPlatform, platformErr := h.gatewayService.MediaVideoRequestAccountPlatform(c.Request.Context(), boundLookupAccountID)
+			if platformErr != nil {
+				reqLog.Info("grok_media.video_lookup_provider_missing", zap.Error(platformErr))
+				h.errorResponse(c, http.StatusNotFound, "not_found_error", "Video request not found")
+				return
+			}
+			switch {
+			case boundPlatform == service.PlatformGrok:
+				platform = service.PlatformGrok
+				compatibleVideo = false
+			case service.IsOpenAICompatibleVideoPlatform(boundPlatform):
+				platform = boundPlatform
+				compatibleVideo = true
+				noAccountCode, noAccountMessage = "video_no_eligible_account", "No eligible compatible video accounts"
+			default:
+				h.errorResponse(c, http.StatusNotFound, "not_found_error", "Video request not found")
+				return
+			}
+		}
 	}
 	// Grok 媒体（图片/视频生成与视频查询）按媒体倍率计费，不在 token 利润门
 	// 范围内：显式豁免，防止 service 层防御性装门按文本 D 误过滤媒体请求，
@@ -210,7 +255,7 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 		maxAccountSwitches = 3
 	}
 	routingStart := time.Now()
-	requiredCapability := grokMediaRequiredCapability(endpoint)
+	requiredCapability := grokMediaRequiredCapability(endpoint, compatibleVideo)
 	var accountReleaseFunc func()
 	releaseAccount := func() {
 		if accountReleaseFunc != nil {
@@ -322,7 +367,7 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 		)
 
 		account := selection.Account
-		if endpoint.IsGenerationRequest() && !endpoint.IsSeedance() {
+		if endpoint.IsGenerationRequest() && !endpoint.IsSeedance() && !compatibleVideo {
 			eligible, eligibilityReason, eligibilityErr := h.ensureGrokMediaAccountEligibility(requestCtx, account)
 			if !eligible {
 				releaseAccount()
@@ -375,6 +420,9 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 			defer releaseAccount()
 			if endpoint.IsSeedance() {
 				return h.gatewayService.ForwardSeedance(requestCtx, c, account, endpoint, requestID, body)
+			}
+			if compatibleVideo {
+				return h.gatewayService.ForwardCompatibleVideo(requestCtx, c, account, endpoint, requestID, body, contentType, routingModel)
 			}
 			return h.gatewayService.ForwardGrokMedia(requestCtx, c, account, endpoint, requestID, body, contentType)
 		}()
@@ -515,6 +563,9 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 			if billResult := prepareGrokVideoCompletionBilling(requestCtx, h, reqLog, apiKey, subject, taskID, result); billResult != nil {
 				recordGrokMediaUsage(c, h, reqLog, apiKey, subject, subscription, account, billResult, billResult.Model, body, taskID)
 			}
+		} else if compatibleVideo && isGrokVideoCreateEndpoint(endpoint) && result != nil &&
+			strings.TrimSpace(result.ResponseID) == "" && result.VideoCount > 0 {
+			recordGrokMediaUsage(c, h, reqLog, apiKey, subject, subscription, account, result, requestModel, body, requestID)
 		} else if shouldRecordGrokMediaUsage(endpoint, requestModel, result) {
 			recordGrokMediaUsage(c, h, reqLog, apiKey, subject, subscription, account, result, requestModel, body, requestID)
 		}
@@ -540,14 +591,30 @@ func (h *OpenAIGatewayHandler) ensureGrokMediaAccountEligibility(ctx context.Con
 	return h.grokMediaEligibilityProber.ProbeMediaEligibility(ctx, account.ID)
 }
 
-func grokMediaRequiredCapability(endpoint service.GrokMediaEndpoint) service.OpenAIEndpointCapability {
+func grokMediaRequiredCapability(endpoint service.GrokMediaEndpoint, compatibleVideo bool) service.OpenAIEndpointCapability {
 	if endpoint.IsSeedance() {
 		return service.OpenAIEndpointCapabilitySeedance
 	}
 	if endpoint.IsGenerationRequest() {
+		if compatibleVideo {
+			return service.OpenAIEndpointCapabilityVideos
+		}
 		return service.OpenAIEndpointCapabilityGrokMediaGeneration
 	}
 	return ""
+}
+
+func isOpenAICompatibleVideoEndpoint(endpoint service.GrokMediaEndpoint) bool {
+	switch endpoint {
+	case service.GrokMediaEndpointVideosGenerations,
+		service.GrokMediaEndpointVideosEdits,
+		service.GrokMediaEndpointVideosExtensions,
+		service.GrokMediaEndpointVideoStatus,
+		service.GrokMediaEndpointVideoContent:
+		return true
+	default:
+		return false
+	}
 }
 
 func grokMediaScheduleModel(account *service.Account, routingModel string, result *service.OpenAIForwardResult) string {

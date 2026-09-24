@@ -1211,6 +1211,7 @@ export default {
           chatCompletions: 'Chat Completions',
           embeddings: 'Embeddings',
           images: 'Images',
+          videos: 'Videos 视频',
           gemini: 'Gemini 原生'
         },
         match: {

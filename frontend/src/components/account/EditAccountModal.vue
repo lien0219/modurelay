@@ -3871,7 +3871,7 @@ const openAICompactMode = ref<OpenAICompactMode>('auto')
 const openAIResponsesMode = ref<OpenAIResponsesMode>('auto')
 // Images 非流式响应缺 b64_json 时由网关下载 url 回填（仅 OpenAI API Key）。
 const openAIImagesUrlToB64JsonEnabled = ref(false)
-const openAIEndpointCapabilities = ref<OpenAIEndpointCapability[]>(['chat_completions', 'embeddings'])
+const openAIEndpointCapabilities = ref<OpenAIEndpointCapability[]>(['chat_completions', 'embeddings', 'videos'])
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const codexCLIOnlyEnabled = ref(false)
@@ -4033,6 +4033,7 @@ const openAITextEndpointCapabilityLabel = computed(() => {
 const openAIEndpointCapabilityOptions = computed<{ value: OpenAIEndpointCapability; label: string }[]>(() => [
   { value: 'chat_completions', label: openAITextEndpointCapabilityLabel.value },
   { value: 'embeddings', label: t('admin.accounts.openai.capabilityEmbeddings') },
+  { value: 'videos', label: t('admin.accounts.openai.capabilityVideos') },
   { value: 'seedance', label: 'Seedance (Ark)' }
 ])
 const openAITextGenerationCapabilityEnabled = computed(() =>
@@ -4040,29 +4041,40 @@ const openAITextGenerationCapabilityEnabled = computed(() =>
 )
 
 const normalizeOpenAIEndpointCapabilities = (values: OpenAIEndpointCapability[]) => {
-  const allowed: OpenAIEndpointCapability[] = ['chat_completions', 'embeddings', 'seedance']
+  const allowed: OpenAIEndpointCapability[] = ['chat_completions', 'embeddings', 'videos', 'seedance']
   const selected = allowed.filter((value) => values.includes(value))
-  return selected.length > 0 ? selected : ['chat_completions', 'embeddings'] as OpenAIEndpointCapability[]
+  return selected.length > 0 ? selected : ['chat_completions', 'embeddings', 'videos'] as OpenAIEndpointCapability[]
 }
 
 const readOpenAIEndpointCapabilities = (credentials?: Record<string, unknown>): OpenAIEndpointCapability[] => {
   const raw = credentials?.openai_capabilities
+  let values: OpenAIEndpointCapability[]
   if (Array.isArray(raw)) {
-    return normalizeOpenAIEndpointCapabilities(
+    values = normalizeOpenAIEndpointCapabilities(
       raw.filter((value): value is OpenAIEndpointCapability =>
-        value === 'chat_completions' || value === 'embeddings' || value === 'seedance'
+        value === 'chat_completions' || value === 'embeddings' || value === 'videos' || value === 'seedance'
       )
     )
-  }
-  if (raw !== null && typeof raw === 'object') {
+  } else if (raw !== null && typeof raw === 'object') {
     const capabilityMap = raw as Record<string, unknown>
-    return normalizeOpenAIEndpointCapabilities(
+    values = normalizeOpenAIEndpointCapabilities(
       openAIEndpointCapabilityOptions.value
         .map((option) => option.value)
         .filter((value) => capabilityMap[value] === true)
     )
+  } else {
+    values = ['chat_completions', 'embeddings', 'videos']
   }
-  return ['chat_completions', 'embeddings']
+
+  // Videos did not exist in the legacy capability list. Preserve production
+  // compatibility for old accounts unless an administrator explicitly disables it.
+  if (credentials?.openai_video_enabled !== false && !values.includes('videos')) {
+    values = normalizeOpenAIEndpointCapabilities([...values, 'videos'])
+  }
+  if (credentials?.openai_video_enabled === false) {
+    values = values.filter((value) => value !== 'videos')
+  }
+  return values
 }
 
 const toggleOpenAIEndpointCapability = (capability: OpenAIEndpointCapability, event?: Event) => {
@@ -4088,11 +4100,21 @@ const toggleOpenAIEndpointCapability = (capability: OpenAIEndpointCapability, ev
 
 const applyOpenAIEndpointCapabilities = (credentials: Record<string, unknown>) => {
   const capabilities = normalizeOpenAIEndpointCapabilities(openAIEndpointCapabilities.value)
-  if (capabilities.length === 2 && !capabilities.includes('seedance')) {
+  const videosEnabled = capabilities.includes('videos')
+  if (videosEnabled) {
+    delete credentials.openai_video_enabled
+  } else {
+    credentials.openai_video_enabled = false
+  }
+
+  // Keep the legacy capability list limited to the capabilities it historically
+  // controlled; video enablement has its own backward-compatible switch.
+  const legacyCapabilities = capabilities.filter((value) => value !== 'videos')
+  if (legacyCapabilities.length === 2 && !legacyCapabilities.includes('seedance')) {
     delete credentials.openai_capabilities
     return
   }
-  credentials.openai_capabilities = capabilities
+  credentials.openai_capabilities = legacyCapabilities
 }
 const normalizeOpenAIResponsesMode = (mode: unknown): OpenAIResponsesMode => {
   if (mode === 'force_responses' || mode === 'force_chat_completions') {

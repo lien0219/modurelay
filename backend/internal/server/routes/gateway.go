@@ -95,56 +95,35 @@ func RegisterGatewayRoutes(
 			})
 		}
 	}
+	videoGatewaySupported := func(c *gin.Context) bool {
+		return videoGatewayPlatformSupported(getGroupPlatform(c))
+	}
 	videoGenerationHandler := func(c *gin.Context) {
-		// Video status/content lookups below already allow Composite groups; keep
-		// task creation aligned so composite keys that route to Grok accounts can
-		// submit video generation jobs.
-		if platform := getGroupPlatform(c); platform == service.PlatformGrok || platform == service.PlatformComposite {
+		if videoGatewaySupported(c) {
 			h.OpenAIGateway.GrokVideoGeneration(c)
 			return
 		}
 		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
-		c.JSON(http.StatusNotFound, gin.H{
-			"error": gin.H{
-				"type":    "not_found_error",
-				"message": "Videos API is not supported for this platform",
-			},
-		})
+		c.JSON(http.StatusNotFound, gin.H{"error": gin.H{"type": "not_found_error", "message": "Videos API is not supported for this platform"}})
 	}
 	videoStatusHandler := func(c *gin.Context) {
-		// Video status requests do not carry a model, so composite groups cannot
-		// be resolved by compositeTargetPlatformMiddleware. Route them through
-		// the Grok handler and let scheduler/account selection enforce capacity.
-		if getGroupPlatform(c) == service.PlatformGrok || getGroupPlatform(c) == service.PlatformComposite {
+		if videoGatewaySupported(c) {
 			h.OpenAIGateway.GrokVideoStatus(c)
 			return
 		}
 		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
-		c.JSON(http.StatusNotFound, gin.H{
-			"error": gin.H{
-				"type":    "not_found_error",
-				"message": "Videos API is not supported for this platform",
-			},
-		})
+		c.JSON(http.StatusNotFound, gin.H{"error": gin.H{"type": "not_found_error", "message": "Videos API is not supported for this platform"}})
 	}
 	videoContentHandler := func(c *gin.Context) {
-		// Video content requests do not carry a model, so composite groups cannot
-		// be resolved by compositeTargetPlatformMiddleware. Route them through
-		// the Grok handler just like video status lookups.
-		if getGroupPlatform(c) == service.PlatformGrok || getGroupPlatform(c) == service.PlatformComposite {
+		if videoGatewaySupported(c) {
 			h.OpenAIGateway.GrokVideoContent(c)
 			return
 		}
 		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
-		c.JSON(http.StatusNotFound, gin.H{
-			"error": gin.H{
-				"type":    "not_found_error",
-				"message": "Videos API is not supported for this platform",
-			},
-		})
+		c.JSON(http.StatusNotFound, gin.H{"error": gin.H{"type": "not_found_error", "message": "Videos API is not supported for this platform"}})
 	}
 	videoEditHandler := func(c *gin.Context) {
-		if getGroupPlatform(c) == service.PlatformGrok {
+		if videoGatewaySupported(c) {
 			h.OpenAIGateway.GrokVideoEdit(c)
 			return
 		}
@@ -152,7 +131,7 @@ func RegisterGatewayRoutes(
 		c.JSON(http.StatusNotFound, gin.H{"error": gin.H{"type": "not_found_error", "message": "Videos API is not supported for this platform"}})
 	}
 	videoExtensionHandler := func(c *gin.Context) {
-		if getGroupPlatform(c) == service.PlatformGrok {
+		if videoGatewaySupported(c) {
 			h.OpenAIGateway.GrokVideoExtension(c)
 			return
 		}
@@ -522,6 +501,12 @@ func RegisterGatewayRoutes(
 
 }
 
+func videoGatewayPlatformSupported(platform string) bool {
+	return platform == service.PlatformGrok ||
+		platform == service.PlatformComposite ||
+		service.IsOpenAICompatibleVideoPlatform(platform)
+}
+
 func dispatchCodexModelsGateway(c *gin.Context, openAIHandler, generatedHandler gin.HandlerFunc) {
 	if getGroupPlatform(c) == service.PlatformOpenAI {
 		openAIHandler(c)
@@ -677,6 +662,8 @@ func compositeRouteEndpointForPath(path string) string {
 		return service.CompositeRouteEndpointEmbeddings
 	case strings.Contains(path, "/images/"):
 		return service.CompositeRouteEndpointImages
+	case strings.Contains(path, "/videos"):
+		return service.CompositeRouteEndpointVideos
 	case strings.Contains(path, "/v1beta/"):
 		return service.CompositeRouteEndpointGemini
 	default:
