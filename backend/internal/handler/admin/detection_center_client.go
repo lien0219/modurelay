@@ -274,7 +274,7 @@ func parseDetectionModelList(protocol string, body []byte) ([]detectedModel, err
 			}
 			models = append(models, detectedModel{
 				ID:           id,
-				Name:         firstNonEmpty(stringValue(obj["displayName"]), id),
+				Name:         detectionFirstNonEmpty(stringValue(obj["displayName"]), id),
 				Provider:     "Google Gemini compatible",
 				Protocols:    []string{protocol},
 				Capabilities: capabilities,
@@ -293,7 +293,7 @@ func parseDetectionModelList(protocol string, body []byte) ([]detectedModel, err
 		provider := stringValue(obj["owned_by"])
 		capabilities := map[string]any{}
 		if protocol == detectionProtocolAnthropic {
-			name = firstNonEmpty(stringValue(obj["display_name"]), id)
+			name = detectionFirstNonEmpty(stringValue(obj["display_name"]), id)
 			provider = "Anthropic compatible"
 			if caps, ok := obj["capabilities"].(map[string]any); ok {
 				capabilities = caps
@@ -423,7 +423,7 @@ func stringValue(value any) string {
 	return ""
 }
 
-func firstNonEmpty(values ...string) string {
+func detectionFirstNonEmpty(values ...string) string {
 	for _, value := range values {
 		if strings.TrimSpace(value) != "" {
 			return strings.TrimSpace(value)
