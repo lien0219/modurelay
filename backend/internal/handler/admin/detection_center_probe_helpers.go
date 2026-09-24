@@ -111,10 +111,6 @@ func cacheUsage(body []byte) (creation, read int64) {
 	return numberValue(usage["cache_creation_input_tokens"]), numberValue(usage["cache_read_input_tokens"])
 }
 
-func probeResult(id, name, category, status string, confidence float64, summary string) detectionProbeResult {
-	return detectionProbeResult{ID: id, Name: name, Category: category, Status: status, Confidence: confidence, Summary: summary}
-}
-
 func failedProbe(id, name, category, reasonCode, summary, failure string, confidence float64, evidence ...detectionEvidence) detectionProbeResult {
 	return detectionProbeResult{
 		ID:            id,
