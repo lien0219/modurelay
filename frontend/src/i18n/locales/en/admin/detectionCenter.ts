@@ -1,9 +1,9 @@
 export default {
   detectionCenter: {
     title: 'Detection Center',
-    description: 'Enter an API URL and key, discover models, and verify real capabilities with protocol, behavioral, negative-parameter, and consistency evidence.',
+    description: 'Verify API connectivity and model capabilities',
     securityNotice: 'The API key is used only for this test and is not persisted or included in reports. Only public HTTPS targets are allowed.',
-    configTitle: 'Target',
+    configTitle: 'Detection Configuration',
     configDescription: 'Configure the endpoint. The system will discover available models and run a comprehensive check.',
     baseUrl: 'API Base URL',
     baseUrlPlaceholder: 'e.g. https://api.openai.com/v1',
@@ -38,6 +38,20 @@ export default {
     detectedProtocols: 'Detected protocols',
     reportTitle: 'Detailed detection report',
     capabilityResults: 'Capability results',
+    capabilityItems: 'Capability checks',
+    resultDetails: 'Detection details',
+    itemCount: '{count} items',
+    noResult: 'No detection results',
+    noResultHint: 'Configure the API connection and start detection',
+    capabilities: {
+      basic: 'Basic connection',
+      models: 'Model list',
+      text: 'Text generation',
+      multiTurn: 'Multi-turn chat',
+      streaming: 'Streaming',
+      tools: 'Function calling',
+      vision: 'Vision'
+    },
     result: 'Result',
     items: 'items',
     noEvidence: 'No detailed evidence is available for this probe.',
