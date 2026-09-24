@@ -91,7 +91,7 @@ export async function discover(payload: DetectionConnectionPayload): Promise<Det
 }
 
 export async function run(payload: DetectionRunPayload): Promise<DetectionReport> {
-  const { data } = await apiClient.post<DetectionReport>('/admin/detection-center/run', payload, { timeout: 240000 })
+  const { data } = await apiClient.post<DetectionReport>('/admin/detection-center/run', payload, { timeout: 600000 })
   return data
 }
 
