@@ -69,7 +69,6 @@ func TestPrepareCompatibleVideoBodyJSON(t *testing.T) {
 	}
 }
 
-
 func TestPrepareCompatibleVideoBodySeedanceAddsCompatibilityAliases(t *testing.T) {
 	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
 	body := []byte(`{"model":"47:seedance-2.0","prompt":"hello","duration":5,"resolution":"720p","aspect_ratio":"9:16","generate_audio":true}`)

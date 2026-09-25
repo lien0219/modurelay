@@ -311,7 +311,6 @@ func prepareCompatibleVideoBody(account *Account, body []byte, contentType, rout
 	return out.Bytes(), writer.FormDataContentType(), upstreamModel, nil
 }
 
-
 func normalizeAIStarsLabCompatibleVideoJSON(body []byte) ([]byte, error) {
 	if !gjson.ValidBytes(body) {
 		return body, nil
