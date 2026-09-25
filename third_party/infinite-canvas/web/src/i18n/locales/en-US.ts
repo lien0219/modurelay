@@ -75,6 +75,7 @@ export default {
         download: "Download",
         upload: "Upload",
         requestCanceled: "Request canceled",
+        videoRouteChanged: "The provider configuration for this video task changed, so automatic recovery was stopped. Generate the video again.",
         durationMinutes: "{{minutes}}m {{seconds}}s",
         durationSeconds: "{{seconds}}s",
         imageReadFailed: "Failed to read image",

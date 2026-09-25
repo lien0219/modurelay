@@ -1,6 +1,6 @@
 import { ArrowLeft, ArrowRight, BookOpen, CheckSquare, ClipboardPaste, Download, FolderPlus, History, LoaderCircle, Plus, SlidersHorizontal, Sparkles, Square, Trash2, Upload, VideoIcon } from "lucide-react";
 import { useEffect, useRef, useState, type DragEvent } from "react";
-import { App, Button, Checkbox, Drawer, Empty, Input, Modal, Tag, Typography } from "antd";
+import { App, Button, Checkbox, Drawer, Empty, Input, Modal, Tag, Tooltip, Typography } from "antd";
 import localforage from "localforage";
 import { nanoid } from "nanoid";
 import { saveAs } from "file-saver";
@@ -13,7 +13,7 @@ import { VideoSettingsPanel, normalizeVideoResolutionValue, normalizeVideoSizeVa
 import { canvasThemes } from "@/lib/canvas-theme";
 import { clampVideoSeconds } from "@/lib/media-size";
 import { formatBytes, formatDuration } from "@/lib/image-utils";
-import { deleteStoredMedia, resolveMediaUrl } from "@/services/file-storage";
+import { cleanupUnusedMedia, resolveMediaUrl } from "@/services/file-storage";
 import { resolveImageUrl, uploadImage } from "@/services/image-storage";
 import { pruneVideoGenerationHistory } from "@/services/generation-history";
 import {
@@ -25,8 +25,9 @@ import {
     type VideoGenerationTask,
 } from "@/services/api/video";
 import { useAssetStore } from "@/stores/use-asset-store";
+import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
 import { useWorkbenchAgentStore } from "@/stores/use-workbench-agent-store";
-import { boolConfig, modelOptionLabel, useConfigStore, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
+import { boolConfig, mediaTaskRouteFingerprint, modelOptionLabel, useConfigStore, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 import type { ReferenceImage } from "@/types/image";
 import i18n from "@/i18n";
@@ -68,7 +69,7 @@ type GenerationLog = {
     error?: string;
 };
 
-type GenerationLogConfig = Pick<AiConfig, "model" | "videoModel" | "size" | "vquality" | "videoSeconds" | "videoGenerateAudio" | "videoWatermark" | "videoMode">;
+type GenerationLogConfig = Pick<AiConfig, "model" | "videoModel" | "size" | "vquality" | "videoSeconds" | "videoGenerateAudio" | "videoWatermark" | "videoMode"> & { routeFingerprint?: string };
 
 type UpdateAiConfig = <K extends keyof AiConfig>(key: K, value: AiConfig[K]) => void;
 
@@ -234,7 +235,8 @@ export default function VideoPage() {
         try {
             const task = await createVideoGenerationTask(snapshot.config, snapshot.text, snapshot.references, { signal: controller.signal });
             if (controller.signal.aborted) return;
-            const log = buildLog({ prompt: snapshot.text, model, config: snapshot.config, references: snapshot.references, durationMs: 0, status: "pending", task });
+            const routeFingerprint = task.provider === "plugin" ? undefined : await mediaTaskRouteFingerprint(snapshot.config, task.model);
+            const log = buildLog({ prompt: snapshot.text, model, config: snapshot.config, references: snapshot.references, durationMs: 0, status: "pending", task, routeFingerprint });
             visibleLogIdRef.current = log.id;
             await saveLog(log, false);
             if (createControllerRef.current === controller) createControllerRef.current = null;
@@ -341,11 +343,15 @@ export default function VideoPage() {
             pollControllersRef.current.get(id)?.abort();
             pollControllersRef.current.delete(id);
         });
-        const mediaKeys = logs
-            .filter((log) => selectedLogIds.includes(log.id))
-            .map((log) => log.video?.storageKey)
-            .filter((key): key is string => Boolean(key));
-        void Promise.all([deleteStoredMedia(mediaKeys), ...selectedLogIds.map((id) => logStore.removeItem(id))]).then(() => refreshLogs());
+        void Promise.all(selectedLogIds.map((id) => logStore.removeItem(id)))
+            .then(async () => {
+                await cleanupUnusedMedia({
+                    assets: useAssetStore.getState().assets,
+                    projects: useCanvasStore.getState().projects,
+                });
+                await refreshLogs();
+            })
+            .catch((error) => message.error(error instanceof Error ? error.message : t("workbench.generationFailed")));
         if (previewLog && selectedLogIds.includes(previewLog.id)) {
             setPreviewLog(null);
             setResults([]);
@@ -388,6 +394,10 @@ export default function VideoPage() {
         }
         const taskConfig = buildVideoConfig({ ...effectiveConfig, ...log.config }, log.task.model || log.model);
         try {
+            if (!configOverride && log.config.routeFingerprint && log.task.provider !== "plugin") {
+                const currentFingerprint = await mediaTaskRouteFingerprint(effectiveConfig, log.task.model || log.model);
+                if (currentFingerprint !== log.config.routeFingerprint) throw new Error(t("common.videoRouteChanged"));
+            }
             const deadline = log.createdAt + VIDEO_TASK_POLL_TIMEOUT_MS;
             for (;;) {
                 const state = await pollVideoGenerationTask(configOverride || taskConfig, log.task, { signal: controller.signal });
@@ -731,24 +741,24 @@ function LogCard({ log, selected, active, currentTimeMs, onSelectedChange, onCli
     const { t } = useTranslation();
     const displayedDurationMs = log.status === "pending" ? Math.max(log.durationMs, currentTimeMs - log.createdAt) : log.durationMs;
     return (
-        <button type="button" className={`block w-full rounded-lg border p-2 text-left transition ${active ? "border-stone-900 bg-blue-50 dark:border-stone-100 dark:bg-blue-950/20" : "border-stone-200 bg-background hover:bg-stone-50 dark:border-stone-800 dark:hover:bg-stone-900"}`} onClick={onClick}>
-            <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2">
-                <Checkbox className="mt-0.5" checked={selected} onClick={(event) => event.stopPropagation()} onChange={(event) => onSelectedChange(event.target.checked)} />
-                <div className="min-w-0">
-                    <div className="truncate text-sm font-semibold leading-5">{log.title}</div>
-                    <div className="mt-2 flex flex-wrap gap-1">
-                        <Tag className="m-0 flex h-6 items-center rounded-md px-1.5 text-xs leading-none">{log.size}</Tag>
-                        <Tag className="m-0 flex h-6 items-center rounded-md px-1.5 text-xs leading-none">{log.resolution}p</Tag>
-                        <Tag className="m-0 flex h-6 items-center rounded-md px-1.5 text-xs leading-none">{log.seconds}s</Tag>
+        <button type="button" className={`block w-full overflow-hidden rounded-lg border p-2 text-left transition ${active ? "border-stone-900 bg-blue-50 dark:border-stone-100 dark:bg-blue-950/20" : "border-stone-200 bg-background hover:bg-stone-50 dark:border-stone-800 dark:hover:bg-stone-900"}`} onClick={onClick}>
+            <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-2">
+                <Checkbox className="mt-0.5 shrink-0" checked={selected} onClick={(event) => event.stopPropagation()} onChange={(event) => onSelectedChange(event.target.checked)} />
+                <div className="min-w-0 overflow-hidden">
+                    <Tooltip title={log.title}>
+                        <div className="truncate text-sm font-semibold leading-5">{log.title}</div>
+                    </Tooltip>
+                    <div className="mt-2 flex min-w-0 flex-wrap gap-1 overflow-hidden">
+                        <Tag className="m-0 flex h-6 max-w-full items-center rounded-md px-1.5 text-xs leading-none">{log.size}</Tag>
+                        <Tag className="m-0 flex h-6 max-w-full items-center rounded-md px-1.5 text-xs leading-none">{log.resolution}p</Tag>
+                        <Tag className="m-0 flex h-6 max-w-full items-center rounded-md px-1.5 text-xs leading-none">{log.seconds}s</Tag>
+                        <Tag className="m-0 flex h-6 max-w-full items-center rounded-md px-1.5 text-xs leading-none" color={log.status === "success" ? "blue" : log.status === "pending" ? "processing" : "red"}>
+                            {t(`workbench.${log.status === "success" ? "success" : log.status === "pending" ? "generating" : "failed"}`)}
+                        </Tag>
+                        <Tag className="m-0 flex h-6 max-w-full items-center rounded-md px-1.5 text-xs leading-none" color="green">
+                            {formatDuration(displayedDurationMs)}
+                        </Tag>
                     </div>
-                </div>
-                <div className="grid justify-items-end gap-2">
-                    <Tag className="m-0 flex h-6 items-center rounded-md px-1.5 text-xs leading-none" color={log.status === "success" ? "blue" : log.status === "pending" ? "processing" : "red"}>
-                        {t(`workbench.${log.status === "success" ? "success" : log.status === "pending" ? "generating" : "failed"}`)}
-                    </Tag>
-                    <Tag className="m-0 flex h-6 items-center rounded-md px-1.5 text-xs leading-none" color="green">
-                        {formatDuration(displayedDurationMs)}
-                    </Tag>
                 </div>
             </div>
         </button>
@@ -834,11 +844,12 @@ function normalizeLogConfig(log: Partial<GenerationLog>): GenerationLogConfig {
         videoGenerateAudio: log.config?.videoGenerateAudio || "true",
         videoWatermark: log.config?.videoWatermark || "false",
         videoMode: log.config?.videoMode === "reference" ? "reference" : "frames",
+        routeFingerprint: log.config?.routeFingerprint,
     };
 }
 
-function buildLog({ prompt, model, config, references, durationMs, status, task, video, error }: { prompt: string; model: string; config: AiConfig; references: ReferenceImage[]; durationMs: number; status: GenerationLog["status"]; task?: VideoGenerationTask; video?: GeneratedVideo; error?: string }): GenerationLog {
-    const logConfig = {
+function buildLog({ prompt, model, config, references, durationMs, status, task, video, error, routeFingerprint }: { prompt: string; model: string; config: AiConfig; references: ReferenceImage[]; durationMs: number; status: GenerationLog["status"]; task?: VideoGenerationTask; video?: GeneratedVideo; error?: string; routeFingerprint?: string }): GenerationLog {
+    const logConfig: GenerationLogConfig = {
         model: config.model,
         videoModel: config.videoModel,
         size: config.size,
@@ -847,6 +858,7 @@ function buildLog({ prompt, model, config, references, durationMs, status, task,
         videoGenerateAudio: config.videoGenerateAudio,
         videoWatermark: config.videoWatermark,
         videoMode: config.videoMode === "reference" ? "reference" : "frames",
+        ...(routeFingerprint ? { routeFingerprint } : {}),
     };
     return {
         id: nanoid(),

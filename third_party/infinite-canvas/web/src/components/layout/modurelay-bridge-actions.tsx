@@ -107,7 +107,7 @@ export function ModuRelayBridgeActions({ className, style, showBackLabel = false
 
     const returnToRelay = (event: ReactMouseEvent<HTMLAnchorElement>) => {
         event.preventDefault();
-        window.dispatchEvent(new CustomEvent("modurelay-workspace-door", { detail: { direction: "to-relay", href: "/dashboard" } }));
+        window.dispatchEvent(new CustomEvent("modurelay-workspace-door", { detail: { direction: "to-relay", href: "/dashboard", replace: true } }));
     };
 
     const connectionLabel = t(!token ? "modurelay.signIn" : connected ? "modurelay.manageConnection" : "modurelay.connect");

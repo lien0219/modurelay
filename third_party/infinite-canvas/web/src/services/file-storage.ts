@@ -22,14 +22,23 @@ export async function uploadMediaFile(input: string | Blob, prefix = "file", opt
         blob = input;
     }
     throwIfAborted(options?.signal);
-    validateStoredMediaBlob(blob, prefix);
+    await validateStoredMediaBlob(blob, prefix);
     const storageKey = `${prefix}:${nanoid()}`;
-    await store.setItem(storageKey, blob);
-    throwIfAborted(options?.signal);
-    const url = URL.createObjectURL(blob);
-    objectUrls.set(storageKey, url);
-    const meta = blob.type.startsWith("video/") ? await readVideoMeta(url) : blob.type.startsWith("audio/") ? await readAudioMeta(url) : {};
-    return { url, storageKey, bytes: blob.size, mimeType: blob.type || "application/octet-stream", ...meta };
+    let url = "";
+    try {
+        await store.setItem(storageKey, blob);
+        throwIfAborted(options?.signal);
+        url = URL.createObjectURL(blob);
+        objectUrls.set(storageKey, url);
+        const meta = blob.type.startsWith("video/") ? await readVideoMeta(url) : blob.type.startsWith("audio/") ? await readAudioMeta(url) : {};
+        throwIfAborted(options?.signal);
+        return { url, storageKey, bytes: blob.size, mimeType: blob.type || "application/octet-stream", ...meta };
+    } catch (error) {
+        if (url) URL.revokeObjectURL(url);
+        objectUrls.delete(storageKey);
+        await store.removeItem(storageKey).catch(() => undefined);
+        throw error;
+    }
 }
 
 export async function resolveMediaUrl(storageKey?: string, fallback = "") {
@@ -86,56 +95,84 @@ export function collectMediaStorageKeys(value: unknown, keys = new Set<string>()
     return keys;
 }
 
-function validateStoredMediaBlob(blob: Blob, prefix: string) {
+async function validateStoredMediaBlob(blob: Blob, prefix: string) {
     if (!blob.size) throw new Error("Media response is empty");
     const mimeType = blob.type.toLowerCase();
-    if (!mimeType || mimeType.includes("octet-stream")) return;
-    if (prefix.startsWith("video") && !mimeType.startsWith("video/")) throw new Error("Video response is not playable media");
-    if (prefix.startsWith("audio") && !mimeType.startsWith("audio/")) throw new Error("Audio response is not playable media");
+    if (prefix.startsWith("video") && mimeType && !mimeType.startsWith("video/") && !mimeType.includes("octet-stream")) throw new Error("Video response is not playable media");
+    if (prefix.startsWith("audio") && mimeType && !mimeType.startsWith("audio/") && !mimeType.includes("octet-stream")) throw new Error("Audio response is not playable media");
+
+    // Some compatible gateways return an HTML/JSON error body as
+    // application/octet-stream. Detect obvious text error payloads before
+    // persisting them as a successful media result.
+    if (!mimeType || mimeType.includes("octet-stream")) {
+        const sample = new Uint8Array(await blob.slice(0, 512).arrayBuffer());
+        const text = new TextDecoder().decode(sample).trimStart();
+        if (/^(?:<!doctype\s+html|<html[\s>]|[{[])/i.test(text)) {
+            throw new Error(prefix.startsWith("video") ? "Video response is not playable media" : prefix.startsWith("audio") ? "Audio response is not playable media" : "Media response is not playable media");
+        }
+    }
 }
 
 function readVideoMeta(url: string) {
-    return new Promise<{ width: number; height: number; durationMs?: number }>((resolve) => {
+    return new Promise<{ width: number; height: number; durationMs?: number }>((resolve, reject) => {
         const video = document.createElement("video");
         video.preload = "metadata";
         let settled = false;
-        const done = () => {
-            if (settled) return;
-            settled = true;
+        const cleanup = () => {
             window.clearTimeout(timer);
-            const result = { width: video.videoWidth || 1280, height: video.videoHeight || 720, durationMs: Number.isFinite(video.duration) ? Math.round(video.duration * 1000) : undefined };
             video.onloadedmetadata = null;
             video.onerror = null;
             video.removeAttribute("src");
             video.load();
+        };
+        const succeed = () => {
+            if (settled) return;
+            settled = true;
+            const result = { width: video.videoWidth || 1280, height: video.videoHeight || 720, durationMs: Number.isFinite(video.duration) ? Math.round(video.duration * 1000) : undefined };
+            cleanup();
             resolve(result);
         };
-        const timer = window.setTimeout(done, MEDIA_METADATA_TIMEOUT_MS);
-        video.onloadedmetadata = done;
-        video.onerror = done;
+        const fail = () => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            reject(new Error("Video response is not playable media"));
+        };
+        const timer = window.setTimeout(fail, MEDIA_METADATA_TIMEOUT_MS);
+        video.onloadedmetadata = succeed;
+        video.onerror = fail;
         video.src = url;
     });
 }
 
 function readAudioMeta(url: string) {
-    return new Promise<{ durationMs?: number }>((resolve) => {
+    return new Promise<{ durationMs?: number }>((resolve, reject) => {
         const audio = document.createElement("audio");
         audio.preload = "metadata";
         let settled = false;
-        const done = () => {
-            if (settled) return;
-            settled = true;
+        const cleanup = () => {
             window.clearTimeout(timer);
-            const result = { durationMs: Number.isFinite(audio.duration) ? Math.round(audio.duration * 1000) : undefined };
             audio.onloadedmetadata = null;
             audio.onerror = null;
             audio.removeAttribute("src");
             audio.load();
+        };
+        const succeed = () => {
+            if (settled) return;
+            settled = true;
+            const result = { durationMs: Number.isFinite(audio.duration) ? Math.round(audio.duration * 1000) : undefined };
+            cleanup();
             resolve(result);
         };
-        const timer = window.setTimeout(done, MEDIA_METADATA_TIMEOUT_MS);
-        audio.onloadedmetadata = done;
-        audio.onerror = done;
+        const fail = () => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            reject(new Error("Audio response is not playable media"));
+        };
+        const timer = window.setTimeout(fail, MEDIA_METADATA_TIMEOUT_MS);
+        audio.onloadedmetadata = succeed;
+        audio.onerror = fail;
         audio.src = url;
     });
 }

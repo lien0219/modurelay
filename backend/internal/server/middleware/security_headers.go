@@ -157,6 +157,7 @@ func SecurityHeadersWithCanvasOrigins(
 			finalPolicy = addToDirective(finalPolicy, "script-src", "blob:")
 			finalPolicy = addToDirective(finalPolicy, "connect-src", "blob:")
 			finalPolicy = addToDirective(finalPolicy, "media-src", "blob:")
+			finalPolicy = addToDirective(finalPolicy, "media-src", "https:")
 		}
 
 		c.Header("X-Content-Type-Options", "nosniff")

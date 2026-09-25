@@ -171,7 +171,12 @@ export async function storeGeneratedVideo(result: VideoGenerationResult, options
     if (result.url) {
         try {
             return await uploadMediaFile(result.url, "video", options);
-        } catch {
+        } catch (error) {
+            if (options?.signal?.aborted || axios.isCancel(error) || (error instanceof Error && error.name === "AbortError")) throw error;
+            // data:/blob: values are local ephemeral payloads. If local persistence
+            // fails, returning the raw value would create a false "success" that
+            // cannot reliably survive refresh, so surface the real failure.
+            if (/^(data:|blob:)/i.test(result.url)) throw error;
             return { url: result.url, storageKey: "", bytes: 0, mimeType: result.mimeType || "video/mp4" };
         }
     }
@@ -464,6 +469,13 @@ function isTransientVideoContentError(error: unknown) {
 
 async function videoResultFromUrl(config: AiConfig, url: string, options?: RequestOptions): Promise<VideoGenerationResult> {
     const resolvedUrl = resolveVideoResultUrl(config, url);
+    if (/^(data:|blob:)/i.test(resolvedUrl)) {
+        const response = await providerFetch(resolvedUrl, { signal: options?.signal });
+        if (!response.ok) throw new Error(apiText("videoDownloadFailed"));
+        const blob = await response.blob();
+        await assertVideoBlob(blob);
+        return { blob };
+    }
     try {
         const response = await providerAxios.get<Blob>(withLocalProxy(resolvedUrl), { responseType: "blob", signal: options?.signal });
         await assertVideoBlob(response.data);
@@ -573,13 +585,17 @@ async function referenceMediaToFile(item: { name: string; type?: string; url?: s
         const url = item.storageKey ? await resolveMediaUrl(item.storageKey, item.url || "") : item.url || "";
         if (!url) throw new Error(apiText(errorKey));
         try {
-            blob = await (await providerFetch(url, { signal: options?.signal })).blob();
+            const response = await providerFetch(url, { signal: options?.signal });
+            if (!response.ok) throw new Error(apiText(errorKey));
+            blob = await response.blob();
         } catch (error) {
-            if (error instanceof DOMException && error.name === "AbortError") throw error;
+            if (options?.signal?.aborted || (error instanceof DOMException && error.name === "AbortError") || (error instanceof Error && error.name === "AbortError")) throw error;
             throw new Error(apiText(errorKey));
         }
     }
     if (!blob.size) throw new Error(apiText(errorKey));
+    const expectedPrefix = errorKey === "invalidReferenceVideo" ? "video/" : "audio/";
+    if (blob.type && !blob.type.startsWith(expectedPrefix) && !blob.type.includes("octet-stream")) throw new Error(apiText(errorKey));
     return new File([blob], item.name || fallbackName, { type: item.type || blob.type || "application/octet-stream" });
 }
 

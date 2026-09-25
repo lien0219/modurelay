@@ -43,7 +43,7 @@ export function WorkspaceDoorTransition() {
         }
 
         const handleDoor = (event: Event) => {
-            const detail = (event as CustomEvent<{ direction?: DoorDirection; href?: string }>).detail || {};
+            const detail = (event as CustomEvent<{ direction?: DoorDirection; href?: string; replace?: boolean }>).detail || {};
             if (detail.direction !== "to-relay") return;
             clearScheduledWork();
             setOpening(true);
@@ -54,15 +54,27 @@ export function WorkspaceDoorTransition() {
                 schedule(() => {
                     timerRef.current = null;
                     sessionStorage.setItem(ARRIVAL_KEY, "to-relay");
-                    window.location.assign(detail.href || "/dashboard");
+                    const href = detail.href || "/dashboard";
+                    if (detail.replace) window.location.replace(href);
+                    else window.location.assign(href);
                 });
             });
         };
 
+        const handlePageShow = (event: PageTransitionEvent) => {
+            if (!event.persisted) return;
+            clearScheduledWork();
+            sessionStorage.removeItem(ARRIVAL_KEY);
+            setOpening(false);
+            setActive(false);
+        };
+
         window.addEventListener("modurelay-workspace-door", handleDoor);
+        window.addEventListener("pageshow", handlePageShow);
         return () => {
             clearScheduledWork();
             window.removeEventListener("modurelay-workspace-door", handleDoor);
+            window.removeEventListener("pageshow", handlePageShow);
         };
     }, []);
 

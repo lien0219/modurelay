@@ -59,6 +59,9 @@ async function storeImage(blob: Blob, options?: ImageReadOptions): Promise<Uploa
 }
 
 async function fetchImageBlob(url: string, options?: ImageReadOptions) {
+    throwIfAborted(options?.signal);
+    if (/^data:/i.test(url)) return dataUrlToBlob(url);
+
     const controller = new AbortController();
     let timedOut = false;
     const abort = () => controller.abort();
@@ -193,6 +196,26 @@ export function collectImageStorageKeys(value: unknown, keys = new Set<string>()
     if ("storageKey" in value && typeof value.storageKey === "string" && value.storageKey.startsWith("image:")) keys.add(value.storageKey);
     Object.values(value).forEach((item) => (Array.isArray(item) ? item.forEach((child) => collectImageStorageKeys(child, keys)) : collectImageStorageKeys(item, keys)));
     return keys;
+}
+
+function dataUrlToBlob(value: string) {
+    const commaIndex = value.indexOf(",");
+    if (commaIndex <= 5) throw namedError(IMAGE_RESPONSE_ERROR);
+    const metadata = value.slice(5, commaIndex);
+    const payload = value.slice(commaIndex + 1);
+    const parts = metadata.split(";");
+    const mimeType = parts[0] || "application/octet-stream";
+    try {
+        if (parts.includes("base64")) {
+            const binary = atob(payload.replace(/\s/g, ""));
+            const bytes = new Uint8Array(binary.length);
+            for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+            return new Blob([bytes], { type: mimeType });
+        }
+        return new Blob([decodeURIComponent(payload)], { type: mimeType });
+    } catch {
+        throw namedError(IMAGE_RESPONSE_ERROR);
+    }
 }
 
 function blobToDataUrl(blob: Blob) {
