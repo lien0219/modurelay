@@ -535,19 +535,23 @@ func isAPIKeyCompatibleImageModel(model string) bool {
 		return false
 	}
 	// Common image model families exposed by OpenAI-compatible aggregators.
-	// This stays narrower than "any unknown model" so ordinary text models still
-	// fail fast at the Images endpoint.
+	// Deliberately avoid a bare "image" substring: values such as
+	// "gemini-3-pro-imageless" and "unknown-image" are not proof that a model
+	// implements the Images API.
 	for _, marker := range []string{
-		"image", "seedream", "flux", "recraft", "ideogram", "dall-e", "imagen",
+		"seedream", "flux", "recraft", "ideogram", "dall-e", "imagen",
 		"stable-diffusion", "stable_diffusion", "sdxl", "kolors", "cogview",
 		"hidream", "wanx", "jimeng", "dreamina", "nano-banana", "nano_banana",
-		"t2i", "i2i",
+		"qwen-image", "qwen_image", "t2i", "i2i",
 	} {
 		if strings.Contains(value, marker) {
 			return true
 		}
 	}
-	return false
+	// Some providers publish generic versioned IDs such as image-01. Require
+	// the family token at the beginning plus a version delimiter so arbitrary
+	// names ending in "-image" remain rejected.
+	return strings.HasPrefix(value, "image-") || strings.HasPrefix(value, "image_")
 }
 
 func validateCompatibleImagesModel(model string) error {

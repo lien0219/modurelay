@@ -512,7 +512,7 @@ async function pollGeminiVideoTask(config: AiConfig, task: VideoGenerationTask, 
         const uri = state.response?.generateVideoResponse?.generatedSamples?.[0]?.video?.uri;
         if (!uri) return { status: "failed", error: apiText("noPlayableVideo") };
         const url = uri.includes("key=") ? uri : `${uri}${uri.includes("?") ? "&" : "?"}key=${config.apiKey}`;
-        return { status: "completed", result: await videoResultFromUrl(url, options) };
+        return { status: "completed", result: await videoResultFromUrl(config, url, options) };
     } catch (error) {
         throw new Error(readAxiosError(error, apiText("videoTaskQueryFailed")));
     }
