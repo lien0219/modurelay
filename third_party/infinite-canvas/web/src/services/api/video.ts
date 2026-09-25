@@ -469,6 +469,13 @@ function isTransientVideoContentError(error: unknown) {
 
 async function videoResultFromUrl(config: AiConfig, url: string, options?: RequestOptions): Promise<VideoGenerationResult> {
     const resolvedUrl = resolveVideoResultUrl(config, url);
+    if (/^(data:|blob:)/i.test(resolvedUrl)) {
+        const response = await providerFetch(resolvedUrl, { signal: options?.signal });
+        if (!response.ok) throw new Error(apiText("videoDownloadFailed"));
+        const blob = await response.blob();
+        await assertVideoBlob(blob);
+        return { blob };
+    }
     try {
         const response = await providerAxios.get<Blob>(withLocalProxy(resolvedUrl), { responseType: "blob", signal: options?.signal });
         await assertVideoBlob(response.data);
