@@ -26,7 +26,7 @@ import {
 } from "@/services/api/video";
 import { useAssetStore } from "@/stores/use-asset-store";
 import { useWorkbenchAgentStore } from "@/stores/use-workbench-agent-store";
-import { boolConfig, modelOptionLabel, useConfigStore, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
+import { boolConfig, mediaTaskRouteFingerprint, modelOptionLabel, useConfigStore, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 import type { ReferenceImage } from "@/types/image";
 import i18n from "@/i18n";
@@ -68,7 +68,7 @@ type GenerationLog = {
     error?: string;
 };
 
-type GenerationLogConfig = Pick<AiConfig, "model" | "videoModel" | "size" | "vquality" | "videoSeconds" | "videoGenerateAudio" | "videoWatermark" | "videoMode">;
+type GenerationLogConfig = Pick<AiConfig, "model" | "videoModel" | "size" | "vquality" | "videoSeconds" | "videoGenerateAudio" | "videoWatermark" | "videoMode"> & { routeFingerprint?: string };
 
 type UpdateAiConfig = <K extends keyof AiConfig>(key: K, value: AiConfig[K]) => void;
 
@@ -234,7 +234,8 @@ export default function VideoPage() {
         try {
             const task = await createVideoGenerationTask(snapshot.config, snapshot.text, snapshot.references, { signal: controller.signal });
             if (controller.signal.aborted) return;
-            const log = buildLog({ prompt: snapshot.text, model, config: snapshot.config, references: snapshot.references, durationMs: 0, status: "pending", task });
+            const routeFingerprint = task.provider === "plugin" ? undefined : await mediaTaskRouteFingerprint(snapshot.config, task.model);
+            const log = buildLog({ prompt: snapshot.text, model, config: snapshot.config, references: snapshot.references, durationMs: 0, status: "pending", task, routeFingerprint });
             visibleLogIdRef.current = log.id;
             await saveLog(log, false);
             if (createControllerRef.current === controller) createControllerRef.current = null;
@@ -388,6 +389,10 @@ export default function VideoPage() {
         }
         const taskConfig = buildVideoConfig({ ...effectiveConfig, ...log.config }, log.task.model || log.model);
         try {
+            if (!configOverride && log.config.routeFingerprint && log.task.provider !== "plugin") {
+                const currentFingerprint = await mediaTaskRouteFingerprint(effectiveConfig, log.task.model || log.model);
+                if (currentFingerprint !== log.config.routeFingerprint) throw new Error(t("common.videoRouteChanged"));
+            }
             const deadline = log.createdAt + VIDEO_TASK_POLL_TIMEOUT_MS;
             for (;;) {
                 const state = await pollVideoGenerationTask(configOverride || taskConfig, log.task, { signal: controller.signal });
@@ -834,11 +839,12 @@ function normalizeLogConfig(log: Partial<GenerationLog>): GenerationLogConfig {
         videoGenerateAudio: log.config?.videoGenerateAudio || "true",
         videoWatermark: log.config?.videoWatermark || "false",
         videoMode: log.config?.videoMode === "reference" ? "reference" : "frames",
+        routeFingerprint: log.config?.routeFingerprint,
     };
 }
 
-function buildLog({ prompt, model, config, references, durationMs, status, task, video, error }: { prompt: string; model: string; config: AiConfig; references: ReferenceImage[]; durationMs: number; status: GenerationLog["status"]; task?: VideoGenerationTask; video?: GeneratedVideo; error?: string }): GenerationLog {
-    const logConfig = {
+function buildLog({ prompt, model, config, references, durationMs, status, task, video, error, routeFingerprint }: { prompt: string; model: string; config: AiConfig; references: ReferenceImage[]; durationMs: number; status: GenerationLog["status"]; task?: VideoGenerationTask; video?: GeneratedVideo; error?: string; routeFingerprint?: string }): GenerationLog {
+    const logConfig: GenerationLogConfig = {
         model: config.model,
         videoModel: config.videoModel,
         size: config.size,
@@ -847,6 +853,7 @@ function buildLog({ prompt, model, config, references, durationMs, status, task,
         videoGenerateAudio: config.videoGenerateAudio,
         videoWatermark: config.videoWatermark,
         videoMode: config.videoMode === "reference" ? "reference" : "frames",
+        ...(routeFingerprint ? { routeFingerprint } : {}),
     };
     return {
         id: nanoid(),

@@ -75,6 +75,7 @@ export default {
         download: "下载",
         upload: "上传",
         requestCanceled: "请求已取消",
+        videoRouteChanged: "原视频任务的渠道配置已发生变化，已停止自动恢复。请重新生成该视频。",
         durationMinutes: "{{minutes}}分{{seconds}}秒",
         durationSeconds: "{{seconds}}秒",
         imageReadFailed: "读取图片失败",

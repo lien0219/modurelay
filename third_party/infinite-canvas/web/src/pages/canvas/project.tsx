@@ -8,7 +8,7 @@ import { useTranslation } from "react-i18next";
 import { requestEdit, requestGeneration, requestImageQuestion } from "@/services/api/image";
 import { requestAudioGeneration, storeGeneratedAudio } from "@/services/api/audio";
 import { createVideoGenerationTask, isVideoTaskFailed, isVideoTaskTimeout, storeGeneratedVideo, waitForVideoGenerationTask, VIDEO_TASK_POLL_TIMEOUT_MS } from "@/services/api/video";
-import { defaultConfig, useConfigStore, useEffectiveConfig } from "@/stores/use-config-store";
+import { defaultConfig, mediaTaskRouteFingerprint, useConfigStore, useEffectiveConfig } from "@/stores/use-config-store";
 import { uploadImage } from "@/services/image-storage";
 import { uploadMediaFile, type UploadedFile } from "@/services/file-storage";
 import { nanoid } from "nanoid";
@@ -139,7 +139,7 @@ function applyGeneratedVideo(item: CanvasNodeData, video: UploadedFile, extra: C
         width: videoSize.width,
         height: videoSize.height,
         position: { x: item.position.x + item.width / 2 - videoSize.width / 2, y: item.position.y + item.height / 2 - videoSize.height / 2 },
-        metadata: { ...item.metadata, ...videoMetadata(video), ...extra, videoTaskId: undefined, videoTaskProvider: undefined, videoTaskStartedAt: undefined },
+        metadata: { ...item.metadata, ...videoMetadata(video), ...extra, videoTaskId: undefined, videoTaskProvider: undefined, videoTaskStartedAt: undefined, videoTaskRouteFingerprint: undefined, videoTaskRouteFingerprint: undefined },
     };
 }
 
@@ -307,7 +307,8 @@ function InfiniteCanvasPage() {
             const task = await createVideoGenerationTask(config, prompt, images, { signal, videos, audios });
             const taskStartedAt = Date.now();
             if (task.provider !== "plugin") {
-                setNodes((prev) => prev.map((item) => (item.id === nodeId ? { ...item, metadata: { ...item.metadata, videoTaskId: task.id, videoTaskProvider: task.provider === "gemini" ? "gemini" : "openai", videoTaskStartedAt: taskStartedAt, model: config.model } } : item)));
+                const routeFingerprint = await mediaTaskRouteFingerprint(config, task.model);
+                setNodes((prev) => prev.map((item) => (item.id === nodeId ? { ...item, metadata: { ...item.metadata, videoTaskId: task.id, videoTaskProvider: task.provider === "gemini" ? "gemini" : "openai", videoTaskStartedAt: taskStartedAt, videoTaskRouteFingerprint: routeFingerprint, model: config.model } } : item)));
             }
             const video = await storeGeneratedVideo(await waitForVideoGenerationTask(config, task, { signal, deadlineAt: taskStartedAt + VIDEO_TASK_POLL_TIMEOUT_MS }), { signal });
             setNodes((prev) => prev.map((item) => (item.id === nodeId ? applyGeneratedVideo(item, video, { prompt, model: config.model, ...extra }) : item)));
@@ -323,6 +324,32 @@ function InfiniteCanvasPage() {
             let controller: AbortController | undefined;
             try {
                 const generationConfig = buildGenerationConfig(effectiveConfig, node, "video");
+                if (node.metadata?.videoTaskRouteFingerprint) {
+                    const currentFingerprint = await mediaTaskRouteFingerprint(effectiveConfig, node.metadata?.model || generationConfig.model);
+                    if (currentFingerprint !== node.metadata.videoTaskRouteFingerprint) {
+                        const errorDetails = t("common.videoRouteChanged");
+                        setNodes((prev) =>
+                            prev.map((item) =>
+                                item.id === node.id
+                                    ? {
+                                          ...item,
+                                          metadata: {
+                                              ...item.metadata,
+                                              status: NODE_STATUS_ERROR,
+                                              errorDetails,
+                                              videoTaskId: undefined,
+                                              videoTaskProvider: undefined,
+                                              videoTaskStartedAt: undefined,
+                                              videoTaskRouteFingerprint: undefined,
+                                          },
+                                      }
+                                    : item,
+                            ),
+                        );
+                        if (!silent) message.error(errorDetails);
+                        return;
+                    }
+                }
                 if (!isAiConfigReady(generationConfig, generationConfig.model)) {
                     if (silent) {
                         setNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_ERROR, errorDetails: t("workbench.configFirst") } } : item)));
@@ -372,7 +399,7 @@ function InfiniteCanvasPage() {
                                       ...item.metadata,
                                       status: item.metadata?.content ? NODE_STATUS_SUCCESS : NODE_STATUS_ERROR,
                                       errorDetails: item.metadata?.content ? undefined : errorDetails,
-                                      ...(isVideoTaskFailed(error) || isVideoTaskTimeout(error) ? { videoTaskId: undefined, videoTaskProvider: undefined, videoTaskStartedAt: undefined } : {}),
+                                      ...(isVideoTaskFailed(error) || isVideoTaskTimeout(error) ? { videoTaskId: undefined, videoTaskProvider: undefined, videoTaskStartedAt: undefined, videoTaskRouteFingerprint: undefined } : {}),
                                   },
                               }
                             : item,
@@ -411,7 +438,7 @@ function InfiniteCanvasPage() {
                               errorDetails: undefined,
                               images: node.metadata.images?.map((image) => (image.status === NODE_STATUS_LOADING ? { ...image, status: NODE_STATUS_ERROR, errorDetails: t("common.requestCanceled") } : image)),
                               texts: node.metadata.texts?.map((text) => (text.status === NODE_STATUS_LOADING ? { ...text, status: NODE_STATUS_ERROR, errorDetails: t("common.requestCanceled") } : text)),
-                              ...(node.type === CanvasNodeType.Video ? { videoTaskId: undefined, videoTaskProvider: undefined, videoTaskStartedAt: undefined } : {}),
+                              ...(node.type === CanvasNodeType.Video ? { videoTaskId: undefined, videoTaskProvider: undefined, videoTaskStartedAt: undefined, videoTaskRouteFingerprint: undefined } : {}),
                           },
                       }
                     : node,
@@ -2729,7 +2756,7 @@ function InfiniteCanvasPage() {
                                           ...node.metadata,
                                           status: NODE_STATUS_ERROR,
                                           errorDetails,
-                                          ...(isVideoTaskFailed(error) || isVideoTaskTimeout(error)) && node.type === CanvasNodeType.Video ? { videoTaskId: undefined, videoTaskProvider: undefined, videoTaskStartedAt: undefined } : {},
+                                          ...(isVideoTaskFailed(error) || isVideoTaskTimeout(error)) && node.type === CanvasNodeType.Video ? { videoTaskId: undefined, videoTaskProvider: undefined, videoTaskStartedAt: undefined, videoTaskRouteFingerprint: undefined } : {},
                                       },
                                   }
                             : node,
@@ -2886,7 +2913,7 @@ function InfiniteCanvasPage() {
                                       status: item.metadata?.content ? NODE_STATUS_SUCCESS : NODE_STATUS_ERROR,
                                       errorDetails: item.metadata?.content ? undefined : errorDetails,
                                       images: item.metadata?.images?.map((image) => (image.id === imageId ? { ...image, status: NODE_STATUS_ERROR, errorDetails } : image)),
-                                      ...(isVideoTaskFailed(error) || isVideoTaskTimeout(error)) && item.type === CanvasNodeType.Video ? { videoTaskId: undefined, videoTaskProvider: undefined, videoTaskStartedAt: undefined } : {},
+                                      ...(isVideoTaskFailed(error) || isVideoTaskTimeout(error)) && item.type === CanvasNodeType.Video ? { videoTaskId: undefined, videoTaskProvider: undefined, videoTaskStartedAt: undefined, videoTaskRouteFingerprint: undefined } : {},
                                   },
                               }
                             : item,
