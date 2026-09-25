@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, BookOpen, CheckSquare, ClipboardPaste, Download, FolderPlus, History, LoaderCircle, Plus, SlidersHorizontal, Sparkles, Trash2, Upload, VideoIcon } from "lucide-react";
+import { ArrowLeft, ArrowRight, BookOpen, CheckSquare, ClipboardPaste, Download, FolderPlus, History, LoaderCircle, Plus, SlidersHorizontal, Sparkles, Square, Trash2, Upload, VideoIcon } from "lucide-react";
 import { useEffect, useRef, useState, type DragEvent } from "react";
 import { App, Button, Checkbox, Drawer, Empty, Input, Modal, Tag, Typography } from "antd";
 import localforage from "localforage";
@@ -15,7 +15,15 @@ import { clampVideoSeconds } from "@/lib/media-size";
 import { formatBytes, formatDuration } from "@/lib/image-utils";
 import { deleteStoredMedia, resolveMediaUrl } from "@/services/file-storage";
 import { resolveImageUrl, uploadImage } from "@/services/image-storage";
-import { createVideoGenerationTask, pollVideoGenerationTask, storeGeneratedVideo, type VideoGenerationTask } from "@/services/api/video";
+import { pruneVideoGenerationHistory } from "@/services/generation-history";
+import {
+    createVideoGenerationTask,
+    pollVideoGenerationTask,
+    storeGeneratedVideo,
+    VIDEO_TASK_POLL_INTERVAL_MS,
+    VIDEO_TASK_POLL_TIMEOUT_MS,
+    type VideoGenerationTask,
+} from "@/services/api/video";
 import { useAssetStore } from "@/stores/use-asset-store";
 import { useWorkbenchAgentStore } from "@/stores/use-workbench-agent-store";
 import { boolConfig, modelOptionLabel, useConfigStore, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
@@ -73,6 +81,9 @@ export default function VideoPage() {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const dragDepthRef = useRef(0);
     const activeLogIdsRef = useRef<Set<string>>(new Set());
+    const pollControllersRef = useRef<Map<string, AbortController>>(new Map());
+    const createControllerRef = useRef<AbortController | null>(null);
+    const visibleLogIdRef = useRef<string | null>(null);
     const config = useConfigStore((state) => state.config);
     const effectiveConfig = useEffectiveConfig();
     const updateConfig = useConfigStore((state) => state.updateConfig);
@@ -89,7 +100,7 @@ export default function VideoPage() {
     const [promptDialogOpen, setPromptDialogOpen] = useState(false);
     const [assetPickerOpen, setAssetPickerOpen] = useState(false);
     const [startedAt, setStartedAt] = useState(0);
-    const [elapsedMs, setElapsedMs] = useState(0);
+    const [nowMs, setNowMs] = useState(() => Date.now());
     const [selectedLogIds, setSelectedLogIds] = useState<string[]>([]);
     const [previewLog, setPreviewLog] = useState<GenerationLog | null>(null);
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -103,15 +114,26 @@ export default function VideoPage() {
 
     const model = effectiveConfig.videoModel || effectiveConfig.model;
     const canGenerate = Boolean(prompt.trim());
+    const hasPendingLogs = logs.some((log) => log.status === "pending");
+    const elapsedMs = running && startedAt ? Math.max(0, nowMs - startedAt) : 0;
 
     useEffect(() => {
-        if (!running || !startedAt) return;
-        const timer = window.setInterval(() => setElapsedMs(performance.now() - startedAt), 1000);
+        if (!running && !hasPendingLogs) return;
+        const tick = () => setNowMs(Date.now());
+        tick();
+        const timer = window.setInterval(tick, 1000);
         return () => window.clearInterval(timer);
-    }, [running, startedAt]);
+    }, [running, hasPendingLogs]);
 
     useEffect(() => {
         void refreshLogs();
+        return () => {
+            createControllerRef.current?.abort();
+            createControllerRef.current = null;
+            pollControllersRef.current.forEach((controller) => controller.abort());
+            pollControllersRef.current.clear();
+            activeLogIdsRef.current.clear();
+        };
     }, []);
 
     const addReferences = async (files?: FileList | null) => {
@@ -147,6 +169,31 @@ export default function VideoPage() {
         void addReferences(event.dataTransfer.files);
     };
 
+    const cancelGeneration = async () => {
+        const canceled = t("common.requestCanceled");
+        createControllerRef.current?.abort();
+        createControllerRef.current = null;
+        const activeIds = Array.from(pollControllersRef.current.keys());
+        pollControllersRef.current.forEach((controller) => controller.abort());
+        pollControllersRef.current.clear();
+        activeLogIdsRef.current.clear();
+        setResults((value) => value.map((item) => (item.status === "pending" ? { ...item, status: "failed", error: canceled } : item)));
+        setRunning(false);
+        setStartedAt(0);
+        setNowMs(Date.now());
+        if (activeIds.length) {
+            await Promise.all(
+                activeIds.map(async (id) => {
+                    const stored = await logStore.getItem<GenerationLog>(id);
+                    if (!stored || stored.status !== "pending") return;
+                    await logStore.setItem(id, serializeLog({ ...stored, status: "failed", task: undefined, durationMs: Math.max(0, Date.now() - stored.createdAt), error: canceled }));
+                }),
+            );
+            await refreshLogs(false);
+        }
+        message.info(canceled);
+    };
+
     const addReferencesFromClipboard = async () => {
         try {
             const items = await navigator.clipboard.read();
@@ -175,25 +222,39 @@ export default function VideoPage() {
             if (agentTaskId) updateAgentTask(agentTaskId, { status: "failed", error: t("videoWorkbench.invalidParams") });
             return;
         }
-        setElapsedMs(0);
         setRunning(true);
         if (agentTaskId) updateAgentTask(agentTaskId, { status: "running", error: undefined });
         setPreviewLog(null);
         setResults([{ id: nanoid(), status: "pending" }]);
-        const batchStartedAt = performance.now();
+        const batchStartedAt = Date.now();
         setStartedAt(batchStartedAt);
+        setNowMs(batchStartedAt);
+        const controller = new AbortController();
+        createControllerRef.current = controller;
         try {
-            const task = await createVideoGenerationTask(snapshot.config, snapshot.text, snapshot.references);
+            const task = await createVideoGenerationTask(snapshot.config, snapshot.text, snapshot.references, { signal: controller.signal });
+            if (controller.signal.aborted) return;
             const log = buildLog({ prompt: snapshot.text, model, config: snapshot.config, references: snapshot.references, durationMs: 0, status: "pending", task });
+            visibleLogIdRef.current = log.id;
             await saveLog(log, false);
-            void pollGenerationLog(log, snapshot.config, agentTaskId);
+            if (createControllerRef.current === controller) createControllerRef.current = null;
+            void pollGenerationLog(log, snapshot.config, agentTaskId, controller);
         } catch (error) {
+            if (controller.signal.aborted || (error instanceof Error && error.name === "AbortError")) {
+                if (agentTaskId) updateAgentTask(agentTaskId, { status: "failed", successCount: 0, failCount: 1, error: t("common.requestCanceled") });
+                setResults([{ id: nanoid(), status: "failed", error: t("common.requestCanceled") }]);
+                setRunning(false);
+                setStartedAt(0);
+                return;
+            }
             const errorMessage = error instanceof Error ? error.message : t("workbench.generationFailed");
             setResults([{ id: nanoid(), status: "failed", error: errorMessage }]);
             if (agentTaskId) updateAgentTask(agentTaskId, { status: "failed", successCount: 0, failCount: 1, error: errorMessage });
-            await saveLog(buildLog({ prompt: snapshot.text, model, config: snapshot.config, references: snapshot.references, durationMs: performance.now() - batchStartedAt, status: "failed", error: errorMessage }));
+            await saveLog(buildLog({ prompt: snapshot.text, model, config: snapshot.config, references: snapshot.references, durationMs: Date.now() - batchStartedAt, status: "failed", error: errorMessage }));
             message.error(errorMessage);
             setRunning(false);
+        } finally {
+            if (createControllerRef.current === controller) createControllerRef.current = null;
         }
     };
 
@@ -265,16 +326,21 @@ export default function VideoPage() {
     };
 
     const createSession = () => {
+        visibleLogIdRef.current = null;
         setPrompt("");
         setReferences([]);
         setResults([]);
-        setElapsedMs(0);
         setStartedAt(0);
+        setNowMs(Date.now());
         setSelectedLogIds([]);
         setPreviewLog(null);
     };
 
     const deleteSelectedLogs = () => {
+        selectedLogIds.forEach((id) => {
+            pollControllersRef.current.get(id)?.abort();
+            pollControllersRef.current.delete(id);
+        });
         const mediaKeys = logs
             .filter((log) => selectedLogIds.includes(log.id))
             .map((log) => log.video?.storageKey)
@@ -301,23 +367,32 @@ export default function VideoPage() {
     };
 
     const resumePendingLogs = (items: GenerationLog[]) => {
-        for (const log of items) {
-            if (log.status === "pending" && log.task) void pollGenerationLog(log);
+        const pendingLogs = items.filter((log) => log.status === "pending" && log.task);
+        if (!visibleLogIdRef.current && pendingLogs[0]) {
+            visibleLogIdRef.current = pendingLogs[0].id;
+            setResults([{ id: pendingLogs[0].id, status: "pending" }]);
         }
+        for (const log of pendingLogs) void pollGenerationLog(log);
     };
 
-    const pollGenerationLog = async (log: GenerationLog, configOverride?: AiConfig, agentTaskId?: string) => {
+    const pollGenerationLog = async (log: GenerationLog, configOverride?: AiConfig, agentTaskId?: string, controllerOverride?: AbortController) => {
         if (!log.task || activeLogIdsRef.current.has(log.id)) return;
+        const controller = controllerOverride || new AbortController();
         activeLogIdsRef.current.add(log.id);
+        pollControllersRef.current.set(log.id, controller);
         setRunning(true);
-        setStartedAt((value) => value || performance.now());
-        setResults((value) => (value.length ? value : [{ id: log.id, status: "pending" }]));
+        setStartedAt((value) => value || log.createdAt || Date.now());
+        setNowMs(Date.now());
+        if (visibleLogIdRef.current === log.id) {
+            setResults((value) => (value.length ? value : [{ id: log.id, status: "pending" }]));
+        }
         const taskConfig = buildVideoConfig({ ...effectiveConfig, ...log.config }, log.task.model || log.model);
         try {
-            for (let attempt = 0; attempt < 120; attempt += 1) {
-                const state = await pollVideoGenerationTask(configOverride || taskConfig, log.task);
+            const deadline = log.createdAt + VIDEO_TASK_POLL_TIMEOUT_MS;
+            for (;;) {
+                const state = await pollVideoGenerationTask(configOverride || taskConfig, log.task, { signal: controller.signal });
                 if (state.status === "completed") {
-                    const stored = await storeGeneratedVideo(state.result);
+                    const stored = await storeGeneratedVideo(state.result, { signal: controller.signal });
                     const nextVideo: GeneratedVideo = {
                         id: nanoid(),
                         url: stored.url,
@@ -328,24 +403,37 @@ export default function VideoPage() {
                         bytes: stored.bytes,
                         mimeType: stored.mimeType,
                     };
-                    setResults([{ id: nextVideo.id, status: "success", video: nextVideo }]);
+                    const completedLog: GenerationLog = { ...log, status: "success", durationMs: nextVideo.durationMs, video: nextVideo, error: undefined };
+                    if (visibleLogIdRef.current === log.id) {
+                        setResults([{ id: nextVideo.id, status: "success", video: nextVideo }]);
+                    }
+                    setPreviewLog((value) => (value?.id === log.id ? completedLog : value));
                     if (agentTaskId) updateAgentTask(agentTaskId, { status: "succeeded", successCount: 1, failCount: 0, error: undefined });
-                    await saveLog({ ...log, status: "success", durationMs: nextVideo.durationMs, video: nextVideo, error: undefined });
+                    await saveLog(completedLog);
                     message.success(t("videoWorkbench.generated"));
                     return;
                 }
                 if (state.status === "failed") throw new Error(state.error);
-                if (attempt === 119) throw new Error(t("videoWorkbench.timeout"));
-                await delay(2500);
+                if (Date.now() >= deadline) throw new Error(t("videoWorkbench.timeout"));
+                await delay(VIDEO_TASK_POLL_INTERVAL_MS, controller.signal);
             }
         } catch (error) {
+            if (controller.signal.aborted || (error instanceof Error && error.name === "AbortError")) {
+                if (agentTaskId) updateAgentTask(agentTaskId, { status: "failed", successCount: 0, failCount: 1, error: t("common.requestCanceled") });
+                return;
+            }
             const errorMessage = error instanceof Error ? error.message : t("workbench.generationFailed");
-            setResults([{ id: log.id, status: "failed", error: errorMessage }]);
+            const failedLog: GenerationLog = { ...log, status: "failed", durationMs: Date.now() - log.createdAt, error: errorMessage };
+            if (visibleLogIdRef.current === log.id) {
+                setResults([{ id: log.id, status: "failed", error: errorMessage }]);
+            }
+            setPreviewLog((value) => (value?.id === log.id ? failedLog : value));
             if (agentTaskId) updateAgentTask(agentTaskId, { status: "failed", successCount: 0, failCount: 1, error: errorMessage });
-            await saveLog({ ...log, status: "failed", durationMs: Date.now() - log.createdAt, error: errorMessage });
+            await saveLog(failedLog);
             message.error(errorMessage);
         } finally {
             activeLogIdsRef.current.delete(log.id);
+            if (pollControllersRef.current.get(log.id) === controller) pollControllersRef.current.delete(log.id);
             if (!activeLogIdsRef.current.size) {
                 setRunning(false);
                 setStartedAt(0);
@@ -354,6 +442,7 @@ export default function VideoPage() {
     };
 
     const previewGenerationLog = (log: GenerationLog) => {
+        visibleLogIdRef.current = log.id;
         setPreviewLog(log);
         setLogsOpen(false);
         setPrompt(log.prompt);
@@ -372,7 +461,7 @@ export default function VideoPage() {
         <div className="flex h-full flex-col overflow-hidden bg-stone-50 text-stone-900 dark:bg-stone-950 dark:text-stone-100">
             <main className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-y-auto p-3 lg:grid-cols-[300px_minmax(0,1fr)] lg:overflow-hidden xl:grid-cols-[320px_minmax(0,1fr)]">
                 <aside className="thin-scrollbar hidden min-h-0 overflow-y-auto rounded-lg border border-stone-200 bg-card p-4 shadow-sm dark:border-stone-800 lg:block">
-                    <LogPanel logs={logs} selectedLogIds={selectedLogIds} activeLogId={previewLog?.id} onSelectedLogIdsChange={setSelectedLogIds} onCreateSession={createSession} onDeleteSelected={() => setDeleteConfirmOpen(true)} onPreviewLog={previewGenerationLog} />
+                    <LogPanel logs={logs} selectedLogIds={selectedLogIds} activeLogId={previewLog?.id} currentTimeMs={nowMs} onSelectedLogIdsChange={setSelectedLogIds} onCreateSession={createSession} onDeleteSelected={() => setDeleteConfirmOpen(true)} onPreviewLog={previewGenerationLog} />
                 </aside>
 
                 <section className="grid gap-3 lg:min-h-0 lg:overflow-hidden xl:grid-cols-[420px_minmax(0,1fr)]">
@@ -456,9 +545,15 @@ export default function VideoPage() {
                         </div>
 
                         <div className="mt-auto pt-6">
-                            <Button type="primary" size="large" block icon={<Sparkles className="size-4" />} loading={running} disabled={!canGenerate || running} onClick={() => void generate()}>
-                                {t("workbench.generate")}
-                            </Button>
+                            {running ? (
+                                <Button danger size="large" block icon={<Square className="size-4" />} onClick={() => void cancelGeneration()}>
+                                    {t("workbench.cancelGeneration")}
+                                </Button>
+                            ) : (
+                                <Button type="primary" size="large" block icon={<Sparkles className="size-4" />} disabled={!canGenerate} onClick={() => void generate()}>
+                                    {t("workbench.generate")}
+                                </Button>
+                            )}
                         </div>
                     </div>
 
@@ -492,7 +587,7 @@ export default function VideoPage() {
                 }}
             />
             <Drawer title={t("workbench.logs")} placement="bottom" size="large" open={logsOpen} onClose={() => setLogsOpen(false)}>
-                <LogPanel logs={logs} selectedLogIds={selectedLogIds} activeLogId={previewLog?.id} onSelectedLogIdsChange={setSelectedLogIds} onCreateSession={createSession} onDeleteSelected={() => setDeleteConfirmOpen(true)} onPreviewLog={previewGenerationLog} />
+                <LogPanel logs={logs} selectedLogIds={selectedLogIds} activeLogId={previewLog?.id} currentTimeMs={nowMs} onSelectedLogIdsChange={setSelectedLogIds} onCreateSession={createSession} onDeleteSelected={() => setDeleteConfirmOpen(true)} onPreviewLog={previewGenerationLog} />
             </Drawer>
             <Drawer title={t("workbench.settings")} placement="bottom" height="82vh" open={settingsOpen} onClose={() => setSettingsOpen(false)}>
                 <div className="grid grid-cols-2 gap-3 pb-4">
@@ -586,6 +681,7 @@ function LogPanel({
     logs,
     selectedLogIds,
     activeLogId,
+    currentTimeMs,
     onSelectedLogIdsChange,
     onCreateSession,
     onDeleteSelected,
@@ -594,6 +690,7 @@ function LogPanel({
     logs: GenerationLog[];
     selectedLogIds: string[];
     activeLogId?: string;
+    currentTimeMs: number;
     onSelectedLogIdsChange: (ids: string[]) => void;
     onCreateSession: () => void;
     onDeleteSelected: () => void;
@@ -622,7 +719,7 @@ function LogPanel({
             </div>
             <div className="space-y-3">
                 {logs.map((log) => (
-                    <LogCard key={log.id} log={log} selected={selectedLogIds.includes(log.id)} active={activeLogId === log.id} onSelectedChange={(checked) => onSelectedLogIdsChange(checked ? [...selectedLogIds, log.id] : selectedLogIds.filter((id) => id !== log.id))} onClick={() => onPreviewLog(log)} />
+                    <LogCard key={log.id} log={log} selected={selectedLogIds.includes(log.id)} active={activeLogId === log.id} currentTimeMs={currentTimeMs} onSelectedChange={(checked) => onSelectedLogIdsChange(checked ? [...selectedLogIds, log.id] : selectedLogIds.filter((id) => id !== log.id))} onClick={() => onPreviewLog(log)} />
                 ))}
                 {!logs.length ? <div className="flex min-h-48 items-center justify-center rounded-lg border border-dashed border-stone-300 text-center text-sm text-stone-500 dark:border-stone-700">{t("workbench.noLogs")}</div> : null}
             </div>
@@ -630,8 +727,9 @@ function LogPanel({
     );
 }
 
-function LogCard({ log, selected, active, onSelectedChange, onClick }: { log: GenerationLog; selected: boolean; active: boolean; onSelectedChange: (checked: boolean) => void; onClick: () => void }) {
+function LogCard({ log, selected, active, currentTimeMs, onSelectedChange, onClick }: { log: GenerationLog; selected: boolean; active: boolean; currentTimeMs: number; onSelectedChange: (checked: boolean) => void; onClick: () => void }) {
     const { t } = useTranslation();
+    const displayedDurationMs = log.status === "pending" ? Math.max(log.durationMs, currentTimeMs - log.createdAt) : log.durationMs;
     return (
         <button type="button" className={`block w-full rounded-lg border p-2 text-left transition ${active ? "border-stone-900 bg-blue-50 dark:border-stone-100 dark:bg-blue-950/20" : "border-stone-200 bg-background hover:bg-stone-50 dark:border-stone-800 dark:hover:bg-stone-900"}`} onClick={onClick}>
             <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2">
@@ -649,7 +747,7 @@ function LogCard({ log, selected, active, onSelectedChange, onClick }: { log: Ge
                         {t(`workbench.${log.status === "success" ? "success" : log.status === "pending" ? "generating" : "failed"}`)}
                     </Tag>
                     <Tag className="m-0 flex h-6 items-center rounded-md px-1.5 text-xs leading-none" color="green">
-                        {formatDuration(log.durationMs)}
+                        {formatDuration(displayedDurationMs)}
                     </Tag>
                 </div>
             </div>
@@ -660,6 +758,7 @@ function LogCard({ log, selected, active, onSelectedChange, onClick }: { log: Ge
 async function readStoredLogs() {
     if (typeof window === "undefined") return [];
     try {
+        await pruneVideoGenerationHistory();
         const logs: GenerationLog[] = [];
         await logStore.iterate<GenerationLog, void>((value) => {
             logs.push(value);
@@ -796,6 +895,25 @@ function normalizeResolution(value: string) {
     return normalizeVideoResolutionValue(value);
 }
 
-function delay(ms: number) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+function delay(ms: number, signal?: AbortSignal) {
+    return new Promise<void>((resolve, reject) => {
+        if (signal?.aborted) {
+            const error = new Error(i18n.t("common.requestCanceled"));
+            error.name = "AbortError";
+            reject(error);
+            return;
+        }
+        const timer = window.setTimeout(() => {
+            signal?.removeEventListener("abort", abort);
+            resolve();
+        }, ms);
+        const abort = () => {
+            window.clearTimeout(timer);
+            signal?.removeEventListener("abort", abort);
+            const error = new Error(i18n.t("common.requestCanceled"));
+            error.name = "AbortError";
+            reject(error);
+        };
+        signal?.addEventListener("abort", abort, { once: true });
+    });
 }

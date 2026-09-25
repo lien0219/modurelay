@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, BookOpen, CheckSquare, ClipboardPaste, Download, FolderPlus, History, ImagePlus, LoaderCircle, PenLine, Plus, SlidersHorizontal, Sparkles, Trash2, Upload } from "lucide-react";
+import { ArrowLeft, ArrowRight, BookOpen, CheckSquare, ClipboardPaste, Download, FolderPlus, History, ImagePlus, LoaderCircle, PenLine, Plus, SlidersHorizontal, Sparkles, Square, Trash2, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { App, Button, Checkbox, Drawer, Empty, Image, Input, Modal, Tag, Tooltip, Typography } from "antd";
 import localforage from "localforage";
@@ -17,6 +17,7 @@ import { nanoid } from "nanoid";
 import { formatBytes, formatDuration } from "@/lib/image-utils";
 import { requestEdit, requestGeneration } from "@/services/api/image";
 import { deleteStoredImages, resolveImageUrl, uploadImage } from "@/services/image-storage";
+import { pruneImageGenerationHistory } from "@/services/generation-history";
 import { useAssetStore } from "@/stores/use-asset-store";
 import { useWorkbenchAgentStore } from "@/stores/use-workbench-agent-store";
 import type { ReferenceImage } from "@/types/image";
@@ -100,6 +101,7 @@ export default function ImagePage() {
     const updateAgentTask = useWorkbenchAgentStore((state) => state.updateTask);
     const processedCommandRef = useRef(0);
     const agentTaskIdRef = useRef<string | undefined>(undefined);
+    const activeRequestControllersRef = useRef<Set<AbortController>>(new Set());
 
     const model = effectiveConfig.imageModel || effectiveConfig.model;
     const canGenerate = Boolean(prompt.trim());
@@ -113,6 +115,10 @@ export default function ImagePage() {
 
     useEffect(() => {
         void refreshLogs();
+        return () => {
+            activeRequestControllersRef.current.forEach((controller) => controller.abort());
+            activeRequestControllersRef.current.clear();
+        };
     }, []);
 
     const addReferences = async (files?: FileList | null) => {
@@ -124,6 +130,18 @@ export default function ImagePage() {
             }),
         );
         setReferences((value) => [...value, ...nextReferences]);
+    };
+
+    const cancelGeneration = () => {
+        const controllers = Array.from(activeRequestControllersRef.current);
+        if (!controllers.length) return;
+        controllers.forEach((controller) => controller.abort());
+        const canceled = t("common.requestCanceled");
+        setResults((value) => value.map((item) => (item.status === "pending" ? { ...item, status: "failed", error: canceled } : item)));
+        setRunning(false);
+        setStartedAt(0);
+        setElapsedMs(0);
+        message.info(canceled);
     };
 
     const addReferencesFromClipboard = async () => {
@@ -177,9 +195,18 @@ export default function ImagePage() {
         const batchStartedAt = performance.now();
         setStartedAt(batchStartedAt);
 
-        const tasks = Array.from({ length: generationCount }, (_, index) => runGenerationSlot(index, snapshot));
+        const controller = new AbortController();
+        activeRequestControllersRef.current.add(controller);
+        const tasks = Array.from({ length: generationCount }, (_, index) => runGenerationSlot(index, snapshot, controller.signal));
 
         const result = await Promise.allSettled(tasks);
+        if (controller.signal.aborted) {
+            if (agentTaskId) updateAgentTask(agentTaskId, { status: "failed", error: t("common.requestCanceled") });
+            activeRequestControllersRef.current.delete(controller);
+            setRunning(false);
+            setStartedAt(0);
+            return;
+        }
         const successImages = result.filter((item): item is PromiseFulfilledResult<GeneratedImage> => item.status === "fulfilled").map((item) => item.value);
         const successCount = successImages.length;
         const failCount = generationCount - successCount;
@@ -203,6 +230,7 @@ export default function ImagePage() {
             );
             successCount ? message.success(t("imageWorkbench.generated")) : message.error(failed?.reason instanceof Error ? failed.reason.message : t("workbench.generationFailed"));
         } finally {
+            activeRequestControllersRef.current.delete(controller);
             setRunning(false);
         }
     };
@@ -318,18 +346,22 @@ export default function ImagePage() {
         return { text, config: { ...effectiveConfig, model, count: "1" }, references: [...references] };
     };
 
-    const runGenerationSlot = async (index: number, snapshot: { text: string; config: AiConfig; references: ReferenceImage[] }) => {
+    const runGenerationSlot = async (index: number, snapshot: { text: string; config: AiConfig; references: ReferenceImage[] }, signal?: AbortSignal) => {
         const itemStartedAt = performance.now();
         try {
-            const result = snapshot.references.length ? await requestEdit(snapshot.config, snapshot.text, snapshot.references) : await requestGeneration(snapshot.config, snapshot.text);
+            const result = snapshot.references.length
+                ? await requestEdit(snapshot.config, snapshot.text, snapshot.references, { signal })
+                : await requestGeneration(snapshot.config, snapshot.text, { signal });
             const image = result[0];
             if (!image) throw new Error(t("imageWorkbench.missingResult"));
-            const stored = await uploadImage(image.dataUrl);
+            const stored = await uploadImage(image.dataUrl, { signal });
             const nextImage: GeneratedImage = { id: image.id, dataUrl: stored.url, ...(stored.storageKey ? { storageKey: stored.storageKey } : {}), durationMs: performance.now() - itemStartedAt, width: stored.width, height: stored.height, bytes: stored.bytes, mimeType: stored.mimeType };
             setResults((value) => updateResultAt(value, index, { status: "success", image: nextImage }));
             return nextImage;
         } catch (error) {
-            setResults((value) => updateResultAt(value, index, { status: "failed", error: error instanceof Error ? error.message : t("workbench.generationFailed") }));
+            if (!isCanceledRequest(error, signal)) {
+                setResults((value) => updateResultAt(value, index, { status: "failed", error: error instanceof Error ? error.message : t("workbench.generationFailed") }));
+            }
             throw error;
         }
     };
@@ -340,8 +372,10 @@ export default function ImagePage() {
         setPreviewLog(null);
         setResults((value) => updateResultAt(value, index, { status: "pending", error: undefined, image: undefined }));
         const retryStartedAt = performance.now();
+        const controller = new AbortController();
+        activeRequestControllersRef.current.add(controller);
         try {
-            const image = await runGenerationSlot(index, snapshot);
+            const image = await runGenerationSlot(index, snapshot, controller.signal);
             saveLog(
                 buildLog({
                     prompt: snapshot.text,
@@ -356,8 +390,11 @@ export default function ImagePage() {
                 }),
             );
             message.success(t("workbench.retrySuccess"));
-        } catch {
+        } catch (error) {
+            if (isCanceledRequest(error, controller.signal)) return;
             // runGenerationSlot has already marked the result as failed.
+        } finally {
+            activeRequestControllersRef.current.delete(controller);
         }
     };
 
@@ -484,9 +521,15 @@ export default function ImagePage() {
                         </div>
 
                         <div className="mt-auto pt-6">
-                            <Button type="primary" size="large" block icon={<Sparkles className="size-4" />} loading={running} disabled={!canGenerate || running} onClick={() => void generate()}>
-                                {t("workbench.generate")}
-                            </Button>
+                            {running ? (
+                                <Button danger size="large" block icon={<Square className="size-4" />} onClick={cancelGeneration}>
+                                    {t("workbench.cancelGeneration")}
+                                </Button>
+                            ) : (
+                                <Button type="primary" size="large" block icon={<Sparkles className="size-4" />} disabled={!canGenerate} onClick={() => void generate()}>
+                                    {t("workbench.generate")}
+                                </Button>
+                            )}
                         </div>
                     </div>
 
@@ -656,6 +699,11 @@ function FailedImageCard({ error, onRetry }: { error: string; onRetry: () => voi
     );
 }
 
+function isCanceledRequest(error: unknown, signal?: AbortSignal) {
+    if (signal?.aborted) return true;
+    return error instanceof Error && (error.name === "AbortError" || error.message === i18n.t("common.requestCanceled") || error.message === i18n.t("apiErrors.requestCanceled"));
+}
+
 function updateResultAt(results: GenerationResult[], index: number, next: Partial<GenerationResult>) {
     return results.map((item, itemIndex) => (itemIndex === index ? { ...item, ...next } : item));
 }
@@ -770,6 +818,7 @@ function LogCard({ log, selected, active, onSelectedChange, onClick }: { log: Ge
 async function readStoredLogs() {
     if (typeof window === "undefined") return [];
     try {
+        await pruneImageGenerationHistory();
         const values: GenerationLog[] = [];
         await logStore.iterate<GenerationLog, void>((value) => {
             values.push(value);

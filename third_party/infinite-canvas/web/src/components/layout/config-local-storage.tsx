@@ -1,10 +1,11 @@
-import { Alert, Button, Progress, Spin } from "antd";
+import { Alert, App, Button, Progress, Spin } from "antd";
 import type { TFunction } from "i18next";
 import { Database, HardDrive, Layers3, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { readLocalStorageUsage, type LocalStorageUsage } from "@/services/local-storage-usage";
+import { compactGenerationStorage } from "@/services/generation-history";
 
 const storeLabelKeys: Record<string, string> = {
     app_state: "appState",
@@ -18,8 +19,10 @@ const storeLabelKeys: Record<string, string> = {
 
 export function ConfigLocalStorage({ active }: { active: boolean }) {
     const { t } = useTranslation();
+    const { message } = App.useApp();
     const [usage, setUsage] = useState<LocalStorageUsage | null>(null);
     const [loading, setLoading] = useState(false);
+    const [compacting, setCompacting] = useState(false);
     const [error, setError] = useState("");
 
     const refresh = useCallback(async () => {
@@ -38,6 +41,20 @@ export function ConfigLocalStorage({ active }: { active: boolean }) {
         if (active && !usage) void refresh();
     }, [active, refresh, usage]);
 
+    const compact = useCallback(async () => {
+        setCompacting(true);
+        setError("");
+        try {
+            const result = await compactGenerationStorage();
+            await refresh();
+            message.success(t("config.localStorage.compacted", { count: result.totalRemoved }));
+        } catch (reason) {
+            setError(reason instanceof Error ? reason.message : t("config.localStorage.compactFailed"));
+        } finally {
+            setCompacting(false);
+        }
+    }, [message, refresh, t]);
+
     const indexedDbBytes = usage?.contentBytes ?? 0;
     const percent = usage ? Math.min(100, (usage.usage / usage.quota) * 100) : 0;
 
@@ -52,9 +69,14 @@ export function ConfigLocalStorage({ active }: { active: boolean }) {
                         </div>
                         <div className="mt-1 text-xs text-stone-500">{t("config.localStorage.description")}</div>
                     </div>
-                    <Button icon={<RefreshCw className="size-4" />} loading={loading} onClick={() => void refresh()}>
-                        {t("config.localStorage.refresh")}
-                    </Button>
+                    <div className="flex flex-wrap gap-2">
+                        <Button loading={compacting} onClick={() => void compact()}>
+                            {t("config.localStorage.compact")}
+                        </Button>
+                        <Button icon={<RefreshCw className="size-4" />} loading={loading} onClick={() => void refresh()}>
+                            {t("config.localStorage.refresh")}
+                        </Button>
+                    </div>
                 </div>
                 {error ? <Alert className="mt-4" type="error" showIcon message={t("config.localStorage.readFailed")} description={error} /> : null}
                 {!usage && loading ? (
@@ -66,6 +88,7 @@ export function ConfigLocalStorage({ active }: { active: boolean }) {
                             <StorageMetric icon={<HardDrive className="size-4" />} label={t("config.localStorage.siteUsage")} value={formatStorageBytes(usage.usage)} hint={t("config.localStorage.siteUsageHint")} />
                             <StorageMetric icon={<Layers3 className="size-4" />} label={t("config.localStorage.quota")} value={formatStorageBytes(usage.quota)} hint={t("config.localStorage.quotaHint")} />
                         </div>
+                        {percent >= 80 ? <Alert className="mt-4" type={percent >= 92 ? "error" : "warning"} showIcon message={t(percent >= 92 ? "config.localStorage.criticalWarning" : "config.localStorage.warning", { percent: Math.round(percent) })} /> : null}
                         <div className="mt-4">
                             <div className="mb-1 flex justify-between text-xs text-stone-500">
                                 <span>{t("config.localStorage.quotaProgress")}</span>

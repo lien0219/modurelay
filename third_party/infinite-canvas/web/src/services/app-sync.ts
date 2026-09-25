@@ -110,7 +110,7 @@ export async function syncAppDataToWebdav(config: WebdavSyncConfig, onProgress?:
             label: "生图工作台",
             emptyData: { logs: [] },
             localData: async () => ({ logs: await readStoredLogs(imageLogStore) }),
-            mergeData: (local, remote) => ({ logs: mergeById(local.logs, remote.logs, "createdAt") }),
+            mergeData: (local, remote) => ({ logs: mergeGenerationLogs(local.logs, remote.logs) }),
             applyData: async (data) => replaceStoredLogs(imageLogStore, data.logs),
         }),
         syncDomain<LogDomainData>(config, onProgress, {
@@ -118,7 +118,7 @@ export async function syncAppDataToWebdav(config: WebdavSyncConfig, onProgress?:
             label: "视频创作台",
             emptyData: { logs: [] },
             localData: async () => ({ logs: await readStoredLogs(videoLogStore) }),
-            mergeData: (local, remote) => ({ logs: mergeById(local.logs, remote.logs, "createdAt") }),
+            mergeData: (local, remote) => ({ logs: mergeGenerationLogs(local.logs, remote.logs) }),
             applyData: async (data) => replaceStoredLogs(videoLogStore, data.logs),
         }),
     ]);
@@ -293,6 +293,30 @@ async function replaceStoredLogs(store: LogStore, logs: StoredLog[]) {
         const id = getStringField(log, "id");
         if (id) await store.setItem(id, log);
     });
+}
+
+function mergeGenerationLogs(local: StoredLog[], remote: StoredLog[]) {
+    const items = new Map<string, StoredLog>();
+    const score = (item: StoredLog) => {
+        const status = getStringField(item, "status");
+        const terminal = status === "success" || status === "failed" ? 1 : 0;
+        const duration = typeof item.durationMs === "number" ? item.durationMs : 0;
+        return [terminal, duration, getTime(item, "createdAt")] as const;
+    };
+    const shouldReplace = (current: StoredLog | undefined, candidate: StoredLog) => {
+        if (!current) return true;
+        const a = score(current);
+        const b = score(candidate);
+        if (b[0] !== a[0]) return b[0] > a[0];
+        if (b[1] !== a[1]) return b[1] > a[1];
+        return b[2] >= a[2];
+    };
+    for (const item of [...remote, ...local]) {
+        const id = getStringField(item, "id");
+        if (!id) continue;
+        if (shouldReplace(items.get(id), item)) items.set(id, item);
+    }
+    return Array.from(items.values()).sort((a, b) => getTime(b, "createdAt") - getTime(a, "createdAt"));
 }
 
 function mergeCanvasData(local: CanvasDomainData, remote: CanvasDomainData): CanvasDomainData {

@@ -68,7 +68,13 @@ jobs:
           bun-version: 1.3.13
       - name: Install Infinite Canvas dependencies
         working-directory: third_party/infinite-canvas/web
-        run: bun install --frozen-lockfile
+        run: |
+          if ! bun install --frozen-lockfile; then
+            echo "Bun install failed once; clearing transient cache and retrying..."
+            rm -rf node_modules
+            rm -rf "$HOME/.bun/install/cache"
+            bun install --frozen-lockfile
+          fi
       - name: Infinite Canvas typecheck
         working-directory: third_party/infinite-canvas/web
         run: bun run typecheck
@@ -77,6 +83,15 @@ jobs:
         env:
           VITE_BASE: /infinite-canvas/
         run: bun run build
+      - name: Install Infinite Canvas E2E runner
+        working-directory: third_party/infinite-canvas/web
+        run: bun add --no-save @playwright/test@1.55.0
+      - name: Install Chromium for Infinite Canvas E2E
+        working-directory: third_party/infinite-canvas/web
+        run: bunx playwright install --with-deps chromium
+      - name: Infinite Canvas browser E2E
+        working-directory: third_party/infinite-canvas/web
+        run: bunx playwright test
 
   golangci-lint:
     runs-on: ubuntu-latest
