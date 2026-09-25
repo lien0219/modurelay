@@ -139,6 +139,26 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 			routingModel = resolvedModel
 		}
 	}
+	videoModelRef := service.ParseVideoModelRef(requestModel)
+	canonicalVideoModel := strings.TrimSpace(videoModelRef.CanonicalModel)
+	officialVideoTierActive := false
+	officialVideoPlatform := ""
+	officialVideoCapability := service.OpenAIEndpointCapability("")
+	if endpoint.IsGenerationRequest() && isOpenAICompatibleVideoEndpoint(endpoint) && videoModelRef.ChannelCode != "" {
+		if service.IsSeedanceVideoModel(canonicalVideoModel) {
+			officialVideoTierActive = true
+			officialVideoPlatform = service.PlatformOpenAI
+			officialVideoCapability = service.OpenAIEndpointCapabilitySeedance
+		} else if detectedPlatform, detected := service.DetectModelPlatform(canonicalVideoModel); detected {
+			officialVideoTierActive = true
+			officialVideoPlatform = detectedPlatform
+			if detectedPlatform == service.PlatformGrok {
+				officialVideoCapability = service.OpenAIEndpointCapabilityGrokMediaGeneration
+			} else {
+				officialVideoCapability = service.OpenAIEndpointCapabilityVideos
+			}
+		}
+	}
 	if endpoint.IsGenerationRequest() && strings.TrimSpace(requestModel) == "" {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "model is required")
 		return
@@ -272,25 +292,76 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 		}
 		var selection *service.AccountSelectionResult
 		var scheduleDecision service.OpenAIAccountScheduleDecision
+		selectedOfficialVideoTier := false
+		selectedCompatibleVideo := compatibleVideo
+		selectedRoutingModel := routingModel
+		selectedPlatform := platform
+		selectedCapability := requiredCapability
 		if boundLookupAccountID > 0 {
 			selection, scheduleDecision, err = h.gatewayService.SelectMediaVideoRequestAccount(
 				requestCtx, apiKey.GroupID, sessionHash, boundLookupAccountID, routingModel, platform,
 			)
 		} else {
-			selection, scheduleDecision, err = h.gatewayService.SelectAccountWithSchedulerForCapability(
-				requestCtx,
-				apiKey.GroupID,
-				"",
-				sessionHash,
-				routingModel,
-				failedAccountIDs,
-				service.OpenAIUpstreamTransportHTTPSSE,
-				requiredCapability,
-				false,
-				false,
-				false,
-				platform,
-			)
+			if officialVideoTierActive {
+				selection, scheduleDecision, err = h.gatewayService.SelectAccountWithSchedulerForCapability(
+					requestCtx,
+					apiKey.GroupID,
+					"",
+					sessionHash,
+					canonicalVideoModel,
+					failedAccountIDs,
+					service.OpenAIUpstreamTransportHTTPSSE,
+					officialVideoCapability,
+					false,
+					false,
+					false,
+					officialVideoPlatform,
+				)
+				if errors.Is(err, service.ErrNoAvailableAccounts) || selection == nil || selection.Account == nil {
+					// Hard-tier semantics: exhaust all official accounts before the
+					// supplier tier. A missing official account is not an error when a
+					// provider-qualified supplier model was requested.
+					officialVideoTierActive = false
+					selection = nil
+					err = nil
+				} else if err == nil {
+					selectedOfficialVideoTier = true
+					selectedCompatibleVideo = officialVideoPlatform != service.PlatformGrok
+					selectedRoutingModel = canonicalVideoModel
+					selectedPlatform = officialVideoPlatform
+					selectedCapability = officialVideoCapability
+				}
+			}
+			if !officialVideoTierActive && selection == nil && err == nil {
+				fallbackPlatform := platform
+				fallbackCapability := requiredCapability
+				fallbackModel := routingModel
+				// Qualified IDs originate from aggregators. After the official tier
+				// is exhausted, route them to OpenAI-compatible supplier accounts.
+				if videoModelRef.ChannelCode != "" {
+					fallbackPlatform = service.PlatformOpenAI
+					fallbackCapability = service.OpenAIEndpointCapabilityVideos
+					fallbackModel = requestModel
+				}
+				selection, scheduleDecision, err = h.gatewayService.SelectAccountWithSchedulerForCapability(
+					requestCtx,
+					apiKey.GroupID,
+					"",
+					sessionHash,
+					fallbackModel,
+					failedAccountIDs,
+					service.OpenAIUpstreamTransportHTTPSSE,
+					fallbackCapability,
+					false,
+					false,
+					false,
+					fallbackPlatform,
+				)
+				selectedCompatibleVideo = fallbackPlatform != service.PlatformGrok
+				selectedRoutingModel = fallbackModel
+				selectedPlatform = fallbackPlatform
+				selectedCapability = fallbackCapability
+			}
 		}
 		// Own an eagerly acquired slot before any rejection or eligibility probe.
 		// Forwarding takes over the same once-only release after admission.
@@ -358,6 +429,10 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 		}
 
 		reqLog.Debug("grok_media.account_schedule_decision",
+			zap.String("video_route_tier", map[bool]string{true: "official", false: "supplier"}[selectedOfficialVideoTier]),
+			zap.String("selected_platform", selectedPlatform),
+			zap.String("selected_capability", string(selectedCapability)),
+			zap.String("selected_routing_model", selectedRoutingModel),
 			zap.String("layer", scheduleDecision.Layer),
 			zap.Bool("sticky_session_hit", scheduleDecision.StickySessionHit),
 			zap.Int("candidate_count", scheduleDecision.CandidateCount),
@@ -367,7 +442,7 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 		)
 
 		account := selection.Account
-		if endpoint.IsGenerationRequest() && !endpoint.IsSeedance() && !compatibleVideo {
+		if endpoint.IsGenerationRequest() && !endpoint.IsSeedance() && !selectedCompatibleVideo {
 			eligible, eligibilityReason, eligibilityErr := h.ensureGrokMediaAccountEligibility(requestCtx, account)
 			if !eligible {
 				releaseAccount()
@@ -421,8 +496,16 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 			if endpoint.IsSeedance() {
 				return h.gatewayService.ForwardSeedance(requestCtx, c, account, endpoint, requestID, body)
 			}
-			if compatibleVideo {
-				return h.gatewayService.ForwardCompatibleVideo(requestCtx, c, account, endpoint, requestID, body, contentType, routingModel)
+			if strings.HasPrefix(strings.TrimSpace(requestID), "seedance:") ||
+				(selectedOfficialVideoTier && service.IsSeedanceVideoModel(canonicalVideoModel) &&
+					account.SupportsOpenAIEndpointCapability(service.OpenAIEndpointCapabilitySeedance)) {
+				return h.gatewayService.ForwardSeedanceCompatibleVideo(requestCtx, c, account, endpoint, requestID, body, contentType, canonicalVideoModel)
+			}
+			if strings.HasPrefix(strings.TrimSpace(requestID), "aistarslab:") || service.IsAIStarsLabOpenAPIAccount(account) {
+				return h.gatewayService.ForwardAIStarsLabOpenAPIVideo(requestCtx, c, account, endpoint, requestID, body, contentType, selectedRoutingModel)
+			}
+			if selectedCompatibleVideo {
+				return h.gatewayService.ForwardCompatibleVideo(requestCtx, c, account, endpoint, requestID, body, contentType, selectedRoutingModel)
 			}
 			return h.gatewayService.ForwardGrokMedia(requestCtx, c, account, endpoint, requestID, body, contentType)
 		}()
@@ -446,7 +529,7 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 					return
 				}
 				if failoverErr.ShouldReportAccountScheduleFailure() {
-					h.gatewayService.ReportOpenAIAccountScheduleResult(account, grokMediaScheduleModel(account, routingModel, nil), false, nil, err)
+					h.gatewayService.ReportOpenAIAccountScheduleResult(account, grokMediaScheduleModel(account, selectedRoutingModel, nil), false, nil, err)
 				}
 				if c.Writer.Size() != writerSizeBeforeForward {
 					h.handleFailoverExhausted(c, failoverErr, true)
@@ -511,7 +594,7 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 			return
 		}
 
-		h.gatewayService.ReportOpenAIAccountScheduleResult(account, grokMediaScheduleModel(account, routingModel, result), true, nil)
+		h.gatewayService.ReportOpenAIAccountScheduleResult(account, grokMediaScheduleModel(account, selectedRoutingModel, result), true, nil)
 		if isGrokVideoCreateEndpoint(endpoint) && strings.TrimSpace(result.ResponseID) != "" {
 			if err := h.gatewayService.BindGrokMediaVideoRequestAccount(
 				requestCtx, apiKey.GroupID, result.ResponseID, subject.UserID, apiKey.ID, account.ID,
@@ -563,7 +646,7 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 			if billResult := prepareGrokVideoCompletionBilling(requestCtx, h, reqLog, apiKey, subject, taskID, result); billResult != nil {
 				recordGrokMediaUsage(c, h, reqLog, apiKey, subject, subscription, account, billResult, billResult.Model, body, taskID)
 			}
-		} else if compatibleVideo && isGrokVideoCreateEndpoint(endpoint) && result != nil &&
+		} else if selectedCompatibleVideo && isGrokVideoCreateEndpoint(endpoint) && result != nil &&
 			strings.TrimSpace(result.ResponseID) == "" && result.VideoCount > 0 {
 			recordGrokMediaUsage(c, h, reqLog, apiKey, subject, subscription, account, result, requestModel, body, requestID)
 		} else if shouldRecordGrokMediaUsage(endpoint, requestModel, result) {
