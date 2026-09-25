@@ -27,7 +27,12 @@ export async function pruneVideoGenerationHistory() {
 
 export async function compactGenerationStorage() {
     const [imageLogsRemoved, videoLogsRemoved] = await Promise.all([pruneImageGenerationHistory(), pruneVideoGenerationHistory()]);
-    await Promise.all([cleanupUnusedImages({}), cleanupUnusedMedia({})]);
+    const [{ useCanvasStore }, { useAssetStore }] = await Promise.all([import("@/stores/canvas/use-canvas-store"), import("@/stores/use-asset-store")]);
+    const usedData = {
+        projects: useCanvasStore.getState().projects,
+        assets: useAssetStore.getState().assets,
+    };
+    await Promise.all([cleanupUnusedImages(usedData), cleanupUnusedMedia(usedData)]);
     return { imageLogsRemoved, videoLogsRemoved, totalRemoved: imageLogsRemoved + videoLogsRemoved };
 }
 
