@@ -4,6 +4,7 @@ import {
   navigateToWorkspaceUrlWithTransition,
   navigateWithWorkspaceModeTransition,
   registerWorkspaceModeTransitionRunner,
+  resetWorkspaceModeTransitionState,
   workspaceModeTransitioning,
 } from '../workspaceModeTransition'
 
@@ -37,6 +38,26 @@ describe('workspaceModeTransition', () => {
     await expect(first).resolves.toBe(true)
     expect(router.push).toHaveBeenCalledOnce()
     expect(workspaceModeTransitioning.value).toBe(false)
+    unregister()
+  })
+
+  it('can recover a cross-document transition lock after BFCache restoration', async () => {
+    let release!: () => void
+    const pending = new Promise<void>((resolve) => { release = resolve })
+    const runner = vi.fn(async () => {
+      await pending
+    })
+    const unregister = registerWorkspaceModeTransitionRunner(runner)
+
+    const navigation = navigateToWorkspaceUrlWithTransition('/infinite-canvas/canvas', 'to-canvas')
+    await Promise.resolve()
+
+    expect(workspaceModeTransitioning.value).toBe(true)
+    resetWorkspaceModeTransitionState()
+    expect(workspaceModeTransitioning.value).toBe(false)
+
+    release()
+    await expect(navigation).resolves.toBe(true)
     unregister()
   })
 

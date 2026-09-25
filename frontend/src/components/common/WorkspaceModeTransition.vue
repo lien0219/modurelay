@@ -15,6 +15,7 @@ import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { gsap } from 'gsap'
 import {
   registerWorkspaceModeTransitionRunner,
+  resetWorkspaceModeTransitionState,
   type WorkspaceModeTransitionDirection,
 } from '@/utils/workspaceModeTransition'
 import {
@@ -69,6 +70,17 @@ function resetVisualState() {
   if (rightPanelRef.value) gsap.set(rightPanelRef.value, { xPercent: 102, '--workspace-door-blur': '0px' })
   document.body.classList.remove('workspace-mode-transitioning')
   active.value = false
+}
+
+function handlePageShow(event: PageTransitionEvent) {
+  if (!event.persisted) return
+
+  // Cross-document workspace navigation intentionally keeps the door closed
+  // until the next document loads. Chromium may preserve that exact DOM and
+  // module state in BFCache. When browser Back restores the ModuRelay page,
+  // clear both the visual overlay and the navigation lock immediately.
+  resetWorkspaceModeTransitionState()
+  resetVisualState()
 }
 
 async function playTransition(request: {
@@ -200,6 +212,7 @@ onMounted(() => {
     return () => { reduceMotion = false }
   })
   resetVisualState()
+  window.addEventListener('pageshow', handlePageShow)
   unregisterRunner = registerWorkspaceModeTransitionRunner(playTransition)
   unregisterThemeRunner = registerThemeTransitionRunner(playThemeTransition)
   const arrival = sessionStorage.getItem('modurelay-workspace-door')
@@ -209,6 +222,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('pageshow', handlePageShow)
   unregisterRunner?.()
   unregisterRunner = null
   unregisterThemeRunner?.()

@@ -18,6 +18,10 @@ const WORKSPACE_DOOR_SESSION_KEY = 'modurelay-workspace-door'
 
 export const workspaceModeTransitioning = readonly(transitioning)
 
+export function resetWorkspaceModeTransitionState() {
+  transitioning.value = false
+}
+
 export function registerWorkspaceModeTransitionRunner(runner: WorkspaceModeTransitionRunner) {
   activeRunner = runner
   return () => {
