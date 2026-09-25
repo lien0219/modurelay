@@ -17,15 +17,69 @@ func runOpenAIDetection(ctx context.Context, target *detectionTarget, model, mod
 		probeOpenAIUsage(basicBody),
 	}
 	if mode == detectionModeDeep {
-		probes = append(probes, probeOpenAICacheObservation(ctx, target, model))
+		probes = append(probes, probeOpenAICacheObservation(ctx, target, model), probeOpenAIMediaEndpoint(ctx, target, model))
 	} else {
-		probes = append(probes, notApplicableProbe("openai.cache_observation", "Prompt Cache Observation", "Caching", "标准检测不执行长前缀缓存重复请求；深度检测会观察 cached_tokens"))
+		probes = append(probes,
+			notApplicableProbe("openai.cache_observation", "Prompt Cache Observation", "Caching", "标准检测不执行长前缀缓存重复请求；深度检测会观察 cached_tokens"),
+			notApplicableProbe("openai.media_endpoint", "媒体端点预检", "Media", "标准检测不请求图片/视频端点；深度检测会执行不触发生成的端点契约预检"),
+		)
 	}
 	probes = append(probes,
 		notApplicableProbe("openai.context_management", "Context Management", "Context", "该项是 Anthropic 协议专有探针，不应对 OpenAI-compatible 模型判失败"),
 		notApplicableProbe("openai.citations", "Structured Citations", "Citations", "OpenAI-compatible 接口没有统一的 Anthropic Citations 响应契约，不能用同一规则判定"),
 	)
 	return probes
+}
+
+
+func probeOpenAIMediaEndpoint(ctx context.Context, target *detectionTarget, model string) detectionProbeResult {
+	kind, endpoint := openAIMediaEndpointForModel(model)
+	if endpoint == "" {
+		return notApplicableProbe("openai.media_endpoint", "媒体端点预检", "Media", "当前模型未识别为图片或视频模型，不执行媒体端点预检")
+	}
+
+	result, err := target.doJSON(ctx, detectionProtocolOpenAI, http.MethodGet, endpoint, nil, nil)
+	ev := requestEvidence(kind+" 端点契约预检", "不创建媒体任务；2xx/400/405/422 表示端点存在并能被网关识别，404 表示端点缺失", result, target)
+	if err != nil {
+		return inconclusiveProbe("openai.media_endpoint", "媒体端点预检", "Media", "媒体端点网络预检失败："+classifyHTTPFailure(result, err, target), ev)
+	}
+	switch result.StatusCode {
+	case http.StatusOK, http.StatusBadRequest, http.StatusMethodNotAllowed, http.StatusUnprocessableEntity:
+		ev.Actual = fmt.Sprintf("HTTP %d，%s 端点存在；本探针未提交生成任务，不产生媒体生成费用", result.StatusCode, kind)
+		return detectionProbeResult{
+			ID:         "openai.media_endpoint",
+			Name:       "媒体端点预检",
+			Category:   "Media",
+			Status:     "success",
+			Confidence: 0.9,
+			Summary:    kind + " 端点已识别，可进入真实小额生成验收",
+			Evidence:   []detectionEvidence{ev},
+		}
+	case http.StatusUnauthorized, http.StatusForbidden:
+		ev.Actual = fmt.Sprintf("HTTP %d，端点可达但当前 Key 无法通过鉴权", result.StatusCode)
+		return unavailableProbe("openai.media_endpoint", "媒体端点预检", "Media", kind+" 端点可达，但当前 Key 没有可验证的媒体访问权限", ev)
+	case http.StatusNotFound:
+		ev.Actual = "HTTP 404，未发现兼容媒体端点"
+		return failedProbe("openai.media_endpoint", "媒体端点预检", "Media", "MEDIA_ENDPOINT_NOT_FOUND", kind+" 端点不存在", "该 Base URL 没有暴露 "+endpoint+"，或供应商使用了非 OpenAI-compatible 媒体接口", 0.95, ev)
+	default:
+		ev.Actual = fmt.Sprintf("HTTP %d，无法仅凭预检确认端点能力", result.StatusCode)
+		return inconclusiveProbe("openai.media_endpoint", "媒体端点预检", "Media", kind+" 端点返回非标准预检状态，需真实小额生成确认", ev)
+	}
+}
+
+func openAIMediaEndpointForModel(model string) (kind, endpoint string) {
+	value := strings.ToLower(strings.TrimSpace(model))
+	for _, marker := range []string{"seedance", "kling", "hailuo", "minimax-video", "grok-imagine-video", "sora", "veo", "wan-video", "wan2", "video"} {
+		if strings.Contains(value, marker) {
+			return "视频", "/v1/videos"
+		}
+	}
+	for _, marker := range []string{"gpt-image", "seedream", "flux", "recraft", "ideogram", "dall-e", "imagen", "qwen-image", "stable-diffusion", "sdxl", "kolors", "cogview", "nano-banana", "image-"} {
+		if strings.Contains(value, marker) {
+			return "图片", "/v1/images/generations"
+		}
+	}
+	return "", ""
 }
 
 func openAIChatBody(model, prompt string) map[string]any {

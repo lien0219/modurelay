@@ -60,3 +60,17 @@ func TestSummarizeDetectionProbes(t *testing.T) {
 	require.Equal(t, 1, s.NotApplicable)
 	require.Equal(t, 1, s.Unavailable)
 }
+
+func TestOpenAIMediaEndpointForModel(t *testing.T) {
+	kind, endpoint := openAIMediaEndpointForModel("seedance-2.0")
+	require.Equal(t, "视频", kind)
+	require.Equal(t, "/v1/videos", endpoint)
+
+	kind, endpoint = openAIMediaEndpointForModel("doubao-seedream-4-0")
+	require.Equal(t, "图片", kind)
+	require.Equal(t, "/v1/images/generations", endpoint)
+
+	kind, endpoint = openAIMediaEndpointForModel("gpt-5.6")
+	require.Empty(t, kind)
+	require.Empty(t, endpoint)
+}
