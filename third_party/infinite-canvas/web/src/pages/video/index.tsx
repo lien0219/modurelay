@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, BookOpen, CheckSquare, ClipboardPaste, Download, FolderPlus, History, LoaderCircle, Plus, SlidersHorizontal, Sparkles, Trash2, Upload, VideoIcon } from "lucide-react";
+import { ArrowLeft, ArrowRight, BookOpen, CheckSquare, ClipboardPaste, Download, FolderPlus, History, LoaderCircle, Plus, SlidersHorizontal, Sparkles, Square, Trash2, Upload, VideoIcon } from "lucide-react";
 import { useEffect, useRef, useState, type DragEvent } from "react";
 import { App, Button, Checkbox, Drawer, Empty, Input, Modal, Tag, Typography } from "antd";
 import localforage from "localforage";
@@ -15,6 +15,7 @@ import { clampVideoSeconds } from "@/lib/media-size";
 import { formatBytes, formatDuration } from "@/lib/image-utils";
 import { deleteStoredMedia, resolveMediaUrl } from "@/services/file-storage";
 import { resolveImageUrl, uploadImage } from "@/services/image-storage";
+import { pruneVideoGenerationHistory } from "@/services/generation-history";
 import {
     createVideoGenerationTask,
     pollVideoGenerationTask,
@@ -81,6 +82,7 @@ export default function VideoPage() {
     const dragDepthRef = useRef(0);
     const activeLogIdsRef = useRef<Set<string>>(new Set());
     const pollControllersRef = useRef<Map<string, AbortController>>(new Map());
+    const createControllerRef = useRef<AbortController | null>(null);
     const visibleLogIdRef = useRef<string | null>(null);
     const config = useConfigStore((state) => state.config);
     const effectiveConfig = useEffectiveConfig();
@@ -126,6 +128,8 @@ export default function VideoPage() {
     useEffect(() => {
         void refreshLogs();
         return () => {
+            createControllerRef.current?.abort();
+            createControllerRef.current = null;
             pollControllersRef.current.forEach((controller) => controller.abort());
             pollControllersRef.current.clear();
             activeLogIdsRef.current.clear();
@@ -165,6 +169,31 @@ export default function VideoPage() {
         void addReferences(event.dataTransfer.files);
     };
 
+    const cancelGeneration = async () => {
+        const canceled = t("common.requestCanceled");
+        createControllerRef.current?.abort();
+        createControllerRef.current = null;
+        const activeIds = Array.from(pollControllersRef.current.keys());
+        pollControllersRef.current.forEach((controller) => controller.abort());
+        pollControllersRef.current.clear();
+        activeLogIdsRef.current.clear();
+        setResults((value) => value.map((item) => (item.status === "pending" ? { ...item, status: "failed", error: canceled } : item)));
+        setRunning(false);
+        setStartedAt(0);
+        setNowMs(Date.now());
+        if (activeIds.length) {
+            await Promise.all(
+                activeIds.map(async (id) => {
+                    const stored = await logStore.getItem<GenerationLog>(id);
+                    if (!stored || stored.status !== "pending") return;
+                    await logStore.setItem(id, serializeLog({ ...stored, status: "failed", task: undefined, durationMs: Math.max(0, Date.now() - stored.createdAt), error: canceled }));
+                }),
+            );
+            await refreshLogs(false);
+        }
+        message.info(canceled);
+    };
+
     const addReferencesFromClipboard = async () => {
         try {
             const items = await navigator.clipboard.read();
@@ -200,19 +229,32 @@ export default function VideoPage() {
         const batchStartedAt = Date.now();
         setStartedAt(batchStartedAt);
         setNowMs(batchStartedAt);
+        const controller = new AbortController();
+        createControllerRef.current = controller;
         try {
-            const task = await createVideoGenerationTask(snapshot.config, snapshot.text, snapshot.references);
+            const task = await createVideoGenerationTask(snapshot.config, snapshot.text, snapshot.references, { signal: controller.signal });
+            if (controller.signal.aborted) return;
             const log = buildLog({ prompt: snapshot.text, model, config: snapshot.config, references: snapshot.references, durationMs: 0, status: "pending", task });
             visibleLogIdRef.current = log.id;
             await saveLog(log, false);
-            void pollGenerationLog(log, snapshot.config, agentTaskId);
+            if (createControllerRef.current === controller) createControllerRef.current = null;
+            void pollGenerationLog(log, snapshot.config, agentTaskId, controller);
         } catch (error) {
+            if (controller.signal.aborted || (error instanceof Error && error.name === "AbortError")) {
+                if (agentTaskId) updateAgentTask(agentTaskId, { status: "failed", successCount: 0, failCount: 1, error: t("common.requestCanceled") });
+                setResults([{ id: nanoid(), status: "failed", error: t("common.requestCanceled") }]);
+                setRunning(false);
+                setStartedAt(0);
+                return;
+            }
             const errorMessage = error instanceof Error ? error.message : t("workbench.generationFailed");
             setResults([{ id: nanoid(), status: "failed", error: errorMessage }]);
             if (agentTaskId) updateAgentTask(agentTaskId, { status: "failed", successCount: 0, failCount: 1, error: errorMessage });
             await saveLog(buildLog({ prompt: snapshot.text, model, config: snapshot.config, references: snapshot.references, durationMs: Date.now() - batchStartedAt, status: "failed", error: errorMessage }));
             message.error(errorMessage);
             setRunning(false);
+        } finally {
+            if (createControllerRef.current === controller) createControllerRef.current = null;
         }
     };
 
@@ -333,9 +375,9 @@ export default function VideoPage() {
         for (const log of pendingLogs) void pollGenerationLog(log);
     };
 
-    const pollGenerationLog = async (log: GenerationLog, configOverride?: AiConfig, agentTaskId?: string) => {
+    const pollGenerationLog = async (log: GenerationLog, configOverride?: AiConfig, agentTaskId?: string, controllerOverride?: AbortController) => {
         if (!log.task || activeLogIdsRef.current.has(log.id)) return;
-        const controller = new AbortController();
+        const controller = controllerOverride || new AbortController();
         activeLogIdsRef.current.add(log.id);
         pollControllersRef.current.set(log.id, controller);
         setRunning(true);
@@ -376,7 +418,10 @@ export default function VideoPage() {
                 await delay(VIDEO_TASK_POLL_INTERVAL_MS, controller.signal);
             }
         } catch (error) {
-            if (controller.signal.aborted || (error instanceof Error && error.name === "AbortError")) return;
+            if (controller.signal.aborted || (error instanceof Error && error.name === "AbortError")) {
+                if (agentTaskId) updateAgentTask(agentTaskId, { status: "failed", successCount: 0, failCount: 1, error: t("common.requestCanceled") });
+                return;
+            }
             const errorMessage = error instanceof Error ? error.message : t("workbench.generationFailed");
             const failedLog: GenerationLog = { ...log, status: "failed", durationMs: Date.now() - log.createdAt, error: errorMessage };
             if (visibleLogIdRef.current === log.id) {
@@ -500,9 +545,15 @@ export default function VideoPage() {
                         </div>
 
                         <div className="mt-auto pt-6">
-                            <Button type="primary" size="large" block icon={<Sparkles className="size-4" />} loading={running} disabled={!canGenerate || running} onClick={() => void generate()}>
-                                {t("workbench.generate")}
-                            </Button>
+                            {running ? (
+                                <Button danger size="large" block icon={<Square className="size-4" />} onClick={() => void cancelGeneration()}>
+                                    {t("workbench.cancelGeneration")}
+                                </Button>
+                            ) : (
+                                <Button type="primary" size="large" block icon={<Sparkles className="size-4" />} disabled={!canGenerate} onClick={() => void generate()}>
+                                    {t("workbench.generate")}
+                                </Button>
+                            )}
                         </div>
                     </div>
 
@@ -707,6 +758,7 @@ function LogCard({ log, selected, active, currentTimeMs, onSelectedChange, onCli
 async function readStoredLogs() {
     if (typeof window === "undefined") return [];
     try {
+        await pruneVideoGenerationHistory();
         const logs: GenerationLog[] = [];
         await logStore.iterate<GenerationLog, void>((value) => {
             logs.push(value);

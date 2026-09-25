@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, BookOpen, CheckSquare, ClipboardPaste, Download, FolderPlus, History, ImagePlus, LoaderCircle, PenLine, Plus, SlidersHorizontal, Sparkles, Trash2, Upload } from "lucide-react";
+import { ArrowLeft, ArrowRight, BookOpen, CheckSquare, ClipboardPaste, Download, FolderPlus, History, ImagePlus, LoaderCircle, PenLine, Plus, SlidersHorizontal, Sparkles, Square, Trash2, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { App, Button, Checkbox, Drawer, Empty, Image, Input, Modal, Tag, Tooltip, Typography } from "antd";
 import localforage from "localforage";
@@ -17,6 +17,7 @@ import { nanoid } from "nanoid";
 import { formatBytes, formatDuration } from "@/lib/image-utils";
 import { requestEdit, requestGeneration } from "@/services/api/image";
 import { deleteStoredImages, resolveImageUrl, uploadImage } from "@/services/image-storage";
+import { pruneImageGenerationHistory } from "@/services/generation-history";
 import { useAssetStore } from "@/stores/use-asset-store";
 import { useWorkbenchAgentStore } from "@/stores/use-workbench-agent-store";
 import type { ReferenceImage } from "@/types/image";
@@ -131,6 +132,18 @@ export default function ImagePage() {
         setReferences((value) => [...value, ...nextReferences]);
     };
 
+    const cancelGeneration = () => {
+        const controllers = Array.from(activeRequestControllersRef.current);
+        if (!controllers.length) return;
+        controllers.forEach((controller) => controller.abort());
+        const canceled = t("common.requestCanceled");
+        setResults((value) => value.map((item) => (item.status === "pending" ? { ...item, status: "failed", error: canceled } : item)));
+        setRunning(false);
+        setStartedAt(0);
+        setElapsedMs(0);
+        message.info(canceled);
+    };
+
     const addReferencesFromClipboard = async () => {
         try {
             const items = await navigator.clipboard.read();
@@ -190,6 +203,8 @@ export default function ImagePage() {
         if (controller.signal.aborted) {
             if (agentTaskId) updateAgentTask(agentTaskId, { status: "failed", error: t("common.requestCanceled") });
             activeRequestControllersRef.current.delete(controller);
+            setRunning(false);
+            setStartedAt(0);
             return;
         }
         const successImages = result.filter((item): item is PromiseFulfilledResult<GeneratedImage> => item.status === "fulfilled").map((item) => item.value);
@@ -506,9 +521,15 @@ export default function ImagePage() {
                         </div>
 
                         <div className="mt-auto pt-6">
-                            <Button type="primary" size="large" block icon={<Sparkles className="size-4" />} loading={running} disabled={!canGenerate || running} onClick={() => void generate()}>
-                                {t("workbench.generate")}
-                            </Button>
+                            {running ? (
+                                <Button danger size="large" block icon={<Square className="size-4" />} onClick={cancelGeneration}>
+                                    {t("workbench.cancelGeneration")}
+                                </Button>
+                            ) : (
+                                <Button type="primary" size="large" block icon={<Sparkles className="size-4" />} disabled={!canGenerate} onClick={() => void generate()}>
+                                    {t("workbench.generate")}
+                                </Button>
+                            )}
                         </div>
                     </div>
 
@@ -797,6 +818,7 @@ function LogCard({ log, selected, active, onSelectedChange, onClick }: { log: Ge
 async function readStoredLogs() {
     if (typeof window === "undefined") return [];
     try {
+        await pruneImageGenerationHistory();
         const values: GenerationLog[] = [];
         await logStore.iterate<GenerationLog, void>((value) => {
             values.push(value);
