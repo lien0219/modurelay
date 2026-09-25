@@ -251,7 +251,11 @@ func prepareCompatibleVideoBody(account *Account, body []byte, contentType, rout
 		if err != nil {
 			return nil, "", "", fmt.Errorf("rewrite compatible video model: %w", err)
 		}
-		rewritten, err = normalizeCompatibleSeedanceVideoJSON(rewritten, upstreamModel)
+		if IsAIStarsLabOpenAICompatibleAccount(account) {
+			rewritten, err = normalizeAIStarsLabCompatibleVideoJSON(rewritten)
+		} else {
+			rewritten, err = normalizeCompatibleSeedanceVideoJSON(rewritten, upstreamModel)
+		}
 		if err != nil {
 			return nil, "", "", err
 		}
@@ -307,6 +311,80 @@ func prepareCompatibleVideoBody(account *Account, body []byte, contentType, rout
 	return out.Bytes(), writer.FormDataContentType(), upstreamModel, nil
 }
 
+
+func normalizeAIStarsLabCompatibleVideoJSON(body []byte) ([]byte, error) {
+	if !gjson.ValidBytes(body) {
+		return body, nil
+	}
+	out := body
+	var err error
+
+	// AIStarsLab's OpenAI/Sora compatibility contract uses seconds (string),
+	// size, and metadata.resolution. Accept our unified aliases at ingress and
+	// emit only the documented supplier fields to avoid unsupported-parameter
+	// failures.
+	seconds := compatibleVideoFirstNonEmpty(
+		gjson.GetBytes(out, "seconds").String(),
+		gjson.GetBytes(out, "duration").String(),
+	)
+	if seconds != "" {
+		out, err = sjson.SetBytes(out, "seconds", seconds)
+		if err != nil {
+			return nil, fmt.Errorf("normalize AIStarsLab seconds: %w", err)
+		}
+	}
+	size := compatibleVideoFirstNonEmpty(
+		gjson.GetBytes(out, "size").String(),
+		gjson.GetBytes(out, "metadata.size").String(),
+		gjson.GetBytes(out, "aspect_ratio").String(),
+		gjson.GetBytes(out, "ratio").String(),
+	)
+	if size != "" {
+		out, err = sjson.SetBytes(out, "size", size)
+		if err != nil {
+			return nil, fmt.Errorf("normalize AIStarsLab size: %w", err)
+		}
+	}
+	resolution := compatibleVideoFirstNonEmpty(
+		gjson.GetBytes(out, "metadata.resolution").String(),
+		gjson.GetBytes(out, "resolution").String(),
+		gjson.GetBytes(out, "resolution_name").String(),
+	)
+	if resolution != "" {
+		metadata := gjson.GetBytes(out, "metadata")
+		if !metadata.Exists() || metadata.IsObject() {
+			out, err = sjson.SetBytes(out, "metadata.resolution", resolution)
+			if err != nil {
+				return nil, fmt.Errorf("normalize AIStarsLab resolution: %w", err)
+			}
+		}
+	}
+	mode := compatibleVideoFirstNonEmpty(
+		gjson.GetBytes(out, "metadata.mode_type").String(),
+		gjson.GetBytes(out, "mode_type").String(),
+		gjson.GetBytes(out, "mode").String(),
+	)
+	if mode != "" {
+		metadata := gjson.GetBytes(out, "metadata")
+		if !metadata.Exists() || metadata.IsObject() {
+			out, err = sjson.SetBytes(out, "metadata.mode_type", mode)
+			if err != nil {
+				return nil, fmt.Errorf("normalize AIStarsLab mode_type: %w", err)
+			}
+		}
+	}
+
+	for _, path := range []string{
+		"resolution", "resolution_name", "aspect_ratio", "ratio",
+		"mode_type", "mode", "audio", "generate_audio", "watermark",
+	} {
+		out, err = sjson.DeleteBytes(out, path)
+		if err != nil {
+			return nil, fmt.Errorf("remove unsupported AIStarsLab field %s: %w", path, err)
+		}
+	}
+	return out, nil
+}
 
 func normalizeCompatibleSeedanceVideoJSON(body []byte, model string) ([]byte, error) {
 	if !strings.Contains(strings.ToLower(strings.TrimSpace(model)), "seedance") || !gjson.ValidBytes(body) {

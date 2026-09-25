@@ -814,6 +814,13 @@ func normalizeRequestedModelForLookup(platform, requestedModel string) string {
 	if trimmed == "" {
 		return ""
 	}
+	// Aggregators may expose route-qualified video IDs such as
+	// "48:seedance-2.0" or "test:test-video". Exact model_mapping matches are
+	// attempted before this helper, so normalizing here only provides a safe
+	// canonical fallback for official/provider mappings.
+	if ref := ParseVideoModelRef(trimmed); ref.ChannelCode != "" {
+		trimmed = ref.CanonicalModel
+	}
 	if platform != PlatformGemini && platform != PlatformAntigravity {
 		return trimmed
 	}

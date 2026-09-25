@@ -166,3 +166,40 @@ func TestCompatibleVideoForwardResultCompletedStatus(t *testing.T) {
 		t.Fatalf("unexpected completion result: %#v", result)
 	}
 }
+
+
+func TestPrepareCompatibleVideoBodyAIStarsLabKeepsQualifiedModelAndNormalizesFields(t *testing.T) {
+	account := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":  "test",
+			"base_url": "https://api.video.aistarslab.com/openai",
+		},
+	}
+	body := []byte(`{"model":"48:seedance-2.0","prompt":"hello","duration":5,"resolution":"720p","aspect_ratio":"9:16","audio":true,"generate_audio":true,"watermark":false}`)
+	rewritten, contentType, model, err := prepareCompatibleVideoBody(account, body, "application/json", "48:seedance-2.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if contentType != "application/json" || model != "48:seedance-2.0" {
+		t.Fatalf("unexpected content type/model: %q %q", contentType, model)
+	}
+	if got := gjson.GetBytes(rewritten, "model").String(); got != "48:seedance-2.0" {
+		t.Fatalf("model=%q body=%s", got, rewritten)
+	}
+	if got := gjson.GetBytes(rewritten, "seconds").String(); got != "5" {
+		t.Fatalf("seconds=%q body=%s", got, rewritten)
+	}
+	if got := gjson.GetBytes(rewritten, "size").String(); got != "9:16" {
+		t.Fatalf("size=%q body=%s", got, rewritten)
+	}
+	if got := gjson.GetBytes(rewritten, "metadata.resolution").String(); got != "720p" {
+		t.Fatalf("metadata.resolution=%q body=%s", got, rewritten)
+	}
+	for _, path := range []string{"resolution", "aspect_ratio", "audio", "generate_audio", "watermark"} {
+		if gjson.GetBytes(rewritten, path).Exists() {
+			t.Fatalf("unsupported supplier alias %s leaked into %s", path, rewritten)
+		}
+	}
+}
