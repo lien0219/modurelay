@@ -109,7 +109,8 @@ const canvasStorage: PersistStorage<CanvasStore> = {
         const parsed = JSON.parse(value) as StorageValue<CanvasStore>;
         queuedPersistState = parsed.state as PersistedCanvasState;
         if (journal) {
-            void localForageStorage.setItem(name, journal.value).then(() => clearCanvasPersistJournal(journal));
+            await localForageStorage.setItem(name, journal.value);
+            clearCanvasPersistJournal(journal);
         }
         return parsed;
     },
