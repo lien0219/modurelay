@@ -14,6 +14,7 @@
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { gsap } from 'gsap'
 import {
+  consumeWorkspaceBackReturnPending,
   registerWorkspaceModeTransitionRunner,
   resetWorkspaceModeTransitionState,
   type WorkspaceModeTransitionDirection,
@@ -75,12 +76,30 @@ function resetVisualState() {
 function handlePageShow(event: PageTransitionEvent) {
   if (!event.persisted) return
 
-  // Cross-document workspace navigation intentionally keeps the door closed
-  // until the next document loads. Chromium may preserve that exact DOM and
-  // module state in BFCache. When browser Back restores the ModuRelay page,
-  // clear both the visual overlay and the navigation lock immediately.
+  // Chromium can restore the exact pre-navigation DOM from BFCache. When the
+  // user returns from Infinite Canvas with the browser Back button, reuse the
+  // already-closed doors and play the same ModuRelay arrival/open animation.
+  // Other BFCache restores are reset silently and do not get a workspace animation.
   resetWorkspaceModeTransitionState()
-  resetVisualState()
+  if (!consumeWorkspaceBackReturnPending()) {
+    resetVisualState()
+    return
+  }
+
+  if (reduceMotion || !overlayRef.value || !leftPanelRef.value || !rightPanelRef.value) {
+    resetVisualState()
+    focusDestination()
+    return
+  }
+
+  timeline?.kill()
+  timeline = null
+  active.value = true
+  document.body.classList.add('workspace-mode-transitioning')
+  gsap.set(overlayRef.value, { autoAlpha: 1 })
+  gsap.set(leftPanelRef.value, { xPercent: 0, '--workspace-door-blur': '20px' })
+  gsap.set(rightPanelRef.value, { xPercent: 0, '--workspace-door-blur': '20px' })
+  void playArrival('to-relay')
 }
 
 async function playTransition(request: {
@@ -136,6 +155,7 @@ async function playArrival(nextDirection: WorkspaceModeTransitionDirection) {
   sessionStorage.removeItem('modurelay-workspace-door')
 
   if (reduceMotion || !overlayRef.value || !leftPanelRef.value || !rightPanelRef.value) {
+    resetVisualState()
     focusDestination()
     return
   }
@@ -212,6 +232,9 @@ onMounted(() => {
     return () => { reduceMotion = false }
   })
   resetVisualState()
+  // A fresh ModuRelay document (for example the in-page "Back to ModuRelay"
+  // action) must not leave the browser-Back marker behind for a later BFCache restore.
+  consumeWorkspaceBackReturnPending()
   window.addEventListener('pageshow', handlePageShow)
   unregisterRunner = registerWorkspaceModeTransitionRunner(playTransition)
   unregisterThemeRunner = registerThemeTransitionRunner(playThemeTransition)

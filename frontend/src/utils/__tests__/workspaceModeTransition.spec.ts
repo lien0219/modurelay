@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Router } from 'vue-router'
 import {
+  consumeWorkspaceBackReturnPending,
+  markWorkspaceBackReturnPending,
   navigateToWorkspaceUrlWithTransition,
   navigateWithWorkspaceModeTransition,
   registerWorkspaceModeTransitionRunner,
@@ -39,6 +41,13 @@ describe('workspaceModeTransition', () => {
     expect(router.push).toHaveBeenCalledOnce()
     expect(workspaceModeTransitioning.value).toBe(false)
     unregister()
+  })
+
+  it('tracks one browser-back return from Infinite Canvas', () => {
+    markWorkspaceBackReturnPending()
+
+    expect(consumeWorkspaceBackReturnPending()).toBe(true)
+    expect(consumeWorkspaceBackReturnPending()).toBe(false)
   })
 
   it('can recover a cross-document transition lock after BFCache restoration', async () => {
