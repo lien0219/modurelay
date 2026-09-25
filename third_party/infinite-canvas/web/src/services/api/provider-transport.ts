@@ -69,6 +69,8 @@ providerAxios.interceptors.request.use((config) => prepareAxiosProxyRequest(conf
 export function providerFetch(input: RequestInfo | URL, init?: RequestInit) {
     const sourceRequest = typeof Request !== "undefined" && input instanceof Request ? input : null;
     const originalUrl = sourceRequest?.url || String(input);
+    const signal = init?.signal || sourceRequest?.signal;
+    if (/^data:/i.test(originalUrl)) return dataUrlResponse(originalUrl, signal);
     const proxiedUrl = withLocalProxy(originalUrl);
     const requestUrl = integratedRequestUrl(proxiedUrl) ?? proxiedUrl;
     const targetUrl = integratedProviderTarget(requestUrl);
@@ -90,4 +92,33 @@ export function providerFetch(input: RequestInfo | URL, init?: RequestInit) {
         return globalThis.fetch(new Request(finalUrl, sourceRequest), { ...init, headers });
     }
     return globalThis.fetch(finalUrl, { ...init, headers });
+}
+
+
+function dataUrlResponse(value: string, signal?: AbortSignal | null) {
+    if (signal?.aborted) return Promise.reject(abortReason(signal));
+    const commaIndex = value.indexOf(",");
+    if (commaIndex <= 5) return Promise.reject(new TypeError("Invalid data URL"));
+    const metadata = value.slice(5, commaIndex);
+    const payload = value.slice(commaIndex + 1);
+    const parts = metadata.split(";");
+    const mimeType = parts[0] || "text/plain";
+    try {
+        let blob: Blob;
+        if (parts.includes("base64")) {
+            const binary = atob(payload.replace(/\s/g, ""));
+            const bytes = new Uint8Array(binary.length);
+            for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+            blob = new Blob([bytes], { type: mimeType });
+        } else {
+            blob = new Blob([decodeURIComponent(payload)], { type: mimeType });
+        }
+        return Promise.resolve(new Response(blob, { status: 200, headers: { "Content-Type": mimeType } }));
+    } catch {
+        return Promise.reject(new TypeError("Invalid data URL"));
+    }
+}
+
+function abortReason(signal: AbortSignal) {
+    return signal.reason instanceof Error ? signal.reason : new DOMException("Aborted", "AbortError");
 }
