@@ -1494,7 +1494,8 @@ function InfiniteCanvasPage() {
     }, [finishNodeDrag, handleGlobalMouseMove, handleGlobalMouseUp, handleGlobalPointerMove]);
 
     const createImageFileNode = useCallback(async (file: File, position: Position) => {
-        const image = await uploadImage(file);
+        try {
+            const image = await uploadImage(file);
         const size = fitNodeSize(image.width, image.height);
         const id = `image-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
         const newNode: CanvasNodeData = {
@@ -1511,10 +1512,14 @@ function InfiniteCanvasPage() {
         setSelectedNodeIds(new Set([id]));
         setSelectedConnectionId(null);
         setDialogNodeId(id);
-    }, []);
+        } catch (error) {
+            message.error(error instanceof Error ? error.message : t("canvas.sidePanel.addFailed"));
+        }
+    }, [message, t]);
 
     const createVideoFileNode = useCallback(async (file: File, position: Position) => {
-        const video = await uploadMediaFile(file, "video");
+        try {
+            const video = await uploadMediaFile(file, "video");
         const size = fitNodeSize(video.width || 1280, video.height || 720, VIDEO_NODE_MAX_WIDTH, VIDEO_NODE_MAX_HEIGHT);
         const id = `video-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
         setNodes((prev) => [
@@ -1532,10 +1537,14 @@ function InfiniteCanvasPage() {
         setSelectedNodeIds(new Set([id]));
         setSelectedConnectionId(null);
         setDialogNodeId(id);
-    }, []);
+        } catch (error) {
+            message.error(error instanceof Error ? error.message : t("canvas.sidePanel.addFailed"));
+        }
+    }, [message, t]);
 
     const createAudioFileNode = useCallback(async (file: File, position: Position) => {
-        const audio = await uploadMediaFile(file, "audio");
+        try {
+            const audio = await uploadMediaFile(file, "audio");
         const spec = NODE_DEFAULT_SIZE[CanvasNodeType.Audio];
         const id = `audio-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
         setNodes((prev) => [
@@ -1552,7 +1561,10 @@ function InfiniteCanvasPage() {
         ]);
         setSelectedNodeIds(new Set([id]));
         setSelectedConnectionId(null);
-    }, []);
+        } catch (error) {
+            message.error(error instanceof Error ? error.message : t("canvas.sidePanel.addFailed"));
+        }
+    }, [message, t]);
 
     const createTextNodeFromClipboard = useCallback(
         (text: string) => {
@@ -2174,6 +2186,7 @@ function InfiniteCanvasPage() {
                 return;
             }
 
+            try {
             const target = uploadTargetRef.current;
             const basePosition =
                 target?.position ||
@@ -2289,10 +2302,14 @@ function InfiniteCanvasPage() {
                 }
             }
 
-            uploadTargetRef.current = null;
-            event.target.value = "";
+            } catch (error) {
+                message.error(error instanceof Error ? error.message : t("canvas.sidePanel.addFailed"));
+            } finally {
+                uploadTargetRef.current = null;
+                event.target.value = "";
+            }
         },
-        [createAudioFileNode, createImageFileNode, createVideoFileNode, screenToCanvas, size.height, size.width],
+        [createAudioFileNode, createImageFileNode, createVideoFileNode, message, screenToCanvas, size.height, size.width, t],
     );
 
     const handleDrop = useCallback(
