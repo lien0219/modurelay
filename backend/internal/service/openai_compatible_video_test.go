@@ -69,6 +69,51 @@ func TestPrepareCompatibleVideoBodyJSON(t *testing.T) {
 	}
 }
 
+
+func TestPrepareCompatibleVideoBodySeedanceAddsCompatibilityAliases(t *testing.T) {
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	body := []byte(`{"model":"47:seedance-2.0","prompt":"hello","duration":5,"resolution":"720p","aspect_ratio":"9:16","generate_audio":true}`)
+	rewritten, contentType, model, err := prepareCompatibleVideoBody(account, body, "application/json", "seedance-2.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if contentType != "application/json" || model != "seedance-2.0" {
+		t.Fatalf("unexpected content type/model: %q %q", contentType, model)
+	}
+	for path, want := range map[string]string{
+		"model":               "seedance-2.0",
+		"resolution":          "720p",
+		"resolution_name":     "720p",
+		"metadata.resolution": "720p",
+		"aspect_ratio":        "9:16",
+		"ratio":               "9:16",
+	} {
+		if got := gjson.GetBytes(rewritten, path).String(); got != want {
+			t.Fatalf("%s=%q want %q body=%s", path, got, want, rewritten)
+		}
+	}
+	if got := gjson.GetBytes(rewritten, "duration").Int(); got != 5 {
+		t.Fatalf("duration=%d body=%s", got, rewritten)
+	}
+	if got := gjson.GetBytes(rewritten, "seconds").Int(); got != 5 {
+		t.Fatalf("seconds=%d body=%s", got, rewritten)
+	}
+}
+
+func TestPrepareCompatibleVideoBodyNonSeedanceDoesNotAddAliases(t *testing.T) {
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	body := []byte(`{"model":"62:wan-3.0","duration":5,"resolution":"720p","aspect_ratio":"16:9"}`)
+	rewritten, _, _, err := prepareCompatibleVideoBody(account, body, "application/json", "wan-3.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"resolution_name", "metadata.resolution", "seconds", "ratio"} {
+		if gjson.GetBytes(rewritten, path).Exists() {
+			t.Fatalf("unexpected alias %s in %s", path, rewritten)
+		}
+	}
+}
+
 func TestPrepareCompatibleVideoBodyMultipart(t *testing.T) {
 	var source bytes.Buffer
 	writer := multipart.NewWriter(&source)

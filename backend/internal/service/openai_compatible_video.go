@@ -251,6 +251,10 @@ func prepareCompatibleVideoBody(account *Account, body []byte, contentType, rout
 		if err != nil {
 			return nil, "", "", fmt.Errorf("rewrite compatible video model: %w", err)
 		}
+		rewritten, err = normalizeCompatibleSeedanceVideoJSON(rewritten, upstreamModel)
+		if err != nil {
+			return nil, "", "", err
+		}
 		return rewritten, "application/json", upstreamModel, nil
 	}
 
@@ -301,6 +305,79 @@ func prepareCompatibleVideoBody(account *Account, body []byte, contentType, rout
 		return nil, "", "", err
 	}
 	return out.Bytes(), writer.FormDataContentType(), upstreamModel, nil
+}
+
+
+func normalizeCompatibleSeedanceVideoJSON(body []byte, model string) ([]byte, error) {
+	if !strings.Contains(strings.ToLower(strings.TrimSpace(model)), "seedance") || !gjson.ValidBytes(body) {
+		return body, nil
+	}
+	out := body
+	var err error
+
+	resolution := compatibleVideoFirstNonEmpty(
+		gjson.GetBytes(out, "resolution").String(),
+		gjson.GetBytes(out, "resolution_name").String(),
+		gjson.GetBytes(out, "metadata.resolution").String(),
+	)
+	if normalized, ok := LookupVideoBillingResolution(resolution); ok {
+		for _, path := range []string{"resolution", "resolution_name"} {
+			if !gjson.GetBytes(out, path).Exists() {
+				out, err = sjson.SetBytes(out, path, normalized)
+				if err != nil {
+					return nil, fmt.Errorf("normalize compatible Seedance %s: %w", path, err)
+				}
+			}
+		}
+		metadata := gjson.GetBytes(out, "metadata")
+		if !metadata.Exists() || metadata.IsObject() {
+			if !gjson.GetBytes(out, "metadata.resolution").Exists() {
+				out, err = sjson.SetBytes(out, "metadata.resolution", normalized)
+				if err != nil {
+					return nil, fmt.Errorf("normalize compatible Seedance metadata resolution: %w", err)
+				}
+			}
+		}
+	}
+
+	duration := gjson.GetBytes(out, "duration")
+	if !duration.Exists() {
+		duration = gjson.GetBytes(out, "seconds")
+	}
+	if duration.Exists() {
+		if !gjson.GetBytes(out, "duration").Exists() {
+			out, err = sjson.SetBytes(out, "duration", duration.Value())
+			if err != nil {
+				return nil, fmt.Errorf("normalize compatible Seedance duration: %w", err)
+			}
+		}
+		if !gjson.GetBytes(out, "seconds").Exists() {
+			out, err = sjson.SetBytes(out, "seconds", duration.Value())
+			if err != nil {
+				return nil, fmt.Errorf("normalize compatible Seedance seconds: %w", err)
+			}
+		}
+	}
+
+	ratio := compatibleVideoFirstNonEmpty(
+		gjson.GetBytes(out, "aspect_ratio").String(),
+		gjson.GetBytes(out, "ratio").String(),
+	)
+	if ratio != "" {
+		if !gjson.GetBytes(out, "aspect_ratio").Exists() {
+			out, err = sjson.SetBytes(out, "aspect_ratio", ratio)
+			if err != nil {
+				return nil, fmt.Errorf("normalize compatible Seedance aspect_ratio: %w", err)
+			}
+		}
+		if !gjson.GetBytes(out, "ratio").Exists() {
+			out, err = sjson.SetBytes(out, "ratio", ratio)
+			if err != nil {
+				return nil, fmt.Errorf("normalize compatible Seedance ratio: %w", err)
+			}
+		}
+	}
+	return out, nil
 }
 
 func compatibleVideoForwardResult(
