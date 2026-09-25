@@ -13,7 +13,7 @@ import { VideoSettingsPanel, normalizeVideoResolutionValue, normalizeVideoSizeVa
 import { canvasThemes } from "@/lib/canvas-theme";
 import { clampVideoSeconds } from "@/lib/media-size";
 import { formatBytes, formatDuration } from "@/lib/image-utils";
-import { deleteStoredMedia, resolveMediaUrl } from "@/services/file-storage";
+import { cleanupUnusedMedia, resolveMediaUrl } from "@/services/file-storage";
 import { resolveImageUrl, uploadImage } from "@/services/image-storage";
 import { pruneVideoGenerationHistory } from "@/services/generation-history";
 import {
@@ -25,6 +25,7 @@ import {
     type VideoGenerationTask,
 } from "@/services/api/video";
 import { useAssetStore } from "@/stores/use-asset-store";
+import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
 import { useWorkbenchAgentStore } from "@/stores/use-workbench-agent-store";
 import { boolConfig, mediaTaskRouteFingerprint, modelOptionLabel, useConfigStore, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
 import { useThemeStore } from "@/stores/use-theme-store";
@@ -342,11 +343,15 @@ export default function VideoPage() {
             pollControllersRef.current.get(id)?.abort();
             pollControllersRef.current.delete(id);
         });
-        const mediaKeys = logs
-            .filter((log) => selectedLogIds.includes(log.id))
-            .map((log) => log.video?.storageKey)
-            .filter((key): key is string => Boolean(key));
-        void Promise.all([deleteStoredMedia(mediaKeys), ...selectedLogIds.map((id) => logStore.removeItem(id))]).then(() => refreshLogs());
+        void Promise.all(selectedLogIds.map((id) => logStore.removeItem(id)))
+            .then(async () => {
+                await cleanupUnusedMedia({
+                    assets: useAssetStore.getState().assets,
+                    projects: useCanvasStore.getState().projects,
+                });
+                await refreshLogs();
+            })
+            .catch((error) => message.error(error instanceof Error ? error.message : t("workbench.generationFailed")));
         if (previewLog && selectedLogIds.includes(previewLog.id)) {
             setPreviewLog(null);
             setResults([]);

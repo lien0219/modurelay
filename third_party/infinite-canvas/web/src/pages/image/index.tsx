@@ -16,9 +16,10 @@ import { useThemeStore } from "@/stores/use-theme-store";
 import { nanoid } from "nanoid";
 import { formatBytes, formatDuration } from "@/lib/image-utils";
 import { requestEdit, requestGeneration } from "@/services/api/image";
-import { deleteStoredImages, resolveImageUrl, uploadImage } from "@/services/image-storage";
+import { cleanupUnusedImages, resolveImageUrl, uploadImage } from "@/services/image-storage";
 import { pruneImageGenerationHistory } from "@/services/generation-history";
 import { useAssetStore } from "@/stores/use-asset-store";
+import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
 import { useWorkbenchAgentStore } from "@/stores/use-workbench-agent-store";
 import type { ReferenceImage } from "@/types/image";
 import i18n from "@/i18n";
@@ -304,8 +305,15 @@ export default function ImagePage() {
     };
 
     const deleteSelectedLogs = () => {
-        const imageKeys = logs.filter((log) => selectedLogIds.includes(log.id)).flatMap((log) => log.images.map((image) => image.storageKey).filter((key): key is string => Boolean(key)));
-        void Promise.all([deleteStoredImages(imageKeys), ...selectedLogIds.map((id) => logStore.removeItem(id))]).then(refreshLogs);
+        void Promise.all(selectedLogIds.map((id) => logStore.removeItem(id)))
+            .then(async () => {
+                await cleanupUnusedImages({
+                    assets: useAssetStore.getState().assets,
+                    projects: useCanvasStore.getState().projects,
+                });
+                await refreshLogs();
+            })
+            .catch((error) => message.error(error instanceof Error ? error.message : t("workbench.generationFailed")));
         if (previewLog && selectedLogIds.includes(previewLog.id)) {
             setPreviewLog(null);
             setResults([]);
