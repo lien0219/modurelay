@@ -270,12 +270,14 @@ func (s *OpenAIGatewayService) ForwardAIStarsLabOpenAPIVideo(
 			return nil, fmt.Errorf("AIStarsLab create response missing taskId")
 		}
 		publicID := AIStarsLabTaskKey(created.TaskID)
-		response := gin.H{
-			"id": publicID, "object": "video", "model": info.Model,
-			"status": aiStarsLabOpenAIStatus(created.Status),
-			"progress": 0, "created_at": time.Now().Unix(),
-			"metadata": gin.H{"provider_cost_credits": created.CostCredits},
-		}
+		response := gin.H{}
+		response["id"] = publicID
+		response["object"] = "video"
+		response["model"] = info.Model
+		response["status"] = aiStarsLabOpenAIStatus(created.Status)
+		response["progress"] = 0
+		response["created_at"] = time.Now().Unix()
+		response["metadata"] = gin.H{"provider_cost_credits": created.CostCredits}
 		c.JSON(http.StatusOK, response)
 		return &OpenAIForwardResult{
 			ResponseID: publicID, Model: info.Model, BillingModel: info.Model,
@@ -309,28 +311,36 @@ func (s *OpenAIGatewayService) ForwardAIStarsLabOpenAPIVideo(
 			}
 			c.Header("Location", resultURL)
 			c.Status(http.StatusFound)
-			return &OpenAIForwardResult{
-				ResponseID: publicID, ResponseHeaders: headers, Duration: time.Since(started), VideoCount: 1,
-			}, nil
+			result := &OpenAIForwardResult{}
+			result.ResponseID = publicID
+			result.ResponseHeaders = headers
+			result.Duration = time.Since(started)
+			result.VideoCount = 1
+			return result, nil
 		}
 		metadata := gin.H{}
 		if resultURL != "" {
 			metadata["result_url"] = resultURL
 		}
-		response := gin.H{
-			"id": publicID, "object": "video", "status": aiStarsLabOpenAIStatus(status.Status),
-			"metadata": metadata,
-		}
+		response := gin.H{}
+		response["id"] = publicID
+		response["object"] = "video"
+		response["status"] = aiStarsLabOpenAIStatus(status.Status)
+		response["metadata"] = metadata
 		if status.Progress != nil {
 			response["progress"] = *status.Progress
 		}
 		if status.Status == 4 {
-			response["error"] = gin.H{"code": status.ErrorCode, "message": status.ErrorMessage}
+			taskError := gin.H{}
+			taskError["code"] = status.ErrorCode
+			taskError["message"] = status.ErrorMessage
+			response["error"] = taskError
 		}
 		c.JSON(http.StatusOK, response)
-		result := &OpenAIForwardResult{
-			ResponseID: publicID, ResponseHeaders: headers, Duration: time.Since(started),
-		}
+		result := &OpenAIForwardResult{}
+		result.ResponseID = publicID
+		result.ResponseHeaders = headers
+		result.Duration = time.Since(started)
 		if status.Status == 3 && resultURL != "" {
 			result.VideoCount = 1
 		}

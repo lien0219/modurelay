@@ -16,7 +16,7 @@ import (
 
 func prepareSeedanceCompatibleCreateBody(account *Account, body []byte, contentType, routingModel string) ([]byte, GrokMediaRequestInfo, string, error) {
 	if account == nil {
-		return nil, GrokMediaRequestInfo{}, "", fmt.Errorf("Seedance account is required")
+		return nil, GrokMediaRequestInfo{}, "", fmt.Errorf("seedance account is required")
 	}
 	if !gjson.ValidBytes(body) {
 		return nil, GrokMediaRequestInfo{}, "", fmt.Errorf("official Seedance video create requires application/json")
@@ -36,11 +36,11 @@ func prepareSeedanceCompatibleCreateBody(account *Account, body []byte, contentT
 	}
 	for _, imageURL := range info.InputImageURLs {
 		if imageURL = strings.TrimSpace(imageURL); imageURL != "" {
-			content = append(content, map[string]any{
-				"type": "image_url",
-				"image_url": map[string]any{"url": imageURL},
-				"role": "reference_image",
-			})
+			item := map[string]any{}
+			item["type"] = "image_url"
+			item["image_url"] = map[string]any{"url": imageURL}
+			item["role"] = "reference_image"
+			content = append(content, item)
 		}
 	}
 	if len(content) == 0 {
@@ -169,10 +169,14 @@ func (s *OpenAIGatewayService) ForwardSeedanceCompatibleVideo(
 			return nil, fmt.Errorf("seedance create response missing task ID")
 		}
 		publicID := SeedanceTaskKey(rawID)
-		c.JSON(http.StatusOK, gin.H{
-			"id": publicID, "object": "video", "model": info.Model,
-			"status": "queued", "progress": 0, "created_at": time.Now().Unix(),
-		})
+		response := gin.H{}
+		response["id"] = publicID
+		response["object"] = "video"
+		response["model"] = info.Model
+		response["status"] = "queued"
+		response["progress"] = 0
+		response["created_at"] = time.Now().Unix()
+		c.JSON(http.StatusOK, response)
 		return &OpenAIForwardResult{
 			ResponseID: publicID, Model: info.Model, BillingModel: info.Model,
 			UpstreamModel: upstreamModel, ResponseHeaders: headers,
@@ -203,21 +207,22 @@ func (s *OpenAIGatewayService) ForwardSeedanceCompatibleVideo(
 			if videoURL != "" {
 				metadata["result_url"] = videoURL
 			}
-			payload := gin.H{
-				"id": SeedanceTaskKey(rawID), "object": "video",
-				"model": gjson.GetBytes(responseBody, "model").String(),
-				"status": status, "metadata": metadata,
-				"created_at": gjson.GetBytes(responseBody, "created_at").Int(),
-			}
+			payload := gin.H{}
+			payload["id"] = SeedanceTaskKey(rawID)
+			payload["object"] = "video"
+			payload["model"] = gjson.GetBytes(responseBody, "model").String()
+			payload["status"] = status
+			payload["metadata"] = metadata
+			payload["created_at"] = gjson.GetBytes(responseBody, "created_at").Int()
 			if completedAt := gjson.GetBytes(responseBody, "updated_at").Int(); status == "completed" && completedAt > 0 {
 				payload["completed_at"] = completedAt
 				payload["progress"] = 100
 			}
 			if status == "failed" {
-				payload["error"] = gin.H{
-					"code": gjson.GetBytes(responseBody, "error.code").String(),
-					"message": gjson.GetBytes(responseBody, "error.message").String(),
-				}
+				taskError := gin.H{}
+				taskError["code"] = gjson.GetBytes(responseBody, "error.code").String()
+				taskError["message"] = gjson.GetBytes(responseBody, "error.message").String()
+				payload["error"] = taskError
 			}
 			c.JSON(http.StatusOK, payload)
 		}

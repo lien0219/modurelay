@@ -28,6 +28,12 @@ func ParseVideoModelRef(model string) VideoModelRef {
 	}
 	channel := strings.TrimSpace(raw[:idx])
 	canonical := strings.TrimSpace(raw[idx+1:])
+	// Do not interpret URL schemes (for example https://...) as provider
+	// channel prefixes. Supplier model IDs never use slash-prefixed canonical
+	// names.
+	if strings.HasPrefix(canonical, "/") {
+		return ref
+	}
 	if !validVideoChannelCode(channel) || canonical == "" {
 		return ref
 	}

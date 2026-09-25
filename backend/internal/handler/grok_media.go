@@ -428,8 +428,12 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 			return
 		}
 
+		videoRouteTier := "supplier"
+		if selectedOfficialVideoTier {
+			videoRouteTier = "official"
+		}
 		reqLog.Debug("grok_media.account_schedule_decision",
-			zap.String("video_route_tier", map[bool]string{true: "official", false: "supplier"}[selectedOfficialVideoTier]),
+			zap.String("video_route_tier", videoRouteTier),
 			zap.String("selected_platform", selectedPlatform),
 			zap.String("selected_capability", string(selectedCapability)),
 			zap.String("selected_routing_model", selectedRoutingModel),
@@ -608,9 +612,17 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 			// Defer billing until status polling observes video.url. Persist create-time
 			// model/duration/resolution so status can still price if upstream omits them.
 			// Retry once: missing pending causes silent underpricing (status omits resolution).
+			pendingModel := requestModel
+			if selectedOfficialVideoTier && service.IsSeedanceVideoModel(canonicalVideoModel) {
+				pendingModel = canonicalVideoModel
+			}
+			pendingBillingModel := firstNonEmptyString(result.BillingModel, pendingModel)
+			if selectedOfficialVideoTier && service.IsSeedanceVideoModel(canonicalVideoModel) {
+				pendingBillingModel = canonicalVideoModel
+			}
 			pending := service.GrokVideoPendingBilling{
-				Model:                requestModel,
-				BillingModel:         firstNonEmptyString(result.BillingModel, requestModel),
+				Model:                pendingModel,
+				BillingModel:         pendingBillingModel,
 				UpstreamModel:        result.UpstreamModel,
 				VideoResolution:      result.VideoResolution,
 				VideoDurationSeconds: result.VideoDurationSeconds,
@@ -637,7 +649,9 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 		}
 		// Status poll OR content download can observe official done+video.url.
 		// Both paths share the same claim key so the customer is charged once.
-		if endpoint == service.SeedanceEndpointStatus {
+		seedanceCompatibleLookup := strings.HasPrefix(strings.TrimSpace(requestID), "seedance:") &&
+			(endpoint == service.GrokMediaEndpointVideoStatus || endpoint == service.GrokMediaEndpointVideoContent)
+		if endpoint == service.SeedanceEndpointStatus || seedanceCompatibleLookup {
 			if billResult := prepareSeedanceCompletionBilling(requestCtx, h, apiKey, subject, requestID, result); billResult != nil {
 				recordGrokMediaUsage(c, h, reqLog, apiKey, subject, subscription, account, billResult, billResult.Model, body, requestID)
 			}
