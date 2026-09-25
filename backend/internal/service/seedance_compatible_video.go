@@ -226,14 +226,14 @@ func (s *OpenAIGatewayService) ForwardSeedanceCompatibleVideo(
 			}
 			c.JSON(http.StatusOK, payload)
 		}
-		result := &OpenAIForwardResult{
-			ResponseID: SeedanceTaskKey(rawID),
-			Model: gjson.GetBytes(responseBody, "model").String(),
-			UpstreamModel: gjson.GetBytes(responseBody, "model").String(),
-			ResponseHeaders: headers, Duration: time.Since(started),
-			VideoResolution: gjson.GetBytes(responseBody, "resolution").String(),
-			VideoDurationSeconds: int(gjson.GetBytes(responseBody, "duration").Int()),
-		}
+		result := &OpenAIForwardResult{}
+		result.ResponseID = SeedanceTaskKey(rawID)
+		result.Model = gjson.GetBytes(responseBody, "model").String()
+		result.UpstreamModel = gjson.GetBytes(responseBody, "model").String()
+		result.ResponseHeaders = headers
+		result.Duration = time.Since(started)
+		result.VideoResolution = gjson.GetBytes(responseBody, "resolution").String()
+		result.VideoDurationSeconds = int(gjson.GetBytes(responseBody, "duration").Int())
 		if status == "completed" && videoURL != "" {
 			result.VideoCount = 1
 			result.Usage.OutputTokens = max(0, int(gjson.GetBytes(responseBody, "usage.completion_tokens").Int()))

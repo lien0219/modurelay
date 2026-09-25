@@ -7,14 +7,12 @@ import (
 )
 
 func TestPrepareAIStarsLabOpenAPIVideoCreate(t *testing.T) {
-	account := &Account{
-		Platform: PlatformOpenAI,
-		Type: AccountTypeAPIKey,
-		Credentials: map[string]any{
-			"base_url": "https://api.video.aistarslab.com/openapi",
-			"model_mapping": map[string]any{"seedance-2.0": "48:seedance-2.0"},
-		},
-	}
+	account := &Account{}
+	account.Platform = PlatformOpenAI
+	account.Type = AccountTypeAPIKey
+	account.Credentials = map[string]any{}
+	account.Credentials["base_url"] = "https://api.video.aistarslab.com/openapi"
+	account.Credentials["model_mapping"] = map[string]any{"seedance-2.0": "48:seedance-2.0"}
 	body := []byte(`{"model":"48:seedance-2.0","prompt":"hello","duration":5,"resolution":"720p","aspect_ratio":"9:16"}`)
 	out, upstream, _, err := prepareAIStarsLabOpenAPIVideoCreate(account, body, "application/json", "seedance-2.0")
 	if err != nil {
@@ -32,15 +30,13 @@ func TestPrepareAIStarsLabOpenAPIVideoCreate(t *testing.T) {
 }
 
 func TestPrepareSeedanceCompatibleCreateBodyStripsSupplierPrefix(t *testing.T) {
-	account := &Account{
-		Platform: PlatformOpenAI,
-		Type: AccountTypeAPIKey,
-		Credentials: map[string]any{
-			"base_url": "https://ark.cn-beijing.volces.com/api/v3",
-			"openai_capabilities": []any{"seedance"},
-			"model_mapping": map[string]any{"seedance-2.0": "doubao-seedance-2-0-test"},
-		},
-	}
+	account := &Account{}
+	account.Platform = PlatformOpenAI
+	account.Type = AccountTypeAPIKey
+	account.Credentials = map[string]any{}
+	account.Credentials["base_url"] = "https://ark.cn-beijing.volces.com/api/v3"
+	account.Credentials["openai_capabilities"] = []any{"seedance"}
+	account.Credentials["model_mapping"] = map[string]any{"seedance-2.0": "doubao-seedance-2-0-test"}
 	body := []byte(`{"model":"48:seedance-2.0","prompt":"hello","duration":5,"resolution":"720p","aspect_ratio":"9:16","generate_audio":true}`)
 	out, _, upstream, err := prepareSeedanceCompatibleCreateBody(account, body, "application/json", "seedance-2.0")
 	if err != nil {

@@ -166,7 +166,6 @@ func TestCompatibleVideoForwardResultCompletedStatus(t *testing.T) {
 	}
 }
 
-
 func TestPrepareCompatibleVideoBodyAIStarsLabKeepsQualifiedModelAndNormalizesFields(t *testing.T) {
 	account := &Account{
 		Platform: PlatformOpenAI,
