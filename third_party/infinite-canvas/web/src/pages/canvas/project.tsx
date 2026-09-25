@@ -139,7 +139,7 @@ function applyGeneratedVideo(item: CanvasNodeData, video: UploadedFile, extra: C
         width: videoSize.width,
         height: videoSize.height,
         position: { x: item.position.x + item.width / 2 - videoSize.width / 2, y: item.position.y + item.height / 2 - videoSize.height / 2 },
-        metadata: { ...item.metadata, ...videoMetadata(video), ...extra, videoTaskId: undefined, videoTaskProvider: undefined, videoTaskStartedAt: undefined, videoTaskRouteFingerprint: undefined, videoTaskRouteFingerprint: undefined },
+        metadata: { ...item.metadata, ...videoMetadata(video), ...extra, videoTaskId: undefined, videoTaskProvider: undefined, videoTaskStartedAt: undefined, videoTaskRouteFingerprint: undefined },
     };
 }
 
