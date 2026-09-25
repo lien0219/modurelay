@@ -309,7 +309,7 @@ function InfiniteCanvasPage() {
             if (task.provider !== "plugin") {
                 setNodes((prev) => prev.map((item) => (item.id === nodeId ? { ...item, metadata: { ...item.metadata, videoTaskId: task.id, videoTaskProvider: task.provider === "gemini" ? "gemini" : "openai", videoTaskStartedAt: taskStartedAt, model: config.model } } : item)));
             }
-            const video = await storeGeneratedVideo(await waitForVideoGenerationTask(config, task, { signal, deadlineAt: taskStartedAt + VIDEO_TASK_POLL_TIMEOUT_MS }));
+            const video = await storeGeneratedVideo(await waitForVideoGenerationTask(config, task, { signal, deadlineAt: taskStartedAt + VIDEO_TASK_POLL_TIMEOUT_MS }), { signal });
             setNodes((prev) => prev.map((item) => (item.id === nodeId ? applyGeneratedVideo(item, video, { prompt, model: config.model, ...extra }) : item)));
         },
         [],
@@ -341,6 +341,7 @@ function InfiniteCanvasPage() {
                         { id: taskId, provider: node.metadata?.videoTaskProvider === "gemini" ? "gemini" : "openai", model: generationConfig.model },
                         { signal: controller.signal, deadlineAt: taskStartedAt + VIDEO_TASK_POLL_TIMEOUT_MS },
                     ),
+                    { signal: controller.signal },
                 );
                 setNodes((prev) =>
                     prev.map((item) =>

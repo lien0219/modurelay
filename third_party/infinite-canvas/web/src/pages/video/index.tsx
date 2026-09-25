@@ -80,6 +80,7 @@ export default function VideoPage() {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const dragDepthRef = useRef(0);
     const activeLogIdsRef = useRef<Set<string>>(new Set());
+    const pollControllersRef = useRef<Map<string, AbortController>>(new Map());
     const visibleLogIdRef = useRef<string | null>(null);
     const config = useConfigStore((state) => state.config);
     const effectiveConfig = useEffectiveConfig();
@@ -124,6 +125,11 @@ export default function VideoPage() {
 
     useEffect(() => {
         void refreshLogs();
+        return () => {
+            pollControllersRef.current.forEach((controller) => controller.abort());
+            pollControllersRef.current.clear();
+            activeLogIdsRef.current.clear();
+        };
     }, []);
 
     const addReferences = async (files?: FileList | null) => {
@@ -289,6 +295,10 @@ export default function VideoPage() {
     };
 
     const deleteSelectedLogs = () => {
+        selectedLogIds.forEach((id) => {
+            pollControllersRef.current.get(id)?.abort();
+            pollControllersRef.current.delete(id);
+        });
         const mediaKeys = logs
             .filter((log) => selectedLogIds.includes(log.id))
             .map((log) => log.video?.storageKey)
@@ -325,7 +335,9 @@ export default function VideoPage() {
 
     const pollGenerationLog = async (log: GenerationLog, configOverride?: AiConfig, agentTaskId?: string) => {
         if (!log.task || activeLogIdsRef.current.has(log.id)) return;
+        const controller = new AbortController();
         activeLogIdsRef.current.add(log.id);
+        pollControllersRef.current.set(log.id, controller);
         setRunning(true);
         setStartedAt((value) => value || log.createdAt || Date.now());
         setNowMs(Date.now());
@@ -336,9 +348,9 @@ export default function VideoPage() {
         try {
             const deadline = log.createdAt + VIDEO_TASK_POLL_TIMEOUT_MS;
             for (;;) {
-                const state = await pollVideoGenerationTask(configOverride || taskConfig, log.task);
+                const state = await pollVideoGenerationTask(configOverride || taskConfig, log.task, { signal: controller.signal });
                 if (state.status === "completed") {
-                    const stored = await storeGeneratedVideo(state.result);
+                    const stored = await storeGeneratedVideo(state.result, { signal: controller.signal });
                     const nextVideo: GeneratedVideo = {
                         id: nanoid(),
                         url: stored.url,
@@ -361,9 +373,10 @@ export default function VideoPage() {
                 }
                 if (state.status === "failed") throw new Error(state.error);
                 if (Date.now() >= deadline) throw new Error(t("videoWorkbench.timeout"));
-                await delay(VIDEO_TASK_POLL_INTERVAL_MS);
+                await delay(VIDEO_TASK_POLL_INTERVAL_MS, controller.signal);
             }
         } catch (error) {
+            if (controller.signal.aborted || (error instanceof Error && error.name === "AbortError")) return;
             const errorMessage = error instanceof Error ? error.message : t("workbench.generationFailed");
             const failedLog: GenerationLog = { ...log, status: "failed", durationMs: Date.now() - log.createdAt, error: errorMessage };
             if (visibleLogIdRef.current === log.id) {
@@ -375,6 +388,7 @@ export default function VideoPage() {
             message.error(errorMessage);
         } finally {
             activeLogIdsRef.current.delete(log.id);
+            if (pollControllersRef.current.get(log.id) === controller) pollControllersRef.current.delete(log.id);
             if (!activeLogIdsRef.current.size) {
                 setRunning(false);
                 setStartedAt(0);
@@ -829,6 +843,25 @@ function normalizeResolution(value: string) {
     return normalizeVideoResolutionValue(value);
 }
 
-function delay(ms: number) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+function delay(ms: number, signal?: AbortSignal) {
+    return new Promise<void>((resolve, reject) => {
+        if (signal?.aborted) {
+            const error = new Error(i18n.t("common.requestCanceled"));
+            error.name = "AbortError";
+            reject(error);
+            return;
+        }
+        const timer = window.setTimeout(() => {
+            signal?.removeEventListener("abort", abort);
+            resolve();
+        }, ms);
+        const abort = () => {
+            window.clearTimeout(timer);
+            signal?.removeEventListener("abort", abort);
+            const error = new Error(i18n.t("common.requestCanceled"));
+            error.name = "AbortError";
+            reject(error);
+        };
+        signal?.addEventListener("abort", abort, { once: true });
+    });
 }
