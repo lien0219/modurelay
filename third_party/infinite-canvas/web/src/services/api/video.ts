@@ -32,7 +32,7 @@ type VideoResponse = {
 };
 type ApiVideoResponse = VideoResponse | { code?: number | string; data?: VideoResponse | null; msg?: string; message?: string; error?: { message?: string } };
 type ApiEnvelope<T> = T | { code?: number | string; data?: T | null; msg?: string; message?: string; error?: { message?: string } };
-type RequestOptions = { signal?: AbortSignal };
+type RequestOptions = { signal?: AbortSignal; deadlineAt?: number };
 type VideoMediaOptions = RequestOptions & { videos?: ReferenceVideo[]; audios?: ReferenceAudio[] };
 const apiText = (key: string, options?: Record<string, unknown>) => i18n.t(`apiErrors.${key}`, options);
 
@@ -69,13 +69,13 @@ export async function requestVideoGeneration(config: AiConfig, prompt: string, r
 }
 
 export async function waitForVideoGenerationTask(config: AiConfig, task: VideoGenerationTask, options?: RequestOptions): Promise<VideoGenerationResult> {
-    const deadline = Date.now() + VIDEO_TASK_POLL_TIMEOUT_MS;
+    const deadline = options?.deadlineAt || Date.now() + VIDEO_TASK_POLL_TIMEOUT_MS;
     for (;;) {
-        if (options?.signal?.aborted) throw new DOMException("Aborted", "AbortError");
+        if (options?.signal?.aborted) throw abortVideoRequest();
         const state = await pollVideoGenerationTask(config, task, options);
         if (state.status === "completed") return state.result;
         if (state.status === "failed") throw videoTaskFailed(state.error);
-        if (Date.now() >= deadline) throw new Error(apiText("videoTimeout", { provider: "" }));
+        if (Date.now() >= deadline) throw videoTaskTimeout();
         await delay(VIDEO_TASK_POLL_INTERVAL_MS, options?.signal);
     }
 }
@@ -84,9 +84,19 @@ export function isVideoTaskFailed(error: unknown) {
     return error instanceof Error && error.name === "VideoTaskFailed";
 }
 
+export function isVideoTaskTimeout(error: unknown) {
+    return error instanceof Error && error.name === "VideoTaskTimeout";
+}
+
 function videoTaskFailed(message: string) {
     const error = new Error(message);
     error.name = "VideoTaskFailed";
+    return error;
+}
+
+function videoTaskTimeout() {
+    const error = new Error(apiText("videoTimeout", { provider: "" }));
+    error.name = "VideoTaskTimeout";
     return error;
 }
 
@@ -103,6 +113,7 @@ export async function createVideoGenerationTask(config: AiConfig, prompt: string
 export async function pollVideoGenerationTask(config: AiConfig, task: VideoGenerationTask, options?: RequestOptions): Promise<VideoGenerationTaskState> {
     if (task.provider === "plugin") {
         const result = pluginVideoResults.get(task.id);
+        if (result) pluginVideoResults.delete(task.id);
         return result ? { status: "completed", result } : { status: "failed", error: apiText("pluginVideoExpired") };
     }
     const requestConfig = resolveModelRequestConfig(config, task.model);
@@ -217,7 +228,7 @@ async function createOpenAIVideoTask(config: AiConfig, model: string, prompt: st
         }
         return { id: taskId, provider: "openai", model };
     } catch (error) {
-        throw new Error(readAxiosError(error, apiText("videoTaskCreateFailed")));
+        throw videoRequestError(error, apiText("videoTaskCreateFailed"));
     }
 }
 
@@ -442,7 +453,7 @@ async function pollOpenAIVideoTask(config: AiConfig, task: VideoGenerationTask, 
         }
         return { status: "pending" };
     } catch (error) {
-        throw new Error(readAxiosError(error, apiText("videoTaskQueryFailed")));
+        throw videoRequestError(error, apiText("videoTaskQueryFailed"));
     }
 }
 
@@ -500,7 +511,7 @@ async function createGeminiVideoTask(config: AiConfig, model: string, prompt: st
         if (!created.name) throw new Error(apiText("noVideoTaskId"));
         return { id: created.name, provider: "gemini", model };
     } catch (error) {
-        throw new Error(readAxiosError(error, apiText("videoTaskCreateFailed")));
+        throw videoRequestError(error, apiText("videoTaskCreateFailed"));
     }
 }
 
@@ -514,7 +525,7 @@ async function pollGeminiVideoTask(config: AiConfig, task: VideoGenerationTask, 
         const url = uri.includes("key=") ? uri : `${uri}${uri.includes("?") ? "&" : "?"}key=${config.apiKey}`;
         return { status: "completed", result: await videoResultFromUrl(config, url, options) };
     } catch (error) {
-        throw new Error(readAxiosError(error, apiText("videoTaskQueryFailed")));
+        throw videoRequestError(error, apiText("videoTaskQueryFailed"));
     }
 }
 
@@ -696,6 +707,17 @@ function readApiErrorMessage(value: unknown): string {
         readApiErrorMessage(payload.result) ||
         readApiErrorMessage(payload.output) ||
         "";
+}
+
+function abortVideoRequest() {
+    const error = new Error(apiText("requestCanceled"));
+    error.name = "AbortError";
+    return error;
+}
+
+function videoRequestError(error: unknown, fallback: string) {
+    if (axios.isCancel(error) || (error instanceof DOMException && error.name === "AbortError")) return abortVideoRequest();
+    return new Error(readAxiosError(error, fallback));
 }
 
 function readAxiosError(error: unknown, fallback: string) {
