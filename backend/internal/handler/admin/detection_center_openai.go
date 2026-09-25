@@ -31,7 +31,6 @@ func runOpenAIDetection(ctx context.Context, target *detectionTarget, model, mod
 	return probes
 }
 
-
 func probeOpenAIMediaEndpoint(ctx context.Context, target *detectionTarget, model string) detectionProbeResult {
 	kind, endpoint := openAIMediaEndpointForModel(model)
 	if endpoint == "" {

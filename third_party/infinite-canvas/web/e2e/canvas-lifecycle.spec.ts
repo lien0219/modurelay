@@ -66,20 +66,14 @@ test("video generation can be canceled and a pending task resumes after reload",
 
 test("local storage diagnostics are available", async ({ page }) => {
     await page.goto(`${APP_BASE}/config`);
-    await page.getByText(/Local storage|本地存储/, { exact: true }).first().click();
+    await page.getByRole("tab", { name: /Local storage|本地存储/ }).click();
     await expect(page.getByText(/IndexedDB storage usage|IndexedDB 存储使用情况/)).toBeVisible();
     await expect(page.getByRole("button", { name: /Clean old history|清理过期记录/ })).toBeVisible();
 });
 
 async function seedMockProvider(page: Page) {
     await page.goto(`${APP_BASE}/config`);
-    await page.waitForTimeout(300);
-    await page.evaluate(async () => {
-        const db = await new Promise<IDBDatabase>((resolve, reject) => {
-            const request = indexedDB.open("infinite-canvas");
-            request.onerror = () => reject(request.error);
-            request.onsuccess = () => resolve(request.result);
-        });
+    await page.evaluate(() => {
         const persisted = {
             state: {
                 config: {
@@ -89,7 +83,7 @@ async function seedMockProvider(page: Page) {
                     apiFormat: "openai",
                     channels: [{ id: "default", name: "E2E", baseUrl: "https://mock.example", apiKey: "e2e-key", apiFormat: "openai", models: [
                         { name: "gpt-image-2", capability: "image" },
-                        { name: "grok-imagine-video", capability: "video" },
+                        { name: "grok-imagine-video", capability: "video", requestProfile: "xai-json" },
                         { name: "gpt-5.5", capability: "text" },
                     ] }],
                     model: "default::gpt-image-2",
@@ -101,13 +95,7 @@ async function seedMockProvider(page: Page) {
             },
             version: 0,
         };
-        await new Promise<void>((resolve, reject) => {
-            const tx = db.transaction("app_state", "readwrite");
-            tx.onerror = () => reject(tx.error);
-            tx.oncomplete = () => resolve();
-            tx.objectStore("app_state").put(JSON.stringify(persisted), "infinite-canvas:ai_config_store");
-        });
-        db.close();
+        window.localStorage.setItem("infinite-canvas:ai_config_store", JSON.stringify(persisted));
     });
     await page.reload();
 }

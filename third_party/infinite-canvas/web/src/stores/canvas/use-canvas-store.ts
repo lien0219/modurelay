@@ -41,6 +41,7 @@ type CanvasStore = {
 
 const initialViewport: ViewportTransform = { x: 0, y: 0, k: 1 };
 const CANVAS_STORE_KEY = "infinite-canvas:canvas_store";
+const CANVAS_STORE_JOURNAL_KEY = `${CANVAS_STORE_KEY}:pending`;
 type PersistedCanvasState = Pick<CanvasStore, "projects" | "deletedProjects">;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let queuedPersistState: PersistedCanvasState | null = null;
@@ -55,10 +56,45 @@ async function flushCanvasPersist() {
     if (!pending) return;
     pendingPersistWrite = null;
     await localForageStorage.setItem(pending.name, pending.value);
+    clearCanvasPersistJournal(pending);
+}
+
+function persistCanvasJournal() {
+    if (typeof window === "undefined" || !pendingPersistWrite) return;
+    try {
+        window.localStorage.setItem(CANVAS_STORE_JOURNAL_KEY, JSON.stringify(pendingPersistWrite));
+    } catch {
+        // Best-effort crash/reload journal only; IndexedDB remains the primary store.
+    }
+}
+
+function readCanvasPersistJournal(name: string) {
+    if (typeof window === "undefined") return null;
+    try {
+        const raw = window.localStorage.getItem(CANVAS_STORE_JOURNAL_KEY);
+        if (!raw) return null;
+        const journal = JSON.parse(raw) as { name?: string; value?: string };
+        return journal.name === name && typeof journal.value === "string" ? { name, value: journal.value } : null;
+    } catch {
+        return null;
+    }
+}
+
+function clearCanvasPersistJournal(expected: { name: string; value: string }) {
+    if (typeof window === "undefined") return;
+    try {
+        const current = readCanvasPersistJournal(expected.name);
+        if (current?.value === expected.value) window.localStorage.removeItem(CANVAS_STORE_JOURNAL_KEY);
+    } catch {
+        // Ignore journal cleanup failures.
+    }
 }
 
 if (typeof window !== "undefined") {
-    const flush = () => void flushCanvasPersist();
+    const flush = () => {
+        persistCanvasJournal();
+        void flushCanvasPersist();
+    };
     window.addEventListener("pagehide", flush);
     document.addEventListener("visibilitychange", () => {
         if (document.visibilityState === "hidden") flush();
@@ -67,10 +103,14 @@ if (typeof window !== "undefined") {
 
 const canvasStorage: PersistStorage<CanvasStore> = {
     getItem: async (name) => {
-        const value = await localForageStorage.getItem(name);
+        const journal = readCanvasPersistJournal(name);
+        const value = journal?.value || (await localForageStorage.getItem(name));
         if (!value) return null;
         const parsed = JSON.parse(value) as StorageValue<CanvasStore>;
         queuedPersistState = parsed.state as PersistedCanvasState;
+        if (journal) {
+            void localForageStorage.setItem(name, journal.value).then(() => clearCanvasPersistJournal(journal));
+        }
         return parsed;
     },
     setItem: (name, value) => {
@@ -85,6 +125,10 @@ const canvasStorage: PersistStorage<CanvasStore> = {
     },
     removeItem: async (name) => {
         if (pendingPersistWrite?.name === name) pendingPersistWrite = null;
+        if (typeof window !== "undefined") {
+            const journal = readCanvasPersistJournal(name);
+            if (journal) window.localStorage.removeItem(CANVAS_STORE_JOURNAL_KEY);
+        }
         await localForageStorage.removeItem(name);
     },
 };
