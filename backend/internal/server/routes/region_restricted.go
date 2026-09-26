@@ -647,4 +647,3 @@ var regionRestrictedTemplate = template.Must(template.New("region-restricted").P
   </main>
 </body>
 </html>`))
-

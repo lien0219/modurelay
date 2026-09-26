@@ -586,27 +586,27 @@ type EmailPublicChannel struct {
 	PricingRuleSnapshot  map[string]any `json:"-"`
 }
 type EmailOrder struct {
-	ID                 string         `json:"id"`
-	OrderNo            string         `json:"order_no"`
-	ServiceCode        string         `json:"service_code"`
-	ChannelCode        string         `json:"channel_code"`
-	ChannelName        string         `json:"channel_name"`
-	EmailAddress       string         `json:"email_address"`
-	AddressType        string         `json:"address_type"`
-	Price              float64        `json:"price"`
-	Status             string         `json:"status"`
-	SuccessRate        *float64       `json:"success_rate,omitempty"`
-	SuccessRateGrade   string         `json:"success_rate_grade,omitempty"`
-	RefundPolicy       string         `json:"refund_policy"`
-	CapturePolicy      string         `json:"capture_policy"`
-	ExpiresAt          *time.Time     `json:"expires_at,omitempty"`
-	CreatedAt          time.Time      `json:"created_at"`
-	FirstMessageAt     *time.Time     `json:"first_message_at,omitempty"`
+	ID                     string         `json:"id"`
+	OrderNo                string         `json:"order_no"`
+	ServiceCode            string         `json:"service_code"`
+	ChannelCode            string         `json:"channel_code"`
+	ChannelName            string         `json:"channel_name"`
+	EmailAddress           string         `json:"email_address"`
+	AddressType            string         `json:"address_type"`
+	Price                  float64        `json:"price"`
+	Status                 string         `json:"status"`
+	SuccessRate            *float64       `json:"success_rate,omitempty"`
+	SuccessRateGrade       string         `json:"success_rate_grade,omitempty"`
+	RefundPolicy           string         `json:"refund_policy"`
+	CapturePolicy          string         `json:"capture_policy"`
+	ExpiresAt              *time.Time     `json:"expires_at,omitempty"`
+	CreatedAt              time.Time      `json:"created_at"`
+	FirstMessageAt         *time.Time     `json:"first_message_at,omitempty"`
 	Messages               []EmailMessage `json:"messages,omitempty"`
 	LatestVerificationCode string         `json:"latest_verification_code,omitempty"`
 	RefundStatus           string         `json:"refund_status"`
-	RefundReason       string         `json:"refund_reason,omitempty"`
-	ErrorPublicMessage string         `json:"error_message,omitempty"`
+	RefundReason           string         `json:"refund_reason,omitempty"`
+	ErrorPublicMessage     string         `json:"error_message,omitempty"`
 }
 type EmailOrderPage struct {
 	Items    []EmailOrder `json:"items"`
@@ -1609,11 +1609,11 @@ func (s *EmailVerificationService) ListUserOrdersPage(ctx context.Context, userI
 		var exp, first sql.NullTime
 		var errorCode, latestCode string
 		if err := rows.Scan(
-			&o.ID,&o.OrderNo,&o.Status,&o.ChannelCode,&o.ChannelName,&o.ServiceCode,
-			&o.EmailAddress,&o.AddressType,&o.Price,&rate,
-			&o.SuccessRateGrade,&o.RefundPolicy,&o.CapturePolicy,
-			&exp,&o.CreatedAt,&first,&o.RefundStatus,&o.RefundReason,
-			&errorCode,&o.ErrorPublicMessage,&latestCode,
+			&o.ID, &o.OrderNo, &o.Status, &o.ChannelCode, &o.ChannelName, &o.ServiceCode,
+			&o.EmailAddress, &o.AddressType, &o.Price, &rate,
+			&o.SuccessRateGrade, &o.RefundPolicy, &o.CapturePolicy,
+			&exp, &o.CreatedAt, &first, &o.RefundStatus, &o.RefundReason,
+			&errorCode, &o.ErrorPublicMessage, &latestCode,
 		); err != nil {
 			return nil, err
 		}

@@ -1004,24 +1004,32 @@ func (p *fiveSIMProvider) GetTemporaryStatus(ctx context.Context, id string) (*S
 		return nil, err
 	}
 	msgs := make([]string, 0, len(out.SMS))
+	metadataMessages := make([]map[string]any, 0, len(out.SMS))
 	for _, m := range out.SMS {
 		text := strings.TrimSpace(m.Text)
 		code := strings.TrimSpace(m.Code)
-		switch {
-		case text == "" && code == "":
+		if text == "" && code == "" {
 			continue
-		case text == "":
-			msgs = append(msgs, code)
-		case code == "" || strings.Contains(text, code):
-			msgs = append(msgs, text)
-		default:
-			// Put the provider's explicit verification code first so the
-			// generic extractor cannot mistake another number in the SMS body
-			// for the actual code.
-			msgs = append(msgs, code+" "+text)
 		}
+		message := text
+		if message == "" {
+			message = code
+		}
+		msgs = append(msgs, message)
+		metadataMessages = append(metadataMessages, map[string]any{"verification_code": code})
 	}
-	return &SMSStatusResult{Status: strings.ToLower(out.Status), PhoneNumber: out.Phone, Messages: msgs, ProviderCost: out.Price, ProviderOperatorCode: strings.ToLower(strings.TrimSpace(out.Operator))}, nil
+	var metadata map[string]any
+	if len(metadataMessages) > 0 {
+		metadata = map[string]any{"messages": metadataMessages}
+	}
+	return &SMSStatusResult{
+		Status:               strings.ToLower(out.Status),
+		PhoneNumber:          out.Phone,
+		Messages:             msgs,
+		Metadata:             metadata,
+		ProviderCost:         out.Price,
+		ProviderOperatorCode: strings.ToLower(strings.TrimSpace(out.Operator)),
+	}, nil
 }
 func (p *fiveSIMProvider) CancelTemporary(ctx context.Context, id string) error {
 	return p.request(ctx, http.MethodGet, "user/cancel/"+url.PathEscape(id), nil, nil, nil)
@@ -3966,8 +3974,8 @@ func smsStatusFromProvider(result *SMSStatusResult) string {
 	if result == nil {
 		return "provider_unknown"
 	}
-	for _, message := range result.Messages {
-		if strings.TrimSpace(extractSMSCode(message)) != "" {
+	for index := range result.Messages {
+		if smsVerificationCodeFromResult(result, index) != "" {
 			return "completed"
 		}
 	}
@@ -4303,6 +4311,15 @@ func (s *SMSService) convergeSMSProviderStatus(ctx context.Context, id int64, st
 	switch status {
 	case "active", "completed":
 		if settlementStatus == "held" {
+			if status == "completed" && strings.EqualFold(productType, "temporary") {
+				hasCode, codeErr := s.hasPersistedSMSVerificationCode(ctx, id)
+				if codeErr != nil {
+					return codeErr
+				}
+				if !hasCode {
+					return nil
+				}
+			}
 			// SMSPVA temporary orders remain reserved after allocation and are
 			// captured only once delivery evidence exists. Other providers keep
 			// their historical allocation-time settlement semantics.
@@ -4431,6 +4448,47 @@ func extractSMSCode(message string) string {
 	return ""
 }
 
+func smsExplicitVerificationCode(metadata map[string]any, index int) string {
+	if metadata == nil || index < 0 {
+		return ""
+	}
+	var item map[string]any
+	switch items := metadata["messages"].(type) {
+	case []map[string]any:
+		if index < len(items) {
+			item = items[index]
+		}
+	case []any:
+		if index < len(items) {
+			item, _ = items[index].(map[string]any)
+		}
+	}
+	if item == nil {
+		return ""
+	}
+	value, _ := item["verification_code"].(string)
+	return strings.TrimSpace(value)
+}
+
+func smsVerificationCodeFromResult(result *SMSStatusResult, index int) string {
+	if result == nil || index < 0 || index >= len(result.Messages) {
+		return ""
+	}
+	if code := smsExplicitVerificationCode(result.Metadata, index); code != "" {
+		return code
+	}
+	return strings.TrimSpace(extractSMSCode(result.Messages[index]))
+}
+
+func (s *SMSService) hasPersistedSMSVerificationCode(ctx context.Context, orderID int64) (bool, error) {
+	var hasCode bool
+	err := s.db.QueryRowContext(ctx, `SELECT EXISTS(
+		SELECT 1 FROM sms_messages
+		WHERE order_id=$1 AND BTRIM(verification_code)<>''
+	)`, orderID).Scan(&hasCode)
+	return hasCode, err
+}
+
 func smsMessageMetadata(metadata map[string]any, index int) (sender string, providerReceivedAt *time.Time, messageType, serviceCode string, otherSMS bool, ok bool) {
 	if metadata == nil {
 		return "", nil, "", "", false, false
@@ -4479,6 +4537,10 @@ func smsMessageMetadata(metadata map[string]any, index int) (sender string, prov
 // deterministic and lets the unique index enforce exactly-once insertion.
 func (s *SMSService) persistSMSMessage(ctx context.Context, orderID int64, message string, metadata map[string]any, index int) error {
 	sender, providerReceivedAt, messageType, serviceCode, otherSMS, _ := smsMessageMetadata(metadata, index)
+	verificationCode := smsExplicitVerificationCode(metadata, index)
+	if verificationCode == "" {
+		verificationCode = extractSMSCode(message)
+	}
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO sms_messages(order_id,message_text,verification_code,sender,provider_received_at,message_type,service_code,other_sms,dedupe_hash)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,md5(concat_ws(chr(31),$1::text,$2::text,$4::text,$6::text,$7::text,$8::text,$5::timestamptz::text)))
@@ -4487,8 +4549,13 @@ func (s *SMSService) persistSMSMessage(ctx context.Context, orderID int64, messa
 			provider_received_at=COALESCE(EXCLUDED.provider_received_at,sms_messages.provider_received_at),
 			message_type=CASE WHEN EXCLUDED.message_type<>'' THEN EXCLUDED.message_type ELSE sms_messages.message_type END,
 			service_code=CASE WHEN EXCLUDED.service_code<>'' THEN EXCLUDED.service_code ELSE sms_messages.service_code END,
+			verification_code=CASE WHEN EXCLUDED.verification_code<>'' THEN EXCLUDED.verification_code ELSE sms_messages.verification_code END,
+			sender=CASE WHEN EXCLUDED.sender<>'' THEN EXCLUDED.sender ELSE sms_messages.sender END,
+			provider_received_at=COALESCE(EXCLUDED.provider_received_at,sms_messages.provider_received_at),
+			message_type=CASE WHEN EXCLUDED.message_type<>'' THEN EXCLUDED.message_type ELSE sms_messages.message_type END,
+			service_code=CASE WHEN EXCLUDED.service_code<>'' THEN EXCLUDED.service_code ELSE sms_messages.service_code END,
 			other_sms=sms_messages.other_sms OR EXCLUDED.other_sms`,
-		orderID, message, extractSMSCode(message), sender, providerReceivedAt, messageType, serviceCode, otherSMS)
+		orderID, message, verificationCode, sender, providerReceivedAt, messageType, serviceCode, otherSMS)
 	if err != nil && smsMessageDedupColumnMissing(err) {
 		// A rolling deployment can briefly run the new binary before migration
 		// 263. Keep delivery readable during that window with the legacy text
@@ -4498,7 +4565,7 @@ func (s *SMSService) persistSMSMessage(ctx context.Context, orderID int64, messa
 			INSERT INTO sms_messages(order_id,message_text,verification_code)
 			SELECT $1,$2,$3
 			WHERE NOT EXISTS (SELECT 1 FROM sms_messages WHERE order_id=$1 AND message_text=$2)`,
-			orderID, message, extractSMSCode(message))
+			orderID, message, verificationCode)
 		if fallbackErr == nil && (sender != "" || providerReceivedAt != nil || messageType != "" || serviceCode != "" || otherSMS) {
 			_, _ = s.db.ExecContext(ctx, `UPDATE sms_messages SET sender=COALESCE(NULLIF($1,''),sender),provider_received_at=COALESCE($2,provider_received_at),message_type=COALESCE(NULLIF($3,''),message_type),service_code=COALESCE(NULLIF($4,''),service_code),other_sms=other_sms OR $5 WHERE order_id=$6 AND message_text=$7`, sender, providerReceivedAt, messageType, serviceCode, otherSMS, orderID, message)
 		}
@@ -4551,9 +4618,6 @@ func (s *SMSService) ProcessWebhook(ctx context.Context, providerCode string, pa
 	if current == "completed" || current == "refunded" || current == "cancelled" || current == "failed" || current == "expired" {
 		newStatus = current
 	}
-	if _, err := s.db.ExecContext(ctx, `UPDATE sms_orders SET status=$1,phone_number=COALESCE(NULLIF($2,''),phone_number),updated_at=NOW() WHERE id=$3`, newStatus, payload.PhoneNumber, id); err != nil {
-		return err
-	}
 	for index, message := range payload.Messages {
 		message = strings.TrimSpace(message)
 		if message == "" {
@@ -4564,6 +4628,9 @@ func (s *SMSService) ProcessWebhook(ctx context.Context, providerCode string, pa
 		}
 		_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET first_sms_received_at=COALESCE(first_sms_received_at,NOW()),delivery_outcome='success',delivery_finalized_at=COALESCE(delivery_finalized_at,NOW()),delivery_failure_reason='' WHERE id=$1`, id)
 		clearSMSPlatformDeliveryStatsCache()
+	}
+	if _, err := s.db.ExecContext(ctx, `UPDATE sms_orders SET status=$1,phone_number=COALESCE(NULLIF($2,''),phone_number),updated_at=NOW() WHERE id=$3`, newStatus, payload.PhoneNumber, id); err != nil {
+		return err
 	}
 	return s.convergeSMSProviderStatus(ctx, id, newStatus)
 }
@@ -4584,7 +4651,8 @@ func (s *SMSService) ResendOrder(ctx context.Context, userID int64, publicID str
 	if err := resender.ResendTemporary(ctx, providerOrder); err != nil {
 		return sanitizeProviderError(err)
 	}
-	_, _ = s.db.ExecContext(ctx, `DELETE FROM sms_messages WHERE order_id=(SELECT id FROM sms_orders WHERE user_id=$1 AND public_id=$2::uuid)`, userID, strings.TrimSpace(publicID))
+	// Keep earlier delivery evidence. The UI always displays the newest code.
+	_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET updated_at=NOW() WHERE user_id=$1 AND public_id=$2::uuid`, userID, strings.TrimSpace(publicID))
 	return nil
 }
 

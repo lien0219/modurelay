@@ -1435,7 +1435,6 @@ func TestFiveSIMStatusReturnsActualCostAndOperator(t *testing.T) {
 	}
 }
 
-
 func TestFiveSIMStatusUsesExplicitCodeWithoutDuplicateMessage(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/user/check/123" {
@@ -1455,6 +1454,26 @@ func TestFiveSIMStatusUsesExplicitCodeWithoutDuplicateMessage(t *testing.T) {
 	}
 	if got := extractSMSCode(result.Messages[0]); got != "345875" {
 		t.Fatalf("verification code=%q, want 345875", got)
+	}
+	if got := smsStatusFromProvider(result); got != "completed" {
+		t.Fatalf("status=%q, want completed", got)
+	}
+}
+
+
+func TestFiveSIMStatusUsesExplicitAlphanumericCode(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"RECEIVED","phone":"+306972405948","price":0.1491,"operator":"virtual34","sms":[{"code":"AB12CD","text":"Use code AB12CD to continue."}]}`))
+	}))
+	defer server.Close()
+
+	result, err := providerFor("5sim", server.URL, "secret").GetTemporaryStatus(context.Background(), "123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := smsVerificationCodeFromResult(result, 0); got != "AB12CD" {
+		t.Fatalf("verification code=%q, want AB12CD", got)
 	}
 	if got := smsStatusFromProvider(result); got != "completed" {
 		t.Fatalf("status=%q, want completed", got)
