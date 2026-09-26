@@ -602,7 +602,9 @@ func (h *SMSHandler) Webhook(c *gin.Context) {
 			Sender string `json:"sender"`
 		} `json:"sms"`
 	}
-	if err := json.NewDecoder(c.Request.Body).Decode(&payload); err != nil {
+	decoder := json.NewDecoder(c.Request.Body)
+	decoder.UseNumber()
+	if err := decoder.Decode(&payload); err != nil {
 		response.BadRequest(c, "invalid webhook payload")
 		return
 	}
@@ -611,6 +613,10 @@ func (h *SMSHandler) Webhook(c *gin.Context) {
 		switch value := payload.ID.(type) {
 		case string:
 			orderID = strings.TrimSpace(value)
+		case json.Number:
+			if parsed, err := strconv.ParseInt(value.String(), 10, 64); err == nil {
+				orderID = strconv.FormatInt(parsed, 10)
+			}
 		case float64:
 			if value == float64(int64(value)) {
 				orderID = strconv.FormatInt(int64(value), 10)
@@ -673,7 +679,7 @@ func (h *SMSHandler) Resend(c *gin.Context) {
 		response.Unauthorized(c, "User not authenticated")
 		return
 	}
-	if err := h.svc.ResendOrder(c.Request.Context(), subject.UserID, c.Param("id")); err != nil {
+	if err := h.svc.ResendOrder(c.Request.Context(), subject.UserID, c.Param("id"), c.GetHeader("Idempotency-Key")); err != nil {
 		response.ErrorWithDetails(c, http.StatusUnprocessableEntity, err.Error(), "RESEND_REJECTED", nil)
 		return
 	}
