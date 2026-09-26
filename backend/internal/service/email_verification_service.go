@@ -1156,10 +1156,12 @@ func (s *EmailVerificationService) Purchase(ctx context.Context, userID int64, r
 	_, _ = s.db.ExecContext(ctx, `UPDATE email_orders SET status='generating_inbox',updated_at=NOW() WHERE id=$1 AND status='reserved'`, orderID)
 	s.recordOrderEvent(ctx, orderID, "generate_requested", "email_generate:"+orderNo, nil)
 	operationCtx, operationCancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer operationCancel()
-	ctx = operationCtx
 	started := time.Now()
-	inbox, e := p.GenerateInbox(ctx, GenerateInboxRequest{AddressType: req.AddressType})
+	inbox, e := p.GenerateInbox(operationCtx, GenerateInboxRequest{AddressType: req.AddressType})
+	operationCancel()
+	finalizeCtx, finalizeCancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer finalizeCancel()
+	ctx = finalizeCtx
 	if e != nil {
 		s.recordProviderUsage(ctx, providerID, orderID, "generate_inbox", e, time.Since(started))
 		if isEmailProviderTimeout(e) {
