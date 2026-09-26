@@ -464,12 +464,10 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 					zap.String("model", requestModel),
 					zap.String("reason", rejectReason),
 				)
-				if switchCount >= maxAccountSwitches {
-					markOpsRoutingCapacityLimited(c)
-					h.errorResponse(c, http.StatusServiceUnavailable, noAccountCode, noAccountMessage)
-					return
-				}
-				switchCount++
+				// This is candidate filtering before any upstream request is sent,
+				// not an upstream failover. Do not consume maxAccountSwitches:
+				// failedAccountIDs makes the loop finite and allows large mixed
+				// pools to reach a later eligible supplier account.
 				continue
 			}
 		}
