@@ -95,7 +95,6 @@ func IsAIStarsLabOpenAPIAccount(account *Account) bool {
 		aiStarsLabBaseURLKind(account.GetCredential("base_url")) == "openapi"
 }
 
-
 func SupportsQualifiedVideoSupplierModel(account *Account, requestedModel string) bool {
 	if account == nil {
 		return false

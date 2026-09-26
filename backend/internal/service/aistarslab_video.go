@@ -123,12 +123,23 @@ func prepareAIStarsLabOpenAPIVideoCreate(account *Account, body []byte, contentT
 	}
 
 	payload := map[string]any{
-		"channel": ref.ChannelCode, "model": ref.CanonicalModel, "prompt": prompt,
-		"aspectRatio": aspectRatio, "quality": quality, "duration": duration, "mode": mode,
+		"channel":     ref.ChannelCode,
+		"model":       ref.CanonicalModel,
+		"prompt":      prompt,
+		"aspectRatio": aspectRatio,
+		"quality":     quality,
+		"duration":    duration,
+		"mode":        mode,
 	}
-	if len(images) > 0 { payload["inputImages"] = images }
-	if len(videos) > 0 { payload["inputVideos"] = videos }
-	if len(audios) > 0 { payload["inputAudios"] = audios }
+	if len(images) > 0 {
+		payload["inputImages"] = images
+	}
+	if len(videos) > 0 {
+		payload["inputVideos"] = videos
+	}
+	if len(audios) > 0 {
+		payload["inputAudios"] = audios
+	}
 	encoded, err := json.Marshal(payload)
 	if err != nil {
 		return nil, "", info, fmt.Errorf("encode AIStarsLab OpenAPI video request: %w", err)
