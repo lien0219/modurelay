@@ -284,6 +284,11 @@ type OpenAIForwardResult struct {
 	ImageSizeSource       string
 	ImageSizeBreakdown    map[string]int
 	VideoCount            int
+	// ForceTokenBilling keeps video output telemetry while forcing token billing.
+	// Official Seedance/Ark reports authoritative completion tokens and must not
+	// inherit Grok/OpenAI-compatible per-second video tariffs merely because a
+	// completed task produced one video.
+	ForceTokenBilling     bool
 	VideoResolution       string
 	// VideoDurationSeconds 是提交时请求的生成时长（xAI 按输出秒数计费），已归一化到 1-15 秒。
 	VideoDurationSeconds int

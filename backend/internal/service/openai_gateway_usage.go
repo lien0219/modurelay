@@ -406,11 +406,15 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		NativeCompactionV2:       input.NativeCompactionV2,
 	}
 	isVideoUsage := isGrokVideoUsageResult(result, billingModels)
-	if isVideoUsage {
+	if result.VideoCount > 0 {
 		usageLog.VideoCount = result.VideoCount
-		usageLog.VideoResolution = optionalTrimmedStringPtr(NormalizeVideoBillingResolutionOrDefault(result.VideoResolution))
-		videoDurationSeconds := NormalizeVideoBillingDurationSecondsOrDefault(result.VideoDurationSeconds)
-		usageLog.VideoDurationSeconds = &videoDurationSeconds
+		if strings.TrimSpace(result.VideoResolution) != "" {
+			usageLog.VideoResolution = optionalTrimmedStringPtr(NormalizeVideoBillingResolutionOrDefault(result.VideoResolution))
+		}
+		if result.VideoDurationSeconds > 0 {
+			videoDurationSeconds := NormalizeVideoBillingDurationSecondsOrDefault(result.VideoDurationSeconds)
+			usageLog.VideoDurationSeconds = &videoDurationSeconds
+		}
 	}
 	if cost != nil {
 		usageLog.InputCost = cost.InputCost
@@ -680,7 +684,7 @@ func isGrokVideoBillingModel(model string) bool {
 }
 
 func isGrokVideoUsageResult(result *OpenAIForwardResult, billingModels []string) bool {
-	if result == nil || result.VideoCount <= 0 {
+	if result == nil || result.VideoCount <= 0 || result.ForceTokenBilling {
 		return false
 	}
 	// VideoCount alone is authoritative for async video completion billing.
