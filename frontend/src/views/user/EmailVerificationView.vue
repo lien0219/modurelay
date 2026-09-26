@@ -508,7 +508,7 @@ const recentOrders = computed(() => {
     : orders.value
   return merged.slice(0, 3)
 })
-const latestVerificationCode = computed(() => latestCodeFromMessages(currentOrder.value?.messages))
+const latestVerificationCode = computed(() => currentOrder.value ? firstCode(currentOrder.value) : '')
 const remainingSeconds = computed(() => {
   if (!currentOrder.value?.expires_at || isTerminal(currentOrder.value)) return 0
   return Math.max(0, Math.floor((new Date(currentOrder.value.expires_at).getTime() - now.value) / 1000))
@@ -712,10 +712,21 @@ function openOrders() {
   void loadOrders()
 }
 
-function openOrder(order: EmailOrder) {
+async function openOrder(order: EmailOrder) {
+  stopActiveOrderPolling()
   currentOrder.value = order
   activeTab.value = order.channel_code === 'email_channel_1' ? 'public' : 'private'
-  startActiveOrderPolling()
+  const id = order.id
+  refreshingId.value = id
+  try {
+    const detail = await emailAPI.order(id)
+    if (currentOrder.value?.id === id) currentOrder.value = detail
+  } catch (error) {
+    appStore.showError(errorMessage(error, t('email.user.errors.orders')))
+  } finally {
+    if (refreshingId.value === id) refreshingId.value = ''
+  }
+  if (currentOrder.value?.id === id && !isTerminal(currentOrder.value)) startActiveOrderPolling()
 }
 
 async function loadOrders(options: { silent?: boolean } = {}) {

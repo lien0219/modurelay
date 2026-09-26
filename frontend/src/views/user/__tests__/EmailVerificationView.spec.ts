@@ -217,7 +217,6 @@ describe('EmailVerificationView', () => {
 
   it('shows the newest verification code in the orders table even when message order is reversed', async () => {
     const older = new Date(Date.now() - 120_000).toISOString()
-    const newer = new Date(Date.now() - 30_000).toISOString()
     emailAPI.orders.mockResolvedValue({
       items: [{
         id: 'order-1',
@@ -309,5 +308,51 @@ describe('EmailVerificationView', () => {
     wrapper.unmount()
     vi.useRealTimers()
   })
+
+  it('loads full message detail when opening a terminal order from the lightweight list', async () => {
+    const listed = {
+      id: 'order-terminal',
+      order_no: 'EML-TERMINAL',
+      service_code: 'openai',
+      channel_code: 'email_channel_1',
+      channel_name: 'Channel 1',
+      email_address: 'terminal@gmail.com',
+      address_type: 'gmail',
+      price: 0,
+      status: 'completed',
+      refund_policy: 'refund_if_no_message',
+      capture_policy: 'on_verification_extracted',
+      created_at: new Date().toISOString(),
+      refund_status: 'not_applicable',
+      latest_verification_code: '654321',
+    }
+    emailAPI.orders.mockResolvedValue({ items: [listed], total: 1, page: 1, page_size: 20, pages: 1 })
+    emailAPI.order.mockResolvedValue({
+      ...listed,
+      messages: [{
+        id: 'terminal-message',
+        from_address: 'noreply@example.com',
+        from_name: 'OpenAI',
+        to_address: 'terminal@gmail.com',
+        subject: 'Verification code',
+        text_body: 'Your verification code is 654321',
+        verification_code: '654321',
+        received_at: new Date().toISOString(),
+      }],
+    })
+    const wrapper = mount(EmailVerificationView, { global: { stubs: { AppLayout: { template: '<main><slot /></main>' }, Icon: true } } })
+    await flushPromises()
+    const ordersTab = wrapper.findAll('button').find(button => button.text() === 'email.user.orders')
+    await ordersTab!.trigger('click')
+    await flushPromises()
+    const viewButton = wrapper.findAll('button').find(button => button.text() === 'common.view')
+    await viewButton!.trigger('click')
+    await flushPromises()
+    expect(emailAPI.order).toHaveBeenCalledWith('order-terminal')
+    expect(wrapper.text()).toContain('654321')
+    expect(wrapper.text()).toContain('email.user.viewMessage')
+    wrapper.unmount()
+  })
+
 
 })

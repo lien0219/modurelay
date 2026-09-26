@@ -744,7 +744,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { formatDateTime } from '@/utils/format'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import Select from '@/components/common/Select.vue'
@@ -991,7 +990,7 @@ function stopOrderPolling() {
 
 function ensureOrderPolling() {
   const candidates = pollingCandidates()
-  const buckets: SMSOrderPollBucket[] = ['baseline', 'channel-2-fast', 'channel-2-medium', 'channel-2-slow']
+  const buckets: SMSOrderPollBucket[] = ['baseline', 'channel-2-fast', 'channel-2-medium', 'channel-2-slow', 'recovery']
   buckets.forEach(bucket => {
     const bucketCandidates = candidates.filter(order => smsOrderPollBucket(order) === bucket)
     if (!bucketCandidates.length) {
