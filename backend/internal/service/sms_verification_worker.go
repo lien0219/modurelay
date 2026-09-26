@@ -14,7 +14,7 @@ const (
 	smsVerificationUnknownTimeout          = 15 * time.Minute
 	smsVerificationManualReviewRetry       = 6 * time.Hour
 	smsVerificationCodeRecoveryMaxAttempts = 8
-	smsProviderFinalizeMaxAttempts          = 8
+	smsProviderFinalizeMaxAttempts         = 8
 )
 
 // smsProviderPollDelay is deliberately conservative.  SMSPVA does not
