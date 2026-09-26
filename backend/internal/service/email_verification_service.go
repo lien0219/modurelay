@@ -1527,24 +1527,64 @@ func (s *EmailVerificationService) RequestRefund(ctx context.Context, userID int
 	s.recordOrderEvent(ctx, id, "refund_completed", "email_refund:"+strconv.FormatInt(id, 10), map[string]any{"amount": price})
 	return nil
 }
-func (s *EmailVerificationService) ListOrders(ctx context.Context, userID int64) ([]EmailOrder, error) {
-	rows, e := s.db.QueryContext(ctx, `SELECT public_id::text FROM email_orders WHERE user_id=$1 ORDER BY created_at DESC LIMIT 100`, userID)
-	if e != nil {
-		return nil, e
+func (s *EmailVerificationService) listEmailMessagesBatch(ctx context.Context, userID int64) (map[string][]EmailMessage, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT o.public_id::text,m.id::text,m.from_address,m.from_name,m.to_address,m.subject,m.text_body,m.html_body,
+		       m.verification_code,m.verification_url,m.verification_confidence,m.verification_method,m.received_at
+		FROM email_messages m
+		JOIN (
+			SELECT id,public_id
+			FROM email_orders
+			WHERE user_id=$1
+			ORDER BY created_at DESC
+			LIMIT 100
+		) o ON o.id=m.email_order_id
+		ORDER BY o.public_id,m.received_at DESC,m.id DESC`, userID)
+	if err != nil {
+		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
-	out := []EmailOrder{}
+	out := map[string][]EmailMessage{}
 	for rows.Next() {
-		var id string
-		if e = rows.Scan(&id); e != nil {
-			return nil, e
+		var orderID string
+		var msg EmailMessage
+		if err := rows.Scan(
+			&orderID, &msg.ID, &msg.FromAddress, &msg.FromName, &msg.ToAddress, &msg.Subject,
+			&msg.TextBody, &msg.HTMLBody, &msg.VerificationCode, &msg.VerificationURL,
+			&msg.VerificationConfidence, &msg.VerificationMethod, &msg.ReceivedAt,
+		); err != nil {
+			return nil, err
 		}
-		o, e := s.GetOrder(ctx, userID, id)
-		if e == nil {
-			out = append(out, *o)
+		msg.TextBody = normalizeEmailText(msg.TextBody, msg.HTMLBody)
+		out[orderID] = append(out[orderID], msg)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (s *EmailVerificationService) ListOrders(ctx context.Context, userID int64) ([]EmailOrder, error) {
+	page, err := s.ListUserOrdersPage(ctx, userID, 1, 100, "", "")
+	if err != nil {
+		return nil, err
+	}
+	messagesByOrder, err := s.listEmailMessagesBatch(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range page.Items {
+		page.Items[i].Messages = messagesByOrder[page.Items[i].ID]
+		if page.Items[i].LatestVerificationCode == "" {
+			for _, msg := range page.Items[i].Messages {
+				if code := strings.TrimSpace(msg.VerificationCode); code != "" {
+					page.Items[i].LatestVerificationCode = code
+					break
+				}
+			}
 		}
 	}
-	return out, rows.Err()
+	return page.Items, nil
 }
 
 func (s *EmailVerificationService) ListUserOrdersPage(ctx context.Context, userID int64, page, pageSize int, keyword, status string) (*EmailOrderPage, error) {
