@@ -276,7 +276,6 @@ func (s *OpenAIGatewayService) ForwardAIStarsLabOpenAPIVideo(
 		response["status"] = aiStarsLabOpenAIStatus(created.Status)
 		response["progress"] = 0
 		response["created_at"] = time.Now().Unix()
-		response["metadata"] = gin.H{"provider_cost_credits": created.CostCredits}
 		c.JSON(http.StatusOK, response)
 		return &OpenAIForwardResult{
 			ResponseID: publicID, Model: info.Model, BillingModel: info.Model,
