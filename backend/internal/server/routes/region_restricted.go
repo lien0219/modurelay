@@ -10,29 +10,29 @@ import (
 )
 
 type regionRestrictedPageCopy struct {
-	Lang                string
-	HTMLLang            string
-	Brand               string
-	Badge               string
-	Title               string
-	Subtitle            string
-	DescriptionLine1    string
-	DescriptionLine2    string
-	HowTitle            string
-	Step1Title          string
-	Step1Line1          string
-	Step1Line2          string
-	Step2Title          string
-	Step2Line1          string
-	Step2Line2          string
-	Step3Title          string
-	Step3Line1          string
-	Step3Line2          string
-	TipTitle            string
-	TipText             string
-	ChineseLabel        string
-	EnglishLabel        string
-	LanguageAria        string
+	Lang             string
+	HTMLLang         string
+	Brand            string
+	Badge            string
+	Title            string
+	Subtitle         string
+	DescriptionLine1 string
+	DescriptionLine2 string
+	HowTitle         string
+	Step1Title       string
+	Step1Line1       string
+	Step1Line2       string
+	Step2Title       string
+	Step2Line1       string
+	Step2Line2       string
+	Step3Title       string
+	Step3Line1       string
+	Step3Line2       string
+	TipTitle         string
+	TipText          string
+	ChineseLabel     string
+	EnglishLabel     string
+	LanguageAria     string
 }
 
 type regionRestrictedPageData struct {
@@ -112,6 +112,7 @@ func serveRegionRestrictedPage(c *gin.Context) {
 	c.Header("Pragma", "no-cache")
 	c.Header("X-Robots-Tag", "noindex, nofollow, noarchive")
 	c.Header("Content-Language", copy.HTMLLang)
+	c.Header("Content-Type", "text/html; charset=utf-8")
 	c.Header("Vary", "Accept-Language")
 
 	if c.Request.Method == http.MethodHead {
