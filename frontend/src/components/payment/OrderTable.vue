@@ -1,10 +1,10 @@
 <template>
   <DataTable :columns="columns" :data="orders" :loading="loading">
     <template #cell-id="{ value }">
-      <span class="font-mono text-sm">#{{ value }}</span>
+      <CopyableIdentifier :value="value" prefix="#" max-width="10rem" />
     </template>
     <template #cell-out_trade_no="{ value }">
-      <span class="text-sm text-gray-900 dark:text-white">{{ value }}</span>
+      <CopyableIdentifier :value="value" max-width="16rem" />
     </template>
     <template v-if="showUser" #cell-user_email="{ value, row }">
       <div class="text-sm">
@@ -45,6 +45,7 @@ import type { PaymentOrder } from '@/types/payment'
 import type { Column } from '@/components/common/types'
 import DataTable from '@/components/common/DataTable.vue'
 import OrderStatusBadge from '@/components/payment/OrderStatusBadge.vue'
+import CopyableIdentifier from '@/components/common/CopyableIdentifier.vue'
 import { currencySymbol } from '@/components/payment/currency'
 
 const { t } = useI18n()
