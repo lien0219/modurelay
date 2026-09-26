@@ -18,9 +18,14 @@ export type VideoTransportKind = "xai-json" | "compatible-json" | "multipart";
  * routing prefix while keeping the original model id in the actual request.
  */
 export function normalizeRoutedModelName(model: string) {
-    let value = model.trim().toLowerCase();
-    while (/^\d+\s*:/.test(value)) value = value.replace(/^\d+\s*:\s*/, "");
-    return value;
+    const value = model.trim().toLowerCase();
+    const qualified = value.match(/^([a-z0-9_.-]+)\s*:\s*(.+)$/);
+    if (!qualified) return value;
+
+    // Match the backend VideoModelRef grammar. In particular, never interpret
+    // URL schemes such as https:// as provider prefixes.
+    const canonical = qualified[2].trim();
+    return canonical.startsWith("/") ? value : canonical;
 }
 
 export function mediaModelFamily(model: string): MediaModelFamily {
