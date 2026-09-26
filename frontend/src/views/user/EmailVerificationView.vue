@@ -575,6 +575,7 @@ function resetSelection() {
 
 function switchMode(mode: 'public' | 'private') {
   activeTab.value = mode
+  stopOrdersPolling()
   addressType.value = mode === 'public' ? 'gmail' : 'gmail_real'
   now.value = Date.now()
   if (currentOrder.value && !isTerminal(currentOrder.value)) startActiveOrderPolling()
