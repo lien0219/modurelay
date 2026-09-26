@@ -646,10 +646,11 @@ func (h *SMSHandler) Webhook(c *gin.Context) {
 			continue
 		}
 		messages = append(messages, text)
-		metadataMessages = append(metadataMessages, map[string]any{
-			"verification_code": code,
-			"sender":            strings.TrimSpace(item.Sender),
-		})
+		messageMetadata := map[string]any{"verification_code": code}
+		if provider != "5sim" {
+			messageMetadata["sender"] = strings.TrimSpace(item.Sender)
+		}
+		metadataMessages = append(metadataMessages, messageMetadata)
 	}
 	if code := strings.TrimSpace(payload.Code); code != "" {
 		if len(messages) == 0 {
