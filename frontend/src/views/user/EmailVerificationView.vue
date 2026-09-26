@@ -323,6 +323,7 @@
 
             <div v-if="recentOrders.length" class="email-records">
               <div class="email-records__head" aria-hidden="true">
+                <span>{{ t('email.user.orderNo') }}</span>
                 <span>{{ t('email.user.channel') }}</span>
                 <span>{{ t('email.user.emailAddress') }}</span>
                 <span>{{ t('email.user.addressType') }}</span>
@@ -332,6 +333,7 @@
                 <span>{{ t('email.user.action') }}</span>
               </div>
               <div v-for="order in recentOrders" :key="order.id" class="email-record-row">
+                <CopyableIdentifier :value="order.id" max-width="100%" />
                 <span>{{ emailChannelLabel(order.channel_code) }}</span>
                 <span class="email-record-row__address">
                   <code>{{ order.email_address || '-' }}</code>
@@ -389,6 +391,7 @@
 
           <section v-else class="email-orders__table">
             <div class="email-records__head" aria-hidden="true">
+              <span>{{ t('email.user.orderNo') }}</span>
               <span>{{ t('email.user.channel') }}</span>
               <span>{{ t('email.user.emailAddress') }}</span>
               <span>{{ t('email.user.addressType') }}</span>
@@ -399,6 +402,7 @@
             </div>
 
             <div v-for="order in orders" :key="order.id" class="email-record-row">
+              <CopyableIdentifier :value="order.id" max-width="100%" />
               <span>{{ emailChannelLabel(order.channel_code) }}</span>
               <span class="email-record-row__address">
                 <code>{{ order.email_address || '-' }}</code>
@@ -448,6 +452,7 @@ import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import CopyButton from '@/components/common/CopyButton.vue'
+import CopyableIdentifier from '@/components/common/CopyableIdentifier.vue'
 import { emailAPI, type EmailMessage, type EmailOrder, type EmailOrderPage, type EmailQuote } from '@/api/email'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { useAppStore } from '@/stores'
@@ -1774,8 +1779,8 @@ onBeforeUnmount(() => {
 .email-records__head,
 .email-record-row {
   display: grid;
-  min-width: 980px;
-  grid-template-columns: 110px minmax(280px, 1.5fr) 150px 110px 110px 90px 70px;
+  min-width: 1210px;
+  grid-template-columns: 230px 110px minmax(280px, 1.5fr) 150px 110px 110px 90px 70px;
   align-items: center;
   gap: 8px;
 }
