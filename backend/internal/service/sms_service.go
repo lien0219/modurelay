@@ -4783,8 +4783,13 @@ func (s *SMSService) ResendOrder(ctx context.Context, userID int64, publicID str
 	if err = tx.QueryRowContext(ctx, `SELECT EXISTS (
 		SELECT 1 FROM sms_order_events
 		WHERE order_id=$1 AND event_type='resend_requested'
-		  AND created_at > NOW()-INTERVAL '30 seconds'
-		  AND COALESCE(payload->>'status','pending') IN ('pending','accepted','unknown')
+		  AND (
+		      COALESCE(payload->>'status','pending')='unknown'
+		      OR (
+		          created_at > NOW()-INTERVAL '30 seconds'
+		          AND COALESCE(payload->>'status','pending') IN ('pending','accepted')
+		      )
+		  )
 	)`, id).Scan(&recent); err != nil {
 		return err
 	}
@@ -4793,7 +4798,7 @@ func (s *SMSService) ResendOrder(ctx context.Context, userID int64, publicID str
 	}
 	res, err := tx.ExecContext(ctx, `INSERT INTO sms_order_events(order_id,event_type,actor,idempotency_key,payload)
 		VALUES($1,'resend_requested','user',$2,'{"status":"pending"}'::jsonb)
-		ON CONFLICT (order_id,event_type,idempotency_key) DO NOTHING`, id, key)
+		ON CONFLICT (order_id,event_type,idempotency_key) WHERE BTRIM(idempotency_key) <> '' DO NOTHING`, id, key)
 	if err != nil {
 		return err
 	}
@@ -5336,7 +5341,7 @@ func (s *SMSService) ExtendRental(ctx context.Context, userID int64, publicID st
 	}
 	result, err := s.db.ExecContext(ctx, `INSERT INTO sms_order_events(order_id,event_type,actor,idempotency_key,payload)
 		VALUES ($1,'rental_extend','user',$2,jsonb_build_object('status','pending','duration_value',$3,'duration_unit',$4))
-		ON CONFLICT (order_id,event_type,idempotency_key) DO NOTHING`, id, idempotencyKey, value, strings.ToLower(unit))
+		ON CONFLICT (order_id,event_type,idempotency_key) WHERE BTRIM(idempotency_key) <> '' DO NOTHING`, id, idempotencyKey, value, strings.ToLower(unit))
 	if err != nil {
 		return nil, err
 	}
