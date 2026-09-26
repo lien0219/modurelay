@@ -1086,12 +1086,16 @@ func (p *smsPVAProvider) GetTemporaryStatus(ctx context.Context, id string) (*SM
 	}
 
 	messages := []string{}
+	var metadata map[string]any
 	if data.SMS != nil {
-		if strings.TrimSpace(data.SMS.FullText) != "" {
-			messages = append(messages, data.SMS.FullText)
+		text := strings.TrimSpace(data.SMS.FullText)
+		code := strings.TrimSpace(data.SMS.Code)
+		if text == "" {
+			text = code
 		}
-		if strings.TrimSpace(data.SMS.Code) != "" {
-			messages = append(messages, data.SMS.Code)
+		if text != "" {
+			messages = append(messages, text)
+			metadata = map[string]any{"messages": []map[string]any{{"verification_code": code}}}
 		}
 	}
 	status := "active"
@@ -1111,6 +1115,7 @@ func (p *smsPVAProvider) GetTemporaryStatus(ctx context.Context, id string) (*SM
 		Status:      status,
 		PhoneNumber: statusPhone,
 		Messages:    messages,
+		Metadata:    metadata,
 	}, nil
 }
 
