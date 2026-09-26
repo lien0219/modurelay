@@ -14,11 +14,11 @@
             <div class="space-y-2 text-sm">
               <div class="flex justify-between">
                 <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.orderId') }}</span>
-                <span class="font-medium text-gray-900 dark:text-white">#{{ paidOrder.id }}</span>
+                <CopyableIdentifier :value="paidOrder.id" prefix="#" max-width="14rem" />
               </div>
               <div v-if="paidOrder.out_trade_no" class="flex justify-between">
                 <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.orderNo') }}</span>
-                <span class="font-medium text-gray-900 dark:text-white">{{ paidOrder.out_trade_no }}</span>
+                <CopyableIdentifier :value="paidOrder.out_trade_no" max-width="18rem" />
               </div>
               <div class="flex justify-between">
                 <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.amount') }}</span>
@@ -119,9 +119,7 @@
               </div>
               <div class="flex items-start justify-between gap-4">
                 <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.orderNo') }}</span>
-                <span class="max-w-[70%] break-all text-right font-mono text-xs text-gray-900 dark:text-white">
-                  {{ displayOrderNumber }}
-                </span>
+                <CopyableIdentifier :value="displayOrderNumber" max-width="70%" />
               </div>
               <div class="flex items-start justify-between gap-4">
                 <span class="text-gray-500 dark:text-gray-400">{{ t('payment.qr.expiresIn') }}</span>
@@ -228,6 +226,7 @@ import { getPaymentPopupFeatures, isBuiltInAlipayMethod, isBuiltInWxpayMethod } 
 import { currencySymbol, formatPaymentAmount, normalizePaymentCurrency } from '@/components/payment/currency'
 import type { PaymentOrder } from '@/types/payment'
 import Icon from '@/components/icons/Icon.vue'
+import CopyableIdentifier from '@/components/common/CopyableIdentifier.vue'
 import QRCode from 'qrcode'
 import alipayIcon from '@/assets/icons/alipay.svg'
 import wxpayIcon from '@/assets/icons/wxpay.svg'
