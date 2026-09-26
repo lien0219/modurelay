@@ -119,7 +119,7 @@
               </div>
               <div class="flex items-start justify-between gap-4">
                 <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.orderNo') }}</span>
-                <CopyableIdentifier :value="displayOrderNumber" max-width="70%" />
+                <CopyableIdentifier :value="props.outTradeNo || props.orderId" :prefix="props.outTradeNo ? '' : '#'" max-width="70%" />
               </div>
               <div class="flex items-start justify-between gap-4">
                 <span class="text-gray-500 dark:text-gray-400">{{ t('payment.qr.expiresIn') }}</span>
