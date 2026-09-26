@@ -189,3 +189,27 @@ func TestEnsureGrokMediaAccountEligibility(t *testing.T) {
 		require.Equal(t, "billing_unobserved", reason)
 	})
 }
+
+func TestVideoCompletionFallbackEvidenceMissing(t *testing.T) {
+	require.Equal(t, "status result is missing", videoCompletionFallbackEvidenceMissing(nil))
+	require.Equal(t, "status has no video duration", videoCompletionFallbackEvidenceMissing(&service.OpenAIForwardResult{
+		Model: "wan-3.0",
+	}))
+	require.Equal(t, "status has no billing model", videoCompletionFallbackEvidenceMissing(&service.OpenAIForwardResult{
+		VideoDurationSeconds: 5,
+		VideoResolution:      "720p",
+	}))
+	require.Equal(t, "non-Grok status has no video resolution", videoCompletionFallbackEvidenceMissing(&service.OpenAIForwardResult{
+		Model:                "wan-3.0",
+		VideoDurationSeconds: 5,
+	}))
+	require.Empty(t, videoCompletionFallbackEvidenceMissing(&service.OpenAIForwardResult{
+		Model:                "wan-3.0",
+		VideoDurationSeconds: 5,
+		VideoResolution:      "720p",
+	}))
+	require.Empty(t, videoCompletionFallbackEvidenceMissing(&service.OpenAIForwardResult{
+		Model:                "grok-imagine-video-1.5",
+		VideoDurationSeconds: 8,
+	}))
+}

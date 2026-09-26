@@ -406,11 +406,25 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		NativeCompactionV2:       input.NativeCompactionV2,
 	}
 	isVideoUsage := isGrokVideoUsageResult(result, billingModels)
-	if isVideoUsage {
+	if result.VideoCount > 0 {
 		usageLog.VideoCount = result.VideoCount
-		usageLog.VideoResolution = optionalTrimmedStringPtr(NormalizeVideoBillingResolutionOrDefault(result.VideoResolution))
-		videoDurationSeconds := NormalizeVideoBillingDurationSecondsOrDefault(result.VideoDurationSeconds)
-		usageLog.VideoDurationSeconds = &videoDurationSeconds
+		if isVideoUsage {
+			videoResolution := NormalizeVideoBillingResolutionOrDefault(result.VideoResolution)
+			usageLog.VideoResolution = &videoResolution
+			videoDurationSeconds := NormalizeVideoBillingDurationSecondsOrDefault(result.VideoDurationSeconds)
+			usageLog.VideoDurationSeconds = &videoDurationSeconds
+		} else {
+			// Token-billed video protocols (for example native Seedance) must not
+			// invent per-second billing metadata. Preserve only values actually
+			// reported by the protocol/request.
+			if strings.TrimSpace(result.VideoResolution) != "" {
+				usageLog.VideoResolution = optionalTrimmedStringPtr(NormalizeVideoBillingResolutionOrDefault(result.VideoResolution))
+			}
+			if result.VideoDurationSeconds > 0 {
+				videoDurationSeconds := NormalizeVideoBillingDurationSecondsOrDefault(result.VideoDurationSeconds)
+				usageLog.VideoDurationSeconds = &videoDurationSeconds
+			}
+		}
 	}
 	if cost != nil {
 		usageLog.InputCost = cost.InputCost
@@ -680,7 +694,7 @@ func isGrokVideoBillingModel(model string) bool {
 }
 
 func isGrokVideoUsageResult(result *OpenAIForwardResult, billingModels []string) bool {
-	if result == nil || result.VideoCount <= 0 {
+	if result == nil || result.VideoCount <= 0 || result.ForceTokenBilling {
 		return false
 	}
 	// VideoCount alone is authoritative for async video completion billing.
@@ -790,6 +804,37 @@ func (s *OpenAIGatewayService) calculateOpenAIImageCost(
 	}
 
 	return s.billingService.CalculateImageCost(billingModel, sizeTier, result.ImageCount, groupConfig, multiplier)
+}
+
+func (s *OpenAIGatewayService) HasVideoPricingForRequest(
+	ctx context.Context,
+	apiKey *APIKey,
+	billingModel string,
+	resolution string,
+) bool {
+	if s == nil || s.billingService == nil || apiKey == nil {
+		return false
+	}
+	if _, ok := getDefaultGrokImagineVideoPrice(billingModel, resolution); ok {
+		return true
+	}
+	resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey)
+	if resolved != nil {
+		if resolved.Source == PricingSourceGroup && resolved.Mode == BillingModeVideo {
+			return true
+		}
+		if resolved.Source == PricingSourceChannel &&
+			(resolved.Mode == BillingModePerRequest || resolved.Mode == BillingModeImage || resolved.Mode == BillingModeVideo) {
+			return true
+		}
+	}
+	if apiKeyHasConfiguredVideoPrice(apiKey, billingModel, resolution) {
+		return true
+	}
+	if refreshed := s.apiKeyWithFreshGroupMediaPricing(ctx, apiKey); refreshed != apiKey {
+		return apiKeyHasConfiguredVideoPrice(refreshed, billingModel, resolution)
+	}
+	return false
 }
 
 func (s *OpenAIGatewayService) calculateOpenAIVideoCost(

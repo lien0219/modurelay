@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -131,6 +132,12 @@ func (s *OpenAIGatewayService) ForwardCompatibleVideo(
 		releaseUpstreamCtx()
 		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 		if err != nil {
+			if endpoint.IsGenerationRequest() {
+				// Once an async CREATE has been written to the upstream, a transport
+				// error is ambiguous: the provider may already have accepted and
+				// charged the task. Never replay it on another account/provider.
+				return nil, fmt.Errorf("compatible video create transport failed: %w", err)
+			}
 			return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
 		}
 
@@ -156,7 +163,15 @@ func (s *OpenAIGatewayService) ForwardCompatibleVideo(
 		resp.Header.Get("x-trace-id"),
 	)
 	if resp.StatusCode >= http.StatusBadRequest {
-		return s.handleCompatErrorResponse(resp, c, account, writeGrokMediaErrorResponse, upstreamModel)
+		result, handleErr := s.handleCompatErrorResponse(resp, c, account, writeGrokMediaErrorResponse, upstreamModel)
+		if endpoint.IsGenerationRequest() {
+			var failoverErr *UpstreamFailoverError
+			if errors.As(handleErr, &failoverErr) {
+				// Async CREATE is intentionally at-most-once across accounts.
+				return result, fmt.Errorf("compatible video create upstream rejected request: status=%d", failoverErr.StatusCode)
+			}
+		}
+		return result, handleErr
 	}
 
 	if endpoint == GrokMediaEndpointVideoContent {
@@ -251,6 +266,14 @@ func prepareCompatibleVideoBody(account *Account, body []byte, contentType, rout
 		if err != nil {
 			return nil, "", "", fmt.Errorf("rewrite compatible video model: %w", err)
 		}
+		if IsAIStarsLabOpenAICompatibleAccount(account) {
+			rewritten, err = normalizeAIStarsLabCompatibleVideoJSON(rewritten)
+		} else {
+			rewritten, err = normalizeCompatibleSeedanceVideoJSON(rewritten, upstreamModel)
+		}
+		if err != nil {
+			return nil, "", "", err
+		}
 		return rewritten, "application/json", upstreamModel, nil
 	}
 
@@ -303,6 +326,159 @@ func prepareCompatibleVideoBody(account *Account, body []byte, contentType, rout
 	return out.Bytes(), writer.FormDataContentType(), upstreamModel, nil
 }
 
+func normalizeAIStarsLabCompatibleVideoJSON(body []byte) ([]byte, error) {
+	if !gjson.ValidBytes(body) {
+		return body, nil
+	}
+	out := body
+	var err error
+
+	seconds := compatibleVideoFirstNonEmpty(gjson.GetBytes(out, "seconds").String(), gjson.GetBytes(out, "duration").String())
+	if seconds != "" {
+		out, err = sjson.SetBytes(out, "seconds", seconds)
+		if err != nil {
+			return nil, fmt.Errorf("normalize AIStarsLab seconds: %w", err)
+		}
+	}
+	size := compatibleVideoFirstNonEmpty(
+		gjson.GetBytes(out, "size").String(), gjson.GetBytes(out, "metadata.size").String(),
+		gjson.GetBytes(out, "aspect_ratio").String(), gjson.GetBytes(out, "ratio").String(),
+	)
+	if size != "" {
+		out, err = sjson.SetBytes(out, "size", size)
+		if err != nil {
+			return nil, fmt.Errorf("normalize AIStarsLab size: %w", err)
+		}
+	}
+	resolution := compatibleVideoFirstNonEmpty(
+		gjson.GetBytes(out, "metadata.resolution").String(), gjson.GetBytes(out, "resolution").String(),
+		gjson.GetBytes(out, "resolution_name").String(),
+	)
+	if resolution != "" {
+		out, err = sjson.SetBytes(out, "metadata.resolution", resolution)
+		if err != nil {
+			return nil, fmt.Errorf("normalize AIStarsLab resolution: %w", err)
+		}
+	}
+
+	mediaRefs := parseVideoMediaReferences(out)
+	images, videos, audios := splitVideoReferences(mediaRefs)
+	if len(images) > 0 {
+		existing := aiStarsLabJSONStrings(out, "metadata.images")
+		out, err = sjson.SetBytes(out, "metadata.images", append(existing, images...))
+		if err != nil {
+			return nil, fmt.Errorf("normalize AIStarsLab metadata.images: %w", err)
+		}
+	}
+	if len(videos) > 0 {
+		existing := aiStarsLabJSONStrings(out, "metadata.videos")
+		out, err = sjson.SetBytes(out, "metadata.videos", append(existing, videos...))
+		if err != nil {
+			return nil, fmt.Errorf("normalize AIStarsLab metadata.videos: %w", err)
+		}
+	}
+	if len(audios) > 0 {
+		existing := aiStarsLabJSONStrings(out, "metadata.audios")
+		out, err = sjson.SetBytes(out, "metadata.audios", append(existing, audios...))
+		if err != nil {
+			return nil, fmt.Errorf("normalize AIStarsLab metadata.audios: %w", err)
+		}
+	}
+	allRefs := parseUnifiedVideoReferences(out)
+	mode := normalizeUnifiedVideoMode(compatibleVideoFirstNonEmpty(
+		gjson.GetBytes(out, "metadata.mode_type").String(),
+		gjson.GetBytes(out, "mode_type").String(),
+		gjson.GetBytes(out, "mode").String(),
+	), allRefs)
+	out, err = sjson.SetBytes(out, "metadata.mode_type", mode)
+	if err != nil {
+		return nil, fmt.Errorf("normalize AIStarsLab mode_type: %w", err)
+	}
+
+	for _, path := range []string{
+		"resolution", "resolution_name", "aspect_ratio", "ratio",
+		"mode_type", "mode", "media", "audio", "generate_audio", "watermark",
+	} {
+		out, err = sjson.DeleteBytes(out, path)
+		if err != nil {
+			return nil, fmt.Errorf("remove unsupported AIStarsLab field %s: %w", path, err)
+		}
+	}
+	return out, nil
+}
+
+func normalizeCompatibleSeedanceVideoJSON(body []byte, model string) ([]byte, error) {
+	if !strings.Contains(strings.ToLower(strings.TrimSpace(model)), "seedance") || !gjson.ValidBytes(body) {
+		return body, nil
+	}
+	out := body
+	var err error
+
+	resolution := compatibleVideoFirstNonEmpty(
+		gjson.GetBytes(out, "resolution").String(),
+		gjson.GetBytes(out, "resolution_name").String(),
+		gjson.GetBytes(out, "metadata.resolution").String(),
+	)
+	if normalized, ok := LookupVideoBillingResolution(resolution); ok {
+		for _, path := range []string{"resolution", "resolution_name"} {
+			if !gjson.GetBytes(out, path).Exists() {
+				out, err = sjson.SetBytes(out, path, normalized)
+				if err != nil {
+					return nil, fmt.Errorf("normalize compatible Seedance %s: %w", path, err)
+				}
+			}
+		}
+		metadata := gjson.GetBytes(out, "metadata")
+		if !metadata.Exists() || metadata.IsObject() {
+			if !gjson.GetBytes(out, "metadata.resolution").Exists() {
+				out, err = sjson.SetBytes(out, "metadata.resolution", normalized)
+				if err != nil {
+					return nil, fmt.Errorf("normalize compatible Seedance metadata resolution: %w", err)
+				}
+			}
+		}
+	}
+
+	duration := gjson.GetBytes(out, "duration")
+	if !duration.Exists() {
+		duration = gjson.GetBytes(out, "seconds")
+	}
+	if duration.Exists() {
+		if !gjson.GetBytes(out, "duration").Exists() {
+			out, err = sjson.SetBytes(out, "duration", duration.Value())
+			if err != nil {
+				return nil, fmt.Errorf("normalize compatible Seedance duration: %w", err)
+			}
+		}
+		if !gjson.GetBytes(out, "seconds").Exists() {
+			out, err = sjson.SetBytes(out, "seconds", duration.Value())
+			if err != nil {
+				return nil, fmt.Errorf("normalize compatible Seedance seconds: %w", err)
+			}
+		}
+	}
+
+	ratio := compatibleVideoFirstNonEmpty(
+		gjson.GetBytes(out, "aspect_ratio").String(),
+		gjson.GetBytes(out, "ratio").String(),
+	)
+	if ratio != "" {
+		if !gjson.GetBytes(out, "aspect_ratio").Exists() {
+			out, err = sjson.SetBytes(out, "aspect_ratio", ratio)
+			if err != nil {
+				return nil, fmt.Errorf("normalize compatible Seedance aspect_ratio: %w", err)
+			}
+		}
+		if !gjson.GetBytes(out, "ratio").Exists() {
+			out, err = sjson.SetBytes(out, "ratio", ratio)
+			if err != nil {
+				return nil, fmt.Errorf("normalize compatible Seedance ratio: %w", err)
+			}
+		}
+	}
+	return out, nil
+}
+
 func compatibleVideoForwardResult(
 	endpoint GrokMediaEndpoint,
 	requestID string,
@@ -316,11 +492,16 @@ func compatibleVideoForwardResult(
 		Model:                compatibleVideoFirstNonEmpty(compatibleVideoJSONField(body, "model", "data.model", "video.model", "result.model"), requestModel),
 		BillingModel:         requestModel,
 		UpstreamModel:        upstreamModel,
-		VideoResolution:      compatibleVideoFirstNonEmpty(compatibleVideoJSONField(body, "resolution", "data.resolution", "video.resolution", "result.resolution"), requestInfo.Resolution),
+		VideoResolution:      compatibleVideoResolution(body),
 		VideoDurationSeconds: compatibleVideoDuration(body),
 	}
-	if result.VideoDurationSeconds <= 0 {
-		result.VideoDurationSeconds = requestInfo.DurationSeconds
+	if endpoint.IsGenerationRequest() {
+		if result.VideoResolution == "" {
+			result.VideoResolution = requestInfo.Resolution
+		}
+		if result.VideoDurationSeconds <= 0 {
+			result.VideoDurationSeconds = requestInfo.DurationSeconds
+		}
 	}
 	if strings.TrimSpace(result.BillingModel) == "" {
 		result.BillingModel = result.Model
@@ -357,6 +538,19 @@ func compatibleVideoHasResultURL(body []byte) bool {
 		"data.video.url", "data.video_url", "data.result_url", "data.url", "data.content.video_url", "data.content.url",
 		"result.video.url", "result.video_url", "result.url",
 	) != ""
+}
+
+func compatibleVideoResolution(body []byte) string {
+	for _, path := range []string{
+		"resolution", "data.resolution", "video.resolution", "result.resolution",
+		"quality", "data.quality", "video.quality", "result.quality",
+	} {
+		value := strings.TrimSpace(gjson.GetBytes(body, path).String())
+		if normalized, ok := LookupVideoBillingResolution(value); ok {
+			return normalized
+		}
+	}
+	return ""
 }
 
 func compatibleVideoDuration(body []byte) int {

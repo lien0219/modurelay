@@ -76,7 +76,8 @@ export async function waitForVideoGenerationTask(config: AiConfig, task: VideoGe
         if (state.status === "completed") return state.result;
         if (state.status === "failed") throw videoTaskFailed(state.error);
         if (Date.now() >= deadline) throw videoTaskTimeout();
-        await delay(VIDEO_TASK_POLL_INTERVAL_MS, options?.signal);
+        const pollInterval = task.id.startsWith("aistarslab:") ? 10_000 : VIDEO_TASK_POLL_INTERVAL_MS;
+        await delay(pollInterval, options?.signal);
     }
 }
 

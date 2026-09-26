@@ -57,19 +57,21 @@ func (e GrokMediaEndpoint) IsGenerationRequest() bool {
 }
 
 type GrokMediaRequestInfo struct {
-	Model           string
-	Prompt          string
-	N               int
-	Size            string
-	SizeTier        string
-	AspectRatio     string
-	ImageResolution string
-	Resolution      string
-	DurationSeconds int
-	InputImageURLs  []string
-	MaskImageURL    string
-	Uploads         []OpenAIImagesUpload
-	MaskUpload      *OpenAIImagesUpload
+	Model                   string
+	Prompt                  string
+	N                       int
+	Size                    string
+	SizeTier                string
+	AspectRatio             string
+	ImageResolution         string
+	Resolution              string
+	DurationSeconds         int
+	VideoResolutionExplicit bool
+	VideoDurationExplicit   bool
+	InputImageURLs          []string
+	MaskImageURL            string
+	Uploads                 []OpenAIImagesUpload
+	MaskUpload              *OpenAIImagesUpload
 }
 
 func (r GrokMediaRequestInfo) ModerationBody() []byte {
@@ -153,7 +155,18 @@ func parseGrokMediaJSONRequest(body []byte, info *GrokMediaRequestInfo) {
 	for _, field := range []string{"resolution", "resolution_name", "metadata.resolution"} {
 		if resolution := strings.TrimSpace(gjson.GetBytes(body, field).String()); resolution != "" {
 			assignGrokMediaResolution(resolution, info)
+			if _, ok := LookupVideoBillingResolution(resolution); ok {
+				info.VideoResolutionExplicit = true
+			}
 			break
+		}
+	}
+	if info.Resolution == "" {
+		if quality := strings.TrimSpace(gjson.GetBytes(body, "quality").String()); quality != "" {
+			if normalized, ok := LookupVideoBillingResolution(quality); ok {
+				info.Resolution = normalized
+				info.VideoResolutionExplicit = true
+			}
 		}
 	}
 	for _, field := range []string{"duration", "seconds"} {
@@ -165,6 +178,9 @@ func parseGrokMediaJSONRequest(body []byte, info *GrokMediaRequestInfo) {
 			info.DurationSeconds = int(duration.Int())
 		} else if parsed, err := strconv.Atoi(strings.TrimSpace(duration.String())); err == nil {
 			info.DurationSeconds = parsed
+		}
+		if info.DurationSeconds > 0 {
+			info.VideoDurationExplicit = true
 		}
 		break
 	}
@@ -193,6 +209,12 @@ func parseGrokMediaJSONRequest(body []byte, info *GrokMediaRequestInfo) {
 	appendJSONImageURLs(gjson.GetBytes(body, "reference_images"))
 	appendJSONImageURLs(gjson.GetBytes(body, "last_frame"))
 	appendJSONImageURLs(gjson.GetBytes(body, "metadata.images"))
+	for _, ref := range parseVideoMediaReferences(body) {
+		switch ref.Kind {
+		case videoReferenceFirstFrame, videoReferenceLastFrame, videoReferenceImage:
+			info.InputImageURLs = append(info.InputImageURLs, ref.URL)
+		}
+	}
 	info.MaskImageURL = extractGrokMediaImageURL(gjson.GetBytes(body, "mask"))
 }
 
@@ -283,9 +305,20 @@ func parseGrokMediaMultipartRequest(contentType string, body []byte, info *GrokM
 			info.AspectRatio = value
 		case "resolution", "resolution_name":
 			assignGrokMediaResolution(value, info)
+			if _, ok := LookupVideoBillingResolution(value); ok {
+				info.VideoResolutionExplicit = true
+			}
+		case "quality":
+			if normalized, ok := LookupVideoBillingResolution(value); ok {
+				info.Resolution = normalized
+				info.VideoResolutionExplicit = true
+			}
 		case "duration", "seconds":
 			if duration, err := strconv.Atoi(value); err == nil {
 				info.DurationSeconds = duration
+				if duration > 0 {
+					info.VideoDurationExplicit = true
+				}
 			}
 		case "n":
 			if n, err := strconv.Atoi(value); err == nil {
@@ -324,15 +357,9 @@ func (s *OpenAIGatewayService) BindGrokMediaVideoRequestAccount(
 	if cacheKey == "" || accountID <= 0 {
 		return fmt.Errorf("grok video request binding is invalid")
 	}
-	// Video jobs may complete well after WS sticky TTL (default 1h). Bind at least
-	// as long as the pending-billing snapshot so late status/content polls resolve.
-	ttl := grokVideoPendingBillingTTL(s.cfg)
-	if s.cfg != nil && s.cfg.Gateway.OpenAIWS.StickySessionTTLSeconds > 0 {
-		if sticky := time.Duration(s.cfg.Gateway.OpenAIWS.StickySessionTTLSeconds) * time.Second; sticky > ttl {
-			ttl = sticky
-		}
-	}
-	return s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), cacheKey, accountID, ttl)
+	// Keep routing ownership longer than billing state so completed task history
+	// remains queryable without extending money-event snapshots unnecessarily.
+	return s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), cacheKey, accountID, grokVideoRequestBindingTTL(s.cfg))
 }
 
 func (s *OpenAIGatewayService) ResolveGrokMediaVideoRequestAccount(
@@ -391,6 +418,13 @@ func (s *OpenAIGatewayService) SelectMediaVideoRequestAccount(
 // first observes a completed video URL. Status may omit model/duration; we fall
 // back to this snapshot, then defaults.
 type GrokVideoPendingBilling struct {
+	RequestID            string `json:"request_id,omitempty"`
+	UserID               int64  `json:"user_id,omitempty"`
+	APIKeyID             int64  `json:"api_key_id,omitempty"`
+	AccountID            int64  `json:"account_id,omitempty"`
+	GroupID              int64  `json:"group_id,omitempty"`
+	SubscriptionID       int64  `json:"subscription_id,omitempty"`
+	QuotaPlatform        string `json:"quota_platform,omitempty"`
 	Model                string `json:"model"`
 	BillingModel         string `json:"billing_model,omitempty"`
 	UpstreamModel        string `json:"upstream_model,omitempty"`
@@ -450,9 +484,34 @@ func grokVideoPendingBillingTTL(cfg *config.Config) time.Duration {
 	return 24 * time.Hour
 }
 
+func grokVideoRequestBindingTTL(cfg *config.Config) time.Duration {
+	// Routing ownership is useful after billing has settled so users can revisit
+	// completed tasks. Keep it longer than pricing snapshots without retaining
+	// billing state indefinitely.
+	ttl := 7 * 24 * time.Hour
+	if cfg != nil && cfg.Gateway.OpenAIWS.StickySessionTTLSeconds > 0 {
+		if sticky := time.Duration(cfg.Gateway.OpenAIWS.StickySessionTTLSeconds) * time.Second; sticky > ttl {
+			ttl = sticky
+		}
+	}
+	return ttl
+}
+
 func grokVideoBilledClaimTTL(cfg *config.Config) time.Duration {
 	_ = cfg
 	return 48 * time.Hour
+}
+
+const (
+	grokVideoRecoveryInitialDelay = 15 * time.Second
+	grokVideoRecoveryRetryDelay   = 30 * time.Second
+	grokVideoRecoveryBatchLimit   = 50
+)
+
+type GrokVideoRecoveryCache interface {
+	ScheduleGrokVideoRecovery(ctx context.Context, key string, dueAt time.Time, ttl time.Duration) error
+	ListDueGrokVideoRecovery(ctx context.Context, now time.Time, limit int) ([]string, error)
+	RemoveGrokVideoRecovery(ctx context.Context, key string) error
 }
 
 // StoreGrokVideoPendingBilling persists create-time billing params for deferred status billing.
@@ -469,6 +528,10 @@ func (s *OpenAIGatewayService) StoreGrokVideoPendingBilling(
 	if key == "" {
 		return fmt.Errorf("grok video pending billing key is invalid")
 	}
+	pending.RequestID = strings.TrimSpace(requestID)
+	pending.UserID = userID
+	pending.APIKeyID = apiKeyID
+	pending.QuotaPlatform = strings.TrimSpace(pending.QuotaPlatform)
 	pending.Model = strings.TrimSpace(pending.Model)
 	pending.BillingModel = strings.TrimSpace(pending.BillingModel)
 	pending.UpstreamModel = strings.TrimSpace(pending.UpstreamModel)
@@ -489,7 +552,16 @@ func (s *OpenAIGatewayService) StoreGrokVideoPendingBilling(
 	if err != nil {
 		return err
 	}
-	return s.cache.SetGrokVideoPendingBilling(ctx, key, payload, grokVideoPendingBillingTTL(s.cfg))
+	ttl := grokVideoPendingBillingTTL(s.cfg)
+	if err := s.cache.SetGrokVideoPendingBilling(ctx, key, payload, ttl); err != nil {
+		return err
+	}
+	if recovery, ok := s.cache.(GrokVideoRecoveryCache); ok {
+		if err := recovery.ScheduleGrokVideoRecovery(ctx, key, time.Now().Add(grokVideoRecoveryInitialDelay), ttl); err != nil {
+			return fmt.Errorf("schedule video billing recovery: %w", err)
+		}
+	}
+	return nil
 }
 
 // LoadGrokVideoPendingBilling returns the create-time snapshot (may be nil on miss).

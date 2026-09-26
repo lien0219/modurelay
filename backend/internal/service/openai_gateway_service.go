@@ -284,7 +284,12 @@ type OpenAIForwardResult struct {
 	ImageSizeSource       string
 	ImageSizeBreakdown    map[string]int
 	VideoCount            int
-	VideoResolution       string
+	// ForceTokenBilling keeps video output telemetry while forcing token billing.
+	// Official Seedance/Ark reports authoritative completion tokens and must not
+	// inherit Grok/OpenAI-compatible per-second video tariffs merely because a
+	// completed task produced one video.
+	ForceTokenBilling bool
+	VideoResolution   string
 	// VideoDurationSeconds 是提交时请求的生成时长（xAI 按输出秒数计费），已归一化到 1-15 秒。
 	VideoDurationSeconds int
 	// WebSearchCalls 是 Codex alpha/search 网页搜索调用次数（每次成功请求为 1）。
@@ -487,6 +492,10 @@ type OpenAIGatewayService struct {
 	openaiProxyStreamCircuit       *openAIProxyStreamCircuit
 	openaiProxyStreamFailOpenLogAt atomic.Int64
 
+	videoRecoveryMu     sync.Mutex
+	videoRecoveryCancel context.CancelFunc
+	videoRecoveryDone   chan struct{}
+
 	openaiWSFallbackUntil               sync.Map // key: int64(accountID), value: time.Time
 	openaiAccountRuntimeBlockUntil      sync.Map // key: int64(accountID), value: time.Time
 	openaiAccountRuntimeBlockLocks      sync.Map // key: int64(accountID), value: *sync.Mutex
@@ -584,6 +593,7 @@ func NewOpenAIGatewayService(
 		openAITokenProvider.SetAccountRuntimeBlocker(svc)
 	}
 	svc.logOpenAIWSModeBootstrap()
+	svc.startVideoBillingRecovery()
 	return svc
 }
 
@@ -696,7 +706,11 @@ func (s *OpenAIGatewayService) billingDeps() *billingDeps {
 // CloseOpenAIWSPool 关闭 OpenAI WebSocket 连接池的后台 worker 和空闲连接。
 // 应在应用优雅关闭时调用。
 func (s *OpenAIGatewayService) CloseOpenAIWSPool() {
-	if s != nil && s.openaiWSPool != nil {
+	if s == nil {
+		return
+	}
+	s.stopVideoBillingRecovery()
+	if s.openaiWSPool != nil {
 		s.openaiWSPool.Close()
 	}
 }

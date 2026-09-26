@@ -139,6 +139,24 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 			routingModel = resolvedModel
 		}
 	}
+	videoModelRef := service.ParseVideoModelRef(requestModel)
+	canonicalVideoModel := strings.TrimSpace(videoModelRef.CanonicalModel)
+	officialVideoTierActive := false
+	officialVideoPlatform := ""
+	officialVideoCapability := service.OpenAIEndpointCapability("")
+	if endpoint.IsGenerationRequest() && isOpenAICompatibleVideoEndpoint(endpoint) && videoModelRef.ChannelCode != "" {
+		if service.IsSeedanceVideoModel(canonicalVideoModel) {
+			officialVideoTierActive = true
+			officialVideoPlatform = service.PlatformOpenAI
+			officialVideoCapability = service.OpenAIEndpointCapabilitySeedance
+		} else if detectedPlatform, detected := service.DetectModelPlatform(canonicalVideoModel); detected && detectedPlatform == service.PlatformGrok {
+			officialVideoTierActive = true
+			officialVideoPlatform = service.PlatformGrok
+			officialVideoCapability = service.OpenAIEndpointCapabilityGrokMediaGeneration
+		}
+		noAccountCode = "video_no_eligible_account"
+		noAccountMessage = "No eligible video provider accounts"
+	}
 	if endpoint.IsGenerationRequest() && strings.TrimSpace(requestModel) == "" {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "model is required")
 		return
@@ -272,25 +290,76 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 		}
 		var selection *service.AccountSelectionResult
 		var scheduleDecision service.OpenAIAccountScheduleDecision
+		selectedOfficialVideoTier := false
+		selectedCompatibleVideo := compatibleVideo
+		selectedRoutingModel := routingModel
+		selectedPlatform := platform
+		selectedCapability := requiredCapability
 		if boundLookupAccountID > 0 {
 			selection, scheduleDecision, err = h.gatewayService.SelectMediaVideoRequestAccount(
 				requestCtx, apiKey.GroupID, sessionHash, boundLookupAccountID, routingModel, platform,
 			)
 		} else {
-			selection, scheduleDecision, err = h.gatewayService.SelectAccountWithSchedulerForCapability(
-				requestCtx,
-				apiKey.GroupID,
-				"",
-				sessionHash,
-				routingModel,
-				failedAccountIDs,
-				service.OpenAIUpstreamTransportHTTPSSE,
-				requiredCapability,
-				false,
-				false,
-				false,
-				platform,
-			)
+			if officialVideoTierActive {
+				selection, scheduleDecision, err = h.gatewayService.SelectAccountWithSchedulerForCapability(
+					requestCtx,
+					apiKey.GroupID,
+					"",
+					sessionHash,
+					canonicalVideoModel,
+					failedAccountIDs,
+					service.OpenAIUpstreamTransportHTTPSSE,
+					officialVideoCapability,
+					false,
+					false,
+					false,
+					officialVideoPlatform,
+				)
+				if errors.Is(err, service.ErrNoAvailableAccounts) || selection == nil || selection.Account == nil {
+					// Hard-tier semantics: exhaust all official accounts before the
+					// supplier tier. A missing official account is not an error when a
+					// provider-qualified supplier model was requested.
+					officialVideoTierActive = false
+					selection = nil
+					err = nil
+				} else if err == nil {
+					selectedOfficialVideoTier = true
+					selectedCompatibleVideo = officialVideoPlatform != service.PlatformGrok
+					selectedRoutingModel = canonicalVideoModel
+					selectedPlatform = officialVideoPlatform
+					selectedCapability = officialVideoCapability
+				}
+			}
+			if !officialVideoTierActive && selection == nil && err == nil {
+				fallbackPlatform := platform
+				fallbackCapability := requiredCapability
+				fallbackModel := routingModel
+				// Qualified IDs originate from aggregators. After the official tier
+				// is exhausted, route them to OpenAI-compatible supplier accounts.
+				if videoModelRef.ChannelCode != "" {
+					fallbackPlatform = service.PlatformOpenAI
+					fallbackCapability = service.OpenAIEndpointCapabilityVideos
+					fallbackModel = requestModel
+				}
+				selection, scheduleDecision, err = h.gatewayService.SelectAccountWithSchedulerForCapability(
+					requestCtx,
+					apiKey.GroupID,
+					"",
+					sessionHash,
+					fallbackModel,
+					failedAccountIDs,
+					service.OpenAIUpstreamTransportHTTPSSE,
+					fallbackCapability,
+					false,
+					false,
+					false,
+					fallbackPlatform,
+				)
+				selectedCompatibleVideo = fallbackPlatform != service.PlatformGrok
+				selectedRoutingModel = fallbackModel
+				selectedPlatform = fallbackPlatform
+				selectedCapability = fallbackCapability
+			}
 		}
 		// Own an eagerly acquired slot before any rejection or eligibility probe.
 		// Forwarding takes over the same once-only release after admission.
@@ -357,7 +426,15 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 			return
 		}
 
+		videoRouteTier := "supplier"
+		if selectedOfficialVideoTier {
+			videoRouteTier = "official"
+		}
 		reqLog.Debug("grok_media.account_schedule_decision",
+			zap.String("video_route_tier", videoRouteTier),
+			zap.String("selected_platform", selectedPlatform),
+			zap.String("selected_capability", string(selectedCapability)),
+			zap.String("selected_routing_model", selectedRoutingModel),
 			zap.String("layer", scheduleDecision.Layer),
 			zap.Bool("sticky_session_hit", scheduleDecision.StickySessionHit),
 			zap.Int("candidate_count", scheduleDecision.CandidateCount),
@@ -367,7 +444,34 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 		)
 
 		account := selection.Account
-		if endpoint.IsGenerationRequest() && !endpoint.IsSeedance() && !compatibleVideo {
+		if endpoint.IsGenerationRequest() && videoModelRef.ChannelCode != "" {
+			rejectReason := ""
+			switch {
+			case selectedOfficialVideoTier && service.IsSeedanceVideoModel(canonicalVideoModel) &&
+				!service.SeedanceCompatibleReferencesSupported(body):
+				rejectReason = "official_seedance_reference_media_unsupported"
+			case !selectedOfficialVideoTier && !service.SupportsQualifiedVideoSupplierModel(account, requestModel):
+				rejectReason = "account_not_explicitly_configured_for_qualified_supplier_model"
+			case service.IsAIStarsLabOpenAPIAccount(account) && !service.AIStarsLabOpenAPIReferencesSupported(body):
+				rejectReason = "aistarslab_openapi_requires_public_reference_urls"
+			}
+			if rejectReason != "" {
+				releaseAccount()
+				mediaEligibilityRejected = true
+				failedAccountIDs[account.ID] = struct{}{}
+				reqLog.Warn("grok_media.video_provider_rejected",
+					zap.Int64("account_id", account.ID),
+					zap.String("model", requestModel),
+					zap.String("reason", rejectReason),
+				)
+				// This is candidate filtering before any upstream request is sent,
+				// not an upstream failover. Do not consume maxAccountSwitches:
+				// failedAccountIDs makes the loop finite and allows large mixed
+				// pools to reach a later eligible supplier account.
+				continue
+			}
+		}
+		if endpoint.IsGenerationRequest() && !endpoint.IsSeedance() && !selectedCompatibleVideo {
 			eligible, eligibilityReason, eligibilityErr := h.ensureGrokMediaAccountEligibility(requestCtx, account)
 			if !eligible {
 				releaseAccount()
@@ -386,6 +490,26 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 				switchCount++
 				continue
 			}
+		}
+		if isGrokVideoCreateEndpoint(endpoint) && !endpoint.IsSeedance() && selectedCompatibleVideo && !selectedOfficialVideoTier {
+			if !requestInfo.VideoResolutionExplicit {
+				h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Video resolution is required for compatible provider billing")
+				return
+			}
+			if !requestInfo.VideoDurationExplicit {
+				h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Video duration is required for compatible provider billing")
+				return
+			}
+		}
+		if endpoint.IsGenerationRequest() && !endpoint.IsSeedance() && selectedCompatibleVideo && !selectedOfficialVideoTier &&
+			!h.gatewayService.HasVideoPricingForRequest(requestCtx, apiKey, requestModel, requestInfo.Resolution) {
+			reqLog.Error("grok_media.video_pricing_missing",
+				zap.String("model", requestModel),
+				zap.String("resolution", requestInfo.Resolution),
+				zap.Int64("account_id", account.ID),
+			)
+			h.errorResponse(c, http.StatusServiceUnavailable, "video_pricing_not_configured", "Video pricing is not configured for this model")
+			return
 		}
 		if failoverClientGone(c) {
 			return
@@ -421,8 +545,16 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 			if endpoint.IsSeedance() {
 				return h.gatewayService.ForwardSeedance(requestCtx, c, account, endpoint, requestID, body)
 			}
-			if compatibleVideo {
-				return h.gatewayService.ForwardCompatibleVideo(requestCtx, c, account, endpoint, requestID, body, contentType, routingModel)
+			if strings.HasPrefix(strings.TrimSpace(requestID), "seedance:") ||
+				(selectedOfficialVideoTier && service.IsSeedanceVideoModel(canonicalVideoModel) &&
+					account.SupportsOpenAIEndpointCapability(service.OpenAIEndpointCapabilitySeedance)) {
+				return h.gatewayService.ForwardSeedanceCompatibleVideo(requestCtx, c, account, endpoint, requestID, body, contentType, canonicalVideoModel)
+			}
+			if strings.HasPrefix(strings.TrimSpace(requestID), "aistarslab:") || service.IsAIStarsLabOpenAPIAccount(account) {
+				return h.gatewayService.ForwardAIStarsLabOpenAPIVideo(requestCtx, c, account, endpoint, requestID, body, contentType, selectedRoutingModel)
+			}
+			if selectedCompatibleVideo {
+				return h.gatewayService.ForwardCompatibleVideo(requestCtx, c, account, endpoint, requestID, body, contentType, selectedRoutingModel)
 			}
 			return h.gatewayService.ForwardGrokMedia(requestCtx, c, account, endpoint, requestID, body, contentType)
 		}()
@@ -446,7 +578,7 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 					return
 				}
 				if failoverErr.ShouldReportAccountScheduleFailure() {
-					h.gatewayService.ReportOpenAIAccountScheduleResult(account, grokMediaScheduleModel(account, routingModel, nil), false, nil, err)
+					h.gatewayService.ReportOpenAIAccountScheduleResult(account, grokMediaScheduleModel(account, selectedRoutingModel, nil), false, nil, err)
 				}
 				if c.Writer.Size() != writerSizeBeforeForward {
 					h.handleFailoverExhausted(c, failoverErr, true)
@@ -511,23 +643,52 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 			return
 		}
 
-		h.gatewayService.ReportOpenAIAccountScheduleResult(account, grokMediaScheduleModel(account, routingModel, result), true, nil)
+		h.gatewayService.ReportOpenAIAccountScheduleResult(account, grokMediaScheduleModel(account, selectedRoutingModel, result), true, nil)
 		if isGrokVideoCreateEndpoint(endpoint) && strings.TrimSpace(result.ResponseID) != "" {
 			if err := h.gatewayService.BindGrokMediaVideoRequestAccount(
 				requestCtx, apiKey.GroupID, result.ResponseID, subject.UserID, apiKey.ID, account.ID,
 			); err != nil {
-				reqLog.Warn("grok_media.bind_video_request_account_failed",
+				reqLog.Warn("grok_media.bind_video_request_account_failed_retrying",
 					zap.Int64("account_id", account.ID),
 					zap.String("request_id", result.ResponseID),
 					zap.Error(err),
 				)
+				if err2 := h.gatewayService.BindGrokMediaVideoRequestAccount(
+					requestCtx, apiKey.GroupID, result.ResponseID, subject.UserID, apiKey.ID, account.ID,
+				); err2 != nil {
+					reqLog.Error("grok_media.bind_video_request_account_failed",
+						zap.Int64("account_id", account.ID),
+						zap.String("request_id", result.ResponseID),
+						zap.Error(err2),
+					)
+				}
 			}
 			// Defer billing until status polling observes video.url. Persist create-time
 			// model/duration/resolution so status can still price if upstream omits them.
 			// Retry once: missing pending causes silent underpricing (status omits resolution).
+			pendingModel := requestModel
+			if selectedOfficialVideoTier && service.IsSeedanceVideoModel(canonicalVideoModel) {
+				pendingModel = canonicalVideoModel
+			}
+			pendingBillingModel := firstNonEmptyString(result.BillingModel, pendingModel)
+			if selectedOfficialVideoTier && service.IsSeedanceVideoModel(canonicalVideoModel) {
+				pendingBillingModel = canonicalVideoModel
+			}
+			pendingGroupID := int64(0)
+			if apiKey.GroupID != nil {
+				pendingGroupID = *apiKey.GroupID
+			}
+			pendingSubscriptionID := int64(0)
+			if subscription != nil {
+				pendingSubscriptionID = subscription.ID
+			}
 			pending := service.GrokVideoPendingBilling{
-				Model:                requestModel,
-				BillingModel:         firstNonEmptyString(result.BillingModel, requestModel),
+				AccountID:            account.ID,
+				GroupID:              pendingGroupID,
+				SubscriptionID:       pendingSubscriptionID,
+				QuotaPlatform:        service.QuotaPlatform(requestCtx, apiKey),
+				Model:                pendingModel,
+				BillingModel:         pendingBillingModel,
 				UpstreamModel:        result.UpstreamModel,
 				VideoResolution:      result.VideoResolution,
 				VideoDurationSeconds: result.VideoDurationSeconds,
@@ -554,7 +715,9 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 		}
 		// Status poll OR content download can observe official done+video.url.
 		// Both paths share the same claim key so the customer is charged once.
-		if endpoint == service.SeedanceEndpointStatus {
+		seedanceCompatibleLookup := strings.HasPrefix(strings.TrimSpace(requestID), "seedance:") &&
+			(endpoint == service.GrokMediaEndpointVideoStatus || endpoint == service.GrokMediaEndpointVideoContent)
+		if endpoint == service.SeedanceEndpointStatus || seedanceCompatibleLookup {
 			if billResult := prepareSeedanceCompletionBilling(requestCtx, h, apiKey, subject, requestID, result); billResult != nil {
 				recordGrokMediaUsage(c, h, reqLog, apiKey, subject, subscription, account, billResult, billResult.Model, body, requestID)
 			}
@@ -563,7 +726,7 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 			if billResult := prepareGrokVideoCompletionBilling(requestCtx, h, reqLog, apiKey, subject, taskID, result); billResult != nil {
 				recordGrokMediaUsage(c, h, reqLog, apiKey, subject, subscription, account, billResult, billResult.Model, body, taskID)
 			}
-		} else if compatibleVideo && isGrokVideoCreateEndpoint(endpoint) && result != nil &&
+		} else if selectedCompatibleVideo && isGrokVideoCreateEndpoint(endpoint) && result != nil &&
 			strings.TrimSpace(result.ResponseID) == "" && result.VideoCount > 0 {
 			recordGrokMediaUsage(c, h, reqLog, apiKey, subject, subscription, account, result, requestModel, body, requestID)
 		} else if shouldRecordGrokMediaUsage(endpoint, requestModel, result) {
@@ -696,19 +859,19 @@ func prepareGrokVideoCompletionBilling(
 		reqLog.Warn("grok_media.video_pending_billing_load_failed", zap.String("request_id", taskRequestID), zap.Error(loadErr))
 	}
 	if pending == nil {
-		// Status omits resolution; without pending we would silently default to 480p and underbill.
-		// Allow billing only when official status carries duration (still may default resolution).
-		if statusResult.VideoDurationSeconds <= 0 {
+		if reason := videoCompletionFallbackEvidenceMissing(statusResult); reason != "" {
 			reqLog.Error("grok_media.video_billing_skipped_missing_pending",
 				zap.String("request_id", taskRequestID),
-				zap.String("reason", "no create-time snapshot and status has no video.duration"),
+				zap.String("reason", reason),
 			)
 			return nil
 		}
 		reqLog.Error("grok_media.video_billing_without_pending",
 			zap.String("request_id", taskRequestID),
+			zap.String("model", firstNonEmptyString(statusResult.BillingModel, statusResult.Model, statusResult.UpstreamModel)),
+			zap.String("resolution", statusResult.VideoResolution),
 			zap.Int("status_duration_seconds", statusResult.VideoDurationSeconds),
-			zap.String("note", "resolution falls back to default 480p; investigate pending store failures"),
+			zap.String("note", "billing from status evidence because create-time snapshot is unavailable"),
 		)
 	}
 	claimed, err := h.gatewayService.ClaimGrokVideoBilling(ctx, taskRequestID, subject.UserID, apiKey.ID)
@@ -769,6 +932,27 @@ func prepareGrokVideoCompletionBilling(
 		}
 	}
 	return &merged
+}
+
+func videoCompletionFallbackEvidenceMissing(result *service.OpenAIForwardResult) string {
+	if result == nil {
+		return "status result is missing"
+	}
+	if result.VideoDurationSeconds <= 0 {
+		return "status has no video duration"
+	}
+	model := strings.ToLower(firstNonEmptyString(result.BillingModel, result.Model, result.UpstreamModel))
+	if model == "" {
+		return "status has no billing model"
+	}
+	if strings.HasPrefix(model, "grok-imagine-video") {
+		// Official Grok may omit resolution; 480p is its documented default.
+		return ""
+	}
+	if strings.TrimSpace(result.VideoResolution) == "" {
+		return "non-Grok status has no video resolution"
+	}
+	return ""
 }
 
 func firstNonEmptyString(values ...string) string {

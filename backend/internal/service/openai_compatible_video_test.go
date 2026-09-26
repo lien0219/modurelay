@@ -69,6 +69,50 @@ func TestPrepareCompatibleVideoBodyJSON(t *testing.T) {
 	}
 }
 
+func TestPrepareCompatibleVideoBodySeedanceAddsCompatibilityAliases(t *testing.T) {
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	body := []byte(`{"model":"47:seedance-2.0","prompt":"hello","duration":5,"resolution":"720p","aspect_ratio":"9:16","generate_audio":true}`)
+	rewritten, contentType, model, err := prepareCompatibleVideoBody(account, body, "application/json", "seedance-2.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if contentType != "application/json" || model != "seedance-2.0" {
+		t.Fatalf("unexpected content type/model: %q %q", contentType, model)
+	}
+	for path, want := range map[string]string{
+		"model":               "seedance-2.0",
+		"resolution":          "720p",
+		"resolution_name":     "720p",
+		"metadata.resolution": "720p",
+		"aspect_ratio":        "9:16",
+		"ratio":               "9:16",
+	} {
+		if got := gjson.GetBytes(rewritten, path).String(); got != want {
+			t.Fatalf("%s=%q want %q body=%s", path, got, want, rewritten)
+		}
+	}
+	if got := gjson.GetBytes(rewritten, "duration").Int(); got != 5 {
+		t.Fatalf("duration=%d body=%s", got, rewritten)
+	}
+	if got := gjson.GetBytes(rewritten, "seconds").Int(); got != 5 {
+		t.Fatalf("seconds=%d body=%s", got, rewritten)
+	}
+}
+
+func TestPrepareCompatibleVideoBodyNonSeedanceDoesNotAddAliases(t *testing.T) {
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	body := []byte(`{"model":"62:wan-3.0","duration":5,"resolution":"720p","aspect_ratio":"16:9"}`)
+	rewritten, _, _, err := prepareCompatibleVideoBody(account, body, "application/json", "wan-3.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"resolution_name", "metadata.resolution", "seconds", "ratio"} {
+		if gjson.GetBytes(rewritten, path).Exists() {
+			t.Fatalf("unexpected alias %s in %s", path, rewritten)
+		}
+	}
+}
+
 func TestPrepareCompatibleVideoBodyMultipart(t *testing.T) {
 	var source bytes.Buffer
 	writer := multipart.NewWriter(&source)
@@ -114,10 +158,72 @@ func TestPrepareCompatibleVideoBodyMultipart(t *testing.T) {
 	}
 }
 
+func TestParseGrokMediaRequestUsesVideoQualityForBillingResolution(t *testing.T) {
+	info := ParseGrokMediaRequest("application/json", []byte(`{"model":"wan-3.0","quality":"hd","duration":5}`))
+	if info.Resolution != "720p" {
+		t.Fatalf("resolution=%q want 720p", info.Resolution)
+	}
+}
+
+func TestCompatibleVideoForwardResultStatusDoesNotInventCreateDefaults(t *testing.T) {
+	body := []byte(`{"id":"task-1","status":"completed","model":"wan-3.0"}`)
+	result := compatibleVideoForwardResult(GrokMediaEndpointVideoStatus, "task-1", ParseGrokMediaRequest("", nil), "", "wan-3.0", body)
+	if result.VideoCount != 1 {
+		t.Fatalf("video_count=%d", result.VideoCount)
+	}
+	if result.VideoDurationSeconds != 0 || result.VideoResolution != "" {
+		t.Fatalf("lookup invented billing fields: %#v", result)
+	}
+}
+
+func TestCompatibleVideoForwardResultStatusUsesRecognizedQuality(t *testing.T) {
+	body := []byte(`{"id":"task-1","status":"completed","quality":"hd","duration":5}`)
+	result := compatibleVideoForwardResult(GrokMediaEndpointVideoStatus, "task-1", GrokMediaRequestInfo{}, "", "wan-3.0", body)
+	if result.VideoResolution != "720p" || result.VideoDurationSeconds != 5 {
+		t.Fatalf("unexpected billing fields: %#v", result)
+	}
+}
+
 func TestCompatibleVideoForwardResultCompletedStatus(t *testing.T) {
 	body := []byte(`{"id":"task-1","status":"completed","model":"wan-3.0","video_url":"https://example.com/out.mp4","duration":5,"resolution":"720p"}`)
 	result := compatibleVideoForwardResult(GrokMediaEndpointVideoStatus, "task-1", GrokMediaRequestInfo{}, "", "wan-3.0", body)
 	if result.VideoCount != 1 || result.ResponseID != "task-1" || result.VideoDurationSeconds != 5 || result.VideoResolution != "720p" || result.Model != "wan-3.0" {
 		t.Fatalf("unexpected completion result: %#v", result)
+	}
+}
+
+func TestPrepareCompatibleVideoBodyAIStarsLabKeepsQualifiedModelAndNormalizesFields(t *testing.T) {
+	account := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":  "test",
+			"base_url": "https://api.video.aistarslab.com/openai",
+		},
+	}
+	body := []byte(`{"model":"48:seedance-2.0","prompt":"hello","duration":5,"resolution":"720p","aspect_ratio":"9:16","audio":true,"generate_audio":true,"watermark":false}`)
+	rewritten, contentType, model, err := prepareCompatibleVideoBody(account, body, "application/json", "48:seedance-2.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if contentType != "application/json" || model != "48:seedance-2.0" {
+		t.Fatalf("unexpected content type/model: %q %q", contentType, model)
+	}
+	if got := gjson.GetBytes(rewritten, "model").String(); got != "48:seedance-2.0" {
+		t.Fatalf("model=%q body=%s", got, rewritten)
+	}
+	if got := gjson.GetBytes(rewritten, "seconds").String(); got != "5" {
+		t.Fatalf("seconds=%q body=%s", got, rewritten)
+	}
+	if got := gjson.GetBytes(rewritten, "size").String(); got != "9:16" {
+		t.Fatalf("size=%q body=%s", got, rewritten)
+	}
+	if got := gjson.GetBytes(rewritten, "metadata.resolution").String(); got != "720p" {
+		t.Fatalf("metadata.resolution=%q body=%s", got, rewritten)
+	}
+	for _, path := range []string{"resolution", "aspect_ratio", "audio", "generate_audio", "watermark"} {
+		if gjson.GetBytes(rewritten, path).Exists() {
+			t.Fatalf("unsupported supplier alias %s leaked into %s", path, rewritten)
+		}
 	}
 }
