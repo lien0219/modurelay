@@ -78,6 +78,5 @@ export const emailAPI = {
   order: (id: string) => apiClient.get<EmailOrder>(`/email/orders/${encodeURIComponent(id)}`).then(r => r.data),
   purchase: (payload: { channel_code: string; service_code?: string; address_type: string; expected_price: number; quote_id: string }, idempotencyKey: string) => apiClient.post<EmailOrder>('/email/orders', payload, { headers: { 'Idempotency-Key': idempotencyKey } }).then(r => r.data),
   cancel: (id: string) => apiClient.post<{ status: string }>(`/email/orders/${encodeURIComponent(id)}/cancel`).then(r => r.data),
-  requestRefund: (id: string) => apiClient.post<{ status: string }>(`/email/orders/${encodeURIComponent(id)}/refund`).then(r => r.data),
   refundStatus: (id: string) => apiClient.get<{ status: string; reason?: string }>(`/email/orders/${encodeURIComponent(id)}/refund-status`).then(r => r.data),
 }
