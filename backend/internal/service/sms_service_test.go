@@ -869,6 +869,9 @@ func TestSMSPVAConvergeCapturesAfterDelivery(t *testing.T) {
 		WithArgs(int64(71)).
 		WillReturnRows(sqlmock.NewRows([]string{"user_id", "settlement_status", "reconciliation_action", "provider_refund_status", "code", "product_type", "first_sms_received_at"}).
 			AddRow(int64(8), "held", "", "not_requested", "smspva", "temporary", time.Now()))
+	mock.ExpectQuery(`SELECT EXISTS\\(.*FROM sms_messages.*BTRIM\\(verification_code\\)<>'')`).
+		WithArgs(int64(71)).
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
 	mock.ExpectBegin()
 	mock.ExpectQuery(`UPDATE sms_orders SET captured_amount=reserved_amount.*settlement_status='held'.*RETURNING reserved_amount`).
 		WithArgs(int64(71)).
