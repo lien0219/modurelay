@@ -577,7 +577,7 @@
               <tbody>
                 <tr v-for="order in orders" :key="order.id">
                   <td class="whitespace-nowrap">
-                    <span class="sms-order-id"><code>{{ order.id }}</code><CopyButton :text="order.id" /></span>
+                    <CopyableIdentifier :value="order.id" max-width="100%" />
                   </td>
                   <td class="whitespace-nowrap">{{ smsChannelLabel(order.channel_code) }}</td>
                   <td class="whitespace-nowrap">
@@ -749,6 +749,7 @@ import Pagination from '@/components/common/Pagination.vue'
 import Select from '@/components/common/Select.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import CopyButton from '@/components/common/CopyButton.vue'
+import CopyableIdentifier from '@/components/common/CopyableIdentifier.vue'
 import Icon from '@/components/icons/Icon.vue'
 import SMSServiceLogo from '@/components/sms/SMSServiceLogo.vue'
 import SMSPhoneCopy from '@/components/sms/SMSPhoneCopy.vue'
