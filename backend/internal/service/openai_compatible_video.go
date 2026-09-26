@@ -132,7 +132,7 @@ func (s *OpenAIGatewayService) ForwardCompatibleVideo(
 		releaseUpstreamCtx()
 		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 		if err != nil {
-			if isGrokVideoCreateEndpoint(endpoint) {
+			if endpoint.IsGenerationRequest() {
 				// Once an async CREATE has been written to the upstream, a transport
 				// error is ambiguous: the provider may already have accepted and
 				// charged the task. Never replay it on another account/provider.
@@ -164,7 +164,7 @@ func (s *OpenAIGatewayService) ForwardCompatibleVideo(
 	)
 	if resp.StatusCode >= http.StatusBadRequest {
 		result, handleErr := s.handleCompatErrorResponse(resp, c, account, writeGrokMediaErrorResponse, upstreamModel)
-		if isGrokVideoCreateEndpoint(endpoint) && handleErr != nil {
+		if endpoint.IsGenerationRequest() && handleErr != nil {
 			var failoverErr *UpstreamFailoverError
 			if errors.As(handleErr, &failoverErr) {
 				// Async CREATE is intentionally at-most-once across accounts.
