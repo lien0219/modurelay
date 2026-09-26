@@ -190,7 +190,6 @@ func TestEnsureGrokMediaAccountEligibility(t *testing.T) {
 	})
 }
 
-
 func TestVideoCompletionFallbackEvidenceMissing(t *testing.T) {
 	require.Equal(t, "status result is missing", videoCompletionFallbackEvidenceMissing(nil))
 	require.Equal(t, "status has no video duration", videoCompletionFallbackEvidenceMissing(&service.OpenAIForwardResult{
