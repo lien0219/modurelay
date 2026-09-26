@@ -1155,6 +1155,9 @@ func (s *EmailVerificationService) Purchase(ctx context.Context, userID int64, r
 	s.recordOrderEvent(ctx, orderID, "balance_reserved", "email_reserve:"+orderNo, map[string]any{"amount": selected.SalePrice})
 	_, _ = s.db.ExecContext(ctx, `UPDATE email_orders SET status='generating_inbox',updated_at=NOW() WHERE id=$1 AND status='reserved'`, orderID)
 	s.recordOrderEvent(ctx, orderID, "generate_requested", "email_generate:"+orderNo, nil)
+	operationCtx, operationCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer operationCancel()
+	ctx = operationCtx
 	started := time.Now()
 	inbox, e := p.GenerateInbox(ctx, GenerateInboxRequest{AddressType: req.AddressType})
 	if e != nil {
@@ -1215,7 +1218,11 @@ func (s *EmailVerificationService) Purchase(ctx context.Context, userID int64, r
 		return nil, errors.New("email provider returned no inbox")
 	}
 	s.recordProviderUsage(ctx, providerID, orderID, "generate_inbox", nil, time.Since(started))
-	if _, e = s.db.ExecContext(ctx, `UPDATE email_orders SET status='waiting_email',provider_inbox_id=$1,email_address=$2,address_type=$3,inbox_created_at=NOW(),waiting_started_at=NOW(),next_poll_at=NOW(),updated_at=NOW() WHERE id=$4`, inbox.ProviderInboxID, inbox.EmailAddress, inbox.AddressType, orderID); e != nil {
+	effectiveExpires := expires
+	if !inbox.ExpiresAt.IsZero() && inbox.ExpiresAt.Before(effectiveExpires) {
+		effectiveExpires = inbox.ExpiresAt
+	}
+	if _, e = s.db.ExecContext(ctx, `UPDATE email_orders SET status='waiting_email',provider_inbox_id=$1,email_address=$2,address_type=$3,expires_at=$4,inbox_created_at=NOW(),waiting_started_at=NOW(),next_poll_at=NOW(),updated_at=NOW() WHERE id=$5`, inbox.ProviderInboxID, inbox.EmailAddress, inbox.AddressType, effectiveExpires, orderID); e != nil {
 		return nil, e
 	}
 	s.recordOrderEvent(ctx, orderID, "inbox_generated", "email_generate:"+orderNo, map[string]any{"address_type": inbox.AddressType})
@@ -1755,6 +1762,20 @@ func emailMessageStableDedupe(providerMessageID, fromAddress, toAddress, subject
 	}, "\x1f"))
 }
 
+
+func emailMessageSummaryDedupe(fromAddress, toAddress, subject string, receivedAt time.Time) string {
+	timePart := ""
+	if !receivedAt.IsZero() {
+		timePart = receivedAt.UTC().Format(time.RFC3339Nano)
+	}
+	return hashString(strings.Join([]string{
+		"summary",
+		strings.ToLower(strings.TrimSpace(fromAddress)),
+		strings.ToLower(strings.TrimSpace(toAddress)),
+		strings.TrimSpace(subject),
+		timePart,
+	}, "\x1f"))
+}
 func (s *EmailVerificationService) convergePersistedEmailEvidence(ctx context.Context, orderID, userID int64, capturePolicy string) error {
 	var first sql.NullTime
 	var hasVerification bool
@@ -1827,13 +1848,15 @@ func (s *EmailVerificationService) PollOrder(ctx context.Context, orderID int64)
 
 	existingDedupe := map[string]struct{}{}
 	existingProviderIDs := map[string]struct{}{}
-	rows, err := s.db.QueryContext(ctx, `SELECT dedupe_hash,provider_message_id FROM email_messages WHERE email_order_id=$1`, orderID)
+	existingSummary := map[string]struct{}{}
+	rows, err := s.db.QueryContext(ctx, `SELECT dedupe_hash,provider_message_id,from_address,to_address,subject,received_at FROM email_messages WHERE email_order_id=$1`, orderID)
 	if err != nil {
 		return err
 	}
 	for rows.Next() {
-		var dedupe, providerMessageID string
-		if err := rows.Scan(&dedupe, &providerMessageID); err != nil {
+		var dedupe, providerMessageID, fromAddress, toAddress, subject string
+		var receivedAt time.Time
+		if err := rows.Scan(&dedupe, &providerMessageID, &fromAddress, &toAddress, &subject, &receivedAt); err != nil {
 			_ = rows.Close()
 			return err
 		}
@@ -1843,6 +1866,7 @@ func (s *EmailVerificationService) PollOrder(ctx context.Context, orderID int64)
 		if providerMessageID = strings.TrimSpace(providerMessageID); providerMessageID != "" {
 			existingProviderIDs[providerMessageID] = struct{}{}
 		}
+		existingSummary[emailMessageSummaryDedupe(fromAddress, toAddress, subject, receivedAt)] = struct{}{}
 	}
 	if err := rows.Err(); err != nil {
 		_ = rows.Close()
@@ -1878,8 +1902,8 @@ func (s *EmailVerificationService) PollOrder(ctx context.Context, orderID int64)
 				continue
 			}
 		} else if !summary.ReceivedAt.IsZero() {
-			summaryDedupe := emailMessageStableDedupe("", summary.FromAddress, summary.ToAddress, summary.Subject, "", "", summary.ReceivedAt)
-			if _, exists := existingDedupe[summaryDedupe]; exists {
+			summaryDedupe := emailMessageSummaryDedupe(summary.FromAddress, summary.ToAddress, summary.Subject, summary.ReceivedAt)
+			if _, exists := existingSummary[summaryDedupe]; exists {
 				continue
 			}
 		}
@@ -1948,6 +1972,7 @@ func (s *EmailVerificationService) PollOrder(ctx context.Context, orderID int64)
 			return e
 		}
 		existingDedupe[dedupe] = struct{}{}
+		existingSummary[emailMessageSummaryDedupe(msg.FromAddress, msg.ToAddress, msg.Subject, receivedAt)] = struct{}{}
 		if id := strings.TrimSpace(msg.ProviderMessageID); id != "" {
 			existingProviderIDs[id] = struct{}{}
 		}
