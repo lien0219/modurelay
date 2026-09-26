@@ -837,19 +837,19 @@ func prepareGrokVideoCompletionBilling(
 		reqLog.Warn("grok_media.video_pending_billing_load_failed", zap.String("request_id", taskRequestID), zap.Error(loadErr))
 	}
 	if pending == nil {
-		// Status omits resolution; without pending we would silently default to 480p and underbill.
-		// Allow billing only when official status carries duration (still may default resolution).
-		if statusResult.VideoDurationSeconds <= 0 {
+		if reason := videoCompletionFallbackEvidenceMissing(statusResult); reason != "" {
 			reqLog.Error("grok_media.video_billing_skipped_missing_pending",
 				zap.String("request_id", taskRequestID),
-				zap.String("reason", "no create-time snapshot and status has no video.duration"),
+				zap.String("reason", reason),
 			)
 			return nil
 		}
 		reqLog.Error("grok_media.video_billing_without_pending",
 			zap.String("request_id", taskRequestID),
+			zap.String("model", firstNonEmptyString(statusResult.BillingModel, statusResult.Model, statusResult.UpstreamModel)),
+			zap.String("resolution", statusResult.VideoResolution),
 			zap.Int("status_duration_seconds", statusResult.VideoDurationSeconds),
-			zap.String("note", "resolution falls back to default 480p; investigate pending store failures"),
+			zap.String("note", "billing from status evidence because create-time snapshot is unavailable"),
 		)
 	}
 	claimed, err := h.gatewayService.ClaimGrokVideoBilling(ctx, taskRequestID, subject.UserID, apiKey.ID)
@@ -910,6 +910,27 @@ func prepareGrokVideoCompletionBilling(
 		}
 	}
 	return &merged
+}
+
+func videoCompletionFallbackEvidenceMissing(result *service.OpenAIForwardResult) string {
+	if result == nil {
+		return "status result is missing"
+	}
+	if result.VideoDurationSeconds <= 0 {
+		return "status has no video duration"
+	}
+	model := strings.ToLower(firstNonEmptyString(result.BillingModel, result.Model, result.UpstreamModel))
+	if model == "" {
+		return "status has no billing model"
+	}
+	if strings.HasPrefix(model, "grok-imagine-video") {
+		// Official Grok may omit resolution; 480p is its documented default.
+		return ""
+	}
+	if strings.TrimSpace(result.VideoResolution) == "" {
+		return "non-Grok status has no video resolution"
+	}
+	return ""
 }
 
 func firstNonEmptyString(values ...string) string {
