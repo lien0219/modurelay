@@ -164,6 +164,7 @@ var _ service.OpenAIWSSessionPreemptionCache = (*gatewayCache)(nil)
 const (
 	grokVideoPendingBillingPrefix = "grok_video_pending:"
 	grokVideoBilledPrefix         = "grok_video_billed:"
+	grokVideoRecoveryIndexKey     = "grok_video_recovery"
 )
 
 func (c *gatewayCache) SetGrokVideoPendingBilling(ctx context.Context, key string, payload []byte, ttl time.Duration) error {
@@ -196,6 +197,56 @@ func (c *gatewayCache) GetGrokVideoPendingBilling(ctx context.Context, key strin
 		return nil, err
 	}
 	return val, nil
+}
+
+func (c *gatewayCache) ScheduleGrokVideoRecovery(ctx context.Context, key string, dueAt time.Time, ttl time.Duration) error {
+	if c == nil || c.rdb == nil {
+		return errors.New("gateway cache unavailable")
+	}
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return errors.New("invalid grok video recovery key")
+	}
+	if dueAt.IsZero() {
+		dueAt = time.Now()
+	}
+	if ttl <= 0 {
+		ttl = 24 * time.Hour
+	}
+	pipe := c.rdb.TxPipeline()
+	pipe.ZAdd(ctx, grokVideoRecoveryIndexKey, redis.Z{Score: float64(dueAt.UnixMilli()), Member: key})
+	pipe.Expire(ctx, grokVideoRecoveryIndexKey, ttl+time.Hour)
+	_, err := pipe.Exec(ctx)
+	return err
+}
+
+func (c *gatewayCache) ListDueGrokVideoRecovery(ctx context.Context, now time.Time, limit int) ([]string, error) {
+	if c == nil || c.rdb == nil {
+		return nil, errors.New("gateway cache unavailable")
+	}
+	if now.IsZero() {
+		now = time.Now()
+	}
+	if limit <= 0 {
+		limit = 50
+	}
+	return c.rdb.ZRangeByScore(ctx, grokVideoRecoveryIndexKey, &redis.ZRangeBy{
+		Min:   "-inf",
+		Max:   strconv.FormatInt(now.UnixMilli(), 10),
+		Offset: 0,
+		Count: int64(limit),
+	}).Result()
+}
+
+func (c *gatewayCache) RemoveGrokVideoRecovery(ctx context.Context, key string) error {
+	if c == nil || c.rdb == nil {
+		return errors.New("gateway cache unavailable")
+	}
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return nil
+	}
+	return c.rdb.ZRem(ctx, grokVideoRecoveryIndexKey, key).Err()
 }
 
 func (c *gatewayCache) ClaimGrokVideoBilled(ctx context.Context, key string, ttl time.Duration) (bool, error) {

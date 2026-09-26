@@ -424,6 +424,11 @@ func (s *OpenAIGatewayService) SelectMediaVideoRequestAccount(
 // first observes a completed video URL. Status may omit model/duration; we fall
 // back to this snapshot, then defaults.
 type GrokVideoPendingBilling struct {
+	RequestID            string `json:"request_id,omitempty"`
+	UserID               int64  `json:"user_id,omitempty"`
+	APIKeyID             int64  `json:"api_key_id,omitempty"`
+	AccountID            int64  `json:"account_id,omitempty"`
+	GroupID              int64  `json:"group_id,omitempty"`
 	Model                string `json:"model"`
 	BillingModel         string `json:"billing_model,omitempty"`
 	UpstreamModel        string `json:"upstream_model,omitempty"`
@@ -488,6 +493,18 @@ func grokVideoBilledClaimTTL(cfg *config.Config) time.Duration {
 	return 48 * time.Hour
 }
 
+const (
+	grokVideoRecoveryInitialDelay = 15 * time.Second
+	grokVideoRecoveryRetryDelay   = 30 * time.Second
+	grokVideoRecoveryBatchLimit   = 50
+)
+
+type GrokVideoRecoveryCache interface {
+	ScheduleGrokVideoRecovery(ctx context.Context, key string, dueAt time.Time, ttl time.Duration) error
+	ListDueGrokVideoRecovery(ctx context.Context, now time.Time, limit int) ([]string, error)
+	RemoveGrokVideoRecovery(ctx context.Context, key string) error
+}
+
 // StoreGrokVideoPendingBilling persists create-time billing params for deferred status billing.
 func (s *OpenAIGatewayService) StoreGrokVideoPendingBilling(
 	ctx context.Context,
@@ -502,6 +519,9 @@ func (s *OpenAIGatewayService) StoreGrokVideoPendingBilling(
 	if key == "" {
 		return fmt.Errorf("grok video pending billing key is invalid")
 	}
+	pending.RequestID = strings.TrimSpace(requestID)
+	pending.UserID = userID
+	pending.APIKeyID = apiKeyID
 	pending.Model = strings.TrimSpace(pending.Model)
 	pending.BillingModel = strings.TrimSpace(pending.BillingModel)
 	pending.UpstreamModel = strings.TrimSpace(pending.UpstreamModel)
@@ -522,7 +542,16 @@ func (s *OpenAIGatewayService) StoreGrokVideoPendingBilling(
 	if err != nil {
 		return err
 	}
-	return s.cache.SetGrokVideoPendingBilling(ctx, key, payload, grokVideoPendingBillingTTL(s.cfg))
+	ttl := grokVideoPendingBillingTTL(s.cfg)
+	if err := s.cache.SetGrokVideoPendingBilling(ctx, key, payload, ttl); err != nil {
+		return err
+	}
+	if recovery, ok := s.cache.(GrokVideoRecoveryCache); ok {
+		if err := recovery.ScheduleGrokVideoRecovery(ctx, key, time.Now().Add(grokVideoRecoveryInitialDelay), ttl); err != nil {
+			return fmt.Errorf("schedule video billing recovery: %w", err)
+		}
+	}
+	return nil
 }
 
 // LoadGrokVideoPendingBilling returns the create-time snapshot (may be nil on miss).
