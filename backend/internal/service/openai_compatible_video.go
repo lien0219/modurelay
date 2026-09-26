@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -131,6 +132,12 @@ func (s *OpenAIGatewayService) ForwardCompatibleVideo(
 		releaseUpstreamCtx()
 		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 		if err != nil {
+			if isGrokVideoCreateEndpoint(endpoint) {
+				// Once an async CREATE has been written to the upstream, a transport
+				// error is ambiguous: the provider may already have accepted and
+				// charged the task. Never replay it on another account/provider.
+				return nil, fmt.Errorf("compatible video create transport failed: %w", err)
+			}
 			return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
 		}
 
@@ -156,7 +163,15 @@ func (s *OpenAIGatewayService) ForwardCompatibleVideo(
 		resp.Header.Get("x-trace-id"),
 	)
 	if resp.StatusCode >= http.StatusBadRequest {
-		return s.handleCompatErrorResponse(resp, c, account, writeGrokMediaErrorResponse, upstreamModel)
+		result, handleErr := s.handleCompatErrorResponse(resp, c, account, writeGrokMediaErrorResponse, upstreamModel)
+		if isGrokVideoCreateEndpoint(endpoint) && handleErr != nil {
+			var failoverErr *UpstreamFailoverError
+			if errors.As(handleErr, &failoverErr) {
+				// Async CREATE is intentionally at-most-once across accounts.
+				return result, fmt.Errorf("compatible video create upstream rejected request: status=%d", failoverErr.StatusCode)
+			}
+		}
+		return result, handleErr
 	}
 
 	if endpoint == GrokMediaEndpointVideoContent {
