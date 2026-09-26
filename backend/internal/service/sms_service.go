@@ -4733,9 +4733,10 @@ func (s *SMSService) ProcessWebhook(ctx context.Context, providerCode string, pa
 	return s.convergeSMSProviderStatus(ctx, id, newStatus)
 }
 
-func (s *SMSService) ResendOrder(ctx context.Context, userID int64, publicID string) error {
+func (s *SMSService) ResendOrder(ctx context.Context, userID int64, publicID string, idempotencyKeys ...string) error {
+	var id int64
 	var providerOrder, providerCode, base, credential, status, productType string
-	if err := s.db.QueryRowContext(ctx, `SELECT o.provider_order_id,p.code,p.base_url,p.credential_ref,o.status,o.product_type FROM sms_orders o JOIN sms_providers p ON p.id=o.provider_id WHERE o.user_id=$1 AND o.public_id=$2::uuid`, userID, strings.TrimSpace(publicID)).Scan(&providerOrder, &providerCode, &base, &credential, &status, &productType); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT o.id,o.provider_order_id,p.code,p.base_url,p.credential_ref,o.status,o.product_type FROM sms_orders o JOIN sms_providers p ON p.id=o.provider_id WHERE o.user_id=$1 AND o.public_id=$2::uuid`, userID, strings.TrimSpace(publicID)).Scan(&id, &providerOrder, &providerCode, &base, &credential, &status, &productType); err != nil {
 		return err
 	}
 	if status != "active" || productType != "temporary" || providerOrder == "" {
@@ -4746,14 +4747,70 @@ func (s *SMSService) ResendOrder(ctx context.Context, userID int64, publicID str
 	if !ok || !p.Capabilities(ctx).Resend {
 		return errors.New("provider does not support another SMS")
 	}
-	if err := resender.ResendTemporary(ctx, providerOrder); err != nil {
+	key := ""
+	if len(idempotencyKeys) > 0 {
+		key = strings.TrimSpace(idempotencyKeys[0])
+	}
+	if key == "" {
+		key = fmt.Sprintf("legacy-resend:%d:%d", id, time.Now().Unix()/30)
+	}
+	if len(key) > 128 {
+		return errors.New("Idempotency-Key is too long")
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var lockedStatus string
+	if err = tx.QueryRowContext(ctx, `SELECT status FROM sms_orders WHERE id=$1 AND user_id=$2 FOR UPDATE`, id, userID).Scan(&lockedStatus); err != nil {
+		return err
+	}
+	if lockedStatus != "active" {
+		return errors.New("order cannot request another SMS")
+	}
+	var recent bool
+	if err = tx.QueryRowContext(ctx, `SELECT EXISTS (
+		SELECT 1 FROM sms_order_events
+		WHERE order_id=$1 AND event_type='resend_requested'
+		  AND created_at > NOW()-INTERVAL '30 seconds'
+		  AND COALESCE(payload->>'status','pending') IN ('pending','accepted','unknown')
+	)`, id).Scan(&recent); err != nil {
+		return err
+	}
+	if recent {
+		return tx.Commit()
+	}
+	res, err := tx.ExecContext(ctx, `INSERT INTO sms_order_events(order_id,event_type,actor,idempotency_key,payload)
+		VALUES($1,'resend_requested','user',$2,'{"status":"pending"}'::jsonb)
+		ON CONFLICT (order_id,event_type,idempotency_key) DO NOTHING`, id, key)
+	if err != nil {
+		return err
+	}
+	if affected, _ := res.RowsAffected(); affected == 0 {
+		return tx.Commit()
+	}
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+	resendCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	err = resender.ResendTemporary(resendCtx, providerOrder)
+	cancel()
+	if err != nil {
+		state := "rejected"
+		if isSMSProviderTimeout(err) {
+			state = "unknown"
+		}
+		_, _ = s.db.ExecContext(context.Background(), `UPDATE sms_order_events SET payload=jsonb_build_object('status',$1) WHERE order_id=$2 AND event_type='resend_requested' AND idempotency_key=$3`, state, id, key)
+		if state == "unknown" {
+			return ErrSMSProviderUnknown
+		}
 		return sanitizeProviderError(err)
 	}
-	// Keep earlier delivery evidence. The UI always displays the newest code.
-	_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET updated_at=NOW() WHERE user_id=$1 AND public_id=$2::uuid`, userID, strings.TrimSpace(publicID))
+	_, _ = s.db.ExecContext(context.Background(), `UPDATE sms_order_events SET payload=jsonb_build_object('status','accepted') WHERE order_id=$1 AND event_type='resend_requested' AND idempotency_key=$2`, id, key)
+	_, _ = s.db.ExecContext(context.Background(), `UPDATE sms_orders SET updated_at=NOW() WHERE id=$1`, id)
 	return nil
 }
-
 func (s *SMSService) FinishOrder(ctx context.Context, userID int64, publicID string) error {
 	var id int64
 	var providerOrder, providerCode, base, credential, status, productType string
@@ -5240,13 +5297,6 @@ func (s *SMSService) ExtendRental(ctx context.Context, userID int64, publicID st
 	if productType != "rental" || status != "active" {
 		return nil, errors.New("rental cannot be extended")
 	}
-	var already bool
-	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM sms_order_events WHERE order_id=$1 AND event_type='rental_extend' AND idempotency_key=$2)`, id, idempotencyKey).Scan(&already); err != nil {
-		return nil, err
-	}
-	if already {
-		return s.GetOrderByPublicID(ctx, userID, publicID)
-	}
 	p := providerFor(providerCode, base, providerAPIKey(providerCode, credential, s.encryptor))
 	if p == nil || !p.Capabilities(ctx).RentalConstraints || !p.Capabilities(ctx).Extend {
 		return nil, errors.New("rental extension is unavailable for this channel")
@@ -5274,11 +5324,34 @@ func (s *SMSService) ExtendRental(ctx context.Context, userID int64, publicID st
 			}
 		}
 	}
+	result, err := s.db.ExecContext(ctx, `INSERT INTO sms_order_events(order_id,event_type,actor,idempotency_key,payload)
+		VALUES ($1,'rental_extend','user',$2,jsonb_build_object('status','pending','duration_value',$3,'duration_unit',$4))
+		ON CONFLICT (order_id,event_type,idempotency_key) DO NOTHING`, id, idempotencyKey, value, strings.ToLower(unit))
+	if err != nil {
+		return nil, err
+	}
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		if inspector, supported := p.(SMSRentalOrderInspector); supported {
+			verifyCtx, verifyCancel := context.WithTimeout(context.Background(), 6*time.Second)
+			if providerState, inspectErr := inspector.RentalOrder(verifyCtx, providerOrder); inspectErr == nil && providerState != nil && providerState.Until > 0 {
+				actual := time.Unix(providerState.Until, 0)
+				_, _ = s.db.ExecContext(context.Background(), `UPDATE sms_orders SET expires_at=$1,updated_at=NOW() WHERE id=$2`, actual, id)
+			}
+			verifyCancel()
+		}
+		return s.GetOrderByPublicID(ctx, userID, publicID)
+	}
+
 	extendCtx, extendCancel := context.WithTimeout(context.Background(), 20*time.Second)
 	extendErr := p.ExtendRental(extendCtx, providerOrder, value, unit)
 	extendCancel()
 	if extendErr != nil {
+		state := "rejected"
 		if isSMSProviderTimeout(extendErr) {
+			state = "unknown"
+		}
+		_, _ = s.db.ExecContext(context.Background(), `UPDATE sms_order_events SET payload=payload || jsonb_build_object('status',$1) WHERE order_id=$2 AND event_type='rental_extend' AND idempotency_key=$3`, state, id, idempotencyKey)
+		if state == "unknown" {
 			return nil, ErrSMSProviderUnknown
 		}
 		return nil, errors.New("channel refused rental extension")
@@ -5294,13 +5367,6 @@ func (s *SMSService) ExtendRental(ctx context.Context, userID int64, publicID st
 		verifyCancel()
 	}
 
-	result, err := s.db.ExecContext(ctx, `INSERT INTO sms_order_events(order_id,event_type,idempotency_key,payload) VALUES ($1,'rental_extend',$2,$3) ON CONFLICT (order_id,event_type,idempotency_key) DO NOTHING`, id, idempotencyKey, fmt.Sprintf(`{"duration_value":%d,"duration_unit":%q}`, value, strings.ToLower(unit)))
-	if err != nil {
-		return nil, err
-	}
-	if affected, _ := result.RowsAffected(); affected == 0 {
-		return s.GetOrderByPublicID(ctx, userID, publicID)
-	}
 	if actualExpiresAt != nil {
 		_, err = s.db.ExecContext(ctx, `UPDATE sms_orders SET expires_at=$1,updated_at=NOW() WHERE id=$2`, actualExpiresAt, id)
 	} else {
@@ -5309,6 +5375,7 @@ func (s *SMSService) ExtendRental(ctx context.Context, userID int64, publicID st
 	if err != nil {
 		return nil, err
 	}
+	_, _ = s.db.ExecContext(context.Background(), `UPDATE sms_order_events SET payload=payload || jsonb_build_object('status','confirmed') WHERE order_id=$1 AND event_type='rental_extend' AND idempotency_key=$2`, id, idempotencyKey)
 	return s.GetOrderByPublicID(ctx, userID, publicID)
 }
 
