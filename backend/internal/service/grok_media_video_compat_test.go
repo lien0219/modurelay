@@ -135,7 +135,6 @@ func writeGrokVideoImagePart(t *testing.T, writer *multipart.Writer, field, file
 	require.NoError(t, err)
 }
 
-
 func TestParseGrokMediaRequestTracksExplicitVideoBillingInputs(t *testing.T) {
 	explicit := ParseGrokMediaRequest("application/json", []byte(`{"model":"wan-3.0","duration":5,"quality":"hd"}`))
 	if !explicit.VideoDurationExplicit || !explicit.VideoResolutionExplicit {

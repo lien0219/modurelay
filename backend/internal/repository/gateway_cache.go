@@ -230,11 +230,13 @@ func (c *gatewayCache) ListDueGrokVideoRecovery(ctx context.Context, now time.Ti
 	if limit <= 0 {
 		limit = 50
 	}
-	return c.rdb.ZRangeByScore(ctx, grokVideoRecoveryIndexKey, &redis.ZRangeBy{
-		Min:   "-inf",
-		Max:   strconv.FormatInt(now.UnixMilli(), 10),
-		Offset: 0,
-		Count: int64(limit),
+	return c.rdb.ZRangeArgs(ctx, redis.ZRangeArgs{
+		Key:     grokVideoRecoveryIndexKey,
+		Start:   "-inf",
+		Stop:    strconv.FormatInt(now.UnixMilli(), 10),
+		ByScore: true,
+		Offset:  0,
+		Count:   int64(limit),
 	}).Result()
 }
 

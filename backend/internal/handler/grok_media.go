@@ -491,7 +491,7 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 				continue
 			}
 		}
-		if isGrokVideoCreateEndpoint(endpoint) && selectedCompatibleVideo && !selectedOfficialVideoTier {
+		if isGrokVideoCreateEndpoint(endpoint) && !endpoint.IsSeedance() && selectedCompatibleVideo && !selectedOfficialVideoTier {
 			if !requestInfo.VideoResolutionExplicit {
 				h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Video resolution is required for compatible provider billing")
 				return

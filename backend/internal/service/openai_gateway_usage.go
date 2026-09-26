@@ -408,12 +408,22 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	isVideoUsage := isGrokVideoUsageResult(result, billingModels)
 	if result.VideoCount > 0 {
 		usageLog.VideoCount = result.VideoCount
-		if strings.TrimSpace(result.VideoResolution) != "" {
-			usageLog.VideoResolution = optionalTrimmedStringPtr(NormalizeVideoBillingResolutionOrDefault(result.VideoResolution))
-		}
-		if result.VideoDurationSeconds > 0 {
+		if isVideoUsage {
+			videoResolution := NormalizeVideoBillingResolutionOrDefault(result.VideoResolution)
+			usageLog.VideoResolution = &videoResolution
 			videoDurationSeconds := NormalizeVideoBillingDurationSecondsOrDefault(result.VideoDurationSeconds)
 			usageLog.VideoDurationSeconds = &videoDurationSeconds
+		} else {
+			// Token-billed video protocols (for example native Seedance) must not
+			// invent per-second billing metadata. Preserve only values actually
+			// reported by the protocol/request.
+			if strings.TrimSpace(result.VideoResolution) != "" {
+				usageLog.VideoResolution = optionalTrimmedStringPtr(NormalizeVideoBillingResolutionOrDefault(result.VideoResolution))
+			}
+			if result.VideoDurationSeconds > 0 {
+				videoDurationSeconds := NormalizeVideoBillingDurationSecondsOrDefault(result.VideoDurationSeconds)
+				usageLog.VideoDurationSeconds = &videoDurationSeconds
+			}
 		}
 	}
 	if cost != nil {
