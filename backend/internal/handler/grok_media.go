@@ -674,7 +674,13 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 			if selectedOfficialVideoTier && service.IsSeedanceVideoModel(canonicalVideoModel) {
 				pendingBillingModel = canonicalVideoModel
 			}
+			pendingGroupID := int64(0)
+			if apiKey.GroupID != nil {
+				pendingGroupID = *apiKey.GroupID
+			}
 			pending := service.GrokVideoPendingBilling{
+				AccountID:            account.ID,
+				GroupID:              pendingGroupID,
 				Model:                pendingModel,
 				BillingModel:         pendingBillingModel,
 				UpstreamModel:        result.UpstreamModel,
