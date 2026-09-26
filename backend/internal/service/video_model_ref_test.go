@@ -64,3 +64,27 @@ func TestAIStarsLabAccountKinds(t *testing.T) {
 		t.Fatal("OpenAPI AIStarsLab account classification failed")
 	}
 }
+
+
+func TestSupportsQualifiedVideoSupplierModelRequiresExplicitConfiguration(t *testing.T) {
+	plain := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "x"}}
+	if SupportsQualifiedVideoSupplierModel(plain, "48:seedance-2.0") {
+		t.Fatal("plain OpenAI account must not receive a provider-qualified model")
+	}
+
+	mapped := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{
+		"api_key": "x", "base_url": "https://supplier.example/v1",
+		"model_mapping": map[string]any{"48:seedance-2.0": "48:seedance-2.0"},
+	}}
+	if !SupportsQualifiedVideoSupplierModel(mapped, "48:seedance-2.0") {
+		t.Fatal("exact qualified model mapping should opt the account in")
+	}
+
+	canonicalOnly := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{
+		"api_key": "x", "base_url": "https://ark.cn-beijing.volces.com/api/v3",
+		"model_mapping": map[string]any{"seedance-2.0": "doubao-seedance-2-0"},
+	}}
+	if SupportsQualifiedVideoSupplierModel(canonicalOnly, "48:seedance-2.0") {
+		t.Fatal("canonical official mapping must not opt an account into supplier routing")
+	}
+}

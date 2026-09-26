@@ -1015,6 +1015,16 @@ func TestCalculateVideoCostBillsPerSecond(t *testing.T) {
 	require.InDelta(t, 0.07*15, clampedDuration.TotalCost, 1e-10)
 }
 
+func TestCalculateVideoCostUnknownModelFailsClosedWithoutConfiguredPrice(t *testing.T) {
+	svc := newTestBillingService()
+
+	cost := svc.CalculateVideoCost("48:seedance-2.0", "720p", 1, 10, nil, 1.0)
+
+	require.Zero(t, cost.TotalCost)
+	require.Zero(t, cost.ActualCost)
+	require.Equal(t, string(BillingModeVideo), cost.BillingMode)
+}
+
 func TestCalculateGrokImagineImageCostUsesDefaultRateCard(t *testing.T) {
 	svc := newTestBillingService()
 
