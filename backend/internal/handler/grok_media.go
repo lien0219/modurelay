@@ -149,15 +149,13 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 			officialVideoTierActive = true
 			officialVideoPlatform = service.PlatformOpenAI
 			officialVideoCapability = service.OpenAIEndpointCapabilitySeedance
-		} else if detectedPlatform, detected := service.DetectModelPlatform(canonicalVideoModel); detected {
+		} else if detectedPlatform, detected := service.DetectModelPlatform(canonicalVideoModel); detected && detectedPlatform == service.PlatformGrok {
 			officialVideoTierActive = true
-			officialVideoPlatform = detectedPlatform
-			if detectedPlatform == service.PlatformGrok {
-				officialVideoCapability = service.OpenAIEndpointCapabilityGrokMediaGeneration
-			} else {
-				officialVideoCapability = service.OpenAIEndpointCapabilityVideos
-			}
+			officialVideoPlatform = service.PlatformGrok
+			officialVideoCapability = service.OpenAIEndpointCapabilityGrokMediaGeneration
 		}
+		noAccountCode = "video_no_eligible_account"
+		noAccountMessage = "No eligible video provider accounts"
 	}
 	if endpoint.IsGenerationRequest() && strings.TrimSpace(requestModel) == "" {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "model is required")
@@ -446,6 +444,35 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 		)
 
 		account := selection.Account
+		if endpoint.IsGenerationRequest() && videoModelRef.ChannelCode != "" {
+			rejectReason := ""
+			switch {
+			case selectedOfficialVideoTier && service.IsSeedanceVideoModel(canonicalVideoModel) &&
+				!service.SeedanceCompatibleReferencesSupported(body):
+				rejectReason = "official_seedance_reference_media_unsupported"
+			case !selectedOfficialVideoTier && !service.SupportsQualifiedVideoSupplierModel(account, requestModel):
+				rejectReason = "account_not_explicitly_configured_for_qualified_supplier_model"
+			case service.IsAIStarsLabOpenAPIAccount(account) && !service.AIStarsLabOpenAPIReferencesSupported(body):
+				rejectReason = "aistarslab_openapi_requires_public_reference_urls"
+			}
+			if rejectReason != "" {
+				releaseAccount()
+				mediaEligibilityRejected = true
+				failedAccountIDs[account.ID] = struct{}{}
+				reqLog.Warn("grok_media.video_provider_rejected",
+					zap.Int64("account_id", account.ID),
+					zap.String("model", requestModel),
+					zap.String("reason", rejectReason),
+				)
+				if switchCount >= maxAccountSwitches {
+					markOpsRoutingCapacityLimited(c)
+					h.errorResponse(c, http.StatusServiceUnavailable, noAccountCode, noAccountMessage)
+					return
+				}
+				switchCount++
+				continue
+			}
+		}
 		if endpoint.IsGenerationRequest() && !endpoint.IsSeedance() && !selectedCompatibleVideo {
 			eligible, eligibilityReason, eligibilityErr := h.ensureGrokMediaAccountEligibility(requestCtx, account)
 			if !eligible {

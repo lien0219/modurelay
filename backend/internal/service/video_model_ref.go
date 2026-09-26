@@ -94,3 +94,35 @@ func IsAIStarsLabOpenAPIAccount(account *Account) bool {
 	return account != nil && account.Type == AccountTypeAPIKey &&
 		aiStarsLabBaseURLKind(account.GetCredential("base_url")) == "openapi"
 }
+
+
+func SupportsQualifiedVideoSupplierModel(account *Account, requestedModel string) bool {
+	if account == nil {
+		return false
+	}
+	ref := ParseVideoModelRef(requestedModel)
+	if ref.ChannelCode == "" {
+		return true
+	}
+	if IsAIStarsLabOpenAPIAccount(account) || IsAIStarsLabOpenAICompatibleAccount(account) {
+		return true
+	}
+	if mappingSupportsRequestedModel(account.GetModelMapping(), ref.RawModel) {
+		return true
+	}
+	if account.Type != AccountTypeAPIKey || strings.TrimSpace(account.GetCredential("base_url")) == "" || account.Credentials == nil {
+		return false
+	}
+	raw, exists := account.Credentials["openai_video_enabled"]
+	if !exists {
+		return false
+	}
+	switch enabled := raw.(type) {
+	case bool:
+		return enabled
+	case string:
+		return strings.EqualFold(strings.TrimSpace(enabled), "true")
+	default:
+		return false
+	}
+}
