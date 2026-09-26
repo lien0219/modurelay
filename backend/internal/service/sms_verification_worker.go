@@ -121,12 +121,8 @@ func (s *SMSService) Reconcile(ctx context.Context) error {
 			continue
 		}
 		if status == "completed" && productType == "temporary" && providerOrder != "" {
-			recovered, recoverErr := s.recoverCompletedSMSCode(ctx, id, userID, providerOrder, providerCode, baseURL, credential, productType, settlementStatus)
-			if recoverErr != nil && firstErr == nil {
+			if _, recoverErr := s.recoverCompletedSMSCode(ctx, id, userID, providerOrder, providerCode, baseURL, credential, productType, settlementStatus); recoverErr != nil && firstErr == nil {
 				firstErr = recoverErr
-			}
-			if recovered {
-				continue
 			}
 			continue
 		}
