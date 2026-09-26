@@ -491,7 +491,7 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 				continue
 			}
 		}
-		if endpoint.IsGenerationRequest() && selectedCompatibleVideo && !selectedOfficialVideoTier &&
+		if endpoint.IsGenerationRequest() && !endpoint.IsSeedance() && selectedCompatibleVideo && !selectedOfficialVideoTier &&
 			!h.gatewayService.HasVideoPricingForRequest(requestCtx, apiKey, requestModel, requestInfo.Resolution) {
 			reqLog.Error("grok_media.video_pricing_missing",
 				zap.String("model", requestModel),

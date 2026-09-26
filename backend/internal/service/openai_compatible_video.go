@@ -164,7 +164,7 @@ func (s *OpenAIGatewayService) ForwardCompatibleVideo(
 	)
 	if resp.StatusCode >= http.StatusBadRequest {
 		result, handleErr := s.handleCompatErrorResponse(resp, c, account, writeGrokMediaErrorResponse, upstreamModel)
-		if endpoint.IsGenerationRequest() && handleErr != nil {
+		if endpoint.IsGenerationRequest() {
 			var failoverErr *UpstreamFailoverError
 			if errors.As(handleErr, &failoverErr) {
 				// Async CREATE is intentionally at-most-once across accounts.
