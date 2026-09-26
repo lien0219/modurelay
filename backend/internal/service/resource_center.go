@@ -885,7 +885,7 @@ func resourceSensitivePublicIdentity(value string) bool {
 	if value == "" {
 		return true
 	}
-	if resourceEmailIdentityPattern.MatchString(value) || resourceNumericIdentityPattern.MatchString(value) {
+	if strings.Contains(value, "@") || resourceEmailIdentityPattern.MatchString(value) || resourceNumericIdentityPattern.MatchString(value) {
 		return true
 	}
 	if resourcePhoneIdentityPattern.MatchString(value) {
