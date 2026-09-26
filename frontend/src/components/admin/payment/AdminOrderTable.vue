@@ -44,7 +44,7 @@
 
     <DataTable :columns="columns" :data="orders" :loading="loading">
       <template #cell-id="{ value }">
-        <span class="font-mono text-sm">#{{ value }}</span>
+        <CopyableIdentifier :value="value" prefix="#" max-width="10rem" />
       </template>
 
       <template #cell-user_id="{ value }">
@@ -142,6 +142,7 @@ import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
+import CopyableIdentifier from '@/components/common/CopyableIdentifier.vue'
 import { statusBadgeClass, canRefund, formatOrderDateTime } from '@/components/payment/orderUtils'
 import { currencySymbol } from '@/components/payment/currency'
 
