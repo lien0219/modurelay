@@ -66,8 +66,6 @@ func prepareAIStarsLabOpenAPIVideoCreate(account *Account, body []byte, contentT
 	}
 	ref := ParseVideoModelRef(mapped)
 	if ref.ChannelCode == "" {
-		// Exact supplier IDs are preferred. Canonical mappings may intentionally
-		// map a public model to a provider-qualified ID.
 		ref = ParseVideoModelRef(rawModel)
 	}
 	if ref.ChannelCode == "" || strings.TrimSpace(ref.CanonicalModel) == "" {
@@ -79,68 +77,58 @@ func prepareAIStarsLabOpenAPIVideoCreate(account *Account, body []byte, contentT
 		gjson.GetBytes(body, "aspect_ratio").String(),
 		gjson.GetBytes(body, "size").String(),
 		gjson.GetBytes(body, "metadata.size").String(),
+		info.AspectRatio,
+		info.Size,
 	)
 	quality := compatibleVideoFirstNonEmpty(
 		gjson.GetBytes(body, "quality").String(),
 		gjson.GetBytes(body, "metadata.resolution").String(),
 		gjson.GetBytes(body, "resolution").String(),
 		gjson.GetBytes(body, "resolution_name").String(),
+		info.Resolution,
 	)
-	duration := 0
+	duration := info.DurationSeconds
 	for _, path := range []string{"duration", "seconds"} {
-		v := gjson.GetBytes(body, path)
-		if !v.Exists() {
+		value := gjson.GetBytes(body, path)
+		if !value.Exists() {
 			continue
 		}
-		if v.Type == gjson.Number {
-			duration = int(v.Int())
-		} else if parsed, err := strconv.Atoi(strings.TrimSpace(v.String())); err == nil {
+		if value.Type == gjson.Number {
+			duration = int(value.Int())
+		} else if parsed, err := strconv.Atoi(strings.TrimSpace(value.String())); err == nil {
 			duration = parsed
 		}
-		if duration > 0 {
-			break
-		}
+		break
 	}
-	mode := compatibleVideoFirstNonEmpty(
-		gjson.GetBytes(body, "mode").String(),
-		gjson.GetBytes(body, "mode_type").String(),
+
+	refs := parseUnifiedVideoReferences(body)
+	mode := normalizeUnifiedVideoMode(compatibleVideoFirstNonEmpty(
 		gjson.GetBytes(body, "metadata.mode_type").String(),
-	)
-	images := aiStarsLabJSONStrings(body, "metadata.images")
-	if len(images) == 0 {
-		images = aiStarsLabJSONStrings(body, "images")
+		gjson.GetBytes(body, "mode_type").String(),
+		gjson.GetBytes(body, "mode").String(),
+	), refs)
+	if err := validateAIStarsLabOpenAPIReferences(mode, refs); err != nil {
+		return nil, "", info, err
 	}
-	if top := strings.TrimSpace(gjson.GetBytes(body, "image").String()); top != "" {
-		images = append([]string{top}, images...)
+	images, videos, audios := splitVideoReferences(refs)
+	prompt := strings.TrimSpace(info.Prompt)
+	if prompt == "" {
+		prompt = strings.TrimSpace(gjson.GetBytes(body, "prompt").String())
 	}
-	videos := aiStarsLabJSONStrings(body, "metadata.videos")
-	audios := aiStarsLabJSONStrings(body, "metadata.audios")
-	if mode == "" {
-		if len(images)+len(videos)+len(audios) > 0 {
-			mode = "image2video"
-		} else {
-			mode = "text2video"
-		}
+	if prompt == "" {
+		return nil, "", info, fmt.Errorf("AIStarsLab OpenAPI prompt is required")
+	}
+	if aspectRatio == "" || quality == "" || duration <= 0 {
+		return nil, "", info, fmt.Errorf("AIStarsLab OpenAPI requires aspect ratio, quality, and duration")
 	}
 
 	payload := map[string]any{
-		"channel":     ref.ChannelCode,
-		"model":       ref.CanonicalModel,
-		"prompt":      strings.TrimSpace(gjson.GetBytes(body, "prompt").String()),
-		"aspectRatio": aspectRatio,
-		"quality":     quality,
-		"duration":    duration,
-		"mode":        mode,
+		"channel": ref.ChannelCode, "model": ref.CanonicalModel, "prompt": prompt,
+		"aspectRatio": aspectRatio, "quality": quality, "duration": duration, "mode": mode,
 	}
-	if len(images) > 0 {
-		payload["inputImages"] = images
-	}
-	if len(videos) > 0 {
-		payload["inputVideos"] = videos
-	}
-	if len(audios) > 0 {
-		payload["inputAudios"] = audios
-	}
+	if len(images) > 0 { payload["inputImages"] = images }
+	if len(videos) > 0 { payload["inputVideos"] = videos }
+	if len(audios) > 0 { payload["inputAudios"] = audios }
 	encoded, err := json.Marshal(payload)
 	if err != nil {
 		return nil, "", info, fmt.Errorf("encode AIStarsLab OpenAPI video request: %w", err)
@@ -148,7 +136,7 @@ func prepareAIStarsLabOpenAPIVideoCreate(account *Account, body []byte, contentT
 	return encoded, mapped, info, nil
 }
 
-type aiStarsLabEnvelope struct {
+type aiStarsLabEnvelopetype aiStarsLabEnvelope struct {
 	Code int             `json:"code"`
 	Msg  string          `json:"msg"`
 	Data json.RawMessage `json:"data"`
