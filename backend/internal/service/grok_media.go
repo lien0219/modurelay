@@ -193,6 +193,12 @@ func parseGrokMediaJSONRequest(body []byte, info *GrokMediaRequestInfo) {
 	appendJSONImageURLs(gjson.GetBytes(body, "reference_images"))
 	appendJSONImageURLs(gjson.GetBytes(body, "last_frame"))
 	appendJSONImageURLs(gjson.GetBytes(body, "metadata.images"))
+	for _, ref := range parseVideoMediaReferences(body) {
+		switch ref.Kind {
+		case videoReferenceFirstFrame, videoReferenceLastFrame, videoReferenceImage:
+			info.InputImageURLs = append(info.InputImageURLs, ref.URL)
+		}
+	}
 	info.MaskImageURL = extractGrokMediaImageURL(gjson.GetBytes(body, "mask"))
 }
 

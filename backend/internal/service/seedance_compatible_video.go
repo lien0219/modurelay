@@ -30,42 +30,57 @@ func prepareSeedanceCompatibleCreateBody(account *Account, body []byte, contentT
 	if upstreamModel == "" {
 		upstreamModel = canonical
 	}
-	content := make([]map[string]any, 0, len(info.InputImageURLs)+1)
+
+	refs := parseUnifiedVideoReferences(body)
+	content := make([]map[string]any, 0, len(refs)+1)
 	if info.Prompt != "" {
 		content = append(content, map[string]any{"type": "text", "text": info.Prompt})
 	}
-	for _, imageURL := range info.InputImageURLs {
-		if imageURL = strings.TrimSpace(imageURL); imageURL != "" {
-			item := map[string]any{}
-			item["type"] = "image_url"
-			item["image_url"] = map[string]any{"url": imageURL}
-			item["role"] = "reference_image"
+	hasFrameRole := false
+	for _, ref := range refs {
+		switch ref.Kind {
+		case videoReferenceFirstFrame, videoReferenceLastFrame, videoReferenceImage:
+			item := map[string]any{
+				"type":      "image_url",
+				"image_url": map[string]any{"url": ref.URL},
+				"role":      ref.Kind,
+			}
 			content = append(content, item)
+			if ref.Kind == videoReferenceFirstFrame || ref.Kind == videoReferenceLastFrame {
+				hasFrameRole = true
+			}
+		case videoReferenceVideo, videoReferenceAudio:
+			return nil, info, upstreamModel, fmt.Errorf("official Seedance adapter does not support reference video or audio on this endpoint")
 		}
 	}
 	if len(content) == 0 {
 		return nil, info, upstreamModel, fmt.Errorf("official Seedance requires prompt or reference content")
 	}
+
 	payload := map[string]any{"model": upstreamModel, "content": content}
-	if v := strings.TrimSpace(compatibleVideoFirstNonEmpty(
+	if value := strings.TrimSpace(compatibleVideoFirstNonEmpty(
 		gjson.GetBytes(body, "resolution").String(),
 		gjson.GetBytes(body, "metadata.resolution").String(),
-	)); v != "" {
-		payload["resolution"] = v
+	)); value != "" {
+		payload["resolution"] = value
 	}
-	if v := strings.TrimSpace(compatibleVideoFirstNonEmpty(
+	ratio := strings.TrimSpace(compatibleVideoFirstNonEmpty(
 		gjson.GetBytes(body, "ratio").String(),
 		gjson.GetBytes(body, "aspect_ratio").String(),
 		gjson.GetBytes(body, "size").String(),
-	)); v != "" {
-		payload["ratio"] = v
+	))
+	if hasFrameRole {
+		ratio = "adaptive"
+	}
+	if ratio != "" {
+		payload["ratio"] = ratio
 	}
 	if info.DurationSeconds > 0 {
 		payload["duration"] = info.DurationSeconds
 	}
 	for _, field := range []string{"generate_audio", "watermark", "camera_fixed"} {
-		if v := gjson.GetBytes(body, field); v.Exists() {
-			payload[field] = v.Value()
+		if value := gjson.GetBytes(body, field); value.Exists() {
+			payload[field] = value.Value()
 		}
 	}
 	encoded, err := json.Marshal(payload)
@@ -75,7 +90,7 @@ func prepareSeedanceCompatibleCreateBody(account *Account, body []byte, contentT
 	return encoded, info, upstreamModel, nil
 }
 
-func (s *OpenAIGatewayService) doSeedanceCompatibleRequest(ctx context.Context, c *gin.Context, account *Account, method, target string, body []byte) ([]byte, http.Header, error) {
+func (s *OpenAIGatewayService) doSeedanceCompatibleRequestfunc (s *OpenAIGatewayService) doSeedanceCompatibleRequest(ctx context.Context, c *gin.Context, account *Account, method, target string, body []byte) ([]byte, http.Header, error) {
 	token := strings.TrimSpace(account.GetCredential("api_key"))
 	if token == "" {
 		return nil, nil, fmt.Errorf("seedance account missing api_key")
