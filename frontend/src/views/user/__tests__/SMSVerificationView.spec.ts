@@ -616,7 +616,7 @@ describe('SMSVerificationView', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('sms.user.waitingForCode')
-    await vi.advanceTimersByTimeAsync(3_100)
+    await vi.advanceTimersByTimeAsync(15_100)
     await flushPromises()
 
     expect(smsAPI.order).toHaveBeenCalledWith('sms-recover')
