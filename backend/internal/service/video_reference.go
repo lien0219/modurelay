@@ -190,7 +190,6 @@ func validateAIStarsLabOpenAPIReferences(mode string, refs []videoReference) err
 	return nil
 }
 
-
 func SeedanceCompatibleReferencesSupported(body []byte) bool {
 	for _, ref := range parseUnifiedVideoReferences(body) {
 		if ref.Kind == videoReferenceVideo || ref.Kind == videoReferenceAudio {

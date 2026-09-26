@@ -65,7 +65,6 @@ func TestAIStarsLabAccountKinds(t *testing.T) {
 	}
 }
 
-
 func TestSupportsQualifiedVideoSupplierModelRequiresExplicitConfiguration(t *testing.T) {
 	plain := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "x"}}
 	if SupportsQualifiedVideoSupplierModel(plain, "48:seedance-2.0") {
