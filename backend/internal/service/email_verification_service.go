@@ -1762,7 +1762,6 @@ func emailMessageStableDedupe(providerMessageID, fromAddress, toAddress, subject
 	}, "\x1f"))
 }
 
-
 func emailMessageSummaryDedupe(fromAddress, toAddress, subject string, receivedAt time.Time) string {
 	timePart := ""
 	if !receivedAt.IsZero() {
@@ -1776,6 +1775,7 @@ func emailMessageSummaryDedupe(fromAddress, toAddress, subject string, receivedA
 		timePart,
 	}, "\x1f"))
 }
+
 func (s *EmailVerificationService) convergePersistedEmailEvidence(ctx context.Context, orderID, userID int64, capturePolicy string) error {
 	var first sql.NullTime
 	var hasVerification bool
