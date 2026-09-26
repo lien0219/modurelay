@@ -9,10 +9,10 @@ import (
 )
 
 const (
-	smsVerificationPollInterval      = 5 * time.Second
-	smsVerificationUnknownTimeout    = 15 * time.Minute
-	smsVerificationManualReviewRetry       = 6 * time.Hour
-	smsVerificationCodeRecoveryMaxAttempts = 8
+	smsVerificationPollInterval             = 5 * time.Second
+	smsVerificationUnknownTimeout           = 15 * time.Minute
+	smsVerificationManualReviewRetry        = 6 * time.Hour
+	smsVerificationCodeRecoveryMaxAttempts  = 8
 )
 
 // smsProviderPollDelay is deliberately conservative.  SMSPVA does not
