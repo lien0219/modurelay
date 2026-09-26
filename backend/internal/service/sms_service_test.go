@@ -1153,8 +1153,8 @@ func TestSMSBatchPurchaseLimitAllowsCompleteIdempotentReplayAfterLimitReduction(
 func TestSMSOrderExpiryUsesPlatformPolicyOrSafeDefaults(t *testing.T) {
 	now := time.Date(2026, 9, 17, 0, 0, 0, 0, time.UTC)
 	providerExpiry := now.Add(7 * time.Minute)
-	if got := smsOrderExpiresAt(now, "temporary", 0, "", &providerExpiry); !got.Equal(now.Add(10 * time.Minute)) {
-		t.Fatalf("temporary platform expiry=%v, want %v", got, now.Add(10*time.Minute))
+	if got := smsOrderExpiresAt(now, "temporary", 0, "", &providerExpiry); !got.Equal(providerExpiry) {
+		t.Fatalf("temporary expiry=%v, want provider cap %v", got, providerExpiry)
 	}
 	longProviderExpiry := now.Add(15 * time.Minute)
 	if got := smsOrderExpiresAt(now, "temporary", 0, "", &longProviderExpiry, 3*time.Minute); !got.Equal(now.Add(3 * time.Minute)) {
@@ -1737,6 +1737,25 @@ func TestSMSPVAEmbeddedBusinessErrorsAreDefinitiveAndRedacted(t *testing.T) {
 				t.Fatalf("definitive=%v, want %v, err=%v", got, tc.definitive, err)
 			}
 		})
+	}
+}
+
+func TestSMSPVATemporaryStatusPreservesExplicitAlphanumericCode(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"statusCode":200,"data":{"orderId":"501","phoneNumber":"2025550100","countryCode":"+1","sms":{"code":"A7B9C2","fullText":"Your verification token is A7B9C2"}}}`))
+	}))
+	defer server.Close()
+
+	result, err := providerFor("smspva", server.URL, "secret").GetTemporaryStatus(context.Background(), "501")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Messages) != 1 {
+		t.Fatalf("messages=%#v, want one canonical message", result.Messages)
+	}
+	if got := smsVerificationCodeFromResult(result, 0); got != "A7B9C2" {
+		t.Fatalf("verification code=%q, want explicit provider code", got)
 	}
 }
 
