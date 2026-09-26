@@ -589,24 +589,79 @@ func (h *SMSHandler) Webhook(c *gin.Context) {
 	}
 	var payload struct {
 		OrderID  string   `json:"provider_order_id"`
+		ID       any      `json:"id"`
 		Status   string   `json:"status"`
 		Phone    string   `json:"phone_number"`
+		PhoneAlt string   `json:"phone"`
+		Code     string   `json:"code"`
 		Messages []string `json:"messages"`
 		Message  string   `json:"message"`
+		SMS      []struct {
+			Text   string `json:"text"`
+			Code   string `json:"code"`
+			Sender string `json:"sender"`
+		} `json:"sms"`
 	}
 	if err := json.NewDecoder(c.Request.Body).Decode(&payload); err != nil {
 		response.BadRequest(c, "invalid webhook payload")
 		return
 	}
-	if strings.TrimSpace(payload.OrderID) == "" {
+	orderID := strings.TrimSpace(payload.OrderID)
+	if orderID == "" {
+		switch value := payload.ID.(type) {
+		case string:
+			orderID = strings.TrimSpace(value)
+		case float64:
+			if value == float64(int64(value)) {
+				orderID = strconv.FormatInt(int64(value), 10)
+			}
+		}
+	}
+	if orderID == "" {
 		response.BadRequest(c, "provider_order_id is required")
 		return
 	}
 	messages := append([]string(nil), payload.Messages...)
+	metadataMessages := make([]map[string]any, 0, len(messages)+len(payload.SMS)+1)
+	for range messages {
+		metadataMessages = append(metadataMessages, map[string]any{})
+	}
 	if payload.Message != "" {
 		messages = append(messages, payload.Message)
+		metadataMessages = append(metadataMessages, map[string]any{})
 	}
-	if err := h.svc.ProcessWebhook(c.Request.Context(), provider, service.SMSStatusResult{Status: payload.Status, PhoneNumber: payload.Phone, Messages: messages}, payload.OrderID); err != nil {
+	for _, item := range payload.SMS {
+		text := strings.TrimSpace(item.Text)
+		code := strings.TrimSpace(item.Code)
+		if text == "" {
+			text = code
+		}
+		if text == "" {
+			continue
+		}
+		messages = append(messages, text)
+		metadataMessages = append(metadataMessages, map[string]any{
+			"verification_code": code,
+			"sender":            strings.TrimSpace(item.Sender),
+		})
+	}
+	if code := strings.TrimSpace(payload.Code); code != "" {
+		if len(messages) == 0 {
+			messages = append(messages, code)
+			metadataMessages = append(metadataMessages, map[string]any{"verification_code": code})
+		} else if len(metadataMessages) > 0 {
+			metadataMessages[0]["verification_code"] = code
+		}
+	}
+	phone := strings.TrimSpace(payload.Phone)
+	if phone == "" {
+		phone = strings.TrimSpace(payload.PhoneAlt)
+	}
+	metadata := map[string]any{}
+	if len(metadataMessages) > 0 {
+		metadata["messages"] = metadataMessages
+	}
+	if err := h.svc.ProcessWebhook(c.Request.Context(), provider, service.SMSStatusResult{Status: payload.Status, PhoneNumber: phone, Messages: messages, Metadata: metadata}, orderID); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
