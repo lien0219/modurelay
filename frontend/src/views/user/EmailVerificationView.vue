@@ -485,6 +485,9 @@ const confirmState = reactive({
   action: null as null | (() => Promise<void>),
 })
 const now = ref(Date.now())
+const ORDER_LIST_POLL_INTERVAL_MS = 15_000
+const ACTIVE_ORDER_POLL_INTERVAL_MS = 3_000
+
 let activeOrderTimer: number | undefined
 let ordersTimer: number | undefined
 let clockTimer: number | undefined
@@ -634,6 +637,29 @@ function isTerminal(order: EmailOrder) {
   return ['completed', 'expired', 'refunded', 'failed', 'cancelled'].includes(order.status)
 }
 
+function pageIsVisible() {
+  return typeof document === 'undefined' || document.visibilityState === 'visible'
+}
+
+function hasActiveOrders() {
+  return orders.value.some(order => !isTerminal(order))
+}
+
+function stopOrdersPolling() {
+  if (ordersTimer) window.clearTimeout(ordersTimer)
+  ordersTimer = undefined
+}
+
+function scheduleOrdersPolling() {
+  stopOrdersPolling()
+  if (activeTab.value !== 'orders' || !pageIsVisible() || !hasActiveOrders()) return
+
+  ordersTimer = window.setTimeout(() => {
+    ordersTimer = undefined
+    void loadOrders({ silent: true })
+  }, ORDER_LIST_POLL_INTERVAL_MS)
+}
+
 function stopActiveOrderPolling() {
   if (activeOrderTimer) window.clearTimeout(activeOrderTimer)
   activeOrderTimer = undefined
@@ -641,11 +667,18 @@ function stopActiveOrderPolling() {
 
 function startActiveOrderPolling() {
   stopActiveOrderPolling()
-  if (!currentOrder.value || isTerminal(currentOrder.value)) return
+  if (
+    !currentOrder.value
+    || isTerminal(currentOrder.value)
+    || activeTab.value === 'orders'
+    || !pageIsVisible()
+  ) return
+
   activeOrderTimer = window.setTimeout(async () => {
+    activeOrderTimer = undefined
     await refreshCurrentOrder(false)
     startActiveOrderPolling()
-  }, 3000)
+  }, ACTIVE_ORDER_POLL_INTERVAL_MS)
 }
 
 async function refreshCurrentOrder(showError = true) {
@@ -714,6 +747,7 @@ function cancelOrder(order: EmailOrder) {
 function openOrders() {
   activeTab.value = 'orders'
   stopActiveOrderPolling()
+  stopOrdersPolling()
   void loadOrders()
 }
 
@@ -760,6 +794,7 @@ async function loadOrders(options: { silent?: boolean } = {}) {
   } finally {
     if (silent) ordersRefreshing.value = false
     else ordersLoading.value = false
+    scheduleOrdersPolling()
   }
 }
 
@@ -768,25 +803,43 @@ function resetOrderFilters() { Object.assign(orderDraft, { keyword: '', status: 
 function changeOrderPage(page: number) { orderPagination.page = page; void loadOrders() }
 function changeOrderPageSize(pageSize: number) { orderPagination.pageSize = pageSize; orderPagination.page = 1; void loadOrders() }
 
+function handleVisibilityChange() {
+  if (!pageIsVisible()) {
+    stopOrdersPolling()
+    stopActiveOrderPolling()
+    return
+  }
+
+  now.value = Date.now()
+  if (activeTab.value === 'orders') {
+    stopOrdersPolling()
+    void loadOrders({ silent: orders.value.length > 0 })
+    return
+  }
+
+  if (currentOrder.value && !isTerminal(currentOrder.value)) {
+    void refreshCurrentOrder(false).finally(() => startActiveOrderPolling())
+  }
+}
+
 function errorMessage(error: unknown, fallback: string) {
   return (error as { message?: string })?.message || fallback
 }
 
 onMounted(() => {
+  document.addEventListener('visibilitychange', handleVisibilityChange)
   void loadAll()
   clockTimer = window.setInterval(() => {
     if (activeTab.value !== 'orders' && currentOrder.value && !isTerminal(currentOrder.value)) {
       now.value = Date.now()
     }
   }, 1000)
-  ordersTimer = window.setInterval(() => {
-    if (activeTab.value === 'orders') void loadOrders({ silent: true })
-  }, 10000)
 })
 
 onBeforeUnmount(() => {
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
+  stopOrdersPolling()
   stopActiveOrderPolling()
-  if (ordersTimer) window.clearInterval(ordersTimer)
   if (clockTimer) window.clearInterval(clockTimer)
 })
 </script>
