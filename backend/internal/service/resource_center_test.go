@@ -36,3 +36,25 @@ func TestNormalizeResourcePage(t *testing.T) {
 	require.Equal(t, 1, page)
 	require.Equal(t, ResourceMaxPageSize, size)
 }
+
+func TestResourceSensitivePublicIdentity(t *testing.T) {
+	require.True(t, resourceSensitivePublicIdentity("13455212442"))
+	require.True(t, resourceSensitivePublicIdentity("+86 134-5521-2442"))
+	require.True(t, resourceSensitivePublicIdentity("user@example.com"))
+	require.True(t, resourceSensitivePublicIdentity("123456"))
+	require.False(t, resourceSensitivePublicIdentity("cui"))
+	require.False(t, resourceSensitivePublicIdentity("星河"))
+}
+
+func TestResourcePublicAuthorNameDoesNotFallbackToLoginIdentity(t *testing.T) {
+	require.Equal(t, "cui", resourcePublicAuthorName(24, "cui", "private@example.com", "user"))
+	require.Equal(t, "用户 24", resourcePublicAuthorName(24, "13455212442", "private@example.com", "user"))
+	require.Equal(t, "用户 24", resourcePublicAuthorName(24, "", "private@example.com", "user"))
+	require.Equal(t, "官方管理员", resourcePublicAuthorName(1, "13800138000", "admin@example.com", "admin"))
+}
+
+func TestResourceSafeSnapshotNameProtectsHistoricalPII(t *testing.T) {
+	require.Equal(t, "用户 77", resourceSafeSnapshotName(77, "someone@example.com", "user"))
+	require.Equal(t, "用户 77", resourceSafeSnapshotName(77, "+1 (202) 555-0101", "user"))
+	require.Equal(t, "forum-user", resourceSafeSnapshotName(77, "forum-user", "user"))
+}
