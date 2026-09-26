@@ -1696,6 +1696,61 @@ func (s *EmailVerificationService) settleEmailProviderRequestLimit(ctx context.C
 // PollOrder performs one bounded poll. It is safe to call from a worker;
 // unique dedupe hashes and conditional balance updates make duplicate work
 // harmless, including a retry after message persistence but before capture.
+func emailMessageStableDedupe(providerMessageID, fromAddress, toAddress, subject, textBody, htmlBody string, receivedAt time.Time) string {
+	if id := strings.TrimSpace(providerMessageID); id != "" {
+		return hashString("provider-id:" + id)
+	}
+	timePart := ""
+	if !receivedAt.IsZero() {
+		timePart = receivedAt.UTC().Format(time.RFC3339Nano)
+	}
+	return hashString(strings.Join([]string{
+		"fallback",
+		strings.ToLower(strings.TrimSpace(fromAddress)),
+		strings.ToLower(strings.TrimSpace(toAddress)),
+		strings.TrimSpace(subject),
+		strings.TrimSpace(textBody),
+		strings.TrimSpace(htmlBody),
+		timePart,
+	}, "\x1f"))
+}
+
+func (s *EmailVerificationService) convergePersistedEmailEvidence(ctx context.Context, orderID, userID int64, capturePolicy string) error {
+	var first sql.NullTime
+	var hasVerification bool
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT MIN(received_at),
+		       COALESCE(BOOL_OR(BTRIM(verification_code)<>'' OR BTRIM(verification_url)<>''),FALSE)
+		FROM email_messages
+		WHERE email_order_id=$1`, orderID).Scan(&first, &hasVerification); err != nil {
+		return err
+	}
+	if !first.Valid {
+		return nil
+	}
+	targetStatus := "email_received"
+	if hasVerification {
+		targetStatus = "verification_extracted"
+	}
+	if _, err := s.db.ExecContext(ctx, `
+		UPDATE email_orders
+		SET first_message_at=COALESCE(first_message_at,$2),
+		    status=CASE
+		        WHEN status IN ('waiting_email','email_received') AND $3='verification_extracted' THEN 'verification_extracted'
+		        WHEN status='waiting_email' THEN 'email_received'
+		        ELSE status
+		    END,
+		    updated_at=NOW()
+		WHERE id=$1 AND status IN ('waiting_email','email_received','verification_extracted')`,
+		orderID, first.Time, targetStatus); err != nil {
+		return err
+	}
+	if capturePolicy != EmailCaptureOnExtracted || hasVerification {
+		return s.captureEmailOrder(ctx, orderID, userID)
+	}
+	return nil
+}
+
 func (s *EmailVerificationService) PollOrder(ctx context.Context, orderID int64) error {
 	var userID, providerID, channelID int64
 	var code, base, cred, address, inbox, status, capturePolicy string
@@ -1709,18 +1764,15 @@ func (s *EmailVerificationService) PollOrder(ctx context.Context, orderID int64)
 	if status != "waiting_email" && status != "email_received" && status != "verification_extracted" {
 		return nil
 	}
-	if status == "verification_extracted" || (status == "email_received" && capturePolicy != EmailCaptureOnExtracted) {
-		if err := s.captureEmailOrder(ctx, orderID, userID); err != nil {
-			return err
-		}
+	// Persisted messages are the source of truth. If a previous process wrote a
+	// message and crashed before advancing the order, converge status and
+	// settlement before any expiry/refund decision or provider call.
+	if err := s.convergePersistedEmailEvidence(ctx, orderID, userID, capturePolicy); err != nil {
+		return err
 	}
 	if expires.Valid && time.Now().After(expires.Time) {
 		return s.expireOrderV2(ctx, orderID, userID)
 	}
-	// The limit is on actual provider API calls, not polling cycles. A single
-	// list response may contain multiple messages and therefore multiple
-	// GetMessage calls; counting only poll cycles could exceed the configured
-	// quota by an unbounded amount.
 	if maxProviderRequests > 0 && providerRequestCount >= maxProviderRequests {
 		return s.settleEmailProviderRequestLimit(ctx, orderID, userID, pollCount)
 	}
@@ -1732,6 +1784,32 @@ func (s *EmailVerificationService) PollOrder(ctx context.Context, orderID int64)
 	if p == nil {
 		return ErrEmailChannelUnavailable
 	}
+
+	existingDedupe := map[string]struct{}{}
+	existingProviderIDs := map[string]struct{}{}
+	rows, err := s.db.QueryContext(ctx, `SELECT dedupe_hash,provider_message_id FROM email_messages WHERE email_order_id=$1`, orderID)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var dedupe, providerMessageID string
+		if err := rows.Scan(&dedupe, &providerMessageID); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		if dedupe = strings.TrimSpace(dedupe); dedupe != "" {
+			existingDedupe[dedupe] = struct{}{}
+		}
+		if providerMessageID = strings.TrimSpace(providerMessageID); providerMessageID != "" {
+			existingProviderIDs[providerMessageID] = struct{}{}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return err
+	}
+	_ = rows.Close()
+
 	allowed, requestErr := s.reserveEmailProviderRequest(ctx, orderID, maxProviderRequests)
 	if requestErr != nil {
 		return requestErr
@@ -1754,15 +1832,18 @@ func (s *EmailVerificationService) PollOrder(ctx context.Context, orderID int64)
 		minimumReceivedAt = inboxCreatedAt.Time
 	}
 	for _, summary := range list.Messages {
-		if summary.ReceivedAt.IsZero() {
-			summary.ReceivedAt = time.Now().UTC()
+		summaryProviderID := strings.TrimSpace(summary.ProviderMessageID)
+		if summaryProviderID != "" {
+			if _, exists := existingProviderIDs[summaryProviderID]; exists {
+				continue
+			}
+		} else if !summary.ReceivedAt.IsZero() {
+			summaryDedupe := emailMessageStableDedupe("", summary.FromAddress, summary.ToAddress, summary.Subject, "", "", summary.ReceivedAt)
+			if _, exists := existingDedupe[summaryDedupe]; exists {
+				continue
+			}
 		}
-		var exists bool
-		_ = s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM email_messages WHERE email_order_id=$1 AND dedupe_hash=$2)`, orderID, hashString(summary.ProviderMessageID+summary.Subject+summary.ReceivedAt.Format(time.RFC3339Nano))).Scan(&exists)
-		if exists {
-			continue
-		}
-		if !minimumReceivedAt.IsZero() && summary.ReceivedAt.Before(minimumReceivedAt.Add(-2*time.Minute)) {
+		if !summary.ReceivedAt.IsZero() && !minimumReceivedAt.IsZero() && summary.ReceivedAt.Before(minimumReceivedAt.Add(-2*time.Minute)) {
 			continue
 		}
 		allowed, requestErr = s.reserveEmailProviderRequest(ctx, orderID, maxProviderRequests)
@@ -1783,9 +1864,6 @@ func (s *EmailVerificationService) PollOrder(ctx context.Context, orderID int64)
 			s.recordProviderUsage(ctx, providerID, orderID, "get_message", err, time.Since(getStarted))
 			return err
 		}
-		// Some providers (notably Sonjj Gmail/Outlook) return routing headers in
-		// the inbox list and the body in a separate message endpoint. Merge the
-		// authoritative list metadata before service matching and persistence.
 		if strings.TrimSpace(msg.ProviderMessageID) == "" {
 			msg.ProviderMessageID = summary.ProviderMessageID
 		}
@@ -1805,7 +1883,7 @@ func (s *EmailVerificationService) PollOrder(ctx context.Context, orderID int64)
 			msg.ReceivedAt = summary.ReceivedAt
 		}
 		s.recordProviderUsage(ctx, providerID, orderID, "get_message", nil, time.Since(getStarted))
-		if !minimumReceivedAt.IsZero() && msg.ReceivedAt.Before(minimumReceivedAt.Add(-2*time.Minute)) {
+		if !msg.ReceivedAt.IsZero() && !minimumReceivedAt.IsZero() && msg.ReceivedAt.Before(minimumReceivedAt.Add(-2*time.Minute)) {
 			continue
 		}
 		if !s.messageMatches(ctx, orderID, msg) {
@@ -1814,35 +1892,36 @@ func (s *EmailVerificationService) PollOrder(ctx context.Context, orderID int64)
 		safeHTML := SanitizeEmailHTML(msg.HTMLBody)
 		normalizedText := normalizeEmailText(msg.TextBody, msg.HTMLBody)
 		extract := ExtractVerification(msg.Subject, normalizedText, safeHTML)
-		dedupe := hashString(msg.ProviderMessageID + msg.Subject + msg.ReceivedAt.Format(time.RFC3339Nano))
-		// The normalized, sanitized fields are sufficient for product behavior.
-		// Persisting the provider's raw body would duplicate verification secrets
-		// and unsanitized HTML outside the retention controls.
+		dedupe := emailMessageStableDedupe(msg.ProviderMessageID, msg.FromAddress, msg.ToAddress, msg.Subject, normalizedText, safeHTML, msg.ReceivedAt)
+		if _, exists := existingDedupe[dedupe]; exists {
+			if err := s.convergePersistedEmailEvidence(ctx, orderID, userID, capturePolicy); err != nil {
+				return err
+			}
+			continue
+		}
+		receivedAt := msg.ReceivedAt
+		if receivedAt.IsZero() {
+			receivedAt = time.Now().UTC()
+		}
 		rawPayload := []byte(`{}`)
-		_, e = s.db.ExecContext(ctx, `INSERT INTO email_messages(email_order_id,provider_message_id,from_address,from_name,to_address,subject,text_body,html_body,verification_code,verification_url,verification_confidence,verification_method,received_at,dedupe_hash,raw_payload) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) ON CONFLICT(email_order_id,dedupe_hash) DO NOTHING`, orderID, msg.ProviderMessageID, msg.FromAddress, msg.FromName, msg.ToAddress, msg.Subject, normalizedText, safeHTML, extract.Code, extract.URL, extract.Confidence, extract.Method, msg.ReceivedAt, dedupe, rawPayload)
-		if e != nil {
+		if _, e = s.db.ExecContext(ctx, `INSERT INTO email_messages(email_order_id,provider_message_id,from_address,from_name,to_address,subject,text_body,html_body,verification_code,verification_url,verification_confidence,verification_method,received_at,dedupe_hash,raw_payload) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) ON CONFLICT(email_order_id,dedupe_hash) DO NOTHING`, orderID, msg.ProviderMessageID, msg.FromAddress, msg.FromName, msg.ToAddress, msg.Subject, normalizedText, safeHTML, extract.Code, extract.URL, extract.Confidence, extract.Method, receivedAt, dedupe, rawPayload); e != nil {
 			return e
+		}
+		existingDedupe[dedupe] = struct{}{}
+		if id := strings.TrimSpace(msg.ProviderMessageID); id != "" {
+			existingProviderIDs[id] = struct{}{}
 		}
 		s.recordOrderEvent(ctx, orderID, "message_received", "email_message:"+dedupe, map[string]any{"matched": true})
-		if _, e = s.db.ExecContext(ctx, `UPDATE email_orders SET status=CASE WHEN status='waiting_email' THEN 'email_received' ELSE status END,first_message_at=COALESCE(first_message_at,$2),updated_at=NOW() WHERE id=$1`, orderID, msg.ReceivedAt); e != nil {
-			return e
-		}
-		hasVerification := extract.Code != "" || extract.URL != ""
-		if hasVerification {
-			if _, e = s.db.ExecContext(ctx, `UPDATE email_orders SET status='verification_extracted',updated_at=NOW() WHERE id=$1 AND status='email_received'`, orderID); e != nil {
-				return e
-			}
+		if extract.Code != "" || extract.URL != "" {
 			s.recordOrderEvent(ctx, orderID, "verification_extracted", "email_message:"+dedupe, map[string]any{"method": extract.Method})
 		}
-		shouldCapture := capturePolicy != EmailCaptureOnExtracted || hasVerification
-		if shouldCapture {
-			if captureErr := s.captureEmailOrder(ctx, orderID, userID); captureErr != nil {
-				return captureErr
-			}
+		if err := s.convergePersistedEmailEvidence(ctx, orderID, userID, capturePolicy); err != nil {
+			return err
 		}
 	}
 	return nil
 }
+
 func (s *EmailVerificationService) messageMatches(ctx context.Context, serviceID int64, msg *ProviderEmailMessage) bool {
 	rows, e := s.db.QueryContext(ctx, `SELECT r.sender_exact,r.sender_domain,r.subject_contains,r.subject_regex FROM email_service_match_rules r JOIN email_orders o ON o.service_id=r.service_id WHERE o.id=$1 AND r.enabled ORDER BY r.priority DESC`, serviceID)
 	if e != nil {
