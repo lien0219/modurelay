@@ -64,9 +64,11 @@ type GrokMediaRequestInfo struct {
 	SizeTier        string
 	AspectRatio     string
 	ImageResolution string
-	Resolution      string
-	DurationSeconds int
-	InputImageURLs  []string
+	Resolution              string
+	DurationSeconds         int
+	VideoResolutionExplicit bool
+	VideoDurationExplicit   bool
+	InputImageURLs          []string
 	MaskImageURL    string
 	Uploads         []OpenAIImagesUpload
 	MaskUpload      *OpenAIImagesUpload
@@ -153,6 +155,9 @@ func parseGrokMediaJSONRequest(body []byte, info *GrokMediaRequestInfo) {
 	for _, field := range []string{"resolution", "resolution_name", "metadata.resolution"} {
 		if resolution := strings.TrimSpace(gjson.GetBytes(body, field).String()); resolution != "" {
 			assignGrokMediaResolution(resolution, info)
+			if _, ok := LookupVideoBillingResolution(resolution); ok {
+				info.VideoResolutionExplicit = true
+			}
 			break
 		}
 	}
@@ -160,6 +165,7 @@ func parseGrokMediaJSONRequest(body []byte, info *GrokMediaRequestInfo) {
 		if quality := strings.TrimSpace(gjson.GetBytes(body, "quality").String()); quality != "" {
 			if normalized, ok := LookupVideoBillingResolution(quality); ok {
 				info.Resolution = normalized
+				info.VideoResolutionExplicit = true
 			}
 		}
 	}
@@ -172,6 +178,9 @@ func parseGrokMediaJSONRequest(body []byte, info *GrokMediaRequestInfo) {
 			info.DurationSeconds = int(duration.Int())
 		} else if parsed, err := strconv.Atoi(strings.TrimSpace(duration.String())); err == nil {
 			info.DurationSeconds = parsed
+		}
+		if info.DurationSeconds > 0 {
+			info.VideoDurationExplicit = true
 		}
 		break
 	}
@@ -296,13 +305,20 @@ func parseGrokMediaMultipartRequest(contentType string, body []byte, info *GrokM
 			info.AspectRatio = value
 		case "resolution", "resolution_name":
 			assignGrokMediaResolution(value, info)
+			if _, ok := LookupVideoBillingResolution(value); ok {
+				info.VideoResolutionExplicit = true
+			}
 		case "quality":
 			if normalized, ok := LookupVideoBillingResolution(value); ok {
 				info.Resolution = normalized
+				info.VideoResolutionExplicit = true
 			}
 		case "duration", "seconds":
 			if duration, err := strconv.Atoi(value); err == nil {
 				info.DurationSeconds = duration
+				if duration > 0 {
+					info.VideoDurationExplicit = true
+				}
 			}
 		case "n":
 			if n, err := strconv.Atoi(value); err == nil {

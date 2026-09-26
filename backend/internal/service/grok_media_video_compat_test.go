@@ -134,3 +134,22 @@ func writeGrokVideoImagePart(t *testing.T, writer *multipart.Writer, field, file
 	_, err = part.Write(data)
 	require.NoError(t, err)
 }
+
+
+func TestParseGrokMediaRequestTracksExplicitVideoBillingInputs(t *testing.T) {
+	explicit := ParseGrokMediaRequest("application/json", []byte(`{"model":"wan-3.0","duration":5,"quality":"hd"}`))
+	if !explicit.VideoDurationExplicit || !explicit.VideoResolutionExplicit {
+		t.Fatalf("expected explicit billing evidence: %#v", explicit)
+	}
+	if explicit.DurationSeconds != 5 || explicit.Resolution != "720p" {
+		t.Fatalf("unexpected normalized billing inputs: %#v", explicit)
+	}
+
+	defaulted := ParseGrokMediaRequest("application/json", []byte(`{"model":"wan-3.0"}`))
+	if defaulted.VideoDurationExplicit || defaulted.VideoResolutionExplicit {
+		t.Fatalf("defaults must not masquerade as explicit supplier billing evidence: %#v", defaulted)
+	}
+	if defaulted.DurationSeconds != VideoBillingDefaultDurationSeconds || defaulted.Resolution != VideoBillingResolution480P {
+		t.Fatalf("runtime defaults changed unexpectedly: %#v", defaulted)
+	}
+}

@@ -491,6 +491,16 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 				continue
 			}
 		}
+		if isGrokVideoCreateEndpoint(endpoint) && selectedCompatibleVideo && !selectedOfficialVideoTier {
+			if !requestInfo.VideoResolutionExplicit {
+				h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Video resolution is required for compatible provider billing")
+				return
+			}
+			if !requestInfo.VideoDurationExplicit {
+				h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Video duration is required for compatible provider billing")
+				return
+			}
+		}
 		if endpoint.IsGenerationRequest() && !endpoint.IsSeedance() && selectedCompatibleVideo && !selectedOfficialVideoTier &&
 			!h.gatewayService.HasVideoPricingForRequest(requestCtx, apiKey, requestModel, requestInfo.Resolution) {
 			reqLog.Error("grok_media.video_pricing_missing",
