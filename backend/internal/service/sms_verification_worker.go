@@ -75,7 +75,7 @@ func (s *SMSService) Reconcile(ctx context.Context) error {
 	if s == nil || s.db == nil {
 		return nil
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT o.id,o.user_id,o.status,o.product_type,o.provider_order_id,o.refund_status,p.code,p.base_url,p.credential_ref,o.expires_at,o.updated_at,o.created_at,o.settlement_status,o.reconciliation_action FROM sms_orders o JOIN sms_providers p ON p.id=o.provider_id WHERE (o.status IN ('active','provider_unknown') AND (((o.reconcile_after IS NULL AND o.updated_at <= NOW()-($1 * INTERVAL '1 second')) OR o.reconcile_after <= NOW()) OR o.expires_at <= NOW())) OR (o.status='reconciling' AND (o.reconcile_after IS NULL OR o.reconcile_after <= NOW())) OR (o.status='pending' AND o.settlement_status='held' AND o.provider_order_id='') OR (o.status IN ('failed','cancelled','expired','refunded','completed') AND o.settlement_status='held') ORDER BY COALESCE(o.reconcile_after,o.updated_at) LIMIT 100`, int(smsVerificationPollInterval.Seconds()))
+	rows, err := s.db.QueryContext(ctx, `SELECT o.id,o.user_id,o.status,o.product_type,o.provider_order_id,o.refund_status,p.code,p.base_url,p.credential_ref,o.expires_at,o.updated_at,o.created_at,o.settlement_status,o.reconciliation_action FROM sms_orders o JOIN sms_providers p ON p.id=o.provider_id WHERE (o.status IN ('active','provider_unknown') AND (((o.reconcile_after IS NULL AND o.updated_at <= NOW()-($1 * INTERVAL '1 second')) OR o.reconcile_after <= NOW()) OR o.expires_at <= NOW())) OR (o.status='reconciling' AND (o.reconcile_after IS NULL OR o.reconcile_after <= NOW())) OR (o.status='pending' AND o.settlement_status='held' AND o.provider_order_id='') OR (o.status IN ('failed','cancelled','expired','refunded','completed') AND o.settlement_status='held') OR (o.status='completed' AND o.product_type='temporary' AND o.provider_order_id<>'' AND o.created_at>=NOW()-INTERVAL '24 hours' AND o.updated_at<=NOW()-INTERVAL '30 seconds' AND NOT EXISTS (SELECT 1 FROM sms_messages m WHERE m.order_id=o.id AND BTRIM(m.verification_code)<>'')) ORDER BY COALESCE(o.reconcile_after,o.updated_at) LIMIT 100`, int(smsVerificationPollInterval.Seconds()))
 	if err != nil {
 		return err
 	}
@@ -110,6 +110,27 @@ func (s *SMSService) Reconcile(ctx context.Context) error {
 			}
 			if err := s.releaseSMSHold(ctx, id, userID, status, "recovered an unsettled SMS order"); err != nil && firstErr == nil {
 				firstErr = err
+			}
+			continue
+		}
+		if status == "completed" && productType == "temporary" && providerOrder != "" {
+			var hasCode bool
+			if queryErr := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM sms_messages WHERE order_id=$1 AND BTRIM(verification_code)<>'')`, id).Scan(&hasCode); queryErr != nil {
+				if firstErr == nil {
+					firstErr = queryErr
+				}
+				continue
+			}
+			if !hasCode {
+				if pollErr := s.pollSMSOrder(ctx, id, providerOrder, providerCode, baseURL, credential, productType); pollErr != nil && firstErr == nil {
+					firstErr = pollErr
+				}
+				_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET updated_at=NOW() WHERE id=$1 AND status='completed'`, id)
+			}
+			if settlementStatus == "held" {
+				if err := s.captureSMSSettlement(ctx, id, userID); err != nil && firstErr == nil {
+					firstErr = err
+				}
 			}
 			continue
 		}

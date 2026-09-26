@@ -1435,6 +1435,32 @@ func TestFiveSIMStatusReturnsActualCostAndOperator(t *testing.T) {
 	}
 }
 
+
+func TestFiveSIMStatusUsesExplicitCodeWithoutDuplicateMessage(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/user/check/123" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"RECEIVED","phone":"+306972405948","price":0.1491,"operator":"virtual34","sms":[{"code":"345875","text":"Your OpenAI verification code is 345875."}]}`))
+	}))
+	defer server.Close()
+
+	result, err := providerFor("5sim", server.URL, "secret").GetTemporaryStatus(context.Background(), "123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Messages) != 1 {
+		t.Fatalf("messages=%v, want one canonical message", result.Messages)
+	}
+	if got := extractSMSCode(result.Messages[0]); got != "345875" {
+		t.Fatalf("verification code=%q, want 345875", got)
+	}
+	if got := smsStatusFromProvider(result); got != "completed" {
+		t.Fatalf("status=%q, want completed", got)
+	}
+}
+
 func TestSMSPVAQuoteUsesSelectedOperatorPriceAndStock(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("apikey") != "secret" {

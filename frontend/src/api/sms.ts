@@ -29,6 +29,7 @@ export interface SMSOrder {
   refund_reason?: string
   capabilities?: SMSCapabilities
   messages?: SMSMessage[]
+  latest_verification_code?: string
   expires_at?: string
   remaining_seconds?: number
   /** Explicit cancellation policy fields, supported by newer API builds. */

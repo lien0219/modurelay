@@ -472,7 +472,7 @@
                     <code>{{ latestVerificationCode(order) }}</code>
                     <CopyButton :text="latestVerificationCode(order)" />
                   </span>
-                  <span v-else class="sms-waiting-code">{{ isOrderWaiting(order) ? t('sms.user.waitingForCode') : '-' }}</span>
+                  <span v-else class="sms-waiting-code">{{ isOrderPollingCandidate(order) ? t('sms.user.waitingForCode') : '-' }}</span>
                 </div>
 
                 <div class="sms-live-order__actions">
@@ -606,19 +606,9 @@
                     </div>
                   </td>
                   <td class="whitespace-nowrap">
-                    <div v-if="order.messages?.length" class="sms-order-messages">
-                      <div v-for="message in order.messages" :key="message.id">
-                        <div v-if="message.verification_code" class="sms-order-code">
-                          <code>{{ message.verification_code }}</code>
-                          <CopyButton :text="message.verification_code" />
-                        </div>
-                        <div class="sms-order-message-meta">
-                          <span v-if="message.sender">{{ message.sender }}</span>
-                          <time v-if="message.provider_received_at" :datetime="message.provider_received_at">{{ formatSMSMessageTime(message.provider_received_at) }}</time>
-                          <span v-if="message.other_sms" class="badge">{{ t('sms.user.otherMessage') }}</span>
-                        </div>
-                        <div class="sms-order-message-text truncate" :title="message.message_text || undefined">{{ message.message_text || '-' }}</div>
-                      </div>
+                    <div v-if="latestVerificationCode(order)" class="sms-order-code">
+                      <code>{{ latestVerificationCode(order) }}</code>
+                      <CopyButton :text="latestVerificationCode(order)" />
                     </div>
                     <span v-else>-</span>
                   </td>
@@ -984,7 +974,7 @@ function formatDuration(seconds: number) {
 const pollTimers: Partial<Record<SMSOrderPollBucket, number>> = {}
 
 const pollingCandidates = () => [...liveOrders.value, ...(activeTab.value === 'orders' ? orders.value : [])]
-  .filter(isOrderWaiting)
+  .filter(isOrderPollingCandidate)
   .filter((order, index, items) => items.findIndex(item => item.id === order.id) === index)
   .slice(0, 20)
 
@@ -1017,8 +1007,13 @@ function ensureOrderPolling() {
     }, smsOrderPollDelay(bucket))
   })
 }
-const latestVerificationCode = (order: SMSOrder) => [...(order.messages || [])].reverse().find(message => message.verification_code)?.verification_code || ''
-const formatSMSMessageTime = (value: string) => formatDateTime(value, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })
+const latestVerificationCode = (order: SMSOrder) => order.latest_verification_code?.trim()
+  || [...(order.messages || [])].reverse().find(message => message.verification_code?.trim())?.verification_code?.trim()
+  || ''
+const needsVerificationCodeRecovery = (order: SMSOrder) => order.product_type === 'temporary'
+  && String(order.status || '').toLowerCase() === 'completed'
+  && !latestVerificationCode(order)
+const isOrderPollingCandidate = (order: SMSOrder) => isOrderWaiting(order) || needsVerificationCodeRecovery(order)
 
 const remainingLabel = (order: SMSOrder) => {
   if (isTerminalOrder(order)) return t('sms.user.ended')
@@ -1132,7 +1127,7 @@ async function hydrateLiveOrders() {
   try {
     const page = await smsAPI.orders({ page: 1, page_size: 20 })
     liveOrders.value = page.items
-      .filter(order => isOrderWaiting(order))
+      .filter(order => isOrderPollingCandidate(order))
       .slice(0, 10)
     if (liveOrders.value.length) ensureOrderPolling()
   } catch {
