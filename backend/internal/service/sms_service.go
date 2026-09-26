@@ -4105,6 +4105,16 @@ func (s *SMSService) recoverCompletedSMSCode(ctx context.Context, id, userID int
 	return true, err
 }
 
+func (s *SMSService) recordSMSOrderEvent(ctx context.Context, orderID int64, eventType string, payload map[string]any) {
+	raw := []byte("{}")
+	if payload != nil {
+		if encoded, err := json.Marshal(payload); err == nil {
+			raw = encoded
+		}
+	}
+	_, _ = s.db.ExecContext(ctx, `INSERT INTO sms_order_events(order_id,event_type,actor,payload) VALUES($1,$2,'system',$3::jsonb)`, orderID, eventType, raw)
+}
+
 func (s *SMSService) deferSMSProviderFinalize(ctx context.Context, id int64, reason string) {
 	if strings.TrimSpace(reason) == "" {
 		reason = "provider finish confirmation pending"
@@ -4115,7 +4125,7 @@ func (s *SMSService) deferSMSProviderFinalize(ctx context.Context, id int64, rea
 		return
 	}
 	_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET reconciliation_action='',reconcile_after=NULL,last_provider_error=$1,updated_at=NOW() WHERE id=$2 AND status='completed' AND reconciliation_action=$3`, "provider finish requires administrator review: "+reason, id, smsReconciliationFinish)
-	s.recordOrderEvent(ctx, id, "manual_review", "sms_finish:"+strconv.FormatInt(id, 10), map[string]any{"reason": "provider_finish_retry_exhausted", "attempts": attempts})
+	s.recordSMSOrderEvent(ctx, id, "manual_review", map[string]any{"reason": "provider_finish_retry_exhausted", "attempts": attempts})
 }
 
 func (s *SMSService) reconcileSMSProviderFinalize(ctx context.Context, id int64, providerOrder, providerCode, base, credential string) error {
@@ -4694,7 +4704,7 @@ func (s *SMSService) ProcessWebhook(ctx context.Context, providerCode string, pa
 	}
 	if current == "completed" || current == "refunded" || current == "cancelled" || current == "failed" || current == "expired" {
 		if len(payload.Messages) > 0 {
-			s.recordOrderEvent(ctx, id, "late_delivery_evidence", "sms_late_delivery:"+providerOrderID, map[string]any{"status": current, "message_count": len(payload.Messages)})
+			s.recordSMSOrderEvent(ctx, id, "late_delivery_evidence", map[string]any{"provider_order_id": providerOrderID, "status": current, "message_count": len(payload.Messages)})
 		}
 		return nil
 	}
