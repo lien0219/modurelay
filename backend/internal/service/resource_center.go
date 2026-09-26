@@ -9,7 +9,6 @@ import (
 	stdhtml "html"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -878,7 +877,7 @@ func resourcePublicAlias(userID int64, role string) string {
 	if role == domain.RoleAdmin {
 		return "官方管理员"
 	}
-	return fmt.Sprintf("用户 %s", strings.ToUpper(strconv.FormatInt(userID, 36)))
+	return fmt.Sprintf("用户 %d", userID)
 }
 
 func resourceSensitivePublicIdentity(value string) bool {
