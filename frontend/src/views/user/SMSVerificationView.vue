@@ -1450,7 +1450,8 @@ function cancel(order: SMSOrder) {
 }
 
 async function resend(id: string) {
-  try { await smsAPI.resend(id); await refreshOrder(id); appStore.showSuccess(t('sms.user.resendSuccess')) }
+  const idempotencyKey = `sms-resend-${id}-${Date.now()}`
+  try { await smsAPI.resend(id, idempotencyKey); await refreshOrder(id); appStore.showSuccess(t('sms.user.resendSuccess')) }
   catch (error) { appStore.showError(errorMessage(error, t('sms.user.resendFailed'))) }
 }
 
