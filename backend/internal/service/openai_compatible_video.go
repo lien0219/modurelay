@@ -373,7 +373,7 @@ func normalizeAIStarsLabCompatibleVideoJSON(body []byte) ([]byte, error) {
 	return out, nil
 }
 
-func normalizeCompatibleSeedanceVideoJSONfunc normalizeCompatibleSeedanceVideoJSON(body []byte, model string) ([]byte, error) {
+func normalizeCompatibleSeedanceVideoJSON(body []byte, model string) ([]byte, error) {
 	if !strings.Contains(strings.ToLower(strings.TrimSpace(model)), "seedance") || !gjson.ValidBytes(body) {
 		return body, nil
 	}

@@ -90,7 +90,7 @@ func prepareSeedanceCompatibleCreateBody(account *Account, body []byte, contentT
 	return encoded, info, upstreamModel, nil
 }
 
-func (s *OpenAIGatewayService) doSeedanceCompatibleRequestfunc (s *OpenAIGatewayService) doSeedanceCompatibleRequest(ctx context.Context, c *gin.Context, account *Account, method, target string, body []byte) ([]byte, http.Header, error) {
+func (s *OpenAIGatewayService) doSeedanceCompatibleRequest(ctx context.Context, c *gin.Context, account *Account, method, target string, body []byte) ([]byte, http.Header, error) {
 	token := strings.TrimSpace(account.GetCredential("api_key"))
 	if token == "" {
 		return nil, nil, fmt.Errorf("seedance account missing api_key")

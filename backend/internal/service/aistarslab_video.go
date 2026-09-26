@@ -136,7 +136,7 @@ func prepareAIStarsLabOpenAPIVideoCreate(account *Account, body []byte, contentT
 	return encoded, mapped, info, nil
 }
 
-type aiStarsLabEnvelopetype aiStarsLabEnvelope struct {
+type aiStarsLabEnvelope struct {
 	Code int             `json:"code"`
 	Msg  string          `json:"msg"`
 	Data json.RawMessage `json:"data"`
