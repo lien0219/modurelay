@@ -1,5 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import Select from '@/components/common/Select.vue'
 import EmailVerificationView from '../EmailVerificationView.vue'
@@ -45,9 +45,15 @@ const quote = {
 describe('EmailVerificationView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
     emailAPI.quotes.mockResolvedValue([quote])
     emailAPI.orders.mockResolvedValue([])
     emailAPI.purchase.mockResolvedValue({ id: 'order-1' })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
   })
 
   it('renders provider mailbox types through i18n keys', async () => {
@@ -297,7 +303,7 @@ describe('EmailVerificationView', () => {
     await flushPromises()
     expect(wrapper.text()).toContain('demo@gmail.com')
 
-    await vi.advanceTimersByTimeAsync(10_000)
+    await vi.advanceTimersByTimeAsync(15_000)
     await flushPromises()
 
     expect(wrapper.text()).toContain('demo@gmail.com')
@@ -306,7 +312,164 @@ describe('EmailVerificationView', () => {
     resolveRefresh?.({ items: [order], total: 1, page: 1, page_size: 20, pages: 1 })
     await flushPromises()
     wrapper.unmount()
-    vi.useRealTimers()
+  })
+
+  it('does not poll the orders list when it is empty, but manual refresh still works', async () => {
+    vi.useFakeTimers()
+    emailAPI.orders.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20, pages: 0 })
+
+    const wrapper = mount(EmailVerificationView, {
+      global: { stubs: { AppLayout: { template: '<main><slot /></main>' }, Icon: true } },
+    })
+    await flushPromises()
+
+    const ordersTab = wrapper.findAll('button').find(button => button.text() === 'email.user.orders')
+    await ordersTab!.trigger('click')
+    await flushPromises()
+    expect(emailAPI.orders).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(45_000)
+    await flushPromises()
+    expect(emailAPI.orders).toHaveBeenCalledTimes(1)
+
+    const refreshButton = wrapper.find('.email-tabs__refresh')
+    await refreshButton.trigger('click')
+    await flushPromises()
+    expect(emailAPI.orders).toHaveBeenCalledTimes(2)
+
+    wrapper.unmount()
+  })
+
+  it('does not poll the orders list when every order is terminal', async () => {
+    vi.useFakeTimers()
+    emailAPI.orders.mockResolvedValue({
+      items: [{
+        id: 'order-completed',
+        order_no: 'EML-DONE',
+        service_code: 'openai',
+        channel_code: 'email_channel_1',
+        channel_name: 'Channel 1',
+        email_address: 'done@gmail.com',
+        address_type: 'gmail',
+        price: 0,
+        status: 'completed',
+        refund_policy: 'refund_if_no_message',
+        capture_policy: 'on_verification_extracted',
+        created_at: new Date().toISOString(),
+        refund_status: 'not_applicable',
+      }],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+
+    const wrapper = mount(EmailVerificationView, {
+      global: { stubs: { AppLayout: { template: '<main><slot /></main>' }, Icon: true } },
+    })
+    await flushPromises()
+
+    const ordersTab = wrapper.findAll('button').find(button => button.text() === 'email.user.orders')
+    await ordersTab!.trigger('click')
+    await flushPromises()
+    expect(emailAPI.orders).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(45_000)
+    await flushPromises()
+    expect(emailAPI.orders).toHaveBeenCalledTimes(1)
+
+    wrapper.unmount()
+  })
+
+  it('polls the orders list only while at least one order is active', async () => {
+    vi.useFakeTimers()
+    const activeOrder = {
+      id: 'order-active',
+      order_no: 'EML-ACTIVE',
+      service_code: 'openai',
+      channel_code: 'email_channel_1',
+      channel_name: 'Channel 1',
+      email_address: 'active@gmail.com',
+      address_type: 'gmail',
+      price: 0,
+      status: 'waiting_email',
+      refund_policy: 'refund_if_no_message',
+      capture_policy: 'on_verification_extracted',
+      created_at: new Date().toISOString(),
+      refund_status: 'not_applicable',
+    }
+    const terminalOrder = { ...activeOrder, status: 'completed' }
+
+    emailAPI.orders
+      .mockResolvedValueOnce({ items: [activeOrder], total: 1, page: 1, page_size: 20, pages: 1 })
+      .mockResolvedValueOnce({ items: [terminalOrder], total: 1, page: 1, page_size: 20, pages: 1 })
+
+    const wrapper = mount(EmailVerificationView, {
+      global: { stubs: { AppLayout: { template: '<main><slot /></main>' }, Icon: true } },
+    })
+    await flushPromises()
+
+    const ordersTab = wrapper.findAll('button').find(button => button.text() === 'email.user.orders')
+    await ordersTab!.trigger('click')
+    await flushPromises()
+    expect(emailAPI.orders).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(15_000)
+    await flushPromises()
+    expect(emailAPI.orders).toHaveBeenCalledTimes(2)
+
+    await vi.advanceTimersByTimeAsync(45_000)
+    await flushPromises()
+    expect(emailAPI.orders).toHaveBeenCalledTimes(2)
+
+    wrapper.unmount()
+  })
+
+  it('pauses order polling while hidden and refreshes immediately when visible again', async () => {
+    vi.useFakeTimers()
+    const activeOrder = {
+      id: 'order-active',
+      order_no: 'EML-ACTIVE',
+      service_code: 'openai',
+      channel_code: 'email_channel_1',
+      channel_name: 'Channel 1',
+      email_address: 'active@gmail.com',
+      address_type: 'gmail',
+      price: 0,
+      status: 'waiting_email',
+      refund_policy: 'refund_if_no_message',
+      capture_policy: 'on_verification_extracted',
+      created_at: new Date().toISOString(),
+      refund_status: 'not_applicable',
+    }
+    emailAPI.orders.mockResolvedValue({ items: [activeOrder], total: 1, page: 1, page_size: 20, pages: 1 })
+
+    const wrapper = mount(EmailVerificationView, {
+      global: { stubs: { AppLayout: { template: '<main><slot /></main>' }, Icon: true } },
+    })
+    await flushPromises()
+
+    const ordersTab = wrapper.findAll('button').find(button => button.text() === 'email.user.orders')
+    await ordersTab!.trigger('click')
+    await flushPromises()
+    expect(emailAPI.orders).toHaveBeenCalledTimes(1)
+
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' })
+    document.dispatchEvent(new Event('visibilitychange'))
+    await vi.advanceTimersByTimeAsync(45_000)
+    await flushPromises()
+    expect(emailAPI.orders).toHaveBeenCalledTimes(1)
+
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
+    document.dispatchEvent(new Event('visibilitychange'))
+    await flushPromises()
+    expect(emailAPI.orders).toHaveBeenCalledTimes(2)
+
+    await vi.advanceTimersByTimeAsync(15_000)
+    await flushPromises()
+    expect(emailAPI.orders).toHaveBeenCalledTimes(3)
+
+    wrapper.unmount()
   })
 
   it('loads full message detail when opening a terminal order from the lightweight list', async () => {
