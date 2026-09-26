@@ -256,21 +256,34 @@ func (s *OpenAIGatewayService) recordRecoveredVideoUsage(
 		return errors.New("video recovery api key ownership mismatch")
 	}
 	if pending.GroupID > 0 && (apiKey.GroupID == nil || *apiKey.GroupID != pending.GroupID) {
-		return errors.New("video recovery api key group changed")
+		if s.channelService == nil || s.channelService.groupRepo == nil {
+			return errors.New("video recovery original group repository is unavailable")
+		}
+		originalGroup, groupErr := s.channelService.groupRepo.GetByIDLite(ctx, pending.GroupID)
+		if groupErr != nil || originalGroup == nil {
+			return fmt.Errorf("load video recovery original group %d: %w", pending.GroupID, groupErr)
+		}
+		apiKeyCopy := *apiKey
+		originalGroupID := pending.GroupID
+		apiKeyCopy.GroupID = &originalGroupID
+		apiKeyCopy.Group = originalGroup
+		apiKey = &apiKeyCopy
 	}
 
 	var subscription *UserSubscription
-	if apiKey.Group != nil && apiKey.Group.IsSubscriptionType() {
-		if s.userSubRepo == nil || apiKey.GroupID == nil {
+	if pending.SubscriptionID > 0 {
+		if s.userSubRepo == nil {
 			return errors.New("video recovery subscription repository is unavailable")
 		}
-		subscription, err = s.userSubRepo.GetActiveByUserIDAndGroupID(ctx, pending.UserID, *apiKey.GroupID)
+		subscription, err = s.userSubRepo.GetByID(ctx, pending.SubscriptionID)
 		if err != nil {
-			return fmt.Errorf("load video recovery subscription: %w", err)
+			return fmt.Errorf("load video recovery subscription %d: %w", pending.SubscriptionID, err)
 		}
-		if subscription == nil {
-			return errors.New("video recovery subscription is no longer active")
+		if subscription == nil || subscription.UserID != pending.UserID || subscription.GroupID != pending.GroupID {
+			return errors.New("video recovery subscription ownership mismatch")
 		}
+	} else if apiKey.Group != nil && apiKey.Group.IsSubscriptionType() {
+		return errors.New("video recovery subscription snapshot is missing")
 	}
 
 	merged := *result
@@ -307,7 +320,7 @@ func (s *OpenAIGatewayService) recordRecoveredVideoUsage(
 		UpstreamEndpoint:   "/v1/videos/:id",
 		UserAgent:          "modurelay-video-recovery",
 		RequestPayloadHash: HashUsageRequestPayload([]byte(pending.RequestID)),
-		QuotaPlatform:      PlatformFromAPIKey(apiKey),
+		QuotaPlatform:      firstNonEmpty(pending.QuotaPlatform, PlatformFromAPIKey(apiKey)),
 		PricingAt:          pricingAt,
 		ChannelUsageFields: ChannelUsageFields{
 			OriginalModel:      pending.OriginalModel,

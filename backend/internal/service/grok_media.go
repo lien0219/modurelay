@@ -429,6 +429,8 @@ type GrokVideoPendingBilling struct {
 	APIKeyID             int64  `json:"api_key_id,omitempty"`
 	AccountID            int64  `json:"account_id,omitempty"`
 	GroupID              int64  `json:"group_id,omitempty"`
+	SubscriptionID       int64  `json:"subscription_id,omitempty"`
+	QuotaPlatform        string `json:"quota_platform,omitempty"`
 	Model                string `json:"model"`
 	BillingModel         string `json:"billing_model,omitempty"`
 	UpstreamModel        string `json:"upstream_model,omitempty"`
@@ -522,6 +524,7 @@ func (s *OpenAIGatewayService) StoreGrokVideoPendingBilling(
 	pending.RequestID = strings.TrimSpace(requestID)
 	pending.UserID = userID
 	pending.APIKeyID = apiKeyID
+	pending.QuotaPlatform = strings.TrimSpace(pending.QuotaPlatform)
 	pending.Model = strings.TrimSpace(pending.Model)
 	pending.BillingModel = strings.TrimSpace(pending.BillingModel)
 	pending.UpstreamModel = strings.TrimSpace(pending.UpstreamModel)
