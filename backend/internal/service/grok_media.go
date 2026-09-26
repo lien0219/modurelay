@@ -156,6 +156,13 @@ func parseGrokMediaJSONRequest(body []byte, info *GrokMediaRequestInfo) {
 			break
 		}
 	}
+	if info.Resolution == "" {
+		if quality := strings.TrimSpace(gjson.GetBytes(body, "quality").String()); quality != "" {
+			if normalized, ok := LookupVideoBillingResolution(quality); ok {
+				info.Resolution = normalized
+			}
+		}
+	}
 	for _, field := range []string{"duration", "seconds"} {
 		duration := gjson.GetBytes(body, field)
 		if !duration.Exists() {
@@ -289,6 +296,10 @@ func parseGrokMediaMultipartRequest(contentType string, body []byte, info *GrokM
 			info.AspectRatio = value
 		case "resolution", "resolution_name":
 			assignGrokMediaResolution(value, info)
+		case "quality":
+			if normalized, ok := LookupVideoBillingResolution(value); ok {
+				info.Resolution = normalized
+			}
 		case "duration", "seconds":
 			if duration, err := strconv.Atoi(value); err == nil {
 				info.DurationSeconds = duration

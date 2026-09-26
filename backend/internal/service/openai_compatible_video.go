@@ -492,11 +492,16 @@ func compatibleVideoForwardResult(
 		Model:                compatibleVideoFirstNonEmpty(compatibleVideoJSONField(body, "model", "data.model", "video.model", "result.model"), requestModel),
 		BillingModel:         requestModel,
 		UpstreamModel:        upstreamModel,
-		VideoResolution:      compatibleVideoFirstNonEmpty(compatibleVideoJSONField(body, "resolution", "data.resolution", "video.resolution", "result.resolution"), requestInfo.Resolution),
+		VideoResolution:      compatibleVideoResolution(body),
 		VideoDurationSeconds: compatibleVideoDuration(body),
 	}
-	if result.VideoDurationSeconds <= 0 {
-		result.VideoDurationSeconds = requestInfo.DurationSeconds
+	if endpoint.IsGenerationRequest() {
+		if result.VideoResolution == "" {
+			result.VideoResolution = requestInfo.Resolution
+		}
+		if result.VideoDurationSeconds <= 0 {
+			result.VideoDurationSeconds = requestInfo.DurationSeconds
+		}
 	}
 	if strings.TrimSpace(result.BillingModel) == "" {
 		result.BillingModel = result.Model
@@ -533,6 +538,19 @@ func compatibleVideoHasResultURL(body []byte) bool {
 		"data.video.url", "data.video_url", "data.result_url", "data.url", "data.content.video_url", "data.content.url",
 		"result.video.url", "result.video_url", "result.url",
 	) != ""
+}
+
+func compatibleVideoResolution(body []byte) string {
+	for _, path := range []string{
+		"resolution", "data.resolution", "video.resolution", "result.resolution",
+		"quality", "data.quality", "video.quality", "result.quality",
+	} {
+		value := strings.TrimSpace(gjson.GetBytes(body, path).String())
+		if normalized, ok := LookupVideoBillingResolution(value); ok {
+			return normalized
+		}
+	}
+	return ""
 }
 
 func compatibleVideoDuration(body []byte) int {

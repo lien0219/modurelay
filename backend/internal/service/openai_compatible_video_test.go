@@ -158,6 +158,32 @@ func TestPrepareCompatibleVideoBodyMultipart(t *testing.T) {
 	}
 }
 
+func TestParseGrokMediaRequestUsesVideoQualityForBillingResolution(t *testing.T) {
+	info := ParseGrokMediaRequest("application/json", []byte(`{"model":"wan-3.0","quality":"hd","duration":5}`))
+	if info.Resolution != "720p" {
+		t.Fatalf("resolution=%q want 720p", info.Resolution)
+	}
+}
+
+func TestCompatibleVideoForwardResultStatusDoesNotInventCreateDefaults(t *testing.T) {
+	body := []byte(`{"id":"task-1","status":"completed","model":"wan-3.0"}`)
+	result := compatibleVideoForwardResult(GrokMediaEndpointVideoStatus, "task-1", ParseGrokMediaRequest("", nil), "", "wan-3.0", body)
+	if result.VideoCount != 1 {
+		t.Fatalf("video_count=%d", result.VideoCount)
+	}
+	if result.VideoDurationSeconds != 0 || result.VideoResolution != "" {
+		t.Fatalf("lookup invented billing fields: %#v", result)
+	}
+}
+
+func TestCompatibleVideoForwardResultStatusUsesRecognizedQuality(t *testing.T) {
+	body := []byte(`{"id":"task-1","status":"completed","quality":"hd","duration":5}`)
+	result := compatibleVideoForwardResult(GrokMediaEndpointVideoStatus, "task-1", GrokMediaRequestInfo{}, "", "wan-3.0", body)
+	if result.VideoResolution != "720p" || result.VideoDurationSeconds != 5 {
+		t.Fatalf("unexpected billing fields: %#v", result)
+	}
+}
+
 func TestCompatibleVideoForwardResultCompletedStatus(t *testing.T) {
 	body := []byte(`{"id":"task-1","status":"completed","model":"wan-3.0","video_url":"https://example.com/out.mp4","duration":5,"resolution":"720p"}`)
 	result := compatibleVideoForwardResult(GrokMediaEndpointVideoStatus, "task-1", GrokMediaRequestInfo{}, "", "wan-3.0", body)
