@@ -357,15 +357,9 @@ func (s *OpenAIGatewayService) BindGrokMediaVideoRequestAccount(
 	if cacheKey == "" || accountID <= 0 {
 		return fmt.Errorf("grok video request binding is invalid")
 	}
-	// Video jobs may complete well after WS sticky TTL (default 1h). Bind at least
-	// as long as the pending-billing snapshot so late status/content polls resolve.
-	ttl := grokVideoPendingBillingTTL(s.cfg)
-	if s.cfg != nil && s.cfg.Gateway.OpenAIWS.StickySessionTTLSeconds > 0 {
-		if sticky := time.Duration(s.cfg.Gateway.OpenAIWS.StickySessionTTLSeconds) * time.Second; sticky > ttl {
-			ttl = sticky
-		}
-	}
-	return s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), cacheKey, accountID, ttl)
+	// Keep routing ownership longer than billing state so completed task history
+	// remains queryable without extending money-event snapshots unnecessarily.
+	return s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), cacheKey, accountID, grokVideoRequestBindingTTL(s.cfg))
 }
 
 func (s *OpenAIGatewayService) ResolveGrokMediaVideoRequestAccount(
@@ -488,6 +482,19 @@ func grokVideoPendingBillingTTL(cfg *config.Config) time.Duration {
 	// Video generation can take several minutes; keep create-time pricing for a day.
 	_ = cfg
 	return 24 * time.Hour
+}
+
+func grokVideoRequestBindingTTL(cfg *config.Config) time.Duration {
+	// Routing ownership is useful after billing has settled so users can revisit
+	// completed tasks. Keep it longer than pricing snapshots without retaining
+	// billing state indefinitely.
+	ttl := 7 * 24 * time.Hour
+	if cfg != nil && cfg.Gateway.OpenAIWS.StickySessionTTLSeconds > 0 {
+		if sticky := time.Duration(cfg.Gateway.OpenAIWS.StickySessionTTLSeconds) * time.Second; sticky > ttl {
+			ttl = sticky
+		}
+	}
+	return ttl
 }
 
 func grokVideoBilledClaimTTL(cfg *config.Config) time.Duration {
