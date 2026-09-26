@@ -4899,6 +4899,64 @@ func (s *SMSService) CancelOrder(ctx context.Context, userID int64, publicID str
 	}
 	return s.markSMSClosed(ctx, id, "cancelled", "rejected", "provider cancellation confirmed; refund unsupported")
 }
+func (s *SMSService) listSMSMessagesBatch(ctx context.Context, userID int64, admin bool) (map[int64][]SMSMessage, error) {
+	where := ""
+	args := []any{}
+	if !admin {
+		where = " WHERE user_id=$1 AND NOT (provider_order_id='' AND status='failed')"
+		args = append(args, userID)
+	}
+	selected := `SELECT id FROM sms_orders` + where + ` ORDER BY created_at DESC LIMIT 100`
+	query := `SELECT m.order_id,m.id,m.message_text,m.verification_code,m.received_at,m.sender,m.provider_received_at,m.message_type,m.service_code,m.other_sms
+		FROM sms_messages m
+		JOIN (` + selected + `) selected ON selected.id=m.order_id
+		ORDER BY m.order_id,m.received_at ASC,m.id ASC`
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	legacy := false
+	if err != nil {
+		legacy = true
+		query = `SELECT m.order_id,m.id,m.message_text,m.verification_code,m.received_at
+			FROM sms_messages m
+			JOIN (` + selected + `) selected ON selected.id=m.order_id
+			ORDER BY m.order_id,m.received_at ASC,m.id ASC`
+		rows, err = s.db.QueryContext(ctx, query, args...)
+		if err != nil {
+			return nil, err
+		}
+	}
+	defer func() { _ = rows.Close() }()
+	out := map[int64][]SMSMessage{}
+	for rows.Next() {
+		var orderID int64
+		var item SMSMessage
+		if legacy {
+			if err := rows.Scan(&orderID, &item.ID, &item.MessageText, &item.VerificationCode, &item.ReceivedAt); err != nil {
+				return nil, err
+			}
+		} else {
+			var sender, messageType, serviceCode string
+			var providerReceivedAt sql.NullTime
+			var otherSMS bool
+			if err := rows.Scan(&orderID, &item.ID, &item.MessageText, &item.VerificationCode, &item.ReceivedAt, &sender, &providerReceivedAt, &messageType, &serviceCode, &otherSMS); err != nil {
+				return nil, err
+			}
+			item.Sender = strings.TrimSpace(sender)
+			item.MessageType = strings.TrimSpace(messageType)
+			item.ServiceCode = strings.TrimSpace(serviceCode)
+			item.OtherSMS = otherSMS
+			if providerReceivedAt.Valid {
+				t := providerReceivedAt.Time
+				item.ProviderReceivedAt = &t
+			}
+		}
+		out[orderID] = append(out[orderID], item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (s *SMSService) ListOrders(ctx context.Context, userID int64, admin bool) ([]SMSOrder, error) {
 	q := `SELECT o.id,o.public_id::text,o.user_id,o.product_type,o.status,o.reconciliation_action,c.code,c.public_name,sv.code,co.iso2,co.calling_code,o.phone_number,o.operator_code,o.voice_mode,o.sale_price_snapshot,o.success_rate_snapshot,o.success_rate_grade_snapshot,o.success_rate_source_snapshot,o.refund_status,o.refund_reason,o.expires_at,o.created_at,p.code,p.base_url,p.capabilities FROM sms_orders o JOIN sms_channels c ON c.id=o.channel_id JOIN sms_providers p ON p.id=o.provider_id JOIN sms_services sv ON sv.id=o.service_id JOIN sms_countries co ON co.id=o.country_id`
 	args := []any{}
@@ -4911,8 +4969,8 @@ func (s *SMSService) ListOrders(ctx context.Context, userID int64, admin bool) (
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = rows.Close() }()
 	out := []SMSOrder{}
+	internalIDs := make([]int64, 0, 100)
 	pricing := defaultSMSPricingSettings()
 	if configured, pricingErr := s.GetPricingSettings(ctx); pricingErr == nil {
 		pricing = configured
@@ -4926,6 +4984,7 @@ func (s *SMSService) ListOrders(ctx context.Context, userID int64, admin bool) (
 		var providerCode, providerBaseURL string
 		var capabilities []byte
 		if err := rows.Scan(&internalID, &o.ID, &owner, &o.ProductType, &o.Status, &o.ReconciliationAction, &o.ChannelCode, &o.ChannelName, &o.ServiceCode, &o.CountryCode, &o.CallingCode, &o.PhoneNumber, &o.OperatorCode, &o.VoiceMode, &o.Price, &rate, &o.SuccessRateGrade, &o.SuccessRateSource, &o.RefundStatus, &o.RefundReason, &exp, &o.CreatedAt, &providerCode, &providerBaseURL, &capabilities); err != nil {
+			_ = rows.Close()
 			return nil, err
 		}
 		o.Capabilities = resolveSMSCapabilities(providerCode, providerBaseURL, capabilities)
@@ -4939,21 +4998,31 @@ func (s *SMSService) ListOrders(ctx context.Context, userID int64, admin bool) (
 		if exp.Valid {
 			o.ExpiresAt = &exp.Time
 		}
-		o.Messages, err = s.listSMSMessages(ctx, internalID)
-		if err != nil {
-			return nil, err
-		}
-		for i := len(o.Messages) - 1; i >= 0; i-- {
-			if code := strings.TrimSpace(o.Messages[i].VerificationCode); code != "" {
-				o.LatestVerificationCode = code
+		setSMSOrderRemaining(&o)
+		setSMSOrderCancellationState(&o, pricing, now)
+		internalIDs = append(internalIDs, internalID)
+		out = append(out, o)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, err
+	}
+	_ = rows.Close()
+
+	messagesByOrder, err := s.listSMSMessagesBatch(ctx, userID, admin)
+	if err != nil {
+		return nil, err
+	}
+	for i, internalID := range internalIDs {
+		out[i].Messages = messagesByOrder[internalID]
+		for j := len(out[i].Messages) - 1; j >= 0; j-- {
+			if code := strings.TrimSpace(out[i].Messages[j].VerificationCode); code != "" {
+				out[i].LatestVerificationCode = code
 				break
 			}
 		}
-		setSMSOrderRemaining(&o)
-		setSMSOrderCancellationState(&o, pricing, now)
-		out = append(out, o)
 	}
-	return out, rows.Err()
+	return out, nil
 }
 
 func (s *SMSService) ListUserOrdersPage(ctx context.Context, userID int64, page, pageSize int, keyword, status string) (*SMSOrderPage, error) {
