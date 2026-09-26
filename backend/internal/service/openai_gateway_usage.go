@@ -792,6 +792,37 @@ func (s *OpenAIGatewayService) calculateOpenAIImageCost(
 	return s.billingService.CalculateImageCost(billingModel, sizeTier, result.ImageCount, groupConfig, multiplier)
 }
 
+func (s *OpenAIGatewayService) HasVideoPricingForRequest(
+	ctx context.Context,
+	apiKey *APIKey,
+	billingModel string,
+	resolution string,
+) bool {
+	if s == nil || s.billingService == nil || apiKey == nil {
+		return false
+	}
+	if _, ok := getDefaultGrokImagineVideoPrice(billingModel, resolution); ok {
+		return true
+	}
+	resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey)
+	if resolved != nil {
+		if resolved.Source == PricingSourceGroup && resolved.Mode == BillingModeVideo {
+			return true
+		}
+		if resolved.Source == PricingSourceChannel &&
+			(resolved.Mode == BillingModePerRequest || resolved.Mode == BillingModeImage || resolved.Mode == BillingModeVideo) {
+			return true
+		}
+	}
+	if apiKeyHasConfiguredVideoPrice(apiKey, billingModel, resolution) {
+		return true
+	}
+	if refreshed := s.apiKeyWithFreshGroupMediaPricing(ctx, apiKey); refreshed != apiKey {
+		return apiKeyHasConfiguredVideoPrice(refreshed, billingModel, resolution)
+	}
+	return false
+}
+
 func (s *OpenAIGatewayService) calculateOpenAIVideoCost(
 	ctx context.Context,
 	billingModel string,

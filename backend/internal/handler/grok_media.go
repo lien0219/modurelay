@@ -493,6 +493,16 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 				continue
 			}
 		}
+		if endpoint.IsGenerationRequest() && selectedCompatibleVideo && !selectedOfficialVideoTier &&
+			!h.gatewayService.HasVideoPricingForRequest(requestCtx, apiKey, requestModel, requestInfo.Resolution) {
+			reqLog.Error("grok_media.video_pricing_missing",
+				zap.String("model", requestModel),
+				zap.String("resolution", requestInfo.Resolution),
+				zap.Int64("account_id", account.ID),
+			)
+			h.errorResponse(c, http.StatusServiceUnavailable, "video_pricing_not_configured", "Video pricing is not configured for this model")
+			return
+		}
 		if failoverClientGone(c) {
 			return
 		}
