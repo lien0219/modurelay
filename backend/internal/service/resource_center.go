@@ -9,6 +9,7 @@ import (
 	stdhtml "html"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -39,6 +40,12 @@ const (
 )
 
 var resourceURLPattern = regexp.MustCompile(`(?i)(?:https?://|www\.)[^\s<]+`)
+
+var (
+	resourceEmailIdentityPattern = regexp.MustCompile(`^[^\s@]+@[^\s@]+\.[^\s@]+$`)
+	resourcePhoneIdentityPattern = regexp.MustCompile(`^\+?[0-9][0-9\s().-]{5,}[0-9]$`)
+	resourceNumericIdentityPattern = regexp.MustCompile(`^[0-9]{6,}$`)
+)
 
 var (
 	ErrResourceCenterDisabled  = infraerrors.NotFound("RESOURCE_CENTER_DISABLED", "resource sharing center is disabled")
@@ -867,19 +874,60 @@ func normalizeBannedWords(words []string) []string {
 	return out
 }
 
+func resourcePublicAlias(userID int64, role string) string {
+	if role == domain.RoleAdmin {
+		return "官方管理员"
+	}
+	return fmt.Sprintf("用户 %s", strings.ToUpper(strconv.FormatInt(userID, 36)))
+}
+
+func resourceSensitivePublicIdentity(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return true
+	}
+	if resourceEmailIdentityPattern.MatchString(value) || resourceNumericIdentityPattern.MatchString(value) {
+		return true
+	}
+	if resourcePhoneIdentityPattern.MatchString(value) {
+		digits := strings.Map(func(r rune) rune {
+			if r >= '0' && r <= '9' {
+				return r
+			}
+			return -1
+		}, value)
+		return len(digits) >= 7
+	}
+	return false
+}
+
+func resourcePublicAuthorName(userID int64, username, email, role string) string {
+	username = strings.TrimSpace(username)
+	if !resourceSensitivePublicIdentity(username) {
+		return username
+	}
+	_ = email // Login email is intentionally never used as a public fallback.
+	return resourcePublicAlias(userID, role)
+}
+
+func resourceSafeSnapshotName(userID int64, snapshot, role string) string {
+	snapshot = strings.TrimSpace(snapshot)
+	if !resourceSensitivePublicIdentity(snapshot) {
+		return snapshot
+	}
+	return resourcePublicAlias(userID, role)
+}
+
 func (s *ResourceCenterService) author(ctx context.Context, id int64) (ResourceAuthorView, error) {
 	u, err := s.userRepo.GetByID(ctx, id)
 	if err != nil || u == nil {
 		return ResourceAuthorView{}, errors.New("author not found")
 	}
-	name := strings.TrimSpace(u.Username)
-	if name == "" {
-		name = strings.Split(u.Email, "@")[0]
-	}
 	role := u.Role
 	if role != domain.RoleAdmin {
 		role = domain.RoleUser
 	}
+	name := resourcePublicAuthorName(id, u.Username, u.Email, role)
 	return ResourceAuthorView{ID: id, Username: name, Role: role}, nil
 }
 func categoryView(c *dbent.ResourceCategory) ResourceCategoryView {
@@ -919,7 +967,7 @@ func (s *ResourceCenterService) postViews(ctx context.Context, userID int64, ite
 		if cat == nil {
 			return nil, ErrResourceNotFound
 		}
-		out = append(out, ResourcePostView{ID: p.ID, Category: categoryView(cat), Author: ResourceAuthorView{ID: p.AuthorID, Username: p.AuthorUsername, Role: p.AuthorRole}, Title: p.Title, Content: p.Content, ViewCount: p.ViewCount, LikeCount: p.LikeCount, CommentCount: p.CommentCount, Liked: likedIDs[p.ID], CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt, Status: p.Status})
+		out = append(out, ResourcePostView{ID: p.ID, Category: categoryView(cat), Author: ResourceAuthorView{ID: p.AuthorID, Username: resourceSafeSnapshotName(p.AuthorID, p.AuthorUsername, p.AuthorRole), Role: p.AuthorRole}, Title: p.Title, Content: p.Content, ViewCount: p.ViewCount, LikeCount: p.LikeCount, CommentCount: p.CommentCount, Liked: likedIDs[p.ID], CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt, Status: p.Status})
 	}
 	return out, nil
 }
@@ -943,7 +991,7 @@ func (s *ResourceCenterService) commentViews(ctx context.Context, userID int64, 
 	}
 	out := make([]ResourceCommentView, 0, len(items))
 	for _, c := range items {
-		out = append(out, ResourceCommentView{ID: c.ID, PostID: c.PostID, ParentID: c.ParentID, Author: ResourceAuthorView{ID: c.AuthorID, Username: c.AuthorUsername, Role: c.AuthorRole}, Content: c.Content, LikeCount: c.LikeCount, Liked: likedIDs[c.ID], CreatedAt: c.CreatedAt, Status: c.Status})
+		out = append(out, ResourceCommentView{ID: c.ID, PostID: c.PostID, ParentID: c.ParentID, Author: ResourceAuthorView{ID: c.AuthorID, Username: resourceSafeSnapshotName(c.AuthorID, c.AuthorUsername, c.AuthorRole), Role: c.AuthorRole}, Content: c.Content, LikeCount: c.LikeCount, Liked: likedIDs[c.ID], CreatedAt: c.CreatedAt, Status: c.Status})
 	}
 	return out, nil
 }
@@ -955,5 +1003,5 @@ func (s *ResourceCenterService) createNotification(ctx context.Context, userID i
 	return b.Exec(ctx)
 }
 func notificationView(n *dbent.ResourceNotification) ResourceNotificationView {
-	return ResourceNotificationView{ID: n.ID, PostID: n.PostID, CommentID: n.CommentID, Kind: n.Kind, Actor: ResourceAuthorView{ID: n.ActorID, Username: n.ActorUsername, Role: n.ActorRole}, Read: n.Read, CreatedAt: n.CreatedAt}
+	return ResourceNotificationView{ID: n.ID, PostID: n.PostID, CommentID: n.CommentID, Kind: n.Kind, Actor: ResourceAuthorView{ID: n.ActorID, Username: resourceSafeSnapshotName(n.ActorID, n.ActorUsername, n.ActorRole), Role: n.ActorRole}, Read: n.Read, CreatedAt: n.CreatedAt}
 }
