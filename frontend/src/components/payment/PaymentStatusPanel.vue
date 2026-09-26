@@ -332,7 +332,6 @@ const countdownDisplay = computed(() => {
 })
 
 const displayPaymentAmount = computed(() => formatGatewayAmount(props.payAmount || props.amount || 0))
-const displayOrderNumber = computed(() => props.outTradeNo || `#${props.orderId}`)
 
 function formatGatewayAmount(value: number, currency?: string | null): string {
   return formatPaymentAmount(value, currency || paymentCurrency.value, localeCode.value)
