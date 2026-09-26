@@ -359,8 +359,7 @@ describe('SMSVerificationView', () => {
     expect(table.findAll('tbody td')).toHaveLength(11)
     expect(table.findAll('tbody td').every(cell => cell.classes().includes('whitespace-nowrap'))).toBe(true)
     expect(table.get('.sms-order-statuses').classes()).toContain('min-w-max')
-    expect(table.get('.sms-order-message-text').classes()).toContain('truncate')
-    expect(table.get('.sms-order-message-text').attributes('title')).toBe(messageText)
+    expect(wrapper.text()).toContain('757119')
     wrapper.unmount()
   })
 

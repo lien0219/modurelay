@@ -233,10 +233,7 @@ describe('EmailVerificationView', () => {
         capture_policy: 'on_verification_extracted',
         created_at: older,
         refund_status: 'not_applicable',
-        messages: [
-          { id: 'm-new', from_address: 'noreply@example.com', from_name: 'OpenAI', to_address: 'demo@gmail.com', subject: 'New code', text_body: '222222', received_at: newer, verification_code: '222222' },
-          { id: 'm-old', from_address: 'noreply@example.com', from_name: 'OpenAI', to_address: 'demo@gmail.com', subject: 'Old code', text_body: '111111', received_at: older, verification_code: '111111' },
-        ],
+        latest_verification_code: '222222',
       }],
       total: 1,
       page: 1,

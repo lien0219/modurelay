@@ -64,6 +64,7 @@ export interface EmailOrder {
   created_at: string
   first_message_at?: string
   messages?: EmailMessage[]
+  latest_verification_code?: string
   refund_status: string
   refund_reason?: string
   error_message?: string

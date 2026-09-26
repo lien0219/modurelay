@@ -602,8 +602,9 @@ type EmailOrder struct {
 	ExpiresAt          *time.Time     `json:"expires_at,omitempty"`
 	CreatedAt          time.Time      `json:"created_at"`
 	FirstMessageAt     *time.Time     `json:"first_message_at,omitempty"`
-	Messages           []EmailMessage `json:"messages,omitempty"`
-	RefundStatus       string         `json:"refund_status"`
+	Messages               []EmailMessage `json:"messages,omitempty"`
+	LatestVerificationCode string         `json:"latest_verification_code,omitempty"`
+	RefundStatus           string         `json:"refund_status"`
 	RefundReason       string         `json:"refund_reason,omitempty"`
 	ErrorPublicMessage string         `json:"error_message,omitempty"`
 }
@@ -1359,6 +1360,33 @@ func (s *EmailVerificationService) getOrderByID(ctx context.Context, userID, id 
 	if e != nil {
 		return nil, e
 	}
+	normalizeEmailOrderForUser(&o, errorCode)
+	if rate.Valid {
+		o.SuccessRate = &rate.Float64
+	}
+	if exp.Valid {
+		o.ExpiresAt = &exp.Time
+	}
+	if first.Valid {
+		o.FirstMessageAt = &first.Time
+	}
+	msgs, e := s.listMessagesPublic(ctx, id)
+	if e == nil {
+		o.Messages = msgs
+		for _, msg := range msgs {
+			if code := strings.TrimSpace(msg.VerificationCode); code != "" {
+				o.LatestVerificationCode = code
+				break
+			}
+		}
+	}
+	return &o, nil
+}
+
+func normalizeEmailOrderForUser(o *EmailOrder, errorCode string) {
+	if o == nil {
+		return
+	}
 	// Older development snapshots contained mojibake in a few persisted
 	// public messages. Normalize by stable error code at the DTO boundary so
 	// users never receive unreadable or provider-internal text.
@@ -1374,21 +1402,8 @@ func (s *EmailVerificationService) getOrderByID(ctx context.Context, userID, id 
 	}
 	o.ChannelName = publicVerificationChannelName(o.ChannelCode)
 	o.RefundReason = ""
-	if rate.Valid {
-		o.SuccessRate = &rate.Float64
-	}
-	if exp.Valid {
-		o.ExpiresAt = &exp.Time
-	}
-	if first.Valid {
-		o.FirstMessageAt = &first.Time
-	}
-	msgs, e := s.listMessagesPublic(ctx, id)
-	if e == nil {
-		o.Messages = msgs
-	}
-	return &o, nil
 }
+
 func (s *EmailVerificationService) listMessagesPublic(ctx context.Context, id int64) ([]EmailMessage, error) {
 	rows, e := s.db.QueryContext(ctx, `SELECT id::text,from_address,from_name,to_address,subject,text_body,html_body,verification_code,verification_url,verification_confidence,verification_method,received_at FROM email_messages WHERE email_order_id=$1 ORDER BY received_at DESC`, id)
 	if e != nil {
@@ -1544,7 +1559,7 @@ func (s *EmailVerificationService) ListUserOrdersPage(ctx context.Context, userI
 	}
 	keyword = strings.TrimSpace(keyword)
 	status = strings.TrimSpace(status)
-	from := ` FROM email_orders o JOIN email_services sv ON sv.id=o.service_id`
+	from := ` FROM email_orders o JOIN email_channels c ON c.id=o.channel_id JOIN email_services sv ON sv.id=o.service_id`
 	where := ` WHERE o.user_id=$1`
 	args := []any{userID}
 	if keyword != "" {
@@ -1559,33 +1574,66 @@ func (s *EmailVerificationService) ListUserOrdersPage(ctx context.Context, userI
 	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*)`+from+where, args...).Scan(&total); err != nil {
 		return nil, err
 	}
+
 	listArgs := append([]any{}, args...)
 	listArgs = append(listArgs, pageSize)
 	limitPlaceholder := fmt.Sprintf("$%d", len(listArgs))
 	listArgs = append(listArgs, (page-1)*pageSize)
 	offsetPlaceholder := fmt.Sprintf("$%d", len(listArgs))
-	rows, err := s.db.QueryContext(ctx, `SELECT o.public_id::text`+from+where+` ORDER BY o.created_at DESC LIMIT `+limitPlaceholder+` OFFSET `+offsetPlaceholder, listArgs...)
+
+	query := `SELECT
+		o.public_id::text,o.order_no,o.status,c.code,c.public_name,sv.code,
+		o.email_address,o.address_type,o.sale_price_snapshot,o.success_rate_snapshot,
+		o.success_rate_grade_snapshot,o.refund_policy_snapshot,o.capture_policy_snapshot,
+		o.expires_at,o.created_at,o.first_message_at,o.refund_status,o.refund_reason,
+		o.error_code,o.error_public_message,
+		COALESCE((
+			SELECT m.verification_code
+			FROM email_messages m
+			WHERE m.email_order_id=o.id AND BTRIM(m.verification_code)<>''
+			ORDER BY m.received_at DESC,m.id DESC
+			LIMIT 1
+		),'')
+	` + from + where + ` ORDER BY o.created_at DESC LIMIT ` + limitPlaceholder + ` OFFSET ` + offsetPlaceholder
+
+	rows, err := s.db.QueryContext(ctx, query, listArgs...)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
-	ids := make([]string, 0, pageSize)
+
+	items := make([]EmailOrder, 0, pageSize)
 	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
+		var o EmailOrder
+		var rate sql.NullFloat64
+		var exp, first sql.NullTime
+		var errorCode, latestCode string
+		if err := rows.Scan(
+			&o.ID,&o.OrderNo,&o.Status,&o.ChannelCode,&o.ChannelName,&o.ServiceCode,
+			&o.EmailAddress,&o.AddressType,&o.Price,&rate,
+			&o.SuccessRateGrade,&o.RefundPolicy,&o.CapturePolicy,
+			&exp,&o.CreatedAt,&first,&o.RefundStatus,&o.RefundReason,
+			&errorCode,&o.ErrorPublicMessage,&latestCode,
+		); err != nil {
 			return nil, err
 		}
-		ids = append(ids, id)
+		normalizeEmailOrderForUser(&o, errorCode)
+		o.LatestVerificationCode = strings.TrimSpace(latestCode)
+		if rate.Valid {
+			o.SuccessRate = &rate.Float64
+		}
+		if exp.Valid {
+			t := exp.Time
+			o.ExpiresAt = &t
+		}
+		if first.Valid {
+			t := first.Time
+			o.FirstMessageAt = &t
+		}
+		items = append(items, o)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
-	}
-	items := make([]EmailOrder, 0, len(ids))
-	for _, id := range ids {
-		order, err := s.GetOrder(ctx, userID, id)
-		if err == nil {
-			items = append(items, *order)
-		}
 	}
 	pages := int((total + int64(pageSize) - 1) / int64(pageSize))
 	if pages < 1 {

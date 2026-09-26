@@ -554,7 +554,9 @@ function latestCodeFromMessages(messages?: EmailMessage[]) {
   }
   return latest.verification_code?.trim() || ''
 }
-function firstCode(order: EmailOrder) { return latestCodeFromMessages(order.messages) }
+function firstCode(order: EmailOrder) {
+  return order.latest_verification_code?.trim() || latestCodeFromMessages(order.messages)
+}
 function canCancel(order: EmailOrder) { return ['reserved', 'generating_inbox', 'reconciling', 'waiting_email', 'email_received', 'verification_extracted'].includes(order.status) }
 
 function resetSelection() {
