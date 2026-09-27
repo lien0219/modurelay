@@ -314,7 +314,22 @@ func (s *EmailVerificationService) CleanupExpiredMessages(ctx context.Context) e
 			}
 		}
 	}
-	if _, err := s.db.ExecContext(ctx, `UPDATE email_messages SET verification_code='',verification_url='',updated_at=NOW() WHERE received_at < NOW() - ($1 * INTERVAL '1 hour') AND (verification_code <> '' OR verification_url <> '')`, secretHours); err != nil {
+	if _, err := s.db.ExecContext(ctx, `
+		UPDATE email_messages
+		SET text_body=CASE
+		        WHEN BTRIM(verification_url)<>'' THEN ''
+		        WHEN BTRIM(verification_code)<>'' THEN replace(text_body, verification_code, '[redacted]')
+		        ELSE text_body
+		    END,
+		    html_body=CASE
+		        WHEN BTRIM(verification_url)<>'' THEN ''
+		        WHEN BTRIM(verification_code)<>'' THEN replace(html_body, verification_code, '[redacted]')
+		        ELSE html_body
+		    END,
+		    raw_payload=CASE WHEN BTRIM(verification_code)<>'' OR BTRIM(verification_url)<>'' THEN '{}'::jsonb ELSE raw_payload END,
+		    verification_code='',verification_url='',updated_at=NOW()
+		WHERE received_at < NOW() - ($1 * INTERVAL '1 hour')
+		  AND (verification_code <> '' OR verification_url <> '')`, secretHours); err != nil {
 		return err
 	}
 	_, err := s.db.ExecContext(ctx, `UPDATE email_messages SET text_body='',html_body='',raw_payload='{}'::jsonb,updated_at=NOW() WHERE received_at < NOW() - ($1 * INTERVAL '1 day') AND (text_body <> '' OR html_body <> '' OR raw_payload <> '{}'::jsonb)`, retentionDays)

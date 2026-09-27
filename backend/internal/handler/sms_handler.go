@@ -562,7 +562,23 @@ func (h *SMSHandler) Order(c *gin.Context) {
 		response.Unauthorized(c, "User not authenticated")
 		return
 	}
-	_ = h.svc.SyncOrderStatus(c.Request.Context(), subject.UserID, c.Param("id"))
+	if syncErr := h.svc.SyncOrderStatus(c.Request.Context(), subject.UserID, c.Param("id")); syncErr != nil {
+		var transient *service.SMSSyncTransientError
+		if errors.As(syncErr, &transient) {
+			response.ErrorWithDetails(c, http.StatusAccepted, "The SMS channel is temporarily synchronizing; please refresh shortly", "SMS_SYNC_PENDING", nil)
+			return
+		}
+		if errors.Is(syncErr, service.ErrSMSProviderUnavailable) {
+			response.ErrorWithDetails(c, http.StatusServiceUnavailable, "The selected channel is temporarily unavailable", "PROVIDER_UNAVAILABLE", nil)
+			return
+		}
+		if errors.Is(syncErr, service.ErrSMSProviderCredentialMissing) {
+			response.ErrorWithDetails(c, http.StatusUnprocessableEntity, "Provider credential is not configured", "PROVIDER_CREDENTIAL_MISSING", nil)
+			return
+		}
+		response.ErrorFrom(c, syncErr)
+		return
+	}
 	order, err := h.svc.GetOrderByPublicID(c.Request.Context(), subject.UserID, c.Param("id"))
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -981,6 +997,10 @@ func (h *SMSHandler) AdminProviderUpdate(c *gin.Context) {
 		return
 	}
 	if err := h.svc.UpdateProvider(c.Request.Context(), id, req.Enabled, req.BaseURL, req.CredentialRef); err != nil {
+		if err == service.ErrProviderCredentialEncryptionKeyNotConfigured {
+			response.ErrorWithDetails(c, http.StatusBadRequest, "Set a fixed TOTP_ENCRYPTION_KEY before saving provider credentials", "PROVIDER_CREDENTIAL_ENCRYPTION_KEY_NOT_CONFIGURED", nil)
+			return
+		}
 		response.ErrorFrom(c, err)
 		return
 	}

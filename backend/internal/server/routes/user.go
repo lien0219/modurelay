@@ -223,6 +223,7 @@ func RegisterUserRoutes(
 			email.POST("/orders", h.Email.Purchase)
 			email.GET("/orders", h.Email.Orders)
 			email.GET("/orders/:id", h.Email.Order)
+			email.POST("/orders/:id/sync", h.Email.Sync)
 			email.POST("/orders/:id/cancel", h.Email.Cancel)
 			email.GET("/orders/:id/refund-status", h.Email.RefundStatus)
 		}

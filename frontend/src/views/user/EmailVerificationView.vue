@@ -239,7 +239,7 @@
                   class="email-icon-button"
                   :disabled="refreshingId === currentOrder.id"
                   :title="t('common.refresh')"
-                  @click="refreshCurrentOrder()"
+                  @click="refreshCurrentOrder(true, true)"
                 >
                   <Icon name="refresh" size="sm" :class="{ 'is-spinning': refreshingId === currentOrder.id }" />
                 </button>
@@ -682,12 +682,16 @@ function startActiveOrderPolling() {
   }, ACTIVE_ORDER_POLL_INTERVAL_MS)
 }
 
-async function refreshCurrentOrder(showError = true) {
+async function refreshCurrentOrder(showError = true, syncProvider = false) {
   if (!currentOrder.value) return
   const id = currentOrder.value.id
   refreshingId.value = id
   try {
-    currentOrder.value = await emailAPI.order(id)
+		if (syncProvider) {
+			currentOrder.value = await emailAPI.sync(id)
+		} else {
+			currentOrder.value = await emailAPI.order(id)
+		}
     if (currentOrder.value && isTerminal(currentOrder.value)) stopActiveOrderPolling()
   } catch (error) {
     if (showError) appStore.showError(errorMessage(error, t('email.user.errors.orders')))

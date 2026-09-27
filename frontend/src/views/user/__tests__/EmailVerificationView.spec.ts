@@ -9,6 +9,7 @@ const { emailAPI, showError, showSuccess } = vi.hoisted(() => ({
     quotes: vi.fn(),
     orders: vi.fn(),
     order: vi.fn(),
+    sync: vi.fn(),
     purchase: vi.fn(),
     cancel: vi.fn(),
     requestRefund: vi.fn(),
@@ -514,6 +515,66 @@ describe('EmailVerificationView', () => {
     expect(emailAPI.order).toHaveBeenCalledWith('order-terminal')
     expect(wrapper.text()).toContain('654321')
     expect(wrapper.text()).toContain('email.user.viewMessage')
+    wrapper.unmount()
+  })
+
+  it('uses the explicit inbox refresh to sync the provider before reading the order', async () => {
+    const active = {
+      id: 'order-sync',
+      channel_code: 'email_channel_1',
+      channel_name: 'Channel 1',
+      status: 'waiting_email',
+      email_address: 'sync@gmail.com',
+      expires_at: new Date(Date.now() + 60_000).toISOString(),
+      messages: [],
+    }
+    emailAPI.purchase.mockResolvedValue(active)
+    emailAPI.sync.mockResolvedValue({ ...active, status: 'verification_extracted', latest_verification_code: '654321' })
+
+    const wrapper = mount(EmailVerificationView, {
+      global: { stubs: { AppLayout: { template: '<main><slot /></main>' }, Icon: true } },
+    })
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === 'email.user.getQuote')!.trigger('click')
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === 'email.user.generateFree')!.trigger('click')
+    await flushPromises()
+
+    await wrapper.get('.email-live-order__actions .email-icon-button').trigger('click')
+    await flushPromises()
+
+    expect(emailAPI.sync).toHaveBeenCalledWith('order-sync')
+    expect(wrapper.text()).toContain('654321')
+    wrapper.unmount()
+  })
+
+  it('surfaces a manual provider sync failure without replacing the current inbox', async () => {
+    const active = {
+      id: 'order-sync-error',
+      channel_code: 'email_channel_1',
+      channel_name: 'Channel 1',
+      status: 'waiting_email',
+      email_address: 'sync-error@gmail.com',
+      expires_at: new Date(Date.now() + 60_000).toISOString(),
+      messages: [],
+    }
+    emailAPI.purchase.mockResolvedValue(active)
+    emailAPI.sync.mockRejectedValue(new Error('provider unavailable'))
+
+    const wrapper = mount(EmailVerificationView, {
+      global: { stubs: { AppLayout: { template: '<main><slot /></main>' }, Icon: true } },
+    })
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === 'email.user.getQuote')!.trigger('click')
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === 'email.user.generateFree')!.trigger('click')
+    await flushPromises()
+
+    await wrapper.get('.email-live-order__actions .email-icon-button').trigger('click')
+    await flushPromises()
+
+    expect(showError).toHaveBeenCalled()
+    expect(wrapper.text()).toContain('sync-error@gmail.com')
     wrapper.unmount()
   })
 

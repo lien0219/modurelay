@@ -40,6 +40,7 @@ var (
 	ErrEmailQuoteExpired              = errors.New("email quote expired")
 	ErrEmailQuoteInvalid              = errors.New("email quote invalid")
 	ErrEmailProviderUnknown           = errors.New("email provider result is unknown")
+	ErrEmailProviderNotFound          = errors.New("email provider not found")
 	ErrEmailNotFound                  = errors.New("email order not found")
 	ErrEmailProviderCredentialMissing = errors.New("email provider credential is not configured")
 	ErrEmailProviderTestCooldown      = errors.New("email provider test connection is cooling down")
@@ -631,18 +632,20 @@ type EmailMessage struct {
 }
 
 type EmailVerificationService struct {
-	db              *sql.DB
-	settings        *SettingService
-	encryptor       SecretEncryptor
-	quoteSigningKey []byte
+	db                      *sql.DB
+	settings                *SettingService
+	encryptor               SecretEncryptor
+	encryptionKeyConfigured bool
+	quoteSigningKey         []byte
 }
 
 func NewEmailVerificationService(db *sql.DB, settings *SettingService, encryptor SecretEncryptor, cfg *config.Config) *EmailVerificationService {
 	return &EmailVerificationService{
-		db:              db,
-		settings:        settings,
-		encryptor:       encryptor,
-		quoteSigningKey: resolveEmailQuoteSigningKey(cfg),
+		db:                      db,
+		settings:                settings,
+		encryptor:               encryptor,
+		encryptionKeyConfigured: cfg != nil && cfg.Totp.EncryptionKeyConfigured,
+		quoteSigningKey:         resolveEmailQuoteSigningKey(cfg),
 	}
 }
 
@@ -1380,13 +1383,14 @@ func (s *EmailVerificationService) getOrderByID(ctx context.Context, userID, id 
 		o.FirstMessageAt = &first.Time
 	}
 	msgs, e := s.listMessagesPublic(ctx, id)
-	if e == nil {
-		o.Messages = msgs
-		for _, msg := range msgs {
-			if code := strings.TrimSpace(msg.VerificationCode); code != "" {
-				o.LatestVerificationCode = code
-				break
-			}
+	if e != nil {
+		return nil, e
+	}
+	o.Messages = msgs
+	for _, msg := range msgs {
+		if code := strings.TrimSpace(msg.VerificationCode); code != "" {
+			o.LatestVerificationCode = code
+			break
 		}
 	}
 	return &o, nil
@@ -1414,7 +1418,7 @@ func normalizeEmailOrderForUser(o *EmailOrder, errorCode string) {
 }
 
 func (s *EmailVerificationService) listMessagesPublic(ctx context.Context, id int64) ([]EmailMessage, error) {
-	rows, e := s.db.QueryContext(ctx, `SELECT id::text,from_address,from_name,to_address,subject,text_body,html_body,verification_code,verification_url,verification_confidence,verification_method,received_at FROM email_messages WHERE email_order_id=$1 ORDER BY received_at DESC`, id)
+	rows, e := s.db.QueryContext(ctx, `SELECT id::text,from_address,from_name,to_address,subject,text_body,html_body,verification_code,verification_url,verification_confidence,verification_method,received_at FROM email_messages WHERE email_order_id=$1 ORDER BY received_at DESC,id DESC`, id)
 	if e != nil {
 		return nil, e
 	}
@@ -1435,9 +1439,58 @@ func (s *EmailVerificationService) listMessagesPublic(ctx context.Context, id in
 func (s *EmailVerificationService) GetOrder(ctx context.Context, userID int64, publicID string) (*EmailOrder, error) {
 	var id int64
 	if e := s.db.QueryRowContext(ctx, `SELECT id FROM email_orders WHERE user_id=$1 AND public_id=$2::uuid`, userID, strings.TrimSpace(publicID)).Scan(&id); e != nil {
-		return nil, ErrEmailNotFound
+		if errors.Is(e, sql.ErrNoRows) {
+			return nil, ErrEmailNotFound
+		}
+		return nil, e
 	}
 	return s.getOrderByID(ctx, userID, id)
+}
+
+// SyncOrder performs one user-requested provider poll for an owned order and
+// returns the resulting user-safe snapshot. Terminal orders are read-only: a
+// late manual refresh must not reopen an already settled balance or inbox.
+func (s *EmailVerificationService) SyncOrder(ctx context.Context, userID int64, publicID string) (*EmailOrder, error) {
+	var id int64
+	var status string
+	if err := s.db.QueryRowContext(ctx, `SELECT id,status FROM email_orders WHERE user_id=$1 AND public_id=$2::uuid`, userID, strings.TrimSpace(publicID)).Scan(&id, &status); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrEmailNotFound
+		}
+		return nil, err
+	}
+	if status == "waiting_email" || status == "email_received" || status == "verification_extracted" {
+		// Share the worker's next_poll_at lease so repeated browser refreshes or
+		// multiple app instances cannot spend provider requests concurrently for
+		// the same inbox. A refresh that races an in-flight poll returns the latest
+		// persisted snapshot and the normal worker will deliver the next update.
+		claimed, err := s.claimEmailPoll(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		if claimed {
+			if err := s.PollOrder(ctx, id); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return s.getOrderByID(ctx, userID, id)
+}
+
+func (s *EmailVerificationService) claimEmailPoll(ctx context.Context, orderID int64) (bool, error) {
+	result, err := s.db.ExecContext(ctx, `UPDATE email_orders
+		SET next_poll_at=NOW()+INTERVAL '30 seconds'
+		WHERE id=$1
+		  AND status IN ('waiting_email','email_received','verification_extracted')
+		  AND (next_poll_at IS NULL OR next_poll_at<=NOW())`, orderID)
+	if err != nil {
+		return false, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return affected == 1, nil
 }
 
 // CancelOrder changes only the local order and balance ledger. Emailnator has
@@ -1778,6 +1831,68 @@ func emailMessageSummaryDedupe(fromAddress, toAddress, subject string, receivedA
 	}, "\x1f"))
 }
 
+// upsertEmailMessage keeps provider messages convergent. Some inbox APIs
+// expose a message ID before its body is ready; a later poll must be allowed
+// to fill the same row rather than being discarded by a permanent dedupe hit.
+// Empty incoming fields never erase a previously richer message.
+func (s *EmailVerificationService) upsertEmailMessage(
+	ctx context.Context,
+	orderID int64,
+	msg *ProviderEmailMessage,
+	normalizedText, safeHTML string,
+	extract VerificationExtraction,
+	receivedAt time.Time,
+	dedupe string,
+	rawPayload []byte,
+) (updatedExisting bool, err error) {
+	if msg == nil {
+		return false, errors.New("email provider returned empty message")
+	}
+	providerID := strings.TrimSpace(msg.ProviderMessageID)
+	if providerID != "" {
+		result, updateErr := s.db.ExecContext(ctx, `
+			UPDATE email_messages
+			SET from_address=CASE WHEN BTRIM($3)<>'' THEN $3 ELSE from_address END,
+			    from_name=CASE WHEN BTRIM($4)<>'' THEN $4 ELSE from_name END,
+			    to_address=CASE WHEN BTRIM($5)<>'' THEN $5 ELSE to_address END,
+			    subject=CASE WHEN BTRIM($6)<>'' THEN $6 ELSE subject END,
+			    text_body=CASE WHEN BTRIM($7)<>'' THEN $7 ELSE text_body END,
+			    html_body=CASE WHEN BTRIM($8)<>'' THEN $8 ELSE html_body END,
+			    verification_code=CASE WHEN BTRIM($9)<>'' THEN $9 ELSE verification_code END,
+			    verification_url=CASE WHEN BTRIM($10)<>'' THEN $10 ELSE verification_url END,
+			    verification_confidence=CASE WHEN BTRIM($9)<>'' OR BTRIM($10)<>'' THEN GREATEST(verification_confidence,$11) ELSE verification_confidence END,
+			    verification_method=CASE WHEN BTRIM($12)<>'' THEN $12 ELSE verification_method END,
+			    received_at=CASE WHEN $13::timestamptz < received_at THEN $13 ELSE received_at END,
+			    raw_payload=CASE WHEN $14::jsonb<>'{}'::jsonb THEN $14::jsonb ELSE raw_payload END,
+			    updated_at=NOW()
+			WHERE email_order_id=$1 AND provider_message_id=$2`,
+			orderID, providerID, msg.FromAddress, msg.FromName, msg.ToAddress, msg.Subject,
+			normalizedText, safeHTML, extract.Code, extract.URL, extract.Confidence, extract.Method,
+			receivedAt, rawPayload)
+		if updateErr != nil {
+			return false, updateErr
+		}
+		if affected, _ := result.RowsAffected(); affected > 0 {
+			return true, nil
+		}
+	}
+
+	result, err := s.db.ExecContext(ctx, `
+		INSERT INTO email_messages(email_order_id,provider_message_id,from_address,from_name,to_address,subject,text_body,html_body,verification_code,verification_url,verification_confidence,verification_method,received_at,dedupe_hash,raw_payload)
+		VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+		ON CONFLICT(email_order_id,dedupe_hash) DO NOTHING`,
+		orderID, providerID, msg.FromAddress, msg.FromName, msg.ToAddress, msg.Subject,
+		normalizedText, safeHTML, extract.Code, extract.URL, extract.Confidence, extract.Method,
+		receivedAt, dedupe, rawPayload)
+	if err != nil {
+		return false, err
+	}
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		return true, nil
+	}
+	return false, nil
+}
+
 func (s *EmailVerificationService) convergePersistedEmailEvidence(ctx context.Context, orderID, userID int64, capturePolicy string) error {
 	var first sql.NullTime
 	var hasVerification bool
@@ -1815,6 +1930,14 @@ func (s *EmailVerificationService) convergePersistedEmailEvidence(ctx context.Co
 }
 
 func (s *EmailVerificationService) PollOrder(ctx context.Context, orderID int64) error {
+	return s.pollOrder(ctx, orderID, false)
+}
+
+// pollOrder performs one bounded provider poll. allowExpired is reserved for
+// the expiry sweep: an order whose receive window just closed gets one final
+// provider read before its balance is settled, so a message already accepted
+// upstream cannot be lost between the last scheduled poll and expiry.
+func (s *EmailVerificationService) pollOrder(ctx context.Context, orderID int64, allowExpired bool) error {
 	var userID, providerID, channelID int64
 	var code, base, cred, address, inbox, status, capturePolicy string
 	var maxProviderRequests int
@@ -1833,7 +1956,7 @@ func (s *EmailVerificationService) PollOrder(ctx context.Context, orderID int64)
 	if err := s.convergePersistedEmailEvidence(ctx, orderID, userID, capturePolicy); err != nil {
 		return err
 	}
-	if expires.Valid && time.Now().After(expires.Time) {
+	if !allowExpired && expires.Valid && time.Now().After(expires.Time) {
 		return s.expireOrderV2(ctx, orderID, userID)
 	}
 	if maxProviderRequests > 0 && providerRequestCount >= maxProviderRequests {
@@ -1843,30 +1966,30 @@ func (s *EmailVerificationService) PollOrder(ctx context.Context, orderID int64)
 	_ = json.Unmarshal(metaRaw, &meta)
 	var billing map[string]any
 	_ = json.Unmarshal(billingRaw, &billing)
+	providerKey := emailProviderAPIKey(code, cred, s.encryptor)
+	if emailProviderRequiresCredential(code) && strings.TrimSpace(providerKey) == "" {
+		return ErrEmailProviderCredentialMissing
+	}
 	p := emailProviderFor(code, base, cred, meta, s.encryptor, billing)
 	if p == nil {
 		return ErrEmailChannelUnavailable
 	}
 
 	existingDedupe := map[string]struct{}{}
-	existingProviderIDs := map[string]struct{}{}
 	existingSummary := map[string]struct{}{}
-	rows, err := s.db.QueryContext(ctx, `SELECT dedupe_hash,provider_message_id,from_address,to_address,subject,received_at FROM email_messages WHERE email_order_id=$1`, orderID)
+	rows, err := s.db.QueryContext(ctx, `SELECT dedupe_hash,from_address,to_address,subject,received_at FROM email_messages WHERE email_order_id=$1`, orderID)
 	if err != nil {
 		return err
 	}
 	for rows.Next() {
-		var dedupe, providerMessageID, fromAddress, toAddress, subject string
+		var dedupe, fromAddress, toAddress, subject string
 		var receivedAt time.Time
-		if err := rows.Scan(&dedupe, &providerMessageID, &fromAddress, &toAddress, &subject, &receivedAt); err != nil {
+		if err := rows.Scan(&dedupe, &fromAddress, &toAddress, &subject, &receivedAt); err != nil {
 			_ = rows.Close()
 			return err
 		}
 		if dedupe = strings.TrimSpace(dedupe); dedupe != "" {
 			existingDedupe[dedupe] = struct{}{}
-		}
-		if providerMessageID = strings.TrimSpace(providerMessageID); providerMessageID != "" {
-			existingProviderIDs[providerMessageID] = struct{}{}
 		}
 		existingSummary[emailMessageSummaryDedupe(fromAddress, toAddress, subject, receivedAt)] = struct{}{}
 	}
@@ -1899,11 +2022,7 @@ func (s *EmailVerificationService) PollOrder(ctx context.Context, orderID int64)
 	}
 	for _, summary := range list.Messages {
 		summaryProviderID := strings.TrimSpace(summary.ProviderMessageID)
-		if summaryProviderID != "" {
-			if _, exists := existingProviderIDs[summaryProviderID]; exists {
-				continue
-			}
-		} else if !summary.ReceivedAt.IsZero() {
+		if summaryProviderID == "" && !summary.ReceivedAt.IsZero() {
 			summaryDedupe := emailMessageSummaryDedupe(summary.FromAddress, summary.ToAddress, summary.Subject, summary.ReceivedAt)
 			if _, exists := existingSummary[summaryDedupe]; exists {
 				continue
@@ -1945,6 +2064,7 @@ func (s *EmailVerificationService) PollOrder(ctx context.Context, orderID int64)
 		if strings.TrimSpace(msg.Subject) == "" {
 			msg.Subject = summary.Subject
 		}
+		msg.FromAddress, msg.FromName = normalizeEmailSender(msg.FromAddress, msg.FromName)
 		if msg.ReceivedAt.IsZero() || msg.ReceivedAt.After(time.Now().Add(time.Minute)) {
 			msg.ReceivedAt = summary.ReceivedAt
 		}
@@ -1959,7 +2079,11 @@ func (s *EmailVerificationService) PollOrder(ctx context.Context, orderID int64)
 		normalizedText := normalizeEmailText(msg.TextBody, msg.HTMLBody)
 		extract := ExtractVerification(msg.Subject, normalizedText, safeHTML)
 		dedupe := emailMessageStableDedupe(msg.ProviderMessageID, msg.FromAddress, msg.ToAddress, msg.Subject, normalizedText, safeHTML, msg.ReceivedAt)
-		if _, exists := existingDedupe[dedupe]; exists {
+		// Provider IDs are stable across polls, but providers may initially return
+		// only a summary and fill the body on a later read. Re-fetch those rows so
+		// a later code/subject/body can converge; fallback hashes remain a cheap
+		// idempotent skip when no provider ID exists.
+		if _, exists := existingDedupe[dedupe]; exists && strings.TrimSpace(msg.ProviderMessageID) == "" {
 			if err := s.convergePersistedEmailEvidence(ctx, orderID, userID, capturePolicy); err != nil {
 				return err
 			}
@@ -1969,15 +2093,26 @@ func (s *EmailVerificationService) PollOrder(ctx context.Context, orderID int64)
 		if receivedAt.IsZero() {
 			receivedAt = time.Now().UTC()
 		}
-		rawPayload := []byte(`{}`)
-		if _, e = s.db.ExecContext(ctx, `INSERT INTO email_messages(email_order_id,provider_message_id,from_address,from_name,to_address,subject,text_body,html_body,verification_code,verification_url,verification_confidence,verification_method,received_at,dedupe_hash,raw_payload) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) ON CONFLICT(email_order_id,dedupe_hash) DO NOTHING`, orderID, msg.ProviderMessageID, msg.FromAddress, msg.FromName, msg.ToAddress, msg.Subject, normalizedText, safeHTML, extract.Code, extract.URL, extract.Confidence, extract.Method, receivedAt, dedupe, rawPayload); e != nil {
+		rawPayload := msg.RawPayload
+		if len(rawPayload) == 0 || !json.Valid(rawPayload) {
+			rawPayload = []byte(`{}`)
+		}
+		updated, e := s.upsertEmailMessage(ctx, orderID, msg, normalizedText, safeHTML, extract, receivedAt, dedupe, rawPayload)
+		if e != nil {
 			return e
+		}
+		if updated {
+			existingDedupe[dedupe] = struct{}{}
+			if extract.Code != "" || extract.URL != "" {
+				s.recordOrderEvent(ctx, orderID, "verification_extracted", "email_message:"+dedupe, map[string]any{"method": extract.Method, "updated": true})
+			}
+			if err := s.convergePersistedEmailEvidence(ctx, orderID, userID, capturePolicy); err != nil {
+				return err
+			}
+			continue
 		}
 		existingDedupe[dedupe] = struct{}{}
 		existingSummary[emailMessageSummaryDedupe(msg.FromAddress, msg.ToAddress, msg.Subject, receivedAt)] = struct{}{}
-		if id := strings.TrimSpace(msg.ProviderMessageID); id != "" {
-			existingProviderIDs[id] = struct{}{}
-		}
 		s.recordOrderEvent(ctx, orderID, "message_received", "email_message:"+dedupe, map[string]any{"matched": true})
 		if extract.Code != "" || extract.URL != "" {
 			s.recordOrderEvent(ctx, orderID, "verification_extracted", "email_message:"+dedupe, map[string]any{"method": extract.Method})
@@ -2003,10 +2138,12 @@ func (s *EmailVerificationService) messageMatches(ctx context.Context, serviceID
 		if rows.Scan(&exact, &domain, &contains, &rx) != nil {
 			continue
 		}
-		sender := strings.ToLower(strings.TrimSpace(msg.FromAddress))
+		senderAddress, _ := normalizeEmailSender(msg.FromAddress, msg.FromName)
+		sender := strings.ToLower(strings.TrimSpace(senderAddress))
 		ok := true
 		if exact != "" {
-			ok = ok && strings.EqualFold(sender, exact)
+			exactAddress, _ := normalizeEmailSender(exact, "")
+			ok = ok && strings.EqualFold(sender, strings.TrimSpace(exactAddress))
 		}
 		if domain != "" {
 			configuredDomain := strings.ToLower(strings.TrimPrefix(strings.TrimSpace(domain), "@"))
@@ -2038,6 +2175,22 @@ func (s *EmailVerificationService) messageMatches(ctx context.Context, serviceID
 		return true
 	}
 	return matched
+}
+
+// normalizeEmailSender accepts both a bare address and RFC 5322 display-name
+// syntax ("Name <mail@example.com>"). Matching rules operate on the parsed
+// address while persistence keeps a clean display name separately.
+func normalizeEmailSender(value, fallbackName string) (address, name string) {
+	cleaned := strings.TrimSpace(value)
+	if parsed, err := mail.ParseAddress(cleaned); err == nil && strings.TrimSpace(parsed.Address) != "" {
+		address = strings.TrimSpace(parsed.Address)
+		name = strings.TrimSpace(parsed.Name)
+		if name == "" {
+			name = strings.TrimSpace(fallbackName)
+		}
+		return address, name
+	}
+	return cleaned, strings.TrimSpace(fallbackName)
 }
 
 // Deprecated: expireOrder is retained only for historical migrations. New
@@ -2169,17 +2322,18 @@ func (s *EmailVerificationService) expireOrderV2(ctx context.Context, id, userID
 	return nil
 }
 func (s *EmailVerificationService) PollDue(ctx context.Context) error {
+	var cycleErrors []error
 	if err := s.expireDueEmailOrders(ctx); err != nil {
-		return err
+		cycleErrors = append(cycleErrors, err)
 	}
 	tx, e := s.db.BeginTx(ctx, nil)
 	if e != nil {
-		return e
+		return errors.Join(append(cycleErrors, e)...)
 	}
 	rows, e := tx.QueryContext(ctx, `WITH due AS (SELECT o.id,c.polling_backoff FROM email_orders o JOIN email_channels c ON c.id=o.channel_id WHERE o.status IN ('waiting_email','email_received','verification_extracted') AND o.next_poll_at<=NOW() AND o.expires_at>NOW() ORDER BY o.next_poll_at FOR UPDATE OF o SKIP LOCKED LIMIT 100) UPDATE email_orders o SET next_poll_at=NOW()+INTERVAL '30 seconds',updated_at=NOW() FROM due WHERE o.id=due.id RETURNING o.id,o.poll_count,due.polling_backoff`)
 	if e != nil {
 		_ = tx.Rollback()
-		return e
+		return errors.Join(append(cycleErrors, e)...)
 	}
 	type claimedEmailOrder struct {
 		id        int64
@@ -2194,43 +2348,64 @@ func (s *EmailVerificationService) PollDue(ctx context.Context) error {
 		if scanErr := rows.Scan(&id, &pollCount, &backoffRaw); scanErr != nil {
 			_ = rows.Close()
 			_ = tx.Rollback()
-			return scanErr
+			return errors.Join(append(cycleErrors, scanErr)...)
 		}
 		claimed = append(claimed, claimedEmailOrder{id: id, pollCount: pollCount, backoff: parseEmailPollingBackoff(backoffRaw)})
 	}
 	if e = rows.Err(); e != nil {
 		_ = rows.Close()
 		_ = tx.Rollback()
-		return e
+		return errors.Join(append(cycleErrors, e)...)
 	}
 	if e = rows.Close(); e != nil {
 		_ = tx.Rollback()
-		return e
+		return errors.Join(append(cycleErrors, e)...)
 	}
 	if e = tx.Commit(); e != nil {
-		return e
+		return errors.Join(append(cycleErrors, e)...)
 	}
+	var pollErrors []error
 	for _, item := range claimed {
-		err := s.PollOrder(ctx, item.id)
-		delay := emailPollDelayWithSchedule(item.pollCount, err, item.backoff)
-		_, _ = s.db.ExecContext(ctx, `UPDATE email_orders SET next_poll_at=$2 WHERE id=$1 AND status IN ('waiting_email','email_received','verification_extracted')`, item.id, time.Now().Add(delay))
+		pollErr := s.PollOrder(ctx, item.id)
+		delay := emailPollDelayWithSchedule(item.pollCount, pollErr, item.backoff)
+		if _, updateErr := s.db.ExecContext(ctx, `UPDATE email_orders SET next_poll_at=$2 WHERE id=$1 AND status IN ('waiting_email','email_received','verification_extracted')`, item.id, time.Now().Add(delay)); updateErr != nil {
+			pollErrors = append(pollErrors, fmt.Errorf("schedule email order %d after poll: %w", item.id, updateErr))
+		}
+		if pollErr != nil {
+			pollErrors = append(pollErrors, fmt.Errorf("poll email order %d: %w", item.id, pollErr))
+		}
 	}
-	return nil
+	return errors.Join(append(cycleErrors, pollErrors...)...)
 }
 
 func (s *EmailVerificationService) expireDueEmailOrders(ctx context.Context) error {
-	rows, err := s.db.QueryContext(ctx, `SELECT id,user_id FROM email_orders WHERE status IN ('waiting_email','email_received','verification_extracted') AND expires_at<=NOW() ORDER BY expires_at LIMIT 100`)
+	rows, err := s.db.QueryContext(ctx, `SELECT o.id,o.user_id,o.poll_count,c.polling_backoff
+		FROM email_orders o
+		JOIN email_channels c ON c.id=o.channel_id
+		WHERE o.status IN ('waiting_email','email_received','verification_extracted')
+		  AND o.expires_at<=NOW()
+		  AND (o.next_poll_at IS NULL OR o.next_poll_at<=NOW())
+		ORDER BY o.expires_at
+		LIMIT 100`)
 	if err != nil {
 		return err
 	}
-	var due [][2]int64
+	type dueEmailOrder struct {
+		id        int64
+		userID    int64
+		pollCount int
+		backoff   []int
+	}
+	var due []dueEmailOrder
 	for rows.Next() {
-		var id, userID int64
-		if err = rows.Scan(&id, &userID); err != nil {
+		var order dueEmailOrder
+		var backoffRaw []byte
+		if err = rows.Scan(&order.id, &order.userID, &order.pollCount, &backoffRaw); err != nil {
 			_ = rows.Close()
 			return err
 		}
-		due = append(due, [2]int64{id, userID})
+		order.backoff = parseEmailPollingBackoff(backoffRaw)
+		due = append(due, order)
 	}
 	if err = rows.Err(); err != nil {
 		_ = rows.Close()
@@ -2239,12 +2414,57 @@ func (s *EmailVerificationService) expireDueEmailOrders(ctx context.Context) err
 	if err = rows.Close(); err != nil {
 		return err
 	}
+	var settleErrors []error
 	for _, order := range due {
-		if err = s.expireOrderV2(ctx, order[0], order[1]); err != nil {
-			return err
+		// Give the provider one final read before settlement. The old order of
+		// operations expired/refunded first, so a message accepted upstream just
+		// before the deadline could never reach the local inbox.
+		pollErr := s.pollOrder(ctx, order.id, true)
+		if pollErr != nil {
+			// A missing adapter/credential is a local configuration failure, not
+			// evidence that the provider inbox is empty. It is still safe to close
+			// the receive window according to the existing refund policy; transient
+			// upstream failures take the deferred path below.
+			if isEmailProviderConfigurationError(pollErr) {
+				if expireErr := s.expireOrderV2(ctx, order.id, order.userID); expireErr != nil {
+					settleErrors = append(settleErrors, fmt.Errorf("expire unavailable email order %d: %w", order.id, expireErr))
+				}
+				continue
+			}
+			var currentStatus string
+			if statusErr := s.db.QueryRowContext(ctx, `SELECT status FROM email_orders WHERE id=$1`, order.id).Scan(&currentStatus); statusErr != nil {
+				settleErrors = append(settleErrors, fmt.Errorf("final poll email order %d: %w; read status: %v", order.id, pollErr, statusErr))
+				continue
+			}
+			// A transient provider failure must not settle the order while a
+			// message may already exist upstream. Leave it in a pollable state
+			// and let the expiry sweep retry after the configured backoff. Provider
+			// request-limit errors settle the order inside pollOrder and therefore
+			// no longer match this active-state guard.
+			if currentStatus == "waiting_email" || currentStatus == "email_received" || currentStatus == "verification_extracted" {
+				delay := emailPollDelayWithSchedule(order.pollCount, pollErr, order.backoff)
+				if _, scheduleErr := s.db.ExecContext(ctx, `UPDATE email_orders SET next_poll_at=$2,updated_at=NOW() WHERE id=$1 AND status IN ('waiting_email','email_received','verification_extracted')`, order.id, time.Now().Add(delay)); scheduleErr != nil {
+					settleErrors = append(settleErrors, fmt.Errorf("schedule final poll email order %d: %w", order.id, scheduleErr))
+				}
+				settleErrors = append(settleErrors, fmt.Errorf("final poll email order %d: %w", order.id, pollErr))
+				continue
+			}
+		}
+		if expireErr := s.expireOrderV2(ctx, order.id, order.userID); expireErr != nil {
+			settleErrors = append(settleErrors, fmt.Errorf("expire email order %d: %w", order.id, expireErr))
 		}
 	}
-	return nil
+	return errors.Join(settleErrors...)
+}
+
+func isEmailProviderConfigurationError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, ErrEmailChannelUnavailable) || errors.Is(err, ErrEmailProviderCredentialMissing) {
+		return true
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "credential is not configured")
 }
 
 func emailPollDelay(pollCount int, err error) time.Duration { //nolint:unused
@@ -2684,6 +2904,9 @@ func (s *EmailVerificationService) AdminUpdateProviderConfig(ctx context.Context
 		}
 	}
 	if cred != "" && !strings.HasPrefix(cred, "env:") && !strings.HasPrefix(cred, "enc:") {
+		if !s.encryptionKeyConfigured {
+			return ErrProviderCredentialEncryptionKeyNotConfigured
+		}
 		if s.encryptor == nil {
 			return errors.New("credential encryption is unavailable")
 		}
@@ -2699,11 +2922,27 @@ func (s *EmailVerificationService) AdminUpdateProviderConfig(ctx context.Context
 		if err != nil {
 			return err
 		}
-		_, e := s.db.ExecContext(ctx, `UPDATE email_providers SET enabled=$1,base_url=COALESCE(NULLIF($2,''),base_url),credential_ref=COALESCE(NULLIF($3,''),credential_ref),billing=$4::jsonb,updated_at=NOW() WHERE id=$5`, enabled, base, cred, encoded, id)
+		result, e := s.db.ExecContext(ctx, `UPDATE email_providers SET enabled=$1,base_url=COALESCE(NULLIF($2,''),base_url),credential_ref=COALESCE(NULLIF($3,''),credential_ref),billing=$4::jsonb,updated_at=NOW() WHERE id=$5`, enabled, base, cred, encoded, id)
+		if e != nil {
+			return e
+		}
+		if affected, e := result.RowsAffected(); e != nil {
+			return e
+		} else if affected == 0 {
+			return ErrEmailProviderNotFound
+		}
+		return nil
+	}
+	result, e := s.db.ExecContext(ctx, `UPDATE email_providers SET enabled=$1,base_url=COALESCE(NULLIF($2,''),base_url),credential_ref=COALESCE(NULLIF($3,''),credential_ref),updated_at=NOW() WHERE id=$4`, enabled, base, cred, id)
+	if e != nil {
 		return e
 	}
-	_, e := s.db.ExecContext(ctx, `UPDATE email_providers SET enabled=$1,base_url=COALESCE(NULLIF($2,''),base_url),credential_ref=COALESCE(NULLIF($3,''),credential_ref),updated_at=NOW() WHERE id=$4`, enabled, base, cred, id)
-	return e
+	if affected, e := result.RowsAffected(); e != nil {
+		return e
+	} else if affected == 0 {
+		return ErrEmailProviderNotFound
+	}
+	return nil
 }
 
 func normalizeEmailBilling(values map[string]any) map[string]any {
