@@ -105,8 +105,8 @@ export function refreshModuRelaySession(failedAccessToken: string, userID: strin
     if (inFlightRefresh?.userID === userID) return inFlightRefresh.promise;
 
     const refresh = () => refreshUnderLock(failedAccessToken, userID);
-    const promise = typeof navigator !== "undefined" && navigator.locks
-        ? navigator.locks.request(TOKEN_REFRESH_LOCK_NAME, refresh)
+    const promise: Promise<string> = typeof navigator !== "undefined" && navigator.locks
+        ? Promise.resolve(navigator.locks.request(TOKEN_REFRESH_LOCK_NAME, refresh))
         : refresh();
     const pending = { userID, promise };
     inFlightRefresh = pending;
