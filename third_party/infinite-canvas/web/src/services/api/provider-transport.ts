@@ -2,6 +2,12 @@ import axios, { AxiosHeaders, type InternalAxiosRequestConfig } from "axios";
 
 import i18n from "@/i18n";
 import { normalizeLocalProxyUrl, useConfigStore, withLocalProxy } from "@/stores/use-config-store";
+import {
+    getModuRelaySession,
+    isModuRelaySessionExpiredPayload,
+    isModuRelaySessionExpiredResponse,
+    refreshModuRelaySession,
+} from "./modurelay-session";
 
 const MODURELAY_PROVIDER_PROXY_URL = "/api/v1/canvas/upstream";
 const MODURELAY_TARGET_HEADER = "X-Canvas-Upstream-URL";
@@ -32,13 +38,12 @@ function integratedProviderTarget(rawUrl: string) {
     }
 }
 
-function requireModuRelaySession() {
-    const token = localStorage.getItem("auth_token")?.trim() || "";
-    if (!token) throw new Error(i18n.t("apiErrors.modurelayProviderSessionRequired"));
-    return token;
-}
+type ModuRelayProxyRequestConfig = InternalAxiosRequestConfig & {
+    _moduRelayAuthRetried?: boolean;
+    _moduRelayAuthUserID?: string | null;
+};
 
-function prepareAxiosProxyRequest(config: InternalAxiosRequestConfig) {
+async function prepareAxiosProxyRequest(config: InternalAxiosRequestConfig) {
     const requestUrl = integratedRequestUrl(String(config.url || ""));
     if (requestUrl === null) return config;
     config.url = requestUrl;
@@ -52,21 +57,50 @@ function prepareAxiosProxyRequest(config: InternalAxiosRequestConfig) {
         headers.set(MODURELAY_PROVIDER_AUTH_HEADER, providerAuthorization);
     }
     headers.set(MODURELAY_TARGET_HEADER, targetUrl);
-    headers.set("Authorization", `Bearer ${requireModuRelaySession()}`);
+    const session = await getModuRelaySession();
+    headers.set("Authorization", `Bearer ${session.accessToken}`);
     headers.set("X-User-UI-Request", "1");
     config.url = MODURELAY_PROVIDER_PROXY_URL;
     config.baseURL = undefined;
     config.params = undefined;
     config.paramsSerializer = undefined;
     config.headers = headers;
+    (config as ModuRelayProxyRequestConfig)._moduRelayAuthUserID = session.userID;
     return config;
 }
 
 export const providerAxios = axios.create();
 
 providerAxios.interceptors.request.use((config) => prepareAxiosProxyRequest(config));
+providerAxios.interceptors.response.use(
+    (response) => response,
+    async (error: unknown) => {
+        if (!axios.isAxiosError(error) || error.response?.status !== 401 || !error.config) throw error;
 
-export function providerFetch(input: RequestInfo | URL, init?: RequestInit) {
+        const config = error.config as ModuRelayProxyRequestConfig;
+        const headers = AxiosHeaders.from(config.headers as AxiosHeaders);
+        if (
+            config._moduRelayAuthRetried ||
+            config.url !== MODURELAY_PROVIDER_PROXY_URL ||
+            !headers.get(MODURELAY_TARGET_HEADER) ||
+            !(await isModuRelaySessionExpiredPayload(error.response.data))
+        ) {
+            throw error;
+        }
+
+        const authorization = headers.get("Authorization");
+        const failedAccessToken = typeof authorization === "string" ? authorization.replace(/^Bearer\s+/i, "").trim() : "";
+        if (!failedAccessToken) throw error;
+
+        config._moduRelayAuthRetried = true;
+        const accessToken = await refreshModuRelaySession(failedAccessToken, config._moduRelayAuthUserID ?? null);
+        headers.set("Authorization", `Bearer ${accessToken}`);
+        config.headers = headers;
+        return providerAxios.request(config);
+    },
+);
+
+export async function providerFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
     const sourceRequest = typeof Request !== "undefined" && input instanceof Request ? input : null;
     const originalUrl = sourceRequest?.url || String(input);
     const signal = init?.signal || sourceRequest?.signal;
@@ -78,20 +112,43 @@ export function providerFetch(input: RequestInfo | URL, init?: RequestInit) {
     const headers = new Headers(sourceRequest?.headers);
     new Headers(init?.headers).forEach((value, key) => headers.set(key, value));
     let finalUrl = requestUrl;
+    let session: Awaited<ReturnType<typeof getModuRelaySession>> | null = null;
     if (targetUrl) {
         const providerAuthorization = headers.get("Authorization");
         headers.delete("Authorization");
         if (providerAuthorization?.trim()) headers.set(MODURELAY_PROVIDER_AUTH_HEADER, providerAuthorization);
         headers.set(MODURELAY_TARGET_HEADER, targetUrl);
-        headers.set("Authorization", `Bearer ${requireModuRelaySession()}`);
+        session = await getModuRelaySession();
+        headers.set("Authorization", `Bearer ${session.accessToken}`);
         headers.set("X-User-UI-Request", "1");
         finalUrl = MODURELAY_PROVIDER_PROXY_URL;
     }
 
-    if (sourceRequest) {
-        return globalThis.fetch(new Request(finalUrl, sourceRequest), { ...init, headers });
+    if (!targetUrl) {
+        if (sourceRequest) {
+            return globalThis.fetch(new Request(finalUrl, sourceRequest), { ...init, headers });
+        }
+        return globalThis.fetch(finalUrl, { ...init, headers });
     }
-    return globalThis.fetch(finalUrl, { ...init, headers });
+
+    const requestInit = { ...init, headers };
+    const request = sourceRequest
+        ? new Request(new Request(finalUrl, sourceRequest), requestInit)
+        : new Request(finalUrl, requestInit);
+    let retryRequest: Request | null = null;
+    try {
+        retryRequest = request.clone();
+    } catch {
+        // Keep streaming request bodies working when the browser cannot clone them for a retry.
+    }
+    const response = await globalThis.fetch(request);
+    if (!session || !retryRequest || !(await isModuRelaySessionExpiredResponse(response))) return response;
+    if (signal?.aborted) throw abortReason(signal);
+
+    const accessToken = await refreshModuRelaySession(session.accessToken, session.userID);
+    const retryHeaders = new Headers(retryRequest.headers);
+    retryHeaders.set("Authorization", `Bearer ${accessToken}`);
+    return globalThis.fetch(new Request(retryRequest, { headers: retryHeaders }));
 }
 
 

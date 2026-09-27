@@ -1,4 +1,5 @@
 import { buildGatewayUrl } from './client'
+import { gatewayResponseError } from './gatewayError'
 import i18n from '@/i18n'
 
 export interface VideoGenerationInput {
@@ -25,21 +26,6 @@ export interface VideoGenerationTask {
   error?: unknown
 }
 
-async function gatewayError(response: Response, fallback: string) {
-  const body = await response.text()
-  if (body) {
-    try {
-      const parsed = JSON.parse(body) as { message?: string; error?: string | { message?: string } }
-      if (typeof parsed.error === 'string' && parsed.error.trim()) return parsed.error
-      if (typeof parsed.error === 'object' && parsed.error?.message) return parsed.error.message
-      if (parsed.message?.trim()) return parsed.message
-    } catch {
-      return body
-    }
-  }
-  return `${fallback} (${response.status})`
-}
-
 async function gatewayRequest(
   path: string,
   apiKey: string,
@@ -53,7 +39,7 @@ async function gatewayRequest(
       ...init.headers,
     },
   })
-  if (!response.ok) throw new Error(await gatewayError(response, fallback))
+  if (!response.ok) throw await gatewayResponseError(response, fallback)
   return response
 }
 

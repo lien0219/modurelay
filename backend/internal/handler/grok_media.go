@@ -511,6 +511,17 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 			h.errorResponse(c, http.StatusServiceUnavailable, "video_pricing_not_configured", "Video pricing is not configured for this model")
 			return
 		}
+		if endpoint.IsGenerationRequest() && service.IsSeedanceVideoModel(canonicalVideoModel) &&
+			!h.gatewayService.HasVideoPricingForRequest(requestCtx, apiKey, requestModel, requestInfo.Resolution) {
+			reqLog.Error("grok_media.seedance_video_pricing_missing",
+				zap.String("model", requestModel),
+				zap.String("canonical_model", canonicalVideoModel),
+				zap.String("resolution", requestInfo.Resolution),
+				zap.Int64("account_id", account.ID),
+			)
+			h.errorResponse(c, http.StatusServiceUnavailable, "video_pricing_not_configured", "Video pricing is not configured for this model and resolution")
+			return
+		}
 		if failoverClientGone(c) {
 			return
 		}
@@ -672,7 +683,9 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 			}
 			pendingBillingModel := firstNonEmptyString(result.BillingModel, pendingModel)
 			if selectedOfficialVideoTier && service.IsSeedanceVideoModel(canonicalVideoModel) {
-				pendingBillingModel = canonicalVideoModel
+				// Keep the externally qualified ID for pricing; routing continues to use
+				// canonicalVideoModel so different suppliers cannot share the wrong tariff.
+				pendingBillingModel = requestModel
 			}
 			pendingGroupID := int64(0)
 			if apiKey.GroupID != nil {
@@ -682,6 +695,12 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 			if subscription != nil {
 				pendingSubscriptionID = subscription.ID
 			}
+			pendingResolution := service.NormalizeVideoBillingResolutionOrDefault(firstNonEmptyString(result.VideoResolution, requestInfo.Resolution))
+			pendingDuration := result.VideoDurationSeconds
+			if pendingDuration <= 0 {
+				pendingDuration = requestInfo.DurationSeconds
+			}
+			pendingDuration = service.NormalizeVideoBillingDurationSecondsOrDefault(pendingDuration)
 			pending := service.GrokVideoPendingBilling{
 				AccountID:            account.ID,
 				GroupID:              pendingGroupID,
@@ -690,8 +709,8 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 				Model:                pendingModel,
 				BillingModel:         pendingBillingModel,
 				UpstreamModel:        result.UpstreamModel,
-				VideoResolution:      result.VideoResolution,
-				VideoDurationSeconds: result.VideoDurationSeconds,
+				VideoResolution:      pendingResolution,
+				VideoDurationSeconds: pendingDuration,
 				OriginalModel:        clientRequestedModel(c, requestModel),
 				// Wall-clock start for usage duration_ms: create accepted → first done discovery.
 				CreatedAt: videoCreateStartedAt,

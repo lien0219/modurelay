@@ -41,11 +41,16 @@ func (h *OpenAIGatewayHandler) SeedanceTasks(c *gin.Context) {
 // Ark reports actual completion tokens. Never infer tokens from duration or use
 // Grok's per-second video tariff. Repeated polls share the durable task dedup key.
 func prepareSeedanceCompletionBilling(ctx context.Context, h *OpenAIGatewayHandler, key *service.APIKey, subject middleware.AuthSubject, taskID string, result *service.OpenAIForwardResult) *service.OpenAIForwardResult {
-	if result == nil || result.Usage.OutputTokens <= 0 {
+	if result == nil {
 		return nil
 	}
 	pending, err := h.gatewayService.LoadGrokVideoPendingBilling(ctx, taskID, subject.UserID, key.ID)
 	if err != nil || pending == nil {
+		return nil
+	}
+	model := firstNonEmptyString(pending.BillingModel, pending.Model)
+	resolution := firstNonEmptyString(result.VideoResolution, pending.VideoResolution)
+	if result.Usage.OutputTokens <= 0 && !h.gatewayService.HasVideoPricingForRequest(ctx, key, model, resolution) {
 		return nil
 	}
 	claimed, err := h.gatewayService.ClaimGrokVideoBilling(ctx, taskID, subject.UserID, key.ID)
@@ -54,9 +59,16 @@ func prepareSeedanceCompletionBilling(ctx context.Context, h *OpenAIGatewayHandl
 	}
 	merged := *result
 	merged.Model = pending.Model
-	merged.BillingModel = firstNonEmptyString(pending.BillingModel, pending.Model)
+	merged.BillingModel = model
 	merged.UpstreamModel = firstNonEmptyString(pending.UpstreamModel, result.UpstreamModel)
-	merged.ForceTokenBilling = true
+	merged.ForceTokenBilling = result.Usage.OutputTokens > 0
+	merged.VideoResolution = resolution
+	if merged.VideoDurationSeconds <= 0 {
+		merged.VideoDurationSeconds = pending.VideoDurationSeconds
+	}
+	if !merged.ForceTokenBilling && merged.VideoCount <= 0 {
+		merged.VideoCount = 1
+	}
 	merged.RequestID = service.StableGrokVideoBillingRequestID(taskID)
 	merged.ResponseID = taskID
 	merged.Duration = service.GrokVideoE2EDuration(pending.CreatedAt, time.Now())

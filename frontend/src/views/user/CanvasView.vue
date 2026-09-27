@@ -388,7 +388,7 @@
             <template v-else-if="selectedNode.type === 'generation'">
               <label class="canvas-field" for="canvas-model">
                 <span>{{ t('canvas.model') }}</span>
-                <select id="canvas-model" v-model="selectedNode.data.model" @change="markCanvasChanged">
+                <select id="canvas-model" v-model="selectedNode.data.model" :disabled="selectedNodeCanResume" @change="markCanvasChanged">
                   <option value="gpt-image-1">gpt-image-1</option>
                   <option value="dall-e-3">dall-e-3</option>
                 </select>
@@ -438,12 +438,12 @@
               <button
                 type="button"
                 class="canvas-primary-button canvas-button-full"
-                :disabled="generatingNodeId !== null || !runtimeApiKey || !connectedPrompt"
+                :disabled="generatingNodeId !== null || !runtimeApiKey || (!selectedNodeCanResume && !connectedPrompt)"
                 :aria-busy="generatingNodeId === selectedNode.id || undefined"
                 @click="generateFromNode"
               >
                 <Icon name="sparkles" size="sm" aria-hidden="true" />
-                {{ generatingNodeId === selectedNode.id ? t('canvas.generating') : t('canvas.generateImage') }}
+                {{ generatingNodeId === selectedNode.id ? t('canvas.generating') : selectedNodeCanResume ? t('canvas.resumeGeneration') : t('canvas.generateImage') }}
               </button>
               <p v-if="selectedNode.data.error" class="canvas-inline-error" role="alert">{{ selectedNode.data.error }}</p>
             </template>
@@ -494,31 +494,31 @@
             <template v-else-if="selectedNode.type === 'config'">
               <label class="canvas-field" for="canvas-generation-mode">
                 <span>{{ t('canvas.generationMode') }}</span>
-                <select id="canvas-generation-mode" v-model="selectedNode.data.generationMode" @change="handleConfigModeChange">
+                <select id="canvas-generation-mode" v-model="selectedNode.data.generationMode" :disabled="selectedConfigCanResume" @change="handleConfigModeChange">
                   <option value="image">{{ t('canvas.generationModes.image') }}</option>
                   <option value="video">{{ t('canvas.generationModes.video') }}</option>
                   <option value="audio">{{ t('canvas.generationModes.audio') }}</option>
                   <option value="text">{{ t('canvas.generationModes.text') }}</option>
                 </select>
               </label>
-              <label class="canvas-field" for="canvas-config-model"><span>{{ t('canvas.model') }}</span><input id="canvas-config-model" v-model="selectedNode.data.model" maxlength="160" :readonly="selectedNode.data.generationMode === 'audio'" @input="markCanvasChanged" /><small v-if="selectedNode.data.generationMode === 'audio'">{{ t('canvas.grokTtsHelp') }}</small></label>
+              <label class="canvas-field" for="canvas-config-model"><span>{{ t('canvas.model') }}</span><input id="canvas-config-model" v-model="selectedNode.data.model" maxlength="160" :readonly="selectedNode.data.generationMode === 'audio' || selectedConfigCanResume" @input="markCanvasChanged" /><small v-if="selectedNode.data.generationMode === 'audio'">{{ t('canvas.grokTtsHelp') }}</small></label>
               <label class="canvas-field" for="canvas-config-prompt"><span>{{ t('canvas.prompt') }}</span><textarea id="canvas-config-prompt" v-model="selectedNode.data.prompt" rows="6" maxlength="32000" @input="markCanvasChanged"></textarea></label>
               <div v-if="selectedNode.data.generationMode === 'image'" class="canvas-option-grid">
                 <label class="canvas-field"><span>{{ t('canvas.size') }}</span><select v-model="selectedNode.data.size" @change="markCanvasChanged"><option>1024x1024</option><option>1536x1024</option><option>1024x1536</option></select></label>
                 <label class="canvas-field"><span>{{ t('canvas.count') }}</span><input v-model.number="selectedNode.data.count" type="number" min="1" max="4" @input="markCanvasChanged" /></label>
               </div>
               <div v-else-if="selectedNode.data.generationMode === 'video'" class="canvas-option-grid">
-                <label class="canvas-field"><span>{{ t('canvas.aspectRatio') }}</span><select v-model="selectedNode.data.aspectRatio" @change="markCanvasChanged"><option>16:9</option><option>9:16</option><option>1:1</option></select></label>
-                <label class="canvas-field"><span>{{ t('canvas.duration') }}</span><select v-model.number="selectedNode.data.seconds" @change="markCanvasChanged"><option :value="6">6s</option><option :value="8">8s</option><option :value="10">10s</option></select></label>
-                <label class="canvas-field"><span>{{ t('canvas.resolution') }}</span><select v-model="selectedNode.data.resolution" @change="markCanvasChanged"><option>480p</option><option>720p</option><option>1080p</option></select></label>
+                <label class="canvas-field"><span>{{ t('canvas.aspectRatio') }}</span><select v-model="selectedNode.data.aspectRatio" :disabled="selectedConfigCanResume" @change="markCanvasChanged"><option>16:9</option><option>9:16</option><option>1:1</option></select></label>
+                <label class="canvas-field"><span>{{ t('canvas.duration') }}</span><select v-model.number="selectedNode.data.seconds" :disabled="selectedConfigCanResume" @change="markCanvasChanged"><option :value="6">6s</option><option :value="8">8s</option><option :value="10">10s</option></select></label>
+                <label class="canvas-field"><span>{{ t('canvas.resolution') }}</span><select v-model="selectedNode.data.resolution" :disabled="selectedConfigCanResume" @change="markCanvasChanged"><option>480p</option><option>720p</option><option>1080p</option></select></label>
               </div>
               <div v-else-if="selectedNode.data.generationMode === 'audio'" class="canvas-option-grid">
                 <label class="canvas-field"><span>{{ t('canvas.voice') }}</span><select v-model="selectedNode.data.voice" @change="markCanvasChanged"><option v-for="voice in CANVAS_GROK_TTS_VOICES" :key="voice" :value="voice">{{ voice }}</option></select></label>
                 <label class="canvas-field"><span>{{ t('canvas.language') }}</span><input v-model.trim="selectedNode.data.language" maxlength="16" placeholder="en" @input="markCanvasChanged" /><small>{{ t('canvas.languageHelp') }}</small></label>
               </div>
               <label class="canvas-field" for="canvas-config-runtime-key"><span>{{ t('canvas.runtimeApiKey') }}</span><input id="canvas-config-runtime-key" v-model="runtimeApiKey" type="password" autocomplete="off" spellcheck="false" :placeholder="t('canvas.runtimeApiKeyPlaceholder')" /><small>{{ t('canvas.runtimeApiKeyHelp') }}</small></label>
-              <button type="button" class="canvas-primary-button canvas-button-full" :disabled="generatingNodeId !== null || !runtimeApiKey || !selectedConfigHasPrompt" @click="generateFromNode">
-                <Icon name="sparkles" size="sm" aria-hidden="true" />{{ generatingNodeId === selectedNode.id ? t('canvas.generating') : t(`canvas.generateActions.${selectedNode.data.generationMode || 'image'}`) }}
+              <button type="button" class="canvas-primary-button canvas-button-full" :disabled="generatingNodeId !== null || !runtimeApiKey || (!selectedConfigCanResume && !selectedConfigHasPrompt)" @click="generateFromNode">
+                <Icon name="sparkles" size="sm" aria-hidden="true" />{{ generatingNodeId === selectedNode.id ? t('canvas.generating') : selectedConfigCanResume ? t('canvas.resumeGeneration') : t(`canvas.generateActions.${selectedNode.data.generationMode || 'image'}`) }}
               </button>
               <p v-if="selectedNode.data.error" class="canvas-inline-error" role="alert">{{ selectedNode.data.error }}</p>
             </template>
@@ -859,6 +859,7 @@ import {
   type CanvasRevision,
 } from '@/api/canvas'
 import { videoAPI, type VideoGenerationTask } from '@/api/video'
+import { retryTaskPollingRequest, waitForTaskPoll } from '@/utils/taskPolling'
 import { editCanvasImage, type CanvasImageEditOperation, type CanvasImageEditResult } from '@/utils/canvasImageEditor'
 import { readCanvasClipboard } from '@/utils/canvasClipboard'
 import { captureCanvasVideoFrame, type CanvasVideoFramePosition } from '@/utils/canvasVideoFrame'
@@ -1064,6 +1065,10 @@ const filteredPalette = computed(() => {
   return palette.value.filter(item => `${item.label} ${item.description}`.toLocaleLowerCase(locale.value).includes(normalizedLibrarySearch.value))
 })
 const selectedNode = computed(() => nodes.value.find(node => node.id === selectedNodeId.value))
+const selectedNodeCanResume = computed(() => Boolean(
+  selectedNode.value?.data.taskId && ['queued', 'processing', 'downloading'].includes(String(selectedNode.value.data.status || '').toLowerCase()),
+))
+const selectedConfigCanResume = computed(() => selectedNode.value?.type === 'config' && selectedNodeCanResume.value)
 const imageEditorNode = computed(() => nodes.value.find(node => node.id === imageEditorNodeId.value))
 const maskEditorNode = computed(() => nodes.value.find(node => node.id === maskEditorNodeId.value))
 const angleEditorNode = computed(() => nodes.value.find(node => node.id === angleEditorNodeId.value))
@@ -2709,16 +2714,6 @@ function taskErrorMessage(error: unknown) {
   return t('canvas.generationFailed')
 }
 
-function waitForPoll(ms: number, signal: AbortSignal) {
-  return new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(resolve, ms)
-    signal.addEventListener('abort', () => {
-      clearTimeout(timer)
-      reject(new DOMException('Aborted', 'AbortError'))
-    }, { once: true })
-  })
-}
-
 async function generationReferenceBlob(reference: CanvasFlowNode, signal: AbortSignal) {
   if (!reference.data.assetId) throw new Error(t('canvas.referenceUploadRequired'))
   const url = await canvasAPI.assetURL(Number(reference.data.assetId))
@@ -2757,30 +2752,36 @@ function videoTaskStatus(task: VideoGenerationTask) {
 
 async function waitForVideoResult(apiKey: string, taskId: string, signal: AbortSignal) {
   for (let attempt = 0; attempt < 120; attempt += 1) {
-    const task = await videoAPI.status(apiKey, taskId, signal)
+    const task = await retryTaskPollingRequest(() => videoAPI.status(apiKey, taskId, signal), signal)
     const status = videoTaskStatus(task)
-    if (['done', 'completed', 'succeeded', 'success'].includes(status)) return videoAPI.content(apiKey, taskId, signal)
-    if (['failed', 'error', 'expired', 'canceled', 'cancelled'].includes(status)) {
-      throw new Error(taskErrorMessage(task.error))
+    if (['done', 'completed', 'succeeded', 'success'].includes(status)) {
+      return retryTaskPollingRequest(() => videoAPI.content(apiKey, taskId, signal), signal)
     }
-    await waitForPoll(3000, signal)
+    if (['failed', 'error', 'expired', 'canceled', 'cancelled'].includes(status)) {
+      throw new CanvasTaskFailedError(taskErrorMessage(task.error))
+    }
+    await waitForTaskPoll(3000, signal)
   }
   throw new Error(t('canvas.generationTimedOut'))
 }
 
-async function waitForImageResult(apiKey: string, initial: ImageTask, signal: AbortSignal) {
-  const taskId = String(initial.task_id || initial.id || '').trim()
+class CanvasTaskFailedError extends Error {}
+
+async function waitForImageResult(apiKey: string, initial: ImageTask | string, signal: AbortSignal) {
+  const taskId = typeof initial === 'string' ? initial : String(initial.task_id || initial.id || '').trim()
   if (!taskId) throw new Error(t('canvas.invalidTask'))
-  let latest = initial
+  let latest: ImageTask | undefined = typeof initial === 'string' ? undefined : initial
   for (let attempt = 0; attempt <= 60; attempt += 1) {
-    const status = String(latest.status || '').toLowerCase()
-    if (['completed', 'succeeded', 'success'].includes(status)) return { taskId, task: latest }
-    if (['failed', 'error', 'expired', 'canceled', 'cancelled'].includes(status)) {
-      throw new Error(taskErrorMessage(latest.error))
+    if (latest) {
+      const status = String(latest.status || '').toLowerCase()
+      if (['completed', 'done', 'succeeded', 'success'].includes(status)) return { taskId, task: latest }
+      if (['failed', 'error', 'expired', 'canceled', 'cancelled'].includes(status)) {
+        throw new CanvasTaskFailedError(taskErrorMessage(latest.error))
+      }
     }
     if (attempt === 60) break
-    await waitForPoll(3000, signal)
-    latest = await canvasAPI.getImageTask(apiKey, taskId, signal)
+    await waitForTaskPoll(3000, signal)
+    latest = await retryTaskPollingRequest(() => canvasAPI.getImageTask(apiKey, taskId, signal), signal)
   }
   throw new Error(t('canvas.generationTimedOut'))
 }
@@ -2815,10 +2816,15 @@ async function generateFromNode() {
   const node = selectedNode.value
   const project = store.project
   if (!node || (node.type !== 'generation' && node.type !== 'config') || !project) return
+  const model = String(node.data.model || 'gpt-image-1')
+  const mode = node.type === 'generation' ? 'image' : node.data.generationMode || 'image'
+  const existingTaskId = String(node.data.taskId || '').trim()
+  const taskStatus = String(node.data.status || '').toLowerCase()
+  const resumeTask = Boolean(existingTaskId && (mode === 'image' || mode === 'video') && ['queued', 'processing', 'downloading'].includes(taskStatus))
   const prompt = node.type === 'generation'
     ? String(connectedPrompt.value?.data.prompt || '').trim()
     : resolveGenerationPrompt(node)
-  if (!prompt) {
+  if (!prompt && !resumeTask) {
     setMessage(t('canvas.promptRequired'))
     return
   }
@@ -2832,23 +2838,27 @@ async function generateFromNode() {
   const signal = generationController.signal
   generatingNodeId.value = node.id
   delete node.data.error
-  node.data.status = 'queued'
+  if (!resumeTask) {
+    delete node.data.taskId
+    node.data.status = 'queued'
+  }
   markCanvasChanged()
 
   try {
-    const model = String(node.data.model || 'gpt-image-1')
-    const mode = node.type === 'generation' ? 'image' : node.data.generationMode || 'image'
     let lastResultNode: CanvasFlowNode | undefined
 
     if (mode === 'video') {
-      const task = await videoAPI.submit(runtimeApiKey.value, {
-        model,
-        prompt,
-        duration: Number(node.data.seconds) || 6,
-        aspect_ratio: String(node.data.aspectRatio || '16:9'),
-        resolution: String(node.data.resolution || '720p'),
-      }, signal)
-      const taskId = videoTaskId(task)
+      let taskId = existingTaskId
+      if (!resumeTask) {
+        const task = await videoAPI.submit(runtimeApiKey.value, {
+          model,
+          prompt,
+          duration: Number(node.data.seconds) || 6,
+          aspect_ratio: String(node.data.aspectRatio || '16:9'),
+          resolution: String(node.data.resolution || '720p'),
+        }, signal)
+        taskId = videoTaskId(task)
+      }
       if (!taskId) throw new Error(t('canvas.invalidTask'))
       node.data.taskId = taskId
       node.data.status = 'processing'
@@ -2877,25 +2887,29 @@ async function generateFromNode() {
         background: node.data.background ? String(node.data.background) : undefined,
         count: Number(node.data.count) || 1,
       }
-      const reference = resolveGenerationReference(node)
-      const task = reference
-        ? await canvasAPI.submitEdit(
-            runtimeApiKey.value,
-            prompt,
-            model,
-            await generationReferenceBlob(reference, signal),
-            String(reference.data.fileName || 'reference.png'),
-            options,
-            signal,
-          )
-        : await canvasAPI.submitGeneration(runtimeApiKey.value, prompt, model, options, signal)
-      const taskId = String(task.task_id || task.id || '').trim()
+      let taskId = existingTaskId
+      let initialTask: ImageTask | undefined
+      if (!resumeTask) {
+        const reference = resolveGenerationReference(node)
+        initialTask = reference
+          ? await canvasAPI.submitEdit(
+              runtimeApiKey.value,
+              prompt,
+              model,
+              await generationReferenceBlob(reference, signal),
+              String(reference.data.fileName || 'reference.png'),
+              options,
+              signal,
+            )
+          : await canvasAPI.submitGeneration(runtimeApiKey.value, prompt, model, options, signal)
+        taskId = String(initialTask.task_id || initialTask.id || '').trim()
+      }
       if (!taskId) throw new Error(t('canvas.invalidTask'))
       node.data.taskId = taskId
-      node.data.status = task.status || 'queued'
+      node.data.status = 'processing'
       markCanvasChanged()
 
-      const completed = await waitForImageResult(runtimeApiKey.value, task, signal)
+      const completed = await waitForImageResult(runtimeApiKey.value, initialTask || taskId, signal)
       node.data.status = completed.task.status
       const resultCount = Math.max(1, Math.min(4, completed.task.result?.data?.length || options.count))
       for (let index = 0; index < resultCount; index += 1) {
@@ -2927,7 +2941,8 @@ async function generateFromNode() {
     markCanvasChanged()
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') return
-    node.data.status = 'failed'
+    const canResumeTask = Boolean(node.data.taskId) && (mode === 'image' || mode === 'video') && !(error instanceof CanvasTaskFailedError)
+    node.data.status = canResumeTask ? 'processing' : 'failed'
     node.data.error = error instanceof Error ? error.message : t('canvas.generationFailed')
     setMessage(String(node.data.error))
     markCanvasChanged()
