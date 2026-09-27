@@ -1,5 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import Select from '@/components/common/Select.vue'
 import EmailVerificationView from '../EmailVerificationView.vue'
@@ -9,6 +9,7 @@ const { emailAPI, showError, showSuccess } = vi.hoisted(() => ({
     quotes: vi.fn(),
     orders: vi.fn(),
     order: vi.fn(),
+    sync: vi.fn(),
     purchase: vi.fn(),
     cancel: vi.fn(),
     requestRefund: vi.fn(),
@@ -45,9 +46,15 @@ const quote = {
 describe('EmailVerificationView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
     emailAPI.quotes.mockResolvedValue([quote])
     emailAPI.orders.mockResolvedValue([])
     emailAPI.purchase.mockResolvedValue({ id: 'order-1' })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
   })
 
   it('renders provider mailbox types through i18n keys', async () => {
@@ -217,7 +224,6 @@ describe('EmailVerificationView', () => {
 
   it('shows the newest verification code in the orders table even when message order is reversed', async () => {
     const older = new Date(Date.now() - 120_000).toISOString()
-    const newer = new Date(Date.now() - 30_000).toISOString()
     emailAPI.orders.mockResolvedValue({
       items: [{
         id: 'order-1',
@@ -233,10 +239,7 @@ describe('EmailVerificationView', () => {
         capture_policy: 'on_verification_extracted',
         created_at: older,
         refund_status: 'not_applicable',
-        messages: [
-          { id: 'm-new', from_address: 'noreply@example.com', from_name: 'OpenAI', to_address: 'demo@gmail.com', subject: 'New code', text_body: '222222', received_at: newer, verification_code: '222222' },
-          { id: 'm-old', from_address: 'noreply@example.com', from_name: 'OpenAI', to_address: 'demo@gmail.com', subject: 'Old code', text_body: '111111', received_at: older, verification_code: '111111' },
-        ],
+        latest_verification_code: '222222',
       }],
       total: 1,
       page: 1,
@@ -301,7 +304,7 @@ describe('EmailVerificationView', () => {
     await flushPromises()
     expect(wrapper.text()).toContain('demo@gmail.com')
 
-    await vi.advanceTimersByTimeAsync(10_000)
+    await vi.advanceTimersByTimeAsync(15_000)
     await flushPromises()
 
     expect(wrapper.text()).toContain('demo@gmail.com')
@@ -310,7 +313,270 @@ describe('EmailVerificationView', () => {
     resolveRefresh?.({ items: [order], total: 1, page: 1, page_size: 20, pages: 1 })
     await flushPromises()
     wrapper.unmount()
-    vi.useRealTimers()
   })
+
+  it('does not poll the orders list when it is empty, but manual refresh still works', async () => {
+    vi.useFakeTimers()
+    emailAPI.orders.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20, pages: 0 })
+
+    const wrapper = mount(EmailVerificationView, {
+      global: { stubs: { AppLayout: { template: '<main><slot /></main>' }, Icon: true } },
+    })
+    await flushPromises()
+
+    const ordersTab = wrapper.findAll('button').find(button => button.text() === 'email.user.orders')
+    await ordersTab!.trigger('click')
+    await flushPromises()
+    expect(emailAPI.orders).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(45_000)
+    await flushPromises()
+    expect(emailAPI.orders).toHaveBeenCalledTimes(1)
+
+    const refreshButton = wrapper.find('.email-tabs__refresh')
+    await refreshButton.trigger('click')
+    await flushPromises()
+    expect(emailAPI.orders).toHaveBeenCalledTimes(2)
+
+    wrapper.unmount()
+  })
+
+  it('does not poll the orders list when every order is terminal', async () => {
+    vi.useFakeTimers()
+    emailAPI.orders.mockResolvedValue({
+      items: [{
+        id: 'order-completed',
+        order_no: 'EML-DONE',
+        service_code: 'openai',
+        channel_code: 'email_channel_1',
+        channel_name: 'Channel 1',
+        email_address: 'done@gmail.com',
+        address_type: 'gmail',
+        price: 0,
+        status: 'completed',
+        refund_policy: 'refund_if_no_message',
+        capture_policy: 'on_verification_extracted',
+        created_at: new Date().toISOString(),
+        refund_status: 'not_applicable',
+      }],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+
+    const wrapper = mount(EmailVerificationView, {
+      global: { stubs: { AppLayout: { template: '<main><slot /></main>' }, Icon: true } },
+    })
+    await flushPromises()
+
+    const ordersTab = wrapper.findAll('button').find(button => button.text() === 'email.user.orders')
+    await ordersTab!.trigger('click')
+    await flushPromises()
+    expect(emailAPI.orders).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(45_000)
+    await flushPromises()
+    expect(emailAPI.orders).toHaveBeenCalledTimes(1)
+
+    wrapper.unmount()
+  })
+
+  it('polls the orders list only while at least one order is active', async () => {
+    vi.useFakeTimers()
+    const activeOrder = {
+      id: 'order-active',
+      order_no: 'EML-ACTIVE',
+      service_code: 'openai',
+      channel_code: 'email_channel_1',
+      channel_name: 'Channel 1',
+      email_address: 'active@gmail.com',
+      address_type: 'gmail',
+      price: 0,
+      status: 'waiting_email',
+      refund_policy: 'refund_if_no_message',
+      capture_policy: 'on_verification_extracted',
+      created_at: new Date().toISOString(),
+      refund_status: 'not_applicable',
+    }
+    const terminalOrder = { ...activeOrder, status: 'completed' }
+
+    emailAPI.orders
+      .mockResolvedValueOnce({ items: [activeOrder], total: 1, page: 1, page_size: 20, pages: 1 })
+      .mockResolvedValueOnce({ items: [terminalOrder], total: 1, page: 1, page_size: 20, pages: 1 })
+
+    const wrapper = mount(EmailVerificationView, {
+      global: { stubs: { AppLayout: { template: '<main><slot /></main>' }, Icon: true } },
+    })
+    await flushPromises()
+
+    const ordersTab = wrapper.findAll('button').find(button => button.text() === 'email.user.orders')
+    await ordersTab!.trigger('click')
+    await flushPromises()
+    expect(emailAPI.orders).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(15_000)
+    await flushPromises()
+    expect(emailAPI.orders).toHaveBeenCalledTimes(2)
+
+    await vi.advanceTimersByTimeAsync(45_000)
+    await flushPromises()
+    expect(emailAPI.orders).toHaveBeenCalledTimes(2)
+
+    wrapper.unmount()
+  })
+
+  it('pauses order polling while hidden and refreshes immediately when visible again', async () => {
+    vi.useFakeTimers()
+    const activeOrder = {
+      id: 'order-active',
+      order_no: 'EML-ACTIVE',
+      service_code: 'openai',
+      channel_code: 'email_channel_1',
+      channel_name: 'Channel 1',
+      email_address: 'active@gmail.com',
+      address_type: 'gmail',
+      price: 0,
+      status: 'waiting_email',
+      refund_policy: 'refund_if_no_message',
+      capture_policy: 'on_verification_extracted',
+      created_at: new Date().toISOString(),
+      refund_status: 'not_applicable',
+    }
+    emailAPI.orders.mockResolvedValue({ items: [activeOrder], total: 1, page: 1, page_size: 20, pages: 1 })
+
+    const wrapper = mount(EmailVerificationView, {
+      global: { stubs: { AppLayout: { template: '<main><slot /></main>' }, Icon: true } },
+    })
+    await flushPromises()
+
+    const ordersTab = wrapper.findAll('button').find(button => button.text() === 'email.user.orders')
+    await ordersTab!.trigger('click')
+    await flushPromises()
+    expect(emailAPI.orders).toHaveBeenCalledTimes(1)
+
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' })
+    document.dispatchEvent(new Event('visibilitychange'))
+    await vi.advanceTimersByTimeAsync(45_000)
+    await flushPromises()
+    expect(emailAPI.orders).toHaveBeenCalledTimes(1)
+
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
+    document.dispatchEvent(new Event('visibilitychange'))
+    await flushPromises()
+    expect(emailAPI.orders).toHaveBeenCalledTimes(2)
+
+    await vi.advanceTimersByTimeAsync(15_000)
+    await flushPromises()
+    expect(emailAPI.orders).toHaveBeenCalledTimes(3)
+
+    wrapper.unmount()
+  })
+
+  it('loads full message detail when opening a terminal order from the lightweight list', async () => {
+    const listed = {
+      id: 'order-terminal',
+      order_no: 'EML-TERMINAL',
+      service_code: 'openai',
+      channel_code: 'email_channel_1',
+      channel_name: 'Channel 1',
+      email_address: 'terminal@gmail.com',
+      address_type: 'gmail',
+      price: 0,
+      status: 'completed',
+      refund_policy: 'refund_if_no_message',
+      capture_policy: 'on_verification_extracted',
+      created_at: new Date().toISOString(),
+      refund_status: 'not_applicable',
+      latest_verification_code: '654321',
+    }
+    emailAPI.orders.mockResolvedValue({ items: [listed], total: 1, page: 1, page_size: 20, pages: 1 })
+    emailAPI.order.mockResolvedValue({
+      ...listed,
+      messages: [{
+        id: 'terminal-message',
+        from_address: 'noreply@example.com',
+        from_name: 'OpenAI',
+        to_address: 'terminal@gmail.com',
+        subject: 'Verification code',
+        text_body: 'Your verification code is 654321',
+        verification_code: '654321',
+        received_at: new Date().toISOString(),
+      }],
+    })
+    const wrapper = mount(EmailVerificationView, { global: { stubs: { AppLayout: { template: '<main><slot /></main>' }, Icon: true } } })
+    await flushPromises()
+    const ordersTab = wrapper.findAll('button').find(button => button.text() === 'email.user.orders')
+    await ordersTab!.trigger('click')
+    await flushPromises()
+    const viewButton = wrapper.findAll('button').find(button => button.text() === 'common.view')
+    await viewButton!.trigger('click')
+    await flushPromises()
+    expect(emailAPI.order).toHaveBeenCalledWith('order-terminal')
+    expect(wrapper.text()).toContain('654321')
+    expect(wrapper.text()).toContain('email.user.viewMessage')
+    wrapper.unmount()
+  })
+
+  it('uses the explicit inbox refresh to sync the provider before reading the order', async () => {
+    const active = {
+      id: 'order-sync',
+      channel_code: 'email_channel_1',
+      channel_name: 'Channel 1',
+      status: 'waiting_email',
+      email_address: 'sync@gmail.com',
+      expires_at: new Date(Date.now() + 60_000).toISOString(),
+      messages: [],
+    }
+    emailAPI.purchase.mockResolvedValue(active)
+    emailAPI.sync.mockResolvedValue({ ...active, status: 'verification_extracted', latest_verification_code: '654321' })
+
+    const wrapper = mount(EmailVerificationView, {
+      global: { stubs: { AppLayout: { template: '<main><slot /></main>' }, Icon: true } },
+    })
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === 'email.user.getQuote')!.trigger('click')
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === 'email.user.generateFree')!.trigger('click')
+    await flushPromises()
+
+    await wrapper.get('.email-live-order__actions .email-icon-button').trigger('click')
+    await flushPromises()
+
+    expect(emailAPI.sync).toHaveBeenCalledWith('order-sync')
+    expect(wrapper.text()).toContain('654321')
+    wrapper.unmount()
+  })
+
+  it('surfaces a manual provider sync failure without replacing the current inbox', async () => {
+    const active = {
+      id: 'order-sync-error',
+      channel_code: 'email_channel_1',
+      channel_name: 'Channel 1',
+      status: 'waiting_email',
+      email_address: 'sync-error@gmail.com',
+      expires_at: new Date(Date.now() + 60_000).toISOString(),
+      messages: [],
+    }
+    emailAPI.purchase.mockResolvedValue(active)
+    emailAPI.sync.mockRejectedValue(new Error('provider unavailable'))
+
+    const wrapper = mount(EmailVerificationView, {
+      global: { stubs: { AppLayout: { template: '<main><slot /></main>' }, Icon: true } },
+    })
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === 'email.user.getQuote')!.trigger('click')
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === 'email.user.generateFree')!.trigger('click')
+    await flushPromises()
+
+    await wrapper.get('.email-live-order__actions .email-icon-button').trigger('click')
+    await flushPromises()
+
+    expect(showError).toHaveBeenCalled()
+    expect(wrapper.text()).toContain('sync-error@gmail.com')
+    wrapper.unmount()
+  })
+
 
 })

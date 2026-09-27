@@ -773,3 +773,108 @@ func TestRequestRefundRejectsLegacyPaidRefundIfNoMessagePolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestNormalizeEmailSenderParsesDisplayName(t *testing.T) {
+	address, name := normalizeEmailSender("  Service Team <Mail@Example.COM>  ", "fallback")
+	if address != "Mail@Example.COM" || name != "Service Team" {
+		t.Fatalf("parsed sender=%q/%q", address, name)
+	}
+	address, name = normalizeEmailSender("mail@example.com", "fallback")
+	if address != "mail@example.com" || name != "fallback" {
+		t.Fatalf("bare sender=%q/%q", address, name)
+	}
+}
+
+func TestMessageMatchesDisplayNameSenderAgainstDomainRule(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	mock.ExpectQuery(`SELECT r\.sender_exact,r\.sender_domain,r\.subject_contains,r\.subject_regex`).
+		WithArgs(int64(7)).
+		WillReturnRows(sqlmock.NewRows([]string{"sender_exact", "sender_domain", "subject_contains", "subject_regex"}).AddRow("", "example.com", "", ""))
+	svc := &EmailVerificationService{db: db}
+	if !svc.messageMatches(context.Background(), 7, &ProviderEmailMessage{FromAddress: "Support <MAIL@Example.COM>", Subject: "Verify"}) {
+		t.Fatal("display-name sender should match configured domain")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestUpsertEmailMessageUpdatesProviderMessageWithLaterBody(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectExec(`(?s)UPDATE email_messages.*WHERE email_order_id=\$1 AND provider_message_id=\$2`).
+		WithArgs(int64(12), "provider-1", "noreply@example.com", "Example", "target@example.com", "Verify", "Your code is 123456", "", "123456", "", 0.95, "context_otp", sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	svc := &EmailVerificationService{db: db}
+	updated, err := svc.upsertEmailMessage(context.Background(), 12, &ProviderEmailMessage{
+		ProviderMessageID: "provider-1",
+		FromAddress:       "noreply@example.com",
+		FromName:          "Example",
+		ToAddress:         "target@example.com",
+		Subject:           "Verify",
+	}, "Your code is 123456", "", VerificationExtraction{Code: "123456", Confidence: .95, Method: "context_otp"}, time.Now().UTC(), "dedupe", []byte(`{"id":"provider-1"}`))
+	if err != nil || !updated {
+		t.Fatalf("updated=%v err=%v", updated, err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCleanupExpiredMessagesRemovesRecoverableSecrets(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	mock.ExpectExec(`(?s)UPDATE email_messages.*replace\(text_body, verification_code.*raw_payload=CASE.*verification_code=''`).
+		WithArgs(24).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`UPDATE email_messages SET text_body=''`).
+		WithArgs(7).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	svc := &EmailVerificationService{db: db}
+	if err := svc.CleanupExpiredMessages(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestGetOrderPropagatesMessageQueryFailure(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	mock.ExpectQuery(`SELECT id FROM email_orders`).
+		WithArgs(int64(42), "00000000-0000-0000-0000-000000000001").
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(int64(12)))
+	mock.ExpectQuery(`SELECT o\.public_id::text`).
+		WithArgs(int64(42), int64(12)).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"public_id", "order_no", "status", "code", "public_name", "service_code", "email_address", "address_type", "sale_price_snapshot", "success_rate_snapshot", "success_rate_grade_snapshot", "refund_policy_snapshot", "capture_policy_snapshot", "expires_at", "created_at", "first_message_at", "refund_status", "refund_reason", "error_code", "error_public_message",
+		}).AddRow("00000000-0000-0000-0000-000000000001", "EML-12", "waiting_email", "email_channel_1", "Channel", "other", "target@example.com", "gmail", 0.0, nil, "", EmailRefundIfNoMessage, EmailCaptureOnTargetReceived, nil, time.Now(), nil, "not_requested", "", "", ""))
+	mock.ExpectQuery(`SELECT id::text,from_address`).
+		WithArgs(int64(12)).
+		WillReturnError(errors.New("messages query failed"))
+
+	svc := &EmailVerificationService{db: db}
+	if _, err := svc.GetOrder(context.Background(), 42, "00000000-0000-0000-0000-000000000001"); err == nil || !strings.Contains(err.Error(), "messages query failed") {
+		t.Fatalf("GetOrder error=%v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}

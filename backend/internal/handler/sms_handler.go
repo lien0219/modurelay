@@ -562,7 +562,23 @@ func (h *SMSHandler) Order(c *gin.Context) {
 		response.Unauthorized(c, "User not authenticated")
 		return
 	}
-	_ = h.svc.SyncOrderStatus(c.Request.Context(), subject.UserID, c.Param("id"))
+	if syncErr := h.svc.SyncOrderStatus(c.Request.Context(), subject.UserID, c.Param("id")); syncErr != nil {
+		var transient *service.SMSSyncTransientError
+		if errors.As(syncErr, &transient) {
+			response.ErrorWithDetails(c, http.StatusAccepted, "The SMS channel is temporarily synchronizing; please refresh shortly", "SMS_SYNC_PENDING", nil)
+			return
+		}
+		if errors.Is(syncErr, service.ErrSMSProviderUnavailable) {
+			response.ErrorWithDetails(c, http.StatusServiceUnavailable, "The selected channel is temporarily unavailable", "PROVIDER_UNAVAILABLE", nil)
+			return
+		}
+		if errors.Is(syncErr, service.ErrSMSProviderCredentialMissing) {
+			response.ErrorWithDetails(c, http.StatusUnprocessableEntity, "Provider credential is not configured", "PROVIDER_CREDENTIAL_MISSING", nil)
+			return
+		}
+		response.ErrorFrom(c, syncErr)
+		return
+	}
 	order, err := h.svc.GetOrderByPublicID(c.Request.Context(), subject.UserID, c.Param("id"))
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -589,24 +605,86 @@ func (h *SMSHandler) Webhook(c *gin.Context) {
 	}
 	var payload struct {
 		OrderID  string   `json:"provider_order_id"`
+		ID       any      `json:"id"`
 		Status   string   `json:"status"`
 		Phone    string   `json:"phone_number"`
+		PhoneAlt string   `json:"phone"`
+		Code     string   `json:"code"`
 		Messages []string `json:"messages"`
 		Message  string   `json:"message"`
+		SMS      []struct {
+			Text   string `json:"text"`
+			Code   string `json:"code"`
+			Sender string `json:"sender"`
+		} `json:"sms"`
 	}
-	if err := json.NewDecoder(c.Request.Body).Decode(&payload); err != nil {
+	decoder := json.NewDecoder(c.Request.Body)
+	decoder.UseNumber()
+	if err := decoder.Decode(&payload); err != nil {
 		response.BadRequest(c, "invalid webhook payload")
 		return
 	}
-	if strings.TrimSpace(payload.OrderID) == "" {
+	orderID := strings.TrimSpace(payload.OrderID)
+	if orderID == "" {
+		switch value := payload.ID.(type) {
+		case string:
+			orderID = strings.TrimSpace(value)
+		case json.Number:
+			if parsed, err := strconv.ParseInt(value.String(), 10, 64); err == nil {
+				orderID = strconv.FormatInt(parsed, 10)
+			}
+		case float64:
+			if value == float64(int64(value)) {
+				orderID = strconv.FormatInt(int64(value), 10)
+			}
+		}
+	}
+	if orderID == "" {
 		response.BadRequest(c, "provider_order_id is required")
 		return
 	}
 	messages := append([]string(nil), payload.Messages...)
+	metadataMessages := make([]map[string]any, 0, len(messages)+len(payload.SMS)+1)
+	for range messages {
+		metadataMessages = append(metadataMessages, map[string]any{})
+	}
 	if payload.Message != "" {
 		messages = append(messages, payload.Message)
+		metadataMessages = append(metadataMessages, map[string]any{})
 	}
-	if err := h.svc.ProcessWebhook(c.Request.Context(), provider, service.SMSStatusResult{Status: payload.Status, PhoneNumber: payload.Phone, Messages: messages}, payload.OrderID); err != nil {
+	for _, item := range payload.SMS {
+		text := strings.TrimSpace(item.Text)
+		code := strings.TrimSpace(item.Code)
+		if text == "" {
+			text = code
+		}
+		if text == "" {
+			continue
+		}
+		messages = append(messages, text)
+		messageMetadata := map[string]any{"verification_code": code}
+		if provider != "5sim" {
+			messageMetadata["sender"] = strings.TrimSpace(item.Sender)
+		}
+		metadataMessages = append(metadataMessages, messageMetadata)
+	}
+	if code := strings.TrimSpace(payload.Code); code != "" {
+		if len(messages) == 0 {
+			messages = append(messages, code)
+			metadataMessages = append(metadataMessages, map[string]any{"verification_code": code})
+		} else if len(metadataMessages) > 0 {
+			metadataMessages[0]["verification_code"] = code
+		}
+	}
+	phone := strings.TrimSpace(payload.Phone)
+	if phone == "" {
+		phone = strings.TrimSpace(payload.PhoneAlt)
+	}
+	metadata := map[string]any{}
+	if len(metadataMessages) > 0 {
+		metadata["messages"] = metadataMessages
+	}
+	if err := h.svc.ProcessWebhook(c.Request.Context(), provider, service.SMSStatusResult{Status: payload.Status, PhoneNumber: phone, Messages: messages, Metadata: metadata}, orderID); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -618,7 +696,7 @@ func (h *SMSHandler) Resend(c *gin.Context) {
 		response.Unauthorized(c, "User not authenticated")
 		return
 	}
-	if err := h.svc.ResendOrder(c.Request.Context(), subject.UserID, c.Param("id")); err != nil {
+	if err := h.svc.ResendOrder(c.Request.Context(), subject.UserID, c.Param("id"), c.GetHeader("Idempotency-Key")); err != nil {
 		response.ErrorWithDetails(c, http.StatusUnprocessableEntity, err.Error(), "RESEND_REJECTED", nil)
 		return
 	}
@@ -919,6 +997,10 @@ func (h *SMSHandler) AdminProviderUpdate(c *gin.Context) {
 		return
 	}
 	if err := h.svc.UpdateProvider(c.Request.Context(), id, req.Enabled, req.BaseURL, req.CredentialRef); err != nil {
+		if err == service.ErrProviderCredentialEncryptionKeyNotConfigured {
+			response.ErrorWithDetails(c, http.StatusBadRequest, "Set a fixed TOTP_ENCRYPTION_KEY before saving provider credentials", "PROVIDER_CREDENTIAL_ENCRYPTION_KEY_NOT_CONFIGURED", nil)
+			return
+		}
 		response.ErrorFrom(c, err)
 		return
 	}

@@ -19,4 +19,10 @@ describe('SMS order polling schedule', () => {
   it('uses the conservative fast bucket when the timestamp is missing', () => {
     expect(smsOrderPollBucket({ channel_code: 'channel_2' }, now)).toBe('channel-2-fast')
   })
+
+  it('backs off completed orders recovering a missing code', () => {
+    const input = { channel_code: 'channel_1', product_type: 'temporary', status: 'completed', latest_verification_code: '' }
+    expect(smsOrderPollBucket(input, now)).toBe('recovery')
+    expect(smsOrderPollDelay('recovery')).toBe(15_000)
+  })
 })

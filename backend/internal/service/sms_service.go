@@ -168,6 +168,7 @@ const (
 	smsReconciliationCancel   = "cancel"
 	smsReconciliationRefund   = "refund"
 	smsReconciliationExpire   = "expire"
+	smsReconciliationFinish   = "finish"
 )
 
 type SMSProviderCapabilities struct {
@@ -328,6 +329,100 @@ type SMSStatusResult struct {
 	Metadata             map[string]any `json:"metadata,omitempty"`
 	ProviderCost         float64        `json:"-"`
 	ProviderOperatorCode string         `json:"-"`
+}
+
+// SMSSyncTransientError marks a provider poll that could not complete because
+// the upstream channel was temporarily unavailable.  It is deliberately
+// distinct from persistence/database failures so the HTTP layer can report a
+// non-destructive 202 response while still surfacing the failed synchronization.
+type SMSSyncTransientError struct{ Err error }
+
+func (e *SMSSyncTransientError) Error() string {
+	if e == nil || e.Err == nil {
+		return "SMS provider synchronization is pending"
+	}
+	return "SMS provider synchronization is pending: " + e.Err.Error()
+}
+
+func (e *SMSSyncTransientError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
+}
+
+const smsProviderActionLease = 30 * time.Second
+
+// claimSMSProviderPoll is a cross-process compare-and-set lease.  The lease
+// uses the existing reconcile_after column, so no schema change is needed.
+// Successful polls clear it with the normal order update; failed polls replace
+// it with their exponential backoff.
+func (s *SMSService) claimSMSProviderPoll(ctx context.Context, id int64) (bool, error) {
+	res, err := s.db.ExecContext(ctx, `UPDATE sms_orders
+		SET reconcile_after=NOW()+($1 * INTERVAL '1 second')
+		WHERE id=$2
+		  AND (status IN ('active','provider_unknown')
+		       OR (status='reconciling' AND reconciliation_action='purchase'))
+		  AND (reconcile_after IS NULL OR reconcile_after<=NOW())`, int(smsProviderActionLease.Seconds()), id)
+	if err != nil {
+		return false, err
+	}
+	affected, err := res.RowsAffected()
+	return affected == 1, err
+}
+
+func (s *SMSService) claimSMSActiveProviderAction(ctx context.Context, id int64) (bool, error) {
+	res, err := s.db.ExecContext(ctx, `UPDATE sms_orders
+		SET reconcile_after=NOW()+($1 * INTERVAL '1 second')
+		WHERE id=$2
+		  AND (status IN ('active','provider_unknown')
+		       OR (status='reconciling' AND reconciliation_action='purchase'))
+		  AND (reconcile_after IS NULL OR reconcile_after<=NOW())`, int(smsProviderActionLease.Seconds()), id)
+	if err != nil {
+		return false, err
+	}
+	affected, err := res.RowsAffected()
+	return affected == 1, err
+}
+
+func (s *SMSService) claimSMSReconciliationAction(ctx context.Context, id int64, action string) (bool, error) {
+	res, err := s.db.ExecContext(ctx, `UPDATE sms_orders
+		SET reconcile_after=NOW()+($1 * INTERVAL '1 second')
+		WHERE id=$2 AND status='reconciling' AND reconciliation_action=$3
+		  AND (reconcile_after IS NULL OR reconcile_after<=NOW())`, int(smsProviderActionLease.Seconds()), id, action)
+	if err != nil {
+		return false, err
+	}
+	affected, err := res.RowsAffected()
+	return affected == 1, err
+}
+
+func (s *SMSService) claimSMSProviderFinalize(ctx context.Context, id int64) (bool, error) {
+	res, err := s.db.ExecContext(ctx, `UPDATE sms_orders
+		SET reconciliation_action=$1,
+		    reconcile_after=NOW()+($2 * INTERVAL '1 second')
+		WHERE id=$3 AND status='completed' AND reconciliation_action=''
+		  AND (reconcile_after IS NULL OR reconcile_after<=NOW())`, smsReconciliationFinish, int(smsProviderActionLease.Seconds()), id)
+	if err != nil {
+		return false, err
+	}
+	affected, err := res.RowsAffected()
+	return affected == 1, err
+}
+
+// claimSMSProviderFinalizeRetry leases a previously failed finish call. Finish
+// is deliberately kept on completed orders because the SMS has already been
+// delivered and settled; only the provider-side terminal transition remains.
+func (s *SMSService) claimSMSProviderFinalizeRetry(ctx context.Context, id int64) (bool, error) {
+	res, err := s.db.ExecContext(ctx, `UPDATE sms_orders
+		SET reconcile_after=NOW()+($1 * INTERVAL '1 second')
+		WHERE id=$2 AND status='completed' AND reconciliation_action=$3
+		  AND (reconcile_after IS NULL OR reconcile_after<=NOW())`, int(smsProviderActionLease.Seconds()), id, smsReconciliationFinish)
+	if err != nil {
+		return false, err
+	}
+	affected, err := res.RowsAffected()
+	return affected == 1, err
 }
 
 type SMSProvider interface {
@@ -806,7 +901,22 @@ func parseProviderJSONID(raw json.RawMessage) string {
 		}
 		return ""
 	}
-	return strings.TrimSpace(string(raw))
+	if !json.Valid(raw) {
+		return ""
+	}
+	number, err := decimal.NewFromString(string(raw))
+	if err != nil || number.Exponent() > 128 || number.Exponent() < -128 || !number.IsPositive() || !number.Equal(number.Truncate(0)) {
+		return ""
+	}
+	coefficientDigits := len(strings.TrimPrefix(number.Coefficient().String(), "-"))
+	if exponent := number.Exponent(); exponent > 0 && int64(coefficientDigits)+int64(exponent) > 128 {
+		return ""
+	}
+	id := number.StringFixed(0)
+	if len(id) > 128 {
+		return ""
+	}
+	return id
 }
 
 func (p *fiveSIMProvider) buy(ctx context.Context, category string, req SMSPurchaseRequest) (*SMSPurchaseResult, error) {
@@ -854,140 +964,13 @@ func (p *fiveSIMProvider) buy(ctx context.Context, category string, req SMSPurch
 	return &SMSPurchaseResult{ProviderOrderID: id, PhoneNumber: out.Phone, ExpiresAt: &out.Expires, ProviderCost: out.Price, ProviderOperatorCode: strings.ToLower(strings.TrimSpace(out.Operator))}, nil
 }
 
-func (p *fiveSIMProvider) RecoverTemporaryPurchase(ctx context.Context, req SMSPurchaseRequest, startedAt time.Time) (*SMSPurchaseResult, error) {
-	type historyOrder struct {
-		ID        json.RawMessage `json:"id"`
-		Phone     string          `json:"phone"`
-		Operator  string          `json:"operator"`
-		Product   string          `json:"product"`
-		Price     float64         `json:"price"`
-		Status    string          `json:"status"`
-		Expires   time.Time       `json:"expires"`
-		CreatedAt time.Time       `json:"created_at"`
-		Country   string          `json:"country"`
-	}
-	loadHistory := func(reverse string) ([]historyOrder, error) {
-		var history struct {
-			Data json.RawMessage `json:"Data"`
-		}
-		query := url.Values{
-			"category": {"activation"},
-			"limit":    {"100"},
-			"offset":   {"0"},
-			"order":    {"id"},
-			"reverse":  {reverse},
-		}
-		if err := p.request(ctx, http.MethodGet, "user/orders", query, nil, &history); err != nil {
-			return nil, err
-		}
-		raw := bytes.TrimSpace(history.Data)
-		if len(raw) == 0 || bytes.Equal(raw, []byte("null")) {
-			return nil, nil
-		}
-		orders := make([]historyOrder, 0, 16)
-		if raw[0] == '[' {
-			if err := json.Unmarshal(raw, &orders); err != nil {
-				return nil, fmt.Errorf("5SIM order history is invalid: %w", err)
-			}
-			return orders, nil
-		}
-		var single historyOrder
-		if err := json.Unmarshal(raw, &single); err != nil {
-			return nil, fmt.Errorf("5SIM order history is invalid: %w", err)
-		}
-		return append(orders, single), nil
-	}
-
-	serviceCode := strings.ToLower(strings.TrimSpace(req.ServiceCode))
-	countryCode := strings.ToLower(strings.TrimSpace(req.CountryCode))
-	operatorCode := strings.ToLower(strings.TrimSpace(req.OperatorCode))
-	if operatorCode == "" {
-		operatorCode = "any"
-	}
-	if startedAt.IsZero() {
-		startedAt = time.Now()
-	}
-	// Keep matching strict on service/country/operator, but allow enough margin
-	// for DB clock skew, proxy latency and delayed reconciliation after a client
-	// disconnect. The unique-nearest check below still fails closed.
-	windowStart := startedAt.Add(-2 * time.Minute)
-	windowEnd := startedAt.Add(10 * time.Minute)
-
-	type candidate struct {
-		result SMSPurchaseResult
-		delta  time.Duration
-	}
-	collect := func(orders []historyOrder) []candidate {
-		candidates := make([]candidate, 0, 4)
-		seen := map[string]struct{}{}
-		for _, item := range orders {
-			if strings.ToLower(strings.TrimSpace(item.Product)) != serviceCode || strings.ToLower(strings.TrimSpace(item.Country)) != countryCode {
-				continue
-			}
-			if item.CreatedAt.IsZero() || item.CreatedAt.Before(windowStart) || item.CreatedAt.After(windowEnd) {
-				continue
-			}
-			status := strings.ToUpper(strings.TrimSpace(item.Status))
-			switch status {
-			case "PENDING", "RECEIVED", "FINISHED", "CANCELED", "CANCELLED", "TIMEOUT", "BANNED":
-			default:
-				continue
-			}
-			if operatorCode != "any" && strings.ToLower(strings.TrimSpace(item.Operator)) != operatorCode {
-				continue
-			}
-			if operatorCode == "any" && req.ProviderCostLimit > 0 && item.Price > req.ProviderCostLimit+0.00000001 {
-				continue
-			}
-			id := parseProviderJSONID(item.ID)
-			if id == "" {
-				continue
-			}
-			if _, exists := seen[id]; exists {
-				continue
-			}
-			seen[id] = struct{}{}
-			delta := item.CreatedAt.Sub(startedAt)
-			if delta < 0 {
-				delta = -delta
-			}
-			candidates = append(candidates, candidate{
-				result: SMSPurchaseResult{
-					ProviderOrderID:      id,
-					PhoneNumber:          item.Phone,
-					ExpiresAt:            &item.Expires,
-					ProviderCost:         item.Price,
-					ProviderOperatorCode: strings.ToLower(strings.TrimSpace(item.Operator)),
-				},
-				delta: delta,
-			})
-		}
-		return candidates
-	}
-
-	orders, err := loadHistory("true")
-	if err != nil {
-		return nil, err
-	}
-	candidates := collect(orders)
-	if len(candidates) == 0 {
-		// Some 5SIM deployments interpret reverse ordering differently. Query the
-		// opposite edge as a fallback so a freshly created provider order cannot
-		// be stranded merely because it is outside the first returned page.
-		fallback, fallbackErr := loadHistory("false")
-		if fallbackErr != nil {
-			return nil, fallbackErr
-		}
-		candidates = collect(fallback)
-	}
-	if len(candidates) == 0 {
-		return nil, nil
-	}
-	sort.Slice(candidates, func(i, j int) bool { return candidates[i].delta < candidates[j].delta })
-	if len(candidates) > 1 && candidates[1].delta-candidates[0].delta <= 2*time.Second {
-		return nil, errors.New("5SIM purchase recovery is ambiguous")
-	}
-	return &candidates[0].result, nil
+func (p *fiveSIMProvider) RecoverTemporaryPurchase(context.Context, SMSPurchaseRequest, time.Time) (*SMSPurchaseResult, error) {
+	// 5SIM order history does not expose a client correlation/idempotency token.
+	// Service/country/operator/time matching cannot prove ownership under
+	// concurrent purchases, so automatic history binding is intentionally
+	// disabled. Ambiguous purchase outcomes remain held/reconciling for
+	// administrator review instead of risking a cross-user order assignment.
+	return nil, nil
 }
 func (p *fiveSIMProvider) GetTemporaryStatus(ctx context.Context, id string) (*SMSStatusResult, error) {
 	var out struct {
@@ -1003,16 +986,33 @@ func (p *fiveSIMProvider) GetTemporaryStatus(ctx context.Context, id string) (*S
 	if err := p.request(ctx, http.MethodGet, "user/check/"+url.PathEscape(id), nil, nil, &out); err != nil {
 		return nil, err
 	}
-	msgs := make([]string, 0, len(out.SMS)*2)
+	msgs := make([]string, 0, len(out.SMS))
+	metadataMessages := make([]map[string]any, 0, len(out.SMS))
 	for _, m := range out.SMS {
-		if strings.TrimSpace(m.Text) != "" {
-			msgs = append(msgs, m.Text)
+		text := strings.TrimSpace(m.Text)
+		code := strings.TrimSpace(m.Code)
+		if text == "" && code == "" {
+			continue
 		}
-		if strings.TrimSpace(m.Code) != "" {
-			msgs = append(msgs, m.Code)
+		message := text
+		if message == "" {
+			message = code
 		}
+		msgs = append(msgs, message)
+		metadataMessages = append(metadataMessages, map[string]any{"verification_code": code})
 	}
-	return &SMSStatusResult{Status: strings.ToLower(out.Status), PhoneNumber: out.Phone, Messages: msgs, ProviderCost: out.Price, ProviderOperatorCode: strings.ToLower(strings.TrimSpace(out.Operator))}, nil
+	var metadata map[string]any
+	if len(metadataMessages) > 0 {
+		metadata = map[string]any{"messages": metadataMessages}
+	}
+	return &SMSStatusResult{
+		Status:               strings.ToLower(out.Status),
+		PhoneNumber:          out.Phone,
+		Messages:             msgs,
+		Metadata:             metadata,
+		ProviderCost:         out.Price,
+		ProviderOperatorCode: strings.ToLower(strings.TrimSpace(out.Operator)),
+	}, nil
 }
 func (p *fiveSIMProvider) CancelTemporary(ctx context.Context, id string) error {
 	return p.request(ctx, http.MethodGet, "user/cancel/"+url.PathEscape(id), nil, nil, nil)
@@ -1366,7 +1366,15 @@ func (p *smsActivateProvider) GetTemporaryStatus(ctx context.Context, id string)
 	}
 	raw := strings.TrimSpace(string(b))
 	if strings.HasPrefix(raw, "STATUS_OK:") {
-		return &SMSStatusResult{Status: "completed", Messages: []string{strings.TrimPrefix(raw, "STATUS_OK:")}}, nil
+		code := strings.TrimSpace(strings.TrimPrefix(raw, "STATUS_OK:"))
+		if code == "" {
+			return &SMSStatusResult{Status: "completed"}, nil
+		}
+		return &SMSStatusResult{
+			Status:   "completed",
+			Messages: []string{code},
+			Metadata: map[string]any{"messages": []map[string]any{{"verification_code": code}}},
+		}, nil
 	}
 	switch raw {
 	case "STATUS_WAIT_CODE":
@@ -1461,9 +1469,17 @@ func (p *onlineSIMProvider) GetTemporaryStatus(ctx context.Context, id string) (
 	}
 	status := strings.ToLower(out.Response)
 	if out.Code != "" {
-		return &SMSStatusResult{Status: "completed", Messages: []string{out.Code, out.Message}}, nil
+		message := strings.TrimSpace(out.Message)
+		if message == "" {
+			message = strings.TrimSpace(out.Code)
+		}
+		return &SMSStatusResult{Status: "completed", Messages: []string{message}, Metadata: map[string]any{"messages": []map[string]any{{"verification_code": strings.TrimSpace(out.Code)}}}}, nil
 	}
-	return &SMSStatusResult{Status: status, Messages: []string{out.Message}}, nil
+	message := strings.TrimSpace(out.Message)
+	if message == "" {
+		return &SMSStatusResult{Status: status}, nil
+	}
+	return &SMSStatusResult{Status: status, Messages: []string{message}}, nil
 }
 func (p *onlineSIMProvider) CancelTemporary(ctx context.Context, id string) error {
 	return p.call(ctx, "setOperationRevise.php", url.Values{"tzid": {id}, "status": {"revised"}}, nil)
@@ -1713,6 +1729,7 @@ type SMSOrder struct {
 	RefundReason           string                  `json:"refund_reason,omitempty"`
 	Capabilities           SMSProviderCapabilities `json:"capabilities"`
 	Messages               []SMSMessage            `json:"messages,omitempty"`
+	LatestVerificationCode string                  `json:"latest_verification_code,omitempty"`
 	ExpiresAt              *time.Time              `json:"expires_at,omitempty"`
 	RemainingSeconds       int64                   `json:"remaining_seconds"`
 	CancelAvailableAt      *time.Time              `json:"cancel_available_at,omitempty"`
@@ -3265,7 +3282,7 @@ func (s *SMSService) Purchase(ctx context.Context, userID int64, req SMSPurchase
 			// The outcome is still unknown. Keep the amount frozen (not captured),
 			// expose the provisional order as "confirming purchase", and let both
 			// the foreground poller and worker keep checking provider history.
-			_, _ = s.db.ExecContext(context.Background(), `UPDATE sms_orders SET status='reconciling',reconciliation_action=$1,reconcile_after=NOW()+($2 * INTERVAL '1 second'),last_provider_error=$3,updated_at=NOW() WHERE id=$4`, smsReconciliationPurchase, int(smsVerificationPollInterval.Seconds()), providerErrorDiagnostic(err), orderID)
+			_, _ = s.db.ExecContext(context.Background(), `UPDATE sms_orders SET status='reconciling',reconciliation_action=$1,reconcile_after=NOW()+($2 * INTERVAL '1 second'),last_provider_error=$3,updated_at=NOW() WHERE id=$4`, smsReconciliationPurchase, int(smsPurchaseRecoveryGrace.Seconds()), providerErrorDiagnostic(err), orderID)
 			return s.GetOrder(context.Background(), userID, orderID)
 		}
 		// Only a definitive rejection with no recoverable provider allocation
@@ -3473,7 +3490,7 @@ func (s *SMSService) reserveSMSPurchase(ctx context.Context, userID, channelID, 
 	defer func() { _ = tx.Rollback() }()
 	var orderID int64
 	price := selected.SalePrice
-	err = tx.QueryRowContext(ctx, `INSERT INTO sms_orders (user_id,channel_id,provider_id,service_id,country_id,product_type,status,operator_code,voice_mode,provider_cost_snapshot,sale_price_snapshot,success_rate_snapshot,success_rate_source_snapshot,success_rate_grade_snapshot,success_rate_multiplier_snapshot,idempotency_key,reserved_amount,settlement_status,reconciliation_action,reconcile_after) VALUES ($1,$2,$3,$4,$5,$6,'reconciling',$7,$8,$9,$10,$11,$12,$13,$14,$15,$10,'held','purchase',NOW()+INTERVAL '5 seconds') RETURNING id`, userID, channelID, providerID, serviceID, countryID, req.ProductType, requestedSMSOperator(req.OperatorCode), req.VoiceMode, selected.ProviderCost, price, selected.SuccessRate, selected.SuccessRateSource, selected.SuccessRateGrade, selected.GradeMultiplier, idempotencyKey).Scan(&orderID)
+	err = tx.QueryRowContext(ctx, `INSERT INTO sms_orders (user_id,channel_id,provider_id,service_id,country_id,product_type,status,operator_code,voice_mode,provider_cost_snapshot,sale_price_snapshot,success_rate_snapshot,success_rate_source_snapshot,success_rate_grade_snapshot,success_rate_multiplier_snapshot,idempotency_key,reserved_amount,settlement_status,reconciliation_action,reconcile_after) VALUES ($1,$2,$3,$4,$5,$6,'reconciling',$7,$8,$9,$10,$11,$12,$13,$14,$15,$10,'held','purchase',NOW()+INTERVAL '30 seconds') RETURNING id`, userID, channelID, providerID, serviceID, countryID, req.ProductType, requestedSMSOperator(req.OperatorCode), req.VoiceMode, selected.ProviderCost, price, selected.SuccessRate, selected.SuccessRateSource, selected.SuccessRateGrade, selected.GradeMultiplier, idempotencyKey).Scan(&orderID)
 	if err != nil {
 		return 0, err
 	}
@@ -3539,10 +3556,9 @@ func smsOrderExpiresAt(now time.Time, productType string, durationValue int, dur
 		ttl = 10 * time.Minute
 	}
 	platformExpiry := now.Add(ttl)
-	// Temporary order lifetime is an administrator policy. Provider-side
-	// activation timestamps can be shorter (or reflect a different provider
-	// timeout), but must not turn the self-service cancellation safety window
-	// into an automatic platform cancellation/refund.
+	if providerExpiry != nil && !providerExpiry.IsZero() && providerExpiry.After(now) && providerExpiry.Before(platformExpiry) {
+		return providerExpiry
+	}
 	return &platformExpiry
 }
 
@@ -3856,6 +3872,12 @@ func (s *SMSService) GetOrder(ctx context.Context, userID, orderID int64) (*SMSO
 		return nil, err
 	}
 	o.Messages = messages
+	for i := len(messages) - 1; i >= 0; i-- {
+		if code := strings.TrimSpace(messages[i].VerificationCode); code != "" {
+			o.LatestVerificationCode = code
+			break
+		}
+	}
 	setSMSOrderRemaining(&o)
 	pricing := defaultSMSPricingSettings()
 	if configured, pricingErr := s.GetPricingSettings(ctx); pricingErr == nil {
@@ -3950,8 +3972,8 @@ func smsStatusFromProvider(result *SMSStatusResult) string {
 	if result == nil {
 		return "provider_unknown"
 	}
-	for _, message := range result.Messages {
-		if strings.TrimSpace(extractSMSCode(message)) != "" {
+	for index := range result.Messages {
+		if smsVerificationCodeFromResult(result, index) != "" {
 			return "completed"
 		}
 	}
@@ -3982,8 +4004,10 @@ func deferSMSProviderExpiry(productType, status, reconciliationAction string, ex
 func (s *SMSService) SyncOrderStatus(ctx context.Context, userID int64, publicID string) error {
 	var id int64
 	var providerOrder, providerCode, base, credential, productType, status, reconciliationAction, settlementStatus string
-	var expiresAt sql.NullTime
-	if err := s.db.QueryRowContext(ctx, `SELECT o.id,o.provider_order_id,p.code,p.base_url,p.credential_ref,o.product_type,o.status,o.reconciliation_action,o.expires_at,o.settlement_status FROM sms_orders o JOIN sms_providers p ON p.id=o.provider_id WHERE o.user_id=$1 AND o.public_id=$2::uuid`, userID, strings.TrimSpace(publicID)).Scan(&id, &providerOrder, &providerCode, &base, &credential, &productType, &status, &reconciliationAction, &expiresAt, &settlementStatus); err != nil {
+	var expiresAt, reconcileAfter sql.NullTime
+	var reconciliationAttempts int
+	var updatedAt, createdAt time.Time
+	if err := s.db.QueryRowContext(ctx, `SELECT o.id,o.provider_order_id,p.code,p.base_url,p.credential_ref,o.product_type,o.status,o.reconciliation_action,o.expires_at,o.settlement_status,o.reconcile_after,o.reconciliation_attempts,o.updated_at,o.created_at FROM sms_orders o JOIN sms_providers p ON p.id=o.provider_id WHERE o.user_id=$1 AND o.public_id=$2::uuid`, userID, strings.TrimSpace(publicID)).Scan(&id, &providerOrder, &providerCode, &base, &credential, &productType, &status, &reconciliationAction, &expiresAt, &settlementStatus, &reconcileAfter, &reconciliationAttempts, &updatedAt, &createdAt); err != nil {
 		return err
 	}
 	// Older builds could crash after 5SIM allocated a number while the local
@@ -3991,11 +4015,13 @@ func (s *SMSService) SyncOrderStatus(ctx context.Context, userID int64, publicID
 	// into the normal purchase reconciliation path so the order becomes visible
 	// and recoverable instead of being hidden forever.
 	if status == "pending" && settlementStatus == "held" && providerOrder == "" {
-		_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET status='reconciling',reconciliation_action=$1,reconcile_after=NOW(),updated_at=NOW() WHERE id=$2 AND status='pending' AND settlement_status='held'`, smsReconciliationPurchase, id)
-		status = "reconciling"
-		reconciliationAction = smsReconciliationPurchase
+		_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET status='reconciling',reconciliation_action=$1,reconcile_after=NOW()+($2 * INTERVAL '1 second'),updated_at=NOW() WHERE id=$3 AND status='pending' AND settlement_status='held'`, smsReconciliationPurchase, int(smsPurchaseRecoveryGrace.Seconds()), id)
+		return nil
 	}
 	if status == "reconciling" && reconciliationAction == smsReconciliationPurchase && providerOrder == "" {
+		if reconcileAfter.Valid && reconcileAfter.Time.After(time.Now()) {
+			return nil
+		}
 		recovered, recoveryErr := s.recoverUnknownSMSPurchase(ctx, id, userID, productType, providerCode, base, credential)
 		if recoveryErr != nil {
 			return recoveryErr
@@ -4004,7 +4030,28 @@ func (s *SMSService) SyncOrderStatus(ctx context.Context, userID int64, publicID
 			return nil
 		}
 	}
+	if status == "completed" && productType == "temporary" && providerOrder != "" {
+		hasCode, err := s.hasPersistedSMSVerificationCode(ctx, id)
+		if err != nil {
+			return err
+		}
+		if hasCode {
+			if settlementStatus == "held" {
+				return s.captureSMSSettlement(ctx, id, userID)
+			}
+			return nil
+		}
+		now := time.Now()
+		if reconciliationAttempts >= smsVerificationCodeRecoveryMaxAttempts || now.Sub(createdAt) > 24*time.Hour || (reconcileAfter.Valid && reconcileAfter.Time.After(now)) {
+			return nil
+		}
+		_, err = s.recoverCompletedSMSCode(ctx, id, userID, providerOrder, providerCode, base, credential, productType, settlementStatus)
+		return err
+	}
 	if (status != "active" && status != "provider_unknown" && status != "reconciling") || providerOrder == "" {
+		return nil
+	}
+	if status == "reconciling" && reconciliationAction != "" && reconciliationAction != smsReconciliationPurchase {
 		return nil
 	}
 	// A purchase that is still settling can already have a provider order id.
@@ -4016,7 +4063,90 @@ func (s *SMSService) SyncOrderStatus(ctx context.Context, userID int64, publicID
 			(status == "reconciling" && reconciliationAction == smsReconciliationPurchase)) {
 		return s.expireSMSOrder(ctx, id, userID, productType, providerOrder, providerCode, base, credential)
 	}
+	now := time.Now()
+	if reconcileAfter.Valid && reconcileAfter.Time.After(now) {
+		return nil
+	}
+	if (status == "active" || status == "provider_unknown") && now.Sub(updatedAt) < smsProviderPollDelay(providerCode, createdAt, now) {
+		return nil
+	}
 	return s.pollSMSOrder(ctx, id, providerOrder, providerCode, base, credential, productType)
+}
+
+func (s *SMSService) recoverCompletedSMSCode(ctx context.Context, id, userID int64, providerOrder, providerCode, base, credential, productType, settlementStatus string) (bool, error) {
+	hasCode, err := s.hasPersistedSMSVerificationCode(ctx, id)
+	if err != nil {
+		return false, err
+	}
+	if !hasCode {
+		if err := s.pollSMSOrder(ctx, id, providerOrder, providerCode, base, credential, productType); err != nil {
+			return false, err
+		}
+		hasCode, err = s.hasPersistedSMSVerificationCode(ctx, id)
+		if err != nil {
+			return false, err
+		}
+	}
+	if !hasCode {
+		_, err = s.db.ExecContext(ctx, `UPDATE sms_orders SET reconciliation_attempts=reconciliation_attempts+1,reconcile_after=NOW()+(LEAST(30 * POWER(2,LEAST(reconciliation_attempts,6)),1800) * INTERVAL '1 second'),last_provider_error='verification code recovery pending',updated_at=NOW() WHERE id=$1 AND status='completed' AND reconciliation_attempts<$2`, id, smsVerificationCodeRecoveryMaxAttempts)
+		return false, err
+	}
+	if settlementStatus == "held" {
+		if err := s.captureSMSSettlement(ctx, id, userID); err != nil {
+			return true, err
+		}
+	}
+	_, err = s.db.ExecContext(ctx, `UPDATE sms_orders SET reconciliation_attempts=0,reconcile_after=NULL,last_provider_error='',updated_at=NOW() WHERE id=$1 AND status='completed' AND reconciliation_action=''`, id)
+	return true, err
+}
+
+func (s *SMSService) recordSMSOrderEvent(ctx context.Context, orderID int64, eventType string, payload map[string]any) {
+	raw := []byte("{}")
+	if payload != nil {
+		if encoded, err := json.Marshal(payload); err == nil {
+			raw = encoded
+		}
+	}
+	_, _ = s.db.ExecContext(ctx, `INSERT INTO sms_order_events(order_id,event_type,actor,payload) VALUES($1,$2,'system',$3::jsonb)`, orderID, eventType, raw)
+}
+
+func (s *SMSService) deferSMSProviderFinalize(ctx context.Context, id int64, reason string) {
+	if strings.TrimSpace(reason) == "" {
+		reason = "provider finish confirmation pending"
+	}
+	var attempts int
+	err := s.db.QueryRowContext(ctx, `UPDATE sms_orders SET reconciliation_action=$1,reconciliation_attempts=reconciliation_attempts+1,reconcile_after=NOW()+(LEAST(30 * POWER(2,LEAST(reconciliation_attempts,6)),1800) * INTERVAL '1 second'),last_provider_error=$2,updated_at=NOW() WHERE id=$3 AND status='completed' RETURNING reconciliation_attempts`, smsReconciliationFinish, reason, id).Scan(&attempts)
+	if err != nil || attempts < smsProviderFinalizeMaxAttempts {
+		return
+	}
+	_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET reconciliation_action='',reconcile_after=NULL,last_provider_error=$1,updated_at=NOW() WHERE id=$2 AND status='completed' AND reconciliation_action=$3`, "provider finish requires administrator review: "+reason, id, smsReconciliationFinish)
+	s.recordSMSOrderEvent(ctx, id, "manual_review", map[string]any{"reason": "provider_finish_retry_exhausted", "attempts": attempts})
+}
+
+func (s *SMSService) reconcileSMSProviderFinalize(ctx context.Context, id int64, providerOrder, providerCode, base, credential string) error {
+	claimed, claimErr := s.claimSMSProviderFinalizeRetry(ctx, id)
+	if claimErr != nil {
+		return claimErr
+	}
+	if !claimed {
+		return nil
+	}
+	p := providerFor(providerCode, base, providerAPIKey(providerCode, credential, s.encryptor))
+	if p == nil {
+		s.deferSMSProviderFinalize(ctx, id, "provider is unavailable during finish reconciliation")
+		return ErrSMSProviderUnavailable
+	}
+	action, ok := p.(SMSOrderActionProvider)
+	if !ok || !p.Capabilities(ctx).Finish {
+		_, err := s.db.ExecContext(ctx, `UPDATE sms_orders SET reconciliation_action='',reconciliation_attempts=0,reconcile_after=NULL,last_provider_error='',updated_at=NOW() WHERE id=$1 AND status='completed' AND reconciliation_action=$2`, id, smsReconciliationFinish)
+		return err
+	}
+	if err := action.FinishTemporary(ctx, providerOrder); err != nil {
+		s.deferSMSProviderFinalize(ctx, id, providerErrorDiagnostic(err))
+		return err
+	}
+	_, err := s.db.ExecContext(ctx, `UPDATE sms_orders SET reconciliation_action='',reconciliation_attempts=0,reconcile_after=NULL,last_provider_error='',updated_at=NOW() WHERE id=$1 AND status='completed' AND reconciliation_action=$2`, id, smsReconciliationFinish)
+	return err
 }
 
 func (s *SMSService) recoverUnknownSMSPurchase(ctx context.Context, id, userID int64, productType, providerCode, base, credential string) (bool, error) {
@@ -4121,7 +4251,19 @@ func (s *SMSService) recoverUnknownSMSPurchase(ctx context.Context, id, userID i
 }
 
 func (s *SMSService) pollSMSOrder(ctx context.Context, id int64, providerOrder, providerCode, base, credential, productType string) error {
-	p := providerFor(providerCode, base, providerAPIKey(providerCode, credential, s.encryptor))
+	claimed, claimErr := s.claimSMSProviderPoll(ctx, id)
+	if claimErr != nil {
+		return claimErr
+	}
+	if !claimed {
+		return nil
+	}
+	key := strings.TrimSpace(providerAPIKey(providerCode, credential, s.encryptor))
+	if key == "" {
+		s.deferSMSReconciliation(ctx, id, "provider credential is unavailable during status synchronization", true)
+		return ErrSMSProviderCredentialMissing
+	}
+	p := providerFor(providerCode, base, key)
 	if p == nil {
 		return ErrSMSProviderUnavailable
 	}
@@ -4152,7 +4294,7 @@ func (s *SMSService) pollSMSOrder(ctx context.Context, id int64, providerOrder, 
 	}
 	if err != nil {
 		s.deferSMSReconciliation(ctx, id, providerErrorDiagnostic(err), strings.TrimSpace(providerAPIKey(providerCode, credential, s.encryptor)) == "")
-		return err
+		return &SMSSyncTransientError{Err: err}
 	}
 	if result == nil {
 		return nil
@@ -4168,8 +4310,8 @@ func (s *SMSService) pollSMSOrder(ctx context.Context, id int64, providerOrder, 
 		}
 	}
 	var expiresAt sql.NullTime
-	var reconciliationAction string
-	if err := s.db.QueryRowContext(ctx, `SELECT expires_at,reconciliation_action FROM sms_orders WHERE id=$1`, id).Scan(&expiresAt, &reconciliationAction); err != nil {
+	var reconciliationAction, currentStatus string
+	if err := s.db.QueryRowContext(ctx, `SELECT expires_at,reconciliation_action,status FROM sms_orders WHERE id=$1`, id).Scan(&expiresAt, &reconciliationAction, &currentStatus); err != nil {
 		return err
 	}
 	if err := s.updateSMSProviderActuals(ctx, id, result.ProviderCost, result.ProviderOperatorCode); err != nil {
@@ -4182,26 +4324,36 @@ func (s *SMSService) pollSMSOrder(ctx context.Context, id int64, providerOrder, 
 	if productType == "rental" && newStatus == "completed" {
 		newStatus = "active"
 	}
-	if productType == "temporary" && newStatus == "completed" {
-		if action, ok := p.(SMSOrderActionProvider); ok && p.Capabilities(ctx).Finish {
-			_ = action.FinishTemporary(ctx, providerOrder)
-		}
+
+	delivered, err := s.persistSMSStatusMessages(ctx, id, result)
+	if err != nil {
+		return err
 	}
+
+	// A completed row with no local code is a recovery-only poll. Never let a
+	// later provider terminal state rewrite/refund that already-completed order;
+	// the only purpose here is to restore missing message evidence.
+	if currentStatus == "completed" && productType == "temporary" {
+		return nil
+	}
+
 	if _, err = s.db.ExecContext(ctx, `UPDATE sms_orders SET status=$1,phone_number=COALESCE(NULLIF($2,''),phone_number),expires_at=COALESCE($3,expires_at),reconciliation_attempts=0,reconcile_after=NULL,updated_at=NOW() WHERE id=$4 AND status IN ('active','provider_unknown','reconciling')`, newStatus, result.PhoneNumber, result.ExpiresAt, id); err != nil {
 		return err
 	}
-	delivered := false
-	for index, message := range result.Messages {
-		message = strings.TrimSpace(message)
-		if message == "" {
-			continue
+	if productType == "temporary" && newStatus == "completed" {
+		if action, ok := p.(SMSOrderActionProvider); ok && p.Capabilities(ctx).Finish {
+			claimed, claimErr := s.claimSMSProviderFinalize(ctx, id)
+			if claimErr != nil {
+				return claimErr
+			}
+			if claimed {
+				if finishErr := action.FinishTemporary(ctx, providerOrder); finishErr != nil {
+					s.deferSMSProviderFinalize(ctx, id, providerErrorDiagnostic(finishErr))
+				} else if _, clearErr := s.db.ExecContext(ctx, `UPDATE sms_orders SET reconciliation_action='',reconciliation_attempts=0,reconcile_after=NULL,last_provider_error='',updated_at=NOW() WHERE id=$1 AND status='completed' AND reconciliation_action=$2`, id, smsReconciliationFinish); clearErr != nil {
+					return clearErr
+				}
+			}
 		}
-		if err := s.persistSMSMessage(ctx, id, message, result.Metadata, index); err != nil {
-			return err
-		}
-		delivered = true
-		_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET first_sms_received_at=COALESCE(first_sms_received_at,NOW()),delivery_outcome='success',delivery_finalized_at=COALESCE(delivery_finalized_at,NOW()),delivery_failure_reason='' WHERE id=$1`, id)
-		clearSMSPlatformDeliveryStatsCache()
 	}
 	if delivered && strings.EqualFold(providerCode, "smspva") && productType == "temporary" {
 		var userID int64
@@ -4216,6 +4368,31 @@ func (s *SMSService) pollSMSOrder(ctx context.Context, id int64, providerOrder, 
 		}
 	}
 	return s.convergeSMSProviderStatus(ctx, id, newStatus)
+}
+
+func (s *SMSService) persistSMSStatusMessages(ctx context.Context, orderID int64, result *SMSStatusResult) (bool, error) {
+	if result == nil {
+		return false, nil
+	}
+	delivered := false
+	for index, message := range result.Messages {
+		message = strings.TrimSpace(message)
+		if message == "" {
+			continue
+		}
+		if err := s.persistSMSMessage(ctx, orderID, message, result.Metadata, index); err != nil {
+			return delivered, err
+		}
+		delivered = true
+	}
+	if !delivered {
+		return false, nil
+	}
+	if _, err := s.db.ExecContext(ctx, `UPDATE sms_orders SET first_sms_received_at=COALESCE(first_sms_received_at,NOW()),delivery_outcome='success',delivery_finalized_at=COALESCE(delivery_finalized_at,NOW()),delivery_failure_reason='',updated_at=NOW() WHERE id=$1`, orderID); err != nil {
+		return true, err
+	}
+	clearSMSPlatformDeliveryStatsCache()
+	return true, nil
 }
 
 func (s *SMSService) updateSMSProviderActuals(ctx context.Context, id int64, providerCost float64, providerOperatorCode string) error {
@@ -4270,6 +4447,15 @@ func (s *SMSService) convergeSMSProviderStatus(ctx context.Context, id int64, st
 	switch status {
 	case "active", "completed":
 		if settlementStatus == "held" {
+			if status == "completed" && strings.EqualFold(productType, "temporary") {
+				hasCode, codeErr := s.hasPersistedSMSVerificationCode(ctx, id)
+				if codeErr != nil {
+					return codeErr
+				}
+				if !hasCode {
+					return nil
+				}
+			}
 			// SMSPVA temporary orders remain reserved after allocation and are
 			// captured only once delivery evidence exists. Other providers keep
 			// their historical allocation-time settlement semantics.
@@ -4398,6 +4584,47 @@ func extractSMSCode(message string) string {
 	return ""
 }
 
+func smsExplicitVerificationCode(metadata map[string]any, index int) string {
+	if metadata == nil || index < 0 {
+		return ""
+	}
+	var item map[string]any
+	switch items := metadata["messages"].(type) {
+	case []map[string]any:
+		if index < len(items) {
+			item = items[index]
+		}
+	case []any:
+		if index < len(items) {
+			item, _ = items[index].(map[string]any)
+		}
+	}
+	if item == nil {
+		return ""
+	}
+	value, _ := item["verification_code"].(string)
+	return strings.TrimSpace(value)
+}
+
+func smsVerificationCodeFromResult(result *SMSStatusResult, index int) string {
+	if result == nil || index < 0 || index >= len(result.Messages) {
+		return ""
+	}
+	if code := smsExplicitVerificationCode(result.Metadata, index); code != "" {
+		return code
+	}
+	return strings.TrimSpace(extractSMSCode(result.Messages[index]))
+}
+
+func (s *SMSService) hasPersistedSMSVerificationCode(ctx context.Context, orderID int64) (bool, error) {
+	var hasCode bool
+	err := s.db.QueryRowContext(ctx, `SELECT EXISTS(
+		SELECT 1 FROM sms_messages
+		WHERE order_id=$1 AND BTRIM(verification_code)<>''
+	)`, orderID).Scan(&hasCode)
+	return hasCode, err
+}
+
 func smsMessageMetadata(metadata map[string]any, index int) (sender string, providerReceivedAt *time.Time, messageType, serviceCode string, otherSMS bool, ok bool) {
 	if metadata == nil {
 		return "", nil, "", "", false, false
@@ -4446,16 +4673,21 @@ func smsMessageMetadata(metadata map[string]any, index int) (sender string, prov
 // deterministic and lets the unique index enforce exactly-once insertion.
 func (s *SMSService) persistSMSMessage(ctx context.Context, orderID int64, message string, metadata map[string]any, index int) error {
 	sender, providerReceivedAt, messageType, serviceCode, otherSMS, _ := smsMessageMetadata(metadata, index)
+	verificationCode := smsExplicitVerificationCode(metadata, index)
+	if verificationCode == "" {
+		verificationCode = extractSMSCode(message)
+	}
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO sms_messages(order_id,message_text,verification_code,sender,provider_received_at,message_type,service_code,other_sms,dedupe_hash)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,md5(concat_ws(chr(31),$1::text,$2::text,$4::text,$6::text,$7::text,$8::text,$5::timestamptz::text)))
+		VALUES ($1::bigint,$2::text,$3::text,$4::text,$5::timestamptz,$6::text,$7::text,$8::boolean,md5(concat_ws(chr(31),($1::bigint)::text,$2::text,$4::text,$6::text,$7::text,($8::boolean)::text,($5::timestamptz)::text)))
 		ON CONFLICT (order_id,dedupe_hash) DO UPDATE SET
 			sender=CASE WHEN EXCLUDED.sender<>'' THEN EXCLUDED.sender ELSE sms_messages.sender END,
 			provider_received_at=COALESCE(EXCLUDED.provider_received_at,sms_messages.provider_received_at),
 			message_type=CASE WHEN EXCLUDED.message_type<>'' THEN EXCLUDED.message_type ELSE sms_messages.message_type END,
 			service_code=CASE WHEN EXCLUDED.service_code<>'' THEN EXCLUDED.service_code ELSE sms_messages.service_code END,
+			verification_code=CASE WHEN EXCLUDED.verification_code<>'' THEN EXCLUDED.verification_code ELSE sms_messages.verification_code END,
 			other_sms=sms_messages.other_sms OR EXCLUDED.other_sms`,
-		orderID, message, extractSMSCode(message), sender, providerReceivedAt, messageType, serviceCode, otherSMS)
+		orderID, message, verificationCode, sender, providerReceivedAt, messageType, serviceCode, otherSMS)
 	if err != nil && smsMessageDedupColumnMissing(err) {
 		// A rolling deployment can briefly run the new binary before migration
 		// 263. Keep delivery readable during that window with the legacy text
@@ -4465,7 +4697,7 @@ func (s *SMSService) persistSMSMessage(ctx context.Context, orderID int64, messa
 			INSERT INTO sms_messages(order_id,message_text,verification_code)
 			SELECT $1,$2,$3
 			WHERE NOT EXISTS (SELECT 1 FROM sms_messages WHERE order_id=$1 AND message_text=$2)`,
-			orderID, message, extractSMSCode(message))
+			orderID, message, verificationCode)
 		if fallbackErr == nil && (sender != "" || providerReceivedAt != nil || messageType != "" || serviceCode != "" || otherSMS) {
 			_, _ = s.db.ExecContext(ctx, `UPDATE sms_messages SET sender=COALESCE(NULLIF($1,''),sender),provider_received_at=COALESCE($2,provider_received_at),message_type=COALESCE(NULLIF($3,''),message_type),service_code=COALESCE(NULLIF($4,''),service_code),other_sms=other_sms OR $5 WHERE order_id=$6 AND message_text=$7`, sender, providerReceivedAt, messageType, serviceCode, otherSMS, orderID, message)
 		}
@@ -4504,40 +4736,68 @@ func (s *SMSService) ProcessWebhook(ctx context.Context, providerCode string, pa
 	var current string
 	var productType, baseURL, credential string
 	var expiresAt sql.NullTime
-	var reconciliationAction string
-	if err := s.db.QueryRowContext(ctx, `SELECT o.id,o.user_id,o.status,o.product_type,p.base_url,p.credential_ref,o.expires_at,o.reconciliation_action FROM sms_orders o JOIN sms_providers p ON p.id=o.provider_id WHERE p.code=$1 AND o.provider_order_id=$2`, providerCode, providerOrderID).Scan(&id, &orderUserID, &current, &productType, &baseURL, &credential, &expiresAt, &reconciliationAction); err != nil {
+	var reconciliationAction, settlementStatus string
+	if err := s.db.QueryRowContext(ctx, `SELECT o.id,o.user_id,o.status,o.product_type,p.base_url,p.credential_ref,o.expires_at,o.reconciliation_action,o.settlement_status FROM sms_orders o JOIN sms_providers p ON p.id=o.provider_id WHERE p.code=$1 AND o.provider_order_id=$2`, providerCode, providerOrderID).Scan(&id, &orderUserID, &current, &productType, &baseURL, &credential, &expiresAt, &reconciliationAction, &settlementStatus); err != nil {
 		return err
 	}
-	if expiresAt.Valid && !expiresAt.Time.After(time.Now()) && (current == "active" || current == "provider_unknown" || current == "reconciling") {
-		return s.expireSMSOrder(ctx, id, orderUserID, productType, providerOrderID, providerCode, baseURL, credential)
+	if current == "completed" {
+		if len(payload.Messages) > 0 {
+			if _, err := s.persistSMSStatusMessages(ctx, id, &payload); err != nil {
+				return err
+			}
+			s.recordSMSOrderEvent(ctx, id, "late_delivery_evidence", map[string]any{"provider_order_id": providerOrderID, "status": current, "settlement_status": settlementStatus, "message_count": len(payload.Messages), "persisted": true})
+		}
+		return nil
+	}
+	if current == "refunded" || current == "cancelled" || current == "failed" || current == "expired" || current == "released" {
+		if len(payload.Messages) > 0 {
+			s.recordSMSOrderEvent(ctx, id, "late_delivery_evidence", map[string]any{"provider_order_id": providerOrderID, "status": current, "settlement_status": settlementStatus, "message_count": len(payload.Messages), "persisted": false})
+		}
+		return nil
 	}
 	newStatus := smsStatusFromProvider(&payload)
 	if expiresAt.Valid {
 		newStatus = deferSMSProviderExpiry(productType, newStatus, reconciliationAction, &expiresAt.Time, time.Now())
 	}
-	if current == "completed" || current == "refunded" || current == "cancelled" || current == "failed" || current == "expired" {
-		newStatus = current
+	if productType == "rental" && newStatus == "completed" {
+		newStatus = "active"
+	}
+	if _, err := s.persistSMSStatusMessages(ctx, id, &payload); err != nil {
+		return err
+	}
+	if expiresAt.Valid && !expiresAt.Time.After(time.Now()) && newStatus != "completed" &&
+		(current == "active" || current == "provider_unknown" || current == "reconciling") {
+		return s.expireSMSOrder(ctx, id, orderUserID, productType, providerOrderID, providerCode, baseURL, credential)
 	}
 	if _, err := s.db.ExecContext(ctx, `UPDATE sms_orders SET status=$1,phone_number=COALESCE(NULLIF($2,''),phone_number),updated_at=NOW() WHERE id=$3`, newStatus, payload.PhoneNumber, id); err != nil {
 		return err
 	}
-	for index, message := range payload.Messages {
-		message = strings.TrimSpace(message)
-		if message == "" {
-			continue
+	if productType == "temporary" && newStatus == "completed" {
+		p := providerFor(providerCode, baseURL, providerAPIKey(providerCode, credential, s.encryptor))
+		if action, ok := p.(SMSOrderActionProvider); ok && p.Capabilities(ctx).Finish {
+			claimed, claimErr := s.claimSMSProviderFinalize(ctx, id)
+			if claimErr != nil {
+				return claimErr
+			}
+			if claimed {
+				finishCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				finishErr := action.FinishTemporary(finishCtx, providerOrderID)
+				cancel()
+				if finishErr != nil {
+					s.deferSMSProviderFinalize(context.Background(), id, providerErrorDiagnostic(finishErr))
+				} else if _, clearErr := s.db.ExecContext(ctx, `UPDATE sms_orders SET reconciliation_action='',reconciliation_attempts=0,reconcile_after=NULL,last_provider_error='',updated_at=NOW() WHERE id=$1 AND status='completed' AND reconciliation_action=$2`, id, smsReconciliationFinish); clearErr != nil {
+					return clearErr
+				}
+			}
 		}
-		if err := s.persistSMSMessage(ctx, id, message, payload.Metadata, index); err != nil {
-			return err
-		}
-		_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET first_sms_received_at=COALESCE(first_sms_received_at,NOW()),delivery_outcome='success',delivery_finalized_at=COALESCE(delivery_finalized_at,NOW()),delivery_failure_reason='' WHERE id=$1`, id)
-		clearSMSPlatformDeliveryStatsCache()
 	}
 	return s.convergeSMSProviderStatus(ctx, id, newStatus)
 }
 
-func (s *SMSService) ResendOrder(ctx context.Context, userID int64, publicID string) error {
+func (s *SMSService) ResendOrder(ctx context.Context, userID int64, publicID string, idempotencyKeys ...string) error {
+	var id int64
 	var providerOrder, providerCode, base, credential, status, productType string
-	if err := s.db.QueryRowContext(ctx, `SELECT o.provider_order_id,p.code,p.base_url,p.credential_ref,o.status,o.product_type FROM sms_orders o JOIN sms_providers p ON p.id=o.provider_id WHERE o.user_id=$1 AND o.public_id=$2::uuid`, userID, strings.TrimSpace(publicID)).Scan(&providerOrder, &providerCode, &base, &credential, &status, &productType); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT o.id,o.provider_order_id,p.code,p.base_url,p.credential_ref,o.status,o.product_type FROM sms_orders o JOIN sms_providers p ON p.id=o.provider_id WHERE o.user_id=$1 AND o.public_id=$2::uuid`, userID, strings.TrimSpace(publicID)).Scan(&id, &providerOrder, &providerCode, &base, &credential, &status, &productType); err != nil {
 		return err
 	}
 	if status != "active" || productType != "temporary" || providerOrder == "" {
@@ -4548,13 +4808,75 @@ func (s *SMSService) ResendOrder(ctx context.Context, userID int64, publicID str
 	if !ok || !p.Capabilities(ctx).Resend {
 		return errors.New("provider does not support another SMS")
 	}
-	if err := resender.ResendTemporary(ctx, providerOrder); err != nil {
+	key := ""
+	if len(idempotencyKeys) > 0 {
+		key = strings.TrimSpace(idempotencyKeys[0])
+	}
+	if key == "" {
+		key = fmt.Sprintf("legacy-resend:%d:%d", id, time.Now().Unix()/30)
+	}
+	if len(key) > 128 {
+		return errors.New("Idempotency-Key is too long")
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var lockedStatus string
+	if err = tx.QueryRowContext(ctx, `SELECT status FROM sms_orders WHERE id=$1 AND user_id=$2 FOR UPDATE`, id, userID).Scan(&lockedStatus); err != nil {
+		return err
+	}
+	if lockedStatus != "active" {
+		return errors.New("order cannot request another SMS")
+	}
+	var recent bool
+	if err = tx.QueryRowContext(ctx, `SELECT EXISTS (
+		SELECT 1 FROM sms_order_events
+		WHERE order_id=$1 AND event_type='resend_requested'
+		  AND (
+		      COALESCE(payload->>'status','pending')='unknown'
+		      OR (
+		          created_at > NOW()-INTERVAL '30 seconds'
+		          AND COALESCE(payload->>'status','pending') IN ('pending','accepted')
+		      )
+		  )
+	)`, id).Scan(&recent); err != nil {
+		return err
+	}
+	if recent {
+		return tx.Commit()
+	}
+	res, err := tx.ExecContext(ctx, `INSERT INTO sms_order_events(order_id,event_type,actor,idempotency_key,payload)
+		VALUES($1,'resend_requested','user',$2,'{"status":"pending"}'::jsonb)
+		ON CONFLICT (order_id,event_type,idempotency_key) WHERE BTRIM(idempotency_key) <> '' DO NOTHING`, id, key)
+	if err != nil {
+		return err
+	}
+	if affected, _ := res.RowsAffected(); affected == 0 {
+		return tx.Commit()
+	}
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+	resendCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	err = resender.ResendTemporary(resendCtx, providerOrder)
+	cancel()
+	if err != nil {
+		state := "rejected"
+		if isSMSProviderTimeout(err) {
+			state = "unknown"
+		}
+		_, _ = s.db.ExecContext(context.Background(), `UPDATE sms_order_events SET payload=jsonb_build_object('status',$1) WHERE order_id=$2 AND event_type='resend_requested' AND idempotency_key=$3`, state, id, key)
+		if state == "unknown" {
+			return ErrSMSProviderUnknown
+		}
 		return sanitizeProviderError(err)
 	}
-	_, _ = s.db.ExecContext(ctx, `DELETE FROM sms_messages WHERE order_id=(SELECT id FROM sms_orders WHERE user_id=$1 AND public_id=$2::uuid)`, userID, strings.TrimSpace(publicID))
+	_, _ = s.db.ExecContext(context.Background(), `UPDATE sms_order_events SET payload=jsonb_build_object('status','accepted') WHERE order_id=$1 AND event_type='resend_requested' AND idempotency_key=$2`, id, key)
+	_, _ = s.db.ExecContext(context.Background(), `UPDATE sms_orders SET updated_at=NOW() WHERE id=$1`, id)
 	return nil
 }
-
 func (s *SMSService) FinishOrder(ctx context.Context, userID int64, publicID string) error {
 	var id int64
 	var providerOrder, providerCode, base, credential, status, productType string
@@ -4579,6 +4901,13 @@ func (s *SMSService) FinishOrder(ctx context.Context, userID int64, publicID str
 	if !ok || !p.Capabilities(ctx).Finish {
 		return errors.New("provider does not support finish")
 	}
+	claimed, claimErr := s.claimSMSActiveProviderAction(ctx, id)
+	if claimErr != nil {
+		return claimErr
+	}
+	if !claimed {
+		return ErrSMSProviderUnknown
+	}
 	if err := action.FinishTemporary(ctx, providerOrder); err != nil {
 		if isSMSProviderTimeout(err) {
 			s.deferSMSReconciliation(ctx, id, "provider finish timeout", false)
@@ -4586,7 +4915,7 @@ func (s *SMSService) FinishOrder(ctx context.Context, userID int64, publicID str
 		}
 		return errors.New("channel refused finish")
 	}
-	if _, err := s.db.ExecContext(ctx, `UPDATE sms_orders SET status='completed',updated_at=NOW() WHERE id=$1 AND status='active'`, id); err != nil {
+	if _, err := s.db.ExecContext(ctx, `UPDATE sms_orders SET status='completed',reconcile_after=NULL,updated_at=NOW() WHERE id=$1 AND status='active'`, id); err != nil {
 		return err
 	}
 	return s.captureSMSSettlement(ctx, id, userID)
@@ -4605,6 +4934,13 @@ func (s *SMSService) BanOrder(ctx context.Context, userID int64, publicID string
 	action, ok := p.(SMSOrderActionProvider)
 	if !ok || !p.Capabilities(ctx).Ban {
 		return errors.New("provider does not support ban")
+	}
+	claimed, claimErr := s.claimSMSActiveProviderAction(ctx, id)
+	if claimErr != nil {
+		return claimErr
+	}
+	if !claimed {
+		return ErrSMSProviderUnknown
 	}
 	if err := action.BanTemporary(ctx, providerOrder); err != nil {
 		if isSMSProviderTimeout(err) {
@@ -4632,9 +4968,37 @@ func (s *SMSService) reconcileTemporaryRefundState(ctx context.Context, p SMSPro
 		s.markProviderRefund(ctx, id, "succeeded", "provider status confirms cancellation/timeout refund")
 		return true, s.settleSMSExpiry(ctx, id, userID, terminalStatus, "approved", "provider status confirms cancellation/timeout refund")
 	case "completed":
-		s.markProviderRefund(ctx, id, "rejected", "verification SMS was already received; cancellation/refund is no longer available")
-		_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET refund_status='rejected',refund_reason=$1,updated_at=NOW() WHERE id=$2`, "已收到验证码，供应商不再允许取消退款", id)
-		return true, errors.New("verification SMS has already been received; cancellation/refund is no longer available")
+		delivered, persistErr := s.persistSMSStatusMessages(ctx, id, result)
+		if persistErr != nil {
+			return true, persistErr
+		}
+		if !delivered {
+			return false, nil
+		}
+		reason := "verification SMS has already been received; cancellation/refund is no longer available"
+		if _, updateErr := s.db.ExecContext(ctx, `UPDATE sms_orders SET status='completed',refund_status='rejected',provider_refund_status='rejected',refund_reason=$1,reconciliation_action='',reconciliation_attempts=0,reconcile_after=NULL,last_provider_error='',updated_at=NOW() WHERE id=$2 AND status IN ('active','provider_unknown','reconciling','completed')`, "已收到验证码，供应商不再允许取消退款", id); updateErr != nil {
+			return true, updateErr
+		}
+		if action, ok := p.(SMSOrderActionProvider); ok && p.Capabilities(ctx).Finish {
+			claimed, claimErr := s.claimSMSProviderFinalize(ctx, id)
+			if claimErr != nil {
+				return true, claimErr
+			}
+			if claimed {
+				if finishErr := action.FinishTemporary(ctx, providerOrder); finishErr != nil {
+					s.deferSMSProviderFinalize(ctx, id, providerErrorDiagnostic(finishErr))
+				} else if _, clearErr := s.db.ExecContext(ctx, `UPDATE sms_orders SET reconciliation_action='',reconciliation_attempts=0,reconcile_after=NULL,last_provider_error='',updated_at=NOW() WHERE id=$1 AND status='completed' AND reconciliation_action=$2`, id, smsReconciliationFinish); clearErr != nil {
+					return true, clearErr
+				}
+			}
+		}
+		if convergeErr := s.convergeSMSProviderStatus(ctx, id, "completed"); convergeErr != nil {
+			return true, convergeErr
+		}
+		if terminalStatus == "cancelled" {
+			return true, errors.New(reason)
+		}
+		return true, nil
 	}
 	return false, nil
 }
@@ -4687,6 +5051,13 @@ func (s *SMSService) CancelOrder(ctx context.Context, userID int64, publicID str
 	if productType != "rental" && !capabilities.Cancel && !capabilities.Refund {
 		return errors.New("provider does not support cancellation or refunds")
 	}
+	claimed, claimErr := s.claimSMSActiveProviderAction(ctx, id)
+	if claimErr != nil {
+		return claimErr
+	}
+	if !claimed {
+		return ErrSMSProviderUnknown
+	}
 	if productType == "rental" {
 		if err := p.CancelRental(ctx, providerOrder); err != nil {
 			if isSMSProviderTimeout(err) {
@@ -4734,6 +5105,64 @@ func (s *SMSService) CancelOrder(ctx context.Context, userID int64, publicID str
 	}
 	return s.markSMSClosed(ctx, id, "cancelled", "rejected", "provider cancellation confirmed; refund unsupported")
 }
+func (s *SMSService) listSMSMessagesBatch(ctx context.Context, userID int64, admin bool) (map[int64][]SMSMessage, error) {
+	where := ""
+	args := []any{}
+	if !admin {
+		where = " WHERE user_id=$1 AND NOT (provider_order_id='' AND status='failed')"
+		args = append(args, userID)
+	}
+	selected := `SELECT id FROM sms_orders` + where + ` ORDER BY created_at DESC LIMIT 100`
+	query := `SELECT m.order_id,m.id,m.message_text,m.verification_code,m.received_at,m.sender,m.provider_received_at,m.message_type,m.service_code,m.other_sms
+		FROM sms_messages m
+		JOIN (` + selected + `) selected ON selected.id=m.order_id
+		ORDER BY m.order_id,m.received_at ASC,m.id ASC`
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	legacy := false
+	if err != nil {
+		legacy = true
+		query = `SELECT m.order_id,m.id,m.message_text,m.verification_code,m.received_at
+			FROM sms_messages m
+			JOIN (` + selected + `) selected ON selected.id=m.order_id
+			ORDER BY m.order_id,m.received_at ASC,m.id ASC`
+		rows, err = s.db.QueryContext(ctx, query, args...)
+		if err != nil {
+			return nil, err
+		}
+	}
+	defer func() { _ = rows.Close() }()
+	out := map[int64][]SMSMessage{}
+	for rows.Next() {
+		var orderID int64
+		var item SMSMessage
+		if legacy {
+			if err := rows.Scan(&orderID, &item.ID, &item.MessageText, &item.VerificationCode, &item.ReceivedAt); err != nil {
+				return nil, err
+			}
+		} else {
+			var sender, messageType, serviceCode string
+			var providerReceivedAt sql.NullTime
+			var otherSMS bool
+			if err := rows.Scan(&orderID, &item.ID, &item.MessageText, &item.VerificationCode, &item.ReceivedAt, &sender, &providerReceivedAt, &messageType, &serviceCode, &otherSMS); err != nil {
+				return nil, err
+			}
+			item.Sender = strings.TrimSpace(sender)
+			item.MessageType = strings.TrimSpace(messageType)
+			item.ServiceCode = strings.TrimSpace(serviceCode)
+			item.OtherSMS = otherSMS
+			if providerReceivedAt.Valid {
+				t := providerReceivedAt.Time
+				item.ProviderReceivedAt = &t
+			}
+		}
+		out[orderID] = append(out[orderID], item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (s *SMSService) ListOrders(ctx context.Context, userID int64, admin bool) ([]SMSOrder, error) {
 	q := `SELECT o.id,o.public_id::text,o.user_id,o.product_type,o.status,o.reconciliation_action,c.code,c.public_name,sv.code,co.iso2,co.calling_code,o.phone_number,o.operator_code,o.voice_mode,o.sale_price_snapshot,o.success_rate_snapshot,o.success_rate_grade_snapshot,o.success_rate_source_snapshot,o.refund_status,o.refund_reason,o.expires_at,o.created_at,p.code,p.base_url,p.capabilities FROM sms_orders o JOIN sms_channels c ON c.id=o.channel_id JOIN sms_providers p ON p.id=o.provider_id JOIN sms_services sv ON sv.id=o.service_id JOIN sms_countries co ON co.id=o.country_id`
 	args := []any{}
@@ -4746,8 +5175,8 @@ func (s *SMSService) ListOrders(ctx context.Context, userID int64, admin bool) (
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = rows.Close() }()
 	out := []SMSOrder{}
+	internalIDs := make([]int64, 0, 100)
 	pricing := defaultSMSPricingSettings()
 	if configured, pricingErr := s.GetPricingSettings(ctx); pricingErr == nil {
 		pricing = configured
@@ -4761,6 +5190,7 @@ func (s *SMSService) ListOrders(ctx context.Context, userID int64, admin bool) (
 		var providerCode, providerBaseURL string
 		var capabilities []byte
 		if err := rows.Scan(&internalID, &o.ID, &owner, &o.ProductType, &o.Status, &o.ReconciliationAction, &o.ChannelCode, &o.ChannelName, &o.ServiceCode, &o.CountryCode, &o.CallingCode, &o.PhoneNumber, &o.OperatorCode, &o.VoiceMode, &o.Price, &rate, &o.SuccessRateGrade, &o.SuccessRateSource, &o.RefundStatus, &o.RefundReason, &exp, &o.CreatedAt, &providerCode, &providerBaseURL, &capabilities); err != nil {
+			_ = rows.Close()
 			return nil, err
 		}
 		o.Capabilities = resolveSMSCapabilities(providerCode, providerBaseURL, capabilities)
@@ -4774,15 +5204,31 @@ func (s *SMSService) ListOrders(ctx context.Context, userID int64, admin bool) (
 		if exp.Valid {
 			o.ExpiresAt = &exp.Time
 		}
-		o.Messages, err = s.listSMSMessages(ctx, internalID)
-		if err != nil {
-			return nil, err
-		}
 		setSMSOrderRemaining(&o)
 		setSMSOrderCancellationState(&o, pricing, now)
+		internalIDs = append(internalIDs, internalID)
 		out = append(out, o)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, err
+	}
+	_ = rows.Close()
+
+	messagesByOrder, err := s.listSMSMessagesBatch(ctx, userID, admin)
+	if err != nil {
+		return nil, err
+	}
+	for i, internalID := range internalIDs {
+		out[i].Messages = messagesByOrder[internalID]
+		for j := len(out[i].Messages) - 1; j >= 0; j-- {
+			if code := strings.TrimSpace(out[i].Messages[j].VerificationCode); code != "" {
+				out[i].LatestVerificationCode = code
+				break
+			}
+		}
+	}
+	return out, nil
 }
 
 func (s *SMSService) ListUserOrdersPage(ctx context.Context, userID int64, page, pageSize int, keyword, status string) (*SMSOrderPage, error) {
@@ -4817,7 +5263,7 @@ func (s *SMSService) ListUserOrdersPage(ctx context.Context, userID int64, page,
 	limitPlaceholder := fmt.Sprintf("$%d", len(listArgs))
 	listArgs = append(listArgs, (page-1)*pageSize)
 	offsetPlaceholder := fmt.Sprintf("$%d", len(listArgs))
-	query := `SELECT o.id,o.public_id::text,o.user_id,o.product_type,o.status,o.reconciliation_action,c.code,c.public_name,sv.code,co.iso2,co.calling_code,o.phone_number,o.operator_code,o.voice_mode,o.sale_price_snapshot,o.success_rate_snapshot,o.success_rate_grade_snapshot,o.success_rate_source_snapshot,o.refund_status,o.refund_reason,o.expires_at,o.created_at,p.code,p.base_url,p.capabilities` + from + where + ` ORDER BY o.created_at DESC LIMIT ` + limitPlaceholder + ` OFFSET ` + offsetPlaceholder
+	query := `SELECT o.public_id::text,o.product_type,o.status,o.reconciliation_action,c.code,c.public_name,sv.code,co.iso2,co.calling_code,o.phone_number,o.operator_code,o.voice_mode,o.sale_price_snapshot,o.success_rate_snapshot,o.success_rate_grade_snapshot,o.success_rate_source_snapshot,o.refund_status,o.refund_reason,o.expires_at,o.created_at,p.code,p.base_url,p.capabilities,COALESCE((SELECT m.verification_code FROM sms_messages m WHERE m.order_id=o.id AND BTRIM(m.verification_code)<>'' ORDER BY m.received_at DESC,m.id DESC LIMIT 1),'')` + from + where + ` ORDER BY o.created_at DESC LIMIT ` + limitPlaceholder + ` OFFSET ` + offsetPlaceholder
 	rows, err := s.db.QueryContext(ctx, query, listArgs...)
 	if err != nil {
 		return nil, err
@@ -4831,26 +5277,22 @@ func (s *SMSService) ListUserOrdersPage(ctx context.Context, userID int64, page,
 	now := time.Now()
 	for rows.Next() {
 		var order SMSOrder
-		var internalID, owner int64
 		var rate sql.NullFloat64
 		var expiresAt sql.NullTime
-		var providerCode, providerBaseURL string
+		var providerCode, providerBaseURL, latestCode string
 		var capabilities []byte
-		if err := rows.Scan(&internalID, &order.ID, &owner, &order.ProductType, &order.Status, &order.ReconciliationAction, &order.ChannelCode, &order.ChannelName, &order.ServiceCode, &order.CountryCode, &order.CallingCode, &order.PhoneNumber, &order.OperatorCode, &order.VoiceMode, &order.Price, &rate, &order.SuccessRateGrade, &order.SuccessRateSource, &order.RefundStatus, &order.RefundReason, &expiresAt, &order.CreatedAt, &providerCode, &providerBaseURL, &capabilities); err != nil {
+		if err := rows.Scan(&order.ID, &order.ProductType, &order.Status, &order.ReconciliationAction, &order.ChannelCode, &order.ChannelName, &order.ServiceCode, &order.CountryCode, &order.CallingCode, &order.PhoneNumber, &order.OperatorCode, &order.VoiceMode, &order.Price, &rate, &order.SuccessRateGrade, &order.SuccessRateSource, &order.RefundStatus, &order.RefundReason, &expiresAt, &order.CreatedAt, &providerCode, &providerBaseURL, &capabilities, &latestCode); err != nil {
 			return nil, err
 		}
 		order.Capabilities = resolveSMSCapabilities(providerCode, providerBaseURL, capabilities)
 		order.ChannelName = publicVerificationChannelName(order.ChannelCode)
 		order.RefundReason = ""
+		order.LatestVerificationCode = strings.TrimSpace(latestCode)
 		if rate.Valid {
 			order.SuccessRate = &rate.Float64
 		}
 		if expiresAt.Valid {
 			order.ExpiresAt = &expiresAt.Time
-		}
-		order.Messages, err = s.listSMSMessages(ctx, internalID)
-		if err != nil {
-			return nil, err
 		}
 		setSMSOrderRemaining(&order)
 		setSMSOrderCancellationState(&order, pricing, now)
@@ -4865,6 +5307,7 @@ func (s *SMSService) ListUserOrdersPage(ctx context.Context, userID int64, page,
 	}
 	return &SMSOrderPage{Items: items, Total: total, Page: page, PageSize: pageSize, Pages: pages}, nil
 }
+
 func (s *SMSService) RequestRefund(ctx context.Context, userID int64, orderPublicID string) error {
 	var id int64
 	var providerOrder, providerCode, base, cred, status, productType, reconciliationAction string
@@ -4910,6 +5353,13 @@ func (s *SMSService) RequestRefund(ctx context.Context, userID int64, orderPubli
 	if !p.Capabilities(ctx).Refund {
 		_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET refund_status='rejected',provider_refund_status='rejected',refund_reason=$1,updated_at=NOW() WHERE id=$2`, "provider does not support refunds; administrator review is required", id)
 		return errors.New("provider does not support refunds; administrator review is required")
+	}
+	claimed, claimErr := s.claimSMSActiveProviderAction(ctx, id)
+	if claimErr != nil {
+		return claimErr
+	}
+	if !claimed {
+		return ErrSMSRefundPending
 	}
 	if err := p.RequestTemporaryRefund(ctx, providerOrder); err != nil {
 		if handled, reconcileErr := s.reconcileTemporaryRefundState(ctx, p, id, userID, providerOrder, "refunded"); handled {
@@ -4969,13 +5419,6 @@ func (s *SMSService) ExtendRental(ctx context.Context, userID int64, publicID st
 	if productType != "rental" || status != "active" {
 		return nil, errors.New("rental cannot be extended")
 	}
-	var already bool
-	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM sms_order_events WHERE order_id=$1 AND event_type='rental_extend' AND idempotency_key=$2)`, id, idempotencyKey).Scan(&already); err != nil {
-		return nil, err
-	}
-	if already {
-		return s.GetOrderByPublicID(ctx, userID, publicID)
-	}
 	p := providerFor(providerCode, base, providerAPIKey(providerCode, credential, s.encryptor))
 	if p == nil || !p.Capabilities(ctx).RentalConstraints || !p.Capabilities(ctx).Extend {
 		return nil, errors.New("rental extension is unavailable for this channel")
@@ -5003,11 +5446,34 @@ func (s *SMSService) ExtendRental(ctx context.Context, userID int64, publicID st
 			}
 		}
 	}
+	result, err := s.db.ExecContext(ctx, `INSERT INTO sms_order_events(order_id,event_type,actor,idempotency_key,payload)
+		VALUES ($1,'rental_extend','user',$2,jsonb_build_object('status','pending','duration_value',$3,'duration_unit',$4))
+		ON CONFLICT (order_id,event_type,idempotency_key) WHERE BTRIM(idempotency_key) <> '' DO NOTHING`, id, idempotencyKey, value, strings.ToLower(unit))
+	if err != nil {
+		return nil, err
+	}
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		if inspector, supported := p.(SMSRentalOrderInspector); supported {
+			verifyCtx, verifyCancel := context.WithTimeout(context.Background(), 6*time.Second)
+			if providerState, inspectErr := inspector.RentalOrder(verifyCtx, providerOrder); inspectErr == nil && providerState != nil && providerState.Until > 0 {
+				actual := time.Unix(providerState.Until, 0)
+				_, _ = s.db.ExecContext(context.Background(), `UPDATE sms_orders SET expires_at=$1,updated_at=NOW() WHERE id=$2`, actual, id)
+			}
+			verifyCancel()
+		}
+		return s.GetOrderByPublicID(ctx, userID, publicID)
+	}
+
 	extendCtx, extendCancel := context.WithTimeout(context.Background(), 20*time.Second)
 	extendErr := p.ExtendRental(extendCtx, providerOrder, value, unit)
 	extendCancel()
 	if extendErr != nil {
+		state := "rejected"
 		if isSMSProviderTimeout(extendErr) {
+			state = "unknown"
+		}
+		_, _ = s.db.ExecContext(context.Background(), `UPDATE sms_order_events SET payload=payload || jsonb_build_object('status',$1) WHERE order_id=$2 AND event_type='rental_extend' AND idempotency_key=$3`, state, id, idempotencyKey)
+		if state == "unknown" {
 			return nil, ErrSMSProviderUnknown
 		}
 		return nil, errors.New("channel refused rental extension")
@@ -5023,13 +5489,6 @@ func (s *SMSService) ExtendRental(ctx context.Context, userID int64, publicID st
 		verifyCancel()
 	}
 
-	result, err := s.db.ExecContext(ctx, `INSERT INTO sms_order_events(order_id,event_type,idempotency_key,payload) VALUES ($1,'rental_extend',$2,$3) ON CONFLICT (order_id,event_type,idempotency_key) DO NOTHING`, id, idempotencyKey, fmt.Sprintf(`{"duration_value":%d,"duration_unit":%q}`, value, strings.ToLower(unit)))
-	if err != nil {
-		return nil, err
-	}
-	if affected, _ := result.RowsAffected(); affected == 0 {
-		return s.GetOrderByPublicID(ctx, userID, publicID)
-	}
 	if actualExpiresAt != nil {
 		_, err = s.db.ExecContext(ctx, `UPDATE sms_orders SET expires_at=$1,updated_at=NOW() WHERE id=$2`, actualExpiresAt, id)
 	} else {
@@ -5038,6 +5497,7 @@ func (s *SMSService) ExtendRental(ctx context.Context, userID int64, publicID st
 	if err != nil {
 		return nil, err
 	}
+	_, _ = s.db.ExecContext(context.Background(), `UPDATE sms_order_events SET payload=payload || jsonb_build_object('status','confirmed') WHERE order_id=$1 AND event_type='rental_extend' AND idempotency_key=$2`, id, idempotencyKey)
 	return s.GetOrderByPublicID(ctx, userID, publicID)
 }
 
@@ -5210,6 +5670,9 @@ func (s *SMSService) UpdateProvider(ctx context.Context, id int64, enabled bool,
 		return errors.New("provider credential is required")
 	}
 	if credentialRef != "" && !strings.HasPrefix(credentialRef, "env:") && !strings.HasPrefix(credentialRef, "enc:") {
+		if s.settings == nil || s.settings.cfg == nil || !s.settings.cfg.Totp.EncryptionKeyConfigured {
+			return ErrProviderCredentialEncryptionKeyNotConfigured
+		}
 		if s.encryptor == nil {
 			return errors.New("credential encryption is unavailable")
 		}

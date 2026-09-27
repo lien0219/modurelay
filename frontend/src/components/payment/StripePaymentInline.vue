@@ -19,7 +19,7 @@
             <div class="space-y-2 text-sm">
               <div class="flex justify-between">
                 <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.orderId') }}</span>
-                <span class="font-medium text-gray-900 dark:text-white">#{{ orderId }}</span>
+                <CopyableIdentifier :value="orderId" prefix="#" max-width="14rem" />
               </div>
               <div v-if="amount > 0" class="flex justify-between">
                 <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.amount') }}</span>
@@ -74,6 +74,7 @@ import { getPaymentPopupFeatures } from '@/components/payment/providerConfig'
 import { currencySymbol } from '@/components/payment/currency'
 import type { Stripe, StripeElements } from '@stripe/stripe-js'
 import Icon from '@/components/icons/Icon.vue'
+import CopyableIdentifier from '@/components/common/CopyableIdentifier.vue'
 import { useThemeMode } from '@/composables/useThemeMode'
 
 // Stripe payment methods that open a popup (redirect or QR code)

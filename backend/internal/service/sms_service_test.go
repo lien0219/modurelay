@@ -21,6 +21,45 @@ type smsBatchLimitSettingRepoStub struct {
 	value string
 }
 
+type smsStatusProviderStub struct {
+	result      *SMSStatusResult
+	err         error
+	finishCalls int
+}
+
+func (p *smsStatusProviderStub) Code() string { return "stub" }
+func (p *smsStatusProviderStub) Capabilities(context.Context) SMSProviderCapabilities {
+	return SMSProviderCapabilities{Finish: true}
+}
+func (p *smsStatusProviderStub) Quote(context.Context, SMSQuoteRequest) (*SMSProviderQuote, error) {
+	return nil, nil
+}
+func (p *smsStatusProviderStub) PurchaseTemporary(context.Context, SMSPurchaseRequest) (*SMSPurchaseResult, error) {
+	return nil, nil
+}
+func (p *smsStatusProviderStub) GetTemporaryStatus(context.Context, string) (*SMSStatusResult, error) {
+	return p.result, p.err
+}
+func (p *smsStatusProviderStub) CancelTemporary(context.Context, string) error { return nil }
+func (p *smsStatusProviderStub) RequestTemporaryRefund(context.Context, string) error {
+	return nil
+}
+func (p *smsStatusProviderStub) FinishTemporary(context.Context, string) error {
+	p.finishCalls++
+	return nil
+}
+func (p *smsStatusProviderStub) BanTemporary(context.Context, string) error { return nil }
+func (p *smsStatusProviderStub) PurchaseRental(context.Context, SMSPurchaseRequest) (*SMSPurchaseResult, error) {
+	return nil, nil
+}
+func (p *smsStatusProviderStub) GetRentalStatus(context.Context, string) (*SMSStatusResult, error) {
+	return nil, nil
+}
+func (p *smsStatusProviderStub) ExtendRental(context.Context, string, int, string) error {
+	return nil
+}
+func (p *smsStatusProviderStub) CancelRental(context.Context, string) error { return nil }
+
 func (s *smsBatchLimitSettingRepoStub) Get(context.Context, string) (*Setting, error) {
 	return nil, ErrSettingNotFound
 }
@@ -67,11 +106,94 @@ func TestSMSProviderCapabilitiesAreSeparated(t *testing.T) {
 	}
 }
 
+func TestParseProviderJSONIDNormalizesNumericIDs(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+		want string
+	}{
+		{name: "quoted provider id", raw: `"order-123"`, want: "order-123"},
+		{name: "integer", raw: `1094255123`, want: "1094255123"},
+		{name: "scientific integer", raw: `1.094255123e+09`, want: "1094255123"},
+		{name: "decimal integer", raw: `1094255123.0`, want: "1094255123"},
+		{name: "fraction", raw: `1094255123.5`, want: ""},
+		{name: "negative", raw: `-1`, want: ""},
+		{name: "zero", raw: `0`, want: ""},
+		{name: "invalid", raw: `not-json`, want: ""},
+		{name: "null", raw: `null`, want: ""},
+		{name: "oversized exponent", raw: `1e129`, want: ""},
+		{name: "oversized fractional exponent", raw: `1e-129`, want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := parseProviderJSONID(json.RawMessage(tt.raw)); got != tt.want {
+				t.Fatalf("parseProviderJSONID(%s)=%q, want %q", tt.raw, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestSMSPVAWebhookIsFailClosedBeforeDatabaseLookup(t *testing.T) {
 	svc := NewSMSService(nil, nil, nil)
 	err := svc.ProcessWebhook(context.Background(), "SMSPVA", SMSStatusResult{Status: "completed"}, "501")
 	if !errors.Is(err, ErrSMSProviderWebhookUnsupported) {
 		t.Fatalf("SMSPVA webhook error = %v, want %v", err, ErrSMSProviderWebhookUnsupported)
+	}
+}
+
+func TestProcessWebhookPersistsLateMessageForCompletedOrder(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectQuery(`SELECT o\.id,o\.user_id,o\.status,o\.product_type.*o\.settlement_status`).
+		WithArgs("5sim", "provider-1").
+		WillReturnRows(sqlmock.NewRows([]string{"id", "user_id", "status", "product_type", "base_url", "credential_ref", "expires_at", "reconciliation_action", "settlement_status"}).
+			AddRow(int64(1), int64(7), "completed", "temporary", "https://example.invalid", "", nil, "", "captured"))
+	mock.ExpectExec(`INSERT INTO sms_messages`).
+		WithArgs(int64(1), "Your verification token is A7B9C2", "", "", nil, "", "", false).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec(`UPDATE sms_orders SET first_sms_received_at`).
+		WithArgs(int64(1)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`INSERT INTO sms_order_events`).
+		WithArgs(int64(1), "late_delivery_evidence", sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	svc := &SMSService{db: db}
+	err = svc.ProcessWebhook(context.Background(), "5sim", SMSStatusResult{Messages: []string{"Your verification token is A7B9C2"}}, "provider-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestProcessWebhookDoesNotPersistLateMessageAfterRefund(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectQuery(`SELECT o\.id,o\.user_id,o\.status,o\.product_type.*o\.settlement_status`).
+		WithArgs("5sim", "provider-2").
+		WillReturnRows(sqlmock.NewRows([]string{"id", "user_id", "status", "product_type", "base_url", "credential_ref", "expires_at", "reconciliation_action", "settlement_status"}).
+			AddRow(int64(2), int64(7), "refunded", "temporary", "https://example.invalid", "", nil, "", "refunded"))
+	mock.ExpectExec(`INSERT INTO sms_order_events`).
+		WithArgs(int64(2), "late_delivery_evidence", sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	svc := &SMSService{db: db}
+	err = svc.ProcessWebhook(context.Background(), "5sim", SMSStatusResult{Messages: []string{"Your code is 482913"}}, "provider-2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -139,6 +261,50 @@ func TestSMSActivateUsesRealActionContract(t *testing.T) {
 	}
 	if quote.Stock != 4 || quote.Cost.String() != "0.8" {
 		t.Fatalf("unexpected quote: %#v", quote)
+	}
+}
+
+func TestSMSActivateStatusPreservesExplicitAlphanumericCode(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("action"); got != "getStatus" {
+			t.Fatalf("action=%q, want getStatus", got)
+		}
+		w.Header().Set("Content-Type", "text/plain")
+		_, _ = w.Write([]byte("STATUS_OK:A7B9C2"))
+	}))
+	defer server.Close()
+
+	result, err := providerFor("sms_activate", server.URL, "secret").GetTemporaryStatus(context.Background(), "501")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Messages) != 1 || result.Messages[0] != "A7B9C2" {
+		t.Fatalf("messages=%#v, want one canonical code message", result.Messages)
+	}
+	if got := smsVerificationCodeFromResult(result, 0); got != "A7B9C2" {
+		t.Fatalf("verification code=%q, want A7B9C2", got)
+	}
+}
+
+func TestOnlineSIMStatusPreservesExplicitAlphanumericCode(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("tzid") != "501" {
+			t.Fatalf("unexpected query: %s", r.URL.RawQuery)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"response":"RECEIVED","msg":"Your token is A7B9C2","code":"A7B9C2"}`))
+	}))
+	defer server.Close()
+
+	result, err := providerFor("onlinesim", server.URL, "secret").GetTemporaryStatus(context.Background(), "501")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Messages) != 1 || result.Messages[0] != "Your token is A7B9C2" {
+		t.Fatalf("messages=%#v, want one canonical message", result.Messages)
+	}
+	if got := smsVerificationCodeFromResult(result, 0); got != "A7B9C2" {
+		t.Fatalf("verification code=%q, want A7B9C2", got)
 	}
 }
 
@@ -223,17 +389,9 @@ func TestSMSPurchaseHTTP400ServerOfflineIsDefinitive(t *testing.T) {
 	}
 }
 
-func TestFiveSIMRecoversTimedOutPurchaseFromOrderHistory(t *testing.T) {
-	startedAt := time.Date(2026, 9, 19, 2, 30, 0, 0, time.UTC)
+func TestFiveSIMPurchaseRecoveryIsFailClosedWithoutCorrelationID(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/user/orders" {
-			t.Fatalf("unexpected path: %s", r.URL.Path)
-		}
-		if r.URL.Query().Get("category") != "activation" || r.URL.Query().Get("limit") != "100" || r.URL.Query().Get("reverse") != "true" {
-			t.Fatalf("unexpected history query: %s", r.URL.RawQuery)
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"Data":[{"id":1094361636,"phone":"+542243424387","operator":"Virtual62","product":"openai","price":0.05,"status":"PENDING","expires":"2026-09-19T02:45:00Z","created_at":"2026-09-19T02:30:02Z","country":"argentina"}],"Total":1}`))
+		t.Fatalf("5SIM recovery must not guess from provider history: %s", r.URL.String())
 	}))
 	defer server.Close()
 
@@ -242,56 +400,14 @@ func TestFiveSIMRecoversTimedOutPurchaseFromOrderHistory(t *testing.T) {
 	if !ok {
 		t.Fatal("5SIM purchase recovery adapter missing")
 	}
-	result, err := recovery.RecoverTemporaryPurchase(context.Background(), SMSPurchaseRequest{
+	recovered, err := recovery.RecoverTemporaryPurchase(context.Background(), SMSPurchaseRequest{
 		ServiceCode:       "openai",
-		CountryCode:       "argentina",
+		CountryCode:       "usa",
 		OperatorCode:      "any",
 		ProviderCostLimit: 0.05,
-	}, startedAt)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result == nil || result.ProviderOrderID != "1094361636" || result.PhoneNumber != "+542243424387" || result.ProviderCost != 0.05 || result.ProviderOperatorCode != "virtual62" {
-		t.Fatalf("unexpected recovered purchase: %#v", result)
-	}
-}
-
-func TestFiveSIMRecoveryFallsBackToOppositeHistoryOrder(t *testing.T) {
-	startedAt := time.Date(2026, 9, 19, 9, 22, 40, 0, time.UTC)
-	var reverses []string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/user/orders" {
-			t.Fatalf("unexpected path: %s", r.URL.Path)
-		}
-		reverse := r.URL.Query().Get("reverse")
-		reverses = append(reverses, reverse)
-		w.Header().Set("Content-Type", "application/json")
-		if reverse == "true" {
-			_, _ = w.Write([]byte(`{"Data":[],"Total":1}`))
-			return
-		}
-		_, _ = w.Write([]byte(`{"Data":[{"id":1094737019,"phone":"+31685440669","operator":"Virtual66","product":"openai","price":0.18,"status":"RECEIVED","expires":"2026-09-19T09:42:40Z","created_at":"2026-09-19T09:22:42Z","country":"netherlands"}],"Total":1}`))
-	}))
-	defer server.Close()
-
-	p := providerFor("5sim", server.URL, "secret")
-	recovery, ok := p.(SMSPurchaseRecoveryProvider)
-	if !ok {
-		t.Fatal("5sim provider does not implement SMSPurchaseRecoveryProvider")
-	}
-	result, err := recovery.RecoverTemporaryPurchase(context.Background(), SMSPurchaseRequest{
-		ServiceCode:  "openai",
-		CountryCode:  "netherlands",
-		OperatorCode: "virtual66",
-	}, startedAt)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result == nil || result.ProviderOrderID != "1094737019" || result.PhoneNumber != "+31685440669" {
-		t.Fatalf("unexpected recovered purchase: %#v", result)
-	}
-	if len(reverses) != 2 || reverses[0] != "true" || reverses[1] != "false" {
-		t.Fatalf("history directions=%v", reverses)
+	}, time.Now())
+	if err != nil || recovered != nil {
+		t.Fatalf("recovery=%#v err=%v, want nil,nil", recovered, err)
 	}
 }
 
@@ -309,27 +425,6 @@ func TestFiveSIMPreservesExactNumericOrderID(t *testing.T) {
 	}
 	if result.ProviderOrderID != "1094675152" {
 		t.Fatalf("provider order id=%q, want exact integer string", result.ProviderOrderID)
-	}
-}
-
-func TestFiveSIMRecoveryRejectsAmbiguousMatches(t *testing.T) {
-	startedAt := time.Date(2026, 9, 19, 2, 30, 0, 0, time.UTC)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"Data":[
-			{"id":1,"phone":"+1","operator":"op1","product":"openai","price":0.05,"status":"PENDING","expires":"2026-09-19T02:45:00Z","created_at":"2026-09-19T02:30:01Z","country":"usa"},
-			{"id":2,"phone":"+2","operator":"op2","product":"openai","price":0.05,"status":"PENDING","expires":"2026-09-19T02:45:00Z","created_at":"2026-09-19T02:30:03Z","country":"usa"}
-		]}`))
-	}))
-	defer server.Close()
-
-	p := providerFor("5sim", server.URL, "secret")
-	recovery, ok := p.(SMSPurchaseRecoveryProvider)
-	if !ok {
-		t.Fatal("5SIM purchase recovery adapter missing")
-	}
-	if _, err := recovery.RecoverTemporaryPurchase(context.Background(), SMSPurchaseRequest{ServiceCode: "openai", CountryCode: "usa", OperatorCode: "any", ProviderCostLimit: 0.05}, startedAt); err == nil {
-		t.Fatal("ambiguous 5SIM recovery must fail closed")
 	}
 }
 
@@ -578,6 +673,95 @@ func TestSMSProviderTerminalStateNeedsVerificationCode(t *testing.T) {
 	}
 	if got := smsStatusFromProvider(nil); got != "provider_unknown" {
 		t.Fatalf("nil provider result = %q, want provider_unknown", got)
+	}
+}
+
+func TestReconcileTemporaryRefundPersistsDeliveredCode(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	const orderID int64 = 54
+	const userID int64 = 9
+	receivedAt := time.Now()
+	mock.ExpectExec(`INSERT INTO sms_messages`).
+		WithArgs(orderID, "Your code is 823937", "823937", "", nil, "", "", false).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec(`UPDATE sms_orders SET first_sms_received_at`).
+		WithArgs(orderID).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`UPDATE sms_orders SET status='completed'`).
+		WithArgs("已收到验证码，供应商不再允许取消退款", orderID).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`UPDATE sms_orders[[:space:]]+SET reconciliation_action=\$1`).
+		WithArgs(smsReconciliationFinish, int(smsProviderActionLease.Seconds()), orderID).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`UPDATE sms_orders SET reconciliation_action=''`).
+		WithArgs(orderID, smsReconciliationFinish).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery(`SELECT o.user_id,o.settlement_status`).
+		WithArgs(orderID).
+		WillReturnRows(sqlmock.NewRows([]string{"user_id", "settlement_status", "reconciliation_action", "provider_refund_status", "code", "product_type", "first_sms_received_at"}).
+			AddRow(userID, "captured", "", "rejected", "5sim", "temporary", receivedAt))
+
+	provider := &smsStatusProviderStub{result: &SMSStatusResult{
+		Status:   "completed",
+		Messages: []string{"Your code is 823937"},
+		Metadata: map[string]any{"messages": []map[string]any{{"verification_code": "823937"}}},
+	}}
+	svc := &SMSService{db: db}
+	handled, reconcileErr := svc.reconcileTemporaryRefundState(context.Background(), provider, orderID, userID, "1099867235", "refunded")
+	if !handled {
+		t.Fatal("completed provider state should be handled")
+	}
+	if reconcileErr != nil {
+		t.Fatalf("automatic expiry recovery error=%v, want nil after persisting delivered code", reconcileErr)
+	}
+	if provider.finishCalls != 1 {
+		t.Fatalf("finish calls=%d, want 1", provider.finishCalls)
+	}
+	if err = mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSMSProviderFinalizeRetryClaimsCompletedOrder(t *testing.T) {
+	var finishCalls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/user/finish/order-1" {
+			t.Fatalf("unexpected provider path: %s", r.URL.Path)
+		}
+		finishCalls++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer server.Close()
+	t.Setenv("SMS_5SIM_API_KEY", "secret")
+
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectExec(`UPDATE sms_orders SET reconcile_after=NOW\(\)\+\(\$1 \* INTERVAL '1 second'\) WHERE id=\$2 AND status='completed' AND reconciliation_action=\$3`).
+		WithArgs(int(smsProviderActionLease.Seconds()), int64(12), smsReconciliationFinish).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`UPDATE sms_orders SET reconciliation_action=''`).
+		WithArgs(int64(12), smsReconciliationFinish).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	svc := &SMSService{db: db}
+	if err := svc.reconcileSMSProviderFinalize(context.Background(), 12, "order-1", "5sim", server.URL, "env:SMS_5SIM_API_KEY"); err != nil {
+		t.Fatal(err)
+	}
+	if finishCalls != 1 {
+		t.Fatalf("finish calls=%d, want 1", finishCalls)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -869,6 +1053,9 @@ func TestSMSPVAConvergeCapturesAfterDelivery(t *testing.T) {
 		WithArgs(int64(71)).
 		WillReturnRows(sqlmock.NewRows([]string{"user_id", "settlement_status", "reconciliation_action", "provider_refund_status", "code", "product_type", "first_sms_received_at"}).
 			AddRow(int64(8), "held", "", "not_requested", "smspva", "temporary", time.Now()))
+	mock.ExpectQuery(`(?s)SELECT EXISTS\(.*FROM sms_messages.*BTRIM\(verification_code\)<>''.*\)`).
+		WithArgs(int64(71)).
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
 	mock.ExpectBegin()
 	mock.ExpectQuery(`UPDATE sms_orders SET captured_amount=reserved_amount.*settlement_status='held'.*RETURNING reserved_amount`).
 		WithArgs(int64(71)).
@@ -937,6 +1124,9 @@ func TestSMS5SIMRefundReconciliationCallsCancelOnlyOnce(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
+	mock.ExpectExec(`UPDATE sms_orders SET reconcile_after=NOW\(\)\+\(\$1 \* INTERVAL '1 second'\) WHERE id=\$2 AND status='reconciling'`).
+		WithArgs(int(smsProviderActionLease.Seconds()), int64(11), smsReconciliationRefund).
+		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec(`UPDATE sms_orders SET provider_refund_status=\$1`).
 		WithArgs("succeeded", "", int64(11)).
 		WillReturnResult(sqlmock.NewResult(0, 1))
@@ -1150,8 +1340,8 @@ func TestSMSBatchPurchaseLimitAllowsCompleteIdempotentReplayAfterLimitReduction(
 func TestSMSOrderExpiryUsesPlatformPolicyOrSafeDefaults(t *testing.T) {
 	now := time.Date(2026, 9, 17, 0, 0, 0, 0, time.UTC)
 	providerExpiry := now.Add(7 * time.Minute)
-	if got := smsOrderExpiresAt(now, "temporary", 0, "", &providerExpiry); !got.Equal(now.Add(10 * time.Minute)) {
-		t.Fatalf("temporary platform expiry=%v, want %v", got, now.Add(10*time.Minute))
+	if got := smsOrderExpiresAt(now, "temporary", 0, "", &providerExpiry); !got.Equal(providerExpiry) {
+		t.Fatalf("temporary expiry=%v, want provider cap %v", got, providerExpiry)
 	}
 	longProviderExpiry := now.Add(15 * time.Minute)
 	if got := smsOrderExpiresAt(now, "temporary", 0, "", &longProviderExpiry, 3*time.Minute); !got.Equal(now.Add(3 * time.Minute)) {
@@ -1435,6 +1625,50 @@ func TestFiveSIMStatusReturnsActualCostAndOperator(t *testing.T) {
 	}
 }
 
+func TestFiveSIMStatusUsesExplicitCodeWithoutDuplicateMessage(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/user/check/123" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"RECEIVED","phone":"+306972405948","price":0.1491,"operator":"virtual34","sms":[{"code":"345875","text":"Your OpenAI verification code is 345875."}]}`))
+	}))
+	defer server.Close()
+
+	result, err := providerFor("5sim", server.URL, "secret").GetTemporaryStatus(context.Background(), "123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Messages) != 1 {
+		t.Fatalf("messages=%v, want one canonical message", result.Messages)
+	}
+	if got := extractSMSCode(result.Messages[0]); got != "345875" {
+		t.Fatalf("verification code=%q, want 345875", got)
+	}
+	if got := smsStatusFromProvider(result); got != "completed" {
+		t.Fatalf("status=%q, want completed", got)
+	}
+}
+
+func TestFiveSIMStatusUsesExplicitAlphanumericCode(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"RECEIVED","phone":"+306972405948","price":0.1491,"operator":"virtual34","sms":[{"code":"AB12CD","text":"Use code AB12CD to continue."}]}`))
+	}))
+	defer server.Close()
+
+	result, err := providerFor("5sim", server.URL, "secret").GetTemporaryStatus(context.Background(), "123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := smsVerificationCodeFromResult(result, 0); got != "AB12CD" {
+		t.Fatalf("verification code=%q, want AB12CD", got)
+	}
+	if got := smsStatusFromProvider(result); got != "completed" {
+		t.Fatalf("status=%q, want completed", got)
+	}
+}
+
 func TestSMSPVAQuoteUsesSelectedOperatorPriceAndStock(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("apikey") != "secret" {
@@ -1690,6 +1924,25 @@ func TestSMSPVAEmbeddedBusinessErrorsAreDefinitiveAndRedacted(t *testing.T) {
 				t.Fatalf("definitive=%v, want %v, err=%v", got, tc.definitive, err)
 			}
 		})
+	}
+}
+
+func TestSMSPVATemporaryStatusPreservesExplicitAlphanumericCode(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"statusCode":200,"data":{"orderId":"501","phoneNumber":"2025550100","countryCode":"+1","sms":{"code":"A7B9C2","fullText":"Your verification token is A7B9C2"}}}`))
+	}))
+	defer server.Close()
+
+	result, err := providerFor("smspva", server.URL, "secret").GetTemporaryStatus(context.Background(), "501")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Messages) != 1 {
+		t.Fatalf("messages=%#v, want one canonical message", result.Messages)
+	}
+	if got := smsVerificationCodeFromResult(result, 0); got != "A7B9C2" {
+		t.Fatalf("verification code=%q, want explicit provider code", got)
 	}
 }
 

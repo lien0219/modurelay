@@ -239,7 +239,7 @@
                   class="email-icon-button"
                   :disabled="refreshingId === currentOrder.id"
                   :title="t('common.refresh')"
-                  @click="refreshCurrentOrder()"
+                  @click="refreshCurrentOrder(true, true)"
                 >
                   <Icon name="refresh" size="sm" :class="{ 'is-spinning': refreshingId === currentOrder.id }" />
                 </button>
@@ -323,6 +323,7 @@
 
             <div v-if="recentOrders.length" class="email-records">
               <div class="email-records__head" aria-hidden="true">
+                <span>{{ t('email.user.orderNo') }}</span>
                 <span>{{ t('email.user.channel') }}</span>
                 <span>{{ t('email.user.emailAddress') }}</span>
                 <span>{{ t('email.user.addressType') }}</span>
@@ -332,6 +333,7 @@
                 <span>{{ t('email.user.action') }}</span>
               </div>
               <div v-for="order in recentOrders" :key="order.id" class="email-record-row">
+                <CopyableIdentifier :value="order.id" max-width="100%" />
                 <span>{{ emailChannelLabel(order.channel_code) }}</span>
                 <span class="email-record-row__address">
                   <code>{{ order.email_address || '-' }}</code>
@@ -389,6 +391,7 @@
 
           <section v-else class="email-orders__table">
             <div class="email-records__head" aria-hidden="true">
+              <span>{{ t('email.user.orderNo') }}</span>
               <span>{{ t('email.user.channel') }}</span>
               <span>{{ t('email.user.emailAddress') }}</span>
               <span>{{ t('email.user.addressType') }}</span>
@@ -399,6 +402,7 @@
             </div>
 
             <div v-for="order in orders" :key="order.id" class="email-record-row">
+              <CopyableIdentifier :value="order.id" max-width="100%" />
               <span>{{ emailChannelLabel(order.channel_code) }}</span>
               <span class="email-record-row__address">
                 <code>{{ order.email_address || '-' }}</code>
@@ -448,6 +452,7 @@ import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import CopyButton from '@/components/common/CopyButton.vue'
+import CopyableIdentifier from '@/components/common/CopyableIdentifier.vue'
 import { emailAPI, type EmailMessage, type EmailOrder, type EmailOrderPage, type EmailQuote } from '@/api/email'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { useAppStore } from '@/stores'
@@ -480,6 +485,9 @@ const confirmState = reactive({
   action: null as null | (() => Promise<void>),
 })
 const now = ref(Date.now())
+const ORDER_LIST_POLL_INTERVAL_MS = 15_000
+const ACTIVE_ORDER_POLL_INTERVAL_MS = 3_000
+
 let activeOrderTimer: number | undefined
 let ordersTimer: number | undefined
 let clockTimer: number | undefined
@@ -508,7 +516,7 @@ const recentOrders = computed(() => {
     : orders.value
   return merged.slice(0, 3)
 })
-const latestVerificationCode = computed(() => latestCodeFromMessages(currentOrder.value?.messages))
+const latestVerificationCode = computed(() => currentOrder.value ? firstCode(currentOrder.value) : '')
 const remainingSeconds = computed(() => {
   if (!currentOrder.value?.expires_at || isTerminal(currentOrder.value)) return 0
   return Math.max(0, Math.floor((new Date(currentOrder.value.expires_at).getTime() - now.value) / 1000))
@@ -554,7 +562,9 @@ function latestCodeFromMessages(messages?: EmailMessage[]) {
   }
   return latest.verification_code?.trim() || ''
 }
-function firstCode(order: EmailOrder) { return latestCodeFromMessages(order.messages) }
+function firstCode(order: EmailOrder) {
+  return order.latest_verification_code?.trim() || latestCodeFromMessages(order.messages)
+}
 function canCancel(order: EmailOrder) { return ['reserved', 'generating_inbox', 'reconciling', 'waiting_email', 'email_received', 'verification_extracted'].includes(order.status) }
 
 function resetSelection() {
@@ -565,6 +575,7 @@ function resetSelection() {
 
 function switchMode(mode: 'public' | 'private') {
   activeTab.value = mode
+  stopOrdersPolling()
   addressType.value = mode === 'public' ? 'gmail' : 'gmail_real'
   now.value = Date.now()
   if (currentOrder.value && !isTerminal(currentOrder.value)) startActiveOrderPolling()
@@ -627,6 +638,29 @@ function isTerminal(order: EmailOrder) {
   return ['completed', 'expired', 'refunded', 'failed', 'cancelled'].includes(order.status)
 }
 
+function pageIsVisible() {
+  return typeof document === 'undefined' || document.visibilityState === 'visible'
+}
+
+function hasActiveOrders() {
+  return orders.value.some(order => !isTerminal(order))
+}
+
+function stopOrdersPolling() {
+  if (ordersTimer) window.clearTimeout(ordersTimer)
+  ordersTimer = undefined
+}
+
+function scheduleOrdersPolling() {
+  stopOrdersPolling()
+  if (activeTab.value !== 'orders' || !pageIsVisible() || !hasActiveOrders()) return
+
+  ordersTimer = window.setTimeout(() => {
+    ordersTimer = undefined
+    void loadOrders({ silent: true })
+  }, ORDER_LIST_POLL_INTERVAL_MS)
+}
+
 function stopActiveOrderPolling() {
   if (activeOrderTimer) window.clearTimeout(activeOrderTimer)
   activeOrderTimer = undefined
@@ -634,19 +668,30 @@ function stopActiveOrderPolling() {
 
 function startActiveOrderPolling() {
   stopActiveOrderPolling()
-  if (!currentOrder.value || isTerminal(currentOrder.value)) return
+  if (
+    !currentOrder.value
+    || isTerminal(currentOrder.value)
+    || activeTab.value === 'orders'
+    || !pageIsVisible()
+  ) return
+
   activeOrderTimer = window.setTimeout(async () => {
+    activeOrderTimer = undefined
     await refreshCurrentOrder(false)
     startActiveOrderPolling()
-  }, 3000)
+  }, ACTIVE_ORDER_POLL_INTERVAL_MS)
 }
 
-async function refreshCurrentOrder(showError = true) {
+async function refreshCurrentOrder(showError = true, syncProvider = false) {
   if (!currentOrder.value) return
   const id = currentOrder.value.id
   refreshingId.value = id
   try {
-    currentOrder.value = await emailAPI.order(id)
+		if (syncProvider) {
+			currentOrder.value = await emailAPI.sync(id)
+		} else {
+			currentOrder.value = await emailAPI.order(id)
+		}
     if (currentOrder.value && isTerminal(currentOrder.value)) stopActiveOrderPolling()
   } catch (error) {
     if (showError) appStore.showError(errorMessage(error, t('email.user.errors.orders')))
@@ -707,13 +752,25 @@ function cancelOrder(order: EmailOrder) {
 function openOrders() {
   activeTab.value = 'orders'
   stopActiveOrderPolling()
+  stopOrdersPolling()
   void loadOrders()
 }
 
-function openOrder(order: EmailOrder) {
+async function openOrder(order: EmailOrder) {
+  stopActiveOrderPolling()
   currentOrder.value = order
   activeTab.value = order.channel_code === 'email_channel_1' ? 'public' : 'private'
-  startActiveOrderPolling()
+  const id = order.id
+  refreshingId.value = id
+  try {
+    const detail = await emailAPI.order(id)
+    if (currentOrder.value?.id === id) currentOrder.value = detail
+  } catch (error) {
+    appStore.showError(errorMessage(error, t('email.user.errors.orders')))
+  } finally {
+    if (refreshingId.value === id) refreshingId.value = ''
+  }
+  if (currentOrder.value?.id === id && !isTerminal(currentOrder.value)) startActiveOrderPolling()
 }
 
 async function loadOrders(options: { silent?: boolean } = {}) {
@@ -742,6 +799,7 @@ async function loadOrders(options: { silent?: boolean } = {}) {
   } finally {
     if (silent) ordersRefreshing.value = false
     else ordersLoading.value = false
+    scheduleOrdersPolling()
   }
 }
 
@@ -750,25 +808,43 @@ function resetOrderFilters() { Object.assign(orderDraft, { keyword: '', status: 
 function changeOrderPage(page: number) { orderPagination.page = page; void loadOrders() }
 function changeOrderPageSize(pageSize: number) { orderPagination.pageSize = pageSize; orderPagination.page = 1; void loadOrders() }
 
+function handleVisibilityChange() {
+  if (!pageIsVisible()) {
+    stopOrdersPolling()
+    stopActiveOrderPolling()
+    return
+  }
+
+  now.value = Date.now()
+  if (activeTab.value === 'orders') {
+    stopOrdersPolling()
+    void loadOrders({ silent: orders.value.length > 0 })
+    return
+  }
+
+  if (currentOrder.value && !isTerminal(currentOrder.value)) {
+    void refreshCurrentOrder(false).finally(() => startActiveOrderPolling())
+  }
+}
+
 function errorMessage(error: unknown, fallback: string) {
   return (error as { message?: string })?.message || fallback
 }
 
 onMounted(() => {
+  document.addEventListener('visibilitychange', handleVisibilityChange)
   void loadAll()
   clockTimer = window.setInterval(() => {
     if (activeTab.value !== 'orders' && currentOrder.value && !isTerminal(currentOrder.value)) {
       now.value = Date.now()
     }
   }, 1000)
-  ordersTimer = window.setInterval(() => {
-    if (activeTab.value === 'orders') void loadOrders({ silent: true })
-  }, 10000)
 })
 
 onBeforeUnmount(() => {
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
+  stopOrdersPolling()
   stopActiveOrderPolling()
-  if (ordersTimer) window.clearInterval(ordersTimer)
   if (clockTimer) window.clearInterval(clockTimer)
 })
 </script>
@@ -1761,8 +1837,8 @@ onBeforeUnmount(() => {
 .email-records__head,
 .email-record-row {
   display: grid;
-  min-width: 980px;
-  grid-template-columns: 110px minmax(280px, 1.5fr) 150px 110px 110px 90px 70px;
+  min-width: 1210px;
+  grid-template-columns: 230px 110px minmax(280px, 1.5fr) 150px 110px 110px 90px 70px;
   align-items: center;
   gap: 8px;
 }

@@ -140,7 +140,40 @@ func (h *EmailHandler) Order(c *gin.Context) {
 	}
 	order, e := h.svc.GetOrder(c.Request.Context(), subject.UserID, strings.TrimSpace(c.Param("id")))
 	if e != nil {
-		response.ErrorWithDetails(c, http.StatusNotFound, "Email order not found", "NOT_FOUND", nil)
+		if errors.Is(e, service.ErrEmailNotFound) {
+			response.ErrorWithDetails(c, http.StatusNotFound, "Email order not found", "NOT_FOUND", nil)
+		} else {
+			response.ErrorFrom(c, e)
+		}
+		return
+	}
+	response.Success(c, order)
+}
+
+// Sync triggers one bounded upstream poll for the authenticated user's order.
+// It is intentionally separate from GET /orders/:id so background/browser
+// refreshes remain cheap reads while an explicit user action can request fresh
+// provider state.
+func (h *EmailHandler) Sync(c *gin.Context) {
+	noStore(c)
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	order, err := h.svc.SyncOrder(c.Request.Context(), subject.UserID, strings.TrimSpace(c.Param("id")))
+	if err != nil {
+		if errors.Is(err, service.ErrEmailNotFound) {
+			response.ErrorWithDetails(c, http.StatusNotFound, "Email order not found", "NOT_FOUND", nil)
+		} else if errors.Is(err, service.ErrEmailProviderCredentialMissing) {
+			response.ErrorWithDetails(c, http.StatusUnprocessableEntity, "Provider credential is not configured", "PROVIDER_CREDENTIAL_MISSING", nil)
+		} else if errors.Is(err, service.ErrEmailChannelUnavailable) {
+			response.ErrorWithDetails(c, http.StatusServiceUnavailable, "The selected email channel is temporarily unavailable", "PROVIDER_UNAVAILABLE", nil)
+			return
+		} else {
+			response.ErrorFrom(c, err)
+			return
+		}
 		return
 	}
 	response.Success(c, order)
@@ -195,7 +228,11 @@ func (h *EmailHandler) RefundStatus(c *gin.Context) {
 	}
 	order, err := h.svc.GetOrder(c.Request.Context(), subject.UserID, c.Param("id"))
 	if err != nil {
-		response.ErrorWithDetails(c, http.StatusNotFound, "Email order not found", "NOT_FOUND", nil)
+		if errors.Is(err, service.ErrEmailNotFound) {
+			response.ErrorWithDetails(c, http.StatusNotFound, "Email order not found", "NOT_FOUND", nil)
+		} else {
+			response.ErrorFrom(c, err)
+		}
 		return
 	}
 	response.Success(c, gin.H{"status": order.RefundStatus, "reason": order.RefundReason})
@@ -226,6 +263,14 @@ func (h *EmailHandler) AdminProviderUpdate(c *gin.Context) {
 		return
 	}
 	if e = h.svc.AdminUpdateProviderConfig(c.Request.Context(), id, req.Enabled, req.BaseURL, req.CredentialRef, req.Billing); e != nil {
+		if errors.Is(e, service.ErrEmailProviderNotFound) {
+			response.ErrorWithDetails(c, http.StatusNotFound, "Email provider not found", "NOT_FOUND", nil)
+			return
+		}
+		if e == service.ErrProviderCredentialEncryptionKeyNotConfigured {
+			response.ErrorWithDetails(c, http.StatusBadRequest, "Set a fixed TOTP_ENCRYPTION_KEY before saving provider credentials", "PROVIDER_CREDENTIAL_ENCRYPTION_KEY_NOT_CONFIGURED", nil)
+			return
+		}
 		response.ErrorFrom(c, e)
 		return
 	}

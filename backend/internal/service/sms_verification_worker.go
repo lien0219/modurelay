@@ -9,9 +9,12 @@ import (
 )
 
 const (
-	smsVerificationPollInterval      = 5 * time.Second
-	smsVerificationUnknownTimeout    = 15 * time.Minute
-	smsVerificationManualReviewRetry = 6 * time.Hour
+	smsVerificationPollInterval            = 5 * time.Second
+	smsPurchaseRecoveryGrace               = 30 * time.Second
+	smsVerificationUnknownTimeout          = 15 * time.Minute
+	smsVerificationManualReviewRetry       = 6 * time.Hour
+	smsVerificationCodeRecoveryMaxAttempts = 8
+	smsProviderFinalizeMaxAttempts         = 8
 )
 
 // smsProviderPollDelay is deliberately conservative.  SMSPVA does not
@@ -75,7 +78,7 @@ func (s *SMSService) Reconcile(ctx context.Context) error {
 	if s == nil || s.db == nil {
 		return nil
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT o.id,o.user_id,o.status,o.product_type,o.provider_order_id,o.refund_status,p.code,p.base_url,p.credential_ref,o.expires_at,o.updated_at,o.created_at,o.settlement_status,o.reconciliation_action FROM sms_orders o JOIN sms_providers p ON p.id=o.provider_id WHERE (o.status IN ('active','provider_unknown') AND (((o.reconcile_after IS NULL AND o.updated_at <= NOW()-($1 * INTERVAL '1 second')) OR o.reconcile_after <= NOW()) OR o.expires_at <= NOW())) OR (o.status='reconciling' AND (o.reconcile_after IS NULL OR o.reconcile_after <= NOW())) OR (o.status='pending' AND o.settlement_status='held' AND o.provider_order_id='') OR (o.status IN ('failed','cancelled','expired','refunded','completed') AND o.settlement_status='held') ORDER BY COALESCE(o.reconcile_after,o.updated_at) LIMIT 100`, int(smsVerificationPollInterval.Seconds()))
+	rows, err := s.db.QueryContext(ctx, `SELECT o.id,o.user_id,o.status,o.product_type,o.provider_order_id,o.refund_status,o.provider_refund_status,p.code,p.base_url,p.credential_ref,o.expires_at,o.updated_at,o.created_at,o.settlement_status,o.reconciliation_action FROM sms_orders o JOIN sms_providers p ON p.id=o.provider_id WHERE (o.status IN ('active','provider_unknown') AND (((o.reconcile_after IS NULL AND o.updated_at <= NOW()-($1 * INTERVAL '1 second')) OR o.reconcile_after <= NOW()) OR o.expires_at <= NOW())) OR (o.status='reconciling' AND (o.reconcile_after IS NULL OR o.reconcile_after <= NOW())) OR (o.status='pending' AND o.settlement_status='held' AND o.provider_order_id='' AND o.updated_at <= NOW()-($4 * INTERVAL '1 second')) OR (o.status IN ('failed','cancelled','expired','refunded') AND o.settlement_status='held') OR (o.status IN ('failed','cancelled','expired','refunded') AND o.settlement_status='captured' AND o.provider_order_id<>'' AND (o.reconcile_after IS NULL OR o.reconcile_after<=NOW())) OR (o.status='completed' AND o.settlement_status='held' AND (o.product_type<>'temporary' OR EXISTS (SELECT 1 FROM sms_messages delivered WHERE delivered.order_id=o.id AND BTRIM(delivered.verification_code)<>''))) OR (o.status='completed' AND o.reconciliation_action=$3 AND (o.reconcile_after IS NULL OR o.reconcile_after<=NOW())) OR (o.status='completed' AND o.product_type='temporary' AND o.provider_order_id<>'' AND o.created_at>=NOW()-INTERVAL '24 hours' AND o.reconciliation_attempts<$2 AND (o.reconcile_after IS NULL OR o.reconcile_after<=NOW()) AND NOT EXISTS (SELECT 1 FROM sms_messages m WHERE m.order_id=o.id AND BTRIM(m.verification_code)<>'')) ORDER BY COALESCE(o.reconcile_after,o.updated_at) LIMIT 100`, int(smsVerificationPollInterval.Seconds()), smsVerificationCodeRecoveryMaxAttempts, smsReconciliationFinish, int(smsPurchaseRecoveryGrace.Seconds()))
 	if err != nil {
 		return err
 	}
@@ -83,10 +86,10 @@ func (s *SMSService) Reconcile(ctx context.Context) error {
 	var firstErr error
 	for rows.Next() {
 		var id, userID int64
-		var status, productType, providerOrder, refundStatus, providerCode, baseURL, credential, settlementStatus, reconciliationAction string
+		var status, productType, providerOrder, refundStatus, providerRefundStatus, providerCode, baseURL, credential, settlementStatus, reconciliationAction string
 		var expiresAt sql.NullTime
 		var updatedAt, createdAt time.Time
-		if err := rows.Scan(&id, &userID, &status, &productType, &providerOrder, &refundStatus, &providerCode, &baseURL, &credential, &expiresAt, &updatedAt, &createdAt, &settlementStatus, &reconciliationAction); err != nil {
+		if err := rows.Scan(&id, &userID, &status, &productType, &providerOrder, &refundStatus, &providerRefundStatus, &providerCode, &baseURL, &credential, &expiresAt, &updatedAt, &createdAt, &settlementStatus, &reconciliationAction); err != nil {
 			if firstErr == nil {
 				firstErr = err
 			}
@@ -95,13 +98,14 @@ func (s *SMSService) Reconcile(ctx context.Context) error {
 		if settlementStatus == "held" && (status == "failed" || status == "cancelled" || status == "expired" || status == "refunded") {
 			if strings.EqualFold(providerCode, "smspva") && strings.EqualFold(productType, "temporary") {
 				var firstSMS sql.NullTime
-				if queryErr := s.db.QueryRowContext(ctx, `SELECT first_sms_received_at FROM sms_orders WHERE id=$1`, id).Scan(&firstSMS); queryErr != nil {
+				var messageCount int
+				if queryErr := s.db.QueryRowContext(ctx, `SELECT first_sms_received_at,(SELECT COUNT(*) FROM sms_messages WHERE order_id=$1) FROM sms_orders WHERE id=$1`, id).Scan(&firstSMS, &messageCount); queryErr != nil {
 					if firstErr == nil {
 						firstErr = queryErr
 					}
 					continue
 				}
-				if firstSMS.Valid {
+				if firstSMS.Valid || messageCount > 0 {
 					if err := s.captureSMSSettlement(ctx, id, userID); err != nil && firstErr == nil {
 						firstErr = err
 					}
@@ -113,6 +117,48 @@ func (s *SMSService) Reconcile(ctx context.Context) error {
 			}
 			continue
 		}
+		// A provider terminal transition can be committed before the local
+		// captured-balance refund transaction.  If that transaction then fails,
+		// the row is terminal+captured and used to fall out of the worker query
+		// forever.  Retry the local idempotent settlement when the provider refund
+		// is already confirmed; otherwise promote it to the normal provider-refund
+		// reconciliation state so the upstream mutation is retried exactly once per
+		// lease.
+		if settlementStatus == "captured" && productType == "temporary" &&
+			(status == "failed" || status == "cancelled" || status == "expired" || status == "refunded") {
+			if providerRefundStatus == "succeeded" || providerRefundStatus == "not_required" {
+				if err := s.refundSMSCapture(ctx, id, userID, status, "retrying an unsettled captured SMS refund"); err != nil && firstErr == nil {
+					firstErr = err
+				}
+				continue
+			}
+			if reconciliationAction == "" {
+				res, promoteErr := s.db.ExecContext(ctx, `UPDATE sms_orders SET status='reconciling',refund_status='pending',reconciliation_action=$1,reconcile_after=NOW(),refund_reason=$2,updated_at=NOW() WHERE id=$3 AND status IN ('failed','cancelled','expired','refunded') AND settlement_status='captured' AND reconciliation_action=''`, smsReconciliationRefund, "captured terminal order refund requires provider confirmation", id)
+				if promoteErr != nil {
+					if firstErr == nil {
+						firstErr = promoteErr
+					}
+					continue
+				}
+				if affected, _ := res.RowsAffected(); affected == 0 {
+					continue
+				}
+				status = "reconciling"
+				reconciliationAction = smsReconciliationRefund
+			}
+		}
+		if status == "completed" && reconciliationAction == smsReconciliationFinish {
+			if err := s.reconcileSMSProviderFinalize(ctx, id, providerOrder, providerCode, baseURL, credential); err != nil && firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		if status == "completed" && productType == "temporary" && providerOrder != "" {
+			if _, recoverErr := s.recoverCompletedSMSCode(ctx, id, userID, providerOrder, providerCode, baseURL, credential, productType, settlementStatus); recoverErr != nil && firstErr == nil {
+				firstErr = recoverErr
+			}
+			continue
+		}
 		if settlementStatus == "held" && status == "completed" {
 			if err := s.captureSMSSettlement(ctx, id, userID); err != nil && firstErr == nil {
 				firstErr = err
@@ -121,7 +167,7 @@ func (s *SMSService) Reconcile(ctx context.Context) error {
 		}
 
 		if status == "pending" && settlementStatus == "held" && providerOrder == "" {
-			_, promoteErr := s.db.ExecContext(ctx, `UPDATE sms_orders SET status='reconciling',reconciliation_action=$1,reconcile_after=NOW(),updated_at=NOW() WHERE id=$2 AND status='pending' AND settlement_status='held'`, smsReconciliationPurchase, id)
+			_, promoteErr := s.db.ExecContext(ctx, `UPDATE sms_orders SET status='reconciling',reconciliation_action=$1,reconcile_after=NOW()+($2 * INTERVAL '1 second'),updated_at=NOW() WHERE id=$3 AND status='pending' AND settlement_status='held'`, smsReconciliationPurchase, int(smsPurchaseRecoveryGrace.Seconds()), id)
 			if promoteErr != nil {
 				if firstErr == nil {
 					firstErr = promoteErr
@@ -260,6 +306,15 @@ func (s *SMSService) reconcileSMSAction(ctx context.Context, id, userID int64, p
 		s.deferSMSReconciliation(ctx, id, "provider credential is unavailable during reconciliation", true)
 		return ErrSMSProviderCredentialMissing
 	}
+	if action != smsReconciliationPurchase {
+		claimed, claimErr := s.claimSMSReconciliationAction(ctx, id, action)
+		if claimErr != nil {
+			return claimErr
+		}
+		if !claimed {
+			return nil
+		}
+	}
 	var err error
 	switch action {
 	case smsReconciliationCancel:
@@ -387,6 +442,13 @@ func (s *SMSService) reconcileSMSAction(ctx context.Context, id, userID int64, p
 }
 
 func (s *SMSService) expireSMSOrder(ctx context.Context, id, userID int64, productType, providerOrder, providerCode, baseURL, credential string) error {
+	claimed, claimErr := s.claimSMSActiveProviderAction(ctx, id)
+	if claimErr != nil {
+		return claimErr
+	}
+	if !claimed {
+		return ErrSMSProviderUnknown
+	}
 	key := providerAPIKey(providerCode, credential, s.encryptor)
 	if strings.TrimSpace(key) == "" {
 		_, _ = s.db.ExecContext(ctx, `UPDATE sms_orders SET status='reconciling',reconciliation_action=$1,reconcile_after=NOW()+($2 * INTERVAL '1 second'),last_provider_error=$3,updated_at=NOW() WHERE id=$4 AND status IN ('active','provider_unknown','reconciling')`, smsReconciliationExpire, 300, "provider credential is unavailable during expiry reconciliation", id)

@@ -204,7 +204,6 @@ func RegisterUserRoutes(
 			sms.POST("/orders/:id/cancel", h.SMS.Cancel)
 			sms.POST("/orders/:id/resend", h.SMS.Resend)
 			sms.GET("/orders/:id/refund-status", h.SMS.RefundStatus)
-			sms.POST("/orders/:id/refund", h.SMS.Refund)
 			sms.GET("/rentals", h.SMS.Orders)
 			sms.GET("/rentals/:id", h.SMS.Order)
 			sms.GET("/rentals/:id/constraints", h.SMS.RentalConstraints)
@@ -224,9 +223,9 @@ func RegisterUserRoutes(
 			email.POST("/orders", h.Email.Purchase)
 			email.GET("/orders", h.Email.Orders)
 			email.GET("/orders/:id", h.Email.Order)
+			email.POST("/orders/:id/sync", h.Email.Sync)
 			email.POST("/orders/:id/cancel", h.Email.Cancel)
 			email.GET("/orders/:id/refund-status", h.Email.RefundStatus)
-			email.POST("/orders/:id/refund", h.Email.Refund)
 		}
 		if h.VerificationRecords != nil {
 			authenticated.GET("/verification-records", h.VerificationRecords.List)
