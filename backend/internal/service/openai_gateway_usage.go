@@ -591,6 +591,10 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 		return s.billingService.CalculateWebSearchCost(result.WebSearchCalls, webSearchPricePerCallFromAPIKey(apiKey), webSearchMultiplier), nil
 	}
 	if isGrokVideoUsageResult(result, billingModels) {
+		videoResolution := NormalizeVideoBillingResolutionOrDefault(result.VideoResolution)
+		if apiKeyHasConfiguredVideoModelPrice(apiKey, billingModel, videoResolution) {
+			return s.calculateOpenAIVideoCost(ctx, billingModel, apiKey, result, videoMultiplier), nil
+		}
 		if resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey); resolved == nil || resolved.Mode != BillingModeToken {
 			return s.calculateOpenAIVideoCost(ctx, billingModel, apiKey, result, videoMultiplier), nil
 		}
@@ -690,7 +694,7 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 }
 
 func isGrokVideoBillingModel(model string) bool {
-	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(model)), "grok-imagine-video")
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(model)), "grok-imagine-video") || IsSeedanceVideoModel(model)
 }
 
 func isGrokVideoUsageResult(result *OpenAIForwardResult, billingModels []string) bool {
@@ -815,6 +819,18 @@ func (s *OpenAIGatewayService) HasVideoPricingForRequest(
 	if s == nil || s.billingService == nil || apiKey == nil {
 		return false
 	}
+	if IsSeedanceVideoModel(billingModel) {
+		if apiKeyHasConfiguredVideoModelPrice(apiKey, billingModel, resolution) {
+			return true
+		}
+		if refreshed := s.apiKeyWithFreshGroupMediaPricing(ctx, apiKey); refreshed != apiKey {
+			return apiKeyHasConfiguredVideoModelPrice(refreshed, billingModel, resolution)
+		}
+		return false
+	}
+	if apiKeyHasConfiguredVideoPrice(apiKey, billingModel, resolution) {
+		return true
+	}
 	if _, ok := getDefaultGrokImagineVideoPrice(billingModel, resolution); ok {
 		return true
 	}
@@ -827,9 +843,6 @@ func (s *OpenAIGatewayService) HasVideoPricingForRequest(
 			(resolved.Mode == BillingModePerRequest || resolved.Mode == BillingModeImage || resolved.Mode == BillingModeVideo) {
 			return true
 		}
-	}
-	if apiKeyHasConfiguredVideoPrice(apiKey, billingModel, resolution) {
-		return true
 	}
 	if refreshed := s.apiKeyWithFreshGroupMediaPricing(ctx, apiKey); refreshed != apiKey {
 		return apiKeyHasConfiguredVideoPrice(refreshed, billingModel, resolution)
@@ -850,6 +863,9 @@ func (s *OpenAIGatewayService) calculateOpenAIVideoCost(
 	}
 	resolution := NormalizeVideoBillingResolutionOrDefault(result.VideoResolution)
 	durationSeconds := NormalizeVideoBillingDurationSecondsOrDefault(result.VideoDurationSeconds)
+	if apiKeyHasConfiguredVideoModelPrice(apiKey, billingModel, resolution) {
+		return s.billingService.CalculateVideoCost(billingModel, resolution, videoCount, durationSeconds, videoPriceConfigFromAPIKey(apiKey), multiplier)
+	}
 	resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey)
 	if resolved != nil && resolved.Source == PricingSourceGroup && resolved.Mode == BillingModeVideo {
 		gid := apiKey.Group.ID

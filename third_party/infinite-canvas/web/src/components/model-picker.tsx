@@ -96,9 +96,9 @@ function emptyModelLabel(config: AiConfig, capability?: ModelCapability) {
 
 function ModelLabel({ config, model }: { config: AiConfig; model: string }) {
     return (
-        <span className="flex min-w-0 items-center gap-2">
+        <span className="flex w-full min-w-0 items-center gap-2">
             <ModelIcon model={model} />
-            <span className="truncate">{modelOptionLabel(config, model)}</span>
+            <span className="min-w-0 flex-1 truncate">{modelOptionLabel(config, model)}</span>
         </span>
     );
 }
