@@ -791,6 +791,57 @@ func TestEmbeddedFrontendBypassesBareVideoAPIRoutes(t *testing.T) {
 	}
 }
 
+func TestEmbeddedFrontendBypassesRegionRestrictedRoute(t *testing.T) {
+	provider := &mockSettingsProvider{settings: map[string]string{"test": "value"}}
+	server, err := NewFrontendServer(provider)
+	require.NoError(t, err)
+
+	middlewares := []struct {
+		name       string
+		middleware gin.HandlerFunc
+	}{
+		{name: "frontend_server", middleware: server.Middleware()},
+		{name: "legacy", middleware: ServeEmbeddedFrontend()},
+	}
+
+	for _, middleware := range middlewares {
+		t.Run(middleware.name, func(t *testing.T) {
+			for _, method := range []string{http.MethodGet, http.MethodHead} {
+				t.Run(method, func(t *testing.T) {
+					router := gin.New()
+					router.Use(middleware.middleware)
+					nextCalled := false
+					router.Handle(method, "/region-restricted", func(c *gin.Context) {
+						nextCalled = true
+						c.Header("X-Test-Handler", "region-restricted")
+						if method == http.MethodHead {
+							c.Status(http.StatusOK)
+							return
+						}
+						c.String(http.StatusOK, "region-restricted-handler")
+					})
+
+					w := httptest.NewRecorder()
+					req := httptest.NewRequest(method, "/region-restricted?lang=zh", nil)
+					router.ServeHTTP(w, req)
+
+					require.True(t, nextCalled)
+					require.Equal(t, http.StatusOK, w.Code)
+					require.Equal(t, "region-restricted", w.Header().Get("X-Test-Handler"))
+					if method == http.MethodHead {
+						require.Empty(t, w.Body.String())
+					} else {
+						require.Equal(t, "region-restricted-handler", w.Body.String())
+					}
+				})
+			}
+		})
+	}
+
+	require.True(t, shouldBypassEmbeddedFrontend("/region-restricted"))
+	require.False(t, shouldBypassEmbeddedFrontend("/region-restricted/anything"))
+}
+
 func TestNewFrontendServer(t *testing.T) {
 	t.Run("creates_server_successfully", func(t *testing.T) {
 		provider := &mockSettingsProvider{
