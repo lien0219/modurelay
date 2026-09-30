@@ -3,9 +3,13 @@ import { enableAutoUnmount, mount } from '@vue/test-utils'
 import UserDashboardRecentUsage from '../UserDashboardRecentUsage.vue'
 import type { UsageLog } from '@/types'
 
-vi.mock('vue-i18n', () => ({
-  useI18n: () => ({ t: (key: string) => key }),
-}))
+vi.mock('vue-i18n', async () => {
+  const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
+  return {
+    ...actual,
+    useI18n: () => ({ t: (key: string) => key }),
+  }
+})
 
 vi.mock('@/components/common/LoadingSpinner.vue', () => ({ default: { template: '<div />' } }))
 vi.mock('@/components/common/EmptyState.vue', () => ({ default: { template: '<div />' } }))

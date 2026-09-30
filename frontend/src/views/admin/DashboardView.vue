@@ -339,9 +339,24 @@
 
           <!-- User Usage Trend (Full Width) -->
           <div data-reveal class="card p-4">
-            <h3 class="mb-4 text-sm font-semibold text-gray-900 dark:text-white">
-              {{ t('admin.dashboard.recentUsage') }} (Top 12)
-            </h3>
+            <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <h3 class="min-w-0 text-sm font-semibold text-gray-900 dark:text-white">
+                {{ t('admin.dashboard.recentUsage') }} (Top 12)
+              </h3>
+              <div class="ml-auto flex gap-1" role="group" :aria-label="t('admin.dashboard.recentUsage')">
+                <button
+                  v-for="metric in (['tokens', 'actual_cost'] as const)"
+                  :key="metric"
+                  type="button"
+                  class="btn btn-sm min-h-11 whitespace-nowrap"
+                  :class="userTrendMetric === metric ? 'btn-primary' : 'btn-secondary'"
+                  :aria-pressed="userTrendMetric === metric"
+                  @click="setUserTrendMetric(metric)"
+                >
+                  {{ t(metric === 'tokens' ? 'admin.dashboard.tokens' : 'admin.dashboard.actualSpending') }}
+                </button>
+              </div>
+            </div>
             <div class="h-64">
               <div v-if="userTrendLoading" class="flex h-full items-center justify-center">
                 <LoadingSpinner size="md" />
@@ -452,6 +467,7 @@ const rankingError = ref(false)
 const trendData = ref<TrendDataPoint[]>([])
 const modelStats = ref<ModelStat[]>([])
 const userTrend = ref<UserUsageTrendPoint[]>([])
+const userTrendMetric = ref<'tokens' | 'actual_cost'>('tokens')
 const rankingItems = ref<UserSpendingRankingItem[]>([])
 const rankingTotalActualCost = ref(0)
 const rankingTotalRequests = ref(0)
@@ -520,7 +536,7 @@ const lineOptions = computed(() => ({
       },
       callbacks: {
         label: (context: any) => {
-          return `${context.dataset.label}: ${formatTokens(context.raw)}`
+          return `${context.dataset.label}: ${formatUserTrendValue(Number(context.raw))}`
         }
       }
     }
@@ -546,7 +562,7 @@ const lineOptions = computed(() => ({
         font: {
           size: 10
         },
-        callback: (value: string | number) => formatTokens(Number(value))
+        callback: (value: string | number) => formatUserTrendValue(Number(value))
       }
     }
   }
@@ -580,7 +596,7 @@ const userTrendChartData = computed(() => {
     if (!userGroups.has(key)) {
       userGroups.set(key, { name: getDisplayName(point), data: new Map() })
     }
-    userGroups.get(key)!.data.set(point.date, point.tokens)
+    userGroups.get(key)!.data.set(point.date, userTrendMetric.value === 'tokens' ? point.tokens : point.actual_cost)
   })
 
   const sortedDates = Array.from(allDates).sort()
@@ -609,6 +625,9 @@ const userTrendChartData = computed(() => {
 })
 
 // Format helpers
+const formatUserTrendValue = (value: number): string =>
+  userTrendMetric.value === 'tokens' ? formatTokens(value) : `$${formatCost(value)}`
+
 const formatTokens = (value: number | undefined): string => {
   if (value === undefined || value === null) return '0'
   if (value >= 1_000_000_000) {
@@ -720,6 +739,13 @@ const loadDashboardSnapshot = async (includeStats: boolean) => {
   }
 }
 
+const setUserTrendMetric = (metric: 'tokens' | 'actual_cost') => {
+  if (userTrendMetric.value === metric) return
+  userTrendMetric.value = metric
+  userTrend.value = []
+  loadUsersTrend()
+}
+
 const loadUsersTrend = async () => {
   const currentSeq = ++usersTrendLoadSeq
   userTrendLoading.value = true
@@ -728,7 +754,8 @@ const loadUsersTrend = async () => {
       start_date: startDate.value,
       end_date: endDate.value,
       granularity: granularity.value,
-      limit: 12
+      limit: 12,
+      metric: userTrendMetric.value
     })
     if (currentSeq !== usersTrendLoadSeq) return
     userTrend.value = response.trend || []
