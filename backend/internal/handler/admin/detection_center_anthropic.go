@@ -47,6 +47,9 @@ func probeAnthropicBasic(ctx context.Context, target *detectionTarget, model str
 	if err != nil || result.StatusCode < 200 || result.StatusCode >= 300 {
 		return failedProbe("anthropic.basic", "基础 Messages", "Protocol", "BASE_REQUEST_FAILED", "基础 Messages 请求未通过", classifyHTTPFailure(result, err, target), .99, ev)
 	}
+	if annotateAnthropicRefusal(result, target.apiKey, &ev) {
+		return anthropicRefusedProbe("anthropic.basic", "基础 Messages", "Protocol", "Anthropic 探针被模型安全策略拒绝，无法据此判断 Messages 响应能力", ev)
+	}
 	if extractAnthropicText(result.Body) == "" {
 		return failedProbe("anthropic.basic", "基础 Messages", "Protocol", "RESPONSE_SHAPE_MISMATCH", "HTTP 2xx 但没有可解析文本块", "content[] 未包含有效 type=text 输出", .99, ev)
 	}
@@ -74,34 +77,62 @@ func probeAnthropicStreaming(ctx context.Context, target *detectionTarget, model
 }
 
 func probeAnthropicTools(ctx context.Context, target *detectionTarget, model string) detectionProbeResult {
-	body := anthropicMessageBody(model, "Call detection_probe with code TOOL_OK. Do not answer in text.", 128)
+	body := anthropicMessageBody(model, "Use the sum_numbers tool with a=17 and b=25. Do not answer in text.", 128)
 	body["tools"] = []any{map[string]any{
-		"name":        "detection_probe",
-		"description": "Protocol conformance probe",
+		"name":        "sum_numbers",
+		"description": "Add two integers and return their sum.",
 		"input_schema": map[string]any{
 			"type":                 "object",
-			"properties":           map[string]any{"code": map[string]any{"type": "string"}},
-			"required":             []string{"code"},
+			"properties":           map[string]any{"a": map[string]any{"type": "integer"}, "b": map[string]any{"type": "integer"}},
+			"required":             []string{"a", "b"},
 			"additionalProperties": false,
 		},
 	}}
-	body["tool_choice"] = map[string]any{"type": "tool", "name": "detection_probe"}
+	body["tool_choice"] = map[string]any{"type": "tool", "name": "sum_numbers"}
 	result, err := target.doJSON(ctx, detectionProtocolAnthropic, http.MethodPost, "/v1/messages", nil, body)
-	ev := requestEvidence("强制 Tool Use", "返回 tool_use=detection_probe 且 input.code=TOOL_OK", result, target)
+	ev := requestEvidence("安全的确定性 Tool Use", "返回 tool_use=sum_numbers 且 input.a=17、input.b=25", result, target)
 	if err != nil || result.StatusCode < 200 || result.StatusCode >= 300 {
 		return unavailableProbe("anthropic.tools", "Tool Calling", "Tools", "模型或接口未接受 Tool Use："+classifyHTTPFailure(result, err, target), ev)
 	}
 	root := parseJSONMap(result.Body)
+	foundToolUse := false
 	for _, item := range sliceValue(root["content"]) {
 		block := mapValue(item)
-		if stringValue(block["type"]) == "tool_use" && stringValue(block["name"]) == "detection_probe" {
-			if stringValue(mapValue(block["input"])["code"]) == "TOOL_OK" {
-				return detectionProbeResult{ID: "anthropic.tools", Name: "Tool Calling", Category: "Tools", Status: "success", Confidence: 1, Summary: "强制工具调用和参数结构已验证", Evidence: []detectionEvidence{ev}}
-			}
-			return detectionProbeResult{ID: "anthropic.tools", Name: "Tool Calling", Category: "Tools", Status: "partial", Confidence: .96, Summary: "产生了 tool_use，但参数约束不一致", ReasonCode: "TOOL_ARGUMENT_MISMATCH", Evidence: []detectionEvidence{ev}}
+		if stringValue(block["type"]) != "tool_use" {
+			continue
 		}
+		foundToolUse = true
+		input := mapValue(block["input"])
+		if stringValue(block["name"]) != "sum_numbers" ||
+			!detectionIntegerEquals(input["a"], 17) || !detectionIntegerEquals(input["b"], 25) {
+			continue
+		}
+		if stopReason, exists := root["stop_reason"]; exists && stringValue(stopReason) != "tool_use" {
+			observedStopReason := stringValue(stopReason)
+			if observedStopReason == "" {
+				observedStopReason = "<non-string>"
+			}
+			ev.Actual = "tool_use=sum_numbers, input.a=17, input.b=25, stop_reason=" + sanitizeDetectionText(observedStopReason, target.apiKey, 48)
+			return detectionProbeResult{ID: "anthropic.tools", Name: "Tool Calling", Category: "Tools", Status: "partial", Confidence: .9, Summary: "工具和参数正确，但终止原因为非 tool_use", ReasonCode: "TOOL_TERMINATION_MISMATCH", Evidence: []detectionEvidence{ev}}
+		}
+		ev.Actual = "tool_use=sum_numbers, input.a=17, input.b=25"
+		summary := "强制工具调用和参数结构已验证"
+		if _, exists := root["stop_reason"]; exists {
+			ev.Actual += ", stop_reason=tool_use"
+			summary = "强制工具调用、参数结构和终止语义均已验证"
+		}
+		return detectionProbeResult{ID: "anthropic.tools", Name: "Tool Calling", Category: "Tools", Status: "success", Confidence: 1, Summary: summary, Evidence: []detectionEvidence{ev}}
 	}
-	return failedProbe("anthropic.tools", "Tool Calling", "Tools", "TOOL_BLOCK_MISSING", "HTTP 2xx 但没有真正产生 tool_use", "工具字段可能被忽略，或模型自由作答", .99, ev)
+	if foundToolUse {
+		return detectionProbeResult{ID: "anthropic.tools", Name: "Tool Calling", Category: "Tools", Status: "partial", Confidence: .96, Summary: "产生了 tool_use，但工具名或参数不符合要求", ReasonCode: "TOOL_ARGUMENT_MISMATCH", Evidence: []detectionEvidence{ev}}
+	}
+	if annotateAnthropicRefusal(result, target.apiKey, &ev) {
+		return anthropicRefusedProbe("anthropic.tools", "Tool Calling", "Tools", "Tool Calling 探针被模型安全策略拒绝，无法据此判断工具调用能力", ev)
+	}
+	failed := failedProbe("anthropic.tools", "Tool Calling", "Tools", "TOOL_BLOCK_MISSING", "HTTP 2xx 但没有真正产生 tool_use", "tools/tool_choice 可能被中转层过滤，模型没有执行强制工具调用，或响应转换层丢失 tool_use", .99, ev)
+	failed.PossibleCauses = []string{"tools/tool_choice 可能被中转层过滤", "模型没有执行强制工具调用", "响应转换层丢失 tool_use"}
+	failed.Recommendations = []string{"检查脱敏后的 outbound 请求是否保留 tools 和 tool_choice", "对照直连上游返回的原始 tool_use 结构"}
+	return failed
 }
 
 func probeAnthropicStructured(ctx context.Context, target *detectionTarget, model string) detectionProbeResult {
@@ -125,6 +156,11 @@ func probeAnthropicStructured(ctx context.Context, target *detectionTarget, mode
 	invalidBody["output_config"] = map[string]any{"format": map[string]any{"type": "__modurelay_invalid_output_format__", "schema": schema}}
 	invalid, invalidErr := target.doJSON(ctx, detectionProtocolAnthropic, http.MethodPost, "/v1/messages", nil, invalidBody)
 	invalidEv := requestEvidence("非法 output format 负向探针", "HTTP 4xx", invalid, target)
+	validRefused := annotateAnthropicRefusal(valid, target.apiKey, &validEv)
+	invalidRefused := annotateAnthropicRefusal(invalid, target.apiKey, &invalidEv)
+	if validRefused || invalidRefused {
+		return anthropicRefusedProbe("anthropic.structured_outputs", "Structured Outputs", "Structured Output", "Structured Outputs 探针被模型安全策略拒绝，无法据此判断该项能力", validEv, invalidEv)
+	}
 
 	if validErr != nil || valid.StatusCode < 200 || valid.StatusCode >= 300 {
 		return unavailableProbe("anthropic.structured_outputs", "Structured Outputs", "Structured Output", "合法 JSON Schema 请求未被接受："+classifyHTTPFailure(valid, validErr, target), validEv, invalidEv)
@@ -160,6 +196,11 @@ func probeAnthropicThinking(ctx context.Context, target *detectionTarget, model 
 	invalidBody["thinking"] = map[string]any{"type": "__modurelay_invalid_thinking_type__"}
 	invalid, invalidErr := target.doJSON(ctx, detectionProtocolAnthropic, http.MethodPost, "/v1/messages", nil, invalidBody)
 	invalidEv := requestEvidence("非法 thinking.type 负向探针", "HTTP 4xx", invalid, target)
+	validRefused := annotateAnthropicRefusal(valid, target.apiKey, &validEv)
+	invalidRefused := annotateAnthropicRefusal(invalid, target.apiKey, &invalidEv)
+	if validRefused || invalidRefused {
+		return anthropicRefusedProbe("anthropic.adaptive_thinking", "Adaptive Thinking", "Reasoning", "Adaptive Thinking 探针被模型安全策略拒绝，无法据此判断该项能力", validEv, invalidEv)
+	}
 
 	if validErr != nil || valid.StatusCode < 200 || valid.StatusCode >= 300 {
 		return unavailableProbe("anthropic.adaptive_thinking", "Adaptive Thinking", "Reasoning", "adaptive thinking 请求未被接受："+classifyHTTPFailure(valid, validErr, target), validEv, invalidEv)
@@ -207,6 +248,11 @@ func probeAnthropicCitations(ctx context.Context, target *detectionTarget, model
 	}}}
 	conflict, conflictErr := target.doJSON(ctx, detectionProtocolAnthropic, http.MethodPost, "/v1/messages", nil, conflictBody)
 	conflictEv := requestEvidence("Citations + Structured Outputs 冲突负向探针", "官方不兼容组合应返回 HTTP 4xx", conflict, target)
+	validRefused := annotateAnthropicRefusal(valid, target.apiKey, &validEv)
+	conflictRefused := annotateAnthropicRefusal(conflict, target.apiKey, &conflictEv)
+	if validRefused || conflictRefused {
+		return anthropicRefusedProbe("anthropic.citations", "Citations", "Citations", "Citations 探针被模型安全策略拒绝，无法据此判断该项能力", validEv, conflictEv)
+	}
 
 	if validErr != nil || valid.StatusCode < 200 || valid.StatusCode >= 300 {
 		return unavailableProbe("anthropic.citations", "Citations", "Citations", "citations 请求未被当前模型/接口接受："+classifyHTTPFailure(valid, validErr, target), validEv, conflictEv)
@@ -244,6 +290,11 @@ func probeAnthropicPromptCache(ctx context.Context, target *detectionTarget, mod
 	second, secondErr := target.doJSON(ctx, detectionProtocolAnthropic, http.MethodPost, "/v1/messages", nil, body)
 	firstEv := requestEvidence("Prompt Caching 首次请求", "应建立可验证的缓存写入证据", first, target)
 	secondEv := requestEvidence("Prompt Caching 重复请求", "相同长前缀在 TTL 内应出现 cache_read_input_tokens > 0", second, target)
+	firstRefused := annotateAnthropicRefusal(first, target.apiKey, &firstEv)
+	secondRefused := annotateAnthropicRefusal(second, target.apiKey, &secondEv)
+	if firstRefused || secondRefused {
+		return anthropicRefusedProbe("anthropic.prompt_cache", "Prompt Caching", "Caching", "Prompt Caching 探针被模型安全策略拒绝，无法据此判断缓存能力", firstEv, secondEv)
+	}
 	if firstErr != nil || secondErr != nil || first.StatusCode < 200 || first.StatusCode >= 300 || second.StatusCode < 200 || second.StatusCode >= 300 {
 		return inconclusiveProbe("anthropic.prompt_cache", "Prompt Caching", "Caching", "两次缓存探针未全部成功，无法可靠判定", firstEv, secondEv)
 	}
@@ -272,6 +323,11 @@ func probeAnthropicUndeclaredCache(ctx context.Context, target *detectionTarget,
 	second, secondErr := target.doJSON(ctx, detectionProtocolAnthropic, http.MethodPost, "/v1/messages", nil, body)
 	firstEv := requestEvidence("无 cache_control 首次请求", "只记录缓存 usage，不预设来源", first, target)
 	secondEv := requestEvidence("无 cache_control 重复请求", "若出现缓存字段，仅作为隐式/注入缓存线索", second, target)
+	firstRefused := annotateAnthropicRefusal(first, target.apiKey, &firstEv)
+	secondRefused := annotateAnthropicRefusal(second, target.apiKey, &secondEv)
+	if firstRefused || secondRefused {
+		return anthropicRefusedProbe("anthropic.undeclared_cache", "自动缓存探测", "Caching", "自动缓存探针被模型安全策略拒绝，无法据此判断缓存 activity", firstEv, secondEv)
+	}
 	if firstErr != nil || secondErr != nil || first.StatusCode < 200 || first.StatusCode >= 300 || second.StatusCode < 200 || second.StatusCode >= 300 {
 		return inconclusiveProbe("anthropic.undeclared_cache", "自动缓存探测", "Caching", "A/B 请求未全部成功，无法观察", firstEv, secondEv)
 	}
@@ -323,6 +379,11 @@ func probeAnthropicContextManagement(ctx context.Context, target *detectionTarge
 	invalidBody["context_management"] = map[string]any{"edits": []any{map[string]any{"type": "__modurelay_invalid_edit_type__"}}}
 	invalid, invalidErr := target.doJSON(ctx, detectionProtocolAnthropic, http.MethodPost, "/v1/messages", headers, invalidBody)
 	invalidEv := requestEvidence("非法 edit type 负向探针", "HTTP 4xx", invalid, target)
+	validRefused := annotateAnthropicRefusal(valid, target.apiKey, &validEv)
+	invalidRefused := annotateAnthropicRefusal(invalid, target.apiKey, &invalidEv)
+	if validRefused || invalidRefused {
+		return anthropicRefusedProbe("anthropic.context_management", "Context Management", "Context", "Context Management 探针被模型安全策略拒绝，无法据此判断该项能力", validEv, invalidEv)
+	}
 
 	if validErr != nil || valid.StatusCode < 200 || valid.StatusCode >= 300 {
 		return unavailableProbe("anthropic.context_management", "Context Management", "Context", "合法 Context Management 请求未被接受："+classifyHTTPFailure(valid, validErr, target), validEv, invalidEv)
