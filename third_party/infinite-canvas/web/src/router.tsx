@@ -1,16 +1,20 @@
+import { lazy, Suspense } from "react";
 import { createBrowserRouter, Outlet } from "react-router-dom";
+import { LoaderCircle } from "lucide-react";
 
 import { AnalyticsTracker } from "@/components/layout/analytics-tracker";
 import UserLayout from "@/layouts/user-layout";
-import AssetsPage from "@/pages/assets";
-import CanvasPage from "@/pages/canvas";
-import CanvasProjectPage from "@/pages/canvas/project";
-import ConfigPage from "@/pages/config";
-import HomePage from "@/pages/home";
-import ImagePage from "@/pages/image";
 import NotFound from "@/pages/not-found";
-import PromptsPage from "@/pages/prompts";
-import VideoPage from "@/pages/video";
+import i18n from "@/i18n";
+
+const AssetsPage = lazy(() => import("@/pages/assets"));
+const CanvasPage = lazy(() => import("@/pages/canvas"));
+const CanvasProjectPage = lazy(() => import("@/pages/canvas/project"));
+const ConfigPage = lazy(() => import("@/pages/config"));
+const HomePage = lazy(() => import("@/pages/home"));
+const ImagePage = lazy(() => import("@/pages/image"));
+const PromptsPage = lazy(() => import("@/pages/prompts"));
+const VideoPage = lazy(() => import("@/pages/video"));
 
 export const router = createBrowserRouter(
     [
@@ -18,7 +22,16 @@ export const router = createBrowserRouter(
             element: (
                 <UserLayout>
                     <AnalyticsTracker />
-                    <Outlet />
+                    <Suspense
+                        fallback={
+                            <main className="flex h-full items-center justify-center bg-background text-muted-foreground" role="status" aria-live="polite">
+                                <LoaderCircle className="size-5 animate-spin" aria-hidden="true" />
+                                <span className="sr-only">{i18n.t("prompts.loading")}</span>
+                            </main>
+                        }
+                    >
+                        <Outlet />
+                    </Suspense>
                 </UserLayout>
             ),
             children: [

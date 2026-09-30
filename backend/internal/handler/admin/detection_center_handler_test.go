@@ -61,6 +61,13 @@ func TestSummarizeDetectionProbes(t *testing.T) {
 	require.Equal(t, 1, s.Unavailable)
 }
 
+func TestSummarizeDetectionProbesKeepsInconclusiveOutOfFailed(t *testing.T) {
+	s := summarizeDetectionProbes([]detectionProbeResult{{Status: "inconclusive"}})
+	require.Equal(t, 1, s.Total)
+	require.Equal(t, 1, s.Inconclusive)
+	require.Zero(t, s.Failed)
+}
+
 func TestOpenAIMediaEndpointForModel(t *testing.T) {
 	kind, endpoint := openAIMediaEndpointForModel("seedance-2.0")
 	require.Equal(t, "视频", kind)

@@ -75,6 +75,42 @@ server:
     - ::1/128
 ```
 
+## Password-login abuse protection
+
+The application has a Redis-backed login protection layer in front of
+`POST /api/v1/auth/login`. Runtime thresholds are managed from
+**Admin > System Settings > Security > Login Security**.
+
+Secure defaults are:
+
+- 20 login requests per minute per IPv4 address or IPv6 /64.
+- IPv6 privacy/rotating addresses are grouped by /64.
+- After CAPTCHA succeeds, 5 rejected passwords for the same account + source
+  within 30 minutes create a 30-minute source-specific cooldown.
+- 20 rejected passwords for one account across all sources within 30 minutes
+  create a 30-minute account-wide password-login cooldown.
+- CAPTCHA failures never increment password-failure counters.
+- A successful password clears only the source-specific failure history; the
+  account-wide history is retained until its TTL expires so one successful
+  login cannot erase a distributed attack.
+- Cooldowns live only in Redis. They do not change the user's database status
+  and do not disable password recovery.
+- When **Require MFA for administrators** is enabled, administrator password
+  sign-in must continue through TOTP. Configured Passkey sign-in remains
+  available. Enabling the switch requires the acting administrator to already
+  have TOTP configured.
+
+Authentication entrypoints fail closed if Redis is unavailable. Repeated
+requests rejected by an already-active cooldown are not appended to the audit
+table; the threshold-crossing event is retained with failure counts and block
+scope. This prevents a brute-force attempt from becoming an audit-log write
+amplification attack.
+
+Login rate limiting relies on the same security client-IP resolution used by
+audit logs and session binding. Therefore the trusted-proxy configuration above
+is part of the security boundary. Do not enable raw forwarded-header
+compatibility on an origin that is directly reachable from the Internet.
+
 ## Nginx baseline
 
 Define shared zones in the `http` block. Tune rates to measured legitimate

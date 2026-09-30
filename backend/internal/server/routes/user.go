@@ -21,6 +21,9 @@ func RegisterUserRoutes(
 	panelRateLimiter *middleware.PanelRateLimiter,
 	cfg *config.Config,
 ) {
+	if h != nil && h.Totp != nil {
+		h.Totp.SetSettingService(settingService)
+	}
 	if h.SMS != nil {
 		v1.POST("/sms/webhooks/:provider", h.SMS.Webhook)
 		// Service icons are deliberately provider-neutral on the user surface.

@@ -133,6 +133,86 @@ func inconclusiveProbe(id, name, category, summary string, evidence ...detection
 	return detectionProbeResult{ID: id, Name: name, Category: category, Status: "inconclusive", Confidence: 0.55, Summary: summary, ReasonCode: "INCONCLUSIVE", Evidence: evidence}
 }
 
+func detectionIntegerEquals(value any, expected int64) bool {
+	switch number := value.(type) {
+	case float64:
+		return number == float64(expected)
+	case float32:
+		return number == float32(expected)
+	case int:
+		return int64(number) == expected
+	case int64:
+		return number == expected
+	case json.Number:
+		parsed, err := number.Int64()
+		return err == nil && parsed == expected
+	default:
+		return false
+	}
+}
+
+func annotateAnthropicRefusal(result detectionHTTPResult, apiKey string, evidence *detectionEvidence) bool {
+	if result.StatusCode < 200 || result.StatusCode >= 300 {
+		return false
+	}
+
+	root := parseJSONMap(result.Body)
+	stopReason := strings.ToLower(stringValue(root["stop_reason"]))
+	stopDetails := mapValue(root["stop_details"])
+	detailsType := strings.ToLower(stringValue(stopDetails["type"]))
+	if stopReason != "refusal" && detailsType != "refusal" {
+		return false
+	}
+
+	details := make([]string, 0, 3)
+	if stopReason == "refusal" {
+		details = append(details, "stop_reason=refusal")
+	}
+	if detailsType == "refusal" {
+		details = append(details, "stop_details.type=refusal")
+	}
+	if category := safeAnthropicRefusalCategory(stringValue(stopDetails["category"]), apiKey); category != "" {
+		details = append(details, "category="+category)
+	}
+	evidence.Actual = strings.Join(details, ", ")
+	// Refusal explanations can contain arbitrary upstream text; keep only the
+	// structured refusal fields above in the report.
+	evidence.ResponseExcerpt = ""
+	return true
+}
+
+func safeAnthropicRefusalCategory(value, apiKey string) string {
+	value = strings.TrimSpace(value)
+	if value == "" || len(value) > 32 {
+		return ""
+	}
+	for _, char := range value {
+		if (char < 'a' || char > 'z') && (char < 'A' || char > 'Z') &&
+			(char < '0' || char > '9') && char != '_' && char != '-' {
+			return ""
+		}
+	}
+	if sanitizeDetectionText(value, apiKey, 32) != value {
+		return ""
+	}
+	return strings.ToLower(value)
+}
+
+func anthropicRefusedProbe(id, name, category, summary string, evidence ...detectionEvidence) detectionProbeResult {
+	result := inconclusiveProbe(id, name, category, summary, evidence...)
+	result.ReasonCode = "PROBE_REFUSED"
+	result.PossibleCauses = []string{
+		"模型安全策略拒绝了当前探针",
+		"上游存在额外内容安全策略",
+		"中转层对请求内容执行了安全审查",
+	}
+	result.Recommendations = []string{
+		"使用安全、无风险的探针重新检测",
+		"若探针仍被拒绝，再对比直连上游行为",
+	}
+	return result
+}
+
 func notApplicableProbe(id, name, category, summary string) detectionProbeResult {
 	return detectionProbeResult{ID: id, Name: name, Category: category, Status: "not_applicable", Confidence: 1, Summary: summary}
 }

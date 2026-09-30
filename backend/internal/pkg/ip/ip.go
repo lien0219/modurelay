@@ -191,6 +191,31 @@ func normalizeValidIP(value string) string {
 	return parsed.String()
 }
 
+// NormalizeAbuseIP returns a stable security-bucket address.
+// IPv4 stays per-host. When groupIPv6By64 is enabled, IPv6 privacy/rotating
+// addresses in the same /64 share one abuse-prevention bucket.
+func NormalizeAbuseIP(value string, groupIPv6By64 bool) string {
+	normalized := normalizeValidIP(value)
+	if normalized == "" {
+		return ""
+	}
+	parsed := net.ParseIP(normalized)
+	if parsed == nil {
+		return ""
+	}
+	if !groupIPv6By64 || parsed.To4() != nil {
+		return parsed.String()
+	}
+	ip16 := parsed.To16()
+	if ip16 == nil {
+		return ""
+	}
+	for i := 8; i < len(ip16); i++ {
+		ip16[i] = 0
+	}
+	return net.IP(ip16).String()
+}
+
 // privateNets contains the private/loopback ranges skipped while selecting a
 // public address from a legacy X-Forwarded-For chain.
 var privateNets []*net.IPNet
