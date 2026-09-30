@@ -24,6 +24,10 @@ func RegisterAuthRoutes(
 ) {
 	// 创建速率限制器
 	rateLimiter := middleware.NewRateLimiter(redisClient)
+	loginAbuse := service.NewLoginAbuseProtector(redisClient, settingService)
+	if h != nil && h.Auth != nil {
+		h.Auth.SetLoginAbuseProtector(loginAbuse)
+	}
 
 	// 公开接口
 	auth := v1.Group("/auth")
@@ -35,9 +39,9 @@ func RegisterAuthRoutes(
 		auth.POST("/register", rateLimiter.LimitWithOptions("auth-register", 5, time.Minute, middleware.RateLimitOptions{
 			FailureMode: middleware.RateLimitFailClose,
 		}), h.Auth.Register)
-		auth.POST("/login", rateLimiter.LimitWithOptions("auth-login", 20, time.Minute, middleware.RateLimitOptions{
-			FailureMode: middleware.RateLimitFailClose,
-		}), h.Auth.Login)
+		// 登录使用专用的分布式 abuse protector：阈值可由管理员配置，
+		// IPv6 默认按 /64 聚合；Redis/设置读取异常 fail-close。
+		auth.POST("/login", h.Auth.LoginRequestRateLimit, h.Auth.Login)
 		auth.POST("/login/2fa", rateLimiter.LimitWithOptions("auth-login-2fa", 20, time.Minute, middleware.RateLimitOptions{
 			FailureMode: middleware.RateLimitFailClose,
 		}), h.Auth.Login2FA)

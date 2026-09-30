@@ -1755,6 +1755,8 @@
             </div>
           </div>
 
+          <LoginSecuritySettings />
+
           <!-- API Key IP ACL Settings -->
           <div class="card">
             <div
@@ -9215,6 +9217,7 @@ import ProxySelector from "@/components/common/ProxySelector.vue";
 import ImageUpload from "@/components/common/ImageUpload.vue";
 import BackupSettings from "@/views/admin/BackupView.vue";
 import EmailTemplateEditor from "@/views/admin/settings/EmailTemplateEditor.vue";
+import LoginSecuritySettings from "@/views/admin/settings/LoginSecuritySettings.vue";
 import OpenAIFastPolicyUserSelector from "@/views/admin/settings/OpenAIFastPolicyUserSelector.vue";
 import { useClipboard } from "@/composables/useClipboard";
 import {

@@ -294,3 +294,19 @@ func TestGetSecurityClientIPRequestSnapshotOverridesLiveFallback(t *testing.T) {
 		})
 	}
 }
+
+
+func TestNormalizeAbuseIPGroupsIPv6By64(t *testing.T) {
+	require.Equal(t, "203.0.113.9", NormalizeAbuseIP("203.0.113.9", true))
+	require.Equal(t, "2001:db8:abcd:1234::", NormalizeAbuseIP("2001:db8:abcd:1234:1111::1", true))
+	require.Equal(
+		t,
+		NormalizeAbuseIP("2001:db8:abcd:1234:1111::1", true),
+		NormalizeAbuseIP("2001:db8:abcd:1234:ffff::2", true),
+	)
+	require.NotEqual(
+		t,
+		NormalizeAbuseIP("2001:db8:abcd:1234:1111::1", false),
+		NormalizeAbuseIP("2001:db8:abcd:1234:ffff::2", false),
+	)
+}

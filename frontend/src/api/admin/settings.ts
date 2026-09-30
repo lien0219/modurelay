@@ -1351,6 +1351,38 @@ export async function updateRateLimit429CooldownSettings(
   return data;
 }
 
+// ==================== Login Security Settings ====================
+
+export interface LoginSecuritySettings {
+  enabled: boolean;
+  request_limit_per_minute: number;
+  group_ipv6_by_64: boolean;
+  account_ip_failure_limit: number;
+  account_ip_window_minutes: number;
+  account_ip_block_minutes: number;
+  account_failure_limit: number;
+  account_window_minutes: number;
+  account_block_minutes: number;
+  admin_mfa_required: boolean;
+}
+
+export async function getLoginSecuritySettings(): Promise<LoginSecuritySettings> {
+  const { data } = await apiClient.get<LoginSecuritySettings>(
+    "/admin/settings/login-security",
+  );
+  return data;
+}
+
+export async function updateLoginSecuritySettings(
+  settings: LoginSecuritySettings,
+): Promise<LoginSecuritySettings> {
+  const { data } = await apiClient.put<LoginSecuritySettings>(
+    "/admin/settings/login-security",
+    settings,
+  );
+  return data;
+}
+
 // ==================== Panel Rate Limit Settings ====================
 
 /**
@@ -1633,6 +1665,8 @@ export const settingsAPI = {
   updateOverloadCooldownSettings,
   getRateLimit429CooldownSettings,
   updateRateLimit429CooldownSettings,
+  getLoginSecuritySettings,
+  updateLoginSecuritySettings,
   getPanelRateLimitSettings,
   updatePanelRateLimitSettings,
   getDownstreamBillingProbeSettings,

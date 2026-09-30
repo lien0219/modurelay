@@ -78,7 +78,7 @@ func RegisterAdminRoutes(
 		registerPromoCodeRoutes(admin, h)
 
 		// 系统设置
-		registerSettingsRoutes(admin, h)
+		registerSettingsRoutes(admin, h, stepUpAuth)
 
 		// 数据管理
 		registerDataManagementRoutes(admin, h, stepUpAuth)
@@ -652,7 +652,7 @@ func registerPromoCodeRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	}
 }
 
-func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAuth middleware.StepUpAuthMiddleware) {
 	adminSettings := admin.Group("/settings")
 	{
 		adminSettings.GET("", h.Admin.Setting.GetSettings)
@@ -680,6 +680,9 @@ func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		// 面板 API 限流配置
 		adminSettings.GET("/panel-rate-limit", h.Admin.Setting.GetPanelRateLimitSettings)
 		adminSettings.PUT("/panel-rate-limit", h.Admin.Setting.UpdatePanelRateLimitSettings)
+		// 登录安全：密码爆破防护、IPv6 /64、管理员 MFA。
+		adminSettings.GET("/login-security", h.Admin.Setting.GetLoginSecuritySettings)
+		adminSettings.PUT("/login-security", gin.HandlerFunc(stepUpAuth), h.Admin.Setting.UpdateLoginSecuritySettings)
 		// 下游倍率探测披露开关
 		adminSettings.GET("/downstream-billing-probe", h.Admin.Setting.GetDownstreamBillingProbeSettings)
 		adminSettings.PUT("/downstream-billing-probe", h.Admin.Setting.UpdateDownstreamBillingProbeSettings)

@@ -58,6 +58,8 @@ var auditExtraAllowedKeys = map[string]struct{}{
 	"http_status": {}, "latency_ms": {}, "token_applied": {}, "retryable": {},
 	"event_id": {}, "requested_count": {}, "deleted_events": {}, "deleted_jobs": {},
 	"matched_count": {}, "snapshot_max_id": {}, "filter_hash": {}, "confirm": {},
+	"limit_scope": {}, "retry_after_seconds": {}, "account_ip_failures": {},
+	"account_failures": {}, "account_ip_blocked": {}, "account_blocked": {},
 }
 
 // SetAuditExtra adds allowlisted, scalar details to the current audit entry.
@@ -138,6 +140,7 @@ var auditActionOverrides = map[string]string{
 	"PUT /api/v1/admin/backups/s3-config":                     "admin.backups.s3_config.update",
 	"POST /api/v1/admin/settings/admin-api-key/regenerate":    "admin.admin_api_key.regenerate",
 	"DELETE /api/v1/admin/settings/admin-api-key":             "admin.admin_api_key.delete",
+	"PUT /api/v1/admin/settings/login-security":              "admin.login_security.update",
 	"PUT /api/v1/admin/prompt-audit/config":                   "admin.prompt_audit.config.update",
 	"POST /api/v1/admin/prompt-audit/endpoints/probe":         "admin.prompt_audit.endpoint.probe",
 	"DELETE /api/v1/admin/prompt-audit/events/:id":            "admin.prompt_audit.event.delete",
