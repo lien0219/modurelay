@@ -226,6 +226,11 @@ export default {
         adminMfa: '管理员强制 MFA',
         adminMfaHint: '开启后，管理员使用密码登录必须继续完成 TOTP；管理员仍可使用已配置的 Passkey 登录。',
         adminMfaWarning: '为防止管理员被锁在后台外，开启前当前管理员必须已配置 TOTP；保存此安全设置在启用 step-up 时也需要二次验证。',
+        errors: {
+          ADMIN_MFA_TOTP_REQUIRED: '请先为当前管理员配置 TOTP，再开启管理员强制 MFA。',
+          ADMIN_MFA_TOTP_FEATURE_REQUIRED: '请先启用系统 TOTP，再开启管理员强制 MFA。'
+        },
+        invalidSettings: '请检查数值范围，并确保账号全局密码错误次数不低于账号 + 来源限制。',
         save: '保存登录安全设置',
         saved: '登录安全设置已保存',
         loadFailed: '加载登录安全设置失败',

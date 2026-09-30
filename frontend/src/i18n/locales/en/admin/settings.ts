@@ -226,6 +226,11 @@ export default {
         adminMfa: 'Require MFA for administrators',
         adminMfaHint: 'When enabled, administrator password sign-in must continue through TOTP. Configured Passkey sign-in remains available.',
         adminMfaWarning: 'To prevent administrator lockout, the current administrator must already have TOTP configured before this can be enabled. Saving is also step-up protected when step-up is enabled.',
+        errors: {
+          ADMIN_MFA_TOTP_REQUIRED: 'Configure TOTP for the current administrator before enabling mandatory administrator MFA.',
+          ADMIN_MFA_TOTP_FEATURE_REQUIRED: 'Enable system TOTP before enabling mandatory administrator MFA.'
+        },
+        invalidSettings: 'Check the allowed ranges and make sure the account-wide failure limit is at least the account + source limit.',
         save: 'Save login security',
         saved: 'Login security settings saved',
         loadFailed: 'Failed to load login security settings',

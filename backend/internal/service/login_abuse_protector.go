@@ -11,8 +11,6 @@ import (
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	ippkg "github.com/Wei-Shaw/sub2api/internal/pkg/ip"
-
-	"github.com/redis/go-redis/v9"
 )
 
 var ErrAdminMFARequired = infraerrors.Forbidden(
@@ -22,33 +20,19 @@ var ErrAdminMFARequired = infraerrors.Forbidden(
 
 const loginSecuritySettingsCacheTTL = 15 * time.Second
 
-var loginRequestRateScript = redis.NewScript(`
-local current = redis.call('INCR', KEYS[1])
-local ttl = redis.call('PTTL', KEYS[1])
-if current == 1 or ttl < 0 then
-  redis.call('PEXPIRE', KEYS[1], ARGV[1])
-  ttl = tonumber(ARGV[1])
-end
-return {current, ttl}
-`)
-
-var loginFailureScript = redis.NewScript(`
-local current = redis.call('INCR', KEYS[1])
-local ttl = redis.call('PTTL', KEYS[1])
-if current == 1 or ttl < 0 then
-  redis.call('PEXPIRE', KEYS[1], ARGV[1])
-  ttl = tonumber(ARGV[1])
-end
-local blocked = 0
-if current >= tonumber(ARGV[2]) then
-  redis.call('SET', KEYS[2], '1', 'PX', ARGV[3])
-  blocked = 1
-end
-return {current, ttl, blocked}
-`)
+// LoginAbuseStore owns the distributed atomic operations used by login
+// protection. The service keeps identity normalization and policy decisions
+// independent from the Redis implementation.
+type LoginAbuseStore interface {
+	IncrementRequest(ctx context.Context, counterKey, auditKey string, window time.Duration, limit int) (count int64, ttl time.Duration, audit bool, err error)
+	CredentialBlockTTLs(ctx context.Context, accountIPKey, accountKey string) (accountIPTTL, accountTTL time.Duration, err error)
+	IncrementFailure(ctx context.Context, counterKey, blockKey string, window time.Duration, limit int, blockTTL time.Duration) (count int64, blocked bool, err error)
+	DeleteCounter(ctx context.Context, key string) error
+}
 
 type LoginAbuseDecision struct {
 	Blocked    bool
+	Audit      bool
 	RetryAfter time.Duration
 	Scope      string
 }
@@ -63,6 +47,8 @@ type LoginFailureOutcome struct {
 type cachedLoginSecuritySettings struct {
 	settings  LoginSecuritySettings
 	expiresAt time.Time
+	valid     bool
+	loadErr   error
 }
 
 // LoginAbuseProtector stores distributed login-abuse counters in Redis.
@@ -70,16 +56,17 @@ type cachedLoginSecuritySettings struct {
 // failures can be counted only after CAPTCHA succeeds and password validation
 // actually fails.
 type LoginAbuseProtector struct {
-	redis          *redis.Client
+	store          LoginAbuseStore
 	settingService *SettingService
 
+	loadMu  sync.Mutex
 	cacheMu sync.RWMutex
 	cache   cachedLoginSecuritySettings
 }
 
-func NewLoginAbuseProtector(redisClient *redis.Client, settingService *SettingService) *LoginAbuseProtector {
+func NewLoginAbuseProtector(store LoginAbuseStore, settingService *SettingService) *LoginAbuseProtector {
 	return &LoginAbuseProtector{
-		redis:          redisClient,
+		store:          store,
 		settingService: settingService,
 	}
 }
@@ -91,8 +78,27 @@ func (p *LoginAbuseProtector) Settings(ctx context.Context) (LoginSecuritySettin
 	now := time.Now()
 	p.cacheMu.RLock()
 	if !p.cache.expiresAt.IsZero() && now.Before(p.cache.expiresAt) {
-		settings := p.cache.settings
+		settings, loadErr, valid := p.cache.settings, p.cache.loadErr, p.cache.valid
 		p.cacheMu.RUnlock()
+		if !valid {
+			return LoginSecuritySettings{}, loadErr
+		}
+		return settings, nil
+	}
+	p.cacheMu.RUnlock()
+
+	p.loadMu.Lock()
+	defer p.loadMu.Unlock()
+
+	// Another request may have refreshed the setting while this request waited.
+	now = time.Now()
+	p.cacheMu.RLock()
+	if !p.cache.expiresAt.IsZero() && now.Before(p.cache.expiresAt) {
+		settings, loadErr, valid := p.cache.settings, p.cache.loadErr, p.cache.valid
+		p.cacheMu.RUnlock()
+		if !valid {
+			return LoginSecuritySettings{}, loadErr
+		}
 		return settings, nil
 	}
 	p.cacheMu.RUnlock()
@@ -103,20 +109,20 @@ func (p *LoginAbuseProtector) Settings(ctx context.Context) (LoginSecuritySettin
 		settings, err = p.settingService.GetLoginSecuritySettings(ctx)
 	}
 	if err != nil {
-		p.cacheMu.RLock()
-		if !p.cache.expiresAt.IsZero() {
-			stale := p.cache.settings
-			p.cacheMu.RUnlock()
-			return stale, nil
+		p.cacheMu.Lock()
+		p.cache = cachedLoginSecuritySettings{
+			expiresAt: time.Now().Add(loginSecuritySettingsCacheTTL),
+			loadErr:   err,
 		}
-		p.cacheMu.RUnlock()
+		p.cacheMu.Unlock()
 		return LoginSecuritySettings{}, err
 	}
 
 	p.cacheMu.Lock()
 	p.cache = cachedLoginSecuritySettings{
 		settings:  *settings,
-		expiresAt: now.Add(loginSecuritySettingsCacheTTL),
+		expiresAt: time.Now().Add(loginSecuritySettingsCacheTTL),
+		valid:     true,
 	}
 	p.cacheMu.Unlock()
 	return *settings, nil
@@ -159,37 +165,28 @@ func (p *LoginAbuseProtector) CheckRequestRate(ctx context.Context, clientIP str
 	if !settings.Enabled {
 		return LoginAbuseDecision{}, nil
 	}
-	if p.redis == nil {
-		return LoginAbuseDecision{}, fmt.Errorf("login security redis is not configured")
+	if p.store == nil {
+		return LoginAbuseDecision{}, fmt.Errorf("login abuse store is not configured")
 	}
 
 	window := time.Minute
-	values, err := loginRequestRateScript.Run(
+	count, ttl, audit, err := p.store.IncrementRequest(
 		ctx,
-		p.redis,
-		[]string{loginRequestKey(clientIP, settings)},
-		window.Milliseconds(),
-	).Slice()
+		loginRequestKey(clientIP, settings),
+		loginRequestKey(clientIP, settings)+":audit",
+		window,
+		settings.RequestLimitPerMinute,
+	)
 	if err != nil {
 		return LoginAbuseDecision{}, fmt.Errorf("check login request rate: %w", err)
-	}
-	if len(values) < 2 {
-		return LoginAbuseDecision{}, fmt.Errorf("invalid login request rate response")
-	}
-	count, err := loginScriptInt64(values[0])
-	if err != nil {
-		return LoginAbuseDecision{}, err
-	}
-	ttlMs, err := loginScriptInt64(values[1])
-	if err != nil {
-		return LoginAbuseDecision{}, err
 	}
 	if count <= int64(settings.RequestLimitPerMinute) {
 		return LoginAbuseDecision{}, nil
 	}
 	return LoginAbuseDecision{
 		Blocked:    true,
-		RetryAfter: positiveDuration(time.Duration(ttlMs)*time.Millisecond, window),
+		Audit:      audit,
+		RetryAfter: positiveDuration(ttl, window),
 		Scope:      "ip",
 	}, nil
 }
@@ -202,25 +199,22 @@ func (p *LoginAbuseProtector) CheckCredentialsAllowed(ctx context.Context, email
 	if !settings.Enabled {
 		return LoginAbuseDecision{}, nil
 	}
-	if p.redis == nil {
-		return LoginAbuseDecision{}, fmt.Errorf("login security redis is not configured")
+	if p.store == nil {
+		return LoginAbuseDecision{}, fmt.Errorf("login abuse store is not configured")
 	}
 
 	accountIPBlock := loginAccountIPBase(email, clientIP, settings) + ":block"
 	accountBlock := loginAccountBase(email) + ":block"
-	pipe := p.redis.Pipeline()
-	accountIPTTL := pipe.PTTL(ctx, accountIPBlock)
-	accountTTL := pipe.PTTL(ctx, accountBlock)
-	_, err = pipe.Exec(ctx)
-	if err != nil && err != redis.Nil {
+	accountIPTTL, accountTTL, err := p.store.CredentialBlockTTLs(ctx, accountIPBlock, accountBlock)
+	if err != nil {
 		return LoginAbuseDecision{}, fmt.Errorf("check login credential blocks: %w", err)
 	}
 
-	if ttl := accountTTL.Val(); ttl > 0 {
-		return LoginAbuseDecision{Blocked: true, RetryAfter: ttl, Scope: "account"}, nil
+	if accountTTL > 0 {
+		return LoginAbuseDecision{Blocked: true, RetryAfter: accountTTL, Scope: "account"}, nil
 	}
-	if ttl := accountIPTTL.Val(); ttl > 0 {
-		return LoginAbuseDecision{Blocked: true, RetryAfter: ttl, Scope: "account_ip"}, nil
+	if accountIPTTL > 0 {
+		return LoginAbuseDecision{Blocked: true, RetryAfter: accountIPTTL, Scope: "account_ip"}, nil
 	}
 	return LoginAbuseDecision{}, nil
 }
@@ -233,44 +227,35 @@ func (p *LoginAbuseProtector) RecordPasswordFailure(ctx context.Context, email, 
 	if !settings.Enabled {
 		return LoginFailureOutcome{}, nil
 	}
-	if p.redis == nil {
-		return LoginFailureOutcome{}, fmt.Errorf("login security redis is not configured")
+	if p.store == nil {
+		return LoginFailureOutcome{}, fmt.Errorf("login abuse store is not configured")
 	}
 
 	accountIPBase := loginAccountIPBase(email, clientIP, settings)
 	accountBase := loginAccountBase(email)
 
-	accountIPValues, err := loginFailureScript.Run(
+	accountIPCount, accountIPBlocked, err := p.store.IncrementFailure(
 		ctx,
-		p.redis,
-		[]string{accountIPBase + ":fail", accountIPBase + ":block"},
-		(time.Duration(settings.AccountIPWindowMinutes)*time.Minute).Milliseconds(),
+		accountIPBase+":fail",
+		accountIPBase+":block",
+		time.Duration(settings.AccountIPWindowMinutes)*time.Minute,
 		settings.AccountIPFailureLimit,
-		(time.Duration(settings.AccountIPBlockMinutes)*time.Minute).Milliseconds(),
-	).Slice()
+		time.Duration(settings.AccountIPBlockMinutes)*time.Minute,
+	)
 	if err != nil {
 		return LoginFailureOutcome{}, fmt.Errorf("record account-ip login failure: %w", err)
 	}
 
-	accountValues, err := loginFailureScript.Run(
+	accountCount, accountBlocked, err := p.store.IncrementFailure(
 		ctx,
-		p.redis,
-		[]string{accountBase + ":fail", accountBase + ":block"},
-		(time.Duration(settings.AccountWindowMinutes)*time.Minute).Milliseconds(),
+		accountBase+":fail",
+		accountBase+":block",
+		time.Duration(settings.AccountWindowMinutes)*time.Minute,
 		settings.AccountFailureLimit,
-		(time.Duration(settings.AccountBlockMinutes)*time.Minute).Milliseconds(),
-	).Slice()
+		time.Duration(settings.AccountBlockMinutes)*time.Minute,
+	)
 	if err != nil {
 		return LoginFailureOutcome{}, fmt.Errorf("record account login failure: %w", err)
-	}
-
-	accountIPCount, accountIPBlocked, err := loginFailureResult(accountIPValues)
-	if err != nil {
-		return LoginFailureOutcome{}, err
-	}
-	accountCount, accountBlocked, err := loginFailureResult(accountValues)
-	if err != nil {
-		return LoginFailureOutcome{}, err
 	}
 	return LoginFailureOutcome{
 		AccountIPCount:   accountIPCount,
@@ -285,49 +270,17 @@ func (p *LoginAbuseProtector) RecordSuccess(ctx context.Context, email, clientIP
 	if err != nil {
 		return err
 	}
-	if !settings.Enabled || p.redis == nil {
+	if !settings.Enabled || p.store == nil {
 		return nil
 	}
 	// Successful authentication clears only the source-specific failure counter.
 	// The global account counter intentionally remains so a distributed attack
 	// cannot erase history with one successful login.
 	base := loginAccountIPBase(email, clientIP, settings)
-	if err := p.redis.Del(ctx, base+":fail").Err(); err != nil {
+	if err := p.store.DeleteCounter(ctx, base+":fail"); err != nil {
 		return fmt.Errorf("clear account-ip login failures: %w", err)
 	}
 	return nil
-}
-
-func loginFailureResult(values []any) (int64, bool, error) {
-	if len(values) < 3 {
-		return 0, false, fmt.Errorf("invalid login failure script response")
-	}
-	count, err := loginScriptInt64(values[0])
-	if err != nil {
-		return 0, false, err
-	}
-	blocked, err := loginScriptInt64(values[2])
-	if err != nil {
-		return 0, false, err
-	}
-	return count, blocked == 1, nil
-}
-
-func loginScriptInt64(value any) (int64, error) {
-	switch v := value.(type) {
-	case int64:
-		return v, nil
-	case int:
-		return int64(v), nil
-	case string:
-		var parsed int64
-		if _, err := fmt.Sscan(v, &parsed); err != nil {
-			return 0, fmt.Errorf("parse login script integer: %w", err)
-		}
-		return parsed, nil
-	default:
-		return 0, fmt.Errorf("unexpected login script value type %T", value)
-	}
 }
 
 func positiveDuration(value, fallback time.Duration) time.Duration {

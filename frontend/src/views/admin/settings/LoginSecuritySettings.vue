@@ -37,17 +37,17 @@
               {{ t("admin.settings.loginSecurity.enabledHint") }}
             </p>
           </div>
-          <Toggle v-model="form.enabled" />
+          <Toggle v-model="form.enabled" :label="t('admin.settings.loginSecurity.enabled')" />
         </div>
 
         <div v-if="form.enabled" class="space-y-6 border-t border-gray-100 pt-5 dark:border-dark-700">
           <div class="grid grid-cols-1 gap-5 sm:grid-cols-2">
             <div>
-              <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              <label for="login-security-request-limit" class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
                 {{ t("admin.settings.loginSecurity.requestLimit") }}
               </label>
-              <div class="flex items-center gap-2">
-                <input v-model.number="form.request_limit_per_minute" type="number" min="5" max="300" class="input w-32" data-testid="login-security-request-limit" />
+              <div class="flex flex-wrap items-center gap-2">
+                <input id="login-security-request-limit" v-model.number="form.request_limit_per_minute" type="number" min="5" max="300" step="1" class="input w-32 max-w-full" data-testid="login-security-request-limit" />
                 <span class="text-sm text-gray-500 dark:text-gray-400">
                   {{ t("admin.settings.loginSecurity.perMinute") }}
                 </span>
@@ -66,7 +66,7 @@
                   {{ t("admin.settings.loginSecurity.ipv6GroupHint") }}
                 </p>
               </div>
-              <Toggle v-model="form.group_ipv6_by_64" />
+              <Toggle v-model="form.group_ipv6_by_64" :label="t('admin.settings.loginSecurity.ipv6Group')" />
             </div>
           </div>
 
@@ -79,20 +79,20 @@
             </p>
             <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
               <div>
-                <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ t("admin.settings.loginSecurity.failureLimit") }}</label>
-                <input v-model.number="form.account_ip_failure_limit" type="number" min="3" max="20" class="input w-full" />
+                <label for="login-security-account-ip-failure-limit" class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ t("admin.settings.loginSecurity.failureLimit") }}</label>
+                <input id="login-security-account-ip-failure-limit" v-model.number="form.account_ip_failure_limit" type="number" min="3" max="20" step="1" class="input w-full" />
               </div>
               <div>
-                <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ t("admin.settings.loginSecurity.windowMinutes") }}</label>
+                <label for="login-security-account-ip-window" class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ t("admin.settings.loginSecurity.windowMinutes") }}</label>
                 <div class="flex items-center gap-2">
-                  <input v-model.number="form.account_ip_window_minutes" type="number" min="5" max="120" class="input w-full" />
+                  <input id="login-security-account-ip-window" v-model.number="form.account_ip_window_minutes" type="number" min="5" max="120" step="1" class="input w-full" />
                   <span class="text-sm text-gray-500">{{ t("admin.settings.loginSecurity.minuteUnit") }}</span>
                 </div>
               </div>
               <div>
-                <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ t("admin.settings.loginSecurity.blockMinutes") }}</label>
+                <label for="login-security-account-ip-block" class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ t("admin.settings.loginSecurity.blockMinutes") }}</label>
                 <div class="flex items-center gap-2">
-                  <input v-model.number="form.account_ip_block_minutes" type="number" min="5" max="1440" class="input w-full" />
+                  <input id="login-security-account-ip-block" v-model.number="form.account_ip_block_minutes" type="number" min="5" max="1440" step="1" class="input w-full" />
                   <span class="text-sm text-gray-500">{{ t("admin.settings.loginSecurity.minuteUnit") }}</span>
                 </div>
               </div>
@@ -108,48 +108,52 @@
             </p>
             <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
               <div>
-                <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ t("admin.settings.loginSecurity.failureLimit") }}</label>
-                <input v-model.number="form.account_failure_limit" type="number" :min="form.account_ip_failure_limit" max="200" class="input w-full" />
+                <label for="login-security-account-failure-limit" class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ t("admin.settings.loginSecurity.failureLimit") }}</label>
+                <input id="login-security-account-failure-limit" v-model.number="form.account_failure_limit" type="number" :min="form.account_ip_failure_limit" max="200" step="1" class="input w-full" />
               </div>
               <div>
-                <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ t("admin.settings.loginSecurity.windowMinutes") }}</label>
+                <label for="login-security-account-window" class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ t("admin.settings.loginSecurity.windowMinutes") }}</label>
                 <div class="flex items-center gap-2">
-                  <input v-model.number="form.account_window_minutes" type="number" min="5" max="240" class="input w-full" />
+                  <input id="login-security-account-window" v-model.number="form.account_window_minutes" type="number" min="5" max="240" step="1" class="input w-full" />
                   <span class="text-sm text-gray-500">{{ t("admin.settings.loginSecurity.minuteUnit") }}</span>
                 </div>
               </div>
               <div>
-                <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ t("admin.settings.loginSecurity.blockMinutes") }}</label>
+                <label for="login-security-account-block" class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ t("admin.settings.loginSecurity.blockMinutes") }}</label>
                 <div class="flex items-center gap-2">
-                  <input v-model.number="form.account_block_minutes" type="number" min="5" max="1440" class="input w-full" />
+                  <input id="login-security-account-block" v-model.number="form.account_block_minutes" type="number" min="5" max="1440" step="1" class="input w-full" />
                   <span class="text-sm text-gray-500">{{ t("admin.settings.loginSecurity.minuteUnit") }}</span>
                 </div>
               </div>
             </div>
           </div>
 
-          <div class="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-900/20">
-            <div class="flex items-start justify-between gap-4">
-              <div>
-                <label class="font-medium text-amber-900 dark:text-amber-200">
-                  {{ t("admin.settings.loginSecurity.adminMfa") }}
-                </label>
-                <p class="mt-1 text-sm text-amber-700 dark:text-amber-300">
-                  {{ t("admin.settings.loginSecurity.adminMfaHint") }}
-                </p>
-                <p class="mt-2 text-xs text-amber-700 dark:text-amber-300">
-                  {{ t("admin.settings.loginSecurity.adminMfaWarning") }}
-                </p>
-              </div>
-              <Toggle v-model="form.admin_mfa_required" />
-            </div>
-          </div>
+        </div>
 
-          <div class="flex justify-end">
-            <button type="button" class="btn btn-primary" :disabled="saving" @click="save">
-              {{ saving ? t("common.saving") : t("admin.settings.loginSecurity.save") }}
-            </button>
+        <div class="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-900/20">
+          <div class="flex items-start justify-between gap-4">
+            <div class="min-w-0">
+              <p class="font-medium text-amber-900 dark:text-amber-200">
+                {{ t("admin.settings.loginSecurity.adminMfa") }}
+              </p>
+              <p class="mt-1 text-sm text-amber-700 dark:text-amber-300">
+                {{ t("admin.settings.loginSecurity.adminMfaHint") }}
+              </p>
+              <p class="mt-2 text-xs text-amber-700 dark:text-amber-300">
+                {{ t("admin.settings.loginSecurity.adminMfaWarning") }}
+              </p>
+            </div>
+            <Toggle v-model="form.admin_mfa_required" :label="t('admin.settings.loginSecurity.adminMfa')" />
           </div>
+        </div>
+
+        <p v-if="!settingsValid" role="alert" class="text-sm text-red-600 dark:text-red-400">
+          {{ t("admin.settings.loginSecurity.invalidSettings") }}
+        </p>
+        <div class="flex justify-end">
+          <button type="button" class="btn btn-primary" :disabled="saving || !settingsValid" @click="save">
+            {{ saving ? t("common.saving") : t("admin.settings.loginSecurity.save") }}
+          </button>
         </div>
       </template>
     </div>
@@ -159,7 +163,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { adminAPI } from "@/api";
 import type { LoginSecuritySettings } from "@/api/admin/settings";
@@ -168,13 +172,24 @@ import Toggle from "@/components/common/Toggle.vue";
 import TotpStepUpDialog from "@/components/auth/TotpStepUpDialog.vue";
 import { useAppStore } from "@/stores";
 import { useStepUp, isStepUpCancelled } from "@/composables/useStepUp";
-import { extractApiErrorMessage } from "@/utils/apiError";
+import { extractApiErrorMessage, extractI18nErrorMessage } from "@/utils/apiError";
 
 const { t } = useI18n();
 const appStore = useAppStore();
 const stepUp = useStepUp();
 const loading = ref(true);
 const saving = ref(false);
+const settingsValid = computed(() => {
+  const integerBetween = (value: number, min: number, max: number) =>
+    Number.isInteger(Number(value)) && Number(value) >= min && Number(value) <= max;
+  return integerBetween(form.request_limit_per_minute, 5, 300)
+    && integerBetween(form.account_ip_failure_limit, 3, 20)
+    && integerBetween(form.account_ip_window_minutes, 5, 120)
+    && integerBetween(form.account_ip_block_minutes, 5, 1440)
+    && integerBetween(form.account_failure_limit, Number(form.account_ip_failure_limit), 200)
+    && integerBetween(form.account_window_minutes, 5, 240)
+    && integerBetween(form.account_block_minutes, 5, 1440);
+});
 
 const form = reactive<LoginSecuritySettings>({
   enabled: true,
@@ -205,6 +220,7 @@ async function load() {
 }
 
 async function save() {
+  if (!settingsValid.value) return;
   saving.value = true;
   try {
     const payload: LoginSecuritySettings = {
@@ -222,7 +238,12 @@ async function save() {
     appStore.showSuccess(t("admin.settings.loginSecurity.saved"));
   } catch (err) {
     if (!isStepUpCancelled(err)) {
-      appStore.showError(extractApiErrorMessage(err, t("admin.settings.loginSecurity.saveFailed")));
+      appStore.showError(extractI18nErrorMessage(
+        err,
+        t,
+        "admin.settings.loginSecurity.errors",
+        extractApiErrorMessage(err, t("admin.settings.loginSecurity.saveFailed")),
+      ));
     }
   } finally {
     saving.value = false;

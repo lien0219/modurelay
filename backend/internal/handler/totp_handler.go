@@ -11,12 +11,19 @@ import (
 // TotpHandler handles TOTP-related requests
 type TotpHandler struct {
 	totpService *service.TotpService
+	settingSvc  *service.SettingService
 }
 
 // NewTotpHandler creates a new TotpHandler
 func NewTotpHandler(totpService *service.TotpService) *TotpHandler {
 	return &TotpHandler{
 		totpService: totpService,
+	}
+}
+
+func (h *TotpHandler) SetSettingService(settingSvc *service.SettingService) {
+	if h != nil {
+		h.settingSvc = settingSvc
 	}
 }
 
@@ -140,6 +147,22 @@ func (h *TotpHandler) Disable(c *gin.Context) {
 	if !ok {
 		response.Unauthorized(c, "User not authenticated")
 		return
+	}
+	role, _ := middleware2.GetUserRoleFromContext(c)
+	if role == string(service.RoleAdmin) {
+		if h.settingSvc == nil {
+			response.Error(c, 503, "Login protection is temporarily unavailable")
+			return
+		}
+		loginSecurity, err := h.settingSvc.GetLoginSecuritySettings(c.Request.Context())
+		if err != nil {
+			response.Error(c, 503, "Login protection is temporarily unavailable")
+			return
+		}
+		if loginSecurity.AdminMFARequired {
+			response.BadRequest(c, "Disable administrator MFA requirement before disabling TOTP")
+			return
+		}
 	}
 
 	var req TotpDisableRequest

@@ -27,7 +27,7 @@ type AuthHandler struct {
 	redeemService        *service.RedeemService
 	totpService          *service.TotpService
 	userAttributeService *service.UserAttributeService
-	loginAbuse          *service.LoginAbuseProtector
+	loginAbuse           *service.LoginAbuseProtector
 
 	dingTalkClientInstance *DingTalkClient
 	dingTalkClientMu       sync.Mutex

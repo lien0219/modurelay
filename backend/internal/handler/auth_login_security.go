@@ -1,10 +1,10 @@
 package handler
 
 import (
-	"errors"
 	"log/slog"
 	"net/http"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
@@ -13,6 +13,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
+
+const loginProtectionUnavailableAuditInterval = time.Minute
+
+var nextLoginProtectionUnavailableAudit atomic.Int64
 
 func (h *AuthHandler) SetLoginAbuseProtector(protector *service.LoginAbuseProtector) {
 	if h != nil {
@@ -25,24 +29,27 @@ func (h *AuthHandler) SetLoginAbuseProtector(protector *service.LoginAbuseProtec
 // counters are only touched after CAPTCHA succeeds.
 func (h *AuthHandler) LoginRequestRateLimit(c *gin.Context) {
 	if h == nil || h.loginAbuse == nil {
-		response.Error(c, http.StatusServiceUnavailable, "Login protection is temporarily unavailable")
+		respondLoginProtectionUnavailable(c)
 		c.Abort()
 		return
 	}
 	decision, err := h.loginAbuse.CheckRequestRate(c.Request.Context(), middleware2.SecurityClientIP(c))
 	if err != nil {
-		middleware2.SetAuditAction(c, "security.login.protection_unavailable")
-		middleware2.SetAuditExtra(c, map[string]any{"error_code": "LOGIN_PROTECTION_UNAVAILABLE"})
-		// Authentication entrypoints fail closed when Redis/security state is
-		// unavailable. Keep the historical 429 contract used by auth routes.
-		respondLoginRateLimited(c, time.Minute)
+		respondLoginProtectionUnavailable(c)
 		return
 	}
 	if decision.Blocked {
-		// The first configured number of attempts remain in the audit trail.
-		// Once the IP/net bucket is throttled, suppress repetitive 429 rows so
-		// an attack cannot turn the append-only audit table into a write DoS.
-		middleware2.SkipAudit(c)
+		if decision.Audit {
+			middleware2.SetAuditAction(c, "security.login.throttled")
+			middleware2.SetAuditExtra(c, map[string]any{
+				"limit_scope":         decision.Scope,
+				"retry_after_seconds": retryAfterSeconds(decision.RetryAfter),
+				"error_code":          "LOGIN_RATE_LIMITED",
+			})
+		} else {
+			// Keep one representative event per Redis request window.
+			middleware2.SkipAudit(c)
+		}
 		respondLoginRateLimited(c, decision.RetryAfter)
 		return
 	}
@@ -62,9 +69,7 @@ func (h *AuthHandler) preflightLoginSecurity(c *gin.Context, email string) bool 
 		middleware2.SecurityClientIP(c),
 	)
 	if err != nil {
-		middleware2.SetAuditAction(c, "security.login.protection_unavailable")
-		middleware2.SetAuditExtra(c, map[string]any{"error_code": "LOGIN_PROTECTION_UNAVAILABLE"})
-		response.Error(c, http.StatusServiceUnavailable, "Login protection is temporarily unavailable")
+		respondLoginProtectionUnavailable(c)
 		return false
 	}
 	if !decision.Blocked {
@@ -79,7 +84,7 @@ func (h *AuthHandler) preflightLoginSecurity(c *gin.Context, email string) bool 
 }
 
 func (h *AuthHandler) recordLoginFailure(c *gin.Context, email string, loginErr error) bool {
-	if h == nil || h.loginAbuse == nil || !errors.Is(loginErr, service.ErrInvalidCredentials) {
+	if h == nil || h.loginAbuse == nil || !service.IsPasswordMismatch(loginErr) {
 		return false
 	}
 	outcome, err := h.loginAbuse.RecordPasswordFailure(
@@ -88,9 +93,7 @@ func (h *AuthHandler) recordLoginFailure(c *gin.Context, email string, loginErr 
 		middleware2.SecurityClientIP(c),
 	)
 	if err != nil {
-		middleware2.SetAuditAction(c, "security.login.protection_unavailable")
-		middleware2.SetAuditExtra(c, map[string]any{"error_code": "LOGIN_PROTECTION_UNAVAILABLE"})
-		response.Error(c, http.StatusServiceUnavailable, "Login protection is temporarily unavailable")
+		respondLoginProtectionUnavailable(c)
 		return true
 	}
 	if outcome.AccountBlocked || outcome.AccountIPBlocked {
@@ -125,7 +128,7 @@ func (h *AuthHandler) enforceAdminPasswordMFA(c *gin.Context, user *service.User
 	}
 	settings, err := h.loginAbuse.Settings(c.Request.Context())
 	if err != nil {
-		response.Error(c, http.StatusServiceUnavailable, "Login protection is temporarily unavailable")
+		respondLoginProtectionUnavailable(c)
 		return false
 	}
 	if !settings.AdminMFARequired {
@@ -143,6 +146,24 @@ func (h *AuthHandler) enforceAdminPasswordMFA(c *gin.Context, user *service.User
 	middleware2.SetAuditExtra(c, map[string]any{"error_code": "ADMIN_MFA_REQUIRED"})
 	response.ErrorFrom(c, service.ErrAdminMFARequired)
 	return false
+}
+
+func respondLoginProtectionUnavailable(c *gin.Context) {
+	now := time.Now().UnixNano()
+	for {
+		next := nextLoginProtectionUnavailableAudit.Load()
+		if next > now {
+			middleware2.SkipAudit(c)
+			break
+		}
+		if nextLoginProtectionUnavailableAudit.CompareAndSwap(next, now+int64(loginProtectionUnavailableAuditInterval)) {
+			middleware2.SetAuditAction(c, "security.login.protection_unavailable")
+			middleware2.SetAuditExtra(c, map[string]any{"error_code": "LOGIN_PROTECTION_UNAVAILABLE"})
+			break
+		}
+	}
+	c.Abort()
+	response.Error(c, http.StatusServiceUnavailable, "Login protection is temporarily unavailable")
 }
 
 func respondLoginRateLimited(c *gin.Context, retryAfter time.Duration) {

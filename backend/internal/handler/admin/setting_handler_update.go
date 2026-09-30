@@ -793,6 +793,17 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 
 	// TOTP 双因素认证参数验证
 	// 只有手动配置了加密密钥才允许启用 TOTP 功能
+	if previousSettings.TotpEnabled && !req.TotpEnabled {
+		loginSecurity, err := h.settingService.GetLoginSecuritySettings(c.Request.Context())
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		if loginSecurity.AdminMFARequired {
+			response.BadRequest(c, "Disable administrator MFA requirement before disabling system TOTP")
+			return
+		}
+	}
 	if req.TotpEnabled && !previousSettings.TotpEnabled {
 		// 尝试启用 TOTP，检查加密密钥是否已手动配置
 		if !h.settingService.IsTotpEncryptionKeyConfigured() {

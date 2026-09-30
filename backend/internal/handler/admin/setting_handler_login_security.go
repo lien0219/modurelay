@@ -1,12 +1,26 @@
 package admin
 
 import (
+	"fmt"
+	"net/http"
+
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	servermiddleware "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
 )
+
+func validateAdminMFAUser(user *service.User) error {
+	if user == nil || !user.IsAdmin() || !user.TotpEnabled {
+		return fmt.Errorf("configure TOTP for the current administrator before requiring admin MFA")
+	}
+	return nil
+}
+
+func rejectAdminMFAConfiguration(c *gin.Context, reason, message string) {
+	response.ErrorWithDetails(c, http.StatusBadRequest, message, reason, nil)
+}
 
 // GetLoginSecuritySettings returns distributed password-login protection settings.
 func (h *SettingHandler) GetLoginSecuritySettings(c *gin.Context) {
@@ -29,8 +43,12 @@ func (h *SettingHandler) UpdateLoginSecuritySettings(c *gin.Context) {
 	}
 
 	if settings.AdminMFARequired {
-		if h.userService == nil || h.settingService == nil || !h.settingService.IsTotpEnabled(c.Request.Context()) {
-			response.BadRequest(c, "Enable system TOTP and configure TOTP for the current administrator before requiring admin MFA")
+		if h.settingService == nil || !h.settingService.IsTotpEnabled(c.Request.Context()) {
+			rejectAdminMFAConfiguration(c, "ADMIN_MFA_TOTP_FEATURE_REQUIRED", "Enable system TOTP before enabling mandatory administrator MFA")
+			return
+		}
+		if h.userService == nil {
+			rejectAdminMFAConfiguration(c, "ADMIN_MFA_TOTP_REQUIRED", "Configure TOTP for the current administrator before enabling mandatory administrator MFA")
 			return
 		}
 		subject, ok := servermiddleware.GetAuthSubjectFromContext(c)
@@ -43,8 +61,8 @@ func (h *SettingHandler) UpdateLoginSecuritySettings(c *gin.Context) {
 			response.ErrorFrom(c, err)
 			return
 		}
-		if user == nil || !user.IsAdmin() || !user.TotpEnabled {
-			response.BadRequest(c, "Configure TOTP for the current administrator before requiring admin MFA")
+		if err := validateAdminMFAUser(user); err != nil {
+			rejectAdminMFAConfiguration(c, "ADMIN_MFA_TOTP_REQUIRED", "Configure TOTP for the current administrator before enabling mandatory administrator MFA")
 			return
 		}
 	}

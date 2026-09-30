@@ -5,6 +5,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/handler"
 	"github.com/Wei-Shaw/sub2api/internal/middleware"
+	"github.com/Wei-Shaw/sub2api/internal/repository"
 	servermiddleware "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -24,7 +25,7 @@ func RegisterAuthRoutes(
 ) {
 	// 创建速率限制器
 	rateLimiter := middleware.NewRateLimiter(redisClient)
-	loginAbuse := service.NewLoginAbuseProtector(redisClient, settingService)
+	loginAbuse := service.NewLoginAbuseProtector(repository.NewRedisLoginAbuseStore(redisClient), settingService)
 	if h != nil && h.Auth != nil {
 		h.Auth.SetLoginAbuseProtector(loginAbuse)
 	}

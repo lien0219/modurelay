@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 )
 
 const settingKeyLoginSecuritySettings = "login_security_settings"
@@ -13,16 +12,16 @@ const settingKeyLoginSecuritySettings = "login_security_settings"
 // LoginSecuritySettings controls password-login abuse protection.
 // CAPTCHA failures are deliberately excluded from password-failure counters.
 type LoginSecuritySettings struct {
-	Enabled                  bool `json:"enabled"`
-	RequestLimitPerMinute    int  `json:"request_limit_per_minute"`
-	GroupIPv6By64            bool `json:"group_ipv6_by_64"`
-	AccountIPFailureLimit    int  `json:"account_ip_failure_limit"`
-	AccountIPWindowMinutes   int  `json:"account_ip_window_minutes"`
-	AccountIPBlockMinutes    int  `json:"account_ip_block_minutes"`
-	AccountFailureLimit      int  `json:"account_failure_limit"`
-	AccountWindowMinutes     int  `json:"account_window_minutes"`
-	AccountBlockMinutes      int  `json:"account_block_minutes"`
-	AdminMFARequired         bool `json:"admin_mfa_required"`
+	Enabled                bool `json:"enabled"`
+	RequestLimitPerMinute  int  `json:"request_limit_per_minute"`
+	GroupIPv6By64          bool `json:"group_ipv6_by_64"`
+	AccountIPFailureLimit  int  `json:"account_ip_failure_limit"`
+	AccountIPWindowMinutes int  `json:"account_ip_window_minutes"`
+	AccountIPBlockMinutes  int  `json:"account_ip_block_minutes"`
+	AccountFailureLimit    int  `json:"account_failure_limit"`
+	AccountWindowMinutes   int  `json:"account_window_minutes"`
+	AccountBlockMinutes    int  `json:"account_block_minutes"`
+	AdminMFARequired       bool `json:"admin_mfa_required"`
 }
 
 func DefaultLoginSecuritySettings() *LoginSecuritySettings {
@@ -86,12 +85,10 @@ func (s *SettingService) GetLoginSecuritySettings(ctx context.Context) (*LoginSe
 
 	settings := &LoginSecuritySettings{}
 	if err := json.Unmarshal([]byte(raw), settings); err != nil {
-		slog.Warn("invalid persisted login security settings; using secure defaults", "error", err)
-		return defaults, nil
+		return nil, fmt.Errorf("decode persisted login security settings: %w", err)
 	}
 	if err := validateLoginSecuritySettings(settings); err != nil {
-		slog.Warn("unsafe persisted login security settings; using secure defaults", "error", err)
-		return defaults, nil
+		return nil, fmt.Errorf("validate persisted login security settings: %w", err)
 	}
 	return settings, nil
 }
