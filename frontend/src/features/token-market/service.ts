@@ -1,74 +1,54 @@
-import { applyMockExchange, calculateExchangeDestination, validateExchangeBalance } from './domain'
-import { tokenMarketMockBootstrap } from './mockData'
+import { HttpTokenMarketRepository } from './adapters/httpRepository'
+import { MockTokenMarketRepository, resetTokenMarketMockRepository } from './adapters/mockRepository'
+import type { TokenMarketRepository } from './repository'
 import type {
   TokenExchangeExecuteRequest,
   TokenExchangeExecuteResult,
   TokenExchangeQuote,
   TokenExchangeQuoteRequest,
   TokenMarketBootstrap,
+  TokenMarketExchangeHistoryQuery,
+  TokenMarketExchangeRecord,
+  TokenMarketOrder,
+  TokenMarketOrderQuery,
+  TokenMarketPageResult,
+  TokenMarketProduct,
+  TokenMarketProductQuery,
   TokenMarketSearchResult,
   TokenMarketService,
+  TokenMarketWalletSnapshot,
 } from './types'
 
-const delay = (ms = 80) => new Promise<void>((resolve) => window.setTimeout(resolve, ms))
+export class CommerceTokenMarketService implements TokenMarketService {
+  constructor(private readonly repository: TokenMarketRepository) {}
 
-let state: TokenMarketBootstrap = structuredClone(tokenMarketMockBootstrap)
-
-function createId(prefix: string): string {
-  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
+  getBootstrap(): Promise<TokenMarketBootstrap> { return this.repository.getBootstrap() }
+  listProducts(query?: TokenMarketProductQuery): Promise<TokenMarketPageResult<TokenMarketProduct>> { return this.repository.listProducts(query) }
+  getProduct(id: string): Promise<TokenMarketProduct | null> { return this.repository.getProduct(id) }
+  listOrders(query?: TokenMarketOrderQuery): Promise<TokenMarketPageResult<TokenMarketOrder>> { return this.repository.listOrders(query) }
+  getWallet(): Promise<TokenMarketWalletSnapshot> { return this.repository.getWallet() }
+  listExchangeHistory(query?: TokenMarketExchangeHistoryQuery): Promise<TokenMarketPageResult<TokenMarketExchangeRecord>> { return this.repository.listExchangeHistory(query) }
+  quoteExchange(request: TokenExchangeQuoteRequest): Promise<TokenExchangeQuote> { return this.repository.quoteExchange(request) }
+  executeExchange(request: TokenExchangeExecuteRequest): Promise<TokenExchangeExecuteResult> { return this.repository.executeExchange(request) }
+  search(query: string): Promise<TokenMarketSearchResult> { return this.repository.search(query) }
 }
 
-class MockTokenMarketService implements TokenMarketService {
-  async getBootstrap(): Promise<TokenMarketBootstrap> {
-    await delay()
-    return structuredClone(state)
-  }
+export type TokenMarketDataSource = 'mock' | 'http'
 
-  async quoteExchange(request: TokenExchangeQuoteRequest): Promise<TokenExchangeQuote> {
-    await delay(60)
-    const error = validateExchangeBalance(state.wallet, request.direction, request.sourceAmount)
-    if (error) throw new Error(error)
-
-    return {
-      direction: request.direction,
-      sourceAmount: request.sourceAmount,
-      destinationAmount: calculateExchangeDestination(request.direction, request.sourceAmount, state.exchangeRate),
-      tokenPerBalanceUnit: state.exchangeRate,
-      quotedAt: new Date().toISOString(),
-      quoteId: createId('quote'),
-    }
-  }
-
-  async executeExchange(request: TokenExchangeExecuteRequest): Promise<TokenExchangeExecuteResult> {
-    await delay(100)
-    const quote = await this.quoteExchange({
-      direction: request.direction,
-      sourceAmount: request.sourceAmount,
-    })
-    state.wallet = applyMockExchange(state.wallet, quote)
-    return {
-      transactionId: createId('tx'),
-      wallet: structuredClone(state.wallet),
-    }
-  }
-
-  async search(query: string): Promise<TokenMarketSearchResult> {
-    await delay(70)
-    const q = query.trim().toLocaleLowerCase()
-    if (!q) return { products: [], merchants: [] }
-    return {
-      products: state.products.filter((item) => item.name.toLocaleLowerCase().includes(q)),
-      merchants: state.merchants.filter((item) => item.name.toLocaleLowerCase().includes(q)),
-    }
-  }
+export function createTokenMarketRepository(source: TokenMarketDataSource = resolveDataSource()): TokenMarketRepository {
+  return source === 'http' ? new HttpTokenMarketRepository() : new MockTokenMarketRepository()
 }
 
-export const tokenMarketService: TokenMarketService = new MockTokenMarketService()
+export function createTokenMarketService(source?: TokenMarketDataSource): TokenMarketService {
+  return new CommerceTokenMarketService(createTokenMarketRepository(source))
+}
 
-/**
- * Swap this export to an HTTP-backed implementation when the backend contracts
- * are ready. UI/store code should depend only on TokenMarketService.
- */
+function resolveDataSource(): TokenMarketDataSource {
+  return import.meta.env.VITE_TOKEN_MARKET_DATA_SOURCE === 'http' ? 'http' : 'mock'
+}
+
+export const tokenMarketService: TokenMarketService = createTokenMarketService()
+
 export function resetTokenMarketMockState(): void {
-  state = structuredClone(tokenMarketMockBootstrap)
+  resetTokenMarketMockRepository()
 }
