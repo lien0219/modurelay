@@ -3,6 +3,9 @@ import { describe, expect, it } from 'vitest'
 import CategoryGrid from '../components/CategoryGrid.vue'
 import ExchangePanel from '../components/ExchangePanel.vue'
 import FeaturedProducts from '../components/FeaturedProducts.vue'
+import TokenMarketAsyncState from '../components/TokenMarketAsyncState.vue'
+import TokenMarketSkeleton from '../components/TokenMarketSkeleton.vue'
+import TokenMarketStatePanel from '../components/TokenMarketStatePanel.vue'
 import WalletHeroCard from '../components/WalletHeroCard.vue'
 import type { TokenMarketCategory, TokenMarketMerchant, TokenMarketProduct, TokenMarketWalletSnapshot } from '../types'
 
@@ -65,5 +68,48 @@ describe('token market components', () => {
     await eye.trigger('click')
     expect(wrapper.emitted('toggle-visible')).toHaveLength(1)
     expect(wrapper.text()).toContain('10,000')
+  })
+
+  it('renders the shared skeleton for loading states', () => {
+    const wrapper = mount(TokenMarketAsyncState, {
+      props: { loading: true, skeleton: 'detail' },
+      slots: { default: '<div>ready</div>' },
+    })
+    expect(wrapper.findComponent(TokenMarketSkeleton).exists()).toBe(true)
+    expect(wrapper.text()).not.toContain('ready')
+  })
+
+  it('renders the shared empty state and hides page content', () => {
+    const wrapper = mount(TokenMarketAsyncState, {
+      props: {
+        empty: true,
+        emptyTitle: '暂无订单',
+        emptyDescription: '当前没有订单记录',
+      },
+      slots: { default: '<div>order-list</div>' },
+    })
+    expect(wrapper.findComponent(TokenMarketStatePanel).exists()).toBe(true)
+    expect(wrapper.text()).toContain('暂无订单')
+    expect(wrapper.text()).not.toContain('order-list')
+  })
+
+  it('emits retry from the shared error state', async () => {
+    const wrapper = mount(TokenMarketAsyncState, {
+      props: { error: 'network error' },
+    })
+    await wrapper.get('button').trigger('click')
+    expect(wrapper.emitted('retry')).toHaveLength(1)
+  })
+
+  it('renders the permission placeholder consistently', () => {
+    const wrapper = mount(TokenMarketAsyncState, {
+      props: {
+        forbidden: true,
+        forbiddenTitle: '需要商家权限',
+        forbiddenDescription: '当前账户尚未开通商家中心',
+      },
+    })
+    expect(wrapper.text()).toContain('需要商家权限')
+    expect(wrapper.text()).toContain('当前账户尚未开通商家中心')
   })
 })
