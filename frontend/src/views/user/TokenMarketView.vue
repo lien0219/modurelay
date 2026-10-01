@@ -46,23 +46,23 @@
           <small>{{ mode === 'balance' ? `≈ ¥ ${sourceValue || 0}` : `≈ ${(sourceValue || 0).toLocaleString()} T` }}</small>
         </div>
 
-        <button class="exchange-action primary" type="button" @click="openExchange">{{ mode === 'balance' ? '兑换 Token' : '兑换余额' }}</button>
+        <button class="exchange-action primary" type="button" :disabled="market.exchanging" @click="openExchange">{{ market.exchanging ? '处理中...' : mode === 'balance' ? '兑换 Token' : '兑换余额' }}</button>
         <button class="exchange-action secondary" type="button" @click="swapMode">{{ mode === 'balance' ? '兑换余额' : '兑换 Token' }}</button>
       </section>
 
       <button
         v-for="(category, index) in categories"
-        :key="category"
+        :key="category.id"
         class="hotspot category"
         :style="{ left: `${2.35 + index * 16.35}%` }"
         type="button"
-        :aria-label="category"
-        @click.stop="selectCategory(category)"
+        :aria-label="category.label"
+        @click.stop="selectCategory(category.label)"
       ></button>
 
       <button
         v-for="(product, index) in products"
-        :key="product.name"
+        :key="product.id"
         class="hotspot product"
         :style="{ left: `${2.4 + index * 12.68}%` }"
         type="button"
@@ -72,12 +72,12 @@
 
       <button
         v-for="(merchant, index) in merchants"
-        :key="merchant"
+        :key="merchant.id"
         class="hotspot merchant"
         :style="{ left: `${2.45 + index * 15.7}%` }"
         type="button"
-        :aria-label="merchant"
-        @click.stop="openMerchant(merchant)"
+        :aria-label="merchant.name"
+        @click.stop="openMerchant(merchant.name)"
       ></button>
 
       <button class="hotspot activity-more" type="button" aria-label="查看更多交易动态" @click.stop="openPanel('activity')"></button>
@@ -100,9 +100,9 @@
     </section>
 
     <Transition name="fade">
-      <div v-if="dialog" class="tm-overlay" @click.self="dialog = null">
+      <div v-if="dialog" class="tm-overlay" @click.self="closeDialog">
         <section class="tm-dialog">
-          <button class="close" type="button" aria-label="关闭" @click="dialog = null">×</button>
+          <button class="close" type="button" aria-label="关闭" @click="closeDialog">×</button>
 
           <template v-if="dialog.type === 'exchange'">
             <span class="eyebrow">QUICK EXCHANGE</span>
@@ -110,12 +110,12 @@
             <div class="exchange-summary">
               <strong>{{ mode === 'balance' ? `¥ ${sourceValue || 0}` : `${(sourceValue || 0).toLocaleString()} T` }}</strong>
               <span>→</span>
-              <strong>{{ mode === 'balance' ? `${outputValue.toLocaleString()} T` : `¥ ${outputValue.toFixed(2)}` }}</strong>
+              <strong>{{ mode === 'balance' ? `${quotedDestination.toLocaleString()} T` : `¥ ${quotedDestination.toFixed(2)}` }}</strong>
             </div>
-            <p>当前阶段只实现页面交互，确认后仅更新本页面 Mock 余额，不会产生真实扣款。</p>
+            <p>当前阶段通过 TokenMarketService 的 Mock 实现完成报价与执行。后续切换真实 API 时页面无需重写。</p>
             <div class="actions">
-              <button type="button" class="secondary-btn" @click="dialog = null">取消</button>
-              <button type="button" class="primary-btn" @click="confirmExchange">确认兑换</button>
+              <button type="button" class="secondary-btn" @click="closeDialog">取消</button>
+              <button type="button" class="primary-btn" :disabled="market.exchanging" @click="confirmExchange">{{ market.exchanging ? '处理中...' : '确认兑换' }}</button>
             </div>
           </template>
 
@@ -125,7 +125,7 @@
             <p>商品详情页、SKU、库存、购物车和 Token 支付接口将在交易系统后端完成后接入。</p>
             <div class="price">{{ dialog.price }} T</div>
             <div class="actions">
-              <button type="button" class="secondary-btn" @click="dialog = null">继续浏览</button>
+              <button type="button" class="secondary-btn" @click="closeDialog">继续浏览</button>
               <button type="button" class="primary-btn" @click="addCart(dialog.title)">加入购物车</button>
             </div>
           </template>
@@ -134,7 +134,7 @@
             <span class="eyebrow">TOKEN MARKET</span>
             <h2>{{ dialog.title }}</h2>
             <p>{{ dialog.message }}</p>
-            <button type="button" class="primary-btn full" @click="dialog = null">知道了</button>
+            <button type="button" class="primary-btn full" @click="closeDialog">知道了</button>
           </template>
         </section>
       </div>
@@ -151,19 +151,20 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { calculateExchangeDestination, useTokenMarketStore } from '@/features/token-market'
+import type { TokenExchangeDirection, TokenMarketProduct } from '@/features/token-market'
 
 type Mode = 'balance' | 'token'
 type Dialog =
-  | { type: 'exchange'; title?: string }
+  | { type: 'exchange' }
   | { type: 'product'; title: string; price: string }
   | { type: 'info'; title: string; message: string }
 
 const router = useRouter()
+const market = useTokenMarketStore()
 const search = ref('')
 const mode = ref<Mode>('balance')
 const sourceValue = ref(100)
-const tokenBalance = ref(128520)
-const platformBalance = ref(1250)
 const walletVisible = ref(true)
 const notificationsOpen = ref(false)
 const profileOpen = ref(false)
@@ -181,94 +182,93 @@ const navItems = [
   { label: '服务市场', section: '服务市场', style: { left: '49.6%', width: '7.4%' } },
 ]
 
-const categories = ['商城', '外卖', '数字商品', 'AI额度', '服务市场']
-const products = [
-  { name: '星芒无线蓝牙耳机', price: '2,880' },
-  { name: '极光系列机械键盘', price: '3,560' },
-  { name: 'AI 绘画专业版', price: '980' },
-  { name: 'ChatGPT Plus', price: '1,980' },
-  { name: '极简氛围桌面灯', price: '1,260' },
-  { name: '游戏充值权益', price: '6,480' },
-]
-const merchants = ['京东数码旗舰店', '瑞幸咖啡', '米哈游官方商店', 'OpenAI 服务商', '设计服务工作室']
+const categories = computed(() => market.categories)
+const products = computed(() => market.products)
+const merchants = computed(() => market.merchants)
+const tokenBalance = computed(() => market.wallet?.tokenBalance ?? 0)
+const platformBalance = computed(() => market.wallet?.platformBalance ?? 0)
+const direction = computed<TokenExchangeDirection>(() => mode.value === 'balance' ? 'balance_to_token' : 'token_to_balance')
+const quotedDestination = computed(() => market.activeQuote?.destinationAmount ?? outputValue.value)
 
-const outputValue = computed(() => {
-  const value = Math.max(0, Number(sourceValue.value) || 0)
-  return mode.value === 'balance' ? value * 100 : value / 100
-})
-
+const outputValue = computed(() =>
+  calculateExchangeDestination(direction.value, Number(sourceValue.value) || 0, market.exchangeRate)
+)
 const formattedOutput = computed(() =>
   mode.value === 'balance'
     ? outputValue.value.toLocaleString('zh-CN')
     : outputValue.value.toLocaleString('zh-CN', { maximumFractionDigits: 2 })
 )
 
-function goBack() {
+function goBack(): void {
   if (window.history.length > 1) router.back()
   else void router.push('/dashboard')
 }
 
-function closeMenus() {
+function closeMenus(): void {
   notificationsOpen.value = false
   profileOpen.value = false
 }
 
-function setMode(next: Mode) {
-  mode.value = next
-  sourceValue.value = next === 'balance' ? 100 : 10000
+function closeDialog(): void {
+  dialog.value = null
+  market.clearQuote()
 }
 
-function swapMode() {
+function setMode(next: Mode): void {
+  mode.value = next
+  sourceValue.value = next === 'balance' ? 100 : 10000
+  market.clearQuote()
+}
+
+function swapMode(): void {
   setMode(mode.value === 'balance' ? 'token' : 'balance')
 }
 
-function openExchange() {
-  const value = Number(sourceValue.value) || 0
-  if (value <= 0) return showToast('请输入有效兑换数量')
-  if (mode.value === 'balance' && value > platformBalance.value) return showToast('平台余额不足')
-  if (mode.value === 'token' && value > tokenBalance.value) return showToast('Token 余额不足')
-  dialog.value = { type: 'exchange' }
-}
-
-function confirmExchange() {
-  const value = Number(sourceValue.value) || 0
-  if (mode.value === 'balance') {
-    platformBalance.value -= value
-    tokenBalance.value += outputValue.value
-  } else {
-    tokenBalance.value -= value
-    platformBalance.value += outputValue.value
+async function openExchange(): Promise<void> {
+  try {
+    await market.quoteExchange(direction.value, Number(sourceValue.value) || 0)
+    dialog.value = { type: 'exchange' }
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : '兑换报价失败')
   }
-  dialog.value = null
-  showToast('页面演示兑换成功 · 未产生真实资金变化')
 }
 
-function navigateSection(item: (typeof navItems)[number]) {
+async function confirmExchange(): Promise<void> {
+  try {
+    await market.executeExchange()
+    dialog.value = null
+    showToast('页面演示兑换成功 · 当前使用 Mock Service')
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : '兑换失败')
+  }
+}
+
+function navigateSection(item: (typeof navItems)[number]): void {
   if (item.section === 'home') return showToast('已经在 Token 交易市场首页')
   selectCategory(item.section)
 }
 
-function selectCategory(category: string) {
+function selectCategory(category: string): void {
   dialog.value = {
     type: 'info',
     title: category,
-    message: `${category}子页面入口已经预留。当前阶段先完成交易市场首页和核心交互，下一步可继续按同一套视觉系统拆分独立业务页面。`,
+    message: `${category}子页面入口已经预留。当前基础层已按独立 feature 领域拆分，后续可直接挂接对应 service 与路由。`,
   }
 }
 
-function openProduct(product: (typeof products)[number]) {
-  dialog.value = { type: 'product', title: product.name, price: product.price }
+function openProduct(product: TokenMarketProduct): void {
+  dialog.value = { type: 'product', title: product.name, price: product.priceToken.toLocaleString('zh-CN') }
 }
 
-function openMerchant(merchant: string) {
+function openMerchant(merchant: string): void {
   dialog.value = {
     type: 'info',
     title: merchant,
-    message: '商家主页、商品列表、评价、配送和 Token 结算能力将在商户系统阶段接入。',
+    message: '商家主页、商品列表、评价、配送和 Token 结算能力将在商户系统阶段通过独立服务契约接入。',
   }
 }
 
-function openPanel(type: string) {
+function openPanel(type: string): void {
   const copy: Record<string, [string, string]> = {
     wallet: ['Token 钱包', '钱包明细、充值、兑换、冻结与账本流水的页面入口已经预留。'],
     orders: ['我的订单', '商城、外卖、数字商品和服务订单后续统一进入订单中心。'],
@@ -279,29 +279,36 @@ function openPanel(type: string) {
   dialog.value = { type: 'info', title, message }
 }
 
-function addCart(title: string) {
+function addCart(title: string): void {
   cartCount.value += 1
   dialog.value = null
   showToast(`${title} 已加入购物车`)
 }
 
-function submitSearch() {
+async function submitSearch(): Promise<void> {
   const q = search.value.trim()
   if (!q) return
-  const product = products.find((item) => item.name.toLowerCase().includes(q.toLowerCase()))
-  if (product) openProduct(product)
-  else showToast(`已搜索“${q}”，搜索结果页将在商品系统接入后启用`)
+  try {
+    await market.search(q)
+    const product = market.searchProducts[0]
+    const merchant = market.searchMerchants[0]
+    if (product) openProduct(product)
+    else if (merchant) openMerchant(merchant.name)
+    else showToast(`未找到“${q}”相关结果`)
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : '搜索失败')
+  }
 }
 
-function showToast(message: string) {
+function showToast(message: string): void {
   toast.value = message
   if (toastTimer) window.clearTimeout(toastTimer)
   toastTimer = window.setTimeout(() => { toast.value = '' }, 2500)
 }
 
-function handleKeydown(event: KeyboardEvent) {
+function handleKeydown(event: KeyboardEvent): void {
   if (event.key === 'Escape') {
-    dialog.value = null
+    closeDialog()
     closeMenus()
   }
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
@@ -310,10 +317,15 @@ function handleKeydown(event: KeyboardEvent) {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   document.body.classList.add('token-market-route')
   document.title = 'Token 交易市场'
   window.addEventListener('keydown', handleKeydown)
+  try {
+    await market.initialize()
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : 'Token 市场加载失败')
+  }
 })
 
 onBeforeUnmount(() => {
@@ -324,5 +336,5 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-:global(body.token-market-route){margin:0;overflow-x:hidden;background:#020817}.tm-page{min-height:100dvh;background:#020817;color:#eef4ff;font-family:"Noto Sans SC Variable","Noto Sans SC",system-ui,sans-serif}.tm-stage{position:relative;width:min(100vw,1672px);aspect-ratio:1672/941;margin:0 auto;overflow:hidden;background:#020817;box-shadow:0 0 100px #000}.tm-design{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;user-select:none;pointer-events:none}.hotspot{position:absolute;z-index:5;border:0;background:transparent;cursor:pointer}.hotspot:hover{outline:1px solid rgba(89,151,255,.18);background:rgba(70,112,255,.035)}.back{left:1.7%;top:1.1%;width:14.3%;height:4.2%}.notify{right:5.05%;top:1.25%;width:2.1%;height:3.3%;border-radius:50%}.profile{right:1.35%;top:1.1%;width:2.2%;height:3.7%;border-radius:50%}.wallet-detail{left:66.45%;top:17.8%;width:6.4%;height:4.5%;border-radius:10px}.wallet-eye{left:57.15%;top:9.7%;width:2.4%;height:3%;border-radius:50%}.wallet-mask{position:absolute;z-index:8;left:48.3%;top:17.2%;width:16%;padding:.15% .5%;color:#edf4ff;background:#132d62;font-size:clamp(18px,2.4vw,42px);font-weight:800;letter-spacing:.12em}.tm-top-hotspots .hotspot{top:0;height:5.8%}.tm-search{position:absolute;z-index:8;right:8.9%;top:1.24%;width:19.2%;height:3.25%}.tm-search input{width:100%;height:100%;padding:0 12% 0 11%;border:0;outline:0;border-radius:10px;color:#cbd7ef;background:rgba(5,15,36,.85);font:inherit;font-size:clamp(8px,.75vw,12px);box-sizing:border-box}.tm-search input::placeholder{color:#6d7e9f}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}.tm-exchange-ui{position:absolute;z-index:12;left:74.9%;top:8.55%;width:22.55%;height:29.6%;pointer-events:none}.tm-exchange-ui>*{pointer-events:auto}.exchange-tab{position:absolute;top:11.5%;height:11.6%;border:0;border-radius:9px;color:#8195bb;background:transparent;font-size:clamp(7px,.66vw,11px);font-weight:700;cursor:pointer}.exchange-tab.left{left:4.2%;width:47%}.exchange-tab.right{right:4%;width:43.5%}.exchange-tab.active{color:#fff;background:linear-gradient(90deg,#4c66ff,#2fbaff);box-shadow:0 4px 18px rgba(59,97,255,.28)}.exchange-input{position:absolute;left:4.2%;width:91.7%;height:16.2%;display:grid;grid-template-columns:8% 1fr auto;align-items:center;padding:0 3%;border:1px solid rgba(102,135,207,.17);border-radius:7px;background:rgba(8,20,45,.88);box-sizing:border-box}.exchange-input.source{top:35.3%}.exchange-input.output{top:57.7%}.exchange-input>span{display:grid;place-items:center;color:#dfe9ff;font-weight:800}.exchange-input input{min-width:0;border:0;outline:0;color:#fff;background:transparent;font-size:clamp(10px,.9vw,15px);font-weight:800}.exchange-input strong{font-size:clamp(10px,.9vw,15px)}.exchange-input small{color:#8295b9;font-size:clamp(6px,.6vw,10px)}.swap{position:absolute;z-index:2;left:47.2%;top:49.6%;width:6.5%;aspect-ratio:1;border:1px solid rgba(108,142,218,.3);border-radius:50%;color:#b4c8ed;background:#10234c;font-size:clamp(7px,.7vw,12px);cursor:pointer}.exchange-action{position:absolute;bottom:3.5%;height:13.7%;border-radius:8px;font-size:clamp(7px,.7vw,11px);font-weight:800;cursor:pointer}.exchange-action.primary{left:4.2%;width:47%;border:0;color:#fff;background:linear-gradient(90deg,#743cff,#4c66ff,#24c6ff)}.exchange-action.secondary{right:4%;width:43.5%;border:1px solid rgba(103,135,205,.24);color:#d3def2;background:rgba(5,16,38,.82)}.category{top:39.2%;width:15.55%;height:9.5%;border-radius:12px}.product{top:55.6%;width:12.15%;height:22%;border-radius:12px}.merchant{top:83.6%;width:14.9%;height:12%;border-radius:12px}.activity-more{right:2.2%;top:51.4%;width:5.2%;height:2.6%}.mini-menu{position:absolute;z-index:30;width:230px;padding:12px;border:1px solid rgba(99,139,226,.28);border-radius:12px;background:rgba(6,18,42,.96);box-shadow:0 22px 60px rgba(0,0,0,.4);backdrop-filter:blur(18px)}.notifications{top:5.2%;right:4%}.profile-menu{top:5.2%;right:1%;width:165px}.mini-menu strong,.mini-menu span{display:block}.mini-menu strong{margin-bottom:7px}.mini-menu span{padding:7px 0;border-top:1px solid rgba(102,130,190,.1);color:#9aacca;font-size:11px}.mini-menu button{width:100%;padding:8px;border:0;border-radius:7px;color:#cbd8ef;background:transparent;text-align:left;cursor:pointer}.mini-menu button:hover{background:rgba(77,108,178,.14)}.tm-overlay{position:fixed;z-index:100;inset:0;display:grid;place-items:center;padding:20px;background:rgba(0,6,18,.72);backdrop-filter:blur(8px)}.tm-dialog{position:relative;width:min(470px,100%);padding:26px;border:1px solid rgba(105,139,219,.32);border-radius:18px;background:linear-gradient(180deg,#10224d 0%,#07152f 55%,#040d1f 100%);box-shadow:0 30px 100px rgba(0,0,0,.52),0 0 70px rgba(72,82,255,.12)}.tm-dialog .close{position:absolute;top:14px;right:14px;width:32px;height:32px;border:1px solid rgba(106,136,202,.25);border-radius:50%;color:#9db0d4;background:#13244a;font-size:19px;cursor:pointer}.eyebrow{color:#7289b6;font-size:10px;font-weight:800;letter-spacing:.14em}.tm-dialog h2{margin:5px 0 14px;font-size:24px}.tm-dialog p{color:#8b9dbd;font-size:12px;line-height:1.75}.exchange-summary{display:grid;grid-template-columns:1fr 36px 1fr;align-items:center;gap:8px;margin:20px 0}.exchange-summary strong{display:grid;place-items:center;min-height:68px;border:1px solid rgba(105,136,205,.18);border-radius:11px;background:rgba(6,19,46,.74)}.exchange-summary span{color:#7087b5;text-align:center}.price{margin:18px 0;color:#ff82aa;font-size:26px;font-weight:900}.actions{display:flex;gap:10px;margin-top:20px}.actions>*{flex:1}.primary-btn,.secondary-btn{min-height:40px;border-radius:9px;font-weight:800;cursor:pointer}.primary-btn{border:0;color:#fff;background:linear-gradient(90deg,#743cff,#4d67ff,#25c5ff)}.secondary-btn{border:1px solid rgba(100,132,206,.24);color:#d3def1;background:#0a1834}.full{width:100%;margin-top:14px}.tm-toast{position:fixed;z-index:130;left:50%;bottom:28px;transform:translateX(-50%);max-width:calc(100% - 32px);padding:11px 16px;border:1px solid rgba(109,143,218,.28);border-radius:10px;color:#eaf2ff;background:rgba(7,21,48,.97);box-shadow:0 15px 44px rgba(0,0,0,.42);font-size:11px}.cart-fab{position:fixed;z-index:50;right:24px;bottom:24px;width:52px;height:52px;border:1px solid rgba(121,141,255,.5);border-radius:50%;color:#fff;background:linear-gradient(135deg,#4f61ff,#843eff);box-shadow:0 15px 44px rgba(71,54,255,.35);cursor:pointer}.cart-fab span{position:absolute;top:-5px;right:-4px;display:grid;place-items:center;min-width:19px;height:19px;border:2px solid #061022;border-radius:999px;background:#ff547e;font-size:9px;font-weight:800}.fade-enter-active,.fade-leave-active,.toast-enter-active,.toast-leave-active{transition:opacity .18s ease,transform .18s ease}.fade-enter-from,.fade-leave-to{opacity:0}.toast-enter-from,.toast-leave-to{opacity:0;transform:translate(-50%,8px)}@media(max-width:900px){.tm-stage{width:100vw;min-width:980px;transform-origin:top left}.tm-page{overflow-x:auto}}
+:global(body.token-market-route){margin:0;overflow-x:hidden;background:#020817}.tm-page{min-height:100dvh;background:#020817;color:#eef4ff;font-family:"Noto Sans SC Variable","Noto Sans SC",system-ui,sans-serif}.tm-stage{position:relative;width:min(100vw,1672px);aspect-ratio:1672/941;margin:0 auto;overflow:hidden;background:#020817;box-shadow:0 0 100px #000}.tm-design{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;user-select:none;pointer-events:none}.hotspot{position:absolute;z-index:5;border:0;background:transparent;cursor:pointer}.hotspot:hover{outline:1px solid rgba(89,151,255,.18);background:rgba(70,112,255,.035)}.back{left:1.7%;top:1.1%;width:14.3%;height:4.2%}.notify{right:5.05%;top:1.25%;width:2.1%;height:3.3%;border-radius:50%}.profile{right:1.35%;top:1.1%;width:2.2%;height:3.7%;border-radius:50%}.wallet-detail{left:66.45%;top:17.8%;width:6.4%;height:4.5%;border-radius:10px}.wallet-eye{left:57.15%;top:9.7%;width:2.4%;height:3%;border-radius:50%}.wallet-mask{position:absolute;z-index:8;left:48.3%;top:17.2%;width:16%;padding:.15% .5%;color:#edf4ff;background:#132d62;font-size:clamp(18px,2.4vw,42px);font-weight:800;letter-spacing:.12em}.tm-top-hotspots .hotspot{top:0;height:5.8%}.tm-search{position:absolute;z-index:8;right:8.9%;top:1.24%;width:19.2%;height:3.25%}.tm-search input{width:100%;height:100%;padding:0 12% 0 11%;border:0;outline:0;border-radius:10px;color:#cbd7ef;background:rgba(5,15,36,.85);font:inherit;font-size:clamp(8px,.75vw,12px);box-sizing:border-box}.tm-search input::placeholder{color:#6d7e9f}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}.tm-exchange-ui{position:absolute;z-index:12;left:74.9%;top:8.55%;width:22.55%;height:29.6%;pointer-events:none}.tm-exchange-ui>*{pointer-events:auto}.exchange-tab{position:absolute;top:11.5%;height:11.6%;border:0;border-radius:9px;color:#8195bb;background:transparent;font-size:clamp(7px,.66vw,11px);font-weight:700;cursor:pointer}.exchange-tab.left{left:4.2%;width:47%}.exchange-tab.right{right:4%;width:43.5%}.exchange-tab.active{color:#fff;background:linear-gradient(90deg,#4c66ff,#2fbaff);box-shadow:0 4px 18px rgba(59,97,255,.28)}.exchange-input{position:absolute;left:4.2%;width:91.7%;height:16.2%;display:grid;grid-template-columns:8% 1fr auto;align-items:center;padding:0 3%;border:1px solid rgba(102,135,207,.17);border-radius:7px;background:rgba(8,20,45,.88);box-sizing:border-box}.exchange-input.source{top:35.3%}.exchange-input.output{top:57.7%}.exchange-input>span{display:grid;place-items:center;color:#dfe9ff;font-weight:800}.exchange-input input{min-width:0;border:0;outline:0;color:#fff;background:transparent;font-size:clamp(10px,.9vw,15px);font-weight:800}.exchange-input strong{font-size:clamp(10px,.9vw,15px)}.exchange-input small{color:#8295b9;font-size:clamp(6px,.6vw,10px)}.swap{position:absolute;z-index:2;left:47.2%;top:49.6%;width:6.5%;aspect-ratio:1;border:1px solid rgba(108,142,218,.3);border-radius:50%;color:#b4c8ed;background:#10234c;font-size:clamp(7px,.7vw,12px);cursor:pointer}.exchange-action{position:absolute;bottom:3.5%;height:13.7%;border-radius:8px;font-size:clamp(7px,.7vw,11px);font-weight:800;cursor:pointer}.exchange-action:disabled,.primary-btn:disabled{opacity:.55;cursor:wait}.exchange-action.primary{left:4.2%;width:47%;border:0;color:#fff;background:linear-gradient(90deg,#743cff,#4c66ff,#24c6ff)}.exchange-action.secondary{right:4%;width:43.5%;border:1px solid rgba(103,135,205,.24);color:#d3def2;background:rgba(5,16,38,.82)}.category{top:39.2%;width:15.55%;height:9.5%;border-radius:12px}.product{top:55.6%;width:12.15%;height:22%;border-radius:12px}.merchant{top:83.6%;width:14.9%;height:12%;border-radius:12px}.activity-more{right:2.2%;top:51.4%;width:5.2%;height:2.6%}.mini-menu{position:absolute;z-index:30;width:230px;padding:12px;border:1px solid rgba(99,139,226,.28);border-radius:12px;background:rgba(6,18,42,.96);box-shadow:0 22px 60px rgba(0,0,0,.4);backdrop-filter:blur(18px)}.notifications{top:5.2%;right:4%}.profile-menu{top:5.2%;right:1%;width:165px}.mini-menu strong,.mini-menu span{display:block}.mini-menu strong{margin-bottom:7px}.mini-menu span{padding:7px 0;border-top:1px solid rgba(102,130,190,.1);color:#9aacca;font-size:11px}.mini-menu button{width:100%;padding:8px;border:0;border-radius:7px;color:#cbd8ef;background:transparent;text-align:left;cursor:pointer}.mini-menu button:hover{background:rgba(77,108,178,.14)}.tm-overlay{position:fixed;z-index:100;inset:0;display:grid;place-items:center;padding:20px;background:rgba(0,6,18,.72);backdrop-filter:blur(8px)}.tm-dialog{position:relative;width:min(470px,100%);padding:26px;border:1px solid rgba(105,139,219,.32);border-radius:18px;background:linear-gradient(180deg,#10224d 0%,#07152f 55%,#040d1f 100%);box-shadow:0 30px 100px rgba(0,0,0,.52),0 0 70px rgba(72,82,255,.12)}.tm-dialog .close{position:absolute;top:14px;right:14px;width:32px;height:32px;border:1px solid rgba(106,136,202,.25);border-radius:50%;color:#9db0d4;background:#13244a;font-size:19px;cursor:pointer}.eyebrow{color:#7289b6;font-size:10px;font-weight:800;letter-spacing:.14em}.tm-dialog h2{margin:5px 0 14px;font-size:24px}.tm-dialog p{color:#8b9dbd;font-size:12px;line-height:1.75}.exchange-summary{display:grid;grid-template-columns:1fr 36px 1fr;align-items:center;gap:8px;margin:20px 0}.exchange-summary strong{display:grid;place-items:center;min-height:68px;border:1px solid rgba(105,136,205,.18);border-radius:11px;background:rgba(6,19,46,.74)}.exchange-summary span{color:#7087b5;text-align:center}.price{margin:18px 0;color:#ff82aa;font-size:26px;font-weight:900}.actions{display:flex;gap:10px;margin-top:20px}.actions>*{flex:1}.primary-btn,.secondary-btn{min-height:40px;border-radius:9px;font-weight:800;cursor:pointer}.primary-btn{border:0;color:#fff;background:linear-gradient(90deg,#743cff,#4d67ff,#25c5ff)}.secondary-btn{border:1px solid rgba(100,132,206,.24);color:#d3def1;background:#0a1834}.full{width:100%;margin-top:14px}.tm-toast{position:fixed;z-index:130;left:50%;bottom:28px;transform:translateX(-50%);max-width:calc(100% - 32px);padding:11px 16px;border:1px solid rgba(109,143,218,.28);border-radius:10px;color:#eaf2ff;background:rgba(7,21,48,.97);box-shadow:0 15px 44px rgba(0,0,0,.42);font-size:11px}.cart-fab{position:fixed;z-index:50;right:24px;bottom:24px;width:52px;height:52px;border:1px solid rgba(121,141,255,.5);border-radius:50%;color:#fff;background:linear-gradient(135deg,#4f61ff,#843eff);box-shadow:0 15px 44px rgba(71,54,255,.35);cursor:pointer}.cart-fab span{position:absolute;top:-5px;right:-4px;display:grid;place-items:center;min-width:19px;height:19px;border:2px solid #061022;border-radius:999px;background:#ff547e;font-size:9px;font-weight:800}.fade-enter-active,.fade-leave-active,.toast-enter-active,.toast-leave-active{transition:opacity .18s ease,transform .18s ease}.fade-enter-from,.fade-leave-to{opacity:0}.toast-enter-from,.toast-leave-to{opacity:0;transform:translate(-50%,8px)}@media(max-width:900px){.tm-stage{width:100vw;min-width:980px;transform-origin:top left}.tm-page{overflow-x:auto}}
 </style>
