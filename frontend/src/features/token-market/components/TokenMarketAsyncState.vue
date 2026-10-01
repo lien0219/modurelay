@@ -3,7 +3,7 @@
   <TokenMarketStatePanel v-else-if="forbidden" kind="forbidden" :title="forbiddenTitle" :description="forbiddenDescription">
     <template v-if="$slots.permissionActions" #actions><slot name="permissionActions" /></template>
   </TokenMarketStatePanel>
-  <TokenMarketStatePanel v-else-if="error" kind="error" :title="errorTitle" :description="errorMessage">
+  <TokenMarketStatePanel v-else-if="error" kind="error" :title="errorTitle" :description="error">
     <template #actions><button class="tm-button primary" type="button" @click="emit('retry')">重新加载</button></template>
   </TokenMarketStatePanel>
   <TokenMarketStatePanel v-else-if="empty" kind="empty" :title="emptyTitle" :description="emptyDescription">
