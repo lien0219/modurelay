@@ -1,6 +1,14 @@
 <template>
-  <TokenMarketSubpageLayout eyebrow="SHOPPING CART" title="购物车" description="统一承载商城、外卖、数字商品与服务商品的 Token 结算入口。">
+  <TokenMarketSubpageLayout
+    eyebrow="SHOPPING CART"
+    title="购物车"
+    description="统一承载商城、外卖、数字商品与服务商品的 Token 结算入口。"
+    :empty="!market.loading && rows.length === 0"
+    empty-title="购物车还是空的"
+    empty-description="去市场挑选商品、服务或数字权益，加入后会统一在这里结算。"
+  >
     <template #actions><button class="tm-button secondary" type="button" @click="router.push('/token-market')">继续购物</button></template>
+    <template #emptyActions><button class="tm-button primary" type="button" @click="router.push('/token-market')">去逛市场</button></template>
 
     <div class="cart-grid">
       <section class="items glass-card">
@@ -12,7 +20,6 @@
           <strong class="subtotal">{{ (row.product.priceToken * row.qty).toLocaleString('zh-CN') }} T</strong>
           <button class="remove" type="button" @click="remove(row.product.id)">×</button>
         </article>
-        <div v-if="!rows.length" class="empty">购物车还是空的，去市场挑点东西吧。</div>
       </section>
 
       <aside class="summary glass-card">
@@ -46,5 +53,5 @@ onMounted(()=>market.initialize())
 </script>
 
 <style scoped>
-.cart-grid{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:18px}.items{padding:18px}.head{display:flex;justify-content:space-between;padding:4px 4px 16px;border-bottom:1px solid rgba(106,136,199,.12)}.head span{color:#6f85a8;font-size:10px}.row{display:grid;grid-template-columns:72px minmax(0,1fr) 110px 120px 24px;gap:14px;align-items:center;padding:16px 2px;border-bottom:1px solid rgba(106,136,199,.1)}.thumb{height:64px;border:1px solid rgba(111,140,205,.15);border-radius:12px;color:#dce7ff;background:linear-gradient(135deg,#172555,#0b1833);font-size:24px;cursor:pointer}.info span{color:#657da6;font-size:8px}.info h3{margin:4px 0;font-size:12px}.info p{margin:0;color:#899bb9;font-size:9px}.qty{display:flex;border:1px solid rgba(112,141,204,.16);border-radius:8px;overflow:hidden}.qty>*{width:36px;height:32px;display:grid;place-items:center;border:0;color:#dce7f8;background:#091733}.qty button{cursor:pointer}.subtotal{text-align:right;font-size:12px}.remove{border:0;color:#6f84a7;background:transparent;cursor:pointer}.summary{align-self:start;padding:22px;position:sticky;top:84px}.eyebrow{color:#687fa7;font-size:9px;font-weight:800;letter-spacing:.13em}.summary h2{margin:6px 0 18px}.summary dl{margin:0}.summary dl div{display:flex;justify-content:space-between;padding:9px 0;color:#788cab;font-size:10px}.discount{color:#55dfb1}.total{display:flex;justify-content:space-between;align-items:end;margin-top:12px;padding-top:16px;border-top:1px solid rgba(110,140,204,.16)}.total span{color:#7f92ae;font-size:10px}.total strong{font-size:20px}.balance{display:flex;justify-content:space-between;margin:16px 0;padding:11px;border-radius:9px;background:rgba(70,91,150,.08);font-size:10px}.balance span{color:#7185a6}.checkout{width:100%}.summary p{color:#667da2;font-size:9px;line-height:1.6}.empty{padding:50px;text-align:center;color:#7186a8;font-size:11px}@media(max-width:950px){.cart-grid{grid-template-columns:1fr}.summary{position:static}.row{grid-template-columns:58px 1fr 90px}.subtotal,.remove{display:none}}
+.cart-grid{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:18px}.items{padding:18px}.head{display:flex;justify-content:space-between;padding:4px 4px 16px;border-bottom:1px solid rgba(106,136,199,.12)}.head span{color:#6f85a8;font-size:10px}.row{display:grid;grid-template-columns:72px minmax(0,1fr) 110px 120px 24px;gap:14px;align-items:center;padding:16px 2px;border-bottom:1px solid rgba(106,136,199,.1)}.thumb{height:64px;border:1px solid rgba(111,140,205,.15);border-radius:12px;color:#dce7ff;background:linear-gradient(135deg,#172555,#0b1833);font-size:24px;cursor:pointer}.info span{color:#657da6;font-size:8px}.info h3{margin:4px 0;font-size:12px}.info p{margin:0;color:#899bb9;font-size:9px}.qty{display:flex;border:1px solid rgba(112,141,204,.16);border-radius:8px;overflow:hidden}.qty>*{width:36px;height:32px;display:grid;place-items:center;border:0;color:#dce7f8;background:#091733}.qty button{cursor:pointer}.subtotal{text-align:right;font-size:12px}.remove{border:0;color:#6f84a7;background:transparent;cursor:pointer}.summary{align-self:start;padding:22px;position:sticky;top:84px}.eyebrow{color:#687fa7;font-size:9px;font-weight:800;letter-spacing:.13em}.summary h2{margin:6px 0 18px}.summary dl{margin:0}.summary dl div{display:flex;justify-content:space-between;padding:9px 0;color:#788cab;font-size:10px}.discount{color:#55dfb1}.total{display:flex;justify-content:space-between;align-items:end;margin-top:12px;padding-top:16px;border-top:1px solid rgba(110,140,204,.16)}.total span{color:#7f92ae;font-size:10px}.total strong{font-size:20px}.balance{display:flex;justify-content:space-between;margin:16px 0;padding:11px;border-radius:9px;background:rgba(70,91,150,.08);font-size:10px}.balance span{color:#7185a6}.checkout{width:100%}.summary p{color:#667da2;font-size:9px;line-height:1.6}@media(max-width:950px){.cart-grid{grid-template-columns:1fr}.summary{position:static}.row{grid-template-columns:58px 1fr 90px}.subtotal,.remove{display:none}}
 </style>
