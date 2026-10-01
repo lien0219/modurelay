@@ -1,6 +1,14 @@
 <template>
-  <TokenMarketSubpageLayout eyebrow="ORDER CENTER" title="我的订单" description="统一承载商城、外卖、数字商品和服务订单，后续按订单类型挂接不同履约状态机。">
+  <TokenMarketSubpageLayout
+    eyebrow="ORDER CENTER"
+    title="我的订单"
+    description="统一承载商城、外卖、数字商品和服务订单，后续按订单类型挂接不同履约状态机。"
+    :empty="filteredOrders.length === 0"
+    empty-title="暂无符合条件的订单"
+    empty-description="当前筛选条件下没有订单记录，可以切换筛选项或返回市场继续浏览。"
+  >
     <template #actions><button class="tm-button secondary" type="button" @click="router.push('/token-market')">返回市场</button></template>
+    <template #emptyActions><button class="tm-button primary" type="button" @click="activeTab='全部'">查看全部订单</button></template>
 
     <section class="summary-grid">
       <article v-for="item in summary" :key="item.label" class="glass-card metric"><span>{{ item.label }}</span><strong>{{ item.value }}</strong><small>{{ item.hint }}</small></article>
