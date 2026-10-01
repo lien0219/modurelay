@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="dark" />
+  <title>Token 交易市场</title>
+  <style>
+    :root{color-scheme:dark;font-family:"Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif;--blue:#4b89ff;--purple:#7750ff;--cyan:#43c8ff;--panel:rgba(7,17,38,.94);--line:rgba(104,139,216,.28);--text:#f6f8ff;--muted:#8da1c9}
+    *{box-sizing:border-box}html,body{margin:0;min-width:320px;min-height:100%;background:#030815;color:var(--text)}button,input{font:inherit}
+    body{overflow-x:hidden}.app{min-height:100dvh;display:grid;place-items:start center;background:radial-gradient(circle at 50% 0%,#101f4d 0,#030815 46%)}
+    .stage{position:relative;width:100vw;max-width:1920px;aspect-ratio:1672/941;background:#061022 url('./market-dashboard.webp') center/100% 100% no-repeat;overflow:hidden;box-shadow:0 0 100px rgba(25,62,156,.18)}
+    .hot{position:absolute;border:0;background:transparent;border-radius:12px;cursor:pointer;outline:0;transition:.18s}.hot:hover,.hot:focus-visible{box-shadow:inset 0 0 0 1px rgba(115,167,255,.7),0 0 24px rgba(71,107,255,.2);background:rgba(72,105,255,.035)}
+    .search{position:absolute;left:72.1%;top:1.35%;width:18.5%;height:3.85%;border:0;outline:0;border-radius:12px;background:transparent;color:#dce8ff;padding:0 2.5%;font-size:clamp(8px,0.72vw,13px)}.search::placeholder{color:transparent}.search:focus{background:rgba(7,15,34,.78);box-shadow:inset 0 0 0 1px rgba(91,139,255,.55)}
+    .balance-live{position:absolute;left:47.2%;top:17.7%;width:19%;font-size:clamp(18px,3.05vw,52px);font-weight:800;letter-spacing:.03em;color:white;text-shadow:0 0 16px rgba(74,118,255,.22);pointer-events:none;opacity:0}.stage.live-balance .balance-live{opacity:1}.stage.live-balance .balance-mask{display:block}.balance-mask{display:none;position:absolute;left:46.7%;top:17.1%;width:24%;height:7.2%;background:linear-gradient(135deg,#142b57,#10234b);border-radius:9px;pointer-events:none}
+    .toast-stack{position:fixed;right:18px;bottom:18px;z-index:100;display:flex;flex-direction:column;gap:10px}.toast{min-width:260px;max-width:360px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:rgba(10,22,45,.96);box-shadow:0 18px 48px rgba(0,0,0,.4);backdrop-filter:blur(16px);animation:in .2s ease}.toast b{display:block;font-size:13px}.toast span{display:block;margin-top:3px;font-size:11px;color:var(--muted)}@keyframes in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+    .backdrop{position:fixed;inset:0;z-index:70;background:rgba(1,5,14,.72);backdrop-filter:blur(7px);opacity:0;pointer-events:none;transition:.2s}.backdrop.show{opacity:1;pointer-events:auto}
+    .dialog{position:fixed;z-index:80;left:50%;top:50%;width:min(430px,calc(100vw - 28px));transform:translate(-50%,-46%) scale(.96);opacity:0;pointer-events:none;transition:.22s;border:1px solid var(--line);border-radius:20px;background:linear-gradient(155deg,#132652,#071225 70%);box-shadow:0 40px 120px rgba(0,0,0,.6);padding:24px}.dialog.show{opacity:1;pointer-events:auto;transform:translate(-50%,-50%) scale(1)}
+    .dialog-head{display:flex;align-items:center;justify-content:space-between}.dialog h2{margin:0;font-size:19px}.close{width:34px;height:34px;border:1px solid var(--line);border-radius:9px;background:rgba(255,255,255,.03);color:#b6c5e5;cursor:pointer;font-size:20px}.hint{font-size:11px;color:var(--muted);line-height:1.7}.swap-tabs{display:grid;grid-template-columns:1fr 1fr;padding:3px;margin:16px 0 10px;border:1px solid rgba(99,130,194,.18);border-radius:999px;background:#081326}.swap-tabs button{border:0;border-radius:999px;padding:9px 10px;background:transparent;color:#879bc0;cursor:pointer;font-size:12px}.swap-tabs button.active{background:linear-gradient(90deg,#5264ff,#36bfff);color:white}.rate{font-size:11px;color:#8ca0c5}.field{display:grid;grid-template-columns:32px 1fr auto;align-items:center;gap:8px;height:48px;margin:8px 0;border:1px solid rgba(101,134,201,.22);border-radius:10px;background:#071328;padding:0 12px}.coin{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;background:#17294d;font-weight:800}.coin.t{border-radius:50%;background:linear-gradient(145deg,#503dca,#4f87ff)}.field input{width:100%;border:0;outline:0;background:transparent;color:white;font-size:18px;font-weight:750}.field small{color:#8298bd}.actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}.actions button,.buy{border-radius:10px;padding:11px;border:1px solid rgba(102,137,211,.25);color:white;cursor:pointer;font-weight:700}.primary,.buy{background:linear-gradient(90deg,#5b48ff,#2cb8ff)}.secondary{background:#0a1830}
+    .drawer{position:fixed;z-index:85;right:0;top:0;width:min(430px,94vw);height:100dvh;padding:24px;transform:translateX(102%);transition:.26s;background:linear-gradient(180deg,#0d1c3b,#071020);border-left:1px solid var(--line);box-shadow:-30px 0 100px rgba(0,0,0,.55)}.drawer.show{transform:translateX(0)}.drawer-art{height:230px;margin:20px 0;border-radius:16px;border:1px solid var(--line);background:linear-gradient(135deg,#16295a,#0d1833);display:grid;place-items:center;font-size:60px}.price{display:flex;justify-content:space-between;align-items:center;margin:18px 0;padding:16px 0;border-top:1px solid rgba(98,126,190,.15);border-bottom:1px solid rgba(98,126,190,.15)}.price strong{font-size:24px;color:#ff7999}.buy{width:100%;border:0;padding:14px}
+    .pulse{animation:pulse .8s ease}@keyframes pulse{50%{box-shadow:inset 0 0 0 2px rgba(90,160,255,.9),0 0 35px rgba(77,101,255,.42)}}
+    @media(max-width:760px){.app{display:block;overflow:auto}.stage{width:1338px;max-width:none;height:753px;transform-origin:top left}.mobile-wrap{width:1338px}.search{font-size:11px}.toast-stack{right:10px;left:10px}.toast{min-width:0;max-width:none}}
+  </style>
+</head>
+<body>
+<div class="app"><main class="stage" id="stage" aria-label="Token 交易市场交互原型">
+  <div class="balance-mask"></div><div class="balance-live" id="balanceLive">128,520 T</div>
+  <input class="search" id="search" type="search" aria-label="搜索商品、商家或关键词" />
+
+  <a class="hot" href="/home" style="left:1.5%;top:1.1%;width:14%;height:4.5%" aria-label="返回 ModuRelay"></a>
+  <button class="hot nav" data-name="首页" style="left:16.3%;top:.9%;width:6.1%;height:4.8%"></button>
+  <button class="hot nav" data-name="商城" style="left:22.8%;top:.9%;width:5.6%;height:4.8%"></button>
+  <button class="hot nav" data-name="外卖" style="left:28.6%;top:.9%;width:5.4%;height:4.8%"></button>
+  <button class="hot nav" data-name="数字商品" style="left:34.1%;top:.9%;width:7.7%;height:4.8%"></button>
+  <button class="hot nav" data-name="AI额度" style="left:41.9%;top:.9%;width:6.3%;height:4.8%"></button>
+  <button class="hot nav" data-name="服务市场" style="left:48.3%;top:.9%;width:7.5%;height:4.8%"></button>
+
+  <button class="hot" id="wallet" style="left:46.1%;top:8.9%;width:26.4%;height:27.8%" aria-label="我的 Token 钱包"></button>
+  <button class="hot" id="exchange" style="left:73.4%;top:8.5%;width:23.2%;height:27.9%" aria-label="快速兑换"></button>
+
+  <button class="hot category" data-name="商城" style="left:2.3%;top:39.1%;width:16.1%;height:10.3%"></button>
+  <button class="hot category" data-name="外卖" style="left:18.9%;top:39.1%;width:14.1%;height:10.3%"></button>
+  <button class="hot category" data-name="数字商品" style="left:33.2%;top:39.1%;width:14.6%;height:10.3%"></button>
+  <button class="hot category" data-name="AI额度" style="left:48.4%;top:39.1%;width:16.7%;height:10.3%"></button>
+  <button class="hot category" data-name="服务市场" style="left:65.7%;top:39.1%;width:12.6%;height:10.3%"></button>
+
+  <button class="hot product" data-name="星芒无线蓝牙耳机" data-price="2880" data-icon="🎧" style="left:2.4%;top:55.7%;width:12.2%;height:21.8%"></button>
+  <button class="hot product" data-name="极光系列机械键盘" data-price="3560" data-icon="⌨️" style="left:15.0%;top:55.7%;width:12.4%;height:21.8%"></button>
+  <button class="hot product" data-name="AI 绘画专业版" data-price="980" data-icon="🎨" style="left:27.8%;top:55.7%;width:12.2%;height:21.8%"></button>
+  <button class="hot product" data-name="ChatGPT Plus" data-price="1980" data-icon="AI" style="left:40.5%;top:55.7%;width:12.1%;height:21.8%"></button>
+  <button class="hot product" data-name="极简氛围桌面灯" data-price="1260" data-icon="💡" style="left:53.0%;top:55.7%;width:12.3%;height:21.8%"></button>
+  <button class="hot product" data-name="原神 6480 创世结晶" data-price="6480" data-icon="🎮" style="left:65.9%;top:55.7%;width:12.1%;height:21.8%"></button>
+
+  <button class="hot merchant" data-name="京东数码旗舰店" style="left:2.4%;top:83.8%;width:15.3%;height:11.7%"></button>
+  <button class="hot merchant" data-name="瑞幸咖啡" style="left:18.4%;top:83.8%;width:14.9%;height:11.7%"></button>
+  <button class="hot merchant" data-name="米哈游官方商店" style="left:34.0%;top:83.8%;width:14.4%;height:11.7%"></button>
+  <button class="hot merchant" data-name="OpenAI 服务商" style="left:49.2%;top:83.8%;width:14.5%;height:11.7%"></button>
+  <button class="hot merchant" data-name="设计服务工作室" style="left:64.8%;top:83.8%;width:13.5%;height:11.7%"></button>
+  <button class="hot" id="transactions" style="left:79.5%;top:39.0%;width:17.4%;height:49.6%" aria-label="最近交易"></button>
+</main></div>
+
+<div class="backdrop" id="backdrop"></div>
+<section class="dialog" id="exchangeDialog" aria-hidden="true">
+  <div class="dialog-head"><h2>快速兑换</h2><button class="close" data-close>×</button></div>
+  <p class="hint">当前为页面交互原型。兑换只修改本页 Mock 数据，不会影响真实账户余额。</p>
+  <div class="swap-tabs"><button class="active" data-dir="toToken">平台余额 → Token</button><button data-dir="toBalance">Token → 平台余额</button></div>
+  <p class="rate">当前演示汇率：100 T = ¥1</p>
+  <div class="field"><span class="coin">¥</span><input id="fiat" value="100" inputmode="decimal"/><small id="fiatHint">平台余额</small></div>
+  <div class="field"><span class="coin t">T</span><input id="token" value="10000" inputmode="decimal"/><small id="tokenHint">10,000 T</small></div>
+  <div class="actions"><button class="primary" id="confirmExchange">确认兑换</button><button class="secondary" data-close>取消</button></div>
+</section>
+
+<aside class="drawer" id="drawer" aria-hidden="true">
+  <div class="dialog-head"><div><small style="color:#6f8fca">TOKEN MARKET</small><h2 id="productName" style="margin-top:5px">商品详情</h2></div><button class="close" data-close>×</button></div>
+  <div class="drawer-art" id="productIcon">🎧</div>
+  <p class="hint">这是第一阶段页面交互 Mock。后续接入真实后端后，这里展示 SKU、库存、商户、履约方式、退款规则与评价。</p>
+  <div class="price"><span>Token 价格</span><strong id="productPrice">0 T</strong></div>
+  <button class="buy" id="buy">立即使用 Token 购买</button>
+</aside>
+<div class="toast-stack" id="toasts" aria-live="polite"></div>
+<script>
+(() => {
+  const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+  const state={token:128520,fiat:1285.2,dir:'toToken',product:null};
+  const fmt=n=>new Intl.NumberFormat('zh-CN',{maximumFractionDigits:2}).format(n);
+  const stage=$('#stage'),backdrop=$('#backdrop'),dialog=$('#exchangeDialog'),drawer=$('#drawer');
+  function toast(title,msg=''){const el=document.createElement('div');el.className='toast';el.innerHTML=`<b>${title}</b><span>${msg}</span>`;$('#toasts').append(el);setTimeout(()=>el.remove(),2600)}
+  function open(el){backdrop.classList.add('show');el.classList.add('show');el.setAttribute('aria-hidden','false')}
+  function closeAll(){backdrop.classList.remove('show');[dialog,drawer].forEach(x=>{x.classList.remove('show');x.setAttribute('aria-hidden','true')})}
+  function renderBalance(){stage.classList.add('live-balance');$('#balanceLive').textContent=fmt(state.token)+' T'}
+  function syncFromFiat(){const v=Math.max(0,parseFloat($('#fiat').value)||0);$('#token').value=String(Math.round(v*100));$('#tokenHint').textContent=fmt(v*100)+' T'}
+  function syncFromToken(){const v=Math.max(0,parseFloat($('#token').value)||0);$('#fiat').value=(v/100).toFixed(2).replace(/\.00$/,'');$('#tokenHint').textContent=fmt(v)+' T'}
+  $('#fiat').addEventListener('input',syncFromFiat);$('#token').addEventListener('input',syncFromToken);
+  $('#exchange').addEventListener('click',()=>open(dialog));$('#wallet').addEventListener('click',()=>{renderBalance();toast('Token 钱包','当前可用 '+fmt(state.token)+' T · Mock 数据')});
+  $$('.swap-tabs button').forEach(b=>b.addEventListener('click',()=>{$$('.swap-tabs button').forEach(x=>x.classList.remove('active'));b.classList.add('active');state.dir=b.dataset.dir}));
+  $('#confirmExchange').addEventListener('click',()=>{const t=Math.max(0,parseFloat($('#token').value)||0),f=t/100;if(!t)return toast('请输入有效数量');if(state.dir==='toToken'){if(f>state.fiat)return toast('平台余额不足','当前 Mock 余额 ¥'+fmt(state.fiat));state.fiat-=f;state.token+=t;toast('兑换成功','+'+fmt(t)+' T')}else{if(t>state.token)return toast('Token 余额不足','当前 '+fmt(state.token)+' T');state.token-=t;state.fiat+=f;toast('兑换成功','已兑换 ¥'+fmt(f))}renderBalance();closeAll()});
+  $$('.product').forEach(b=>b.addEventListener('click',()=>{state.product=b;$('#productName').textContent=b.dataset.name;$('#productPrice').textContent=fmt(+b.dataset.price)+' T';$('#productIcon').textContent=b.dataset.icon;open(drawer)}));
+  $('#buy').addEventListener('click',()=>{if(!state.product)return;const p=+state.product.dataset.price;if(p>state.token)return toast('Token 余额不足');state.token-=p;renderBalance();closeAll();toast('购买成功',state.product.dataset.name+' · -'+fmt(p)+' T')});
+  $$('.category,.nav').forEach(b=>b.addEventListener('click',()=>{b.classList.add('pulse');setTimeout(()=>b.classList.remove('pulse'),800);toast(b.dataset.name,'对应独立频道将在下一阶段接入路由与真实数据')}));
+  $$('.merchant').forEach(b=>b.addEventListener('click',()=>toast('进入商家',b.dataset.name+' · 商家详情下一阶段接入')));
+  $('#transactions').addEventListener('click',()=>toast('交易动态','完整钱包流水将在账本接口接入后开放'));
+  $('#search').addEventListener('input',e=>{const q=e.target.value.trim();if(q.length>1){const hit=$$('.product,.merchant').find(x=>x.dataset.name.toLowerCase().includes(q.toLowerCase()));if(hit){hit.classList.add('pulse');setTimeout(()=>hit.classList.remove('pulse'),800)}}});
+  $$('.close,[data-close]').forEach(b=>b.addEventListener('click',closeAll));backdrop.addEventListener('click',closeAll);window.addEventListener('keydown',e=>{if(e.key==='Escape')closeAll();if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){e.preventDefault();$('#search').focus()}});
+  function mobileScale(){if(innerWidth<760){const s=innerWidth/1338;stage.style.transform=`scale(${s})`;stage.parentElement.style.height=(753*s)+'px'}else{stage.style.transform='';stage.parentElement.style.height=''}}window.addEventListener('resize',mobileScale);mobileScale();
+})();
+</script>
+</body>
+</html>
