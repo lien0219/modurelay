@@ -18,6 +18,12 @@ export const tokenMarketRoutes: RouteRecordRaw[] = [
         meta: { ...marketMeta, title: 'Token Market', marketPermission: 'market.read' },
       },
       {
+        path: 'channel',
+        name: 'TokenMarketChannel',
+        component: () => import('./pages/ChannelPage.vue'),
+        meta: { ...marketMeta, title: 'Token Market · Channel', marketPermission: 'market.read' },
+      },
+      {
         path: 'products/:id',
         name: 'TokenMarketProductDetail',
         component: () => import('./pages/ProductDetailPage.vue'),
