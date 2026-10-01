@@ -38,9 +38,13 @@ const permission = computed(() => typeof route.meta.marketPermission === 'string
 const errorMessage = computed(() => error.value instanceof Error ? error.value.message : '发生了未预期的页面错误。')
 
 watchEffect(() => {
-  // Placeholder permission resolver. Default allow keeps current behavior unchanged.
-  // Replace this branch with a real permission/merchant eligibility service later.
-  permissionState.value = route.meta.marketPermission === 'merchant.center.pending' ? 'pending' : 'allowed'
+  // Enterprise placeholder contract: current production behavior stays allow-by-default.
+  // QA can preview the states with ?marketPermission=denied|pending. Replace this
+  // resolver with the real permission/merchant-eligibility service later.
+  const preview = String(route.query.marketPermission ?? '')
+  if (preview === 'denied') permissionState.value = 'denied'
+  else if (preview === 'pending') permissionState.value = 'pending'
+  else permissionState.value = 'allowed'
 })
 
 onErrorCaptured((captured) => {
@@ -50,6 +54,6 @@ onErrorCaptured((captured) => {
 
 function reset(): void {
   error.value = null
-  void router.replace({ path: route.fullPath, query: { ...route.query, retry: String(Date.now()) } })
+  void router.replace({ path: route.path, query: { ...route.query, retry: String(Date.now()) }, hash: route.hash })
 }
 </script>
