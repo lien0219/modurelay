@@ -5,8 +5,14 @@ import type {
   TokenExchangeDirection,
   TokenExchangeQuote,
   TokenMarketBootstrap,
+  TokenMarketExchangeHistoryQuery,
+  TokenMarketExchangeRecord,
   TokenMarketMerchant,
+  TokenMarketOrder,
+  TokenMarketOrderQuery,
   TokenMarketProduct,
+  TokenMarketProductQuery,
+  TokenMarketWalletSnapshot,
 } from './types'
 
 export const useTokenMarketStore = defineStore('token-market', () => {
@@ -14,12 +20,17 @@ export const useTokenMarketStore = defineStore('token-market', () => {
   const loading = ref(false)
   const exchanging = ref(false)
   const searchLoading = ref(false)
+  const resourceLoading = ref(false)
   const activeQuote = ref<TokenExchangeQuote | null>(null)
+  const activeProduct = ref<TokenMarketProduct | null>(null)
+  const orderItems = ref<TokenMarketOrder[]>([])
+  const exchangeHistory = ref<TokenMarketExchangeRecord[]>([])
+  const walletSnapshot = ref<TokenMarketWalletSnapshot | null>(null)
   const searchProducts = ref<TokenMarketProduct[]>([])
   const searchMerchants = ref<TokenMarketMerchant[]>([])
   const lastError = ref<string | null>(null)
 
-  const wallet = computed(() => bootstrap.value?.wallet ?? null)
+  const wallet = computed(() => walletSnapshot.value ?? bootstrap.value?.wallet ?? null)
   const categories = computed(() => bootstrap.value?.categories ?? [])
   const products = computed(() => bootstrap.value?.products ?? [])
   const merchants = computed(() => bootstrap.value?.merchants ?? [])
@@ -32,12 +43,57 @@ export const useTokenMarketStore = defineStore('token-market', () => {
     lastError.value = null
     try {
       bootstrap.value = await tokenMarketService.getBootstrap()
+      walletSnapshot.value = bootstrap.value.wallet
     } catch (error) {
       lastError.value = error instanceof Error ? error.message : 'Token 市场加载失败'
       throw error
     } finally {
       loading.value = false
     }
+  }
+
+  async function loadProduct(id: string): Promise<TokenMarketProduct | null> {
+    resourceLoading.value = true
+    lastError.value = null
+    try {
+      activeProduct.value = await tokenMarketService.getProduct(id)
+      return activeProduct.value
+    } catch (error) {
+      lastError.value = error instanceof Error ? error.message : '商品加载失败'
+      throw error
+    } finally { resourceLoading.value = false }
+  }
+
+  async function loadProducts(query?: TokenMarketProductQuery): Promise<TokenMarketProduct[]> {
+    resourceLoading.value = true
+    lastError.value = null
+    try { return (await tokenMarketService.listProducts(query)).items }
+    catch (error) { lastError.value = error instanceof Error ? error.message : '商品加载失败'; throw error }
+    finally { resourceLoading.value = false }
+  }
+
+  async function loadOrders(query?: TokenMarketOrderQuery): Promise<TokenMarketOrder[]> {
+    resourceLoading.value = true
+    lastError.value = null
+    try { orderItems.value = (await tokenMarketService.listOrders(query)).items; return orderItems.value }
+    catch (error) { lastError.value = error instanceof Error ? error.message : '订单加载失败'; throw error }
+    finally { resourceLoading.value = false }
+  }
+
+  async function loadWallet(): Promise<TokenMarketWalletSnapshot> {
+    resourceLoading.value = true
+    lastError.value = null
+    try { walletSnapshot.value = await tokenMarketService.getWallet(); return walletSnapshot.value }
+    catch (error) { lastError.value = error instanceof Error ? error.message : '钱包加载失败'; throw error }
+    finally { resourceLoading.value = false }
+  }
+
+  async function loadExchangeHistory(query?: TokenMarketExchangeHistoryQuery): Promise<TokenMarketExchangeRecord[]> {
+    resourceLoading.value = true
+    lastError.value = null
+    try { exchangeHistory.value = (await tokenMarketService.listExchangeHistory(query)).items; return exchangeHistory.value }
+    catch (error) { lastError.value = error instanceof Error ? error.message : '兑换记录加载失败'; throw error }
+    finally { resourceLoading.value = false }
   }
 
   async function quoteExchange(direction: TokenExchangeDirection, sourceAmount: number): Promise<TokenExchangeQuote> {
@@ -56,19 +112,14 @@ export const useTokenMarketStore = defineStore('token-market', () => {
     exchanging.value = true
     lastError.value = null
     try {
-      const result = await tokenMarketService.executeExchange({
-        quoteId: activeQuote.value.quoteId,
-        direction: activeQuote.value.direction,
-        sourceAmount: activeQuote.value.sourceAmount,
-      })
+      const result = await tokenMarketService.executeExchange({ quoteId: activeQuote.value.quoteId, direction: activeQuote.value.direction, sourceAmount: activeQuote.value.sourceAmount })
+      walletSnapshot.value = result.wallet
       if (bootstrap.value) bootstrap.value.wallet = result.wallet
       activeQuote.value = null
     } catch (error) {
       lastError.value = error instanceof Error ? error.message : '兑换失败'
       throw error
-    } finally {
-      exchanging.value = false
-    }
+    } finally { exchanging.value = false }
   }
 
   async function search(query: string): Promise<void> {
@@ -81,34 +132,14 @@ export const useTokenMarketStore = defineStore('token-market', () => {
     } catch (error) {
       lastError.value = error instanceof Error ? error.message : '搜索失败'
       throw error
-    } finally {
-      searchLoading.value = false
-    }
+    } finally { searchLoading.value = false }
   }
 
-  function clearQuote(): void {
-    activeQuote.value = null
-  }
+  function clearQuote(): void { activeQuote.value = null }
 
   return {
-    bootstrap,
-    loading,
-    exchanging,
-    searchLoading,
-    activeQuote,
-    searchProducts,
-    searchMerchants,
-    lastError,
-    wallet,
-    categories,
-    products,
-    merchants,
-    activities,
-    exchangeRate,
-    initialize,
-    quoteExchange,
-    executeExchange,
-    search,
-    clearQuote,
+    bootstrap, loading, exchanging, searchLoading, resourceLoading, activeQuote, activeProduct, orderItems, exchangeHistory, walletSnapshot,
+    searchProducts, searchMerchants, lastError, wallet, categories, products, merchants, activities, exchangeRate,
+    initialize, loadProduct, loadProducts, loadOrders, loadWallet, loadExchangeHistory, quoteExchange, executeExchange, search, clearQuote,
   }
 })
