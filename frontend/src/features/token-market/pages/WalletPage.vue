@@ -1,34 +1,18 @@
 <template>
-  <TokenMarketSubpageLayout eyebrow="TOKEN WALLET" title="Token 钱包" description="展示可用、冻结、待结算资产与账本入口；后续由 Wallet/Ledger API 提供真实余额和不可变流水。">
-    <template #actions>
-      <button class="tm-button secondary" type="button" @click="router.push('/token-market/exchange-history')">兑换记录</button>
-      <button class="tm-button primary" type="button" @click="router.push('/token-market')">去兑换</button>
-    </template>
-
-    <section class="wallet-hero glass-card">
-      <div><span class="eyebrow">AVAILABLE BALANCE</span><strong>{{ wallet?.tokenBalance.toLocaleString('zh-CN') ?? '0' }} T</strong><p>≈ ¥ {{ ((wallet?.tokenBalance ?? 0)/(market.exchangeRate||100)).toLocaleString('zh-CN',{maximumFractionDigits:2}) }}</p></div>
-      <div class="wallet-metrics"><article><span>冻结</span><b>{{ wallet?.frozenToken.toLocaleString('zh-CN') ?? '0' }} T</b></article><article><span>待结算</span><b>{{ wallet?.pendingToken.toLocaleString('zh-CN') ?? '0' }} T</b></article><article><span>今日消费</span><b>{{ wallet?.todaySpentToken.toLocaleString('zh-CN') ?? '0' }} T</b></article></div>
-    </section>
-
-    <div class="wallet-grid">
-      <section class="glass-card ledger"><div class="section-head"><div><span class="eyebrow">RECENT LEDGER</span><h2>最近流水</h2></div><button>查看全部</button></div>
-        <article v-for="item in ledger" :key="item.id"><div class="icon">{{ item.icon }}</div><div class="copy"><strong>{{ item.title }}</strong><span>{{ item.detail }}</span></div><div :class="['amount',item.amount>0?'plus':'minus']">{{ item.amount>0?'+':'' }}{{ item.amount.toLocaleString('zh-CN') }} T<small>{{ item.time }}</small></div></article>
-      </section>
-      <aside class="glass-card quick"><span class="eyebrow">QUICK ACTIONS</span><h2>快捷操作</h2><button @click="router.push('/token-market')"><b>⇄</b><span>平台余额 ↔ Token<small>按平台汇率兑换</small></span></button><button @click="router.push('/token-market/orders')"><b>▣</b><span>订单中心<small>查看消费与退款</small></span></button><button @click="router.push('/token-market/merchant-center')"><b>◆</b><span>商家中心<small>收入与待结算</small></span></button></aside>
-    </div>
+  <TokenMarketSubpageLayout eyebrow="TOKEN WALLET" title="Token 钱包" description="展示可用、冻结、待结算资产与账本入口；余额通过 Wallet Repository 获取。">
+    <template #actions><button class="tm-button secondary" @click="router.push('/token-market/exchange-history')">兑换记录</button><button class="tm-button primary" @click="router.push('/token-market')">去兑换</button></template>
+    <section class="wallet-hero glass-card"><div><span class="eyebrow">AVAILABLE BALANCE</span><strong>{{wallet?.tokenBalance.toLocaleString('zh-CN')??'0'}} T</strong><p>≈ ¥ {{((wallet?.tokenBalance??0)/(market.exchangeRate||100)).toLocaleString('zh-CN',{maximumFractionDigits:2})}}</p></div><div class="wallet-metrics"><article><span>冻结</span><b>{{wallet?.frozenToken.toLocaleString('zh-CN')??'0'}} T</b></article><article><span>待结算</span><b>{{wallet?.pendingToken.toLocaleString('zh-CN')??'0'}} T</b></article><article><span>今日消费</span><b>{{wallet?.todaySpentToken.toLocaleString('zh-CN')??'0'}} T</b></article></div></section>
+    <div class="wallet-grid"><section class="glass-card ledger"><div class="section-head"><div><span class="eyebrow">RECENT LEDGER</span><h2>最近流水</h2></div><button>查看全部</button></div><article v-for="item in ledger" :key="item.id"><div class="icon">{{item.icon}}</div><div class="copy"><strong>{{item.title}}</strong><span>{{item.detail}}</span></div><div :class="['amount',item.amount>=0?'plus':'minus']">{{item.amount>0?'+':''}}{{item.amount.toLocaleString('zh-CN')}} T<small>{{item.time}}</small></div></article></section><aside class="glass-card quick"><span class="eyebrow">QUICK ACTIONS</span><h2>快捷操作</h2><button @click="router.push('/token-market')"><b>⇄</b><span>平台余额 ↔ Token<small>按平台汇率兑换</small></span></button><button @click="router.push('/token-market/orders')"><b>▣</b><span>订单中心<small>查看消费与退款</small></span></button><button @click="router.push('/token-market/merchant-center')"><b>◆</b><span>商家中心<small>收入与待结算</small></span></button></aside></div>
   </TokenMarketSubpageLayout>
 </template>
-
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import TokenMarketSubpageLayout from '../components/TokenMarketSubpageLayout.vue'
 import { useTokenMarketStore } from '../store'
-const router=useRouter(); const market=useTokenMarketStore(); const wallet=computed(()=>market.wallet)
-const ledger=[{id:'1',icon:'⇄',title:'余额兑换 Token',detail:'平台余额兑换',amount:10000,time:'今天 15:20'},{id:'2',icon:'◇',title:'商品订单支付',detail:'星芒无线蓝牙耳机',amount:-2880,time:'今天 14:32'},{id:'3',icon:'◆',title:'商家订单结算',detail:'数字商品销售收入',amount:4200,time:'今天 10:18'},{id:'4',icon:'↺',title:'订单退款',detail:'售后退款到账',amount:980,time:'昨天 21:40'}]
-onMounted(()=>market.initialize())
+const router=useRouter(); const market=useTokenMarketStore(); const wallet=computed(()=>market.wallet); const ledger=computed(()=>market.activities.map(item=>({id:item.id,icon:item.tokenAmount!=null&&item.tokenAmount>=0?'◆':'◇',title:item.title,detail:item.detail,amount:item.tokenAmount??0,time:new Date(item.occurredAt).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})})))
+onMounted(async()=>{await market.initialize();await market.loadWallet()})
 </script>
-
 <style scoped>
 .wallet-hero{display:flex;justify-content:space-between;align-items:center;padding:28px;margin-bottom:18px;background:radial-gradient(circle at 15% 25%,rgba(86,76,255,.24),transparent 32%),linear-gradient(135deg,rgba(15,34,78,.94),rgba(6,18,43,.9))}.eyebrow{color:#7086ac;font-size:9px;font-weight:800;letter-spacing:.13em}.wallet-hero>div>strong{display:block;margin:9px 0 2px;font-size:38px}.wallet-hero p{margin:0;color:#7e90ad;font-size:11px}.wallet-metrics{display:grid;grid-template-columns:repeat(3,130px);gap:10px}.wallet-metrics article{padding:14px;border:1px solid rgba(111,140,204,.13);border-radius:12px;background:rgba(6,17,39,.35)}.wallet-metrics span,.wallet-metrics b{display:block}.wallet-metrics span{color:#6f84a7;font-size:9px}.wallet-metrics b{margin-top:6px;font-size:13px}.wallet-grid{display:grid;grid-template-columns:minmax(0,1fr) 310px;gap:18px}.ledger,.quick{padding:20px}.section-head{display:flex;justify-content:space-between;align-items:center;padding-bottom:12px;border-bottom:1px solid rgba(109,139,203,.12)}.section-head h2,.quick h2{margin:4px 0}.section-head button{border:0;color:#748bb0;background:transparent;font-size:9px}.ledger article{display:grid;grid-template-columns:42px 1fr 130px;gap:12px;align-items:center;padding:14px 0;border-bottom:1px solid rgba(109,139,203,.1)}.icon{display:grid;place-items:center;width:38px;height:38px;border-radius:11px;background:#0b1a38;color:#b9c9e7}.copy strong,.copy span,.amount small{display:block}.copy strong{font-size:11px}.copy span{margin-top:3px;color:#7084a4;font-size:9px}.amount{text-align:right;font-size:11px;font-weight:800}.amount.plus{color:#5fd9af}.amount.minus{color:#ff83a7}.amount small{margin-top:3px;color:#63789b;font-size:8px;font-weight:400}.quick>button{width:100%;display:flex;gap:12px;align-items:center;padding:13px;margin-top:10px;border:1px solid rgba(111,140,204,.12);border-radius:11px;color:#dce6f8;background:rgba(8,20,45,.65);text-align:left;cursor:pointer}.quick>button>b{display:grid;place-items:center;width:32px;height:32px;border-radius:9px;background:rgba(82,91,255,.15)}.quick>button>span,.quick small{display:block}.quick>button>span{font-size:10px}.quick small{margin-top:3px;color:#697fa2;font-size:8px}@media(max-width:950px){.wallet-hero{align-items:flex-start;flex-direction:column;gap:18px}.wallet-metrics{width:100%;grid-template-columns:repeat(3,1fr)}.wallet-grid{grid-template-columns:1fr}}@media(max-width:560px){.wallet-metrics{grid-template-columns:1fr}.ledger article{grid-template-columns:38px 1fr}.amount{display:none}}
 </style>
