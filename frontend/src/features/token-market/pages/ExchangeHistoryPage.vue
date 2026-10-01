@@ -1,6 +1,14 @@
 <template>
-  <TokenMarketSubpageLayout eyebrow="EXCHANGE HISTORY" title="兑换记录" description="记录平台余额与 Token 双向兑换的报价快照、汇率、状态和交易号；未来直接对接兑换账本。">
+  <TokenMarketSubpageLayout
+    eyebrow="EXCHANGE HISTORY"
+    title="兑换记录"
+    description="记录平台余额与 Token 双向兑换的报价快照、汇率、状态和交易号；未来直接对接兑换账本。"
+    :empty="filtered.length === 0"
+    empty-title="暂无兑换记录"
+    empty-description="完成余额与 Token 的兑换后，交易记录会显示在这里。"
+  >
     <template #actions><button class="tm-button primary" type="button" @click="router.push('/token-market')">发起兑换</button></template>
+    <template #emptyActions><button class="tm-button primary" type="button" @click="router.push('/token-market')">去兑换</button></template>
 
     <section class="glass-card history-card">
       <div class="filters"><button v-for="item in filters" :key="item" :class="{active:filter===item}" @click="filter=item">{{ item }}</button><span></span><button class="export">导出记录</button></div>
