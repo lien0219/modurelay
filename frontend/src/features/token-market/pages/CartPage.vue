@@ -34,13 +34,13 @@ import TokenMarketSubpageLayout from '../components/TokenMarketSubpageLayout.vue
 import { useTokenMarketStore } from '../store'
 import type { TokenMarketProduct } from '../types'
 
-const route=useRoute(); const router=useRouter(); const market=useTokenMarketStore(); const quantities=ref<Record<string,number>>({})
-const selectedIds=computed(()=>{const queryId=String(route.query.add||route.query.buy||'');const base=market.products.slice(0,3).map(p=>p.id);return queryId?[queryId,...base.filter(id=>id!==queryId)]:base})
+const route=useRoute(); const router=useRouter(); const market=useTokenMarketStore(); const quantities=ref<Record<string,number>>({}); const removedIds=ref<Set<string>>(new Set())
+const selectedIds=computed(()=>{const queryId=String(route.query.add||route.query.buy||'');const base=market.products.slice(0,3).map(p=>p.id);const ids=queryId?[queryId,...base.filter(id=>id!==queryId)]:base;return ids.filter(id=>!removedIds.value.has(id))})
 const rows=computed(()=>selectedIds.value.map(id=>market.products.find(p=>p.id===id)).filter((p):p is TokenMarketProduct=>Boolean(p)).map(product=>({product,qty:quantities.value[product.id]??(String(route.query.add||route.query.buy)===product.id?Math.max(1,Number(route.query.qty)||1):1)})))
 const subtotal=computed(()=>rows.value.reduce((sum,row)=>sum+row.product.priceToken*row.qty,0)); const discount=computed(()=>Math.floor(subtotal.value*.03)); const fee=computed(()=>rows.value.length?60:0); const total=computed(()=>subtotal.value-discount.value+fee.value); const tokenBalance=computed(()=>market.wallet?.tokenBalance??0)
 function merchantName(id:string){return market.merchants.find(m=>m.id===id)?.name??'Token Market 商户'}
 function change(id:string,delta:number){const current=rows.value.find(r=>r.product.id===id)?.qty??1;quantities.value={...quantities.value,[id]:Math.max(1,current+delta)}}
-function remove(id:string){quantities.value={...quantities.value,[id]:0};const idx=selectedIds.value.indexOf(id);if(idx>=0){market.bootstrap!.products=market.products.filter(p=>p.id!==id)}}
+function remove(id:string){const next=new Set(removedIds.value);next.add(id);removedIds.value=next}
 function checkout(){void router.push({path:'/token-market/orders',query:{created:'1'}})}
 onMounted(()=>market.initialize())
 </script>
