@@ -4,6 +4,7 @@ import App from './App.vue'
 import router from './router'
 import i18n, { initI18n } from './i18n'
 import { brand } from '@/config/brand'
+import { tokenMarketRoute } from '@/features/token-market'
 import { useAppStore } from '@/stores/app'
 import { updateFavicon } from '@/utils/branding'
 import { isIOSDevice } from '@/utils/device'
@@ -15,19 +16,10 @@ import './style.css'
 import './styles/home-route-guard.css'
 import './styles/home.css'
 
-// Token Market is intentionally registered outside the regular dashboard route
-// collection. It is a standalone full-screen product surface (similar to the
-// infinite-canvas experience) and must not inherit AppLayout/sidebar styling.
-router.addRoute({
-  path: '/token-market',
-  name: 'TokenMarket',
-  component: () => import('@/views/user/TokenMarketView.vue'),
-  meta: {
-    requiresAuth: true,
-    requiresAdmin: false,
-    title: 'Token Market'
-  }
-})
+// Standalone feature route: the Token Market owns its visual shell and is not
+// wrapped by AppLayout/sidebar. The route contract lives with the feature so
+// future guards/flags can evolve without leaking market details into bootstrap.
+router.addRoute(tokenMarketRoute)
 
 function initIOSViewportZoomFix() {
   // iOS Safari 在输入框字号小于 16px 时聚焦会自动放大页面，且失焦后不会恢复。
