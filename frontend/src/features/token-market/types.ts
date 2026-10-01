@@ -1,5 +1,16 @@
 export type TokenMarketCategoryId = 'mall' | 'delivery' | 'digital' | 'ai_credit' | 'services'
 export type TokenExchangeDirection = 'balance_to_token' | 'token_to_balance'
+export type TokenMarketOrderStatus = 'pending_payment' | 'fulfilling' | 'completed' | 'after_sale' | 'cancelled'
+export type TokenMarketExchangeStatus = 'pending' | 'success' | 'failed'
+export type TokenMarketMoneyUnit = 'balance' | 'token'
+
+export interface TokenMarketPageResult<T> {
+  items: T[]
+  total: number
+  page: number
+  pageSize: number
+  hasMore: boolean
+}
 
 export interface TokenMarketWalletSnapshot {
   platformBalance: number
@@ -40,6 +51,50 @@ export interface TokenMarketActivity {
   detail: string
   tokenAmount?: number
   occurredAt: string
+}
+
+export interface TokenMarketOrder {
+  id: string
+  categoryId: TokenMarketCategoryId
+  productId?: string
+  merchantId?: string
+  title: string
+  amountToken: number
+  status: TokenMarketOrderStatus
+  statusText: string
+  createdAt: string
+}
+
+export interface TokenMarketExchangeRecord {
+  id: string
+  direction: TokenExchangeDirection
+  sourceAmount: number
+  sourceUnit: TokenMarketMoneyUnit
+  destinationAmount: number
+  destinationUnit: TokenMarketMoneyUnit
+  tokenPerBalanceUnit: number
+  status: TokenMarketExchangeStatus
+  createdAt: string
+}
+
+export interface TokenMarketProductQuery {
+  page?: number
+  pageSize?: number
+  merchantId?: string
+  categoryId?: TokenMarketCategoryId
+  query?: string
+}
+
+export interface TokenMarketOrderQuery {
+  page?: number
+  pageSize?: number
+  status?: TokenMarketOrderStatus
+}
+
+export interface TokenMarketExchangeHistoryQuery {
+  page?: number
+  pageSize?: number
+  direction?: TokenExchangeDirection
 }
 
 export interface TokenMarketBootstrap {
@@ -83,6 +138,11 @@ export interface TokenMarketSearchResult {
 
 export interface TokenMarketService {
   getBootstrap(): Promise<TokenMarketBootstrap>
+  listProducts(query?: TokenMarketProductQuery): Promise<TokenMarketPageResult<TokenMarketProduct>>
+  getProduct(id: string): Promise<TokenMarketProduct | null>
+  listOrders(query?: TokenMarketOrderQuery): Promise<TokenMarketPageResult<TokenMarketOrder>>
+  getWallet(): Promise<TokenMarketWalletSnapshot>
+  listExchangeHistory(query?: TokenMarketExchangeHistoryQuery): Promise<TokenMarketPageResult<TokenMarketExchangeRecord>>
   quoteExchange(request: TokenExchangeQuoteRequest): Promise<TokenExchangeQuote>
   executeExchange(request: TokenExchangeExecuteRequest): Promise<TokenExchangeExecuteResult>
   search(query: string): Promise<TokenMarketSearchResult>
