@@ -15,6 +15,20 @@ import './style.css'
 import './styles/home-route-guard.css'
 import './styles/home.css'
 
+// Token Market is intentionally registered outside the regular dashboard route
+// collection. It is a standalone full-screen product surface (similar to the
+// infinite-canvas experience) and must not inherit AppLayout/sidebar styling.
+router.addRoute({
+  path: '/token-market',
+  name: 'TokenMarket',
+  component: () => import('@/views/user/TokenMarketView.vue'),
+  meta: {
+    requiresAuth: true,
+    requiresAdmin: false,
+    title: 'Token Market'
+  }
+})
+
 function initIOSViewportZoomFix() {
   // iOS Safari 在输入框字号小于 16px 时聚焦会自动放大页面，且失焦后不会恢复。
   // 限制 maximum-scale 可阻止该行为；iOS 10+ 用户仍可双指手动缩放，不影响可访问性。
