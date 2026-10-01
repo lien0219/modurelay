@@ -19,6 +19,41 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+func TestOpenAICompatibleImagePlatformsAndCapabilities(t *testing.T) {
+	for _, platform := range []string{PlatformOpenAI, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo} {
+		t.Run(platform, func(t *testing.T) {
+			require.True(t, IsOpenAICompatibleImagePlatform(platform))
+			apiKey := &Account{Platform: platform, Type: AccountTypeAPIKey}
+			require.True(t, apiKey.SupportsOpenAIImageCapability(OpenAIImagesCapabilityAPIKey))
+			require.True(t, apiKey.SupportsOpenAIImageCapability(OpenAIImagesCapabilityNative))
+			if platform != PlatformOpenAI {
+				require.False(t, (&Account{Platform: platform, Type: AccountTypeOAuth}).SupportsOpenAIImageCapability(OpenAIImagesCapabilityNative))
+			}
+		})
+	}
+	for _, platform := range []string{PlatformGrok, PlatformGemini, PlatformAnthropic, PlatformComposite, ""} {
+		require.False(t, IsOpenAICompatibleImagePlatform(platform), platform)
+	}
+}
+
+func TestCompatibleImagesThirdPartyFamiliesUseAPIKeyPath(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, model := range []string{
+		"doubao-seedream-4-0", "flux-1.1-pro", "recraft-v3", "ideogram-v3",
+		"qwen-image-plus", "image-01", "nano-banana-pro", "wanx-v1",
+		"dall-e-3", "imagen-4",
+	} {
+		t.Run(model, func(t *testing.T) {
+			body := []byte(fmt.Sprintf(`{"model":%q,"prompt":"draw"}`, model))
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest(http.MethodPost, openAIImagesGenerationsEndpoint, bytes.NewReader(body))
+			parsed, err := (&OpenAIGatewayService{}).ParseOpenAIImagesRequest(c, body)
+			require.NoError(t, err)
+			require.Equal(t, OpenAIImagesCapabilityAPIKey, parsed.RequiredCapability)
+		})
+	}
+}
+
 func TestCompatibleImagesGeminiModels(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	for _, model := range []string{"gemini-2.5-flash-image", "gemini-2.5-flash-image-preview", "gemini-3-pro-image", "gemini-3.1-flash-image"} {

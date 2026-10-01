@@ -135,21 +135,54 @@ func LookupVideoModelPrice(prices map[string]map[string]float64, model, resoluti
 	if len(prices) == 0 {
 		return nil
 	}
-	family := CanonicalGrokImagineVideoPriceFamily(model)
+	family := canonicalVideoModelPriceKey(model)
 	if family == "" {
-		family = strings.ToLower(strings.TrimSpace(model))
-	}
-	if family == "" {
-		return nil
-	}
-	tierPrices, ok := prices[family]
-	if !ok || len(tierPrices) == 0 {
 		return nil
 	}
 	tier := NormalizeVideoBillingResolutionOrDefault(resolution)
-	if price, ok := tierPrices[tier]; ok {
-		p := price
-		return &p
+	modelKeys := make([]string, 0, len(prices))
+	for modelKey := range prices {
+		modelKeys = append(modelKeys, modelKey)
+	}
+	sort.Strings(modelKeys)
+
+	// Prefer the exact externally qualified ID, then a canonical family key.
+	for _, key := range []string{strings.TrimSpace(model), family} {
+		for _, modelKey := range modelKeys {
+			if !strings.EqualFold(strings.TrimSpace(modelKey), key) {
+				continue
+			}
+			if price, ok := prices[modelKey][tier]; ok {
+				p := price
+				return &p
+			}
+		}
+	}
+
+	// Unqualified IDs may use a qualified price key only when that canonical
+	// model resolves to one configured supplier. Multiple matches are ambiguous.
+	var matchedPrice *float64
+	matches := 0
+	for _, modelKey := range modelKeys {
+		if canonicalVideoModelPriceKey(modelKey) != family {
+			continue
+		}
+		if price, ok := prices[modelKey][tier]; ok {
+			p := price
+			matchedPrice = &p
+			matches++
+		}
+	}
+	if matches == 1 {
+		return matchedPrice
 	}
 	return nil
+}
+
+func canonicalVideoModelPriceKey(model string) string {
+	canonicalModel := CanonicalVideoModel(model)
+	if family := CanonicalGrokImagineVideoPriceFamily(canonicalModel); family != "" {
+		return family
+	}
+	return strings.ToLower(strings.TrimSpace(canonicalModel))
 }

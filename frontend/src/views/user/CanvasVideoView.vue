@@ -18,7 +18,7 @@
         </header>
 
         <div class="canvas-video__workbench">
-          <form class="canvas-video__form" :aria-busy="isWorking || undefined" @submit.prevent="submitGeneration">
+          <form class="canvas-video__form" :aria-busy="isWorking || undefined" @submit.prevent="handleGenerationSubmit">
             <div class="canvas-video__form-heading">
               <div>
                 <h2>{{ t('canvas.video.createTitle') }}</h2>
@@ -29,7 +29,7 @@
 
             <div class="canvas-video__field">
               <label for="canvas-video-key">{{ t('canvas.video.apiKey') }}</label>
-              <select id="canvas-video-key" v-model.number="selectedKeyId" :disabled="loadingKeys || isWorking">
+              <select id="canvas-video-key" v-model.number="selectedKeyId" :disabled="loadingKeys || isWorking || Boolean(requestId && canResumeTask)">
                 <option :value="0">{{ loadingKeys ? t('canvas.video.loadingKeys') : t('canvas.video.selectKey') }}</option>
                 <option v-for="key in videoKeys" :key="key.id" :value="key.id">
                   {{ key.name }} · {{ key.group?.name || 'Grok' }}
@@ -60,8 +60,7 @@
               <div class="canvas-video__field">
                 <label for="canvas-video-model">{{ t('canvas.video.model') }}</label>
                 <select id="canvas-video-model" v-model="model" :disabled="isWorking">
-                  <option value="grok-imagine-video-1.5">grok-imagine-video-1.5</option>
-                  <option value="grok-imagine-video">grok-imagine-video</option>
+                  <option v-for="option in videoModelOptions" :key="option" :value="option">{{ option }}</option>
                 </select>
               </div>
               <div class="canvas-video__field">
@@ -82,11 +81,10 @@
               </div>
               <div class="canvas-video__field">
                 <label for="canvas-video-resolution">{{ t('canvas.video.resolution') }}</label>
-                <select id="canvas-video-resolution" v-model="resolution" :disabled="isWorking">
-                  <option value="480p">480p</option>
-                  <option value="720p">720p</option>
-                  <option value="1080p">1080p</option>
+                <select id="canvas-video-resolution" v-model="resolution" :disabled="isWorking || !availableResolutions.length">
+                  <option v-for="option in availableResolutions" :key="option" :value="option">{{ option }}</option>
                 </select>
+                <p v-if="!availableResolutions.length" class="canvas-video__field-error" role="alert">{{ t('canvas.video.noPricedResolution') }}</p>
               </div>
             </div>
 
@@ -113,7 +111,7 @@
                 :disabled="!canSubmit"
               >
                 <Icon :name="isWorking ? 'refresh' : 'play'" size="sm" :class="{ 'is-spinning': isWorking }" aria-hidden="true" />
-                {{ isWorking ? t('canvas.video.processing') : t('canvas.video.generate') }}
+                {{ isWorking ? t('canvas.video.processing') : canResumeTask ? t('canvas.video.resume') : t('canvas.video.generate') }}
               </button>
             </div>
           </form>
@@ -139,9 +137,12 @@
               </div>
               <div v-else-if="errorMessage" class="canvas-video__error-state" role="alert">
                 <span aria-hidden="true"><Icon name="exclamationCircle" size="lg" /></span>
-                <h3>{{ t('canvas.video.failedTitle') }}</h3>
+                <h3>{{ phase === 'canceled' ? t('canvas.video.stoppedTitle') : t('canvas.video.failedTitle') }}</h3>
                 <p>{{ errorMessage }}</p>
-                <button type="button" @click="resetResult">{{ t('canvas.video.retry') }}</button>
+                <div class="canvas-video__error-actions">
+                  <button v-if="canResumeTask && requestId" type="button" @click="resumeTask">{{ t('canvas.video.resume') }}</button>
+                  <button type="button" @click="resetResult">{{ canResumeTask ? t('canvas.video.newGeneration') : t('canvas.video.retry') }}</button>
+                </div>
               </div>
               <div v-else class="canvas-video__empty-state">
                 <span aria-hidden="true"><Icon name="play" size="lg" /></span>
@@ -165,15 +166,21 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import CanvasWorkspaceNav from '@/components/canvas/CanvasWorkspaceNav.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { keysAPI } from '@/api/keys'
 import { videoAPI, type VideoGenerationTask } from '@/api/video'
 import type { ApiKey } from '@/types'
+import { retryTaskPollingRequest } from '@/utils/taskPolling'
 
 type VideoPhase = 'idle' | 'submitting' | 'pending' | 'downloading' | 'completed' | 'failed' | 'canceled'
+type VideoTaskSession = { keyId: number; requestId: string; progress: number | null }
+
+const videoTaskSessionKey = 'modurelay:canvas-video:task'
+const defaultVideoModels = ['grok-imagine-video-1.5', 'grok-imagine-video']
+const videoResolutionOrder = ['480p', '720p', '1080p'] as const
 
 const { t } = useI18n()
 const apiKeys = ref<ApiKey[]>([])
@@ -184,25 +191,128 @@ const prompt = ref('')
 const model = ref('grok-imagine-video-1.5')
 const duration = ref(6)
 const aspectRatio = ref('16:9')
-const resolution = ref('480p')
+const resolution = ref<(typeof videoResolutionOrder)[number]>('480p')
 const requestId = ref('')
 const phase = ref<VideoPhase>('idle')
 const progress = ref<number | null>(null)
 const errorMessage = ref('')
+const canResumeTask = ref(false)
 const videoURL = ref('')
 let pollTimer: ReturnType<typeof setTimeout> | null = null
 let activeController: AbortController | null = null
+let restoredTaskSession: VideoTaskSession | null = null
 
 const videoKeys = computed(() => apiKeys.value.filter(key => (
   key.status === 'active'
   && key.group?.status === 'active'
-  && key.group.platform === 'grok'
   && key.group.allow_image_generation === true
+  && (key.group.platform === 'grok' || Object.keys(key.group.video_model_prices || {}).length > 0)
 )))
 const selectedKey = computed(() => videoKeys.value.find(key => key.id === selectedKeyId.value) || null)
 const isWorking = computed(() => ['submitting', 'pending', 'downloading'].includes(phase.value))
-const canSubmit = computed(() => Boolean(selectedKey.value && prompt.value.trim() && !isWorking.value))
+const videoModelOptions = computed(() => {
+  const prices = selectedKey.value?.group?.video_model_prices || {}
+  const configured = Object.entries(prices)
+    .filter(([id, tiers]) => !grokVideoFamily(id) && pricedResolutions(tiers).length > 0)
+    .map(([id]) => id)
+  return [...defaultVideoModels, ...configured.filter(id => !defaultVideoModels.includes(id))]
+})
+const availableResolutions = computed(() => {
+  const group = selectedKey.value?.group
+  const prices = group?.video_model_prices || {}
+  const entry = matchingVideoPriceEntry(prices, model.value)
+  const modelTiers = entry ? pricedResolutions(entry) : []
+  if (modelTiers.length) return modelTiers
+  if (isSeedanceModel(model.value)) return []
+
+  const flatTiers = videoResolutionOrder.filter(tier => {
+    const field = `video_price_${tier}` as 'video_price_480p' | 'video_price_720p' | 'video_price_1080p'
+    return typeof group?.[field] === 'number' && Number.isFinite(group[field])
+  })
+  if (flatTiers.length) return flatTiers
+  return grokVideoFamily(model.value) ? [...videoResolutionOrder] : []
+})
+const canSubmit = computed(() => Boolean(
+  selectedKey.value
+  && !isWorking.value
+  && (canResumeTask.value && requestId.value || prompt.value.trim() && availableResolutions.value.includes(resolution.value)),
+))
 const phaseLabel = computed(() => t(`canvas.video.phase.${phase.value}`))
+
+watch([selectedKeyId, model], () => {
+  if (!availableResolutions.value.includes(resolution.value)) {
+    resolution.value = availableResolutions.value[0] || '480p'
+  }
+})
+
+function normalizedVideoModel(modelId: string) {
+  const segments = modelId.trim().toLowerCase().split(':')
+  return segments.length > 1 ? segments[segments.length - 1].replace(/^(xai|x-ai|grok)\//, '') : segments[0].replace(/^(xai|x-ai|grok)\//, '')
+}
+
+function grokVideoFamily(modelId: string) {
+  const modelIdLower = normalizedVideoModel(modelId)
+  if (modelIdLower.includes('grok-imagine-video') || modelIdLower.includes('grok-video')) {
+    return modelIdLower.includes('1.5') ? 'grok-imagine-video-1.5' : 'grok-imagine-video'
+  }
+  return ''
+}
+
+function isSeedanceModel(modelId: string) {
+  return normalizedVideoModel(modelId).startsWith('seedance-')
+}
+
+function pricedResolutions(tiers: Record<string, number>) {
+  return videoResolutionOrder.filter(tier => {
+    const price = tiers[tier] ?? tiers[tier.toUpperCase()]
+    return typeof price === 'number' && Number.isFinite(price) && price >= 0
+  })
+}
+
+function matchingVideoPriceEntry(prices: Record<string, Record<string, number>>, modelId: string) {
+  const exact = Object.entries(prices).find(([key]) => key.toLowerCase() === modelId.toLowerCase())
+  if (exact) return exact[1]
+  const family = grokVideoFamily(modelId)
+  if (!family) return undefined
+  return Object.entries(prices).find(([key]) => grokVideoFamily(key) === family)?.[1]
+}
+
+function readVideoTaskSession(): VideoTaskSession | null {
+  try {
+    const raw = sessionStorage.getItem(videoTaskSessionKey)
+    if (!raw) return null
+    const value = JSON.parse(raw) as Partial<VideoTaskSession>
+    if (typeof value.keyId !== 'number' || !Number.isSafeInteger(value.keyId) || value.keyId <= 0 || typeof value.requestId !== 'string' || !value.requestId.trim()) return null
+    return {
+      keyId: Number(value.keyId),
+      requestId: value.requestId.trim(),
+      progress: typeof value.progress === 'number' && Number.isFinite(value.progress) ? value.progress : null,
+    }
+  } catch {
+    return null
+  }
+}
+
+function persistVideoTaskSession() {
+  if (!requestId.value || !selectedKeyId.value) return
+  try {
+    sessionStorage.setItem(videoTaskSessionKey, JSON.stringify({
+      keyId: selectedKeyId.value,
+      requestId: requestId.value,
+      progress: progress.value,
+    } satisfies VideoTaskSession))
+  } catch {
+    // Session storage may be unavailable in private browser contexts.
+  }
+}
+
+function clearVideoTaskSession() {
+  try {
+    sessionStorage.removeItem(videoTaskSessionKey)
+  } catch {
+    // Session storage may be unavailable in private browser contexts.
+  }
+}
 
 function errorText(error: unknown) {
   return error instanceof Error
@@ -217,6 +327,8 @@ function taskRequestId(task: VideoGenerationTask) {
 function taskStatus(task: VideoGenerationTask) {
   return String(task.status || '').trim().toLowerCase()
 }
+
+class VideoTaskFailedError extends Error {}
 
 function updateProgress(task: VideoGenerationTask) {
   if (typeof task.progress !== 'number' || !Number.isFinite(task.progress)) return
@@ -242,7 +354,11 @@ async function loadKeys() {
   try {
     const response = await keysAPI.list(1, 100, { status: 'active', sort_by: 'created_at', sort_order: 'desc' })
     apiKeys.value = response.items || []
-    if (!selectedKey.value && videoKeys.value.length) selectedKeyId.value = videoKeys.value[0].id
+    if (restoredTaskSession) {
+      selectedKeyId.value = restoredTaskSession.keyId
+    } else if (!selectedKey.value && videoKeys.value.length) {
+      selectedKeyId.value = videoKeys.value[0].id
+    }
   } catch (error) {
     keysError.value = errorText(error)
   } finally {
@@ -252,25 +368,28 @@ async function loadKeys() {
 
 async function loadCompletedVideo(apiKey: string, id: string, signal: AbortSignal) {
   phase.value = 'downloading'
-  const blob = await videoAPI.content(apiKey, id, signal)
+  const blob = await retryTaskPollingRequest(() => videoAPI.content(apiKey, id, signal), signal)
   clearVideoURL()
   videoURL.value = URL.createObjectURL(blob)
   progress.value = 100
   phase.value = 'completed'
+  canResumeTask.value = false
+  persistVideoTaskSession()
 }
 
 async function pollStatus(apiKey: string, id: string, signal: AbortSignal) {
   if (signal.aborted) return
   try {
-    const task = await videoAPI.status(apiKey, id, signal)
+    const task = await retryTaskPollingRequest(() => videoAPI.status(apiKey, id, signal), signal)
     updateProgress(task)
+    persistVideoTaskSession()
     const status = taskStatus(task)
     if (['done', 'completed', 'succeeded', 'success'].includes(status)) {
       await loadCompletedVideo(apiKey, id, signal)
       return
     }
     if (['failed', 'error', 'expired', 'canceled', 'cancelled'].includes(status)) {
-      throw new Error(typeof task.error === 'string' ? task.error : t('canvas.video.taskFailed', { status }))
+      throw new VideoTaskFailedError(typeof task.error === 'string' ? task.error : t('canvas.video.taskFailed', { status }))
     }
     phase.value = 'pending'
     pollTimer = setTimeout(() => { void pollStatus(apiKey, id, signal) }, 3000)
@@ -278,12 +397,40 @@ async function pollStatus(apiKey: string, id: string, signal: AbortSignal) {
     if (signal.aborted) return
     errorMessage.value = errorText(error)
     phase.value = 'failed'
+    canResumeTask.value = !(error instanceof VideoTaskFailedError)
+    if (error instanceof VideoTaskFailedError) clearVideoTaskSession()
+    else persistVideoTaskSession()
+  } finally {
+    if (activeController?.signal === signal && !isWorking.value) activeController = null
   }
+}
+
+function handleGenerationSubmit() {
+  if (canResumeTask.value && requestId.value) {
+    void resumeTask()
+    return
+  }
+  void submitGeneration()
+}
+
+async function resumeTask() {
+  const key = selectedKey.value
+  const id = requestId.value
+  if (!key || !id || activeController) return
+
+  clearPollTimer()
+  const controller = new AbortController()
+  activeController = controller
+  errorMessage.value = ''
+  canResumeTask.value = false
+  phase.value = 'pending'
+  persistVideoTaskSession()
+  await pollStatus(key.key, id, controller.signal)
 }
 
 async function submitGeneration() {
   const key = selectedKey.value
-  if (!key || !prompt.value.trim() || isWorking.value) return
+  if (!key || !prompt.value.trim() || !availableResolutions.value.includes(resolution.value) || isWorking.value) return
 
   clearPollTimer()
   activeController?.abort()
@@ -292,6 +439,8 @@ async function submitGeneration() {
   clearVideoURL()
   errorMessage.value = ''
   requestId.value = ''
+  canResumeTask.value = false
+  clearVideoTaskSession()
   progress.value = null
   phase.value = 'submitting'
 
@@ -306,8 +455,10 @@ async function submitGeneration() {
     const id = taskRequestId(task)
     if (!id) throw new Error(t('canvas.video.missingRequestId'))
     requestId.value = id
+    canResumeTask.value = true
     updateProgress(task)
     phase.value = 'pending'
+    persistVideoTaskSession()
     await pollStatus(key.key, id, controller.signal)
   } catch (error) {
     if (controller.signal.aborted) return
@@ -323,14 +474,18 @@ function cancelGeneration() {
   activeController?.abort()
   activeController = null
   phase.value = 'canceled'
-  progress.value = null
+  canResumeTask.value = Boolean(requestId.value)
+  errorMessage.value = canResumeTask.value ? t('canvas.video.waitingStopped') : ''
+  persistVideoTaskSession()
 }
 
 function resetResult() {
   errorMessage.value = ''
   requestId.value = ''
+  canResumeTask.value = false
   progress.value = null
   phase.value = 'idle'
+  clearVideoTaskSession()
 }
 
 function downloadVideo() {
@@ -343,7 +498,25 @@ function downloadVideo() {
   anchor.remove()
 }
 
-onMounted(() => { void loadKeys() })
+onMounted(async () => {
+  restoredTaskSession = readVideoTaskSession()
+  if (restoredTaskSession) {
+    selectedKeyId.value = restoredTaskSession.keyId
+    requestId.value = restoredTaskSession.requestId
+    progress.value = restoredTaskSession.progress
+    canResumeTask.value = true
+    phase.value = 'pending'
+  }
+  await loadKeys()
+  if (!restoredTaskSession) return
+  if (!selectedKey.value) {
+    errorMessage.value = t('canvas.video.resumeKeyUnavailable')
+    phase.value = 'failed'
+    canResumeTask.value = false
+    return
+  }
+  await resumeTask()
+})
 onUnmounted(() => {
   clearPollTimer()
   activeController?.abort()
@@ -502,7 +675,8 @@ onUnmounted(() => {
 .canvas-video__empty-state p { margin: 7px 0 0; color: var(--color-text-muted); font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
 .canvas-video__progress-state progress { width: min(260px, 100%); height: 7px; margin-top: 18px; accent-color: var(--color-primary); }
 .canvas-video__error-state > span { border-color: color-mix(in srgb, var(--color-danger) 35%, var(--color-border)); background: color-mix(in srgb, var(--color-danger) 9%, var(--color-surface)); color: var(--color-danger); }
-.canvas-video__error-state button { margin-top: 18px; }
+.canvas-video__error-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 18px; }
+.canvas-video__error-state button { margin-top: 0; }
 .canvas-video__result-actions { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 14px; }
 .canvas-video__result-actions > span { min-width: 0; color: var(--color-text-muted); font-size: 12px; }
 .canvas-video__result-actions code { color: var(--color-text-secondary); overflow-wrap: anywhere; }

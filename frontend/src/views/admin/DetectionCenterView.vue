@@ -156,6 +156,15 @@
           <span class="summary-wave" />
         </article>
 
+        <article class="summary-card summary-inconclusive">
+          <span class="summary-status-icon"><Icon name="questionCircle" size="md" /></span>
+          <div class="summary-copy">
+            <strong>{{ summaryStats.inconclusive }}</strong>
+            <span>{{ t('admin.detectionCenter.inconclusive') }}</span>
+          </div>
+          <span class="summary-wave" />
+        </article>
+
         <article class="summary-card summary-unavailable">
           <span class="summary-status-icon"><Icon name="minus" size="md" /></span>
           <div class="summary-copy">
@@ -414,12 +423,13 @@ const selectedProbe = computed(() => {
 
 const summaryStats = computed(() => {
   const summary = report.value?.summary
-  if (!summary) return { success: 0, failed: 0, partial: 0, unavailable: 0 }
+  if (!summary) return { success: 0, failed: 0, partial: 0, inconclusive: 0, unavailable: 0 }
   return {
     success: summary.success,
     failed: summary.failed,
     partial: summary.partial,
-    unavailable: summary.inconclusive + summary.not_applicable + summary.unavailable,
+    inconclusive: summary.inconclusive,
+    unavailable: summary.not_applicable + summary.unavailable,
   }
 })
 
@@ -514,7 +524,9 @@ async function runDetection() {
     })
 
     const preferred = report.value.probes.find(probe => probe.status === 'failed')
+      ?? report.value.probes.find(probe => probe.status === 'inconclusive')
       ?? report.value.probes.find(probe => probe.status === 'partial')
+      ?? report.value.probes.find(probe => probe.status === 'unavailable')
       ?? report.value.probes[0]
 
     selectedProbeId.value = preferred?.id ?? ''
@@ -791,7 +803,7 @@ function downloadReport() {
 
 .summary-row {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 14px;
 }
 
@@ -873,9 +885,12 @@ function downloadReport() {
 .summary-failed .summary-wave { background: linear-gradient(180deg, color-mix(in srgb, var(--color-danger) 13%, transparent), transparent); }
 .summary-failed::after { background: var(--color-danger); }
 
-.summary-partial .summary-status-icon { background: color-mix(in srgb, var(--color-warning) 14%, white); color: var(--color-warning); }
-.summary-partial .summary-wave { background: linear-gradient(180deg, color-mix(in srgb, var(--color-warning) 16%, transparent), transparent); }
-.summary-partial::after { background: var(--color-warning); }
+.summary-partial .summary-status-icon,
+.summary-inconclusive .summary-status-icon { background: color-mix(in srgb, var(--color-warning) 14%, white); color: var(--color-warning); }
+.summary-partial .summary-wave,
+.summary-inconclusive .summary-wave { background: linear-gradient(180deg, color-mix(in srgb, var(--color-warning) 16%, transparent), transparent); }
+.summary-partial::after,
+.summary-inconclusive::after { background: var(--color-warning); }
 
 .summary-unavailable .summary-status-icon { background: var(--color-surface-soft); color: var(--color-text-muted); }
 .summary-unavailable .summary-wave { background: linear-gradient(180deg, color-mix(in srgb, var(--color-info) 10%, transparent), transparent); }

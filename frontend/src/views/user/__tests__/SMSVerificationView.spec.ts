@@ -359,8 +359,7 @@ describe('SMSVerificationView', () => {
     expect(table.findAll('tbody td')).toHaveLength(11)
     expect(table.findAll('tbody td').every(cell => cell.classes().includes('whitespace-nowrap'))).toBe(true)
     expect(table.get('.sms-order-statuses').classes()).toContain('min-w-max')
-    expect(table.get('.sms-order-message-text').classes()).toContain('truncate')
-    expect(table.get('.sms-order-message-text').attributes('title')).toBe(messageText)
+    expect(wrapper.text()).toContain('757119')
     wrapper.unmount()
   })
 
@@ -562,4 +561,68 @@ describe('SMSVerificationView', () => {
     expect(wrapper.text()).toContain('sms.user.ended')
     wrapper.unmount()
   })
+
+  it('shows the latest verification code directly in the orders table', async () => {
+    smsAPI.orders.mockResolvedValue({
+      items: [{ ...order('completed', 'sms-code'), latest_verification_code: '345875' }],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+    const wrapper = mount(SMSVerificationView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<main><slot /></main>' },
+          Icon: true,
+          Pagination: true,
+          Select: true,
+          ConfirmDialog: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    const ordersTab = wrapper.findAll('[role="tab"]').find(tab => tab.text() === 'sms.user.orders')
+    await ordersTab!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('345875')
+    wrapper.unmount()
+  })
+
+  it('keeps a completed order without a local code in recovery polling', async () => {
+    vi.useFakeTimers()
+    smsAPI.orders.mockResolvedValue({
+      items: [{ ...order('completed', 'sms-recover'), latest_verification_code: '' }],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+    smsAPI.order.mockResolvedValue({ ...order('completed', 'sms-recover'), latest_verification_code: '345875' })
+
+    const wrapper = mount(SMSVerificationView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<main><slot /></main>' },
+          Icon: true,
+          Pagination: true,
+          Select: true,
+          ConfirmDialog: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('sms.user.waitingForCode')
+    await vi.advanceTimersByTimeAsync(15_100)
+    await flushPromises()
+
+    expect(smsAPI.order).toHaveBeenCalledWith('sms-recover')
+    expect(wrapper.text()).toContain('345875')
+    wrapper.unmount()
+    vi.useRealTimers()
+  })
+
 })

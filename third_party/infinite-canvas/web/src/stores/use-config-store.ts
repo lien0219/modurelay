@@ -432,6 +432,28 @@ export function resolveModelChannel(config: AiConfig, value: string) {
     return matched || config.channels[0] || createModelChannel({ id: "default", name: i18n.t("config.channels.defaultName"), baseUrl: config.baseUrl, apiKey: config.apiKey, apiFormat: config.apiFormat, models: config.models.map(modelOptionName).map((name) => ({ name, capability: guessCapability(name) })) });
 }
 
+export async function mediaTaskRouteFingerprint(config: AiConfig, value: string) {
+    const decoded = decodeChannelModel(value);
+    const channel = resolveModelChannel(config, value);
+    const payload = [
+        decoded?.channelId || channel.id,
+        modelOptionName(value || config.model),
+        channel.baseUrl.trim().replace(/\/+$/, ""),
+        channel.apiFormat,
+        channel.apiKey,
+    ].join("\n");
+    if (globalThis.crypto?.subtle) {
+        const digest = await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(payload));
+        return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+    }
+    let hash = 2166136261;
+    for (let index = 0; index < payload.length; index += 1) {
+        hash ^= payload.charCodeAt(index);
+        hash = Math.imul(hash, 16777619);
+    }
+    return `fnv1a:${(hash >>> 0).toString(16).padStart(8, "0")}`;
+}
+
 export function resolveModelRequestConfig(config: AiConfig, value: string) {
     const channel = resolveModelChannel(config, value);
     return {

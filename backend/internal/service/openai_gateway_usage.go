@@ -314,10 +314,12 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 			longContextBillingGate,
 			pricingAt,
 		)
-		if standardErr != nil {
+		if standardErr != nil && !isUsagePricingUnavailableError(standardErr) {
 			return standardErr
 		}
-		if cost != nil && standardCost != nil {
+		// Missing pricing already fell back to a zero-cost log above; keep that
+		// usage row instead of dropping it on the Standard re-evaluation.
+		if standardErr == nil && cost != nil && standardCost != nil {
 			cost.ActualCost = standardCost.ActualCost
 		}
 	}
@@ -406,11 +408,25 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		NativeCompactionV2:       input.NativeCompactionV2,
 	}
 	isVideoUsage := isGrokVideoUsageResult(result, billingModels)
-	if isVideoUsage {
+	if result.VideoCount > 0 {
 		usageLog.VideoCount = result.VideoCount
-		usageLog.VideoResolution = optionalTrimmedStringPtr(NormalizeVideoBillingResolutionOrDefault(result.VideoResolution))
-		videoDurationSeconds := NormalizeVideoBillingDurationSecondsOrDefault(result.VideoDurationSeconds)
-		usageLog.VideoDurationSeconds = &videoDurationSeconds
+		if isVideoUsage {
+			videoResolution := NormalizeVideoBillingResolutionOrDefault(result.VideoResolution)
+			usageLog.VideoResolution = &videoResolution
+			videoDurationSeconds := NormalizeVideoBillingDurationSecondsOrDefault(result.VideoDurationSeconds)
+			usageLog.VideoDurationSeconds = &videoDurationSeconds
+		} else {
+			// Token-billed video protocols (for example native Seedance) must not
+			// invent per-second billing metadata. Preserve only values actually
+			// reported by the protocol/request.
+			if strings.TrimSpace(result.VideoResolution) != "" {
+				usageLog.VideoResolution = optionalTrimmedStringPtr(NormalizeVideoBillingResolutionOrDefault(result.VideoResolution))
+			}
+			if result.VideoDurationSeconds > 0 {
+				videoDurationSeconds := NormalizeVideoBillingDurationSecondsOrDefault(result.VideoDurationSeconds)
+				usageLog.VideoDurationSeconds = &videoDurationSeconds
+			}
+		}
 	}
 	if cost != nil {
 		usageLog.InputCost = cost.InputCost
@@ -482,6 +498,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		applyAccountStatsCost(ctx, usageLog, s.channelService, s.billingService,
 			account.ID, *apiKey.GroupID, result.UpstreamModel, result.Model,
 			tokens, cost.TotalCost, pricingAt,
+			accountStatsLongContextPricingEnabled(longContextBillingGate),
 		)
 	}
 
@@ -577,6 +594,10 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 		return s.billingService.CalculateWebSearchCost(result.WebSearchCalls, webSearchPricePerCallFromAPIKey(apiKey), webSearchMultiplier), nil
 	}
 	if isGrokVideoUsageResult(result, billingModels) {
+		videoResolution := NormalizeVideoBillingResolutionOrDefault(result.VideoResolution)
+		if apiKeyHasConfiguredVideoModelPrice(apiKey, billingModel, videoResolution) {
+			return s.calculateOpenAIVideoCost(ctx, billingModel, apiKey, result, videoMultiplier), nil
+		}
 		if resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey); resolved == nil || resolved.Mode != BillingModeToken {
 			return s.calculateOpenAIVideoCost(ctx, billingModel, apiKey, result, videoMultiplier), nil
 		}
@@ -676,11 +697,11 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 }
 
 func isGrokVideoBillingModel(model string) bool {
-	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(model)), "grok-imagine-video")
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(model)), "grok-imagine-video") || IsSeedanceVideoModel(model)
 }
 
 func isGrokVideoUsageResult(result *OpenAIForwardResult, billingModels []string) bool {
-	if result == nil || result.VideoCount <= 0 {
+	if result == nil || result.VideoCount <= 0 || result.ForceTokenBilling {
 		return false
 	}
 	// VideoCount alone is authoritative for async video completion billing.
@@ -792,6 +813,46 @@ func (s *OpenAIGatewayService) calculateOpenAIImageCost(
 	return s.billingService.CalculateImageCost(billingModel, sizeTier, result.ImageCount, groupConfig, multiplier)
 }
 
+func (s *OpenAIGatewayService) HasVideoPricingForRequest(
+	ctx context.Context,
+	apiKey *APIKey,
+	billingModel string,
+	resolution string,
+) bool {
+	if s == nil || s.billingService == nil || apiKey == nil {
+		return false
+	}
+	if IsSeedanceVideoModel(billingModel) {
+		if apiKeyHasConfiguredVideoModelPrice(apiKey, billingModel, resolution) {
+			return true
+		}
+		if refreshed := s.apiKeyWithFreshGroupMediaPricing(ctx, apiKey); refreshed != apiKey {
+			return apiKeyHasConfiguredVideoModelPrice(refreshed, billingModel, resolution)
+		}
+		return false
+	}
+	if apiKeyHasConfiguredVideoPrice(apiKey, billingModel, resolution) {
+		return true
+	}
+	if _, ok := getDefaultGrokImagineVideoPrice(billingModel, resolution); ok {
+		return true
+	}
+	resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey)
+	if resolved != nil {
+		if resolved.Source == PricingSourceGroup && resolved.Mode == BillingModeVideo {
+			return true
+		}
+		if resolved.Source == PricingSourceChannel &&
+			(resolved.Mode == BillingModePerRequest || resolved.Mode == BillingModeImage || resolved.Mode == BillingModeVideo) {
+			return true
+		}
+	}
+	if refreshed := s.apiKeyWithFreshGroupMediaPricing(ctx, apiKey); refreshed != apiKey {
+		return apiKeyHasConfiguredVideoPrice(refreshed, billingModel, resolution)
+	}
+	return false
+}
+
 func (s *OpenAIGatewayService) calculateOpenAIVideoCost(
 	ctx context.Context,
 	billingModel string,
@@ -805,6 +866,9 @@ func (s *OpenAIGatewayService) calculateOpenAIVideoCost(
 	}
 	resolution := NormalizeVideoBillingResolutionOrDefault(result.VideoResolution)
 	durationSeconds := NormalizeVideoBillingDurationSecondsOrDefault(result.VideoDurationSeconds)
+	if apiKeyHasConfiguredVideoModelPrice(apiKey, billingModel, resolution) {
+		return s.billingService.CalculateVideoCost(billingModel, resolution, videoCount, durationSeconds, videoPriceConfigFromAPIKey(apiKey), multiplier)
+	}
 	resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey)
 	if resolved != nil && resolved.Source == PricingSourceGroup && resolved.Mode == BillingModeVideo {
 		gid := apiKey.Group.ID

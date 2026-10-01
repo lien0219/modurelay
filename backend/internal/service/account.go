@@ -814,6 +814,13 @@ func normalizeRequestedModelForLookup(platform, requestedModel string) string {
 	if trimmed == "" {
 		return ""
 	}
+	// Aggregators may expose route-qualified video IDs such as
+	// "48:seedance-2.0" or "test:test-video". Exact model_mapping matches are
+	// attempted before this helper, so normalizing here only provides a safe
+	// canonical fallback for official/provider mappings.
+	if ref := ParseVideoModelRef(trimmed); ref.ChannelCode != "" {
+		trimmed = ref.CanonicalModel
+	}
 	if platform != PlatformGemini && platform != PlatformAntigravity {
 		return trimmed
 	}
@@ -2046,8 +2053,14 @@ func (a *Account) SupportsOpenAIImageCapability(capability OpenAIImagesCapabilit
 	if capability == "" {
 		return true
 	}
-	if !a.IsOpenAI() {
+	if a == nil || !a.IsOpenAICompatible() || a.IsGrok() {
 		return false
+	}
+	// Non-OpenAI compatible providers expose Images through API keys only.
+	// OpenAI keeps its native OAuth/SetupToken image paths for backwards
+	// compatibility while API-key accounts use the same passthrough.
+	if a.Platform != PlatformOpenAI {
+		return a.Type == AccountTypeAPIKey
 	}
 	switch capability {
 	case OpenAIImagesCapabilityAPIKey:

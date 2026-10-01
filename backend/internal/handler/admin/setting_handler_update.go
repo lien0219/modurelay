@@ -369,8 +369,9 @@ type UpdateSettingsRequest struct {
 	RiskControlEnabled *bool `json:"risk_control_enabled"`
 
 	// cyber 会话屏蔽开关 + TTL
-	CyberSessionBlockEnabled    *bool `json:"cyber_session_block_enabled"`
-	CyberSessionBlockTTLSeconds *int  `json:"cyber_session_block_ttl_seconds"`
+	CyberSessionBlockEnabled    *bool   `json:"cyber_session_block_enabled"`
+	CyberPolicyUserAllowlist    *string `json:"cyber_policy_user_allowlist"`
+	CyberSessionBlockTTLSeconds *int    `json:"cyber_session_block_ttl_seconds"`
 
 	// OpenAI fast/flex policy (optional, only updated when provided)
 	OpenAIFastPolicySettings *dto.OpenAIFastPolicySettings `json:"openai_fast_policy_settings,omitempty"`
@@ -793,6 +794,17 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 
 	// TOTP 双因素认证参数验证
 	// 只有手动配置了加密密钥才允许启用 TOTP 功能
+	if previousSettings.TotpEnabled && !req.TotpEnabled {
+		loginSecurity, err := h.settingService.GetLoginSecuritySettings(c.Request.Context())
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		if loginSecurity.AdminMFARequired {
+			response.BadRequest(c, "Disable administrator MFA requirement before disabling system TOTP")
+			return
+		}
+	}
 	if req.TotpEnabled && !previousSettings.TotpEnabled {
 		// 尝试启用 TOTP，检查加密密钥是否已手动配置
 		if !h.settingService.IsTotpEncryptionKeyConfigured() {
@@ -1511,6 +1523,13 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		}
 	}
 
+	if req.CyberPolicyUserAllowlist != nil {
+		if _, err := service.ParseCyberPolicyUserAllowlist(*req.CyberPolicyUserAllowlist); err != nil {
+			response.BadRequest(c, err.Error())
+			return
+		}
+	}
+
 	// cyber 会话屏蔽 TTL 校验：提供时必须 > 0
 	if req.CyberSessionBlockTTLSeconds != nil && *req.CyberSessionBlockTTLSeconds <= 0 {
 		response.BadRequest(c, "cyber_session_block_ttl_seconds must be > 0")
@@ -2064,6 +2083,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.RiskControlEnabled
 		}(),
+		CyberPolicyUserAllowlist: func() string {
+			if req.CyberPolicyUserAllowlist != nil {
+				return *req.CyberPolicyUserAllowlist
+			}
+			return previousSettings.CyberPolicyUserAllowlist
+		}(),
 		CyberSessionBlockEnabled: func() bool {
 			if req.CyberSessionBlockEnabled != nil {
 				return *req.CyberSessionBlockEnabled
@@ -2490,6 +2515,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 
 		RiskControlEnabled:            updatedSettings.RiskControlEnabled,
 		CyberSessionBlockEnabled:      updatedSettings.CyberSessionBlockEnabled,
+		CyberPolicyUserAllowlist:      updatedSettings.CyberPolicyUserAllowlist,
 		CyberSessionBlockTTLSeconds:   updatedSettings.CyberSessionBlockTTLSeconds,
 		AllowUserViewErrorRequests:    updatedSettings.AllowUserViewErrorRequests,
 		UsageDetailShowUnitPrices:     updatedSettings.UsageDetailShowUnitPrices,

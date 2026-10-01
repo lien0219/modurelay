@@ -27,6 +27,7 @@ type AuthHandler struct {
 	redeemService        *service.RedeemService
 	totpService          *service.TotpService
 	userAttributeService *service.UserAttributeService
+	loginAbuse           *service.LoginAbuseProtector
 
 	dingTalkClientInstance *DingTalkClient
 	dingTalkClientMu       sync.Mutex
@@ -245,12 +246,24 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 	proof := captchaProof(req.TurnstileToken, req.TencentCaptchaTicket, req.TencentCaptchaRandstr)
 	if err := h.authService.VerifyCaptcha(c.Request.Context(), proof, ip.GetClientIP(c)); err != nil {
+		middleware2.SetAuditAction(c, "security.login.captcha_rejected")
+		middleware2.SetAuditExtra(c, map[string]any{"error_code": "CAPTCHA_REJECTED"})
 		response.ErrorFrom(c, err)
+		return
+	}
+
+	// CAPTCHA must succeed before any account-scoped throttle is consulted. This
+	// prevents an attacker who merely knows an email address from locking the
+	// account without first passing human verification.
+	if !h.preflightLoginSecurity(c, req.Email) {
 		return
 	}
 
 	token, user, err := h.authService.Login(c.Request.Context(), req.Email, req.Password)
 	if err != nil {
+		if h.recordLoginFailure(c, req.Email, err) {
+			return
+		}
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -260,6 +273,14 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+
+	if !h.enforceAdminPasswordMFA(c, user) {
+		return
+	}
+
+	// A correct password clears only the source-specific password failure
+	// counter; distributed account history remains for botnet detection.
+	h.recordLoginSuccess(c, user, req.Email)
 
 	// Check if TOTP 2FA is enabled for this user
 	if h.totpService != nil && h.settingSvc.IsTotpEnabled(c.Request.Context()) && user.TotpEnabled {

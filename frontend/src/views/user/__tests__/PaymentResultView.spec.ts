@@ -51,6 +51,14 @@ vi.mock('@/api/payment', () => ({
   },
 }))
 
+vi.mock('@/components/common/CopyableIdentifier.vue', () => ({
+  default: {
+    name: 'CopyableIdentifier',
+    props: ['value', 'prefix'],
+    template: '<span>{{ prefix || "" }}{{ value }}</span>',
+  },
+}))
+
 import PaymentResultView from '../PaymentResultView.vue'
 import { PAYMENT_RECOVERY_STORAGE_KEY } from '@/components/payment/paymentFlow'
 import { formatPaymentAmount } from '@/components/payment/currency'

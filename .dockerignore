@@ -23,6 +23,7 @@ docs/*
 # IDE
 .idea/
 .vscode/
+.cursor/
 *.swp
 *.swo
 
@@ -58,6 +59,14 @@ coverage/
 # 本地闭源插件目录可能包含发布签名私钥，绝不能进入 Docker 构建上下文。
 /plugins/
 
+# Repository tooling and reference assets (not used by the Dockerfile)
+/.agents/
+/assets/
+/design-system/
+/openspec/
+/skills/
+/tools/
+
 # Local config
 config.yaml
 config.local.yaml
@@ -81,8 +90,10 @@ temp/
 /.tmp-email-gocache/
 /backend/.tmp-email-gocache/
 frontend/.canvas-*
+/backend/data/
 
 # Local build caches and generated binaries (never needed in the runtime image)
+/.cache/
 **/.gocache*/
 **/.gomodcache*/
 **/.gopath*/

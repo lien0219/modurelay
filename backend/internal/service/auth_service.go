@@ -24,21 +24,23 @@ import (
 )
 
 var (
-	ErrInvalidCredentials           = infraerrors.Unauthorized("INVALID_CREDENTIALS", "invalid email or password")
-	ErrUserNotActive                = infraerrors.Forbidden("USER_NOT_ACTIVE", "user is not active")
-	ErrEmailExists                  = infraerrors.Conflict("EMAIL_EXISTS", "email already exists")
-	ErrEmailReserved                = infraerrors.BadRequest("EMAIL_RESERVED", "email is reserved")
-	ErrInvalidToken                 = infraerrors.Unauthorized("INVALID_TOKEN", "invalid token")
-	ErrTokenExpired                 = infraerrors.Unauthorized("TOKEN_EXPIRED", "token has expired")
-	ErrAccessTokenExpired           = infraerrors.Unauthorized("ACCESS_TOKEN_EXPIRED", "access token has expired")
-	ErrTokenTooLarge                = infraerrors.BadRequest("TOKEN_TOO_LARGE", "token too large")
-	ErrTokenRevoked                 = infraerrors.Unauthorized("TOKEN_REVOKED", "token has been revoked")
-	ErrRefreshTokenInvalid          = infraerrors.Unauthorized("REFRESH_TOKEN_INVALID", "invalid refresh token")
-	ErrRefreshTokenExpired          = infraerrors.Unauthorized("REFRESH_TOKEN_EXPIRED", "refresh token has expired")
-	ErrRefreshTokenReused           = infraerrors.Unauthorized("REFRESH_TOKEN_REUSED", "refresh token has been reused")
-	ErrEmailVerifyRequired          = infraerrors.BadRequest("EMAIL_VERIFY_REQUIRED", "email verification is required")
-	ErrEmailSuffixNotAllowed        = infraerrors.BadRequest("EMAIL_SUFFIX_NOT_ALLOWED", "email suffix is not allowed")
-	ErrEmailDomainRegistrationLimit = infraerrors.BadRequest(
+	ErrInvalidCredentials = infraerrors.Unauthorized("INVALID_CREDENTIALS", "invalid email or password")
+	// ErrPasswordMismatch marks requests that actually reached password verification.
+	ErrPasswordMismatch             error = &passwordMismatchError{cause: ErrInvalidCredentials}
+	ErrUserNotActive                      = infraerrors.Forbidden("USER_NOT_ACTIVE", "user is not active")
+	ErrEmailExists                        = infraerrors.Conflict("EMAIL_EXISTS", "email already exists")
+	ErrEmailReserved                      = infraerrors.BadRequest("EMAIL_RESERVED", "email is reserved")
+	ErrInvalidToken                       = infraerrors.Unauthorized("INVALID_TOKEN", "invalid token")
+	ErrTokenExpired                       = infraerrors.Unauthorized("TOKEN_EXPIRED", "token has expired")
+	ErrAccessTokenExpired                 = infraerrors.Unauthorized("ACCESS_TOKEN_EXPIRED", "access token has expired")
+	ErrTokenTooLarge                      = infraerrors.BadRequest("TOKEN_TOO_LARGE", "token too large")
+	ErrTokenRevoked                       = infraerrors.Unauthorized("TOKEN_REVOKED", "token has been revoked")
+	ErrRefreshTokenInvalid                = infraerrors.Unauthorized("REFRESH_TOKEN_INVALID", "invalid refresh token")
+	ErrRefreshTokenExpired                = infraerrors.Unauthorized("REFRESH_TOKEN_EXPIRED", "refresh token has expired")
+	ErrRefreshTokenReused                 = infraerrors.Unauthorized("REFRESH_TOKEN_REUSED", "refresh token has been reused")
+	ErrEmailVerifyRequired                = infraerrors.BadRequest("EMAIL_VERIFY_REQUIRED", "email verification is required")
+	ErrEmailSuffixNotAllowed              = infraerrors.BadRequest("EMAIL_SUFFIX_NOT_ALLOWED", "email suffix is not allowed")
+	ErrEmailDomainRegistrationLimit       = infraerrors.BadRequest(
 		"EMAIL_DOMAIN_REGISTRATION_LIMIT",
 		"this email domain cannot register another account; use a mainstream email or contact support to add the enterprise domain",
 	)
@@ -49,6 +51,23 @@ var (
 	ErrOAuthInvitationRequired = infraerrors.Forbidden("OAUTH_INVITATION_REQUIRED", "invitation code required to complete oauth registration")
 	ErrCaptchaProviderConflict = infraerrors.ServiceUnavailable("CAPTCHA_PROVIDER_CONFLICT", "multiple captcha providers are enabled")
 )
+
+var dummyLoginPasswordHash = []byte("$2a$10$N9qo8uLOickgx2ZMRZoMye.IjZAgcfl7p92ldGxad68LJZdL17lhWy")
+
+type passwordMismatchError struct {
+	cause error
+}
+
+func (e *passwordMismatchError) Error() string { return e.cause.Error() }
+
+func (e *passwordMismatchError) Unwrap() error { return e.cause }
+
+// IsPasswordMismatch distinguishes a failed real or dummy password comparison
+// from unrelated authentication failures such as TOTP or backend-mode errors.
+func IsPasswordMismatch(err error) bool {
+	var mismatch *passwordMismatchError
+	return errors.As(err, &mismatch)
+}
 
 // maxTokenLength 限制 token 大小，避免超长 header 触发解析时的异常内存分配。
 const maxTokenLength = 8192
@@ -537,6 +556,12 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (string
 	user, err := s.userRepo.GetByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, ErrUserNotFound) {
+			if len([]byte(password)) <= 72 {
+				_ = bcrypt.CompareHashAndPassword(dummyLoginPasswordHash, []byte(password))
+				// Treat the dummy comparison like any other rejected password so
+				// account-scoped throttling does not reveal whether the email exists.
+				return "", nil, ErrPasswordMismatch
+			}
 			return "", nil, ErrInvalidCredentials
 		}
 		// 记录数据库错误但不暴露给用户
@@ -544,8 +569,19 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (string
 		return "", nil, ErrServiceUnavailable
 	}
 
-	// 验证密码
-	if !s.CheckPassword(password, user.PasswordHash) {
+	// Distinguish an incorrect password from invalid input or a damaged stored
+	// hash so only a genuine password mismatch contributes to abuse counters.
+	if len(password) > 72 {
+		return "", nil, ErrInvalidCredentials
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
+		if errors.Is(err, bcrypt.ErrMismatchedHashAndPassword) {
+			return "", nil, ErrPasswordMismatch
+		}
+		if errors.Is(err, bcrypt.ErrPasswordTooLong) {
+			return "", nil, ErrInvalidCredentials
+		}
+		_ = bcrypt.CompareHashAndPassword(dummyLoginPasswordHash, []byte(password))
 		return "", nil, ErrInvalidCredentials
 	}
 

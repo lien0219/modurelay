@@ -244,12 +244,12 @@ function resolveImageSource(item: Record<string, unknown>) {
     return null;
 }
 
-function parseImagePayload(payload: ImageApiResponse) {
+function parseImagePayload(payload: ImageApiResponse, config?: Pick<AiConfig, "baseUrl">) {
     if (typeof payload.code === "number" && payload.code !== 0) {
         throw new Error(payload.msg || apiText("requestFailed"));
     }
     const sources = collectImageSources(payload, 0);
-    const images = Array.from(new Set(sources)).map((dataUrl) => ({ id: nanoid(), dataUrl }));
+    const images = Array.from(new Set(sources)).map((dataUrl) => ({ id: nanoid(), dataUrl: resolveGeneratedImageUrl(config, dataUrl) }));
 
     if (images.length === 0) {
         const rawKeys = Object.keys(payload).filter((k) => k !== "code" && k !== "msg" && k !== "error");
@@ -259,10 +259,21 @@ function parseImagePayload(payload: ImageApiResponse) {
     return images;
 }
 
+function resolveGeneratedImageUrl(config: Pick<AiConfig, "baseUrl"> | undefined, value: string) {
+    const candidate = value.trim();
+    if (!candidate || /^(data:|blob:|https?:\/\/)/i.test(candidate)) return candidate;
+    if (!config?.baseUrl.trim()) return candidate;
+    try {
+        return new URL(candidate, config.baseUrl.trim().endsWith("/") ? config.baseUrl.trim() : `${config.baseUrl.trim()}/`).toString();
+    } catch {
+        return candidate;
+    }
+}
+
 function collectImageSources(value: unknown, depth: number): string[] {
     if (depth > 6 || value == null) return [];
     if (typeof value === "string") {
-        if (/^data:image\//i.test(value) || /^https?:\/\//i.test(value)) return [value];
+        if (/^data:image\//i.test(value) || /^blob:/i.test(value) || /^https?:\/\//i.test(value) || /^\/\//.test(value) || /^\.{0,2}\//.test(value)) return [value];
         return [];
     }
     if (Array.isArray(value)) return value.flatMap((item) => collectImageSources(item, depth + 1));
@@ -686,10 +697,10 @@ async function requestGeminiImagesOnce(config: AiConfig, prompt: string, referen
         },
         { headers: geminiHeaders(config), signal: options?.signal },
     );
-    return parseGeminiImagePayload(response.data);
+    return parseGeminiImagePayload(response.data, config);
 }
 
-function parseGeminiImagePayload(payload: GeminiPayload) {
+function parseGeminiImagePayload(payload: GeminiPayload, config?: Pick<AiConfig, "baseUrl">) {
     validateGeminiPayload(payload);
     const images =
         payload.candidates
@@ -700,7 +711,7 @@ function parseGeminiImagePayload(payload: GeminiPayload) {
                 return part.fileData?.fileUri || null;
             })
             .filter((value): value is string => Boolean(value))
-            .map((dataUrl) => ({ id: nanoid(), dataUrl })) || [];
+            .map((dataUrl) => ({ id: nanoid(), dataUrl: resolveGeneratedImageUrl(config, dataUrl) })) || [];
     if (!images.length) throw new Error(apiText("geminiNoImage"));
     return images;
 }
@@ -723,7 +734,7 @@ export async function requestGeneration(config: AiConfig, prompt: string, option
                 params: { size: requestSize, quality, count: n, ...(background ? { background } : {}) },
                 signal: options?.signal,
             });
-            return normalizePluginImages(result).map((dataUrl) => ({ id: nanoid(), dataUrl }));
+            return normalizePluginImages(result).map((dataUrl) => ({ id: nanoid(), dataUrl: resolveGeneratedImageUrl(requestConfig, dataUrl) }));
         } catch (error) {
             throw new Error(readAxiosError(error, apiText("requestFailed")));
         }
@@ -757,7 +768,7 @@ export async function requestGeneration(config: AiConfig, prompt: string, option
                 signal: options?.signal,
             },
         );
-        const images = await parseImagePayload(response.data);
+        const images = await parseImagePayload(response.data, requestConfig);
         return images;
     } catch (error) {
         throw new Error(readAxiosError(error, apiText("requestFailed")));
@@ -785,7 +796,7 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
                 params: { size: requestSize, quality, count: n, ...(background ? { background } : {}) },
                 signal: options?.signal,
             });
-            return normalizePluginImages(result).map((dataUrl) => ({ id: nanoid(), dataUrl }));
+            return normalizePluginImages(result).map((dataUrl) => ({ id: nanoid(), dataUrl: resolveGeneratedImageUrl(requestConfig, dataUrl) }));
         } catch (error) {
             throw new Error(readAxiosError(error, apiText("requestFailed")));
         }
@@ -829,7 +840,7 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
         }
         try {
             const response = await providerAxios.post<ImageApiResponse>(aiApiUrl(requestConfig, "/images/edits"), formData, { headers: aiHeaders(requestConfig), signal: options?.signal });
-            return await parseImagePayload(response.data);
+            return await parseImagePayload(response.data, requestConfig);
         } catch (error) {
             if (!shouldRetryImageEditAsJSON(error, requestConfig.model, requestProfile)) throw error;
             return await requestImageEditJSON(requestConfig, requestPrompt, references, n, quality, requestSize, background, requestProfile, options);
@@ -871,7 +882,7 @@ async function requestImageEditJSON(
         payload,
         { headers: aiHeaders(config, "application/json"), signal: options?.signal },
     );
-    return parseImagePayload(response.data);
+    return parseImagePayload(response.data, config);
 }
 
 function shouldRetryImageEditAsJSON(error: unknown, model: string, profile: ModelRequestProfile) {

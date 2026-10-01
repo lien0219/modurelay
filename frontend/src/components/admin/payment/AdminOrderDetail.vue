@@ -9,7 +9,7 @@
       <div class="grid grid-cols-2 gap-4">
         <div>
           <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.orderId') }}</p>
-          <p class="font-mono text-sm font-medium text-gray-900 dark:text-white">#{{ order.id }}</p>
+          <CopyableIdentifier :value="order.id" prefix="#" max-width="16rem" />
         </div>
         <div>
           <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.status') }}</p>
@@ -117,6 +117,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import CopyableIdentifier from '@/components/common/CopyableIdentifier.vue'
 import type { PaymentOrder } from '@/types/payment'
 import { statusBadgeClass, canRefund as canRefundStatus, formatOrderDateTime } from '@/components/payment/orderUtils'
 import { currencySymbol } from '@/components/payment/currency'

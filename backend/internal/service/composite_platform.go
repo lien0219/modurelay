@@ -92,6 +92,13 @@ func DetectModelPlatform(model string) (string, bool) {
 	if normalized == "" {
 		return "", false
 	}
+	// Supplier model IDs can be route-qualified (for example
+	// "51:grok-imagine-video-1.5"). Platform detection must operate on the
+	// canonical model while preserving the original ID for the selected
+	// provider adapter.
+	if ref := ParseVideoModelRef(normalized); ref.ChannelCode != "" {
+		normalized = strings.ToLower(ref.CanonicalModel)
+	}
 
 	normalized = strings.TrimPrefix(normalized, "models/")
 	if slash := strings.IndexByte(normalized, '/'); slash > 0 {
@@ -124,7 +131,8 @@ func DetectModelPlatform(model string) (string, bool) {
 	case strings.HasPrefix(normalized, "anthropic.claude-"),
 		strings.HasPrefix(normalized, "claude-"):
 		return PlatformAnthropic, true
-	case strings.HasPrefix(normalized, "gpt-"),
+	case strings.HasPrefix(normalized, "seedance-"),
+		strings.HasPrefix(normalized, "gpt-"),
 		strings.HasPrefix(normalized, "chatgpt-"),
 		strings.HasPrefix(normalized, "codex-"),
 		strings.HasPrefix(normalized, "text-embedding-"),

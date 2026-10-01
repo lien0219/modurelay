@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { config, mount } from '@vue/test-utils'
 import type { PaymentOrder } from '@/types/payment'
 import AdminOrderDetail from '../AdminOrderDetail.vue'
 import AdminOrderTable from '../AdminOrderTable.vue'
 import AdminRefundDialog from '../AdminRefundDialog.vue'
 import OrderTable from '@/components/payment/OrderTable.vue'
+
+config.global.stubs.CopyButton = true
 
 vi.mock('vue-i18n', async () => {
   const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')

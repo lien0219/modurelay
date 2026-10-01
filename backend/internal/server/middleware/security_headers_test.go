@@ -384,6 +384,8 @@ func TestSecurityHeaders(t *testing.T) {
 			assert.Equal(t, 1, countDirectiveValue(canvasCSP, directive, "blob:"))
 			assert.Zero(t, countDirectiveValue(dashboardCSP, directive, "blob:"))
 		}
+		assert.Equal(t, 1, countDirectiveValue(canvasCSP, "media-src", "https:"))
+		assert.Zero(t, countDirectiveValue(dashboardCSP, "media-src", "https:"))
 	})
 
 	t.Run("nonce_unique_per_request", func(t *testing.T) {

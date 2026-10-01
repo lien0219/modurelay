@@ -15,8 +15,23 @@ const transitioning = ref(false)
 let activeRunner: WorkspaceModeTransitionRunner | null = null
 
 const WORKSPACE_DOOR_SESSION_KEY = 'modurelay-workspace-door'
+const WORKSPACE_BACK_RETURN_SESSION_KEY = 'modurelay-workspace-back-return'
 
 export const workspaceModeTransitioning = readonly(transitioning)
+
+export function resetWorkspaceModeTransitionState() {
+  transitioning.value = false
+}
+
+export function markWorkspaceBackReturnPending() {
+  sessionStorage.setItem(WORKSPACE_BACK_RETURN_SESSION_KEY, 'to-relay')
+}
+
+export function consumeWorkspaceBackReturnPending() {
+  const pending = sessionStorage.getItem(WORKSPACE_BACK_RETURN_SESSION_KEY) === 'to-relay'
+  sessionStorage.removeItem(WORKSPACE_BACK_RETURN_SESSION_KEY)
+  return pending
+}
 
 export function registerWorkspaceModeTransitionRunner(runner: WorkspaceModeTransitionRunner) {
   activeRunner = runner
@@ -60,6 +75,7 @@ export async function navigateToWorkspaceUrlWithTransition(
   try {
     const navigate = async () => {
       sessionStorage.setItem(WORKSPACE_DOOR_SESSION_KEY, direction)
+      if (direction === 'to-canvas') markWorkspaceBackReturnPending()
       if (options.replace) window.location.replace(href)
       else window.location.assign(href)
     }

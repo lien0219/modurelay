@@ -39,9 +39,9 @@ export async function requestAudioGeneration(config: AiConfig, prompt: string, o
                 params: { voice: normalizeAudioVoiceValue(config.audioVoice), format, speed: normalizeAudioSpeedValue(config.audioSpeed), instructions: config.audioInstructions.trim() },
                 signal: options?.signal,
             });
-            return await audioPluginBlob(result, format);
+            return await audioPluginBlob(result, format, options);
         } catch (error) {
-            throw new Error(readAxiosError(error, apiText("audioGenerationFailed")));
+            throw audioRequestError(error, apiText("audioGenerationFailed"));
         }
     }
     assertAudioConfig(requestConfig, model);
@@ -63,11 +63,11 @@ export async function requestAudioGeneration(config: AiConfig, prompt: string, o
         await assertAudioBlob(response.data);
         return response.data.type.startsWith("audio/") ? response.data : new Blob([response.data], { type: audioMimeType(format) });
     } catch (error) {
-        throw new Error(readAxiosError(error, apiText("audioGenerationFailed")));
+        throw audioRequestError(error, apiText("audioGenerationFailed"));
     }
 }
 
-async function audioPluginBlob(result: unknown, format: string): Promise<Blob> {
+async function audioPluginBlob(result: unknown, format: string, options?: RequestOptions): Promise<Blob> {
     if (result instanceof Blob) return result.type.startsWith("audio/") ? result : new Blob([result], { type: audioMimeType(format) });
     let source = "";
     if (typeof result === "string") source = result;
@@ -77,13 +77,15 @@ async function audioPluginBlob(result: unknown, format: string): Promise<Blob> {
     }
     if (!source) throw new Error(apiText("scriptNoAudio"));
     const url = source.startsWith("data:") || /^https?:/i.test(source) ? source : `data:${audioMimeType(format)};base64,${source}`;
-    const blob = await (await providerFetch(withLocalProxy(url))).blob();
+    const response = await providerFetch(withLocalProxy(url), { signal: options?.signal });
+    if (!response.ok) throw new Error(apiText("audioGenerationFailed"));
+    const blob = await response.blob();
     return blob.type.startsWith("audio/") ? blob : new Blob([blob], { type: audioMimeType(format) });
 }
 
-export async function storeGeneratedAudio(blob: Blob, format = "mp3"): Promise<UploadedFile> {
+export async function storeGeneratedAudio(blob: Blob, format = "mp3", options?: RequestOptions): Promise<UploadedFile> {
     const audio = blob.type.startsWith("audio/") ? blob : new Blob([blob], { type: audioMimeType(format) });
-    return uploadMediaFile(audio, "audio");
+    return uploadMediaFile(audio, "audio", options);
 }
 
 function assertAudioConfig(config: AiConfig, model: string) {
@@ -94,15 +96,14 @@ function assertAudioConfig(config: AiConfig, model: string) {
 }
 
 async function assertAudioBlob(blob: Blob) {
-    if (!blob.type.includes("json")) return;
-    let payload: { code?: number; msg?: string; error?: { message?: string } };
-    try {
-        payload = JSON.parse(await blob.text()) as { code?: number; msg?: string; error?: { message?: string } };
-    } catch {
-        return;
+    if (!blob.size) throw new Error(apiText("audioGenerationFailed"));
+    if (blob.type.startsWith("audio/")) return;
+    const sample = await blob.slice(0, 1024).text().catch(() => "");
+    const trimmed = sample.trimStart();
+    if (blob.type.includes("json") || /^(?:<!doctype\s+html|<html[\s>]|[{[])/i.test(trimmed)) {
+        const apiMessage = readApiErrorMessage(sample);
+        throw new Error(apiMessage || apiText("audioGenerationFailed"));
     }
-    if (typeof payload.code === "number" && payload.code !== 0) throw new Error(payload.msg || apiText("audioGenerationFailed"));
-    if (payload.error?.message) throw new Error(payload.error.message);
 }
 
 function readApiErrorMessage(value: unknown): string {
@@ -122,6 +123,15 @@ function readApiErrorMessage(value: unknown): string {
     const payload = value as { msg?: unknown; message?: unknown; error?: unknown; detail?: unknown };
     const errorMsg = typeof payload.error === "string" ? payload.error : (payload.error as { message?: unknown })?.message;
     return readApiErrorMessage(payload.msg) || readApiErrorMessage(payload.message) || readApiErrorMessage(errorMsg) || readApiErrorMessage(payload.detail) || "";
+}
+
+function audioRequestError(error: unknown, fallback: string) {
+    if (axios.isCancel(error) || (error instanceof DOMException && error.name === "AbortError") || (error instanceof Error && error.name === "AbortError")) {
+        const canceled = new Error(apiText("requestCanceled"));
+        canceled.name = "AbortError";
+        return canceled;
+    }
+    return new Error(readAxiosError(error, fallback));
 }
 
 function readAxiosError(error: unknown, fallback: string) {

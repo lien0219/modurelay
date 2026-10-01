@@ -96,6 +96,8 @@ export default {
           enabledHint: '关闭后管理员侧边栏入口隐藏，网关内容审计不会执行。',
           cyberSessionBlock: 'cyber 会话自动屏蔽',
           cyberSessionBlockHint: '开启后,被上游网络安全策略(cyber_policy)拦截的会话将在 TTL 内被本地屏蔽,不再发往上游。仅屏蔽该会话,不影响同 Key 其他会话。',
+          riskControlUserAllowlist: '风控白名单',
+          riskControlUserAllowlistHint: '输入任意邮箱关键词进行模糊搜索。 白名单中的用户不会触发封号或本地屏蔽，但仍然无法突破上游拦截。该功能通常用于可信的下游中转站。',
           cyberSessionBlockTTL: '屏蔽时长(秒)',
         },
         affiliate: {
@@ -203,6 +205,38 @@ export default {
         sessionBindingHint: '将登录会话与客户端 IP 和 User-Agent 绑定，任一变化即强制该会话失效并需重新登录（提升被盗凭证的利用门槛）。',
         auditRetention: '操作日志保留天数',
         auditRetentionHint: '超过该天数的操作日志将被自动清理；填 0 表示永久保留（仅支持手动清空）。'
+      },
+      loginSecurity: {
+        title: '登录安全',
+        description: '针对密码登录的生产级防爆破保护；正常用户无感，异常高频、连续密码错误和分布式撞库会被临时限制。',
+        passwordFailureNote: '只有人机验证成功后、真正进入密码校验并确认密码错误才计入失败次数；验证码失败不会锁定账号，忘记密码流程也不受影响。',
+        enabled: '启用登录防爆破',
+        enabledHint: '启用后使用 Redis 进行分布式计数与临时冷却，不修改用户数据库状态。',
+        requestLimit: '登录请求频率',
+        requestLimitHint: '用于在进入人机验证前吸收脚本洪泛。超过阈值返回 429，窗口结束后自动恢复。',
+        perMinute: '次/分钟',
+        ipv6Group: 'IPv6 /64 聚合',
+        ipv6GroupHint: '同一 IPv6 /64 网段共享防刷桶，避免攻击者通过轮换 IPv6 隐私地址绕过限制。',
+        accountIpTitle: '账号 + 来源',
+        accountIpDescription: '默认 30 分钟内同一账号和来源密码错误 5 次，随后禁止该组合密码登录 30 分钟。',
+        accountTitle: '账号全局',
+        accountDescription: '汇总所有来源对同一账号的密码错误，防止攻击者通过代理池或 Botnet 分散尝试。',
+        failureLimit: '密码错误次数',
+        windowMinutes: '统计窗口',
+        blockMinutes: '冷却时间',
+        minuteUnit: '分钟',
+        adminMfa: '管理员强制 MFA',
+        adminMfaHint: '开启后，管理员使用密码登录必须继续完成 TOTP；管理员仍可使用已配置的 Passkey 登录。',
+        adminMfaWarning: '为防止管理员被锁在后台外，开启前当前管理员必须已配置 TOTP；保存此安全设置在启用 step-up 时也需要二次验证。',
+        errors: {
+          ADMIN_MFA_TOTP_REQUIRED: '请先为当前管理员配置 TOTP，再开启管理员强制 MFA。',
+          ADMIN_MFA_TOTP_FEATURE_REQUIRED: '请先启用系统 TOTP，再开启管理员强制 MFA。'
+        },
+        invalidSettings: '请检查数值范围，并确保账号全局密码错误次数不低于账号 + 来源限制。',
+        save: '保存登录安全设置',
+        saved: '登录安全设置已保存',
+        loadFailed: '加载登录安全设置失败',
+        saveFailed: '保存登录安全设置失败'
       },
       panelRateLimit: {
         title: '面板接口限流',

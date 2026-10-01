@@ -472,7 +472,7 @@
                     <code>{{ latestVerificationCode(order) }}</code>
                     <CopyButton :text="latestVerificationCode(order)" />
                   </span>
-                  <span v-else class="sms-waiting-code">{{ isOrderWaiting(order) ? t('sms.user.waitingForCode') : '-' }}</span>
+                  <span v-else class="sms-waiting-code">{{ isOrderPollingCandidate(order) ? t('sms.user.waitingForCode') : '-' }}</span>
                 </div>
 
                 <div class="sms-live-order__actions">
@@ -577,7 +577,7 @@
               <tbody>
                 <tr v-for="order in orders" :key="order.id">
                   <td class="whitespace-nowrap">
-                    <span class="sms-order-id"><code>{{ order.id }}</code><CopyButton :text="order.id" /></span>
+                    <CopyableIdentifier :value="order.id" max-width="100%" />
                   </td>
                   <td class="whitespace-nowrap">{{ smsChannelLabel(order.channel_code) }}</td>
                   <td class="whitespace-nowrap">
@@ -606,19 +606,9 @@
                     </div>
                   </td>
                   <td class="whitespace-nowrap">
-                    <div v-if="order.messages?.length" class="sms-order-messages">
-                      <div v-for="message in order.messages" :key="message.id">
-                        <div v-if="message.verification_code" class="sms-order-code">
-                          <code>{{ message.verification_code }}</code>
-                          <CopyButton :text="message.verification_code" />
-                        </div>
-                        <div class="sms-order-message-meta">
-                          <span v-if="message.sender">{{ message.sender }}</span>
-                          <time v-if="message.provider_received_at" :datetime="message.provider_received_at">{{ formatSMSMessageTime(message.provider_received_at) }}</time>
-                          <span v-if="message.other_sms" class="badge">{{ t('sms.user.otherMessage') }}</span>
-                        </div>
-                        <div class="sms-order-message-text truncate" :title="message.message_text || undefined">{{ message.message_text || '-' }}</div>
-                      </div>
+                    <div v-if="latestVerificationCode(order)" class="sms-order-code">
+                      <code>{{ latestVerificationCode(order) }}</code>
+                      <CopyButton :text="latestVerificationCode(order)" />
                     </div>
                     <span v-else>-</span>
                   </td>
@@ -754,12 +744,12 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { formatDateTime } from '@/utils/format'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import Select from '@/components/common/Select.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import CopyButton from '@/components/common/CopyButton.vue'
+import CopyableIdentifier from '@/components/common/CopyableIdentifier.vue'
 import Icon from '@/components/icons/Icon.vue'
 import SMSServiceLogo from '@/components/sms/SMSServiceLogo.vue'
 import SMSPhoneCopy from '@/components/sms/SMSPhoneCopy.vue'
@@ -984,7 +974,7 @@ function formatDuration(seconds: number) {
 const pollTimers: Partial<Record<SMSOrderPollBucket, number>> = {}
 
 const pollingCandidates = () => [...liveOrders.value, ...(activeTab.value === 'orders' ? orders.value : [])]
-  .filter(isOrderWaiting)
+  .filter(isOrderPollingCandidate)
   .filter((order, index, items) => items.findIndex(item => item.id === order.id) === index)
   .slice(0, 20)
 
@@ -1001,7 +991,7 @@ function stopOrderPolling() {
 
 function ensureOrderPolling() {
   const candidates = pollingCandidates()
-  const buckets: SMSOrderPollBucket[] = ['baseline', 'channel-2-fast', 'channel-2-medium', 'channel-2-slow']
+  const buckets: SMSOrderPollBucket[] = ['baseline', 'channel-2-fast', 'channel-2-medium', 'channel-2-slow', 'recovery']
   buckets.forEach(bucket => {
     const bucketCandidates = candidates.filter(order => smsOrderPollBucket(order) === bucket)
     if (!bucketCandidates.length) {
@@ -1017,8 +1007,13 @@ function ensureOrderPolling() {
     }, smsOrderPollDelay(bucket))
   })
 }
-const latestVerificationCode = (order: SMSOrder) => [...(order.messages || [])].reverse().find(message => message.verification_code)?.verification_code || ''
-const formatSMSMessageTime = (value: string) => formatDateTime(value, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })
+const latestVerificationCode = (order: SMSOrder) => order.latest_verification_code?.trim()
+  || [...(order.messages || [])].reverse().find(message => message.verification_code?.trim())?.verification_code?.trim()
+  || ''
+const needsVerificationCodeRecovery = (order: SMSOrder) => order.product_type === 'temporary'
+  && String(order.status || '').toLowerCase() === 'completed'
+  && !latestVerificationCode(order)
+const isOrderPollingCandidate = (order: SMSOrder) => isOrderWaiting(order) || needsVerificationCodeRecovery(order)
 
 const remainingLabel = (order: SMSOrder) => {
   if (isTerminalOrder(order)) return t('sms.user.ended')
@@ -1132,7 +1127,7 @@ async function hydrateLiveOrders() {
   try {
     const page = await smsAPI.orders({ page: 1, page_size: 20 })
     liveOrders.value = page.items
-      .filter(order => isOrderWaiting(order))
+      .filter(order => isOrderPollingCandidate(order))
       .slice(0, 10)
     if (liveOrders.value.length) ensureOrderPolling()
   } catch {
@@ -1456,7 +1451,8 @@ function cancel(order: SMSOrder) {
 }
 
 async function resend(id: string) {
-  try { await smsAPI.resend(id); await refreshOrder(id); appStore.showSuccess(t('sms.user.resendSuccess')) }
+  const idempotencyKey = `sms-resend-${id}-${Date.now()}`
+  try { await smsAPI.resend(id, idempotencyKey); await refreshOrder(id); appStore.showSuccess(t('sms.user.resendSuccess')) }
   catch (error) { appStore.showError(errorMessage(error, t('sms.user.resendFailed'))) }
 }
 

@@ -1,4 +1,5 @@
 import { apiClient, buildGatewayUrl } from './client'
+import { gatewayResponseError } from './gatewayError'
 import i18n from '@/i18n'
 
 export type CanvasNodeType = 'prompt' | 'reference' | 'generation' | 'image' | 'text' | 'video' | 'audio' | 'config' | 'group'
@@ -153,20 +154,6 @@ function gatewayResponseText(payload: unknown): string {
   }).join('\n').trim()
 }
 
-async function gatewayError(response: Response, fallback: string) {
-  const body = await response.text()
-  if (!body) return `${fallback} (${response.status})`
-  try {
-    const payload = JSON.parse(body) as { message?: string; error?: string | { message?: string } }
-    if (typeof payload.error === 'string' && payload.error.trim()) return payload.error
-    if (typeof payload.error === 'object' && payload.error?.message) return payload.error.message
-    if (payload.message?.trim()) return payload.message
-  } catch {
-    return body.slice(0, 500)
-  }
-  return `${fallback} (${response.status})`
-}
-
 export const canvasAPI = {
   async listProjects(): Promise<CanvasProject[]> {
     const { data } = await apiClient.get<CanvasProject[]>('/canvas/projects')
@@ -230,7 +217,7 @@ export const canvasAPI = {
       }),
       signal,
     })
-    if (!response.ok) throw new Error((await response.text()) || `${i18n.global.t('canvas.requestFailed')} (${response.status})`)
+    if (!response.ok) throw await gatewayResponseError(response, i18n.global.t('canvas.requestFailed'))
     return response.json()
   },
   async submitEdit(apiKey: string, prompt: string, model: string, image: Blob, fileName: string, options: CanvasImageEditOptions = {}, signal?: AbortSignal): Promise<ImageTask> {
@@ -249,7 +236,7 @@ export const canvasAPI = {
       body,
       signal,
     })
-    if (!response.ok) throw new Error((await response.text()) || `${i18n.global.t('canvas.requestFailed')} (${response.status})`)
+    if (!response.ok) throw await gatewayResponseError(response, i18n.global.t('canvas.requestFailed'))
     return response.json()
   },
   async getImageTask(apiKey: string, taskId: string, signal?: AbortSignal): Promise<ImageTask> {
@@ -257,7 +244,7 @@ export const canvasAPI = {
       headers: { Authorization: `Bearer ${apiKey}` },
       signal,
     })
-    if (!response.ok) throw new Error((await response.text()) || `${i18n.global.t('canvas.taskRequestFailed')} (${response.status})`)
+    if (!response.ok) throw await gatewayResponseError(response, i18n.global.t('canvas.taskRequestFailed'))
     return response.json()
   },
   async submitText(apiKey: string, prompt: string, model: string, signal?: AbortSignal): Promise<string> {
@@ -267,7 +254,7 @@ export const canvasAPI = {
       body: JSON.stringify({ model, input: prompt, stream: false }),
       signal,
     })
-    if (!response.ok) throw new Error(await gatewayError(response, i18n.global.t('canvas.requestFailed')))
+    if (!response.ok) throw await gatewayResponseError(response, i18n.global.t('canvas.requestFailed'))
     const text = gatewayResponseText(await response.json())
     if (!text) throw new Error(i18n.global.t('canvas.emptyTextResponse'))
     return text
@@ -287,7 +274,7 @@ export const canvasAPI = {
       }),
       signal,
     })
-    if (!response.ok) throw new Error(await gatewayError(response, i18n.global.t('canvas.audioGenerationFailed')))
+    if (!response.ok) throw await gatewayResponseError(response, i18n.global.t('canvas.audioGenerationFailed'))
     const blob = await response.blob()
     if (!blob.size || blob.type.includes('json')) throw new Error(i18n.global.t('canvas.audioGenerationFailed'))
     return blob

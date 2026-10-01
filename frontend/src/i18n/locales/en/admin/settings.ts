@@ -96,6 +96,8 @@ export default {
           enabledHint: 'When off, the admin sidebar entry is hidden and gateway moderation is skipped.',
           cyberSessionBlock: 'Cyber session auto-block',
           cyberSessionBlockHint: 'When enabled, sessions hit by upstream cyber_policy are blocked locally for the TTL and no longer forwarded. Only the offending session is blocked; other sessions on the same key are unaffected.',
+          riskControlUserAllowlist: 'Risk control allowlist',
+          riskControlUserAllowlistHint: 'Enter any email keyword to search for matching users. Allowlisted users will not trigger account bans or local blocking, but upstream restrictions still apply. This feature is typically used for trusted downstream relays.',
           cyberSessionBlockTTL: 'Block TTL (seconds)',
         },
         affiliate: {
@@ -203,6 +205,38 @@ export default {
         sessionBindingHint: 'Bind login sessions to the client IP and User-Agent. Any change immediately invalidates the session and forces re-login, raising the bar for stolen-credential reuse.',
         auditRetention: 'Audit Log Retention (days)',
         auditRetentionHint: 'Audit logs older than this are cleaned up automatically. Set to 0 to keep them forever (manual clear only).'
+      },
+      loginSecurity: {
+        title: 'Login Security',
+        description: 'Production-grade password-login abuse protection. Normal users are unaffected while bursts, repeated password failures, and distributed credential attacks are throttled.',
+        passwordFailureNote: 'A failure is counted only after human verification succeeds and the password is actually rejected. CAPTCHA failures never lock an account, and password recovery remains available.',
+        enabled: 'Enable login abuse protection',
+        enabledHint: 'Uses Redis for distributed counters and temporary cooldowns without changing the user database status.',
+        requestLimit: 'Login request rate',
+        requestLimitHint: 'Absorbs scripted floods before CAPTCHA. Requests above the threshold receive HTTP 429 and recover automatically after the window.',
+        perMinute: 'req/min',
+        ipv6Group: 'Aggregate IPv6 /64',
+        ipv6GroupHint: 'IPv6 addresses in the same /64 share an abuse bucket so rotating privacy addresses cannot bypass the limit.',
+        accountIpTitle: 'Account + source',
+        accountIpDescription: 'By default, 5 rejected passwords for the same account and source within 30 minutes block that combination for 30 minutes.',
+        accountTitle: 'Account-wide',
+        accountDescription: 'Aggregates rejected passwords across all sources for the same account to stop proxy-pool and botnet attacks.',
+        failureLimit: 'Password failures',
+        windowMinutes: 'Window',
+        blockMinutes: 'Cooldown',
+        minuteUnit: 'min',
+        adminMfa: 'Require MFA for administrators',
+        adminMfaHint: 'When enabled, administrator password sign-in must continue through TOTP. Configured Passkey sign-in remains available.',
+        adminMfaWarning: 'To prevent administrator lockout, the current administrator must already have TOTP configured before this can be enabled. Saving is also step-up protected when step-up is enabled.',
+        errors: {
+          ADMIN_MFA_TOTP_REQUIRED: 'Configure TOTP for the current administrator before enabling mandatory administrator MFA.',
+          ADMIN_MFA_TOTP_FEATURE_REQUIRED: 'Enable system TOTP before enabling mandatory administrator MFA.'
+        },
+        invalidSettings: 'Check the allowed ranges and make sure the account-wide failure limit is at least the account + source limit.',
+        save: 'Save login security',
+        saved: 'Login security settings saved',
+        loadFailed: 'Failed to load login security settings',
+        saveFailed: 'Failed to save login security settings'
       },
       panelRateLimit: {
         title: 'Panel API Rate Limiting',
