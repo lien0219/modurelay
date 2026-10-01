@@ -18,7 +18,7 @@
           :exchange-rate="market.exchangeRate"
           :visible="walletVisible"
           @toggle-visible="walletVisible = !walletVisible"
-          @details="openPanel('wallet')"
+          @details="router.push('/token-market/wallet')"
         />
         <ExchangePanel
           :mode="mode"
@@ -45,13 +45,13 @@
           @select="openProduct"
           @more="selectCategory('商城')"
         />
-        <ActivityFeed class="activity" :activities="market.activities" @more="openPanel('activity')" />
+        <ActivityFeed class="activity" :activities="market.activities" @more="router.push('/token-market/exchange-history')" />
       </div>
 
       <MerchantGrid
         :merchants="market.merchants"
-        @select="openMerchant($event.name)"
-        @more="selectCategory('服务市场')"
+        @select="openMerchant($event.id)"
+        @more="router.push('/token-market/merchant-center')"
       />
     </div>
 
@@ -66,8 +66,9 @@
     <Transition name="tm-fade">
       <div v-if="profileOpen" class="floating-menu profile" @click.stop>
         <button type="button" @click="goBack">返回 ModuRelay</button>
-        <button type="button" @click="openPanel('wallet')">钱包中心</button>
-        <button type="button" @click="openPanel('orders')">我的订单</button>
+        <button type="button" @click="router.push('/token-market/wallet')">钱包中心</button>
+        <button type="button" @click="router.push('/token-market/orders')">我的订单</button>
+        <button type="button" @click="router.push('/token-market/merchant-center')">商家中心</button>
       </div>
     </Transition>
 
@@ -81,11 +82,8 @@
       @add-cart="addCart"
     />
 
-    <Transition name="tm-fade">
-      <div v-if="toast" class="toast">{{ toast }}</div>
-    </Transition>
-
-    <button v-if="cartCount" class="cart-fab" type="button" @click="openPanel('cart')">🛒 <span>{{ cartCount }}</span></button>
+    <Transition name="tm-fade"><div v-if="toast" class="toast">{{ toast }}</div></Transition>
+    <button v-if="cartCount" class="cart-fab" type="button" @click="router.push('/token-market/cart')">🛒 <span>{{ cartCount }}</span></button>
   </TokenMarketShell>
 </template>
 
@@ -104,179 +102,16 @@ import WalletHeroCard from './components/WalletHeroCard.vue'
 import { calculateExchangeDestination } from './domain'
 import { useTokenMarketStore } from './store'
 import type { TokenExchangeDirection, TokenMarketProduct } from './types'
-import type { TokenMarketDialogState, TokenMarketExchangeMode, TokenMarketNavItem, TokenMarketPanelKind } from './ui'
+import type { TokenMarketDialogState, TokenMarketExchangeMode, TokenMarketNavItem } from './ui'
 
-const router = useRouter()
-const market = useTokenMarketStore()
-const search = ref('')
-const mode = ref<TokenMarketExchangeMode>('balance')
-const sourceValue = ref(100)
-const walletVisible = ref(true)
-const notificationsOpen = ref(false)
-const profileOpen = ref(false)
-const dialog = ref<TokenMarketDialogState | null>(null)
-const toast = ref('')
-const cartCount = ref(0)
-let toastTimer: number | undefined
-
-const navItems: TokenMarketNavItem[] = [
-  { label: '首页', section: 'home' },
-  { label: '商城', section: '商城' },
-  { label: '外卖', section: '外卖' },
-  { label: '数字商品', section: '数字商品' },
-  { label: 'AI额度', section: 'AI额度' },
-  { label: '服务市场', section: '服务市场' },
-]
-
-const tokenBalance = computed(() => market.wallet?.tokenBalance ?? 0)
-const platformBalance = computed(() => market.wallet?.platformBalance ?? 0)
-const direction = computed<TokenExchangeDirection>(() => mode.value === 'balance' ? 'balance_to_token' : 'token_to_balance')
-const outputValue = computed(() => calculateExchangeDestination(direction.value, Number(sourceValue.value) || 0, market.exchangeRate))
-const quotedDestination = computed(() => market.activeQuote?.destinationAmount ?? outputValue.value)
-const formattedOutput = computed(() => mode.value === 'balance'
-  ? outputValue.value.toLocaleString('zh-CN')
-  : outputValue.value.toLocaleString('zh-CN', { maximumFractionDigits: 2 }))
-const exchangeSourceText = computed(() => mode.value === 'balance'
-  ? `¥ ${(sourceValue.value || 0).toLocaleString('zh-CN')}`
-  : `${(sourceValue.value || 0).toLocaleString('zh-CN')} T`)
-const exchangeDestinationText = computed(() => mode.value === 'balance'
-  ? `${quotedDestination.value.toLocaleString('zh-CN')} T`
-  : `¥ ${quotedDestination.value.toLocaleString('zh-CN', { maximumFractionDigits: 2 })}`)
-
-function goBack(): void {
-  if (window.history.length > 1) router.back()
-  else void router.push('/dashboard')
-}
-
-function closeMenus(): void {
-  notificationsOpen.value = false
-  profileOpen.value = false
-}
-
-function closeDialog(): void {
-  dialog.value = null
-  market.clearQuote()
-}
-
-function setMode(next: TokenMarketExchangeMode): void {
-  mode.value = next
-  sourceValue.value = next === 'balance' ? 100 : 10000
-  market.clearQuote()
-}
-
-function swapMode(): void {
-  setMode(mode.value === 'balance' ? 'token' : 'balance')
-}
-
-async function openExchange(): Promise<void> {
-  try {
-    await market.quoteExchange(direction.value, Number(sourceValue.value) || 0)
-    dialog.value = { type: 'exchange' }
-  } catch (error) {
-    showToast(error instanceof Error ? error.message : '兑换报价失败')
-  }
-}
-
-async function confirmExchange(): Promise<void> {
-  try {
-    await market.executeExchange()
-    dialog.value = null
-    showToast('页面演示兑换成功 · 当前使用 Mock Service')
-  } catch (error) {
-    showToast(error instanceof Error ? error.message : '兑换失败')
-  }
-}
-
-function navigateSection(item: TokenMarketNavItem): void {
-  if (item.section === 'home') return showToast('已经在 Token 交易市场首页')
-  selectCategory(item.label)
-}
-
-function selectCategory(category: string): void {
-  dialog.value = {
-    type: 'info',
-    title: category,
-    message: `${category}子页面入口已经预留。当前组件与数据层已解耦，可直接继续挂接对应 Commerce Service 与独立路由。`,
-  }
-}
-
-function openProduct(product: TokenMarketProduct): void {
-  dialog.value = { type: 'product', title: product.name, price: product.priceToken.toLocaleString('zh-CN') }
-}
-
-function openMerchant(merchant: string): void {
-  dialog.value = {
-    type: 'info',
-    title: merchant,
-    message: '商家主页、商品列表、评价、配送和 Token 结算能力将在商户系统阶段通过独立服务契约接入。',
-  }
-}
-
-function openPanel(type: TokenMarketPanelKind): void {
-  const copy: Record<TokenMarketPanelKind, [string, string]> = {
-    wallet: ['Token 钱包', '钱包明细、充值、兑换、冻结与账本流水的入口已经预留。'],
-    orders: ['我的订单', '商城、外卖、数字商品和服务订单后续统一进入订单中心。'],
-    activity: ['交易动态', '完整交易流水将在账本与订单接口完成后接入。'],
-    cart: ['购物车', `当前购物车共有 ${cartCount.value} 件商品。结算能力将在 Token 支付系统接入后启用。`],
-  }
-  const [title, message] = copy[type]
-  dialog.value = { type: 'info', title, message }
-}
-
-function addCart(title: string): void {
-  cartCount.value += 1
-  dialog.value = null
-  showToast(`${title} 已加入购物车`)
-}
-
-async function submitSearch(): Promise<void> {
-  const q = search.value.trim()
-  if (!q) return
-  try {
-    await market.search(q)
-    const product = market.searchProducts[0]
-    const merchant = market.searchMerchants[0]
-    if (product) openProduct(product)
-    else if (merchant) openMerchant(merchant.name)
-    else showToast(`未找到“${q}”相关结果`)
-  } catch (error) {
-    showToast(error instanceof Error ? error.message : '搜索失败')
-  }
-}
-
-function showToast(message: string): void {
-  toast.value = message
-  if (toastTimer) window.clearTimeout(toastTimer)
-  toastTimer = window.setTimeout(() => { toast.value = '' }, 2500)
-}
-
-function handleKeydown(event: KeyboardEvent): void {
-  if (event.key === 'Escape') {
-    closeDialog()
-    closeMenus()
-  }
-  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
-    event.preventDefault()
-    document.querySelector<HTMLInputElement>('.tm-header-search input')?.focus()
-  }
-}
-
-onMounted(async () => {
-  document.body.classList.add('token-market-route')
-  document.title = 'Token 交易市场'
-  window.addEventListener('keydown', handleKeydown)
-  try {
-    await market.initialize()
-  } catch (error) {
-    showToast(error instanceof Error ? error.message : 'Token 市场加载失败')
-  }
-})
-
-onBeforeUnmount(() => {
-  document.body.classList.remove('token-market-route')
-  window.removeEventListener('keydown', handleKeydown)
-  if (toastTimer) window.clearTimeout(toastTimer)
-})
+const router = useRouter(); const market = useTokenMarketStore(); const search = ref(''); const mode = ref<TokenMarketExchangeMode>('balance'); const sourceValue = ref(100); const walletVisible = ref(true); const notificationsOpen = ref(false); const profileOpen = ref(false); const dialog = ref<TokenMarketDialogState | null>(null); const toast = ref(''); const cartCount = ref(0); let toastTimer:number|undefined
+const navItems:TokenMarketNavItem[]=[{label:'首页',section:'home'},{label:'商城',section:'商城'},{label:'外卖',section:'外卖'},{label:'数字商品',section:'数字商品'},{label:'AI额度',section:'AI额度'},{label:'服务市场',section:'服务市场'}]
+const tokenBalance=computed(()=>market.wallet?.tokenBalance??0); const platformBalance=computed(()=>market.wallet?.platformBalance??0); const direction=computed<TokenExchangeDirection>(()=>mode.value==='balance'?'balance_to_token':'token_to_balance'); const outputValue=computed(()=>calculateExchangeDestination(direction.value,Number(sourceValue.value)||0,market.exchangeRate)); const quotedDestination=computed(()=>market.activeQuote?.destinationAmount??outputValue.value); const formattedOutput=computed(()=>mode.value==='balance'?outputValue.value.toLocaleString('zh-CN'):outputValue.value.toLocaleString('zh-CN',{maximumFractionDigits:2})); const exchangeSourceText=computed(()=>mode.value==='balance'?`¥ ${(sourceValue.value||0).toLocaleString('zh-CN')}`:`${(sourceValue.value||0).toLocaleString('zh-CN')} T`); const exchangeDestinationText=computed(()=>mode.value==='balance'?`${quotedDestination.value.toLocaleString('zh-CN')} T`:`¥ ${quotedDestination.value.toLocaleString('zh-CN',{maximumFractionDigits:2})}`)
+function goBack(){if(window.history.length>1)router.back();else void router.push('/dashboard')} function closeMenus(){notificationsOpen.value=false;profileOpen.value=false} function closeDialog(){dialog.value=null;market.clearQuote()} function setMode(next:TokenMarketExchangeMode){mode.value=next;sourceValue.value=next==='balance'?100:10000;market.clearQuote()} function swapMode(){setMode(mode.value==='balance'?'token':'balance')}
+async function openExchange(){try{await market.quoteExchange(direction.value,Number(sourceValue.value)||0);dialog.value={type:'exchange'}}catch(error){showToast(error instanceof Error?error.message:'兑换报价失败')}} async function confirmExchange(){try{await market.executeExchange();dialog.value=null;showToast('页面演示兑换成功 · 当前使用 Mock Service')}catch(error){showToast(error instanceof Error?error.message:'兑换失败')}}
+function navigateSection(item:TokenMarketNavItem){if(item.section==='home')return showToast('已经在 Token 交易市场首页');selectCategory(item.label)} function selectCategory(category:string){showToast(`${category}频道骨架将在下一层目录页接入`)} function openProduct(product:TokenMarketProduct){void router.push(`/token-market/products/${product.id}`)} function openMerchant(id:string){void router.push(`/token-market/merchants/${id}`)} function addCart(){cartCount.value+=1;dialog.value=null;void router.push('/token-market/cart')}
+async function submitSearch(){const q=search.value.trim();if(!q)return;try{await market.search(q);const product=market.searchProducts[0];const merchant=market.searchMerchants[0];if(product)openProduct(product);else if(merchant)openMerchant(merchant.id);else showToast(`未找到“${q}”相关结果`)}catch(error){showToast(error instanceof Error?error.message:'搜索失败')}} function showToast(message:string){toast.value=message;if(toastTimer)window.clearTimeout(toastTimer);toastTimer=window.setTimeout(()=>{toast.value=''},2500)} function handleKeydown(event:KeyboardEvent){if(event.key==='Escape'){closeDialog();closeMenus()}if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==='k'){event.preventDefault();document.querySelector<HTMLInputElement>('.tm-header-search input')?.focus()}}
+onMounted(async()=>{document.body.classList.add('token-market-route');document.title='Token 交易市场';window.addEventListener('keydown',handleKeydown);try{await market.initialize()}catch(error){showToast(error instanceof Error?error.message:'Token 市场加载失败')}});onBeforeUnmount(()=>{document.body.classList.remove('token-market-route');window.removeEventListener('keydown',handleKeydown);if(toastTimer)window.clearTimeout(toastTimer)})
 </script>
 
 <style scoped>
