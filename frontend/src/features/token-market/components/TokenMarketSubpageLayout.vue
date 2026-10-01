@@ -30,30 +30,81 @@
         </div>
         <div class="actions"><slot name="actions" /></div>
       </div>
-      <slot />
+
+      <TokenMarketAsyncState
+        :loading="market.loading"
+        :error="market.lastError"
+        :empty="empty"
+        :forbidden="forbidden"
+        :skeleton="resolvedSkeleton"
+        :skeleton-count="skeletonCount"
+        :empty-title="emptyTitle"
+        :empty-description="emptyDescription"
+        :forbidden-title="forbiddenTitle"
+        :forbidden-description="forbiddenDescription"
+        @retry="retry"
+      >
+        <template v-if="$slots.emptyActions" #emptyActions><slot name="emptyActions" /></template>
+        <template v-if="$slots.permissionActions" #permissionActions><slot name="permissionActions" /></template>
+        <slot />
+      </TokenMarketAsyncState>
     </div>
   </TokenMarketShell>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
-import { RouterLink, useRouter } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { useTokenMarketStore } from '../store'
+import type { TokenMarketSkeletonVariant } from '../pageState'
+import TokenMarketAsyncState from './TokenMarketAsyncState.vue'
 import TokenMarketShell from './TokenMarketShell.vue'
 
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
   title: string
   description?: string
   eyebrow?: string
-}>(), { description: '', eyebrow: 'TOKEN MARKET' })
+  empty?: boolean
+  forbidden?: boolean
+  skeleton?: TokenMarketSkeletonVariant
+  skeletonCount?: number
+  emptyTitle?: string
+  emptyDescription?: string
+  forbiddenTitle?: string
+  forbiddenDescription?: string
+}>(), {
+  description: '',
+  eyebrow: 'TOKEN MARKET',
+  empty: false,
+  forbidden: false,
+  skeleton: undefined,
+  skeletonCount: 4,
+  emptyTitle: '这里还没有内容',
+  emptyDescription: '相关数据准备好后会显示在这里。',
+  forbiddenTitle: '当前功能暂不可用',
+  forbiddenDescription: '当前账户暂未获得此功能的访问权限。',
+})
 
+const route = useRoute()
 const router = useRouter()
 const market = useTokenMarketStore()
 const tokenBalance = computed(() => market.wallet?.tokenBalance ?? 0)
+const resolvedSkeleton = computed<TokenMarketSkeletonVariant>(() => {
+  if (props.skeleton) return props.skeleton
+  const name = String(route.name ?? '')
+  if (name.includes('Product') || name.includes('MerchantStore')) return 'detail'
+  if (name.includes('Wallet')) return 'wallet'
+  if (name.includes('MerchantCenter')) return 'dashboard'
+  return 'list'
+})
 
 function goBack(): void {
   if (window.history.length > 1) router.back()
   else void router.push('/token-market')
+}
+
+async function retry(): Promise<void> {
+  await market.initialize(true)
 }
 
 onMounted(async () => {
