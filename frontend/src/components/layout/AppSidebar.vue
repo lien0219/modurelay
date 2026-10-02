@@ -226,7 +226,7 @@ import { FeatureFlags, makeSidebarFlag } from '@/utils/featureFlags'
 import { resolveSiteBillingMode } from '@/utils/siteBillingMode'
 import { useBatchImageAccess } from '@/composables/useBatchImageAccess'
 import { toggleThemeWithTransition } from '@/utils/themeTransition'
-import { navigateToWorkspaceUrlWithTransition } from '@/utils/workspaceModeTransition'
+import { navigateToWorkspaceUrlWithTransition, navigateWithWorkspaceModeTransition } from '@/utils/workspaceModeTransition'
 
 interface NavItem {
   path: string
@@ -542,6 +542,10 @@ const CanvasIcon = {
   render: () => h(Icon, { name: 'group' })
 }
 
+const TokenMarketIcon = {
+  render: () => h(Icon, { name: 'cube' })
+}
+
 const SiteHomeIcon = {
   render: () => h(Icon, { name: 'home' })
 }
@@ -826,6 +830,7 @@ const flagBatchImageAccess = () => canUseBatchImage.value
 const flagResourceCenter = makeSidebarFlag(FeatureFlags.resourceCenter)
 const flagActivityCenter = makeSidebarFlag(FeatureFlags.activityCenter)
 const flagCanvas = makeSidebarFlag(FeatureFlags.canvas)
+const flagTokenMarketNav = makeSidebarFlag(FeatureFlags.tokenMarketNav)
 const flagPlanCatalog = makeSidebarFlag(FeatureFlags.planCatalog)
 const flagToolCenter = makeSidebarFlag(FeatureFlags.toolCenter)
 
@@ -847,6 +852,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
   }
   items.push(
     { path: '/canvas', label: t('nav.canvas'), icon: CanvasIcon, featureFlag: flagCanvas },
+    { path: '/token-market', label: t('nav.tokenMarket'), icon: TokenMarketIcon, featureFlag: flagTokenMarketNav },
     { path: '/batch-image', label: t('nav.batchImage'), icon: BatchImageIcon, hideInSimpleMode: true, featureFlag: flagBatchImageAccess },
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
@@ -1015,16 +1021,20 @@ function closeMobile() {
 }
 
 function handleMenuItemClick(itemPath: string, event?: MouseEvent) {
-  const shouldAnimateCanvasNavigation = itemPath === '/canvas'
-    && event?.button === 0
+  const plainPrimaryClick = event?.button === 0
     && !event.metaKey
     && !event.ctrlKey
     && !event.shiftKey
     && !event.altKey
 
-  if (shouldAnimateCanvasNavigation) {
-    event.preventDefault()
+  if (plainPrimaryClick && itemPath === '/canvas') {
+    event?.preventDefault()
     void navigateToWorkspaceUrlWithTransition('/infinite-canvas/canvas', 'to-canvas')
+  }
+
+  if (plainPrimaryClick && itemPath === '/token-market') {
+    event?.preventDefault()
+    void navigateWithWorkspaceModeTransition(router, { name: 'TokenMarket' }, 'to-market')
   }
 
   if (mobileOpen.value) {

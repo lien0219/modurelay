@@ -798,6 +798,24 @@ describe("admin SettingsView payment visible method controls", () => {
     );
   });
 
+  it("loads and saves the Token Market navigation toggle", async () => {
+    getSettings.mockResolvedValue({ ...baseSettingsResponse, token_market_nav_enabled: false });
+    const wrapper = mountView();
+    await flushPromises();
+
+    await wrapper.get("#settings-tab-features").trigger("click");
+    const toggle = wrapper.get<HTMLInputElement>('[data-testid="token-market-nav-toggle"]');
+    expect(toggle.element.checked).toBe(false);
+
+    await toggle.setValue(true);
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(expect.objectContaining({ token_market_nav_enabled: true }));
+    expect(fetchPublicSettings).toHaveBeenCalledWith(true);
+    wrapper.unmount();
+  });
+
   it("renders panel rate limit card and saves settings", async () => {
     getPanelRateLimitSettings.mockClear();
     updatePanelRateLimitSettings.mockClear();

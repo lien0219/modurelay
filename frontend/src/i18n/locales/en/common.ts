@@ -239,6 +239,7 @@ export default {
     resourceCenterAdmin: 'Forum Management',
     activityCenter: 'Activity Center',
     canvas: 'Infinite canvas',
+    tokenMarket: 'Token Market',
     activityManagement: 'Activity Management',
     promptAudit: 'Prompt Audit',
     auditLogs: 'Audit Logs',

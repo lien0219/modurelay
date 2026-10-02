@@ -40,6 +40,26 @@ describe('FeatureFlags.subscription', () => {
   })
 })
 
+describe('FeatureFlags.tokenMarketNav', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    delete (window as any).__APP_CONFIG__
+  })
+
+  it('shows the entry by default and follows explicit administrator settings', () => {
+    const store = useAppStore()
+    const sidebarFlag = makeSidebarFlag(FeatureFlags.tokenMarketNav)
+    expect(FeatureFlags.tokenMarketNav.key).toBe('token_market_nav_enabled')
+    expect(sidebarFlag()).toBe(true)
+
+    store.cachedPublicSettings = { token_market_nav_enabled: false } as PublicSettings
+    expect(sidebarFlag()).toBe(false)
+
+    store.cachedPublicSettings = { token_market_nav_enabled: true } as PublicSettings
+    expect(sidebarFlag()).toBe(true)
+  })
+})
+
 describe('resolveFeatureFlag', () => {
   beforeEach(() => {
     setActivePinia(createPinia())

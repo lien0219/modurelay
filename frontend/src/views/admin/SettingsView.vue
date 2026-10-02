@@ -7534,6 +7534,20 @@
 
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('admin.settings.features.tokenMarket.title') }}</h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.settings.features.tokenMarket.description') }}</p>
+          </div>
+          <div class="flex items-center justify-between gap-6 p-6">
+            <div class="min-w-0">
+              <label class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.settings.features.tokenMarket.enabled') }}</label>
+              <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.features.tokenMarket.enabledHint') }}</p>
+            </div>
+            <Toggle v-model="form.token_market_nav_enabled" :label="t('admin.settings.features.tokenMarket.enabled')" data-testid="token-market-nav-toggle" />
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
             <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
               {{ t('admin.settings.features.modelPlaza.title') }}
             </h2>
@@ -10247,6 +10261,7 @@ const form = reactive<SettingsForm>({
   sms_service_enabled: false,
   email_service_enabled: false,
   canvas_enabled: false,
+  token_market_nav_enabled: true,
   plan_catalog_enabled: false,
   // Subscription feature switch (user sidebar "My Subscriptions" entry)
   subscription_enabled: true,
@@ -11999,6 +12014,7 @@ async function saveSettings() {
       sms_service_enabled: form.sms_service_enabled,
       email_service_enabled: form.email_service_enabled,
       canvas_enabled: form.canvas_enabled,
+      token_market_nav_enabled: form.token_market_nav_enabled,
       plan_catalog_enabled: form.plan_catalog_enabled,
       // Subscription feature switch
       subscription_enabled: form.subscription_enabled,

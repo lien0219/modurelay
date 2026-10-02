@@ -434,6 +434,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeySMSServiceEnabled] = strconv.FormatBool(settings.SMSServiceEnabled)
 	updates[SettingKeyEmailServiceEnabled] = strconv.FormatBool(settings.EmailServiceEnabled)
 	updates[SettingKeyCanvasEnabled] = strconv.FormatBool(settings.CanvasEnabled)
+	updates[SettingKeyTokenMarketNavEnabled] = strconv.FormatBool(settings.TokenMarketNavEnabled)
 	updates[SettingKeyPlanCatalogEnabled] = strconv.FormatBool(settings.PlanCatalogEnabled)
 	updates[SettingKeyToolCenterEnabled] = strconv.FormatBool(settings.ToolCenterEnabled)
 

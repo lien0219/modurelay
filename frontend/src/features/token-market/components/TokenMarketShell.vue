@@ -11,6 +11,7 @@
         <input v-model="search" aria-label="搜索商品、商家或服务" placeholder="搜索商品、商家或服务" />
       </form>
       <div class="tm-top-actions">
+        <button class="tm-console-back" type="button" title="返回控制台" aria-label="返回控制台" @click="returnToConsole"><img src="/token-market/icons/back.svg" alt="" /></button>
         <button class="tm-mobile-search" type="button" aria-label="搜索" @click="searchOpen=!searchOpen"><img src="/token-market/icons/search.svg" alt="" /></button>
         <RouterLink class="tm-balance" to="/token-market/wallet">{{ market.wallet ? `${market.wallet.tokenBalance.toLocaleString('zh-CN')} T` : 'Token 钱包' }}</RouterLink>
         <RouterLink class="tm-cart-link" to="/token-market/cart" aria-label="购物车"><img src="/token-market/icons/cart.svg" alt="" /><span v-if="draft.cartCount" class="tm-count">{{ draft.cartCount }}</span></RouterLink>
@@ -46,6 +47,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { navigateWithWorkspaceModeTransition } from '@/utils/workspaceModeTransition'
 import { isTokenMarketDemo } from '../service'
 import { useMarketDraftStore } from '../experience'
 import { useTokenMarketStore } from '../store'
@@ -104,6 +106,9 @@ function active(to: string): boolean {
 function submitSearch(): void {
   const q = search.value.trim()
   if (q) { searchOpen.value = false; void router.push({ path: '/token-market/search', query: { q } }) }
+}
+function returnToConsole(): void {
+  void navigateWithWorkspaceModeTransition(router, auth.isAdmin ? '/admin/dashboard' : '/dashboard', 'to-relay')
 }
 async function retry(): Promise<void> {
   try { await market.initialize(true) } catch { /* State panel shows the service error. */ }

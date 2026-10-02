@@ -323,6 +323,7 @@ type SystemSettings struct {
 	SMSServiceEnabled        bool `json:"sms_service_enabled"`
 	EmailServiceEnabled      bool `json:"email_service_enabled"`
 	CanvasEnabled            bool `json:"canvas_enabled"`
+	TokenMarketNavEnabled    bool `json:"token_market_nav_enabled"`
 	PlanCatalogEnabled       bool `json:"plan_catalog_enabled"`
 	ToolCenterEnabled        bool `json:"tool_center_enabled"`
 
@@ -410,6 +411,7 @@ CustomEndpoints                  []CustomEndpoint         `json:"custom_endpoint
 
 	ResourceCenterEnabled            bool                     `json:"resource_center_enabled"`
 	CanvasEnabled                    bool                     `json:"canvas_enabled"`
+	TokenMarketNavEnabled            bool                     `json:"token_market_nav_enabled"`
 	PlanCatalogEnabled               bool                     `json:"plan_catalog_enabled"`
 
 ActivityCenterEnabled            bool                     `json:"activity_center_enabled"`
@@ -522,6 +524,7 @@ type PublicSettings struct {
 	CustomEndpoints                      []CustomEndpoint         `json:"custom_endpoints"`
 	ResourceCenterEnabled                bool                     `json:"resource_center_enabled"`
 	CanvasEnabled                        bool                     `json:"canvas_enabled"`
+	TokenMarketNavEnabled                bool                     `json:"token_market_nav_enabled"`
 	PlanCatalogEnabled                   bool                     `json:"plan_catalog_enabled"`
 	ToolCenterEnabled                    bool                     `json:"tool_center_enabled"`
 	ActivityCenterEnabled                bool                     `json:"activity_center_enabled"`

@@ -60,6 +60,7 @@ func TestSettingHandler_GetPublicSettings_ExposesForceEmailOnThirdPartySignup(t 
 		values: map[string]string{
 			service.SettingKeyForceEmailOnThirdPartySignup: "true",
 			service.SettingKeyCanvasEnabled:                "true",
+			service.SettingKeyTokenMarketNavEnabled:        "false",
 			service.SettingKeyPlanCatalogEnabled:           "true",
 			service.SettingKeyEmailServiceEnabled:          "true",
 		},
@@ -79,6 +80,7 @@ func TestSettingHandler_GetPublicSettings_ExposesForceEmailOnThirdPartySignup(t 
 		Data struct {
 			ForceEmailOnThirdPartySignup bool `json:"force_email_on_third_party_signup"`
 			CanvasEnabled                bool `json:"canvas_enabled"`
+			TokenMarketNavEnabled        bool `json:"token_market_nav_enabled"`
 			PlanCatalogEnabled           bool `json:"plan_catalog_enabled"`
 			EmailServiceEnabled          bool `json:"email_service_enabled"`
 		} `json:"data"`
@@ -87,6 +89,7 @@ func TestSettingHandler_GetPublicSettings_ExposesForceEmailOnThirdPartySignup(t 
 	require.Equal(t, 0, resp.Code)
 	require.True(t, resp.Data.ForceEmailOnThirdPartySignup)
 	require.True(t, resp.Data.CanvasEnabled)
+	require.False(t, resp.Data.TokenMarketNavEnabled)
 	require.True(t, resp.Data.PlanCatalogEnabled)
 	require.True(t, resp.Data.EmailServiceEnabled)
 }

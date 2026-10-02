@@ -1,7 +1,7 @@
 import { readonly, ref } from 'vue'
 import type { RouteLocationRaw, Router } from 'vue-router'
 
-export type WorkspaceModeTransitionDirection = 'to-canvas' | 'to-relay'
+export type WorkspaceModeTransitionDirection = 'to-canvas' | 'to-market' | 'to-relay'
 
 interface WorkspaceModeTransitionRequest {
   direction: WorkspaceModeTransitionDirection

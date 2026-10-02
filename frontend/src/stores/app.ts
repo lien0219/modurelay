@@ -472,6 +472,7 @@ export const useAppStore = defineStore('app', () => {
         purchase_subscription_url: '',
         activity_center_enabled: false,
         canvas_enabled: false,
+        token_market_nav_enabled: true,
         plan_catalog_enabled: false,
         payment_enabled: false,
         table_default_page_size: 20,

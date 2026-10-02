@@ -197,6 +197,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyCustomEndpoints,
 		SettingKeyResourceCenterEnabled,
 		SettingKeyCanvasEnabled,
+		SettingKeyTokenMarketNavEnabled,
 		SettingKeyPlanCatalogEnabled,
 		SettingKeyToolCenterEnabled,
 		SettingKeyActivityCenterEnabled,
@@ -351,6 +352,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		CustomEndpoints:                     settings[SettingKeyCustomEndpoints],
 		ResourceCenterEnabled:               settings[SettingKeyResourceCenterEnabled] != "false",
 		CanvasEnabled:                       settings[SettingKeyCanvasEnabled] == "true",
+		TokenMarketNavEnabled:               settings[SettingKeyTokenMarketNavEnabled] != "false",
 		PlanCatalogEnabled:                  settings[SettingKeyPlanCatalogEnabled] == "true",
 		ToolCenterEnabled:                   settings[SettingKeyToolCenterEnabled] != "false",
 		ActivityCenterEnabled:               settings[SettingKeyActivityCenterEnabled] == "true",
@@ -824,6 +826,7 @@ type PublicSettingsInjectionPayload struct {
 	ResourceCenterEnabled               bool                     `json:"resource_center_enabled"`
 	ActivityCenterEnabled               bool                     `json:"activity_center_enabled"`
 	CanvasEnabled                       bool                     `json:"canvas_enabled"`
+	TokenMarketNavEnabled               bool                     `json:"token_market_nav_enabled"`
 	PlanCatalogEnabled                  bool                     `json:"plan_catalog_enabled"`
 	ToolCenterEnabled                   bool                     `json:"tool_center_enabled"`
 	LinuxDoOAuthEnabled                 bool                     `json:"linuxdo_oauth_enabled"`
@@ -921,6 +924,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 				CustomEndpoints:                  safeRawJSONArray(settings.CustomEndpoints),
 			ResourceCenterEnabled:            settings.ResourceCenterEnabled,
 			CanvasEnabled:                    settings.CanvasEnabled,
+			TokenMarketNavEnabled:          settings.TokenMarketNavEnabled,
 			ToolCenterEnabled:                settings.ToolCenterEnabled,
 				LinuxDoOAuthEnabled:              settings.LinuxDoOAuthEnabled,
 				DingTalkOAuthEnabled:             settings.DingTalkOAuthEnabled,
@@ -1072,6 +1076,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		SMSServiceEnabled:                    settings.SMSServiceEnabled,
 		EmailServiceEnabled:                  settings.EmailServiceEnabled,
 		CanvasEnabled:                        settings.CanvasEnabled,
+		TokenMarketNavEnabled:                settings.TokenMarketNavEnabled,
 		PlanCatalogEnabled:                   settings.PlanCatalogEnabled,
 		SubscriptionEnabled:                  settings.SubscriptionEnabled,
 		ModelPlazaEnabled:                    settings.ModelPlazaEnabled,

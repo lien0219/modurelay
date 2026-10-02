@@ -8,7 +8,7 @@ export const tokenMarketRoutes: RouteRecordRaw[] = [{
   component: () => import('./TokenMarketRouterView.vue'),
   meta: marketMeta,
   children: [
-    { path: '', name: 'TokenMarket', component: () => import('./TokenMarketPage.vue'), meta: { ...market, title: 'Token Market' } },
+    { path: '', name: 'TokenMarket', component: () => import('./TokenMarketPage.vue'), meta: { ...market, title: 'Token Market', titleKey: 'nav.tokenMarket' } },
     { path: 'channel', name: 'TokenMarketChannel', component: () => import('./pages/ChannelPage.vue'), meta: { ...market, title: 'Token Market · Channel' } },
     { path: 'search', name: 'TokenMarketSearch', component: () => import('./pages/ChannelPage.vue'), meta: { ...market, title: 'Token Market · Search' } },
     { path: 'products/:id', name: 'TokenMarketProductDetail', component: () => import('./pages/ProductDetailPage.vue'), meta: { ...marketMeta, title: 'Token Market · Product', marketPermission: 'products.read' } },

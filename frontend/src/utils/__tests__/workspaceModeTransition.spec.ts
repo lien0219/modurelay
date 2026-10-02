@@ -78,6 +78,18 @@ describe('workspaceModeTransition', () => {
     expect(router.push).toHaveBeenCalledWith({ name: 'CanvasHome' })
   })
 
+  it('hands market navigation to the same visual runner and routes to the market', async () => {
+    const router = createRouter()
+    const runner = vi.fn(async (request: { navigate: () => Promise<unknown> }) => request.navigate())
+    const unregister = registerWorkspaceModeTransitionRunner(runner)
+
+    await expect(navigateWithWorkspaceModeTransition(router, { name: 'TokenMarket' }, 'to-market')).resolves.toBe(true)
+
+    expect(runner).toHaveBeenCalledWith(expect.objectContaining({ direction: 'to-market' }))
+    expect(router.push).toHaveBeenCalledWith({ name: 'TokenMarket' })
+    unregister()
+  })
+
   it('keeps the transition overlay closed during a cross-document handoff', async () => {
     const runner = vi.fn(async () => undefined)
     const unregister = registerWorkspaceModeTransitionRunner(runner)

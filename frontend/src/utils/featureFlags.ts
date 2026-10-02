@@ -169,6 +169,11 @@ export const FeatureFlags = {
     mode: 'opt-in',
     label: 'Infinite canvas',
   }),
+  tokenMarketNav: defineFlag({
+    key: 'token_market_nav_enabled',
+    mode: 'opt-out',
+    label: 'Token Market navigation',
+  }),
   planCatalog: defineFlag({
     key: 'plan_catalog_enabled',
     mode: 'opt-in',

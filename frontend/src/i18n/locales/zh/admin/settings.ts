@@ -57,6 +57,12 @@ export default {
           enabled: '画布运行时',
           enabledHint: '功能默认关闭，必须明确开启后才会运行。',
         },
+        tokenMarket: {
+          title: '词元商城',
+          description: '控制登录用户侧边栏中的词元商城入口。',
+          enabled: '显示导航入口',
+          enabledHint: '关闭后仅隐藏导航入口，已知直达链接仍可访问；商城交易能力由独立服务端接口决定。',
+        },
         siteBillingMode: {
           title: '站点类型',
           description: '决定用户端提供哪些购买方式。默认「充值 & 订阅」。',

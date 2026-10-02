@@ -104,10 +104,28 @@ describe('AppSidebar canvas workspace transition', () => {
   })
 
   it('hands primary canvas navigation directly to the standalone app', () => {
-    expect(componentSource).toContain("import { navigateToWorkspaceUrlWithTransition } from '@/utils/workspaceModeTransition'")
+    expect(componentSource).toContain("navigateToWorkspaceUrlWithTransition, navigateWithWorkspaceModeTransition } from '@/utils/workspaceModeTransition'")
     expect(componentSource).toContain("itemPath === '/canvas'")
     expect(componentSource).toContain('@click.capture="handleMenuItemClick(item.path, $event)"')
     expect(componentSource).toContain("navigateToWorkspaceUrlWithTransition('/infinite-canvas/canvas', 'to-canvas')")
+  })
+})
+
+describe('AppSidebar Token Market navigation', () => {
+  it('places the flagged market entry directly below Infinite Canvas for users and admins', () => {
+    const selfNavBlock = componentSource.slice(
+      componentSource.indexOf('function buildSelfNavItems'),
+      componentSource.indexOf('// finalizeNav')
+    )
+    expect(selfNavBlock).toMatch(/path: '\/canvas'[^\n]*\n\s*\{ path: '\/token-market'[^\n]*featureFlag: flagTokenMarketNav/)
+    expect(componentSource).toContain('const flagTokenMarketNav = makeSidebarFlag(FeatureFlags.tokenMarketNav)')
+    expect(componentSource).toContain('finalizeNav(buildSelfNavItems(true))')
+    expect(componentSource).toContain('finalizeNav(buildSelfNavItems(false))')
+  })
+
+  it('uses the workspace transition on an ordinary primary click', () => {
+    expect(componentSource).toContain("itemPath === '/token-market'")
+    expect(componentSource).toContain("navigateWithWorkspaceModeTransition(router, { name: 'TokenMarket' }, 'to-market')")
   })
 })
 
@@ -133,6 +151,7 @@ describe('AppSidebar personal navigation order', () => {
     )
     const expectedPaths = [
       '/canvas',
+      '/token-market',
       '/batch-image',
       '/keys',
       '/usage',

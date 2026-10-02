@@ -57,6 +57,12 @@ export default {
           enabled: 'Canvas runtime',
           enabledHint: 'Feature is fail-closed until explicitly enabled.',
         },
+        tokenMarket: {
+          title: 'Token Market',
+          description: 'Control the Token Market entry in the signed-in sidebar.',
+          enabled: 'Show navigation entry',
+          enabledHint: 'Turning this off hides the entry only. Direct links remain available; transaction capabilities depend on separate backend APIs.',
+        },
         siteBillingMode: {
           title: 'Site Billing Mode',
           description: 'Controls which purchase options users see. Defaults to "Recharge & Subscription".',

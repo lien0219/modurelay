@@ -181,6 +181,31 @@ func TestSettingService_GetPublicSettingsForInjection_ExposesCanvasEnabled(t *te
 	require.True(t, payload.CanvasEnabled)
 }
 
+func TestSettingService_TokenMarketNavPublicSettingsAndInjection(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		values map[string]string
+		want   bool
+	}{
+		{name: "missing defaults enabled", values: map[string]string{}, want: true},
+		{name: "enabled", values: map[string]string{SettingKeyTokenMarketNavEnabled: "true"}, want: true},
+		{name: "disabled", values: map[string]string{SettingKeyTokenMarketNavEnabled: "false"}, want: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := NewSettingService(&settingPublicRepoStub{values: tc.values}, &config.Config{})
+			settings, err := svc.GetPublicSettings(context.Background())
+			require.NoError(t, err)
+			require.Equal(t, tc.want, settings.TokenMarketNavEnabled)
+
+			injected, err := svc.GetPublicSettingsForInjection(context.Background())
+			require.NoError(t, err)
+			payload, ok := injected.(*PublicSettingsInjectionPayload)
+			require.True(t, ok)
+			require.Equal(t, tc.want, payload.TokenMarketNavEnabled)
+		})
+	}
+}
+
 func TestSettingService_GetPublicSettings_ExposesToolCenterEnabled(t *testing.T) {
 	for _, tc := range []struct {
 		name string

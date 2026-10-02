@@ -212,6 +212,7 @@ export interface PublicSettings {
   tool_center_enabled?: boolean
   plan_catalog_enabled?: boolean
   canvas_enabled?: boolean
+  token_market_nav_enabled?: boolean
   registration_enabled: boolean
   email_verify_enabled: boolean
   force_email_on_third_party_signup: boolean

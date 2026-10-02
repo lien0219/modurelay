@@ -576,6 +576,16 @@ func TestSettingService_InitializeDefaultSettingsPersistsConfiguredForwardedClie
 	require.NoError(t, svc.InitializeDefaultSettings(context.Background()))
 	require.JSONEq(t, `["X-Cdn-Ip","True-Client-Ip"]`, repo.values[SettingKeyForwardedClientIPHeaders])
 	require.Equal(t, "true", repo.values[SettingKeyToolCenterEnabled])
+	require.Equal(t, "true", repo.values[SettingKeyTokenMarketNavEnabled])
+}
+
+func TestSettingService_TokenMarketNavFlagRoundTrip(t *testing.T) {
+	repo := &settingUpdateRepoStub{}
+	svc := NewSettingService(repo, &config.Config{})
+	require.NoError(t, svc.UpdateSettings(context.Background(), &SystemSettings{TokenMarketNavEnabled: false}))
+	require.Equal(t, "false", repo.updates[SettingKeyTokenMarketNavEnabled])
+	require.False(t, svc.parseSettings(map[string]string{SettingKeyTokenMarketNavEnabled: "false"}).TokenMarketNavEnabled)
+	require.True(t, svc.parseSettings(map[string]string{}).TokenMarketNavEnabled)
 }
 
 func TestSettingService_ToolCenterFlagRoundTrip(t *testing.T) {

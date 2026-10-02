@@ -115,6 +115,7 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		SMSServiceEnabled:                    settings.SMSServiceEnabled,
 		EmailServiceEnabled:                  settings.EmailServiceEnabled,
 		CanvasEnabled:                        settings.CanvasEnabled,
+		TokenMarketNavEnabled:                settings.TokenMarketNavEnabled,
 		PlanCatalogEnabled:                   settings.PlanCatalogEnabled,
 		ToolCenterEnabled:                    settings.ToolCenterEnabled,
 		SubscriptionEnabled:                  settings.SubscriptionEnabled,

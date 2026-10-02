@@ -739,6 +739,7 @@ export interface SystemSettings {
   sms_service_enabled: boolean;
   email_service_enabled: boolean;
   canvas_enabled: boolean;
+  token_market_nav_enabled: boolean;
   plan_catalog_enabled: boolean;
 
   // Subscription feature switch (user sidebar "My Subscriptions" entry)
@@ -1058,6 +1059,7 @@ export interface UpdateSettingsRequest {
   sms_service_enabled?: boolean;
   email_service_enabled?: boolean;
   canvas_enabled?: boolean;
+  token_market_nav_enabled?: boolean;
   plan_catalog_enabled?: boolean;
 
   // Subscription feature switch

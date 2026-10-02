@@ -239,6 +239,7 @@ export default {
     resourceCenterAdmin: '论坛管理',
     activityCenter: '活动中心',
     canvas: '无限画布',
+    tokenMarket: '词元商城',
     activityManagement: '活动管理',
     promptAudit: '提示词审计',
     auditLogs: '操作日志',

@@ -395,6 +395,7 @@ const (
 	SettingKeyCustomEndpoints             = "custom_endpoints"              // 自定义端点列表（JSON 数组）
 	SettingKeyResourceCenterEnabled       = "resource_center_enabled"
 	SettingKeyCanvasEnabled               = "canvas_enabled"
+	SettingKeyTokenMarketNavEnabled       = "token_market_nav_enabled"
 	SettingKeyPlanCatalogEnabled          = "plan_catalog_enabled"
 	SettingKeyToolCenterEnabled           = "tool_center_enabled"
 

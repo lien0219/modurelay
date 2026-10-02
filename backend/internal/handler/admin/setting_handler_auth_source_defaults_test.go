@@ -489,6 +489,7 @@ func TestSettingHandler_UpdateSettings_ClearsLegacyPurchaseURLWhenDisabled(t *te
 			service.SettingKeyPurchaseSubscriptionEnabled: "false",
 			service.SettingKeyPurchaseSubscriptionURL:     "admin@modurelay.local",
 			service.SettingKeyCanvasEnabled:               "false",
+			service.SettingKeyTokenMarketNavEnabled:       "true",
 		},
 	}
 	svc := service.NewSettingService(repo, &config.Config{Default: config.DefaultConfig{UserConcurrency: 5}})
@@ -498,6 +499,7 @@ func TestSettingHandler_UpdateSettings_ClearsLegacyPurchaseURLWhenDisabled(t *te
 		"purchase_subscription_enabled": false,
 		"purchase_subscription_url":     "admin@modurelay.local",
 		"canvas_enabled":                true,
+		"token_market_nav_enabled":      false,
 	}
 	rawBody, err := json.Marshal(body)
 	require.NoError(t, err)
@@ -512,6 +514,7 @@ func TestSettingHandler_UpdateSettings_ClearsLegacyPurchaseURLWhenDisabled(t *te
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, "", repo.values[service.SettingKeyPurchaseSubscriptionURL])
 	require.Equal(t, "true", repo.values[service.SettingKeyCanvasEnabled])
+	require.Equal(t, "false", repo.values[service.SettingKeyTokenMarketNavEnabled])
 }
 
 func TestDiffSettings_IncludesAuthSourceDefaultsAndForceEmail(t *testing.T) {

@@ -53,7 +53,7 @@ function runTimeline(build: (instance: gsap.core.Timeline) => void) {
 }
 
 function focusDestination() {
-  const target = document.querySelector<HTMLElement>('#canvas-workspace-content, .app-main')
+  const target = document.querySelector<HTMLElement>('#canvas-workspace-content, #tm-content, .app-main')
   if (!target) return
   const hadTabindex = target.hasAttribute('tabindex')
   if (!hadTabindex) target.setAttribute('tabindex', '-1')

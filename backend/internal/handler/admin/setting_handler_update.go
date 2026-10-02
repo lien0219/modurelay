@@ -348,6 +348,7 @@ type UpdateSettingsRequest struct {
 	SMSServiceEnabled        *bool `json:"sms_service_enabled"`
 	EmailServiceEnabled      *bool `json:"email_service_enabled"`
 	CanvasEnabled            *bool `json:"canvas_enabled"`
+	TokenMarketNavEnabled    *bool `json:"token_market_nav_enabled"`
 	PlanCatalogEnabled       *bool `json:"plan_catalog_enabled"`
 	ToolCenterEnabled        *bool `json:"tool_center_enabled"`
 
@@ -2029,6 +2030,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.CanvasEnabled
 		}(),
+		TokenMarketNavEnabled: func() bool {
+			if req.TokenMarketNavEnabled != nil {
+				return *req.TokenMarketNavEnabled
+			}
+			return previousSettings.TokenMarketNavEnabled
+		}(),
 		PlanCatalogEnabled: func() bool {
 			if req.PlanCatalogEnabled != nil {
 				return *req.PlanCatalogEnabled
@@ -2502,6 +2509,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		SMSServiceEnabled:        updatedSettings.SMSServiceEnabled,
 		EmailServiceEnabled:      updatedSettings.EmailServiceEnabled,
 		CanvasEnabled:            updatedSettings.CanvasEnabled,
+		TokenMarketNavEnabled:    updatedSettings.TokenMarketNavEnabled,
 		PlanCatalogEnabled:       updatedSettings.PlanCatalogEnabled,
 		ToolCenterEnabled:        updatedSettings.ToolCenterEnabled,
 		SubscriptionEnabled:      updatedSettings.SubscriptionEnabled,
