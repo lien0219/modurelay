@@ -1,19 +1,72 @@
 <template>
-  <TokenMarketSubpageLayout eyebrow="PRODUCT DETAIL" :title="product?.name ?? '商品详情'" description="商品详情、SKU、库存、配送和 Token 支付均通过 Commerce Service 接入。" :empty="!market.resourceLoading && !!market.bootstrap && !product" empty-title="商品不存在" empty-description="该商品可能已下架、不可用，或当前链接已失效。">
-    <template #actions><button class="tm-button secondary" @click="router.push('/token-market/cart')">购物车</button></template>
-    <template #emptyActions><button class="tm-button primary" @click="router.push('/token-market')">返回市场首页</button></template>
-    <template v-if="product"><div class="detail-grid"><section class="visual glass-card"><div class="visual-orb"><span>{{categoryIcon}}</span></div><div class="visual-meta"><span>{{product.badge||'精选商品'}}</span><strong>{{categoryLabel}}</strong></div></section><section class="info glass-card"><span class="merchant" @click="openMerchant">{{merchant?.name||'Token Market 商户'}} ›</span><h2>{{product.name}}</h2><p>企业级商品详情骨架已预留规格、库存、保障、配送方式、售后规则与商家信息区域。</p><div class="price"><b>{{product.priceToken.toLocaleString('zh-CN')}}</b><span>T</span></div><div class="sku-block"><label>规格</label><div class="chips"><button class="active">标准版</button><button>高级版</button><button>企业版</button></div></div><div class="buy-row"><div class="qty"><button @click="quantity=Math.max(1,quantity-1)">−</button><strong>{{quantity}}</strong><button @click="quantity+=1">＋</button></div><button class="tm-button secondary grow" @click="addToCart">加入购物车</button><button class="tm-button primary grow" @click="buyNow">立即购买 · {{total.toLocaleString('zh-CN')}} T</button></div></section></div><section class="below-grid"><article class="glass-card section"><span class="eyebrow">DETAILS</span><h3>商品详情</h3><p>这里将接入富文本详情、规格参数、服务说明、数字商品交付规则或实体商品物流信息。</p></article><article class="glass-card section"><span class="eyebrow">PROTECTION</span><h3>Token Market 交易保障</h3><p>预留担保交易、退款、争议处理、商家保证金与履约状态展示。</p></article></section></template>
-  </TokenMarketSubpageLayout>
+  <div class="tm-detail">
+    <div v-if="loading" class="tm-feedback" role="status">正在加载商品详情…</div>
+    <div v-else-if="error" class="tm-empty" role="alert"><h2>商品加载失败</h2><p>{{ error }}</p><button class="tm-button" @click="load">重新加载</button></div>
+    <div v-else-if="!product" class="tm-empty"><h2>商品不存在</h2><p>商品可能已下架或链接已失效。</p><RouterLink class="tm-button" to="/token-market">返回市场</RouterLink></div>
+    <template v-else>
+      <div class="tm-breadcrumb"><RouterLink to="/token-market">市场首页</RouterLink> / <RouterLink :to="`/token-market/channel?category=${product.categoryId}`">{{ categoryLabels[product.categoryId] }}</RouterLink> / 商品详情</div>
+      <div class="tm-detail-grid">
+        <div class="tm-detail-art tm-panel"><img :src="productArt(product)" :alt="product.name" /></div>
+        <section class="tm-detail-info">
+          <span class="tm-detail-badge">{{ product.badge || categoryLabels[product.categoryId] }}</span>
+          <h1>{{ product.name }}</h1>
+          <p>{{ merchant?.name || 'Token Market 商家' }} · {{ categoryLabels[product.categoryId] }}</p>
+          <strong class="tm-price">{{ formatToken(product.priceToken) }}</strong>
+          <div class="tm-detail-divider"></div>
+          <div v-if="product.categoryId === 'ai_credit'" class="tm-detail-model">
+            <h2>模型 Token 配置</h2>
+            <dl><div><dt>适用模型</dt><dd>{{ product.modelId || '商家尚未提供' }}</dd></div><div><dt>Token 类型</dt><dd>{{ product.tokenTypes?.join(' / ') || '商家尚未提供' }}</dd></div><div><dt>模型 Token 数量</dt><dd>{{ product.modelTokenQuantity || '商家尚未提供' }}</dd></div><div><dt>组合</dt><dd>{{ product.packageCombination || '单项商品' }}</dd></div><div><dt>钱包支付金额</dt><dd>{{ formatToken(product.priceToken) }}</dd></div></dl>
+            <p class="tm-muted">模型 Token 数量与钱包支付金额为不同字段。官方参考价和兑换报价以服务端实时数据为准。</p>
+          </div>
+          <label class="tm-detail-quantity">购买数量 <span><button type="button" aria-label="减少数量" :disabled="quantity <= 1" @click="quantity--">−</button><output>{{ quantity }}</output><button type="button" aria-label="增加数量" :disabled="quantity >= 99" @click="quantity++">+</button></span></label>
+          <p class="tm-detail-hint">{{ product.categoryId === 'digital' || product.categoryId === 'ai_credit' ? '数字商品的交付内容与时效以商家说明为准。' : '运费、优惠与最终应付金额由结算接口确认。' }}</p>
+          <div class="tm-detail-actions"><button class="tm-button" type="button" @click="addCart(false)">加入购物车</button><button class="tm-button primary" type="button" @click="addCart(true)">去结算</button><button class="tm-icon-button" type="button" :aria-label="favorite ? '取消收藏' : '收藏商品'" :aria-pressed="favorite" @click="draft.toggleProductFavorite(product.id)"><img src="/token-market/icons/heart.svg" alt="" /></button></div>
+        </section>
+      </div>
+      <div class="tm-tabs" role="tablist" aria-label="商品信息"><button v-for="tab in ['商品详情','购买须知','用户评价']" :key="tab" class="tm-tab" :class="{ 'is-active': activeTab === tab }" role="tab" type="button" :aria-selected="activeTab === tab" @click="activeTab=tab">{{ tab }}</button></div>
+      <section class="tm-detail-section tm-panel"><template v-if="activeTab === '商品详情'"><h2>{{ product.name }}</h2><p>价格、适用范围、交付方式与售后条款请以商家发布的商品信息和服务端结算结果为准。</p></template><template v-else-if="activeTab === '购买须知'"><h2>购买须知</h2><p>下单前请核对商品规格、模型、Token 类型和数量。退款与交付遵循平台已有规则，相关接口接入前无法在线完成交易。</p></template><template v-else><h2>用户评价</h2><p>评价接口尚未接入，暂无可核实的评价。</p></template></section>
+      <section v-if="merchant" class="tm-detail-merchant tm-panel"><img src="/token-market/icons/store.svg" alt="" /><div><h2>{{ merchant.name }}</h2><p>{{ categoryLabels[merchant.categoryId] }}</p></div><RouterLink class="tm-button" :to="`/token-market/merchants/${merchant.id}`">进入店铺</RouterLink></section>
+      <div v-if="toast" class="tm-toast" role="status">{{ toast }}</div>
+    </template>
+  </div>
 </template>
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import TokenMarketSubpageLayout from '../components/TokenMarketSubpageLayout.vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { useMarketDraftStore } from '../experience'
+import { categoryLabels, formatToken, productArt } from '../presentation'
 import { useTokenMarketStore } from '../store'
-const route=useRoute(); const router=useRouter(); const market=useTokenMarketStore(); const quantity=ref(1); const product=computed(()=>market.activeProduct); const merchant=computed(()=>market.merchants.find(item=>item.id===product.value?.merchantId)); const total=computed(()=>(product.value?.priceToken??0)*quantity.value); const categoryLabel=computed(()=>market.categories.find(item=>item.id===product.value?.categoryId)?.label??'精选'); const categoryIcon=computed(()=>({mall:'⌁',delivery:'◉',digital:'◇',ai_credit:'✦',services:'◆'}[product.value?.categoryId??'mall']))
-function openMerchant(){if(merchant.value) void router.push(`/token-market/merchants/${merchant.value.id}`)} function addToCart(){void router.push({path:'/token-market/cart',query:{add:product.value?.id,qty:String(quantity.value)}})} function buyNow(){void router.push({path:'/token-market/cart',query:{buy:product.value?.id,qty:String(quantity.value)}})}
-onMounted(async()=>{await market.initialize();await market.loadProduct(String(route.params.id))})
+import type { TokenMarketProduct } from '../types'
+const route = useRoute()
+const router = useRouter()
+const market = useTokenMarketStore()
+const draft = useMarketDraftStore()
+const product = ref<TokenMarketProduct | null>(null)
+const loading = ref(false)
+const error = ref('')
+const quantity = ref(1)
+const activeTab = ref('商品详情')
+const toast = ref('')
+let timer: number | undefined
+const merchant = computed(() => market.merchants.find(item => item.id === product.value?.merchantId))
+const favorite = computed(() => !!product.value && draft.data.favoriteProductIds.includes(product.value.id))
+async function load(): Promise<void> {
+  loading.value = true; error.value = ''; product.value = null
+  try { product.value = await market.loadProduct(String(route.params.id)) }
+  catch (failure) { error.value = failure instanceof Error ? failure.message : '请稍后重试' }
+  finally { loading.value = false }
+}
+function addCart(checkout: boolean): void {
+  if (!product.value) return
+  for (let index = 0; index < quantity.value; index++) draft.addToCart(product.value.id)
+  if (checkout) void router.push({ path: '/token-market/checkout', query: { buy: product.value.id } })
+  else { toast.value = '已加入本地购物车草稿'; window.clearTimeout(timer); timer = window.setTimeout(() => { toast.value = '' }, 2800) }
+}
+watch(() => route.params.id, load, { immediate: true })
+onBeforeUnmount(() => window.clearTimeout(timer))
 </script>
 <style scoped>
-.detail-grid{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(360px,.95fr);gap:18px}.visual{position:relative;min-height:500px;display:grid;place-items:center;overflow:hidden}.visual:before{content:"";position:absolute;width:420px;height:420px;border-radius:50%;background:radial-gradient(circle,rgba(85,112,255,.22),transparent 68%)}.visual-orb{position:relative;display:grid;place-items:center;width:260px;height:260px;border:1px solid rgba(129,150,255,.24);border-radius:38%;background:linear-gradient(145deg,rgba(108,61,255,.32),rgba(19,164,255,.14));box-shadow:inset 0 0 70px rgba(116,78,255,.25),0 30px 80px rgba(0,0,0,.38);transform:rotate(-8deg)}.visual-orb span{font-size:86px;transform:rotate(8deg)}.visual-meta{position:absolute;left:24px;bottom:22px}.visual-meta span,.visual-meta strong{display:block}.visual-meta span{color:#7186ab;font-size:9px}.visual-meta strong{margin-top:5px}.info{padding:28px}.merchant{color:#7293c9;font-size:11px;cursor:pointer}.info h2{margin:12px 0 10px;font-size:30px}.info p{color:#7e91b0;font-size:12px;line-height:1.75}.price{display:flex;align-items:baseline;gap:8px;margin:28px 0}.price b{font-size:38px}.price span{color:#a9baff}.sku-block label{display:block;margin-bottom:10px;color:#788dad;font-size:10px}.chips{display:flex;gap:8px}.chips button{padding:9px 12px;border:1px solid rgba(113,139,203,.16);border-radius:9px;color:#7f92b2;background:#091936}.chips button.active{border-color:#6278ff;color:#fff;background:rgba(82,91,255,.16)}.buy-row{display:flex;gap:9px;margin-top:28px}.qty{display:flex;border:1px solid rgba(107,135,199,.18);border-radius:9px;overflow:hidden}.qty button,.qty strong{width:36px;height:40px;display:grid;place-items:center;border:0;color:#dbe6fa;background:#091833}.grow{flex:1}.below-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px}.section{padding:22px}.section p{color:#788cad;font-size:11px;line-height:1.7}.eyebrow{color:#6a80a8;font-size:9px;font-weight:800;letter-spacing:.12em}@media(max-width:900px){.detail-grid,.below-grid{grid-template-columns:1fr}.visual{min-height:360px}}
+.tm-breadcrumb{margin-bottom:22px;color:var(--tm-muted);font-size:12px}.tm-breadcrumb a:hover{color:var(--tm-cyan)}.tm-detail-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(330px,1fr);gap:32px}.tm-detail-art{display:grid;place-items:center;aspect-ratio:1.4;background:radial-gradient(circle at 50% 38%,#223670,#0b1633 72%);overflow:hidden}.tm-detail-art img{width:100%;height:100%;object-fit:contain}.tm-detail-info{min-width:0}.tm-detail-badge{display:inline-block;padding:5px 10px;border-radius:5px;background:var(--tm-raised);color:var(--tm-cyan);font-size:12px}.tm-detail-info h1{margin:18px 0 10px}.tm-detail-info>p{color:var(--tm-muted)}.tm-detail-info>.tm-price{display:block;margin:18px 0;font-size:36px}.tm-detail-divider{height:1px;background:var(--tm-border);margin:18px 0}.tm-detail-model{margin-bottom:18px}.tm-detail-model h2{font-size:16px}.tm-detail-model dl{margin:0}.tm-detail-model dl div{display:flex;gap:12px;padding:6px 0}.tm-detail-model dt{min-width:105px;color:var(--tm-muted)}.tm-detail-model dd{margin:0;overflow-wrap:anywhere}.tm-detail-model p{font-size:12px}.tm-detail-quantity{display:flex;align-items:center;gap:20px}.tm-detail-quantity span{display:flex;align-items:center;gap:12px}.tm-detail-quantity button{width:36px;height:36px;border:1px solid var(--tm-border);border-radius:8px;background:var(--tm-surface);color:var(--tm-cyan)}.tm-detail-quantity output{min-width:20px;text-align:center}.tm-detail-hint{margin:14px 0;color:var(--tm-muted);font-size:12px}.tm-detail-actions{display:flex;align-items:center;gap:10px}.tm-detail-actions>.tm-button{flex:1}.tm-detail-section{padding:24px;min-height:120px}.tm-detail-section p,.tm-detail-merchant p{color:var(--tm-muted)}.tm-detail-merchant{display:flex;align-items:center;gap:18px;margin-top:22px;padding:20px}.tm-detail-merchant img{width:32px}.tm-detail-merchant div{flex:1}.tm-detail-merchant h2{margin:0}.tm-detail-merchant p{margin:3px 0 0}
+@media(max-width:850px){.tm-detail-grid{grid-template-columns:1fr}.tm-detail-art{aspect-ratio:1.5}.tm-detail-merchant{flex-wrap:wrap}}
+@media(max-width:700px){.tm-detail-grid{gap:20px}.tm-detail-art{aspect-ratio:1.35}.tm-detail-info>.tm-price{font-size:29px}.tm-detail-actions{position:sticky;bottom:76px;z-index:10;padding:10px 0;background:var(--tm-bg)}.tm-detail-section{padding:17px}.tm-detail .tm-tabs{flex-wrap:nowrap;overflow-x:auto}.tm-detail .tm-tab{white-space:nowrap}}
 </style>

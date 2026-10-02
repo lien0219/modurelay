@@ -43,6 +43,10 @@ export function mapProduct(dto: TokenMarketProductDTO): TokenMarketProduct {
     priceToken: asNumber(dto.price_token),
     merchantId: dto.merchant_id,
     badge: dto.badge ?? undefined,
+    modelId: dto.model_id ?? undefined,
+    tokenTypes: dto.token_types ?? undefined,
+    modelTokenQuantity: dto.model_token_quantity ?? undefined,
+    packageCombination: dto.package_combination ?? undefined,
   }
 }
 
@@ -82,6 +86,11 @@ export function mapQuote(dto: TokenMarketQuoteDTO): TokenExchangeQuote {
     destinationAmount: asNumber(dto.destination_amount),
     tokenPerBalanceUnit: asNumber(dto.token_per_balance_unit),
     quotedAt: dto.quoted_at,
+    basis: dto.basis ?? undefined,
+    applicableModels: dto.applicable_models ?? undefined,
+    tokenTypes: dto.token_types ?? undefined,
+    updatedAt: dto.updated_at ?? undefined,
+    expiresAt: dto.expires_at ?? undefined,
   }
 }
 

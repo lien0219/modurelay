@@ -6,7 +6,7 @@
 
 - `types.ts` — stable frontend/domain contracts. Keep API DTO mapping outside UI components.
 - `domain.ts` — pure deterministic rules such as exchange calculations and balance validation. No Vue, network, router, storage, or DOM dependencies.
-- `service.ts` — service boundary. The current implementation is an in-memory mock adapter. Replace/add an HTTP adapter here when backend APIs are ready.
+- `service.ts` — service boundary. The default data source is an isolated in-memory mock; an HTTP repository is available behind `VITE_TOKEN_MARKET_DATA_SOURCE=http` and must only be enabled when the corresponding backend routes are deployed.
 - `store.ts` — Pinia orchestration and async state. Components must not call HTTP directly.
 - `mockData.ts` — prototype fixtures only. Production code must not infer business rules from fixture values.
 - `route.ts` — feature-owned route metadata for the standalone page.
@@ -39,7 +39,9 @@ The frontend is prepared for these logical endpoints (exact URLs can follow back
 
 ## Migration from mock to HTTP
 
-Implement an `HttpTokenMarketService` satisfying `TokenMarketService`, then provide it through the feature service factory/injection point. Do not rewrite page event handlers or domain rules to make the HTTP adapter work.
+`HttpTokenMarketRepository` already satisfies the repository contract and maps the bootstrap, product, order, wallet, search, exchange quote, and exchange execution DTOs. Enable it only after the backend routes and authorization contract are available. Do not rewrite page event handlers or domain rules to make the HTTP adapter work.
+
+The current backend checkout has no Token Market routes. Checkout quotes, order creation, Token deduction, payment status, refunds/after-sales, merchant onboarding/review, listing publication/inventory, merchant fulfillment, merchant ledger/fees/settlement, messaging, and official reference-price APIs remain integration gaps. The UI keeps these paths visible with loading, empty, failure, and blocked-submit states rather than fabricating balances, deductions, or successful transactions.
 
 ## Production gates
 

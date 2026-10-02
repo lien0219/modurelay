@@ -1,57 +1,39 @@
 <template>
-  <TokenMarketSubpageLayout
-    eyebrow="SHOPPING CART"
-    title="购物车"
-    description="统一承载商城、外卖、数字商品与服务商品的 Token 结算入口。"
-    :empty="!market.loading && rows.length === 0"
-    empty-title="购物车还是空的"
-    empty-description="去市场挑选商品、服务或数字权益，加入后会统一在这里结算。"
-  >
-    <template #actions><button class="tm-button secondary" type="button" @click="router.push('/token-market')">继续购物</button></template>
-    <template #emptyActions><button class="tm-button primary" type="button" @click="router.push('/token-market')">去逛市场</button></template>
-
-    <div class="cart-grid">
-      <section class="items glass-card">
-        <div class="head"><strong>已选商品</strong><span>{{ rows.length }} 件</span></div>
-        <article v-for="row in rows" :key="row.product.id" class="row">
-          <button class="thumb" type="button" @click="router.push(`/token-market/products/${row.product.id}`)">✦</button>
-          <div class="info"><span>{{ merchantName(row.product.merchantId) }}</span><h3>{{ row.product.name }}</h3><p>{{ row.product.priceToken.toLocaleString('zh-CN') }} T / 件</p></div>
-          <div class="qty"><button @click="change(row.product.id,-1)">−</button><b>{{ row.qty }}</b><button @click="change(row.product.id,1)">＋</button></div>
-          <strong class="subtotal">{{ (row.product.priceToken * row.qty).toLocaleString('zh-CN') }} T</strong>
-          <button class="remove" type="button" @click="remove(row.product.id)">×</button>
+  <div class="tm-cart-page">
+    <div class="tm-heading"><h1>购物车{{ draft.cartCount ? `（${draft.cartCount}）` : '' }}</h1><p>商品保存在当前浏览器的草稿中，结算价格由服务端确认。</p></div>
+    <div v-if="!lines.length" class="tm-empty"><img src="/token-market/icons/cart.svg" alt="" /><h2>购物车还是空的</h2><p>去逛逛，找到适合你的商品。</p><RouterLink class="tm-button primary" to="/token-market/channel?category=ai_credit">浏览商品</RouterLink></div>
+    <div v-else class="tm-cart-grid">
+      <div class="tm-cart-lines">
+        <article v-for="line in lines" :key="line.productId" class="tm-cart-line tm-panel">
+          <label class="tm-cart-check"><input v-model="line.selected" type="checkbox" :aria-label="`选择${productName(line.productId)}`" /></label>
+          <RouterLink class="tm-cart-art" :to="`/token-market/products/${line.productId}`"><img :src="productArtFor(line.productId)" :alt="productName(line.productId)" /></RouterLink>
+          <div class="tm-cart-copy"><RouterLink :to="`/token-market/products/${line.productId}`"><h2>{{ productName(line.productId) }}</h2></RouterLink><p>{{ line.variant }}</p><strong class="tm-price">{{ productPrice(line.productId) == null ? '价格待更新' : formatToken(productPrice(line.productId)!) }}</strong></div>
+          <div class="tm-cart-controls"><button type="button" :disabled="line.quantity <= 1" :aria-label="`减少${productName(line.productId)}数量`" @click="draft.setQuantity(line.productId,line.quantity-1)">−</button><output>{{ line.quantity }}</output><button type="button" :disabled="line.quantity >= 99" :aria-label="`增加${productName(line.productId)}数量`" @click="draft.setQuantity(line.productId,line.quantity+1)">+</button><button type="button" class="tm-icon-button" :aria-label="`移除${productName(line.productId)}`" title="移除商品" @click="draft.removeFromCart(line.productId)"><img src="/token-market/icons/trash.svg" alt="" /></button></div>
         </article>
-      </section>
-
-      <aside class="summary glass-card">
-        <span class="eyebrow">TOKEN CHECKOUT</span><h2>结算</h2>
-        <dl><div><dt>商品小计</dt><dd>{{ subtotal.toLocaleString('zh-CN') }} T</dd></div><div><dt>平台优惠</dt><dd class="discount">-{{ discount.toLocaleString('zh-CN') }} T</dd></div><div><dt>配送/服务费</dt><dd>{{ fee.toLocaleString('zh-CN') }} T</dd></div></dl>
-        <div class="total"><span>应付</span><strong>{{ total.toLocaleString('zh-CN') }} T</strong></div>
-        <div class="balance"><span>Token 余额</span><b>{{ tokenBalance.toLocaleString('zh-CN') }} T</b></div>
-        <button class="tm-button primary checkout" :disabled="!rows.length" type="button" @click="checkout">确认支付</button>
-        <p>当前仅为结算骨架，后续接入订单创建、库存锁定、幂等支付和账本扣款。</p>
-      </aside>
+      </div>
+      <aside class="tm-cart-summary tm-panel"><h2>订单结算</h2><div class="tm-row"><span>已选商品（{{ selectedCount }}）</span><strong>{{ formatToken(subtotal) }}</strong></div><div class="tm-row"><span>运费与优惠</span><span>待服务端确认</span></div><hr /><span class="tm-muted">商品小计</span><strong class="tm-price">{{ formatToken(subtotal) }}</strong><RouterLink class="tm-button primary" :class="{ disabled: !selectedCount || missingPrices }" :aria-disabled="!selectedCount || missingPrices" :to="selectedCount && !missingPrices ? '/token-market/checkout' : '/token-market/cart'">去结算（{{ selectedCount }}）</RouterLink><small>下单、支付与扣款接口尚未接入。</small></aside>
     </div>
-  </TokenMarketSubpageLayout>
+  </div>
 </template>
-
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import TokenMarketSubpageLayout from '../components/TokenMarketSubpageLayout.vue'
+import { computed } from 'vue'
+import { RouterLink } from 'vue-router'
+import { useMarketDraftStore } from '../experience'
+import { formatToken, productArt } from '../presentation'
 import { useTokenMarketStore } from '../store'
-import type { TokenMarketProduct } from '../types'
-
-const route=useRoute(); const router=useRouter(); const market=useTokenMarketStore(); const quantities=ref<Record<string,number>>({}); const removedIds=ref<Set<string>>(new Set())
-const selectedIds=computed(()=>{const queryId=String(route.query.add||route.query.buy||'');const base=market.products.slice(0,3).map(p=>p.id);const ids=queryId?[queryId,...base.filter(id=>id!==queryId)]:base;return ids.filter(id=>!removedIds.value.has(id))})
-const rows=computed(()=>selectedIds.value.map(id=>market.products.find(p=>p.id===id)).filter((p):p is TokenMarketProduct=>Boolean(p)).map(product=>({product,qty:quantities.value[product.id]??(String(route.query.add||route.query.buy)===product.id?Math.max(1,Number(route.query.qty)||1):1)})))
-const subtotal=computed(()=>rows.value.reduce((sum,row)=>sum+row.product.priceToken*row.qty,0)); const discount=computed(()=>Math.floor(subtotal.value*.03)); const fee=computed(()=>rows.value.length?60:0); const total=computed(()=>subtotal.value-discount.value+fee.value); const tokenBalance=computed(()=>market.wallet?.tokenBalance??0)
-function merchantName(id:string){return market.merchants.find(m=>m.id===id)?.name??'Token Market 商户'}
-function change(id:string,delta:number){const current=rows.value.find(r=>r.product.id===id)?.qty??1;quantities.value={...quantities.value,[id]:Math.max(1,current+delta)}}
-function remove(id:string){const next=new Set(removedIds.value);next.add(id);removedIds.value=next}
-function checkout(){void router.push({path:'/token-market/orders',query:{created:'1'}})}
-onMounted(()=>market.initialize())
+const draft = useMarketDraftStore()
+const market = useTokenMarketStore()
+const lines = computed(() => draft.data.cart)
+const selectedCount = computed(() => draft.selectedCart.reduce((total, line) => total + line.quantity, 0))
+const missingPrices = computed(() => draft.selectedCart.some(line => productPrice(line.productId) == null))
+const subtotal = computed(() => draft.selectedCart.reduce((total, line) => total + (productPrice(line.productId) ?? 0) * line.quantity, 0))
+function product(id: string) { return market.products.find(item => item.id === id) }
+function productName(id: string): string { return product(id)?.name || '商品已下架' }
+function productPrice(id: string): number | null { return product(id)?.priceToken ?? null }
+function productArtFor(id: string): string { const item = product(id); return item ? productArt(item) : '/token-market/icons/shop.svg' }
 </script>
-
 <style scoped>
-.cart-grid{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:18px}.items{padding:18px}.head{display:flex;justify-content:space-between;padding:4px 4px 16px;border-bottom:1px solid rgba(106,136,199,.12)}.head span{color:#6f85a8;font-size:10px}.row{display:grid;grid-template-columns:72px minmax(0,1fr) 110px 120px 24px;gap:14px;align-items:center;padding:16px 2px;border-bottom:1px solid rgba(106,136,199,.1)}.thumb{height:64px;border:1px solid rgba(111,140,205,.15);border-radius:12px;color:#dce7ff;background:linear-gradient(135deg,#172555,#0b1833);font-size:24px;cursor:pointer}.info span{color:#657da6;font-size:8px}.info h3{margin:4px 0;font-size:12px}.info p{margin:0;color:#899bb9;font-size:9px}.qty{display:flex;border:1px solid rgba(112,141,204,.16);border-radius:8px;overflow:hidden}.qty>*{width:36px;height:32px;display:grid;place-items:center;border:0;color:#dce7f8;background:#091733}.qty button{cursor:pointer}.subtotal{text-align:right;font-size:12px}.remove{border:0;color:#6f84a7;background:transparent;cursor:pointer}.summary{align-self:start;padding:22px;position:sticky;top:84px}.eyebrow{color:#687fa7;font-size:9px;font-weight:800;letter-spacing:.13em}.summary h2{margin:6px 0 18px}.summary dl{margin:0}.summary dl div{display:flex;justify-content:space-between;padding:9px 0;color:#788cab;font-size:10px}.discount{color:#55dfb1}.total{display:flex;justify-content:space-between;align-items:end;margin-top:12px;padding-top:16px;border-top:1px solid rgba(110,140,204,.16)}.total span{color:#7f92ae;font-size:10px}.total strong{font-size:20px}.balance{display:flex;justify-content:space-between;margin:16px 0;padding:11px;border-radius:9px;background:rgba(70,91,150,.08);font-size:10px}.balance span{color:#7185a6}.checkout{width:100%}.summary p{color:#667da2;font-size:9px;line-height:1.6}@media(max-width:950px){.cart-grid{grid-template-columns:1fr}.summary{position:static}.row{grid-template-columns:58px 1fr 90px}.subtotal,.remove{display:none}}
+.tm-cart-grid{display:grid;grid-template-columns:minmax(0,1fr) 336px;gap:24px}.tm-cart-lines{display:grid;align-content:start;gap:16px}.tm-cart-line{display:grid;grid-template-columns:24px 144px minmax(0,1fr) auto;align-items:center;gap:16px;min-height:166px;padding:20px}.tm-cart-check input{width:18px;height:18px;accent-color:var(--tm-cyan)}.tm-cart-art{display:grid;place-items:center;width:144px;height:112px;border-radius:10px;background:#0a1530}.tm-cart-art img{width:100%;height:100%;object-fit:contain}.tm-cart-copy{min-width:0}.tm-cart-copy h2{font-size:16px;margin:0 0 4px}.tm-cart-copy p{margin:0 0 7px;color:var(--tm-muted);font-size:12px}.tm-cart-controls{display:flex;align-items:center;gap:8px}.tm-cart-controls>button:not(.tm-icon-button){width:32px;height:32px;border:1px solid var(--tm-border);border-radius:7px;background:transparent;color:var(--tm-text)}.tm-cart-controls output{min-width:20px;text-align:center}.tm-cart-summary{align-self:start;padding:24px}.tm-cart-summary h2{margin-bottom:20px}.tm-cart-summary .tm-row{margin:14px 0;color:var(--tm-muted)}.tm-cart-summary .tm-row strong{color:var(--tm-text)}.tm-cart-summary hr{margin:20px 0;border:0;border-top:1px solid var(--tm-border)}.tm-cart-summary>.tm-price{display:block;margin:8px 0 16px;font-size:32px}.tm-cart-summary .tm-button{width:100%}.tm-cart-summary .tm-button.disabled{pointer-events:none;opacity:.5}.tm-cart-summary small{display:block;margin-top:12px;color:var(--tm-muted)}
+@media(max-width:1100px){.tm-cart-grid{grid-template-columns:1fr}.tm-cart-summary{order:1}}
+@media(max-width:700px){.tm-cart-line{grid-template-columns:20px 100px minmax(0,1fr);gap:10px;min-height:0;padding:12px}.tm-cart-art{width:100px;height:96px}.tm-cart-copy h2{font-size:14px}.tm-cart-copy .tm-price{font-size:19px}.tm-cart-controls{grid-column:2/4;justify-content:flex-end}.tm-cart-summary{padding:20px}}
 </style>

@@ -35,6 +35,10 @@ export interface TokenMarketProduct {
   priceToken: number
   merchantId: string
   badge?: string
+  modelId?: string
+  tokenTypes?: Array<'input' | 'output' | 'cache'>
+  modelTokenQuantity?: string
+  packageCombination?: string
 }
 
 export interface TokenMarketMerchant {
@@ -89,6 +93,7 @@ export interface TokenMarketOrderQuery {
   page?: number
   pageSize?: number
   status?: TokenMarketOrderStatus
+  query?: string
 }
 
 export interface TokenMarketExchangeHistoryQuery {
@@ -118,12 +123,18 @@ export interface TokenExchangeQuote {
   tokenPerBalanceUnit: number
   quotedAt: string
   quoteId: string
+  basis?: string
+  applicableModels?: string[]
+  tokenTypes?: string[]
+  updatedAt?: string
+  expiresAt?: string
 }
 
 export interface TokenExchangeExecuteRequest {
   quoteId: string
   direction: TokenExchangeDirection
   sourceAmount: number
+  idempotencyKey: string
 }
 
 export interface TokenExchangeExecuteResult {

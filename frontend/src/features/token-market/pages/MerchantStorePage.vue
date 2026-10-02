@@ -1,60 +1,101 @@
 <template>
-  <TokenMarketSubpageLayout
-    eyebrow="MERCHANT STORE"
-    :title="merchant?.name ?? '商家主页'"
-    description="统一承载商家介绍、商品、评分、配送与售后能力；后续由 Merchant/Commerce API 驱动。"
-    :empty="!market.loading && !!market.bootstrap && !merchant"
-    empty-title="商家不存在"
-    empty-description="该商家可能已停止营业、被隐藏，或当前链接已失效。"
-  >
-    <template #actions>
-      <button class="tm-button secondary" type="button">♡ 收藏商家</button>
-      <button class="tm-button primary" type="button">联系商家</button>
-    </template>
-    <template #emptyActions>
-      <button class="tm-button primary" type="button" @click="router.push('/token-market')">返回市场首页</button>
-    </template>
-
-    <template v-if="merchant">
-      <section class="store-hero glass-card">
-        <div class="avatar">{{ merchant.name.slice(0,1) }}</div>
-        <div class="meta"><span class="eyebrow">VERIFIED MERCHANT</span><h2>{{ merchant.name }}</h2><p>官方认证商家 · Token Market 担保交易</p></div>
-        <div class="stats"><div><b>{{ merchant.rating.toFixed(1) }}</b><span>评分</span></div><div><b>{{ merchant.soldCount.toLocaleString('zh-CN') }}</b><span>成交</span></div><div><b>99.8%</b><span>履约率</span></div></div>
-      </section>
-
-      <section class="toolbar glass-card"><button class="active">全部商品</button><button>热销</button><button>新品</button><button>服务</button><span></span><select><option>综合排序</option><option>价格从低到高</option></select></section>
-
-      <div v-if="products.length" class="products">
-        <button v-for="product in products" :key="product.id" class="product glass-card" type="button" @click="router.push(`/token-market/products/${product.id}`)">
-          <div class="art">✦</div><span>{{ product.badge || '精选' }}</span><h3>{{ product.name }}</h3><p>{{ product.priceToken.toLocaleString('zh-CN') }} <small>T</small></p>
-        </button>
+  <div v-if="merchant" class="tm-store">
+    <section class="tm-store-hero tm-panel">
+      <div class="tm-store-art" :class="`type-${merchant.categoryId}`"><img :src="merchant.categoryId === 'delivery' ? '/token-market/icons/3d-coin.svg' : merchant.categoryId === 'digital' ? '/token-market/art/chat-token.png' : '/token-market/art/model-core.png'" alt="" /></div>
+      <div class="tm-store-info">
+        <span class="tm-open-label">{{ merchant.categoryId === 'delivery' ? '外卖店铺' : 'Token Market 商家' }}</span>
+        <h1>{{ merchant.name }}<span v-if="merchant.categoryId === 'delivery'"> · Token 外卖</span></h1>
+        <p class="tm-store-stats">★ {{ merchant.rating.toFixed(1) }} · {{ merchant.soldCount.toLocaleString('zh-CN') }} 笔成交</p>
+        <p>{{ categoryLabels[merchant.categoryId] }} · 查看当前上架商品</p>
       </div>
-
-      <TokenMarketStatePanel
-        v-else
-        kind="empty"
-        title="该商家暂未上架商品"
-        description="商品上架后会自动展示在这里。您可以先返回市场首页浏览其他商家。"
-      >
-        <template #actions><button class="tm-button secondary" type="button" @click="router.push('/token-market')">浏览其他商品</button></template>
-      </TokenMarketStatePanel>
-    </template>
-  </TokenMarketSubpageLayout>
+      <button class="tm-button tm-store-follow" type="button" :aria-pressed="favorite" @click="draft.toggleMerchantFavorite(merchant.id)">{{ favorite ? '已关注店铺' : '♡ 关注店铺' }}</button>
+    </section>
+    <div class="tm-tabs" role="tablist" aria-label="店铺商品分类">
+      <button v-for="tab in tabs" :key="tab" class="tm-tab" :class="{ 'is-active': selectedTab === tab }" type="button" role="tab" :aria-selected="selectedTab === tab" @click="selectedTab=tab">{{ tab }}</button>
+    </div>
+    <div class="tm-store-main">
+      <div>
+        <div class="tm-section-head"><h2>{{ selectedTab === '全部商品' ? '店铺商品' : selectedTab }}</h2><select v-model="sort" class="tm-select tm-store-sort" aria-label="商品排序"><option value="default">综合排序</option><option value="low">价格从低到高</option><option value="high">价格从高到低</option></select></div>
+        <div v-if="loading" class="tm-feedback" role="status">正在加载店铺商品…</div>
+        <div v-else-if="error" class="tm-empty" role="alert"><h2>商品加载失败</h2><p>{{ error }}</p><button class="tm-button" type="button" @click="loadProducts">重新加载</button></div>
+        <div v-else-if="visibleProducts.length" class="tm-store-products"><MarketProductCard v-for="product in visibleProducts" :key="product.id" :product="product" :merchant-name="merchant.name" @added="showToast" /></div>
+        <div v-else class="tm-empty"><img src="/token-market/icons/shop.svg" alt="" /><h2>暂无商品</h2><p>该分类目前没有上架商品。</p><button class="tm-button" type="button" @click="selectedTab='全部商品'">查看全部</button></div>
+      </div>
+      <aside class="tm-store-cart tm-panel">
+        <h2>购物车（{{ storeCartCount }}）</h2>
+        <div v-if="storeCart.length">
+          <div v-for="line in storeCart" :key="line.productId" class="tm-store-cart-line"><span>{{ productName(line.productId) }}</span><strong class="tm-price">{{ formatToken(productPrice(line.productId) * line.quantity) }}</strong><div><button type="button" :disabled="line.quantity <= 1" :aria-label="`减少${productName(line.productId)}数量`" @click="draft.setQuantity(line.productId,line.quantity-1)">−</button><span>{{ line.quantity }}</span><button type="button" :disabled="line.quantity >= 99" :aria-label="`增加${productName(line.productId)}数量`" @click="draft.setQuantity(line.productId,line.quantity+1)">+</button></div></div>
+          <p class="tm-muted">商品小计，运费及优惠由服务端结算时确认</p>
+          <strong class="tm-store-cart-total tm-price">{{ formatToken(storeCartTotal) }}</strong>
+          <RouterLink class="tm-button primary" to="/token-market/cart">查看购物车 →</RouterLink>
+        </div>
+        <div v-else class="tm-muted">从商品卡片添加商品后，可在这里查看本地购物车草稿。</div>
+      </aside>
+    </div>
+    <div v-if="storeCartCount" class="tm-store-mobile-checkout"><div><small>商品小计 · 待服务端结算</small><strong class="tm-price">{{ formatToken(storeCartTotal) }}</strong></div><RouterLink class="tm-button primary" :to="`/token-market/checkout?merchant=${merchant.id}`">去结算（{{ storeCartCount }}）</RouterLink></div>
+    <div v-if="toast" class="tm-toast" role="status">{{ toast }}已加入本地购物车草稿</div>
+  </div>
+  <div v-else class="tm-empty"><h1>商家不存在</h1><p>该链接可能已失效，或商家暂未开放。</p><RouterLink class="tm-button" to="/token-market">返回市场首页</RouterLink></div>
 </template>
-
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import TokenMarketStatePanel from '../components/TokenMarketStatePanel.vue'
-import TokenMarketSubpageLayout from '../components/TokenMarketSubpageLayout.vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { RouterLink, useRoute } from 'vue-router'
+import MarketProductCard from '../components/MarketProductCard.vue'
+import { useMarketDraftStore } from '../experience'
+import { categoryLabels, formatToken } from '../presentation'
 import { useTokenMarketStore } from '../store'
-
-const route = useRoute(); const router = useRouter(); const market = useTokenMarketStore()
+import type { TokenMarketProduct } from '../types'
+const route = useRoute()
+const market = useTokenMarketStore()
+const draft = useMarketDraftStore()
 const merchant = computed(() => market.merchants.find(item => item.id === String(route.params.id)))
-const products = computed(() => market.products.filter(item => item.merchantId === merchant.value?.id))
-onMounted(() => market.initialize())
+const products = ref<TokenMarketProduct[]>([])
+const loading = ref(false)
+const error = ref('')
+let requestId = 0
+const favorite = computed(() => !!merchant.value && draft.data.favoriteMerchantIds.includes(merchant.value.id))
+const tabs = ['全部商品', '热销', '新品']
+const selectedTab = ref('全部商品')
+const sort = ref('default')
+const visibleProducts = computed(() => {
+  let items = [...products.value]
+  if (selectedTab.value === '热销') items = items.filter(item => item.badge === '热销')
+  if (selectedTab.value === '新品') items = items.filter(item => item.badge === '新品')
+  if (sort.value === 'low') items.sort((a, b) => a.priceToken - b.priceToken)
+  if (sort.value === 'high') items.sort((a, b) => b.priceToken - a.priceToken)
+  return items
+})
+const storeCart = computed(() => draft.data.cart.filter(line => products.value.some(item => item.id === line.productId)))
+const storeCartCount = computed(() => storeCart.value.reduce((sum, line) => sum + line.quantity, 0))
+const storeCartTotal = computed(() => storeCart.value.reduce((sum, line) => sum + productPrice(line.productId) * line.quantity, 0))
+function productName(id: string): string { return products.value.find(item => item.id === id)?.name || '商品已下架' }
+function productPrice(id: string): number { return products.value.find(item => item.id === id)?.priceToken || 0 }
+async function loadProducts(): Promise<void> {
+  const id = ++requestId
+  products.value = []
+  error.value = ''
+  if (!merchant.value) return
+  loading.value = true
+  try {
+    const loaded = await market.loadProducts({ merchantId: merchant.value.id, pageSize: 100 })
+    if (id === requestId) products.value = loaded
+  } catch (failure) {
+    if (id === requestId) error.value = failure instanceof Error ? failure.message : '请稍后重试'
+  } finally {
+    if (id === requestId) loading.value = false
+  }
+}
+const toast = ref('')
+let timer: number | undefined
+function showToast(name: string): void { toast.value = name; window.clearTimeout(timer); timer = window.setTimeout(() => { toast.value = '' }, 3000) }
+watch(() => route.params.id, () => { selectedTab.value = '全部商品'; sort.value = 'default'; void loadProducts() }, { immediate: true })
+onBeforeUnmount(() => { requestId++; window.clearTimeout(timer) })
 </script>
-
 <style scoped>
-.store-hero{display:flex;align-items:center;gap:18px;padding:24px}.avatar{display:grid;place-items:center;width:76px;height:76px;border-radius:22px;background:linear-gradient(135deg,#6f42ff,#258fff);font-size:28px;font-weight:900;box-shadow:0 18px 46px rgba(63,68,255,.28)}.meta{flex:1}.eyebrow{color:#6d83aa;font-size:9px;font-weight:800;letter-spacing:.13em}.meta h2{margin:5px 0 4px}.meta p{margin:0;color:#7890b4;font-size:11px}.stats{display:flex;gap:24px}.stats div{text-align:center}.stats b,.stats span{display:block}.stats b{font-size:18px}.stats span{margin-top:4px;color:#6c82a8;font-size:9px}.toolbar{display:flex;align-items:center;gap:6px;margin:18px 0;padding:10px}.toolbar button,.toolbar select{padding:8px 11px;border:0;border-radius:8px;color:#7287aa;background:transparent;font-size:10px}.toolbar button.active{color:#fff;background:rgba(82,91,255,.15)}.toolbar span{flex:1}.toolbar select{border:1px solid rgba(111,140,205,.15);background:#081733}.products{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.product{padding:14px;text-align:left;cursor:pointer}.art{height:150px;display:grid;place-items:center;margin-bottom:12px;border-radius:12px;background:radial-gradient(circle at 60% 30%,rgba(105,80,255,.38),transparent 35%),linear-gradient(135deg,#101d45,#07132c);font-size:42px}.product>span{color:#6d83aa;font-size:8px}.product h3{min-height:42px;margin:6px 0;color:#dfe8f8;font-size:12px}.product p{margin:0;color:#ff7aa7;font-size:17px;font-weight:900}.product small{color:#a9b8d3}@media(max-width:1000px){.products{grid-template-columns:repeat(2,1fr)}.stats{display:none}}@media(max-width:600px){.products{grid-template-columns:1fr}.store-hero{align-items:flex-start}.avatar{width:58px;height:58px}}
+.tm-store-hero{display:flex;align-items:center;gap:24px;min-height:220px;padding:24px}.tm-store-art{flex:none;display:grid;place-items:center;width:310px;height:170px;border-radius:12px;background:radial-gradient(circle at 50% 45%,#2c3d77,#0a1530 70%);overflow:hidden}.tm-store-art img{width:100%;height:100%;object-fit:contain}.tm-store-art.type-delivery{background:linear-gradient(135deg,#354161,#16233f 55%,#432f47)}.tm-store-art.type-delivery img{width:72px;height:72px;filter:drop-shadow(0 10px 15px #0007)}.tm-store-info{min-width:0;flex:1}.tm-store-info h1{margin:12px 0}.tm-store-info p{margin:8px 0;color:var(--tm-muted)}.tm-store-info .tm-store-stats{color:#ffc77d}.tm-open-label{color:var(--tm-success);font-size:12px}.tm-store-follow{align-self:flex-start;min-width:150px}.tm-store-main{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:24px}.tm-store-sort{width:178px;min-height:42px}.tm-store-products{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.tm-store-cart{align-self:start;padding:24px}.tm-store-cart h2{margin-bottom:18px}.tm-store-cart-line{display:grid;grid-template-columns:1fr auto;gap:7px;padding:10px 0;border-bottom:1px solid var(--tm-border)}.tm-store-cart-line>.tm-price{font-size:16px}.tm-store-cart-line>div{grid-column:2;display:flex;align-items:center;gap:10px}.tm-store-cart-line button{border:0;background:none;color:var(--tm-cyan);font-size:20px}.tm-store-cart p{font-size:12px;margin:22px 0 10px}.tm-store-cart-total{display:block;margin-bottom:14px;font-size:29px}.tm-store-cart .tm-button{width:100%}
+@media(max-width:1100px){.tm-store-main{grid-template-columns:1fr}.tm-store-cart{order:-1}.tm-store-cart>div{display:flex;align-items:center;gap:16px;flex-wrap:wrap}.tm-store-cart-line{min-width:190px}.tm-store-cart p{margin:0}.tm-store-cart-total{margin:0}.tm-store-cart .tm-button{width:auto}.tm-store-products{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:700px){.tm-store-hero{display:block;padding:0;border:0;background:none}.tm-store-art{width:100%;height:170px}.tm-store-info h1{font-size:25px;margin:16px 0 6px}.tm-store-info p{font-size:13px}.tm-store-follow{margin-top:9px}.tm-tabs .tm-tab{font-size:14px;padding:0 8px}.tm-store-products{grid-template-columns:1fr;gap:12px}.tm-store-cart{order:1;padding:16px}.tm-store-cart>div{display:block}.tm-store-cart-line{display:none}.tm-store-cart p{margin:0 0 8px}.tm-store-cart-total{display:inline-block;margin-right:15px}.tm-store-sort{width:140px}}
+.tm-store-art.type-delivery img{width:132px;height:132px}
+.tm-store-mobile-checkout{display:none}
+@media(max-width:700px){.tm-store{padding-bottom:90px}.tm-store-mobile-checkout{position:fixed;left:0;right:0;bottom:calc(76px + env(safe-area-inset-bottom));z-index:45;display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:70px;padding:10px 16px;border-top:1px solid var(--tm-border);background:var(--tm-surface)}.tm-store-mobile-checkout small{display:block;color:var(--tm-muted);font-size:11px}.tm-store-mobile-checkout .tm-price{font-size:22px}.tm-store-mobile-checkout .tm-button{flex:none}}
 </style>

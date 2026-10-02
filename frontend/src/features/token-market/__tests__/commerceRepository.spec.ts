@@ -1,4 +1,9 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+const { post } = vi.hoisted(() => ({ post: vi.fn() }))
+vi.mock('@/api/client', () => ({ apiClient: { post } }))
+
+import { HttpTokenMarketRepository } from '../adapters/httpRepository'
 import { MockTokenMarketRepository, resetTokenMarketMockRepository } from '../adapters/mockRepository'
 import { mapOrder, mapWallet } from '../mappers'
 
@@ -35,9 +40,25 @@ describe('token market commerce repository', () => {
     const repository = new MockTokenMarketRepository()
     const before = await repository.getWallet()
     const quote = await repository.quoteExchange({ direction: 'balance_to_token', sourceAmount: 10 })
-    const result = await repository.executeExchange({ quoteId: quote.quoteId, direction: quote.direction, sourceAmount: quote.sourceAmount })
+    const request = { quoteId: quote.quoteId, direction: quote.direction, sourceAmount: quote.sourceAmount, idempotencyKey: 'exchange-test-operation' }
+    const result = await repository.executeExchange(request)
+    const repeated = await repository.executeExchange(request)
     const history = await repository.listExchangeHistory()
     expect(result.wallet.platformBalance).toBe(before.platformBalance - 10)
+    expect(repeated.transactionId).toBe(result.transactionId)
+    expect((await repository.getWallet()).platformBalance).toBe(before.platformBalance - 10)
     expect(history.items[0]?.sourceAmount).toBe(10)
+    expect(history.items.filter(item => item.id === result.transactionId)).toHaveLength(1)
+  })
+
+  it('sends the same operation key in the execute request header', async () => {
+    post.mockResolvedValue({ data: { transaction_id: 'tx-1', wallet: {
+      platform_balance: '90', token_balance: '11000', frozen_token: '0', pending_token: '0',
+      today_spent_token: '0', yesterday_income_token: '0', updated_at: '2026-10-01T00:00:00Z',
+    } } })
+    await new HttpTokenMarketRepository().executeExchange({ quoteId: 'quote-1', direction: 'balance_to_token', sourceAmount: 10, idempotencyKey: 'exchange-test-operation' })
+    expect(post).toHaveBeenCalledWith('/token-market/exchange/execute', {
+      quote_id: 'quote-1', direction: 'balance_to_token', source_amount: 10,
+    }, { headers: { 'Idempotency-Key': 'exchange-test-operation' } })
   })
 })

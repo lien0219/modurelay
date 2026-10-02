@@ -34,6 +34,7 @@ export class CommerceTokenMarketService implements TokenMarketService {
 }
 
 export type TokenMarketDataSource = 'mock' | 'http'
+export const isTokenMarketDemo = import.meta.env.VITE_TOKEN_MARKET_DATA_SOURCE !== 'http'
 
 export function createTokenMarketRepository(source: TokenMarketDataSource = resolveDataSource()): TokenMarketRepository {
   return source === 'http' ? new HttpTokenMarketRepository() : new MockTokenMarketRepository()

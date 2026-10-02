@@ -7,6 +7,10 @@ export interface TokenMarketProductDTO {
   price_token: string | number
   merchant_id: string
   badge?: string | null
+  model_id?: string | null
+  token_types?: Array<'input' | 'output' | 'cache'> | null
+  model_token_quantity?: string | null
+  package_combination?: string | null
 }
 
 export interface TokenMarketOrderDTO {
@@ -50,6 +54,11 @@ export interface TokenMarketQuoteDTO {
   destination_amount: string | number
   token_per_balance_unit: string | number
   quoted_at: string
+  basis?: string | null
+  applicable_models?: string[] | null
+  token_types?: string[] | null
+  updated_at?: string | null
+  expires_at?: string | null
 }
 
 export interface TokenMarketExecuteDTO {

@@ -16,5 +16,7 @@
     <template v-else><circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="1.5"/></template>
   </svg>
 </template>
-<script setup lang="ts">defineProps<{name:string}>()</script>
+<script setup lang="ts">
+defineProps<{ name: string }>()
+</script>
 <style scoped>.market-icon{width:1em;height:1em;display:block}</style>

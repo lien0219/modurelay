@@ -61,7 +61,7 @@ export class HttpTokenMarketRepository implements TokenMarketRepository {
 
   async listOrders(query: TokenMarketOrderQuery = {}): Promise<TokenMarketPageResult<TokenMarketOrder>> {
     const { data } = await apiClient.get<TokenMarketPageDTO<TokenMarketOrderDTO>>(`${BASE}/orders`, {
-      params: { page: query.page, page_size: query.pageSize, status: query.status },
+      params: { page: query.page, page_size: query.pageSize, status: query.status, q: query.query },
     })
     return mapPage(data, mapOrder)
   }
@@ -91,7 +91,7 @@ export class HttpTokenMarketRepository implements TokenMarketRepository {
       quote_id: request.quoteId,
       direction: request.direction,
       source_amount: request.sourceAmount,
-    })
+    }, { headers: { 'Idempotency-Key': request.idempotencyKey } })
     return { transactionId: data.transaction_id, wallet: mapWallet(data.wallet) }
   }
 

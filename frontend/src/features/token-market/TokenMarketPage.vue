@@ -1,71 +1,71 @@
 <template>
-  <TokenMarketShell @background-click="closeMenus">
-    <TokenMarketHeader
-      :items="navItems"
-      :search="search"
-      @back="goBack"
-      @navigate="navigateSection"
-      @search="submitSearch"
-      @update:search="search=$event"
-      @toggle-notifications="notificationsOpen=!notificationsOpen"
-      @toggle-profile="profileOpen=!profileOpen"
-    />
-
-    <div class="tm-container page-content">
-      <div class="hero-layout">
-        <MarketHeroBanner class="hero-main" />
-        <WalletHeroCard class="hero-wallet" :wallet="market.wallet" :exchange-rate="market.exchangeRate" :visible="walletVisible" @toggle-visible="walletVisible=!walletVisible" @details="router.push('/token-market/wallet')" />
-        <ExchangePanel class="hero-exchange" :mode="mode" :source-value="sourceValue" :formatted-output="formattedOutput" :exchange-rate="market.exchangeRate" :platform-balance="platformBalance" :token-balance="tokenBalance" :loading="market.exchanging" @mode-change="setMode" @source-change="sourceValue=$event" @swap="swapMode" @submit="openExchange" />
-      </div>
-
-      <CategoryGrid :categories="market.categories" @select="selectCategory" />
-
-      <div class="catalog-layout">
-        <FeaturedProducts class="products" :products="market.products" :merchants="market.merchants" @select="openProduct" @more="selectCategory('商城')" />
-        <ActivityFeed class="activity" :activities="market.activities" @more="router.push('/token-market/exchange-history')" />
-      </div>
-
-      <MerchantGrid :merchants="market.merchants" @select="openMerchant($event.id)" @more="router.push('/token-market/merchant-center')" />
+  <div class="tm-home">
+    <div class="tm-home-top">
+      <section class="tm-home-hero">
+        <img src="/token-market/art/hero-space.png" alt="发光的 Token 标识置于星空场景中" fetchpriority="high" />
+        <div class="tm-home-hero-copy">
+          <span>TOKEN MARKET · 探索你的数字生活</span>
+          <h1>用 Token<br />解锁更多精彩</h1>
+          <p>好物、数字商品与专业服务，一站直达。</p>
+          <RouterLink class="tm-button primary" to="/token-market/channel?category=ai_credit">开始探索 <span aria-hidden="true">→</span></RouterLink>
+        </div>
+      </section>
+      <section class="tm-home-wallet tm-panel">
+        <h2>我的 Token 钱包</h2>
+        <strong>{{ market.wallet ? formatToken(market.wallet.tokenBalance) : '—' }}</strong>
+        <span>可用余额{{ isTokenMarketDemo ? '（演示）' : '' }}</span>
+        <div class="tm-home-wallet-actions">
+          <RouterLink class="tm-button primary" to="/token-market/recharge">充值</RouterLink>
+          <RouterLink class="tm-button" to="/token-market/exchange">兑换</RouterLink>
+        </div>
+        <p v-if="market.wallet">今日消费 {{ formatToken(market.wallet.todaySpentToken) }}</p>
+      </section>
     </div>
-
-    <Transition name="tm-fade"><div v-if="notificationsOpen" class="floating-menu notifications" @click.stop><strong>通知</strong><span>Token Market 当前使用 Mock Commerce 数据</span><span>可进入订单与钱包页面继续验收</span></div></Transition>
-    <Transition name="tm-fade"><div v-if="profileOpen" class="floating-menu profile" @click.stop><button type="button" @click="goBack">返回 ModuRelay</button><button type="button" @click="router.push('/token-market/wallet')">钱包中心</button><button type="button" @click="router.push('/token-market/orders')">我的订单</button><button type="button" @click="router.push('/token-market/merchant-center')">商家中心</button></div></Transition>
-
-    <MarketDialog :dialog="dialog" :source-text="exchangeSourceText" :destination-text="exchangeDestinationText" :loading="market.exchanging" @close="closeDialog" @confirm-exchange="confirmExchange" @add-cart="addCart" />
-    <Transition name="tm-fade"><div v-if="toast" class="toast">{{ toast }}</div></Transition>
-    <button v-if="cartCount" class="cart-fab" type="button" @click="router.push('/token-market/cart')"><MarketIcon name="bag"/><span>{{ cartCount }}</span></button>
-  </TokenMarketShell>
+    <div class="tm-category-grid">
+      <RouterLink v-for="category in market.categories" :key="category.id" class="tm-category tm-panel" :to="`/token-market/channel?category=${category.id}`">
+        <img :src="`/token-market/icons/${categoryIcon[category.id]}.svg`" alt="" />
+        <span><strong>{{ category.label }}</strong><small>{{ category.description }}</small></span>
+      </RouterLink>
+    </div>
+    <section class="tm-section">
+      <div class="tm-section-head"><h2>为你精选</h2><RouterLink class="tm-text-link" to="/token-market/channel?category=mall">查看全部 →</RouterLink></div>
+      <div v-if="featured.length" class="tm-home-products">
+        <MarketProductCard v-for="product in featured" :key="product.id" :product="product" :merchant-name="merchantName(product.merchantId)" @added="showToast" />
+      </div>
+      <div v-else class="tm-empty"><h2>暂无精选商品</h2><p>商品上架后会在这里展示。</p></div>
+    </section>
+    <section class="tm-section">
+      <div class="tm-section-head"><h2>值得关注的商家</h2><RouterLink class="tm-text-link" to="/token-market/channel?category=services">查看全部 →</RouterLink></div>
+      <div class="tm-merchant-grid">
+        <RouterLink v-for="merchant in market.merchants.slice(0, 3)" :key="merchant.id" class="tm-merchant-card tm-panel" :to="`/token-market/merchants/${merchant.id}`">
+          <img :src="`/token-market/icons/${categoryIcon[merchant.categoryId]}.svg`" alt="" />
+          <span><strong>{{ merchant.name }}</strong><small>{{ merchant.rating.toFixed(1) }} · {{ merchant.soldCount.toLocaleString('zh-CN') }} 笔成交</small></span>
+          <span aria-hidden="true">→</span>
+        </RouterLink>
+      </div>
+    </section>
+    <div v-if="toast" class="tm-toast" role="status">{{ toast }}已加入本地购物车草稿</div>
+  </div>
 </template>
-
 <script setup lang="ts">
-import { computed,onBeforeUnmount,onMounted,ref } from 'vue'
-import { useRouter } from 'vue-router'
-import ActivityFeed from './components/ActivityFeed.vue'
-import CategoryGrid from './components/CategoryGrid.vue'
-import ExchangePanel from './components/ExchangePanel.vue'
-import FeaturedProducts from './components/FeaturedProducts.vue'
-import MarketDialog from './components/MarketDialog.vue'
-import MarketHeroBanner from './components/MarketHeroBanner.vue'
-import MarketIcon from './components/MarketIcon.vue'
-import MerchantGrid from './components/MerchantGrid.vue'
-import TokenMarketHeader from './components/TokenMarketHeader.vue'
-import TokenMarketShell from './components/TokenMarketShell.vue'
-import WalletHeroCard from './components/WalletHeroCard.vue'
-import { calculateExchangeDestination } from './domain'
+import { computed, onBeforeUnmount, ref } from 'vue'
+import { RouterLink } from 'vue-router'
+import MarketProductCard from './components/MarketProductCard.vue'
+import { categoryLabels, formatToken } from './presentation'
+import { isTokenMarketDemo } from './service'
 import { useTokenMarketStore } from './store'
-import type { TokenExchangeDirection,TokenMarketProduct } from './types'
-import type { TokenMarketDialogState,TokenMarketExchangeMode,TokenMarketNavItem } from './ui'
-
-const router=useRouter();const market=useTokenMarketStore();const search=ref('');const mode=ref<TokenMarketExchangeMode>('balance');const sourceValue=ref(100);const walletVisible=ref(true);const notificationsOpen=ref(false);const profileOpen=ref(false);const dialog=ref<TokenMarketDialogState|null>(null);const toast=ref('');const cartCount=ref(0);let toastTimer:number|undefined
-const navItems:TokenMarketNavItem[]=[{label:'首页',section:'home'},{label:'商城',section:'商城'},{label:'外卖',section:'外卖'},{label:'数字商品',section:'数字商品'},{label:'AI额度',section:'AI额度'},{label:'服务市场',section:'服务市场'}]
-const tokenBalance=computed(()=>market.wallet?.tokenBalance??0);const platformBalance=computed(()=>market.wallet?.platformBalance??0);const direction=computed<TokenExchangeDirection>(()=>mode.value==='balance'?'balance_to_token':'token_to_balance');const outputValue=computed(()=>calculateExchangeDestination(direction.value,Number(sourceValue.value)||0,market.exchangeRate));const quotedDestination=computed(()=>market.activeQuote?.destinationAmount??outputValue.value);const formattedOutput=computed(()=>mode.value==='balance'?outputValue.value.toLocaleString('zh-CN'):outputValue.value.toLocaleString('zh-CN',{maximumFractionDigits:2}));const exchangeSourceText=computed(()=>mode.value==='balance'?`¥ ${(sourceValue.value||0).toLocaleString('zh-CN')}`:`${(sourceValue.value||0).toLocaleString('zh-CN')} T`);const exchangeDestinationText=computed(()=>mode.value==='balance'?`${quotedDestination.value.toLocaleString('zh-CN')} T`:`¥ ${quotedDestination.value.toLocaleString('zh-CN',{maximumFractionDigits:2})}`)
-function goBack(){if(window.history.length>1)router.back();else void router.push('/dashboard')}function closeMenus(){notificationsOpen.value=false;profileOpen.value=false}function closeDialog(){dialog.value=null;market.clearQuote()}function setMode(next:TokenMarketExchangeMode){mode.value=next;sourceValue.value=next==='balance'?100:10000;market.clearQuote()}function swapMode(){setMode(mode.value==='balance'?'token':'balance')}
-async function openExchange(){try{await market.quoteExchange(direction.value,Number(sourceValue.value)||0);dialog.value={type:'exchange'}}catch(error){showToast(error instanceof Error?error.message:'兑换报价失败')}}async function confirmExchange(){try{await market.executeExchange();dialog.value=null;showToast('兑换成功')}catch(error){showToast(error instanceof Error?error.message:'兑换失败')}}
-function navigateSection(item:TokenMarketNavItem){if(item.section==='home')return;selectCategory(item.label)}function selectCategory(category:string){void router.push({path:'/token-market/channel',query:{category}})}function openProduct(product:TokenMarketProduct){void router.push(`/token-market/products/${product.id}`)}function openMerchant(id:string){void router.push(`/token-market/merchants/${id}`)}function addCart(){cartCount.value+=1;dialog.value=null;void router.push('/token-market/cart')}
-async function submitSearch(){const q=search.value.trim();if(!q)return;try{await market.search(q);const product=market.searchProducts[0];const merchant=market.searchMerchants[0];if(product)openProduct(product);else if(merchant)openMerchant(merchant.id);else showToast(`未找到“${q}”相关结果`)}catch(error){showToast(error instanceof Error?error.message:'搜索失败')}}function showToast(message:string){toast.value=message;if(toastTimer)window.clearTimeout(toastTimer);toastTimer=window.setTimeout(()=>{toast.value=''},2500)}function handleKeydown(event:KeyboardEvent){if(event.key==='Escape'){closeDialog();closeMenus()}if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==='k'){event.preventDefault();document.querySelector<HTMLInputElement>('.tm-header-search input')?.focus()}}
-onMounted(async()=>{document.body.classList.add('token-market-route');document.title='Token 交易市场';window.addEventListener('keydown',handleKeydown);try{await market.initialize()}catch(error){showToast(error instanceof Error?error.message:'Token 市场加载失败')}});onBeforeUnmount(()=>{document.body.classList.remove('token-market-route');window.removeEventListener('keydown',handleKeydown);if(toastTimer)window.clearTimeout(toastTimer)})
+const market = useTokenMarketStore()
+const categoryIcon: Record<string, string> = { mall: 'shop', delivery: 'food', digital: 'digital', ai_credit: 'ai', services: 'service' }
+const featured = computed(() => ['p-headset', 'p-keyboard', 'p-ai-art', 'p-light'].map(id => market.products.find(item => item.id === id)).filter((item): item is NonNullable<typeof item> => !!item).concat(market.products.filter(item => !['p-headset', 'p-keyboard', 'p-ai-art', 'p-light'].includes(item.id))).slice(0, 4))
+const toast = ref('')
+let timer: number | undefined
+function merchantName(id: string): string { return market.merchants.find(item => item.id === id)?.name || categoryLabels.mall }
+function showToast(name: string): void { toast.value = name; window.clearTimeout(timer); timer = window.setTimeout(() => { toast.value = '' }, 3000) }
+onBeforeUnmount(() => window.clearTimeout(timer))
 </script>
-
 <style scoped>
-.page-content{padding:20px 0 42px}.hero-layout{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(330px,.85fr) minmax(320px,.78fr);gap:12px;align-items:stretch}.hero-main,.hero-wallet,.hero-exchange{min-height:280px}.hero-wallet{border-radius:20px}.hero-exchange{height:100%}.catalog-layout{display:grid;grid-template-columns:minmax(0,1fr) 270px;gap:14px;align-items:start}.activity{margin-top:28px}.floating-menu{position:fixed;z-index:70;top:68px;width:220px;padding:12px;border:1px solid rgba(99,139,226,.28);border-radius:12px;background:rgba(6,18,42,.97);box-shadow:0 22px 60px rgba(0,0,0,.4);backdrop-filter:blur(18px)}.floating-menu.notifications{right:70px}.floating-menu.profile{right:18px;width:170px}.floating-menu strong,.floating-menu span{display:block}.floating-menu strong{margin-bottom:7px}.floating-menu span{padding:7px 0;border-top:1px solid rgba(102,130,190,.1);color:#9aacca;font-size:10px}.floating-menu button{width:100%;padding:8px;border:0;border-radius:7px;color:#cbd8ef;background:transparent;text-align:left;cursor:pointer}.floating-menu button:hover{background:rgba(77,108,178,.14)}.toast{position:fixed;z-index:130;left:50%;bottom:28px;transform:translateX(-50%);padding:11px 16px;border:1px solid rgba(109,143,218,.28);border-radius:10px;color:#eaf2ff;background:rgba(7,21,48,.97);font-size:11px}.cart-fab{position:fixed;z-index:50;right:24px;bottom:24px;display:grid;place-items:center;width:52px;height:52px;border:1px solid rgba(121,141,255,.5);border-radius:50%;color:#fff;background:linear-gradient(135deg,#4f61ff,#843eff);box-shadow:0 15px 44px rgba(71,54,255,.35);cursor:pointer}.cart-fab :deep(svg){font-size:20px}.cart-fab span{position:absolute;top:-5px;right:-4px;display:grid;place-items:center;min-width:19px;height:19px;border:2px solid #061022;border-radius:999px;background:#ff547e;font-size:9px;font-weight:800}@media(max-width:1350px){.hero-layout{grid-template-columns:1.4fr 1fr}.hero-exchange{grid-column:1/-1;min-height:auto}.catalog-layout{grid-template-columns:1fr}}@media(max-width:900px){.hero-layout{grid-template-columns:1fr}.hero-exchange{grid-column:auto}.activity{margin-top:0}}@media(max-width:720px){.page-content{padding-top:10px}.floating-menu.notifications{right:12px}}
+.tm-home-top{display:grid;grid-template-columns:minmax(0,2.4fr) minmax(260px,1fr);gap:24px}.tm-home-hero{position:relative;min-height:300px;overflow:hidden;border-radius:20px;background:#101934}.tm-home-hero>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center}.tm-home-hero::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,#050b1cdd 0%,#050b1c66 46%,transparent 78%)}.tm-home-hero-copy{position:relative;z-index:1;padding:32px;max-width:460px}.tm-home-hero-copy>span{display:inline-block;margin-bottom:16px;padding:5px 10px;border-radius:5px;background:#182743c9;color:var(--tm-cyan);font-size:12px}.tm-home-hero-copy h1{font-size:48px;line-height:1.22;margin:0 0 12px}.tm-home-hero-copy p{color:var(--tm-muted)}.tm-home-hero-copy .tm-button{min-width:164px}.tm-home-wallet{padding:24px}.tm-home-wallet h2{margin:0 0 18px;font-size:17px}.tm-home-wallet>strong{display:block;font-size:36px;line-height:1.3}.tm-home-wallet>span,.tm-home-wallet p{color:var(--tm-muted);font-size:12px}.tm-home-wallet-actions{display:flex;gap:10px;margin-top:16px;padding-top:16px;border-top:1px solid var(--tm-border)}.tm-home-wallet-actions a{flex:1}.tm-home-wallet p{margin:18px 0 0}.tm-category-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:16px;margin-top:24px}.tm-category{display:flex;align-items:center;gap:14px;min-width:0;min-height:77px;padding:14px 17px}.tm-category:hover,.tm-merchant-card:hover{border-color:var(--tm-cyan)}.tm-category img{width:29px;height:29px}.tm-category span{min-width:0}.tm-category strong,.tm-category small,.tm-merchant-card strong,.tm-merchant-card small{display:block}.tm-category small,.tm-merchant-card small{color:var(--tm-muted);font-size:12px}.tm-home-products{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}.tm-merchant-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.tm-merchant-card{display:flex;align-items:center;gap:16px;min-height:90px;padding:18px}.tm-merchant-card img{width:32px;height:32px}.tm-merchant-card span:nth-child(2){min-width:0;flex:1}.tm-merchant-card span:last-child{color:var(--tm-muted)}
+@media(max-width:1100px){.tm-home-top{grid-template-columns:1fr}.tm-home-wallet{display:grid;grid-template-columns:1fr auto;align-items:center}.tm-home-wallet h2,.tm-home-wallet>span,.tm-home-wallet p{grid-column:1}.tm-home-wallet-actions{grid-column:2;grid-row:1/4;border:0;margin:0;padding:0}.tm-category-grid{grid-template-columns:repeat(3,1fr)}.tm-home-products{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:700px){.tm-home-top{gap:16px}.tm-home-hero{min-height:250px;border-radius:14px}.tm-home-hero-copy{padding:25px}.tm-home-hero-copy>span{display:none}.tm-home-hero-copy h1{font-size:32px}.tm-home-hero-copy p{max-width:225px;font-size:13px}.tm-home-wallet{display:block;padding:20px}.tm-home-wallet h2{font-size:14px;color:var(--tm-muted)}.tm-home-wallet>strong{font-size:30px}.tm-home-wallet-actions{display:none}.tm-home-wallet p{display:none}.tm-category-grid{grid-template-columns:repeat(5,1fr);gap:4px;margin-top:19px}.tm-category{display:flex;flex-direction:column;min-height:78px;gap:5px;padding:7px 2px;border:0;background:none;text-align:center}.tm-category img{width:27px;height:27px}.tm-category strong{font-size:12px;white-space:nowrap}.tm-category small{display:none}.tm-home-products{grid-template-columns:1fr;gap:12px}.tm-merchant-grid{grid-template-columns:1fr;gap:10px}.tm-section{margin-top:27px}.tm-section-head h2{font-size:21px}}
+.tm-home-hero-copy h1{font-weight:700}
 </style>

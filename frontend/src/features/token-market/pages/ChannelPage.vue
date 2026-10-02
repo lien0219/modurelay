@@ -1,62 +1,94 @@
 <template>
-  <TokenMarketShell>
-    <header class="channel-header">
-      <div class="head-brand" @click="router.push('/token-market')"><span class="mark">◆</span><strong>Token 交易市场</strong><b>Beta</b></div>
-      <label class="search"><MarketIcon name="search"/><input v-model="query" placeholder="搜索商家、商品或服务... 例如：咖啡、AI 绘图、游戏道具" @keyup.enter="searchNow" /></label>
-      <div class="head-actions"><button><MarketIcon name="order"/>订单</button><button><MarketIcon name="message"/>消息</button><span class="avatar">CA</span></div>
-    </header>
-
-    <div class="channel-shell">
-      <aside class="sidebar">
-        <button v-for="item in nav" :key="item.label" :class="{active:item.label===activeLabel}" @click="setCategory(item)"><MarketIcon :name="item.icon"/><span>{{ item.label }}</span></button>
-        <div class="divider" />
-        <button @click="router.push('/token-market/orders')"><MarketIcon name="order"/><span>我的订单</span></button>
-        <button><MarketIcon name="heart"/><span>我的收藏</span></button>
-        <button @click="router.push('/token-market/wallet')"><MarketIcon name="wallet"/><span>Token 钱包</span></button>
-        <button @click="router.push('/token-market/merchant-center')"><MarketIcon name="store"/><span>商家入驻</span></button>
-        <div class="discover"><div class="bot">✦</div><strong>用 Token<br>发现更大的生活</strong><span>美食 · 数字商品 · AI 服务</span></div>
-      </aside>
-
-      <main class="channel-main">
-        <section class="channel-hero">
-          <div class="hero-image"><DesignSprite :x="0" :y="55" :width="770" :height="310" :radius="18"/></div>
-          <div class="hero-mask" />
-          <div class="hero-copy"><span>{{ activeLabel }}频道</span><h1>{{ heroTitle }}</h1><p>{{ heroSubtitle }}</p><div class="hero-meta"><b>★ 4.9</b><b>◷ 25–35 分钟</b><b>⌖ 1.2 km</b></div><div class="hero-tags"><span>满 800 T 减 120 T</span><span>Token 专享折扣</span><span>支持预约</span></div></div>
-        </section>
-
-        <div class="filter-tabs"><button v-for="tab in tabs" :key="tab" :class="{active:tab===activeTab}" @click="activeTab=tab">{{ tab }}</button></div>
-
-        <section class="channel-section"><div class="section-title"><div><h2>🔥 招牌推荐</h2><p>用美食治愈每一个努力的夜晚</p></div><button>查看更多 →</button></div><div class="food-grid"><article v-for="(product,index) in visibleProducts.slice(0,4)" :key="product.id" class="food-card" @click="openProduct(product.id)"><div class="food-image"><DesignSprite v-bind="productSprite(index)" :radius="12"/></div><strong>{{ product.name }}</strong><span>{{ merchantName(product.merchantId) }}</span><div><b>{{ product.priceToken.toLocaleString('zh-CN') }} T</b><button @click.stop="addToCart(product.id)">＋</button></div></article></div></section>
-
-        <section class="channel-section compact"><div class="section-title"><div><h2>🥤 精品饮品</h2><p>一杯好饮品，让夜晚更美好</p></div><button>查看更多 →</button></div><div class="compact-grid"><article v-for="(product,index) in compactProducts" :key="`c-${product.id}-${index}`"><DesignSprite class="compact-img" v-bind="productSprite(index+1)" :radius="10"/><div><strong>{{ product.name }}</strong><b>{{ product.priceToken.toLocaleString('zh-CN') }} T</b></div><button @click="addToCart(product.id)">＋</button></article></div></section>
-      </main>
-
-      <aside class="rightbar">
-        <section class="wallet-card"><span>我的 Token 钱包</span><div><MarketIcon name="wallet"/><strong>{{ tokenBalance.toLocaleString('zh-CN') }} T</strong><button @click="router.push('/token-market')">充值</button></div><small>Token 支付 · 支持多链 · 交易加密</small></section>
-        <section class="cart-card"><div class="cart-head"><h2>🛍 购物车 ({{ cart.length }})</h2><button @click="cart=[]">清空</button></div><article v-for="item in cart" :key="item.id"><div class="mini"><DesignSprite v-bind="productSprite(item.index)" :radius="8"/></div><div><strong>{{ item.name }}</strong><span>{{ item.price.toLocaleString('zh-CN') }} T</span></div><div class="qty"><button @click="item.qty=Math.max(1,item.qty-1)">−</button><b>{{ item.qty }}</b><button @click="item.qty++">＋</button></div></article><div class="cart-total"><span>合计</span><strong>{{ cartTotal.toLocaleString('zh-CN') }} T</strong></div><button class="pay" :disabled="!cart.length" @click="router.push('/token-market/cart')">立即支付 {{ cartTotal.toLocaleString('zh-CN') }} T →</button></section>
-        <section class="recommend"><h3>💡 猜你喜欢</h3><div><article v-for="(p,index) in visibleProducts.slice(0,3)" :key="`r-${p.id}`"><DesignSprite class="rec-img" v-bind="productSprite(index+2)" :radius="8"/><b>{{ p.priceToken.toLocaleString('zh-CN') }} T</b></article></div></section>
-      </aside>
+  <div class="tm-catalog">
+    <div class="tm-heading"><h1>{{ isSearch ? `“${query}”的搜索结果` : heading }}</h1><p>{{ isSearch ? `找到 ${products.length} 件商品与 ${merchants.length} 家商店` : subtitle }}</p></div>
+    <div class="tm-tabs" role="tablist" aria-label="结果类型">
+      <button v-for="tab in tabs" :key="tab" class="tm-tab" :class="{ 'is-active': activeTab === tab }" role="tab" type="button" :aria-selected="activeTab === tab" @click="activeTab=tab">{{ tab }}</button>
     </div>
-  </TokenMarketShell>
+    <div v-if="!isSearch && category === 'ai_credit'" class="tm-catalog-feature tm-panel">
+      <img src="/token-market/art/chat-token.png" alt="" />
+      <div><small>AI 额度</small><h2>从灵感到作品，按需选择模型额度</h2><p>模型、Input、Output 与 Cache 数量以商品详情及服务端报价为准。</p></div>
+    </div>
+    <div v-else-if="!isSearch" class="tm-catalog-feature tm-panel">
+      <img src="/token-market/art/model-core.png" alt="" />
+      <div><small>{{ heading }}</small><h2>{{ category === 'delivery' ? '发现附近的好味道' : '发现适合你的商品与服务' }}</h2><p>探索当前已上架的商家与商品。</p></div>
+    </div>
+    <div class="tm-catalog-controls">
+      <div class="tm-tabs" aria-label="排序"><button v-for="option in sortOptions" :key="option.value" type="button" class="tm-tab" :class="{ 'is-active': sort === option.value }" @click="sort=option.value">{{ option.label }}</button></div>
+      <select v-model="merchantFilter" class="tm-select" aria-label="筛选商家"><option value="">全部商家</option><option v-for="merchant in merchants" :key="merchant.id" :value="merchant.id">{{ merchant.name }}</option></select>
+    </div>
+    <div v-if="loading" class="tm-feedback" role="status">正在加载商品…</div>
+    <div v-else-if="error" class="tm-empty" role="alert"><h2>加载失败</h2><p>{{ error }}</p><button class="tm-button" type="button" @click="load">重新加载</button></div>
+    <template v-else>
+      <section v-if="activeTab !== '商家'">
+        <div v-if="visibleProducts.length" class="tm-catalog-products"><MarketProductCard v-for="product in visibleProducts" :key="product.id" :product="product" :merchant-name="merchantName(product.merchantId)" @added="showToast" /></div>
+        <div v-else-if="activeTab === '商品' || !merchants.length" class="tm-empty"><img src="/token-market/icons/search.svg" alt="" /><h2>没有搜索结果</h2><p>试试其他关键词或清除筛选条件。</p><button class="tm-button" type="button" @click="clearFilters">清除筛选</button></div>
+      </section>
+      <section v-if="activeTab !== '商品' && merchants.length" class="tm-section"><div class="tm-section-head"><h2>相关商家</h2></div><div class="tm-catalog-merchants"><RouterLink v-for="merchant in merchants" :key="merchant.id" class="tm-panel" :to="`/token-market/merchants/${merchant.id}`"><img src="/token-market/icons/store.svg" alt="" /><span><strong>{{ merchant.name }}</strong><small>{{ categoryLabels[merchant.categoryId] }} · {{ merchant.rating.toFixed(1) }}</small></span><span>→</span></RouterLink></div></section>
+      <div v-else-if="activeTab === '商家'" class="tm-empty"><img src="/token-market/icons/store.svg" alt="" /><h2>没有相关商家</h2><p>试试其他关键词或分类。</p><button class="tm-button" type="button" @click="clearFilters">清除筛选</button></div>
+    </template>
+    <div v-if="toast" class="tm-toast" role="status">{{ toast }}已加入本地购物车草稿</div>
+  </div>
 </template>
-
 <script setup lang="ts">
-import { computed,onMounted,ref } from 'vue'
-import { useRoute,useRouter } from 'vue-router'
-import DesignSprite from '../components/DesignSprite.vue'
-import MarketIcon from '../components/MarketIcon.vue'
-import TokenMarketShell from '../components/TokenMarketShell.vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
+import MarketProductCard from '../components/MarketProductCard.vue'
+import { categoryLabels } from '../presentation'
 import { useTokenMarketStore } from '../store'
-import type { TokenMarketCategoryId } from '../types'
-
-const route=useRoute();const router=useRouter();const market=useTokenMarketStore();const query=ref('');const activeTab=ref('推荐');const tabs=['推荐','招牌套餐','日式料理','精品饮品','数字商品','AI 服务','周边好物'];const nav=[{label:'首页',id:'' as TokenMarketCategoryId|'' ,icon:'home'},{label:'外卖美食',id:'delivery' as TokenMarketCategoryId,icon:'cup'},{label:'数码周边',id:'mall' as TokenMarketCategoryId,icon:'bag'},{label:'数字商品',id:'digital' as TokenMarketCategoryId,icon:'game'},{label:'AI 服务',id:'ai_credit' as TokenMarketCategoryId,icon:'ai'},{label:'游戏娱乐',id:'digital' as TokenMarketCategoryId,icon:'game'},{label:'生活服务',id:'services' as TokenMarketCategoryId,icon:'store'}]
-const requested=computed(()=>String(route.query.category||'外卖'));const activeItem=computed(()=>nav.find(n=>n.label===requested.value||n.label.startsWith(requested.value))||nav[1]);const activeLabel=computed(()=>activeItem.value.label);const tokenBalance=computed(()=>market.wallet?.tokenBalance??12450);const visibleProducts=computed(()=>{const id=activeItem.value.id;if(!id)return market.products;const matches=market.products.filter(p=>p.categoryId===id);return matches.length?matches:market.products});const compactProducts=computed(()=>[...visibleProducts.value,...market.products].slice(0,4));const heroTitle=computed(()=>activeLabel.value==='外卖美食'?'深夜食堂 · Token 外卖':`${activeLabel.value} · Token 专区`);const heroSubtitle=computed(()=>activeLabel.value==='外卖美食'?'美食 · 日式料理 · 夜宵 · 品质商家':'精选商品与服务 · Token 即刻兑换')
-const cart=ref<Array<{id:string;name:string;price:number;qty:number;index:number}>>([]);const cartTotal=computed(()=>cart.value.reduce((s,i)=>s+i.price*i.qty,0))
-const sprites=[{x:40,y:525,width:205,height:105},{x:255,y:525,width:200,height:105},{x:470,y:525,width:195,height:105},{x:680,y:525,width:195,height:105},{x:890,y:525,width:195,height:105},{x:1100,y:525,width:205,height:105}]
-function productSprite(i:number){return sprites[i%sprites.length]}function merchantName(id:string){return market.merchants.find(m=>m.id===id)?.name??'Token Market 商家'}function openProduct(id:string){void router.push(`/token-market/products/${id}`)}function setCategory(item:(typeof nav)[number]){if(!item.id)return void router.push('/token-market');void router.replace({path:'/token-market/channel',query:{category:item.label}})}function addToCart(id:string){const p=market.products.find(v=>v.id===id);if(!p)return;const found=cart.value.find(v=>v.id===id);if(found)found.qty++;else cart.value.push({id:p.id,name:p.name,price:p.priceToken,qty:1,index:market.products.findIndex(v=>v.id===id)})}async function searchNow(){if(!query.value.trim())return;await market.search(query.value);const p=market.searchProducts[0];if(p)openProduct(p.id)}
-onMounted(()=>market.initialize())
+import type { TokenMarketCategoryId, TokenMarketMerchant, TokenMarketProduct } from '../types'
+const route = useRoute()
+const router = useRouter()
+const market = useTokenMarketStore()
+const isSearch = computed(() => route.path.endsWith('/search'))
+const query = computed(() => String(route.query.q ?? '').trim())
+const category = computed(() => categoryLabels[String(route.query.category)] ? String(route.query.category) as TokenMarketCategoryId : 'mall')
+const heading = computed(() => categoryLabels[category.value] || '品质商城')
+const subtitle = computed(() => ({ mall: '精选好物，按需浏览。', delivery: '查看可用的外卖与本地服务。', digital: '数字商品与权益，交付方式以详情为准。', ai_credit: '按需选择 AI 模型额度与创作套餐。', services: '寻找专业服务与解决方案。' })[category.value])
+const tabs = ['全部', '商品', '商家']
+const activeTab = ref('全部')
+const sort = ref('default')
+const merchantFilter = ref('')
+const sortOptions = [{ value: 'default', label: '综合推荐' }, { value: 'low', label: '价格 ↑' }, { value: 'high', label: '价格 ↓' }]
+const products = ref<TokenMarketProduct[]>([])
+const merchants = ref<TokenMarketMerchant[]>([])
+const loading = ref(false)
+const error = ref('')
+const toast = ref('')
+let timer: number | undefined
+let requestId = 0
+async function load(): Promise<void> {
+  const id = ++requestId
+  loading.value = true; error.value = ''
+  try {
+    if (isSearch.value) {
+      if (!query.value) { products.value = []; merchants.value = []; return }
+      await market.search(query.value)
+      if (id !== requestId) return
+      products.value = [...market.searchProducts]
+      merchants.value = [...market.searchMerchants]
+    } else {
+      const loaded = await market.loadProducts({ categoryId: category.value, pageSize: 100 })
+      if (id !== requestId) return
+      products.value = loaded
+      merchants.value = market.merchants.filter(item => item.categoryId === category.value || loaded.some(product => product.merchantId === item.id))
+    }
+  } catch (failure) { if (id === requestId) error.value = failure instanceof Error ? failure.message : '请稍后重试' }
+  finally { if (id === requestId) loading.value = false }
+}
+const visibleProducts = computed(() => {
+  let items = products.value.filter(item => !merchantFilter.value || item.merchantId === merchantFilter.value)
+  if (sort.value === 'low') items = [...items].sort((a, b) => a.priceToken - b.priceToken)
+  if (sort.value === 'high') items = [...items].sort((a, b) => b.priceToken - a.priceToken)
+  return items
+})
+function merchantName(id: string): string { return merchants.value.find(item => item.id === id)?.name || market.merchants.find(item => item.id === id)?.name || 'Token Market 商家' }
+function clearFilters(): void { sort.value = 'default'; merchantFilter.value = ''; activeTab.value = '全部'; if (isSearch.value) void router.push('/token-market/channel?category=mall') }
+function showToast(name: string): void { toast.value = name; window.clearTimeout(timer); timer = window.setTimeout(() => { toast.value = '' }, 3000) }
+watch(() => route.fullPath, () => { activeTab.value = '全部'; merchantFilter.value = ''; void load() }, { immediate: true })
+onBeforeUnmount(() => { requestId++; window.clearTimeout(timer) })
 </script>
-
 <style scoped>
-.channel-header{position:sticky;top:0;z-index:40;height:60px;display:grid;grid-template-columns:280px minmax(320px,620px) 1fr;align-items:center;gap:18px;padding:0 28px;border-bottom:1px solid rgba(102,130,205,.15);background:rgba(4,10,28,.94);backdrop-filter:blur(20px)}.head-brand{display:flex;align-items:center;gap:9px;cursor:pointer}.head-brand .mark{display:grid;place-items:center;width:32px;height:32px;border-radius:9px;color:#fff;background:linear-gradient(135deg,#6b4cff,#3995ff)}.head-brand strong{font-size:16px}.head-brand b{padding:2px 6px;border-radius:6px;color:#b9c6ff;background:#1a2856;font-size:8px}.search{display:grid;grid-template-columns:22px 1fr;align-items:center;height:38px;padding:0 12px;border:1px solid #4351a3;border-radius:14px;color:#8e9dca;background:#091532}.search input{border:0;outline:0;color:#e8edff;background:transparent;font-size:11px}.head-actions{display:flex;justify-content:flex-end;align-items:center;gap:14px}.head-actions button{display:flex;align-items:center;gap:6px;border:0;color:#aebbd9;background:transparent;font-size:10px}.head-actions .avatar{display:grid;place-items:center;width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#7b61ff,#3399ff);font-size:8px}.channel-shell{display:grid;grid-template-columns:190px minmax(0,1fr) 330px;gap:18px;max-width:1672px;margin:0 auto;padding:14px}.sidebar{position:sticky;top:74px;align-self:start;display:flex;flex-direction:column;gap:5px;min-height:calc(100vh - 90px)}.sidebar>button{display:flex;align-items:center;gap:12px;height:44px;padding:0 14px;border:0;border-radius:10px;color:#8ea0c2;background:transparent;text-align:left;cursor:pointer}.sidebar>button :deep(svg){font-size:18px}.sidebar>button.active{color:#fff;background:linear-gradient(90deg,#2d66ff,#174c9b);box-shadow:0 8px 20px rgba(35,75,201,.28)}.divider{height:1px;margin:8px 4px;background:rgba(109,137,200,.13)}.discover{margin-top:auto;padding:18px;border:1px solid rgba(87,114,224,.28);border-radius:16px;background:radial-gradient(circle at 70% 10%,rgba(79,71,255,.35),transparent 40%),linear-gradient(160deg,#10215d,#071532)}.discover .bot{font-size:28px}.discover strong,.discover span{display:block}.discover strong{margin-top:10px;font-size:14px}.discover span{margin-top:10px;color:#8497be;font-size:8px}.channel-main{min-width:0}.channel-hero{position:relative;height:250px;overflow:hidden;border:1px solid rgba(92,121,210,.2);border-radius:16px}.hero-image{position:absolute;inset:0}.hero-mask{position:absolute;inset:0;background:linear-gradient(90deg,rgba(3,8,23,.78),rgba(3,8,23,.15) 70%)}.hero-copy{position:relative;z-index:2;padding:38px 28px;max-width:62%}.hero-copy>span{color:#9db2d7;font-size:9px}.hero-copy h1{margin:8px 0;font-size:28px}.hero-copy p{margin:0;color:#a3b1cc;font-size:11px}.hero-meta{display:flex;gap:20px;margin-top:14px;font-size:10px}.hero-tags{display:flex;gap:7px;margin-top:18px}.hero-tags span{padding:6px 9px;border-radius:7px;color:#dbe5ff;background:rgba(65,59,170,.55);font-size:8px}.filter-tabs{display:grid;grid-template-columns:repeat(7,1fr);gap:10px;margin:14px 0}.filter-tabs button{height:38px;border:1px solid rgba(103,132,197,.15);border-radius:8px;color:#8394b5;background:#0a1733;font-size:9px;cursor:pointer}.filter-tabs button.active{color:#fff;background:linear-gradient(90deg,#4c54ff,#376fff);box-shadow:0 0 18px rgba(79,82,255,.25)}.channel-section{margin-top:18px}.section-title{display:flex;align-items:end;justify-content:space-between;margin-bottom:10px}.section-title>div{display:flex;align-items:baseline;gap:12px}.section-title h2{margin:0;font-size:16px}.section-title p{margin:0;color:#778cac;font-size:9px}.section-title button{border:0;color:#8fa4c9;background:transparent;font-size:8px}.food-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.food-card{overflow:hidden;border:1px solid rgba(104,136,203,.17);border-radius:13px;background:#0b1a38;cursor:pointer}.food-image{height:108px}.food-card>strong,.food-card>span{display:block;padding:0 10px}.food-card>strong{margin-top:9px;font-size:11px}.food-card>span{margin-top:3px;color:#7587a7;font-size:8px}.food-card>div:last-child{display:flex;align-items:center;justify-content:space-between;padding:9px 10px}.food-card b{color:#ff8e9f;font-size:13px}.food-card button,.compact-grid button{width:28px;height:28px;border:0;border-radius:50%;color:#fff;background:linear-gradient(135deg,#6a55ff,#a832ff);cursor:pointer}.compact-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.compact-grid article{display:grid;grid-template-columns:72px 1fr 30px;gap:8px;align-items:center;padding:8px;border:1px solid rgba(104,136,203,.16);border-radius:12px;background:#091731}.compact-img{width:72px;height:62px}.compact-grid strong,.compact-grid b{display:block}.compact-grid strong{font-size:9px}.compact-grid b{margin-top:5px;color:#ff87a8;font-size:11px}.rightbar{position:sticky;top:74px;align-self:start;display:flex;flex-direction:column;gap:12px}.wallet-card,.cart-card,.recommend{padding:16px;border:1px solid rgba(103,132,202,.18);border-radius:15px;background:linear-gradient(150deg,rgba(13,31,68,.98),rgba(7,18,40,.98));box-shadow:0 18px 40px rgba(0,0,0,.18)}.wallet-card>span{color:#a6b6d8;font-size:9px}.wallet-card>div{display:grid;grid-template-columns:26px 1fr auto;align-items:center;gap:8px;margin-top:9px}.wallet-card>div :deep(svg){font-size:20px;color:#ffc257}.wallet-card strong{font-size:21px}.wallet-card button{padding:8px 18px;border:0;border-radius:10px;color:#fff;background:linear-gradient(90deg,#426bff,#ae37ff);font-size:9px}.wallet-card small{display:block;margin-top:12px;color:#7589ac;font-size:8px}.cart-head{display:flex;justify-content:space-between;align-items:center}.cart-head h2{margin:0;font-size:14px}.cart-head button{border:0;color:#7185a9;background:transparent;font-size:8px}.cart-card article{display:grid;grid-template-columns:52px 1fr 72px;gap:8px;align-items:center;padding:10px 0;border-bottom:1px solid rgba(102,129,190,.12)}.mini{width:52px;height:52px}.cart-card article strong,.cart-card article span{display:block}.cart-card article strong{font-size:9px}.cart-card article span{margin-top:5px;color:#ffa36d;font-size:10px;font-weight:800}.qty{display:grid;grid-template-columns:22px 22px 22px;align-items:center}.qty button{height:22px;border:1px solid rgba(102,131,194,.18);border-radius:6px;color:#cbd6eb;background:#102141}.qty b{text-align:center;font-size:9px}.cart-total{display:flex;justify-content:space-between;padding:14px 0}.cart-total span{font-size:10px}.cart-total strong{font-size:20px}.pay{width:100%;height:48px;border:0;border-radius:12px;color:#fff;background:linear-gradient(90deg,#3d7aff,#d336f1);font-weight:800;cursor:pointer}.pay:disabled{opacity:.45}.recommend h3{margin:0 0 10px;font-size:12px}.recommend>div{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.recommend article{overflow:hidden;border-radius:10px;background:#0a1731}.rec-img{height:70px}.recommend b{display:block;padding:6px;color:#ff8ba6;font-size:9px}@media(max-width:1200px){.channel-shell{grid-template-columns:160px 1fr}.rightbar{grid-column:2;position:static;display:grid;grid-template-columns:1fr 1fr}.recommend{display:none}}@media(max-width:850px){.channel-header{grid-template-columns:1fr auto;height:auto;padding:10px 14px}.search{grid-column:1/-1;grid-row:2}.head-actions button{display:none}.channel-shell{grid-template-columns:1fr}.sidebar{display:none}.rightbar{grid-column:auto;grid-template-columns:1fr}.food-grid,.compact-grid{grid-template-columns:repeat(2,1fr)}.hero-copy{max-width:85%}}
+.tm-catalog-feature{display:flex;align-items:center;gap:24px;margin:24px 0;padding:24px;min-height:178px}.tm-catalog-feature img{width:270px;height:130px;object-fit:contain;border-radius:10px;background:#0a1430}.tm-catalog-feature div{min-width:0}.tm-catalog-feature small{color:var(--tm-cyan)}.tm-catalog-feature h2{margin:8px 0}.tm-catalog-feature p{margin:0;color:var(--tm-muted)}.tm-catalog-controls{display:flex;align-items:center;justify-content:space-between;gap:12px}.tm-catalog-controls .tm-tabs{margin:12px 0 22px}.tm-catalog-controls .tm-tab{min-width:110px}.tm-catalog-controls .tm-tab.is-active{background:none;color:var(--tm-cyan);border:0}.tm-catalog-controls .tm-select{width:190px}.tm-catalog-products{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}.tm-catalog-merchants{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.tm-catalog-merchants a{display:flex;align-items:center;gap:12px;padding:18px}.tm-catalog-merchants img{width:29px}.tm-catalog-merchants span:nth-child(2){flex:1;min-width:0}.tm-catalog-merchants small{display:block;color:var(--tm-muted)}
+@media(max-width:1000px){.tm-catalog-products{grid-template-columns:repeat(2,1fr)}.tm-catalog-merchants{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:700px){.tm-catalog-feature{display:none}.tm-catalog-controls{display:block}.tm-catalog-controls .tm-tabs{overflow-x:auto;flex-wrap:nowrap}.tm-catalog-controls .tm-tab{flex:none}.tm-catalog-controls .tm-select{width:100%;margin-bottom:16px}.tm-catalog-products,.tm-catalog-merchants{grid-template-columns:1fr}.tm-catalog .tm-tabs{flex-wrap:nowrap;overflow-x:auto}.tm-catalog .tm-tabs .tm-tab{white-space:nowrap}}
 </style>
