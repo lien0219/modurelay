@@ -1,13 +1,14 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Router } from 'vue-router'
 import {
-  consumeWorkspaceBackReturnPending,
-  markWorkspaceBackReturnPending,
+  consumeCanvasDocumentDeparture,
+  markWorkspaceDocumentDeparture,
   navigateToWorkspaceUrlWithTransition,
   navigateWithWorkspaceModeTransition,
   registerWorkspaceModeTransitionRunner,
   resetWorkspaceModeTransitionState,
   workspaceModeTransitioning,
+  workspaceRouteTransitionDirection,
 } from '../workspaceModeTransition'
 
 function createRouter() {
@@ -43,11 +44,21 @@ describe('workspaceModeTransition', () => {
     unregister()
   })
 
-  it('tracks one browser-back return from Infinite Canvas', () => {
-    markWorkspaceBackReturnPending()
+  it('tracks cross-document arrivals without treating reloads as workspace changes', () => {
+    markWorkspaceDocumentDeparture()
+    expect(consumeCanvasDocumentDeparture()).toBe(false)
+    sessionStorage.setItem('modurelay-workspace-document-departure', 'canvas')
+    expect(consumeCanvasDocumentDeparture()).toBe(true)
+    expect(consumeCanvasDocumentDeparture()).toBe(false)
+  })
 
-    expect(consumeWorkspaceBackReturnPending()).toBe(true)
-    expect(consumeWorkspaceBackReturnPending()).toBe(false)
+  it('selects the door direction only when routes cross workspace modes', () => {
+    expect(workspaceRouteTransitionDirection('/dashboard', '/token-market')).toBe('to-market')
+    expect(workspaceRouteTransitionDirection('/token-market/cart', '/dashboard')).toBe('to-relay')
+    expect(workspaceRouteTransitionDirection('/token-market', '/token-market/wallet')).toBeNull()
+    expect(workspaceRouteTransitionDirection('/dashboard', '/canvas/editor')).toBe('to-canvas')
+    expect(workspaceRouteTransitionDirection('/dashboard', '/canvas')).toBeNull()
+    expect(workspaceRouteTransitionDirection('/keys', '/dashboard')).toBeNull()
   })
 
   it('can recover a cross-document transition lock after BFCache restoration', async () => {

@@ -3,10 +3,14 @@ import { useEffect, useRef, useState } from "react";
 type DoorDirection = "to-canvas" | "to-relay";
 
 const ARRIVAL_KEY = "modurelay-workspace-door";
+const DOCUMENT_DEPARTURE_KEY = "modurelay-workspace-document-departure";
+const OPEN_DURATION_MS = 460;
+const CLOSED_PAINT_FRAMES = 2;
 
 export function WorkspaceDoorTransition() {
     const timerRef = useRef<number | null>(null);
     const frameRef = useRef<number | null>(null);
+    const arrivalPendingRef = useRef(false);
     const [active, setActive] = useState(false);
     const [opening, setOpening] = useState(false);
 
@@ -20,25 +24,46 @@ export function WorkspaceDoorTransition() {
         };
         const schedule = (callback: () => void) => {
             if (timerRef.current !== null) window.clearTimeout(timerRef.current);
-            timerRef.current = window.setTimeout(callback, reduceMotion ? 20 : 460);
+            timerRef.current = window.setTimeout(callback, reduceMotion ? 20 : OPEN_DURATION_MS);
         };
         const animateOpen = () => {
             clearScheduledWork();
             setOpening(false);
             setActive(true);
-            frameRef.current = window.requestAnimationFrame(() => {
-                frameRef.current = null;
-                setOpening(true);
-                schedule(() => {
-                    timerRef.current = null;
-                    setActive(false);
+            let frames = reduceMotion ? 1 : CLOSED_PAINT_FRAMES;
+            const waitForClosedPaint = () => {
+                frameRef.current = window.requestAnimationFrame(() => {
+                    frameRef.current = null;
+                    frames -= 1;
+                    if (frames > 0) {
+                        waitForClosedPaint();
+                        return;
+                    }
+                    setOpening(true);
+                    schedule(() => {
+                        timerRef.current = null;
+                        arrivalPendingRef.current = false;
+                        setActive(false);
+                    });
                 });
-            });
+            };
+            waitForClosedPaint();
+        };
+
+        const arrivedFromRelay = () => {
+            const fromRelay = sessionStorage.getItem(DOCUMENT_DEPARTURE_KEY) === "relay";
+            sessionStorage.removeItem(DOCUMENT_DEPARTURE_KEY);
+            return fromRelay;
+        };
+        const handlePageHide = () => {
+            sessionStorage.setItem(DOCUMENT_DEPARTURE_KEY, "canvas");
         };
 
         const stored = sessionStorage.getItem(ARRIVAL_KEY);
-        if (stored === "to-canvas" || stored === "to-relay") {
+        const fromRelay = arrivedFromRelay();
+        if (stored === "to-canvas" || stored === "to-relay" || fromRelay || arrivalPendingRef.current) {
             sessionStorage.removeItem(ARRIVAL_KEY);
+            arrivalPendingRef.current = true;
             animateOpen();
         }
 
@@ -63,6 +88,10 @@ export function WorkspaceDoorTransition() {
 
         const handlePageShow = (event: PageTransitionEvent) => {
             if (!event.persisted) return;
+            if (arrivedFromRelay()) {
+                animateOpen();
+                return;
+            }
             clearScheduledWork();
             sessionStorage.removeItem(ARRIVAL_KEY);
             setOpening(false);
@@ -70,10 +99,12 @@ export function WorkspaceDoorTransition() {
         };
 
         window.addEventListener("modurelay-workspace-door", handleDoor);
+        window.addEventListener("pagehide", handlePageHide);
         window.addEventListener("pageshow", handlePageShow);
         return () => {
             clearScheduledWork();
             window.removeEventListener("modurelay-workspace-door", handleDoor);
+            window.removeEventListener("pagehide", handlePageHide);
             window.removeEventListener("pageshow", handlePageShow);
         };
     }, []);

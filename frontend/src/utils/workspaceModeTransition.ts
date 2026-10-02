@@ -15,7 +15,7 @@ const transitioning = ref(false)
 let activeRunner: WorkspaceModeTransitionRunner | null = null
 
 const WORKSPACE_DOOR_SESSION_KEY = 'modurelay-workspace-door'
-const WORKSPACE_BACK_RETURN_SESSION_KEY = 'modurelay-workspace-back-return'
+const WORKSPACE_DOCUMENT_DEPARTURE_KEY = 'modurelay-workspace-document-departure'
 
 export const workspaceModeTransitioning = readonly(transitioning)
 
@@ -23,14 +23,25 @@ export function resetWorkspaceModeTransitionState() {
   transitioning.value = false
 }
 
-export function markWorkspaceBackReturnPending() {
-  sessionStorage.setItem(WORKSPACE_BACK_RETURN_SESSION_KEY, 'to-relay')
+export function workspaceRouteTransitionDirection(fromPath: string, toPath: string): WorkspaceModeTransitionDirection | null {
+  const mode = (path: string) => path === '/token-market' || path.startsWith('/token-market/')
+    ? 'market'
+    : path.startsWith('/canvas/') || path === '/canvas' ? 'canvas' : 'relay'
+  if (toPath === '/canvas') return null // The handoff route opens the separate canvas document.
+  const fromMode = mode(fromPath)
+  const toMode = mode(toPath)
+  if (fromMode === toMode) return null
+  return toMode === 'market' ? 'to-market' : toMode === 'canvas' ? 'to-canvas' : 'to-relay'
 }
 
-export function consumeWorkspaceBackReturnPending() {
-  const pending = sessionStorage.getItem(WORKSPACE_BACK_RETURN_SESSION_KEY) === 'to-relay'
-  sessionStorage.removeItem(WORKSPACE_BACK_RETURN_SESSION_KEY)
-  return pending
+export function markWorkspaceDocumentDeparture() {
+  sessionStorage.setItem(WORKSPACE_DOCUMENT_DEPARTURE_KEY, 'relay')
+}
+
+export function consumeCanvasDocumentDeparture() {
+  const fromCanvas = sessionStorage.getItem(WORKSPACE_DOCUMENT_DEPARTURE_KEY) === 'canvas'
+  sessionStorage.removeItem(WORKSPACE_DOCUMENT_DEPARTURE_KEY)
+  return fromCanvas
 }
 
 export function registerWorkspaceModeTransitionRunner(runner: WorkspaceModeTransitionRunner) {
@@ -75,7 +86,6 @@ export async function navigateToWorkspaceUrlWithTransition(
   try {
     const navigate = async () => {
       sessionStorage.setItem(WORKSPACE_DOOR_SESSION_KEY, direction)
-      if (direction === 'to-canvas') markWorkspaceBackReturnPending()
       if (options.replace) window.location.replace(href)
       else window.location.assign(href)
     }

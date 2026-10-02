@@ -12,11 +12,15 @@
 
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { gsap } from 'gsap'
 import {
-  consumeWorkspaceBackReturnPending,
+  consumeCanvasDocumentDeparture,
+  markWorkspaceDocumentDeparture,
   registerWorkspaceModeTransitionRunner,
   resetWorkspaceModeTransitionState,
+  workspaceModeTransitioning,
+  workspaceRouteTransitionDirection,
   type WorkspaceModeTransitionDirection,
 } from '@/utils/workspaceModeTransition'
 import {
@@ -28,6 +32,7 @@ defineProps<{
   routeStage: HTMLElement | null
 }>()
 
+const router = useRouter()
 const overlayRef = ref<HTMLElement | null>(null)
 const leftPanelRef = ref<HTMLElement | null>(null)
 const rightPanelRef = ref<HTMLElement | null>(null)
@@ -38,6 +43,9 @@ let media: gsap.MatchMedia | null = null
 let reduceMotion = false
 let unregisterRunner: (() => void) | null = null
 let unregisterThemeRunner: (() => void) | null = null
+let unregisterRouteGuard: (() => void) | null = null
+let unregisterRouteAfterEach: (() => void) | null = null
+let pendingRouteArrival: WorkspaceModeTransitionDirection | null = null
 
 function runTimeline(build: (instance: gsap.core.Timeline) => void) {
   return new Promise<void>((resolve) => {
@@ -73,15 +81,28 @@ function resetVisualState() {
   active.value = false
 }
 
+async function closeDoors() {
+  if (reduceMotion || !overlayRef.value || !leftPanelRef.value || !rightPanelRef.value) return
+
+  active.value = true
+  document.body.classList.add('workspace-mode-transitioning')
+  await nextTick()
+  gsap.set(overlayRef.value, { autoAlpha: 1 })
+  gsap.set(leftPanelRef.value, { xPercent: -102, '--workspace-door-blur': '0px' })
+  gsap.set(rightPanelRef.value, { xPercent: 102, '--workspace-door-blur': '0px' })
+  await runTimeline((tl) => {
+    tl.addLabel('close', 0)
+      .to(leftPanelRef.value, { xPercent: 0, duration: 0.36, ease: 'power2.inOut' }, 'close')
+      .to(rightPanelRef.value, { xPercent: 0, duration: 0.36, ease: 'power2.inOut' }, 'close')
+      .to([leftPanelRef.value, rightPanelRef.value], { '--workspace-door-blur': '20px', duration: 0.34, ease: 'power1.inOut' }, 'close')
+  })
+}
+
 function handlePageShow(event: PageTransitionEvent) {
   if (!event.persisted) return
 
-  // Chromium can restore the exact pre-navigation DOM from BFCache. When the
-  // user returns from Infinite Canvas with the browser Back button, reuse the
-  // already-closed doors and play the same ModuRelay arrival/open animation.
-  // Other BFCache restores are reset silently and do not get a workspace animation.
   resetWorkspaceModeTransitionState()
-  if (!consumeWorkspaceBackReturnPending()) {
+  if (!consumeCanvasDocumentDeparture()) {
     resetVisualState()
     return
   }
@@ -116,22 +137,9 @@ async function playTransition(request: {
     return
   }
 
-  active.value = true
-  document.body.classList.add('workspace-mode-transitioning')
-  await nextTick()
-
-  gsap.set(overlayRef.value, { autoAlpha: 1 })
-  gsap.set(leftPanelRef.value, { xPercent: -102, '--workspace-door-blur': '0px' })
-  gsap.set(rightPanelRef.value, { xPercent: 102, '--workspace-door-blur': '0px' })
-
   let keepOverlay = false
   try {
-    await runTimeline((tl) => {
-      tl.addLabel('close', 0)
-        .to(leftPanelRef.value, { xPercent: 0, duration: 0.36, ease: 'power2.inOut' }, 'close')
-        .to(rightPanelRef.value, { xPercent: 0, duration: 0.36, ease: 'power2.inOut' }, 'close')
-        .to([leftPanelRef.value, rightPanelRef.value], { '--workspace-door-blur': '20px', duration: 0.34, ease: 'power1.inOut' }, 'close')
-    })
+    await closeDoors()
 
     await request.navigate()
     keepOverlay = request.keepOverlay === true
@@ -195,21 +203,8 @@ async function playThemeTransition(request: ThemeTransitionRequest) {
     return
   }
 
-  active.value = true
-  document.body.classList.add('workspace-mode-transitioning')
-  await nextTick()
-
-  gsap.set(overlayRef.value, { autoAlpha: 1 })
-  gsap.set(leftPanelRef.value, { xPercent: -102, '--workspace-door-blur': '0px' })
-  gsap.set(rightPanelRef.value, { xPercent: 102, '--workspace-door-blur': '0px' })
-
   try {
-    await runTimeline((tl) => {
-      tl.addLabel('close', 0)
-        .to(leftPanelRef.value, { xPercent: 0, duration: 0.36, ease: 'power2.inOut' }, 'close')
-        .to(rightPanelRef.value, { xPercent: 0, duration: 0.36, ease: 'power2.inOut' }, 'close')
-        .to([leftPanelRef.value, rightPanelRef.value], { '--workspace-door-blur': '20px', duration: 0.34, ease: 'power1.inOut' }, 'close')
-    })
+    await closeDoors()
 
     request.apply()
     await nextTick()
@@ -232,20 +227,39 @@ onMounted(() => {
     return () => { reduceMotion = false }
   })
   resetVisualState()
-  // A fresh ModuRelay document (for example the in-page "Back to ModuRelay"
-  // action) must not leave the browser-Back marker behind for a later BFCache restore.
-  consumeWorkspaceBackReturnPending()
+  const arrivedFromCanvas = consumeCanvasDocumentDeparture()
+  window.addEventListener('pagehide', markWorkspaceDocumentDeparture)
   window.addEventListener('pageshow', handlePageShow)
   unregisterRunner = registerWorkspaceModeTransitionRunner(playTransition)
   unregisterThemeRunner = registerThemeTransitionRunner(playThemeTransition)
+  unregisterRouteGuard = router.beforeResolve(async (to, from) => {
+    if (!from.matched.length || workspaceModeTransitioning.value || active.value) return
+    const direction = workspaceRouteTransitionDirection(from.path, to.path)
+    if (!direction) return
+    pendingRouteArrival = direction
+    await closeDoors()
+  })
+  unregisterRouteAfterEach = router.afterEach((_to, _from, failure) => {
+    const direction = pendingRouteArrival
+    pendingRouteArrival = null
+    if (!direction) return
+    if (failure) {
+      resetVisualState()
+      return
+    }
+    void nextTick().then(() => playArrival(direction))
+  })
   const arrival = sessionStorage.getItem('modurelay-workspace-door')
-  if (arrival === 'to-relay' || arrival === 'to-canvas') {
-    void playArrival(arrival)
+  if (arrival === 'to-relay' || arrival === 'to-canvas' || arrivedFromCanvas) {
+    void playArrival(arrival === 'to-canvas' ? 'to-canvas' : 'to-relay')
   }
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('pagehide', markWorkspaceDocumentDeparture)
   window.removeEventListener('pageshow', handlePageShow)
+  unregisterRouteGuard?.()
+  unregisterRouteAfterEach?.()
   unregisterRunner?.()
   unregisterRunner = null
   unregisterThemeRunner?.()
