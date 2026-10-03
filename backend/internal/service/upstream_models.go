@@ -20,13 +20,21 @@ import (
 )
 
 const (
-	upstreamModelsBodyLimit             int64 = 8 << 20
-	modelsDevRegistryURL                      = "https://models.dev/api.json"
-	modelsDevRegistryTTL                      = 6 * time.Hour
-	UpstreamModelMetadataExtraKey             = "upstream_model_metadata"
-	UpstreamModelMetadataIncompleteCode       = "upstream_model_metadata_incomplete"
-	UpstreamModelMetadataPartialCode          = "upstream_model_metadata_partial"
+	upstreamModelsBodyLimit              int64 = 8 << 20
+	modelsDevRegistryURL                       = "https://models.dev/api.json"
+	modelsDevRegistryTTL                       = 6 * time.Hour
+	UpstreamModelMetadataExtraKey              = "upstream_model_metadata"
+	UpstreamModelMetadataIncompleteCode        = "upstream_model_metadata_incomplete"
+	UpstreamModelMetadataPartialCode           = "upstream_model_metadata_partial"
+	SeedanceDocumentedCatalogWarningCode       = "seedance_documented_model_catalog"
 )
+
+var kuaiziSeedanceDocumentedModels = []UpstreamModelMetadata{
+	{ID: "doubao-seedance-2-0-260128", DisplayName: "Doubao-Seedance-2.0", OutputModalities: []string{"video"}},
+	{ID: "doubao-seedance-2-0-fast-260128", DisplayName: "Doubao-Seedance-2.0-fast", OutputModalities: []string{"video"}},
+	{ID: "doubao-seedance-2-0-mini-260615", DisplayName: "Doubao-Seedance-2.0-mini", OutputModalities: []string{"video"}},
+	{ID: "doubao-seedance-2-5-260628", DisplayName: "Doubao-Seedance-2.5", OutputModalities: []string{"video"}},
+}
 
 type UpstreamModelMetadata struct {
 	ID                       string                     `json:"id"`
@@ -219,6 +227,13 @@ func newUpstreamModelSyncInternalError(message string, err error) error {
 // FetchUpstreamSupportedModels fetches only live model IDs. The admin sync path
 // uses SyncUpstreamModelCatalog so capability metadata can also be persisted.
 func (s *AccountTestService) FetchUpstreamSupportedModels(ctx context.Context, account *Account) ([]string, error) {
+	if account != nil && account.Platform == PlatformSeedance && isKuaiziSeedanceBaseURL(account.GetCredential("base_url")) {
+		catalog, err := s.FetchSeedanceModelCatalog(ctx, account)
+		if err != nil {
+			return nil, err
+		}
+		return catalog.Models, nil
+	}
 	models, _, err := s.fetchUpstreamModelList(ctx, account)
 	return models, err
 }
@@ -227,6 +242,12 @@ func (s *AccountTestService) FetchUpstreamSupportedModels(ctx context.Context, a
 // checking activation. Keep all returned metadata so mapped targets can also be
 // filtered by their output capabilities, including old non-video whitelist IDs.
 func (s *AccountTestService) FetchSeedanceModelCatalog(ctx context.Context, account *Account) (*UpstreamModelCatalog, error) {
+	if account != nil && isKuaiziSeedanceBaseURL(account.GetCredential("base_url")) {
+		if err := s.validateSeedanceModelCatalogAccount(account); err != nil {
+			return nil, err
+		}
+		return kuaiziSeedanceDocumentedCatalog(), nil
+	}
 	models, body, err := s.fetchUpstreamModelList(ctx, account)
 	if err != nil {
 		return nil, err
@@ -251,6 +272,46 @@ func (s *AccountTestService) FetchSeedanceModelCatalog(ctx context.Context, acco
 	return &UpstreamModelCatalog{Models: videoModels, Metadata: metadata}, nil
 }
 
+func (s *AccountTestService) validateSeedanceModelCatalogAccount(account *Account) error {
+	if s == nil {
+		return newUpstreamModelSyncConfigError("Account test service is not configured", nil)
+	}
+	if account == nil {
+		return newUpstreamModelSyncConfigError("Account is required", nil)
+	}
+	if account.Type != AccountTypeAPIKey {
+		return newUpstreamModelSyncUnsupportedError("Seedance model sync requires an API key account", nil)
+	}
+	if strings.TrimSpace(account.GetCredential("api_key")) == "" {
+		return newUpstreamModelSyncConfigError("No Seedance API key is available", nil)
+	}
+	baseURL := strings.TrimSpace(account.GetCredential("base_url"))
+	if baseURL == "" {
+		return newUpstreamModelSyncConfigError("Seedance base URL is required", nil)
+	}
+	if _, err := s.validateUpstreamBaseURL(baseURL); err != nil {
+		return newUpstreamModelSyncConfigError("Invalid Seedance base URL", err)
+	}
+	return nil
+}
+
+func kuaiziSeedanceDocumentedCatalog() *UpstreamModelCatalog {
+	models := make([]string, 0, len(kuaiziSeedanceDocumentedModels))
+	metadata := make(map[string]UpstreamModelMetadata, len(kuaiziSeedanceDocumentedModels))
+	for _, entry := range kuaiziSeedanceDocumentedModels {
+		models = append(models, entry.ID)
+		metadata[entry.ID] = entry
+	}
+	return &UpstreamModelCatalog{
+		Models:   models,
+		Metadata: metadata,
+		Warnings: []UpstreamModelSyncWarning{{
+			Code:    SeedanceDocumentedCatalogWarningCode,
+			Message: "Kuaizi documented model catalog; live model discovery is unavailable",
+		}},
+	}
+}
+
 // SyncUpstreamModelCatalog fetches the account's live model list, enriches
 // missing capability fields from the provider registry used by the upstream,
 // and persists a normalized account snapshot when complete metadata is available.
@@ -268,8 +329,12 @@ func (s *AccountTestService) SyncUpstreamModelCatalog(ctx context.Context, accou
 		}
 		// Video catalogs do not need Codex reasoning or context-window metadata.
 		if len(catalog.Metadata) > 0 && account.ID > 0 && s.accountRepo != nil {
+			source := "upstream"
+			if isKuaiziSeedanceBaseURL(account.GetCredential("base_url")) {
+				source = "documentation"
+			}
 			snapshot := UpstreamModelMetadataSnapshot{
-				Source: "upstream", SyncedAt: time.Now().UTC().Format(time.RFC3339), Models: catalog.Metadata,
+				Source: source, SyncedAt: time.Now().UTC().Format(time.RFC3339), Models: catalog.Metadata,
 			}
 			if err := s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{UpstreamModelMetadataExtraKey: snapshot}); err != nil {
 				return nil, newUpstreamModelSyncInternalError("Failed to save upstream model metadata", err)

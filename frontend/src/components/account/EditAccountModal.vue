@@ -4867,6 +4867,9 @@ const syncAntigravityUpstreamModels = async () => {
     const hasIncompleteMetadata = warnings.some(
       (warning) => warning.code === 'upstream_model_metadata_incomplete'
     )
+    const hasDocumentedSeedanceCatalog = warnings.some(
+      (warning) => warning.code === 'seedance_documented_model_catalog'
+    )
     if (hasIncompleteMetadata) {
       appStore.showWarning(t('admin.accounts.syncUpstreamModelsMetadataIncomplete'))
       return
@@ -4878,6 +4881,9 @@ const syncAntigravityUpstreamModels = async () => {
     }
     if (hasPartialMetadata) {
       appStore.showWarning(t('admin.accounts.syncUpstreamModelsMetadataPartial'))
+    }
+    if (hasDocumentedSeedanceCatalog) {
+      appStore.showWarning(t('admin.accounts.seedanceDocumentedCatalogWarning'))
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : t('admin.accounts.syncUpstreamModelsFailed')

@@ -38,6 +38,82 @@ func TestBuildUpstreamModelsRequestSeedance(t *testing.T) {
 	}
 }
 
+func TestBuildSeedanceURLUsesKuaiziProtocolPrefix(t *testing.T) {
+	for _, testCase := range []struct {
+		name    string
+		baseURL string
+		wantURL string
+	}{
+		{
+			name:    "kuaizi origin",
+			baseURL: "https://aiopenapi.kuaizi.cn",
+			wantURL: "https://aiopenapi.kuaizi.cn/ai-open-platform-api/api/v3/contents/generations/tasks",
+		},
+		{
+			name:    "kuaizi api prefix",
+			baseURL: "https://aiopenapi.kuaizi.cn/ai-open-platform-api/api/v3/",
+			wantURL: "https://aiopenapi.kuaizi.cn/ai-open-platform-api/api/v3/contents/generations/tasks",
+		},
+		{
+			name:    "kuaizi legacy version suffix",
+			baseURL: "https://aiopenapi.kuaizi.cn/api/v3",
+			wantURL: "https://aiopenapi.kuaizi.cn/ai-open-platform-api/api/v3/contents/generations/tasks",
+		},
+		{
+			name:    "ark origin remains unchanged",
+			baseURL: "https://ark.cn-beijing.volces.com/api/v3",
+			wantURL: "https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks",
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			got, err := buildSeedanceURL(testCase.baseURL, SeedanceEndpointCreate, "")
+			require.NoError(t, err)
+			require.Equal(t, testCase.wantURL, got)
+		})
+	}
+}
+
+func TestFetchSeedanceModelCatalogUsesKuaiziDocumentModels(t *testing.T) {
+	service := &AccountTestService{cfg: upstreamModelSyncTestConfig(), httpUpstream: &httpUpstreamRecorder{}}
+	catalog, err := service.FetchSeedanceModelCatalog(context.Background(), &Account{
+		Platform: PlatformSeedance, Type: AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"base_url": "https://aiopenapi.kuaizi.cn",
+			"api_key":  "test-kuaizi-key",
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{
+		"doubao-seedance-2-0-260128",
+		"doubao-seedance-2-0-fast-260128",
+		"doubao-seedance-2-0-mini-260615",
+		"doubao-seedance-2-5-260628",
+	}, catalog.Models)
+	require.Equal(t, "Kuaizi documented model catalog; live model discovery is unavailable", catalog.Warnings[0].Message)
+	require.Empty(t, service.httpUpstream.(*httpUpstreamRecorder).requests)
+}
+
+func TestSyncUpstreamModelCatalogKuaiziPersistsDocumentationSource(t *testing.T) {
+	repo := &upstreamModelMetadataRepoStub{}
+	service := &AccountTestService{cfg: upstreamModelSyncTestConfig(), httpUpstream: &httpUpstreamRecorder{}, accountRepo: repo}
+	account := &Account{
+		ID:       14,
+		Platform: PlatformSeedance,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"base_url": "https://aiopenapi.kuaizi.cn",
+			"api_key":  "test-kuaizi-key",
+		},
+	}
+	catalog, err := service.SyncUpstreamModelCatalog(context.Background(), account)
+	require.NoError(t, err)
+	require.Len(t, catalog.Models, 4)
+	snapshot := account.GetUpstreamModelMetadataSnapshot()
+	require.NotNil(t, snapshot)
+	require.Equal(t, "documentation", snapshot.Source)
+	require.Contains(t, repo.updates, UpstreamModelMetadataExtraKey)
+}
+
 func TestBuildUpstreamModelsRequestSeedanceRejectsInvalidCredentials(t *testing.T) {
 	for _, testCase := range []struct {
 		name        string

@@ -2851,9 +2851,16 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 		requestedModels := make([]string, 0)
 		mapping := account.GetModelMapping()
 		liveCatalogAvailable := false
+		documentedCatalog := false
 		if h.accountTestService != nil {
 			if catalog, fetchErr := h.accountTestService.FetchSeedanceModelCatalog(c.Request.Context(), account); fetchErr == nil {
 				liveCatalogAvailable = true
+				for _, warning := range catalog.Warnings {
+					if warning.Code == service.SeedanceDocumentedCatalogWarningCode {
+						documentedCatalog = true
+						break
+					}
+				}
 				requestedModels = catalog.Models
 				for modelID, entry := range catalog.Metadata {
 					metadata[modelID] = entry
@@ -2875,10 +2882,16 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 					candidates[modelID] = struct{}{}
 				}
 			}
-			for modelID := range mapping {
-				if strings.TrimSpace(modelID) != "" && !strings.Contains(modelID, "*") {
-					candidates[modelID] = struct{}{}
+			for modelID, targetID := range mapping {
+				if strings.TrimSpace(modelID) == "" || strings.Contains(modelID, "*") {
+					continue
 				}
+				if documentedCatalog {
+					if _, supported := metadata[strings.TrimSpace(targetID)]; !supported {
+						continue
+					}
+				}
+				candidates[modelID] = struct{}{}
 			}
 			requestedModels = make([]string, 0, len(candidates))
 			for modelID := range candidates {

@@ -245,7 +245,7 @@ func (s *OpenAIGatewayService) ForwardSeedanceCompatibleVideo(
 			return nil, err
 		}
 		status := seedanceCompatibleStatus(gjson.GetBytes(responseBody, "status").String())
-		videoURL := strings.TrimSpace(gjson.GetBytes(responseBody, "content.video_url").String())
+		videoURL := seedanceVideoURLFromResponse(responseBody)
 		if videoURL != "" {
 			videoURL, err = validateSeedanceVideoResultURL(videoURL)
 			if err != nil {

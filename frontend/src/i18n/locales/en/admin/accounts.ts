@@ -940,6 +940,8 @@ export default {
         'Model IDs were synced, but no capability metadata could be updated.',
       syncUpstreamModelsMetadataPartial:
         'Some model capabilities were updated; remaining models are still incomplete.',
+      seedanceDocumentedCatalogWarning:
+        'Kuaizi does not provide a live model-list endpoint. These four Seedance IDs come from its published documentation; the list does not confirm that your API key can use them.',
       clearAllModels: 'Clear all models',
       customModelName: 'Custom model name',
       enterCustomModelName: 'Enter custom model name',

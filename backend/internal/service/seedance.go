@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -26,6 +27,15 @@ func (e GrokMediaEndpoint) IsSeedance() bool {
 
 // SeedanceTaskKey isolates ownership and billing keys from other video providers.
 func SeedanceTaskKey(id string) string { return "seedance:" + strings.TrimSpace(id) }
+
+func seedanceVideoURLFromResponse(body []byte) string {
+	return strings.TrimSpace(compatibleVideoFirstNonEmpty(
+		gjson.GetBytes(body, "content.kz_video_url").String(),
+		gjson.GetBytes(body, "content.video_url").String(),
+		gjson.GetBytes(body, "kz_video_url").String(),
+		gjson.GetBytes(body, "video_url").String(),
+	))
+}
 
 func ParseSeedanceRequest(body []byte) (GrokMediaRequestInfo, error) {
 	var info GrokMediaRequestInfo
@@ -56,11 +66,7 @@ func ParseSeedanceRequest(body []byte) (GrokMediaRequestInfo, error) {
 }
 
 func buildSeedanceURL(base string, endpoint GrokMediaEndpoint, taskID string) (string, error) {
-	base = strings.TrimRight(base, "/")
-	// Accept an origin, a proxy prefix, or the full Ark API base.
-	if !strings.HasSuffix(base, "/api/v3") && !strings.HasSuffix(base, "/v3") {
-		base += "/api/v3"
-	}
+	base = buildSeedanceAPIBase(base)
 	base += "/contents/generations/tasks"
 	if endpoint != SeedanceEndpointCreate {
 		if err := validateUpstreamPathSegment("Seedance task ID", taskID); err != nil || strings.TrimSpace(taskID) == "" {
@@ -69,6 +75,45 @@ func buildSeedanceURL(base string, endpoint GrokMediaEndpoint, taskID string) (s
 		base += "/" + taskID
 	}
 	return base, nil
+}
+
+const kuaiziSeedanceHost = "aiopenapi.kuaizi.cn"
+
+func isKuaiziSeedanceBaseURL(raw string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	return err == nil && strings.EqualFold(parsed.Hostname(), kuaiziSeedanceHost)
+}
+
+func buildSeedanceAPIBase(raw string) string {
+	base := strings.TrimRight(strings.TrimSpace(raw), "/")
+	if isKuaiziSeedanceBaseURL(base) {
+		parsed, err := url.Parse(base)
+		if err == nil {
+			path := strings.TrimRight(parsed.Path, "/")
+			switch {
+			case strings.HasSuffix(strings.ToLower(path), "/ai-open-platform-api/api/v3"):
+			case strings.HasSuffix(strings.ToLower(path), "/ai-open-platform-api"):
+				path += "/api/v3"
+			case strings.HasSuffix(strings.ToLower(path), "/api/v3"):
+				path = path[:len(path)-len("/api/v3")] + "/ai-open-platform-api/api/v3"
+			case strings.HasSuffix(strings.ToLower(path), "/v3"):
+				path = path[:len(path)-len("/v3")] + "/ai-open-platform-api/api/v3"
+			default:
+				path += "/ai-open-platform-api/api/v3"
+			}
+			parsed.Path = path
+			parsed.RawPath = ""
+			parsed.RawQuery = ""
+			parsed.Fragment = ""
+			return strings.TrimRight(parsed.String(), "/")
+		}
+		return base + "/ai-open-platform-api/api/v3"
+	}
+	// Accept an origin, a proxy prefix, or the full Ark API base.
+	if !strings.HasSuffix(base, "/api/v3") && !strings.HasSuffix(base, "/v3") {
+		base += "/api/v3"
+	}
+	return base
 }
 
 // ForwardSeedance preserves the Ark protocol, including multimodal content and
@@ -159,10 +204,7 @@ func (s *OpenAIGatewayService) ForwardSeedance(ctx context.Context, c *gin.Conte
 	if endpoint == SeedanceEndpointStatus {
 		result.ResponseID = taskID
 		result.UpstreamModel = gjson.GetBytes(responseBody, "model").String()
-		videoURL := strings.TrimSpace(compatibleVideoFirstNonEmpty(
-			gjson.GetBytes(responseBody, "content.video_url").String(),
-			gjson.GetBytes(responseBody, "video_url").String(),
-		))
+		videoURL := seedanceVideoURLFromResponse(responseBody)
 		if videoURL != "" {
 			if _, err := validateSeedanceVideoResultURL(videoURL); err != nil {
 				return nil, err

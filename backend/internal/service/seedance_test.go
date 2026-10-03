@@ -131,6 +131,17 @@ func TestSeedanceStatusAndDelete(t *testing.T) {
 	require.Equal(t, http.StatusNoContent, w.Code)
 }
 
+func TestSeedanceStatusUsesKuaiziPersistentVideoURL(t *testing.T) {
+	body := `{"id":"kz-cgt-task-1","status":"succeeded","model":"doubao-seedance-2-0-fast-260128","content":{"video_url":"https://cdn.example.com/temporary.mp4","kz_video_url":"https://cdn.example.com/persistent.mp4"}}`
+	upstream := &grokMediaContentUpstreamStub{response: grokMediaContentStatusResponse(body)}
+	svc := &OpenAIGatewayService{httpUpstream: upstream}
+	c, w := grokMediaContentTestContext(http.MethodGet, "/api/v3/contents/generations/tasks/kz-cgt-task-1", nil)
+	result, err := svc.ForwardSeedance(context.Background(), c, seedanceFirstClassTestAccount(), SeedanceEndpointStatus, "seedance:kz-cgt-task-1", nil)
+	require.NoError(t, err)
+	require.Equal(t, 1, result.VideoCount)
+	require.Equal(t, "https://cdn.example.com/persistent.mp4", gjson.GetBytes(w.Body.Bytes(), "content.kz_video_url").String())
+}
+
 func TestSeedanceNativeStatusRejectsUnsafeVideoURL(t *testing.T) {
 	upstream := &grokMediaContentUpstreamStub{response: grokMediaContentStatusResponse(
 		`{"id":"task-1","status":"succeeded","video_url":"https://localhost./video.mp4"}`,

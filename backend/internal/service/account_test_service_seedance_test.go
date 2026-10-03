@@ -50,6 +50,29 @@ func TestAccountTestService_SeedanceCreatesNativeTaskOnUpstream(t *testing.T) {
 	require.Contains(t, recorder.Body.String(), `"success":true`)
 }
 
+func TestAccountTestService_SeedanceUsesKuaiziProtocolPath(t *testing.T) {
+	account := &Account{
+		ID:       13,
+		Platform: PlatformSeedance,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":  "test-kuaizi-key",
+			"base_url": "https://aiopenapi.kuaizi.cn",
+		},
+	}
+	repo := &mockAccountRepoForGemini{accountsByID: map[int64]*Account{account.ID: account}}
+	upstream := &queuedHTTPUpstream{responses: []*http.Response{
+		newJSONResponse(http.StatusOK, `{"id":"kz-cgt-task-1","status":"queued"}`),
+	}}
+	service := &AccountTestService{accountRepo: repo, httpUpstream: upstream, cfg: &config.Config{}}
+	c, recorder := newTestContext()
+
+	require.NoError(t, service.TestAccountConnection(c, account.ID, "doubao-seedance-2-0-fast-260128", "", AccountTestModeDefault))
+	require.Len(t, upstream.requests, 1)
+	require.Equal(t, "https://aiopenapi.kuaizi.cn/ai-open-platform-api/api/v3/contents/generations/tasks", upstream.requests[0].URL.String())
+	require.Contains(t, recorder.Body.String(), `"success":true`)
+}
+
 func TestAccountTestService_SeedanceReportsUpstreamError(t *testing.T) {
 	account := seedanceAccountTestServiceFixture()
 	upstream := &queuedHTTPUpstream{responses: []*http.Response{

@@ -205,6 +205,35 @@ func TestAccountHandlerGetAvailableModels_SeedanceLegacyTextWhitelist(t *testing
 	}
 }
 
+func TestAccountHandlerGetAvailableModels_KuaiziUsesDocumentedTargetsOnly(t *testing.T) {
+	account := service.Account{ID: 74, Platform: service.PlatformSeedance, Type: service.AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":  "test-kuaizi-key",
+			"base_url": "https://aiopenapi.kuaizi.cn",
+			"model_mapping": map[string]any{
+				"doubao-seedance-2-0-fast-260128": "doubao-seedance-2-0-fast-260128",
+				"video-alias":                     "doubao-seedance-2-5-260628",
+				"legacy-text":                     "qwen3-8b-20250429",
+			},
+		}}
+	svc := &availableModelsAdminService{stubAdminService: newStubAdminService(), account: account}
+	router := setupSyncUpstreamModelsRouter(svc, &syncUpstreamHTTPUpstream{err: io.ErrUnexpectedEOF})
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/74/models", nil))
+	require.Equal(t, http.StatusOK, rec.Code)
+	var payload struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &payload))
+	ids := make([]string, 0, len(payload.Data))
+	for _, model := range payload.Data {
+		ids = append(ids, model.ID)
+	}
+	require.Equal(t, []string{"doubao-seedance-2-0-fast-260128", "video-alias"}, ids)
+}
+
 func TestAccountHandlerGetAvailableModels_GrokUsesXAIModels(t *testing.T) {
 	svc := &availableModelsAdminService{
 		stubAdminService: newStubAdminService(),

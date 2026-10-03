@@ -405,6 +405,27 @@ describe('ModelWhitelistSelector', () => {
     expect(showWarning).toHaveBeenCalledWith('admin.accounts.syncUpstreamModelsMetadataPartial')
   })
 
+  it('warns when Seedance models come from the Kuaizi documentation catalog', async () => {
+    syncUpstreamModels.mockResolvedValue({
+      models: ['doubao-seedance-2-0-fast-260128'],
+      warnings: [{
+        code: 'seedance_documented_model_catalog',
+        message: 'live model discovery is unavailable',
+      }],
+    })
+    const wrapper = mountSelector({ platform: 'seedance', accountId: 46 })
+
+    const syncButton = wrapper
+      .findAll('button')
+      .find(button => button.text() === 'admin.accounts.syncUpstreamModels')
+    expect(syncButton).toBeDefined()
+    await syncButton!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.emitted('update:modelValue')).toEqual([[['doubao-seedance-2-0-fast-260128']]])
+    expect(showWarning).toHaveBeenCalledWith('admin.accounts.seedanceDocumentedCatalogWarning')
+  })
+
   it('reports a successful preview so account creation can persist metadata', async () => {
     syncUpstreamModelsPreview.mockResolvedValue({
       models: ['x-preview-f-free'],

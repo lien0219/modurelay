@@ -1045,6 +1045,7 @@ export default {
       syncUpstreamModelsError: '同步上游模型失败：{message}',
       syncUpstreamModelsMetadataIncomplete: '模型 ID 已同步，但未能更新任何能力元数据。',
       syncUpstreamModelsMetadataPartial: '已更新部分模型的能力元数据；其余模型能力仍不完整。',
+      seedanceDocumentedCatalogWarning: 'Kuaizi 未提供实时模型列表接口。以下四个 Seedance ID 来自其公开文档，目录不代表当前 API Key 已开通或可调用。',
       clearAllModels: '清除所有模型',
       customModelName: '自定义模型名称',
       enterCustomModelName: '输入自定义模型名称',

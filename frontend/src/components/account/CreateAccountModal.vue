@@ -5297,6 +5297,9 @@ const submitCreateAccount = async (payload: CreateAccountRequest) => {
       try {
         const result = await adminAPI.accounts.syncUpstreamModels(account.id)
         const warnings = result.warnings ?? []
+        if (warnings.some(warning => warning.code === 'seedance_documented_model_catalog')) {
+          appStore.showWarning(t('admin.accounts.seedanceDocumentedCatalogWarning'))
+        }
         if (warnings.some(warning => warning.code === 'upstream_model_metadata_incomplete')) {
           appStore.showWarning(t('admin.accounts.syncUpstreamModelsMetadataIncomplete'))
         } else if (warnings.some(warning => warning.code === 'upstream_model_metadata_partial')) {
