@@ -720,6 +720,11 @@ export default {
         official: '{platform} official API'
       },
       // OpenAI specific hints
+      seedance: {
+        baseUrlHint: 'Enter the Seedance / Ark upstream Base URL: /api/v3 for native Ark, or the actual API address for a compatible gateway. Model lists come from the upstream; enter model IDs or ep-* endpoints manually if listing is unavailable.',
+        apiKeyHint: 'Enter the API key for this Seedance / Ark upstream. Model access is controlled by the upstream.',
+        apiKeyPlaceholder: 'Your Seedance / Ark API Key',
+      },
       openai: {
         baseUrlHint: 'Leave default for official OpenAI API',
         apiKeyHint: 'Your OpenAI API Key',

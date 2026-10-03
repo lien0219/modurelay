@@ -71,6 +71,8 @@ const ModelWhitelistSelectorStub = defineComponent({
   name: 'ModelWhitelistSelector',
   props: {
     modelMappings: { type: Array, default: () => [] },
+    platform: String,
+    accountId: Number,
     modelValue: {
       type: Array,
       default: () => []
@@ -363,6 +365,20 @@ describe('EditAccountModal', () => {
   })
 
   afterEach(() => vi.useRealTimers())
+
+  it('uses Seedance URL and key guidance without Anthropic fallbacks', () => {
+    const account = buildAccount()
+    account.platform = 'seedance'
+    const wrapper = mountModal(account)
+
+    expect(wrapper.get('[data-testid="seedance-base-url"]').attributes('placeholder')).toBe('https://ark.cn-beijing.volces.com/api/v3')
+    expect(wrapper.get('[data-testid="seedance-base-url"]').attributes('required')).toBeDefined()
+    expect(wrapper.get('[data-testid="seedance-api-key"]').attributes('placeholder')).toBe('admin.accounts.seedance.apiKeyPlaceholder')
+    expect(wrapper.text()).toContain('admin.accounts.seedance.baseUrlHint')
+    expect(wrapper.text()).not.toContain('admin.accounts.baseUrlHint')
+    expect(wrapper.getComponent(ModelWhitelistSelectorStub).props('platform')).toBe('seedance')
+    expect(wrapper.getComponent(ModelWhitelistSelectorStub).props('accountId')).toBe(account.id)
+  })
 
   it('passes existing non-identity mappings to the whitelist selector and preserves them on save', async () => {
     const account = buildAccount()

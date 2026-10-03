@@ -34,6 +34,8 @@
             v-model="editBaseUrl"
             type="text"
             class="input"
+            :required="account.platform === 'seedance'"
+            :data-testid="account.platform === 'seedance' ? 'seedance-base-url' : undefined"
             :placeholder="
               account.platform === 'openai'
                 ? 'https://api.openai.com'
@@ -43,7 +45,9 @@
                     ? 'https://cloudcode-pa.googleapis.com'
                     : account.platform === 'grok'
                       ? 'https://api.x.ai/v1'
-                      : 'https://api.anthropic.com'
+                      : account.platform === 'seedance'
+                        ? 'https://ark.cn-beijing.volces.com/api/v3'
+                        : 'https://api.anthropic.com'
             "
           />
           <p v-if="baseUrlHint" class="input-hint">{{ baseUrlHint }}</p>
@@ -210,6 +214,7 @@
             v-model="editApiKey"
             type="password"
             class="input font-mono"
+            :data-testid="account.platform === 'seedance' ? 'seedance-api-key' : undefined"
             autocomplete="new-password"
             data-1p-ignore
             data-lpignore="true"
@@ -223,7 +228,9 @@
                     ? 'sk-...'
                     : account.platform === 'grok'
                       ? 'xai-...'
-                      : 'sk-ant-...'
+                      : account.platform === 'seedance'
+                        ? t('admin.accounts.seedance.apiKeyPlaceholder')
+                        : 'sk-ant-...'
             "
           />
           <p class="input-hint">{{ t('admin.accounts.leaveEmptyToKeep') }}</p>
@@ -3430,6 +3437,7 @@ onMounted(() => {
 // Platform-specific hint for Base URL
 const baseUrlHint = computed(() => {
   if (!props.account) return t('admin.accounts.baseUrlHint')
+  if (props.account.platform === 'seedance') return t('admin.accounts.seedance.baseUrlHint')
   if (props.account.platform === 'openai') return t('admin.accounts.openai.baseUrlHint')
   if (props.account.platform === 'gemini') return t('admin.accounts.gemini.baseUrlHint')
   if (props.account.platform === 'grok') return ''

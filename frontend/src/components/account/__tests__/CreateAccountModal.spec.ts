@@ -233,6 +233,30 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     expect(syncUpstreamModelsMock).not.toHaveBeenCalled()
   })
 
+  it('shows Seedance credential guidance and only enables preview once both fields are filled', async () => {
+    authIsSimpleMode.value = false
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'Seedance')
+    const baseUrl = wrapper.get('[data-testid="seedance-base-url"]')
+    const apiKey = wrapper.get('[data-testid="seedance-api-key"]')
+
+    expect(baseUrl.attributes('placeholder')).toBe('https://ark.cn-beijing.volces.com/api/v3')
+    expect(apiKey.attributes('placeholder')).toBe('admin.accounts.seedance.apiKeyPlaceholder')
+    expect(wrapper.text()).toContain('admin.accounts.seedance.baseUrlHint')
+    expect(wrapper.text()).toContain('admin.accounts.seedance.apiKeyHint')
+    expect(wrapper.text()).not.toContain('admin.accounts.baseUrlHint')
+    expect(wrapper.text()).not.toContain('admin.accounts.apiKeyHint')
+    expect(wrapper.getComponent(ModelWhitelistSelectorStub).props('syncCredentials')).toBeUndefined()
+
+    await apiKey.setValue('test-seedance-key')
+    expect(wrapper.getComponent(ModelWhitelistSelectorStub).props('syncCredentials')).toBeUndefined()
+    await baseUrl.setValue(' https://seedance.example.com/api/v3 ')
+    expect(wrapper.getComponent(ModelWhitelistSelectorStub).props('syncCredentials')).toMatchObject({
+      platform: 'seedance', type: 'apikey',
+      base_url: 'https://seedance.example.com/api/v3', api_key: 'test-seedance-key',
+    })
+  })
+
   it('offers Videos consistently and saves an explicit OpenAI video disable', async () => {
     const wrapper = mountModal()
     await selectButtonByText(wrapper, 'OpenAI')

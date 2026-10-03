@@ -1,6 +1,15 @@
 <template>
+  <img
+    v-if="isSeedanceModel"
+    :src="seedanceIcon"
+    :width="size"
+    :height="size"
+    class="model-icon"
+    alt=""
+    aria-hidden="true"
+  />
   <svg
-    v-if="iconInfo"
+    v-else-if="iconInfo"
     :width="size"
     :height="size"
     viewBox="0 0 24 24"
@@ -18,6 +27,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import seedanceIcon from '@/assets/platforms/seedance.svg'
 
 const props = withDefaults(defineProps<{
   model: string
@@ -25,6 +35,8 @@ const props = withDefaults(defineProps<{
 }>(), {
   size: '18px'
 })
+
+const isSeedanceModel = computed(() => /(?:^|:)(?:doubao-)?seedance[-_]/i.test(props.model))
 
 interface IconData {
   color: string

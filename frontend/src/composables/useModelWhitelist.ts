@@ -173,6 +173,12 @@ const xaiModels = [
   'grok-imagine-video-1.5'
 ]
 
+const seedanceModels = [
+  'seedance-2.0',
+  'seedance-2.0-fast',
+  'doubao-seedance-1-5-pro-251215'
+]
+
 // Cohere
 const cohereModels = [
   'command-a-03-2025',
@@ -263,6 +269,7 @@ const allModelsList: string[] = [
   ...mistralModels,
   ...metaModels,
   ...xaiModels,
+  ...seedanceModels,
   ...cohereModels,
   ...yiModels,
   ...moonshotModels,
@@ -447,6 +454,7 @@ export const commonErrorCodes = [
 // 按平台获取模型
 export function getModelsByPlatform(platform: string): string[] {
   switch (platform) {
+    case 'seedance': return seedanceModels
     case 'openai': return openaiModels
     case 'anthropic':
     case 'claude': return claudeModels
@@ -487,6 +495,7 @@ export function getModelsByPlatform(platform: string): string[] {
 
 // 按平台获取预设映射
 export function getPresetMappingsByPlatform(platform: string) {
+  if (platform === 'seedance') return []
   if (platform === 'openai') return openaiPresetMappings
   if (platform === 'gemini') return geminiPresetMappings
   if (platform === 'grok' || platform === 'xai') return grokPresetMappings

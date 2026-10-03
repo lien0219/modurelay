@@ -52,6 +52,7 @@ vi.mock('@/composables/useClipboard', () => ({
 }))
 
 import ModelWhitelistSelector from '../ModelWhitelistSelector.vue'
+import { getModelsByPlatform, getPresetMappingsByPlatform } from '@/composables/useModelWhitelist'
 
 function mountSelector(props: Record<string, unknown> = {}) {
   return mount(ModelWhitelistSelector, {
@@ -89,6 +90,76 @@ describe('ModelWhitelistSelector', () => {
     showWarning.mockReset()
     syncUpstreamModels.mockReset()
     syncUpstreamModelsPreview.mockReset()
+  })
+
+  it('uses Seedance video suggestions instead of the Claude fallback', async () => {
+    const models = getModelsByPlatform('seedance')
+    expect(models).toContain('seedance-2.0')
+    expect(models.every(model => /^(doubao-)?seedance-/.test(model))).toBe(true)
+    expect(getPresetMappingsByPlatform('seedance')).toEqual([])
+
+    const wrapper = mountSelector({ platform: 'seedance' })
+    await wrapper.findAll('button').find(button => button.text() === 'admin.accounts.fillRelatedModels')!.trigger('click')
+    expect(wrapper.emitted('update:modelValue')).toEqual([[models]])
+  })
+
+  it('syncs actual Seedance models with unsaved account credentials', async () => {
+    const credentials = {
+      platform: 'seedance',
+      type: 'apikey',
+      base_url: 'https://seedance.example.com/api/v3',
+      api_key: 'test-seedance-key',
+    }
+    syncUpstreamModelsPreview.mockResolvedValue({
+      models: ['ep-video-test', '48:seedance-2.0'],
+      metadata: {},
+    })
+    const wrapper = mountSelector({ platform: 'seedance', syncCredentials: credentials })
+    const syncButton = wrapper.findAll('button').find(button => button.text() === 'admin.accounts.syncUpstreamModels')
+
+    expect(syncButton).toBeDefined()
+    await syncButton!.trigger('click')
+    await flushPromises()
+
+    expect(syncUpstreamModelsPreview).toHaveBeenCalledWith(credentials)
+    expect(syncUpstreamModels).not.toHaveBeenCalled()
+    expect(wrapper.emitted('update:modelValue')).toEqual([[['ep-video-test', '48:seedance-2.0']]])
+    expect(wrapper.emitted('upstream-synced')).toEqual([[]])
+  })
+
+  it('syncs Seedance models for the existing account ID', async () => {
+    syncUpstreamModels.mockResolvedValue({ models: ['seedance-2.0'], metadata: {} })
+    const wrapper = mountSelector({ platform: 'seedance', accountId: 73 })
+    const syncButton = wrapper.findAll('button').find(button => button.text() === 'admin.accounts.syncUpstreamModels')
+
+    expect(syncButton).toBeDefined()
+    await syncButton!.trigger('click')
+    await flushPromises()
+
+    expect(syncUpstreamModels).toHaveBeenCalledWith(73)
+    expect(syncUpstreamModelsPreview).not.toHaveBeenCalled()
+    expect(wrapper.emitted('update:modelValue')).toEqual([[['seedance-2.0']]])
+  })
+
+  it('keeps the whitelist unchanged when Seedance upstream model listing fails', async () => {
+    syncUpstreamModelsPreview.mockRejectedValue(new Error('Upstream model listing is unavailable'))
+    const wrapper = mountSelector({
+      platform: 'seedance',
+      modelValue: ['ep-existing-video'],
+      syncCredentials: {
+        platform: 'seedance', type: 'apikey',
+        base_url: 'https://seedance.example.com/api/v3', api_key: 'test-seedance-key',
+      },
+    })
+    const syncButton = wrapper.findAll('button').find(button => button.text() === 'admin.accounts.syncUpstreamModels')
+    expect(syncButton).toBeDefined()
+    await syncButton!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+    expect(wrapper.emitted('upstream-synced')).toBeUndefined()
+    expect(showError).toHaveBeenCalledOnce()
+    expect(showSuccess).not.toHaveBeenCalled()
   })
 
   it('rejects a custom whitelist model that is already mapped to a different target', async () => {

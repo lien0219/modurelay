@@ -61,10 +61,7 @@
     <circle cx="18" cy="18" r="3" />
     <path stroke-linecap="round" stroke-linejoin="round" d="M8.7 10.7 15.3 7.3M8.7 13.3l6.6 3.4" />
   </svg>
-  <!-- Fallback: generic platform icon -->
-  <svg v-else-if="platform === 'seedance'" :class="sizeClass" fill="currentColor" viewBox="0 0 24 24">
-    <path d="M5 5h10a2 2 0 0 1 2 2v2l4-2v10l-4-2v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zm4 4v6l5-3-5-3z" />
-  </svg>
+  <img v-else-if="platform === 'seedance'" :src="seedanceIcon" :class="sizeClass" alt="" aria-hidden="true" />
   <svg v-else :class="sizeClass" fill="currentColor" viewBox="0 0 24 24">
     <path
       d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"
@@ -75,6 +72,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { GroupPlatform } from '@/types'
+import seedanceIcon from '@/assets/platforms/seedance.svg'
 
 interface Props {
   platform?: GroupPlatform

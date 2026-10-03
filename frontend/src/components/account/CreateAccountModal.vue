@@ -4041,6 +4041,7 @@ const withUpstreamRequestIdHeader = <T extends Record<string, unknown> | undefin
 }
 
 const baseUrlHint = computed(() => {
+  if (form.platform === 'seedance') return t('admin.accounts.seedance.baseUrlHint')
   if (form.platform === 'openai') return t('admin.accounts.openai.baseUrlHint')
   if (form.platform === 'gemini') return t('admin.accounts.gemini.baseUrlHint')
   if (form.platform === 'grok') return ''
@@ -4048,6 +4049,7 @@ const baseUrlHint = computed(() => {
 })
 
 const apiKeyHint = computed(() => {
+  if (form.platform === 'seedance') return t('admin.accounts.seedance.apiKeyHint')
   if (form.platform === 'openai') return t('admin.accounts.openai.apiKeyHint')
   if (form.platform === 'gemini') return t('admin.accounts.gemini.apiKeyHint')
   if (form.platform === 'grok') return ''
@@ -4062,7 +4064,7 @@ const apiKeyBaseUrlPlaceholder = computed(() => {
   }
   switch (form.platform) {
     case 'seedance':
-      return 'https://api.example.com'
+      return 'https://ark.cn-beijing.volces.com/api/v3'
     case 'openai':
       return 'https://api.openai.com'
     case 'gemini':
@@ -4076,6 +4078,8 @@ const apiKeyBaseUrlPlaceholder = computed(() => {
 
 const apiKeyValuePlaceholder = computed(() => {
   switch (form.platform) {
+    case 'seedance':
+      return t('admin.accounts.seedance.apiKeyPlaceholder')
     case 'openai':
       return 'sk-proj-...'
     case 'gemini':
@@ -4356,6 +4360,7 @@ const syncPreviewCredentials = computed(() => {
   const baseUrl = isMultiProtocolPlatform.value && apiProtocol.value === 'adaptive'
     ? adaptiveBaseUrls.value.chat_completions.trim() || apiKeyBaseUrl.value.trim()
     : apiKeyBaseUrl.value.trim()
+  if (form.platform === 'seedance' && !baseUrl) return undefined
   const modelMapping = buildModelMappingObject(
     modelRestrictionMode.value,
     allowedModels.value,

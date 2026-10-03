@@ -838,6 +838,11 @@ export default {
         official: '{platform} 官方 API'
       },
       // OpenAI specific hints
+      seedance: {
+        baseUrlHint: '填写 Seedance / Ark 上游 Base URL；原生 Ark 使用 /api/v3，兼容网关使用其实际 API 地址。模型列表以实际上游为准，不支持列举时请手动填写模型 ID 或 ep-* 接入点。',
+        apiKeyHint: '填写该 Seedance / Ark 上游的 API Key，模型权限由上游决定。',
+        apiKeyPlaceholder: '您的 Seedance / Ark API Key',
+      },
       openai: {
         baseUrlHint: '留空使用官方 OpenAI API',
         apiKeyHint: '您的 OpenAI API Key',
