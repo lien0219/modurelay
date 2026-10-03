@@ -1517,6 +1517,7 @@ import {
   resolveOpenAIWSModeHintKey
 } from '@/utils/openaiWsMode'
 import type { OpenAIWSMode } from '@/utils/openaiWsMode'
+import { isUpstreamBillingProbeAccount } from '@/utils/upstreamBilling'
 interface Props {
   show: boolean
   accountIds: number[]
@@ -1592,12 +1593,16 @@ const allOpenAIAPIKey = computed(() => {
   )
 })
 
-// 上游倍率自动探测已放宽到全部 API-key 平台：只要求所选类型全为 apikey，
-// 平台不限（sub2api 上游即可应答 /v1/sub2api/billing）。
+// Every selected platform/type combination must support the backend probe
+// contract. Unsupported platforms such as Seedance must not receive the
+// managed probe setting.
 const allBillingProbeCapable = computed(() => {
   return (
+    targetSelectedPlatforms.value.length > 0 &&
     targetSelectedTypes.value.length > 0 &&
-    targetSelectedTypes.value.every(t => t === 'apikey')
+    targetSelectedPlatforms.value.every(platform =>
+      targetSelectedTypes.value.every(type => isUpstreamBillingProbeAccount({ platform, type }))
+    )
   )
 })
 

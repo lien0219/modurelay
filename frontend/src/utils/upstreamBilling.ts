@@ -8,7 +8,9 @@ const upstreamBillingProbePlatforms = new Set<AccountPlatform>([
   'grok',
   'kimi',
   'zhipu',
-  'deepseek'
+  'deepseek',
+  'minimax',
+  'opencode_go'
 ])
 
 export const isUpstreamBillingProbeAccount = (

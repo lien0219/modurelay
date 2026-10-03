@@ -1440,8 +1440,9 @@
           <p v-if="apiKeyHint" class="input-hint">{{ apiKeyHint }}</p>
         </div>
 
-        <!-- 上游倍率自动探测：全部 API-key 平台可用（所在区块已限定 apikey 类型） -->
+        <!-- Upstream billing probe is shown only for platforms with a probe contract. -->
         <div
+          v-if="upstreamBillingProbeSupported"
           class="flex items-center justify-between gap-4 border-t border-gray-200 pt-4 dark:border-dark-600"
         >
           <div>
@@ -4002,6 +4003,7 @@ import {
   resolveOpenAIWSModeHintKey,
   type OpenAIWSMode
 } from '@/utils/openaiWsMode'
+import { isUpstreamBillingProbeAccount } from '@/utils/upstreamBilling'
 import OAuthAuthorizationFlow from './OAuthAuthorizationFlow.vue'
 
 // Type for exposed OAuthAuthorizationFlow component
@@ -4203,6 +4205,10 @@ const adaptiveBaseUrls = ref<Record<CnNativeApiProtocol, string>>({
 const isCNPlatform = computed(() => isCNProviderPlatform(form.platform))
 const isOpenCodeGoPlatform = computed(() => form.platform === 'opencode_go')
 const isMultiProtocolPlatform = computed(() => isCNPlatform.value || isOpenCodeGoPlatform.value)
+const upstreamBillingProbeSupported = computed(() => isUpstreamBillingProbeAccount({
+  platform: form.platform,
+  type: form.type
+}))
 function currentOpenCodeOrCNMode(): CnAccountMode | OpenCodeAccountMode {
   return isOpenCodeGoPlatform.value ? openCodeAccountMode.value : accountMode.value
 }
@@ -5301,7 +5307,7 @@ const submitCreateAccount = async (payload: CreateAccountRequest) => {
       }
     }
     if (
-      payload.type === 'apikey' &&
+      isUpstreamBillingProbeAccount(payload) &&
       payload.upstream_billing_probe_enabled === true
     ) {
       try {
@@ -5913,7 +5919,9 @@ const handleSubmit = async () => {
     ...form,
     group_ids: form.group_ids,
     extra: withUpstreamRequestIdHeader(extra),
-    upstream_billing_probe_enabled: upstreamBillingAutoProbeEnabled.value,
+    upstream_billing_probe_enabled: upstreamBillingProbeSupported.value
+      ? upstreamBillingAutoProbeEnabled.value
+      : undefined,
     auto_pause_on_expired: autoPauseOnExpired.value
   })
 }
@@ -6042,9 +6050,11 @@ const createAccountAndFinish = async (
     rate_multiplier: form.rate_multiplier,
     group_ids: form.group_ids,
     expires_at: form.expires_at,
-    // 上游倍率探测对全部 API-key 平台开放（antigravity upstream 走本 helper）；
-    // 非 apikey 类型（bedrock/oauth）不传，后端不动作。
-    upstream_billing_probe_enabled: type === 'apikey' ? upstreamBillingAutoProbeEnabled.value : undefined,
+    // Only accounts with a supported upstream billing probe identity receive
+    // the managed probe setting.
+    upstream_billing_probe_enabled: isUpstreamBillingProbeAccount({ platform, type })
+      ? upstreamBillingAutoProbeEnabled.value
+      : undefined,
     auto_pause_on_expired: autoPauseOnExpired.value
   })
 }

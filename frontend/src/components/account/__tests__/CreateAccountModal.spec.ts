@@ -230,6 +230,9 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
       type: 'apikey',
       credentials: { api_key: 'seedance-secret', base_url: 'https://provider.example/api/v3' },
     })
+    expect(createAccountMock.mock.calls[0]?.[0]?.upstream_billing_probe_enabled).toBeUndefined()
+    expect(wrapper.find('[data-testid="upstream-billing-auto-probe"]').exists()).toBe(false)
+    expect(probeUpstreamBillingMock).not.toHaveBeenCalled()
     expect(syncUpstreamModelsMock).not.toHaveBeenCalled()
   })
 

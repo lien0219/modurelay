@@ -3304,6 +3304,7 @@ import {
   type OpenAIWSMode,
   resolveOpenAIWSModeFromExtra
 } from '@/utils/openaiWsMode'
+import { isUpstreamBillingProbeAccount as isUpstreamBillingProbeEligible } from '@/utils/upstreamBilling'
 import {
   getPresetMappingsByPlatform,
   commonErrorCodes,
@@ -3482,11 +3483,7 @@ const isCNApiKeyAccount = computed(
 )
 const isUpstreamBillingProbeAccount = computed(() => {
   const account = props.account
-  return Boolean(
-    account &&
-    (account.type === 'apikey' ||
-      (account.type === 'upstream' && account.platform === 'antigravity'))
-  )
+  return Boolean(account && isUpstreamBillingProbeEligible(account))
 })
 const newAPIProbeData = computed(() => props.account?.extra?.upstream_billing_probe?.data)
 const isConfirmedNewAPIUpstream = computed(() => newAPIProbeData.value?.provider === 'new_api')
