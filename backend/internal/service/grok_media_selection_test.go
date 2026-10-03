@@ -108,3 +108,82 @@ func TestGrokVideoStickySelectionIgnoresHealthEscape(t *testing.T) {
 	require.True(t, selection.Acquired)
 	selection.ReleaseFunc()
 }
+
+func TestSelectSeedanceVideoRequestAccountPreservesOwner(test *testing.T) {
+	for _, state := range []string{"available", "full", "unavailable", "wrong group", "wrong platform", "missing credentials", "missing", "invalid id"} {
+		test.Run(state, func(test *testing.T) {
+			groupID := int64(24)
+			ownerID := int64(1)
+			owner := Account{
+				ID: ownerID, Platform: PlatformSeedance, Type: AccountTypeAPIKey,
+				Status: StatusActive, Schedulable: true, Concurrency: 50, GroupIDs: []int64{groupID},
+				Credentials: map[string]any{"api_key": "test-key", "base_url": "https://provider.example/api/v3"},
+			}
+			other := owner
+			other.ID = 2
+			switch state {
+			case "unavailable":
+				until := time.Now().Add(time.Minute)
+				owner.TempUnschedulableUntil = &until
+			case "wrong group":
+				owner.GroupIDs = []int64{25}
+			case "wrong platform":
+				owner.Platform = PlatformOpenAI
+			case "missing credentials":
+				owner.Credentials = map[string]any{}
+			case "invalid id":
+				ownerID = 0
+			}
+			accounts := []Account{owner, other}
+			if state == "missing" {
+				accounts = []Account{other}
+			}
+			var acquired, released []int64
+			cache := &schedulerTestGatewayCache{}
+			configuration := &config.Config{}
+			configuration.Gateway.OpenAIScheduler.StickyEscapeEnabled = true
+			configuration.Gateway.Scheduling.StickySessionWaitTimeout = time.Second
+			configuration.Gateway.Scheduling.StickySessionMaxWaiting = 3
+			gateway := &OpenAIGatewayService{
+				accountRepo: schedulerTestOpenAIAccountRepo{accounts: accounts}, cache: cache, cfg: configuration,
+				concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{
+					acquireResults: map[int64]bool{1: state != "full", 2: true},
+					acquiredIDs:    &acquired, releasedIDs: &released,
+				}),
+			}
+			requestContext := context.Background()
+			require.NoError(test, gateway.BindGrokMediaVideoRequestAccount(requestContext, &groupID, "seedance:task", 10, 20, 1))
+			sessionHash := GrokMediaVideoRequestSessionHash("seedance:task", 10, 20)
+			for range 20 {
+				selection, decision, err := gateway.SelectMediaVideoRequestAccount(requestContext, &groupID, sessionHash, ownerID, "", PlatformSeedance)
+				switch state {
+				case "available":
+					require.NoError(test, err)
+					require.Equal(test, int64(1), selection.Account.ID)
+					require.True(test, selection.Acquired)
+					require.True(test, decision.StickySessionHit)
+					selection.ReleaseFunc()
+				case "full":
+					require.NoError(test, err)
+					require.Equal(test, int64(1), selection.Account.ID)
+					require.False(test, selection.Acquired)
+					require.Nil(test, selection.ReleaseFunc)
+					require.Equal(test, int64(1), selection.WaitPlan.AccountID)
+				default:
+					require.ErrorIs(test, err, ErrNoAvailableAccounts)
+					require.Nil(test, selection)
+				}
+				bound, err := gateway.ResolveGrokMediaVideoRequestAccount(requestContext, &groupID, "seedance:task", 10, 20)
+				require.NoError(test, err)
+				require.Equal(test, int64(1), bound)
+			}
+			require.NotContains(test, acquired, int64(2))
+			require.Empty(test, cache.deletedSessions)
+			if state == "available" {
+				require.Len(test, released, 20)
+			} else {
+				require.Empty(test, released)
+			}
+		})
+	}
+}

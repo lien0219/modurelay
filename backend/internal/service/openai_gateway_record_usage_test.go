@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -67,6 +68,60 @@ func TestOpenAIGatewayServiceRecordUsage_RejectsNilInput(t *testing.T) {
 	svc := &OpenAIGatewayService{}
 	require.Error(t, svc.RecordUsage(context.Background(), nil))
 	require.Error(t, svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{}))
+}
+
+func TestOpenAIGatewayServiceRecordUsage_SeedanceMissingVideoPricingFailsClosed(test *testing.T) {
+	for _, groupPlatform := range []string{PlatformSeedance, PlatformComposite} {
+		test.Run(groupPlatform, func(test *testing.T) {
+			usageRepo := &openAIRecordUsageLogRepoStub{}
+			billingRepo := &openAIRecordUsageBillingRepoStub{}
+			gateway := newOpenAIRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{}, nil)
+			groupID := int64(24)
+			key := &APIKey{ID: 20, UserID: 10, GroupID: &groupID,
+				Group: &Group{ID: groupID, Platform: groupPlatform, RateMultiplier: 1}}
+			input := &OpenAIRecordUsageInput{
+				Result: &OpenAIForwardResult{RequestID: "grok-video:seedance:task", Model: "seedance-2.0",
+					VideoCount: 1, VideoResolution: "720p", VideoDurationSeconds: 5},
+				APIKey: key, User: &User{ID: 10}, Account: &Account{ID: 1, Platform: PlatformSeedance},
+				QuotaPlatform: PlatformSeedance,
+			}
+			require.False(test, gateway.HasVideoPricingForRequest(context.Background(), key, input.Result.Model, "720p"))
+			err := gateway.RecordUsage(context.Background(), input)
+			require.ErrorContains(test, err, "video pricing")
+			require.Zero(test, billingRepo.calls)
+			require.Zero(test, usageRepo.calls)
+		})
+	}
+}
+
+func TestOpenAIGatewayServiceRecordUsage_SeedanceConfiguredVideoPricing(test *testing.T) {
+	for _, price := range []float64{0.25, 0} {
+		test.Run(fmt.Sprintf("price=%g", price), func(test *testing.T) {
+			usageRepo := &openAIRecordUsageLogRepoStub{}
+			billingRepo := &openAIRecordUsageBillingRepoStub{}
+			gateway := newOpenAIRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{}, nil)
+			groupID := int64(24)
+			key := &APIKey{ID: 20, UserID: 10, GroupID: &groupID, Group: &Group{
+				ID: groupID, Platform: PlatformSeedance, RateMultiplier: 3,
+				VideoRateIndependent: true, VideoRateMultiplier: 2,
+				VideoModelPrices: map[string]map[string]float64{"seedance-2.0": {"720p": price}},
+			}}
+			err := gateway.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+				Result: &OpenAIForwardResult{RequestID: "grok-video:seedance:task", Model: "seedance-2.0",
+					VideoCount: 1, VideoResolution: "720p", VideoDurationSeconds: 5},
+				APIKey: key, User: &User{ID: 10}, Account: &Account{ID: 1, Platform: PlatformSeedance},
+				QuotaPlatform: PlatformSeedance,
+			})
+			require.NoError(test, err)
+			require.NotNil(test, usageRepo.lastLog)
+			require.InDelta(test, price*5, usageRepo.lastLog.TotalCost, 1e-12)
+			require.InDelta(test, price*5*2, usageRepo.lastLog.ActualCost, 1e-12)
+			require.Equal(test, 1, usageRepo.lastLog.VideoCount)
+			require.NotNil(test, billingRepo.lastCmd)
+			require.Equal(test, int64(1), billingRepo.lastCmd.AccountID)
+			require.Equal(test, "grok-video:seedance:task", billingRepo.lastCmd.RequestID)
+		})
+	}
 }
 
 func TestRecordCyberPolicyUsageLog_BillsRealUpstreamTokens(t *testing.T) {

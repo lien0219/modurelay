@@ -235,6 +235,10 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	if result.ServiceTier != nil {
 		serviceTier = strings.TrimSpace(*result.ServiceTier)
 	}
+	if result.VideoCount > 0 && ((account != nil && account.Platform == PlatformSeedance) || input.QuotaPlatform == PlatformSeedance) &&
+		!s.HasVideoPricingForRequest(ctx, apiKey, billingModel, result.VideoResolution) {
+		return errors.New("Seedance video pricing is not configured for this model and resolution")
+	}
 	longContextBillingGate := openAILongContextBillingGate(billingAccount)
 	cost, err = s.calculateOpenAIRecordUsageCost(
 		ctx,

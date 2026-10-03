@@ -96,3 +96,50 @@ func TestSeedanceHandlerLifecycleAndOwnership(t *testing.T) {
 	}
 	require.Len(t, bindings.billed, 1)
 }
+
+func TestFirstClassSeedanceLookupsKeepOriginalAccount(test *testing.T) {
+	for _, endpoint := range []string{"native status", "native delete", "compatible status", "compatible content"} {
+		test.Run(endpoint, func(test *testing.T) {
+			handler, slots, bindings, upstream := newGrokMediaSlotHandler(test, false, false, service.PlatformSeedance)
+			groupID := int64(24)
+			require.NoError(test, handler.gatewayService.BindGrokMediaVideoRequestAccount(context.Background(), &groupID, "seedance:task-ark", 10, 20, 1))
+			bindings.writes = 0
+			upstream.call = func(request *http.Request, accountID int64) (*http.Response, error) {
+				require.Equal(test, int64(1), accountID)
+				require.Equal(test, "/api/v3/contents/generations/tasks/task-ark", request.URL.Path)
+				return &http.Response{
+					StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}},
+					Body: io.NopCloser(strings.NewReader(`{"id":"task-ark","status":"succeeded","content":{"video_url":"https://videos.example.com/task.mp4"}}`)),
+				}, nil
+			}
+			for range 20 {
+				requestContext, recorder := grokMediaSlotContext(context.Background(), false)
+				key, _ := middleware.GetAPIKeyFromContext(requestContext)
+				key.Group.Platform = service.PlatformSeedance
+				requestContext.Params = gin.Params{{Key: "request_id", Value: "seedance:task-ark"}, {Key: "task_id", Value: "task-ark"}}
+				switch endpoint {
+				case "native status":
+					handler.SeedanceTasks(requestContext)
+				case "native delete":
+					requestContext.Request.Method = http.MethodDelete
+					handler.SeedanceTasks(requestContext)
+				case "compatible status":
+					handler.GrokVideoStatus(requestContext)
+				case "compatible content":
+					handler.GrokVideoContent(requestContext)
+				}
+				requestContext.Writer.WriteHeaderNow()
+				if endpoint == "compatible content" {
+					require.Equal(test, http.StatusFound, recorder.Code, recorder.Body.String())
+					require.Equal(test, "https://videos.example.com/task.mp4", recorder.Header().Get("Location"))
+				} else {
+					require.Equal(test, http.StatusOK, recorder.Code, recorder.Body.String())
+				}
+				slots.assertReleased(test)
+			}
+			require.Equal(test, 20, upstream.calls)
+			require.Zero(test, bindings.writes)
+			require.Empty(test, bindings.billed)
+		})
+	}
+}
