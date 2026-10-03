@@ -31,6 +31,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/gin-gonic/gin"
@@ -90,6 +91,8 @@ const (
 	defaultGrokVideoTestPrompt   = "A red ball bouncing once on a white floor, short simple motion."
 	defaultGrokSearchTestQuery   = "xAI Grok"
 	defaultGrokTTSTestText       = "Hello from Sub2API account connectivity test."
+	defaultSeedanceTestModel     = "seedance-2.0"
+	defaultSeedanceTestPrompt    = "A short connectivity test video with a red ball on a white floor."
 
 	// Grok account-test modes (admin UI). Empty / default / text = Responses probe.
 	// image/video may also be inferred from model_id when mode is default.
@@ -427,27 +430,173 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 	}
 
 	if account.Platform == PlatformSeedance {
-		return s.testSeedanceAccountConfiguration(c, account, modelID)
+		return s.testSeedanceAccountConnection(c, account, modelID)
 	}
 
 	return s.testClaudeAccountConnection(c, account, modelID)
 }
 
-func (s *AccountTestService) testSeedanceAccountConfiguration(c *gin.Context, account *Account, modelID string) error {
+func (s *AccountTestService) testSeedanceAccountConnection(c *gin.Context, account *Account, modelID string) error {
 	if err := validateSeedanceAccountConfig(account.Platform, account.Type, account.Credentials); err != nil {
 		return s.sendErrorAndEnd(c, "Seedance configuration is invalid")
 	}
-	if _, err := s.validateUpstreamBaseURL(account.GetCredential("base_url")); err != nil {
+	baseURL, err := s.validateUpstreamBaseURL(account.GetCredential("base_url"))
+	if err != nil {
 		return s.sendErrorAndEnd(c, "Seedance Base URL is invalid or disallowed by the upstream URL policy")
 	}
+	testModelID := strings.TrimSpace(modelID)
+	if testModelID == "" {
+		testModelID = defaultSeedanceTestModel
+	}
+	testModelID = strings.TrimSpace(account.GetMappedModel(testModelID))
+	if testModelID == "" {
+		return s.sendErrorAndEnd(c, "Seedance model is empty after account mapping")
+	}
+	apiURL, err := buildSeedanceURL(baseURL, SeedanceEndpointCreate, "")
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to build Seedance request URL: %s", err.Error()))
+	}
+	apiKey := strings.TrimSpace(account.GetCredential("api_key"))
+	if apiKey == "" {
+		return s.sendErrorAndEnd(c, "No API key available")
+	}
+	payloadBytes, err := json.Marshal(map[string]any{
+		"model": testModelID,
+		"content": []map[string]any{{
+			"type": "text",
+			"text": defaultSeedanceTestPrompt,
+		}},
+	})
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Failed to create Seedance test payload")
+	}
 
-	s.sendEvent(c, TestEvent{Type: "test_start", Model: strings.TrimSpace(modelID)})
+	ctx := c.Request.Context()
+	ctx = WithHTTPUpstreamRedirectsDisabled(ctx)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(payloadBytes))
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Failed to create Seedance request")
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	account.ApplyHeaderOverrides(req.Header)
+
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.Writer.Flush()
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
+	s.sendEvent(c, TestEvent{Type: "status", Text: "Creating a Seedance native task for the connectivity test"})
+
+	var tlsProfile *tlsfingerprint.Profile
+	if s.tlsFPProfileService != nil {
+		tlsProfile = s.tlsFPProfileService.ResolveTLSProfile(account)
+	}
+	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, tlsProfile)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Seedance upstream request failed: %s", err.Error()))
+	}
+	if resp == nil {
+		return s.sendErrorAndEnd(c, "Seedance upstream returned an empty response")
+	}
+	defer func() { _ = resp.Body.Close() }()
+	responseBody, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, nil)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to read Seedance upstream response: %s", err.Error()))
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return s.sendErrorAndEnd(c, formatSeedanceTestUpstreamError(resp.StatusCode, responseBody))
+	}
+	if !gjson.ValidBytes(responseBody) || !gjson.ParseBytes(responseBody).IsObject() {
+		return s.sendErrorAndEnd(c, "Seedance upstream returned an invalid JSON response")
+	}
+	taskID := strings.TrimSpace(gjson.GetBytes(responseBody, "id").String())
+	if taskID == "" {
+		taskID = strings.TrimSpace(gjson.GetBytes(responseBody, "task_id").String())
+	}
+	if taskID == "" {
+		return s.sendErrorAndEnd(c, "Seedance upstream response is missing task ID")
+	}
+	status := strings.TrimSpace(gjson.GetBytes(responseBody, "status").String())
+	if status == "" {
+		status = "unknown"
+	}
+	if isSeedanceTestFailureStatus(status) {
+		return s.sendErrorAndEnd(c, formatSeedanceTestTaskError(taskID, status, responseBody))
+	}
+	s.sendEvent(c, TestEvent{
+		Type:   "status",
+		Status: status,
+		Text:   fmt.Sprintf("Seedance task %s accepted with status %s", taskID, status),
+	})
 	s.sendEvent(c, TestEvent{
 		Type: "content",
-		Text: "Seedance configuration is valid. No upstream request was sent.",
+		Text: fmt.Sprintf("Seedance task created: %s (status: %s). Upstream accepted the request; polling was not started.", taskID, status),
 	})
 	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
 	return nil
+}
+
+func isSeedanceTestFailureStatus(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "failed", "cancelled", "canceled", "expired", "deleted":
+		return true
+	default:
+		return false
+	}
+}
+
+func formatSeedanceTestUpstreamError(statusCode int, body []byte) string {
+	code := strings.TrimSpace(compatibleVideoFirstNonEmpty(
+		gjson.GetBytes(body, "error.code").String(),
+		gjson.GetBytes(body, "code").String(),
+	))
+	message := strings.TrimSpace(compatibleVideoFirstNonEmpty(
+		gjson.GetBytes(body, "error.message").String(),
+		gjson.GetBytes(body, "message").String(),
+	))
+	if code != "" && message != "" {
+		return fmt.Sprintf("Seedance upstream returned HTTP %d (%s): %s", statusCode, code, message)
+	}
+	if message != "" {
+		return fmt.Sprintf("Seedance upstream returned HTTP %d: %s", statusCode, message)
+	}
+	detail := strings.TrimSpace(string(body))
+	if len(detail) > 512 {
+		detail = detail[:512] + "..."
+	}
+	if detail == "" {
+		return fmt.Sprintf("Seedance upstream returned HTTP %d", statusCode)
+	}
+	return fmt.Sprintf("Seedance upstream returned HTTP %d: %s", statusCode, detail)
+}
+
+func formatSeedanceTestTaskError(taskID, status string, body []byte) string {
+	code := strings.TrimSpace(compatibleVideoFirstNonEmpty(
+		gjson.GetBytes(body, "error.code").String(),
+		gjson.GetBytes(body, "code").String(),
+	))
+	message := strings.TrimSpace(compatibleVideoFirstNonEmpty(
+		gjson.GetBytes(body, "error.message").String(),
+		gjson.GetBytes(body, "message").String(),
+	))
+	detail := message
+	if code != "" && message != "" {
+		detail = fmt.Sprintf("(%s): %s", code, message)
+	} else if code != "" {
+		detail = "(" + code + ")"
+	}
+	if detail == "" {
+		return fmt.Sprintf("Seedance task %s returned status %s", taskID, status)
+	}
+	return fmt.Sprintf("Seedance task %s returned status %s: %s", taskID, status, detail)
 }
 
 // testOpenCodeGoAccountConnection probes the native endpoint for the selected
