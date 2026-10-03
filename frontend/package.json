@@ -13,6 +13,7 @@
     "typecheck": "vue-tsc --noEmit",
     "test": "vitest",
     "test:run": "vitest run",
+    "test:canvas": "vitest run --config vitest.canvas.config.ts",
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {

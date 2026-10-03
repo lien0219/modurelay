@@ -430,6 +430,7 @@ type GrokVideoPendingBilling struct {
 	UpstreamModel        string `json:"upstream_model,omitempty"`
 	VideoResolution      string `json:"video_resolution,omitempty"`
 	VideoDurationSeconds int    `json:"video_duration_seconds,omitempty"`
+	NativeProtocol       bool   `json:"native_protocol,omitempty"`
 	OriginalModel        string `json:"original_model,omitempty"`
 	// CreatedAt is when the gateway accepted the async create (RFC3339Nano UTC).
 	// duration_ms for deferred billing is measured from this instant until the
@@ -1792,6 +1793,14 @@ func writeGrokMediaResponse(c *gin.Context, resp *http.Response, body []byte, fi
 		contentType = "application/json"
 	}
 	c.Data(resp.StatusCode, contentType, body)
+}
+
+func (s *OpenAIGatewayService) CommitDeferredMediaResponse(c *gin.Context, result *OpenAIForwardResult) {
+	if result == nil || result.DeferredMediaResponse == nil {
+		return
+	}
+	deferred := result.DeferredMediaResponse
+	writeGrokMediaResponse(c, &http.Response{StatusCode: deferred.StatusCode, Header: deferred.Header}, deferred.Body, s.responseHeaderFilter)
 }
 
 func writeGrokMediaContentResponse(c *gin.Context, resp *http.Response) error {

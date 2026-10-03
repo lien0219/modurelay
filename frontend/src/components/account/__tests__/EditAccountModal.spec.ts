@@ -1580,9 +1580,13 @@ describe('EditAccountModal', () => {
     const embeddingsCheckbox = wrapper.get<HTMLInputElement>(
       '[data-testid="openai-endpoint-capability-embeddings"]'
     )
+    const videosCheckbox = wrapper.get<HTMLInputElement>(
+      '[data-testid="openai-endpoint-capability-videos"]'
+    )
 
     expect(chatCheckbox.element.checked).toBe(true)
     expect(embeddingsCheckbox.element.checked).toBe(true)
+    expect(videosCheckbox.element.checked).toBe(false)
 
     await embeddingsCheckbox.setValue(false)
 

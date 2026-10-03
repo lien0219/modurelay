@@ -150,10 +150,10 @@ func (s *OpenAIGatewayService) recoverVideoBillingKey(ctx context.Context, key s
 	if err != nil {
 		return false, err
 	}
-	if terminalStatus && (result == nil || !videoRecoveryResultBillable(pending.RequestID, result)) {
+	if terminalStatus && (result == nil || !videoRecoveryResultBillable(&pending, result)) {
 		return true, nil
 	}
-	if result == nil || !videoRecoveryResultBillable(pending.RequestID, result) {
+	if result == nil || !videoRecoveryResultBillable(&pending, result) {
 		return false, nil
 	}
 
@@ -177,11 +177,12 @@ func (s *OpenAIGatewayService) recoverVideoBillingKey(ctx context.Context, key s
 	return true, nil
 }
 
-func videoRecoveryResultBillable(requestID string, result *OpenAIForwardResult) bool {
+func videoRecoveryResultBillable(pending *GrokVideoPendingBilling, result *OpenAIForwardResult) bool {
 	if result == nil {
 		return false
 	}
-	if strings.HasPrefix(strings.TrimSpace(requestID), "seedance:") {
+	if pending != nil && strings.HasPrefix(strings.TrimSpace(pending.RequestID), "seedance:") &&
+		pending.QuotaPlatform != PlatformSeedance {
 		return result.Usage.OutputTokens > 0
 	}
 	return result.VideoCount > 0
@@ -205,6 +206,8 @@ func (s *OpenAIGatewayService) queryRecoveredVideoStatus(
 	switch {
 	case strings.HasPrefix(requestID, "aistarslab:"):
 		result, err = s.ForwardAIStarsLabOpenAPIVideo(ctx, c, account, GrokMediaEndpointVideoStatus, requestID, nil, "", pending.Model)
+	case strings.HasPrefix(requestID, "seedance:") && pending.NativeProtocol:
+		result, err = s.ForwardSeedance(ctx, c, account, SeedanceEndpointStatus, requestID, nil)
 	case strings.HasPrefix(requestID, "seedance:"):
 		result, err = s.ForwardSeedanceCompatibleVideo(ctx, c, account, GrokMediaEndpointVideoStatus, requestID, nil, "", pending.Model)
 	case account.Platform == PlatformGrok:
@@ -225,7 +228,7 @@ func videoRecoveryTerminalStatus(body []byte) bool {
 	)))
 	switch status {
 	case "completed", "done", "succeeded", "success", "finished",
-		"failed", "error", "expired", "canceled", "cancelled", "rejected":
+		"failed", "error", "expired", "canceled", "cancelled", "deleted", "rejected":
 		return true
 	}
 	// AIStarsLab/OpenAPI adapter rewrites numeric upstream states to strings
@@ -299,12 +302,9 @@ func (s *OpenAIGatewayService) recordRecoveredVideoUsage(
 	merged.ResponseID = firstNonEmpty(merged.ResponseID, pending.RequestID)
 	merged.RequestID = StableGrokVideoBillingRequestID(pending.RequestID)
 	merged.Duration = GrokVideoE2EDuration(pending.CreatedAt, time.Now())
-	if strings.HasPrefix(strings.TrimSpace(pending.RequestID), "seedance:") {
-		merged.ForceTokenBilling = true
-		merged.VideoCount = 1
-	} else {
-		merged.VideoCount = 1
-	}
+	merged.VideoCount = 1
+	merged.ForceTokenBilling = strings.HasPrefix(strings.TrimSpace(pending.RequestID), "seedance:") &&
+		pending.QuotaPlatform != PlatformSeedance
 
 	pricingAt := time.Time{}
 	if created := strings.TrimSpace(pending.CreatedAt); created != "" {

@@ -206,6 +206,12 @@ func TestCompositeCodexControlPathsUseResponsesRoutes(t *testing.T) {
 	}
 }
 
+func TestCompositeVideoRouteEndpointDetection(t *testing.T) {
+	for _, path := range []string{"/v1/videos", "/v1/videos/generations", "/v1/videos/task-1/content"} {
+		require.Equal(t, service.CompositeRouteEndpointVideos, compositeRouteEndpointForPath(path), "path=%s", path)
+	}
+}
+
 func TestCompositeTargetPlatformMiddlewareUsesExplicitRouteForMultipartImages(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()

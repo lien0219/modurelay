@@ -12,7 +12,7 @@ import (
 )
 
 func TestCompatibleVideoPlatformAndCapability(t *testing.T) {
-	for _, platform := range []string{PlatformOpenAI, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo} {
+	for _, platform := range []string{PlatformOpenAI, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo, PlatformSeedance} {
 		if !IsOpenAICompatibleVideoPlatform(platform) {
 			t.Fatalf("expected %s to support compatible video", platform)
 		}

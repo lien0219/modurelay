@@ -183,7 +183,12 @@ export default {
         codexCli: 'Codex CLI',
         codexCliWs: 'Codex CLI (WebSocket)',
         grokCli: 'Grok CLI',
+        videoApi: '视频 API',
         opencode: 'OpenCode'
+      },
+      seedance: {
+        description: '通过 OpenAI 兼容的 /v1/videos 接口提交异步视频生成请求。',
+        note: '请将模型占位值替换为此分组已启用的模型。请求会创建异步任务，可继续查询状态和获取内容。'
       },
       antigravity: {
         description: '为 Antigravity 分组配置 API 访问。请根据您使用的客户端选择对应的配置方式。',

@@ -162,6 +162,27 @@ func TestCompositeRouteResolverOwnershipLookupErrorFallsBackOnlyForDetectableMod
 	require.False(t, unknown.Matched)
 }
 
+func TestCompositeRouteResolverExplicitSeedanceVideoRoute(t *testing.T) {
+	resolver := NewCompositeRouteResolver(compositeRouteRepoStub{
+		routes: []CompositeModelRoute{{
+			ID: 1, GroupID: 7, PublicModel: "kling-public", MatchType: CompositeRouteMatchExact,
+			TargetPlatform: PlatformSeedance, UpstreamModel: "vendor-kling-3",
+			Endpoint: CompositeRouteEndpointVideos, Enabled: true,
+		}},
+	})
+
+	decision, err := resolver.Resolve(context.Background(), 7, "kling-public", CompositeRouteEndpointVideos)
+	require.NoError(t, err)
+	require.True(t, decision.Matched)
+	require.Equal(t, PlatformSeedance, decision.TargetPlatform)
+	require.Equal(t, "vendor-kling-3", decision.UpstreamModel)
+	require.Equal(t, CompositeRouteEndpointVideos, decision.Endpoint)
+
+	otherEndpoint, err := resolver.Resolve(context.Background(), 7, "kling-public", CompositeRouteEndpointResponses)
+	require.NoError(t, err)
+	require.False(t, otherEndpoint.Matched)
+}
+
 func TestCompositeRouteResolverPrefersEndpointSpecificLongestPrefix(t *testing.T) {
 	resolver := NewCompositeRouteResolver(compositeRouteRepoStub{
 		routes: []CompositeModelRoute{

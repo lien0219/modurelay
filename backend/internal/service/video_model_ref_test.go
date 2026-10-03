@@ -42,7 +42,7 @@ func TestQualifiedVideoModelFallsBackToCanonicalAccountMapping(t *testing.T) {
 
 func TestDetectModelPlatformQualifiedVideoModels(t *testing.T) {
 	cases := []struct{ model, platform string }{
-		{"48:seedance-2.0", PlatformOpenAI},
+		{"48:seedance-2.0", PlatformSeedance},
 		{"51:grok-imagine-video-1.5", PlatformGrok},
 		{"59:minimax-hailuo", PlatformMiniMax},
 	}

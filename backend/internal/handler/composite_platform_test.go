@@ -23,6 +23,17 @@ func TestCompositeTargetPlatformAllowedResolvesKnownAllowedModel(t *testing.T) {
 	require.Equal(t, service.PlatformOpenAI, platform)
 }
 
+func TestCompositeVideoLookupRestoresBoundPlatformForUsage(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest("GET", "/v1/videos/seedance:task-1", nil)
+	apiKey := &service.APIKey{Group: &service.Group{Platform: service.PlatformComposite}}
+
+	require.Empty(t, service.QuotaPlatform(c.Request.Context(), apiKey))
+	restoreCompositeVideoLookupPlatform(c, apiKey, service.PlatformSeedance)
+	require.Equal(t, service.PlatformSeedance, service.QuotaPlatform(c.Request.Context(), apiKey))
+}
+
 func TestOpenAICompatibleTextTargetAllowsCompositeProviders(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

@@ -1816,6 +1816,8 @@ const qualityTargetLabel = (target: string) => {
       return 'DeepSeek'
     case 'minimax':
       return 'MiniMax'
+    case 'seedance':
+      return 'Seedance'
     default:
       return target
   }

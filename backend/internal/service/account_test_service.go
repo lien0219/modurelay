@@ -426,7 +426,28 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 		return s.testOpenCodeGoAccountConnection(c, account, modelID, prompt)
 	}
 
+	if account.Platform == PlatformSeedance {
+		return s.testSeedanceAccountConfiguration(c, account, modelID)
+	}
+
 	return s.testClaudeAccountConnection(c, account, modelID)
+}
+
+func (s *AccountTestService) testSeedanceAccountConfiguration(c *gin.Context, account *Account, modelID string) error {
+	if err := validateSeedanceAccountConfig(account.Platform, account.Type, account.Credentials); err != nil {
+		return s.sendErrorAndEnd(c, "Seedance configuration is invalid")
+	}
+	if _, err := s.validateUpstreamBaseURL(account.GetCredential("base_url")); err != nil {
+		return s.sendErrorAndEnd(c, "Seedance Base URL is invalid or disallowed by the upstream URL policy")
+	}
+
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: strings.TrimSpace(modelID)})
+	s.sendEvent(c, TestEvent{
+		Type: "content",
+		Text: "Seedance configuration is valid. No upstream request was sent.",
+	})
+	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+	return nil
 }
 
 // testOpenCodeGoAccountConnection probes the native endpoint for the selected

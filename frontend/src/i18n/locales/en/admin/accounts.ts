@@ -109,6 +109,7 @@ export default {
         deepseek: 'DeepSeek',
         minimax: 'MiniMax',
         opencode_go: 'OpenCode',
+        seedance: 'Seedance',
       },
       cnProviders: {
         accountMode: {
@@ -778,6 +779,7 @@ export default {
         capabilityChatCompletionsAuto: 'Chat Completions (auto probe)',
         capabilityEmbeddings: 'Embeddings',
         capabilityVideos: 'Videos API',
+        capabilitySeedanceLegacy: 'Seedance (legacy)',
         responsesStatusAutoSupported: 'Auto probe: Responses',
         responsesStatusAutoUnsupported: 'Auto probe: Chat Completions',
         responsesStatusAutoUnknown: 'Auto probe: unknown',

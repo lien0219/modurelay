@@ -360,6 +360,8 @@ const defaultClientTab = computed(() => {
   switch (props.platform) {
     case 'openai':
       return 'codex'
+    case 'seedance':
+      return 'seedance-video'
     case 'grok':
       return 'grok'
     case 'gemini':
@@ -465,6 +467,8 @@ const clientTabs = computed((): TabConfig[] => {
     return [{ id: 'claude', label: t('keys.useKeyModal.cliTabs.claudeCode'), icon: TerminalIcon }]
   }
   switch (props.platform) {
+    case 'seedance':
+      return [{ id: 'seedance-video', label: t('keys.useKeyModal.cliTabs.videoApi'), icon: TerminalIcon }]
     case 'openai': {
       const tabs: TabConfig[] = [
         { id: 'codex', label: t('keys.useKeyModal.cliTabs.codexCli'), icon: TerminalIcon },
@@ -526,7 +530,7 @@ const openaiTabs: TabConfig[] = [
   { id: 'windows', label: 'Windows', icon: WindowsIcon }
 ]
 
-const showShellTabs = computed(() => activeClientTab.value !== 'opencode')
+const showShellTabs = computed(() => activeClientTab.value !== 'opencode' && activeClientTab.value !== 'seedance-video')
 
 const showCodexAuthMode = computed(() =>
   props.platform === 'openai' &&
@@ -551,6 +555,8 @@ const platformDescription = computed(() => {
     return t('keys.useKeyModal.routedCodex.description')
   }
   switch (props.platform) {
+    case 'seedance':
+      return t('keys.useKeyModal.seedance.description')
     case 'openai':
       if (activeClientTab.value === 'claude') {
         return t('keys.useKeyModal.description')
@@ -595,6 +601,8 @@ const platformNote = computed(() => {
     return t('keys.useKeyModal.routedCodex.note')
   }
   switch (props.platform) {
+    case 'seedance':
+      return t('keys.useKeyModal.seedance.note')
     case 'openai':
       if (activeClientTab.value === 'claude') {
         return t('keys.useKeyModal.note')
@@ -765,6 +773,28 @@ const currentFiles = computed((): FileConfig[] => {
   }
 
   switch (props.platform) {
+    case 'seedance':
+      return [{
+        path: 'seedance-video.http',
+        content: `POST ${apiBase}/videos
+Authorization: Bearer ${apiKey}
+Content-Type: application/json
+
+{
+  "model": "your-configured-model",
+  "prompt": "A short video prompt",
+  "seconds": 5,
+  "resolution": "720p"
+}
+
+###
+GET ${apiBase}/videos/{{task_id}}
+Authorization: Bearer ${apiKey}
+
+###
+GET ${apiBase}/videos/{{task_id}}/content
+Authorization: Bearer ${apiKey}`
+      }]
     case 'openai':
       if (activeClientTab.value === 'claude') {
         // Anthropic clients append /v1/messages themselves.
@@ -1283,6 +1313,7 @@ function generateRoutedCodexFiles(
     deepseek: 'DeepSeek',
     minimax: 'MiniMax',
     opencode_go: 'OpenCode',
+    seedance: 'Seedance',
     composite: 'Composite'
   }
   const label = labels[platform]

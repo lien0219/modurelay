@@ -1844,6 +1844,11 @@ func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapa
 		return false
 	}
 	if capability == OpenAIEndpointCapabilitySeedance {
+		if a.Platform == PlatformSeedance {
+			return a.Type == AccountTypeAPIKey &&
+				strings.TrimSpace(a.GetCredential("api_key")) != "" &&
+				strings.TrimSpace(a.GetCredential("base_url")) != ""
+		}
 		configured, _ := a.openAIEndpointCapabilitySet()
 		return configured["seedance"] && a.Platform == PlatformOpenAI && a.Type == AccountTypeAPIKey &&
 			strings.TrimSpace(a.GetCredential("base_url")) != ""

@@ -107,6 +107,8 @@ func DetectModelPlatform(model string) (string, bool) {
 		switch provider {
 		case "anthropic", "claude":
 			return PlatformAnthropic, true
+		case "seedance":
+			return PlatformSeedance, true
 		case "openai", "chatgpt":
 			return PlatformOpenAI, true
 		case "google", "google-ai-studio", "gemini":
@@ -131,8 +133,9 @@ func DetectModelPlatform(model string) (string, bool) {
 	case strings.HasPrefix(normalized, "anthropic.claude-"),
 		strings.HasPrefix(normalized, "claude-"):
 		return PlatformAnthropic, true
-	case strings.HasPrefix(normalized, "seedance-"),
-		strings.HasPrefix(normalized, "gpt-"),
+	case strings.HasPrefix(normalized, "seedance-"):
+		return PlatformSeedance, true
+	case strings.HasPrefix(normalized, "gpt-"),
 		strings.HasPrefix(normalized, "chatgpt-"),
 		strings.HasPrefix(normalized, "codex-"),
 		strings.HasPrefix(normalized, "text-embedding-"),
@@ -158,6 +161,8 @@ func DetectModelPlatform(model string) (string, bool) {
 		return PlatformZhipu, true
 	case strings.HasPrefix(normalized, "deepseek-"):
 		return PlatformDeepseek, true
+	case normalized == "minimax-video" || strings.HasPrefix(normalized, "minimax-video-"):
+		return "", false
 	case strings.HasPrefix(normalized, "minimax-"),
 		strings.HasPrefix(normalized, "abab5"),
 		strings.HasPrefix(normalized, "abab6"),
@@ -210,7 +215,8 @@ func (s *GatewayService) resolveCompositeRouteDecision(ctx context.Context, grou
 func isConcreteRequestPlatform(platform string) bool {
 	switch platform {
 	case PlatformAnthropic, PlatformOpenAI, PlatformGemini, PlatformAntigravity, PlatformGrok,
-		PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo:
+		PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo,
+		PlatformSeedance:
 		return true
 	default:
 		return false

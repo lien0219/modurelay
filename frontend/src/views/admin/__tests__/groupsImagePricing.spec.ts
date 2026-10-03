@@ -18,8 +18,9 @@ describe("groups image pricing platform support", () => {
     expect(imagePricingPlatforms.has("grok")).toBe(true);
   });
 
-  it("enables video pricing controls for Grok only", () => {
+	it("enables video pricing controls for Grok and Seedance", () => {
     expect(supportsVideoPricingPlatform("grok")).toBe(true);
+		expect(supportsVideoPricingPlatform("seedance")).toBe(true);
     expect(supportsVideoPricingPlatform("openai")).toBe(false);
   });
 
@@ -53,5 +54,7 @@ describe("groups image pricing platform support", () => {
     expect(getImagePricePlaceholder("openai", "image_price_1k")).toBe("0.134");
     expect(getDefaultImagePreviewPrice("openai", "image_price_2k")).toBe(0.201);
     expect(getDefaultVideoPreviewPrice("openai", "video_price_480p")).toBeNull();
+		expect(getVideoPricePlaceholder("seedance", "video_price_480p")).toBe("");
+		expect(getDefaultVideoPreviewPrice("seedance", "video_price_480p")).toBeNull();
   });
 });

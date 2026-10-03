@@ -981,6 +981,7 @@ export default {
         deepseek: 'DeepSeek',
         minimax: 'MiniMax',
         opencode_go: 'OpenCode',
+        seedance: 'Seedance',
         composite: 'Composite',
       },
       saving: '保存中...',
@@ -1085,9 +1086,15 @@ export default {
       videoPricing: {
         title: '视频生成计费',
         description:
-          '配置 Grok 视频生成的每秒单价（USD/秒），留空则使用默认每秒价（grok-imagine-video：480p $0.05/s、720p $0.07/s；video-1.5：480p $0.08/s、720p $0.14/s、1080p $0.25/s）',
+          '配置视频每秒价格（USD/秒）。Grok 未配置时使用其公开默认价；Seedance 没有内置默认价，处理请求前必须配置模型价或分辨率价。',
         modelOverridesTitle: '按模型覆盖视频价格',
-        modelOverridesDescription: '已填写的单元格会覆盖该模型族的平面分辨率价格。video-1.5 的 preview 与 legacy 别名共用同一模型族；留空则回退到平面分辨率价格。',
+        modelOverridesDescription: '模型价格优先于分辨率价格；模型价留空时回退到分辨率价格。可添加供应商支持的模型 ID。',
+        addModel: '添加模型',
+        modelName: '模型 ID',
+        modelNamePlaceholder: '输入供应商模型 ID',
+        modelAlreadyExists: '该模型已存在价格行。',
+        seedancePricingRequired: 'Seedance 请求必须配置模型价或分辨率价；没有可用价格时请求会被拒绝。',
+        removeModel: '删除模型价格',
         independentMultiplier: '视频倍率独立',
         videoMultiplier: '视频独立倍率',
         modeHint:

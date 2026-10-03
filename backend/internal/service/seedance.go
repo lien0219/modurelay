@@ -32,6 +32,7 @@ func ParseSeedanceRequest(body []byte) (GrokMediaRequestInfo, error) {
 	if !gjson.ValidBytes(body) || !gjson.ParseBytes(body).IsObject() {
 		return info, fmt.Errorf("request body must be a JSON object")
 	}
+	info = ParseGrokMediaRequest("application/json", body)
 	model := gjson.GetBytes(body, "model")
 	if model.Type != gjson.String || strings.TrimSpace(model.String()) == "" {
 		return info, fmt.Errorf("model is required")
@@ -74,7 +75,7 @@ func buildSeedanceURL(base string, endpoint GrokMediaEndpoint, taskID string) (s
 // future fields. Only model is rewritten using the account's configured mapping.
 func (s *OpenAIGatewayService) ForwardSeedance(ctx context.Context, c *gin.Context, account *Account, endpoint GrokMediaEndpoint, taskID string, body []byte) (*OpenAIForwardResult, error) {
 	if !account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilitySeedance) || !endpoint.IsSeedance() {
-		return nil, fmt.Errorf("seedance requires an OpenAI API key account with a custom base URL")
+		return nil, fmt.Errorf("seedance requires a Seedance API key account or a legacy OpenAI API key account with Seedance capability")
 	}
 	base, err := s.validateUpstreamBaseURL(account.GetCredential("base_url"))
 	if err != nil {
@@ -85,10 +86,12 @@ func (s *OpenAIGatewayService) ForwardSeedance(ctx context.Context, c *gin.Conte
 		return nil, err
 	}
 	model, upstreamModel := "", ""
+	var info GrokMediaRequestInfo
 	method := http.MethodGet
 	switch endpoint {
 	case SeedanceEndpointCreate:
-		info, parseErr := ParseSeedanceRequest(body)
+		var parseErr error
+		info, parseErr = ParseSeedanceRequest(body)
 		if parseErr != nil {
 			return nil, parseErr
 		}
@@ -135,21 +138,45 @@ func (s *OpenAIGatewayService) ForwardSeedance(ctx context.Context, c *gin.Conte
 		writeGrokMediaResponse(c, resp, responseBody, s.responseHeaderFilter)
 		return nil, fmt.Errorf("seedance upstream status %d", resp.StatusCode)
 	}
-	result := &OpenAIForwardResult{Model: model, BillingModel: model, UpstreamModel: upstreamModel, Duration: time.Since(started), ResponseHeaders: resp.Header.Clone()}
+	result := &OpenAIForwardResult{
+		Model: model, BillingModel: model, UpstreamModel: upstreamModel,
+		Duration: time.Since(started), ResponseHeaders: resp.Header.Clone(),
+	}
 	if endpoint == SeedanceEndpointCreate {
+		result.VideoResolution = info.Resolution
+		result.VideoDurationSeconds = info.DurationSeconds
 		id := strings.TrimSpace(gjson.GetBytes(responseBody, "id").String())
 		if id == "" {
 			return nil, fmt.Errorf("seedance create response missing task ID")
 		}
 		result.ResponseID = SeedanceTaskKey(id)
+		result.DeferredMediaResponse = &DeferredMediaResponse{
+			StatusCode: resp.StatusCode,
+			Header:     resp.Header.Clone(),
+			Body:       append([]byte(nil), responseBody...),
+		}
 	}
 	if endpoint == SeedanceEndpointStatus {
 		result.ResponseID = taskID
 		result.UpstreamModel = gjson.GetBytes(responseBody, "model").String()
-		if gjson.GetBytes(responseBody, "status").String() == "succeeded" {
+		videoURL := strings.TrimSpace(compatibleVideoFirstNonEmpty(
+			gjson.GetBytes(responseBody, "content.video_url").String(),
+			gjson.GetBytes(responseBody, "video_url").String(),
+		))
+		if videoURL != "" {
+			if _, err := validateSeedanceVideoResultURL(videoURL); err != nil {
+				return nil, err
+			}
+		}
+		if strings.EqualFold(strings.TrimSpace(gjson.GetBytes(responseBody, "status").String()), "succeeded") && videoURL != "" {
+			result.VideoCount = 1
+			result.VideoResolution = strings.TrimSpace(gjson.GetBytes(responseBody, "resolution").String())
+			result.VideoDurationSeconds = int(gjson.GetBytes(responseBody, "duration").Int())
 			result.Usage.OutputTokens = max(0, int(gjson.GetBytes(responseBody, "usage.completion_tokens").Int()))
 		}
 	}
-	writeGrokMediaResponse(c, resp, responseBody, s.responseHeaderFilter)
+	if endpoint != SeedanceEndpointCreate {
+		writeGrokMediaResponse(c, resp, responseBody, s.responseHeaderFilter)
+	}
 	return result, nil
 }

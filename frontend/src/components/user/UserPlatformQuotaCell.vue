@@ -29,12 +29,10 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { PlatformQuotaItem, PlatformQuotaPlatform } from '@/api/admin/users'
+import { PLATFORM_QUOTA_PLATFORMS, type PlatformQuotaItem } from '@/api/admin/users'
 
 const props = defineProps<{ quotas?: PlatformQuotaItem[] }>()
 const { t } = useI18n()
-
-const PLATFORM_ORDER: PlatformQuotaPlatform[] = ['anthropic', 'openai', 'gemini', 'antigravity', 'grok']
 
 // 仅展示「至少一档限额非空」的平台（配额列，非用量列）
 const configured = computed(() => {
@@ -47,7 +45,7 @@ const configured = computed(() => {
         q.monthly_limit_usd != null
     )
     .slice()
-    .sort((a, b) => PLATFORM_ORDER.indexOf(a.platform) - PLATFORM_ORDER.indexOf(b.platform))
+    .sort((a, b) => PLATFORM_QUOTA_PLATFORMS.indexOf(a.platform) - PLATFORM_QUOTA_PLATFORMS.indexOf(b.platform))
 })
 
 // 去尾零、最多 2 位小数：100→"100"，90.5→"90.5"，0.42→"0.42"

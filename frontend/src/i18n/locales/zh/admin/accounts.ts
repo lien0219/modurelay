@@ -418,6 +418,7 @@ export default {
         deepseek: 'DeepSeek',
         minimax: 'MiniMax',
         opencode_go: 'OpenCode',
+        seedance: 'Seedance',
       },
       cnProviders: {
         accountMode: {
@@ -890,6 +891,7 @@ export default {
         capabilityChatCompletionsAuto: 'Chat Completions（自动探测）',
         capabilityEmbeddings: 'Embeddings',
         capabilityVideos: '视频 Videos API',
+        capabilitySeedanceLegacy: 'Seedance（旧版兼容）',
         responsesStatusAutoSupported: '自动探测：Responses',
         responsesStatusAutoUnsupported: '自动探测：Chat Completions',
         responsesStatusAutoUnknown: '自动探测：未探测',

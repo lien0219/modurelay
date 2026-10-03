@@ -66,12 +66,31 @@ export function serializeVideoModelPrices(form: VideoModelPricesForm): VideoMode
   return result
 }
 
-export function videoModelPriceFamilyRows(form: VideoModelPricesForm) {
+export function videoModelPriceFamilyRows(form: VideoModelPricesForm, includeDefaultFamilies = true) {
   const known = new Set<string>(grokVideoPriceFamilies.map(({ key }) => key))
+  const defaults = includeDefaultFamilies
+    ? grokVideoPriceFamilies
+    : grokVideoPriceFamilies.filter(({ key }) =>
+        Object.values(form[key] ?? {}).some((value) => normalizePrice(value) !== null)
+      )
   const extra = Object.keys(form)
     .map(normalizeFamily)
     .filter((family) => family && !known.has(family))
     .sort()
-    .map((key) => ({ key, label: key }))
-  return [...grokVideoPriceFamilies, ...extra]
+    .map((key) => ({ key, label: key, removable: true }))
+  return [
+    ...defaults.map((family) => ({ ...family, removable: false })),
+    ...extra
+  ]
+}
+
+export function addVideoModelPriceFamily(form: VideoModelPricesForm, value: string): string {
+  const family = normalizeFamily(value)
+  if (!family || Object.prototype.hasOwnProperty.call(form, family)) return ""
+  form[family] = emptyTiers()
+  return family
+}
+
+export function removeVideoModelPriceFamily(form: VideoModelPricesForm, value: string): void {
+  delete form[normalizeFamily(value)]
 }

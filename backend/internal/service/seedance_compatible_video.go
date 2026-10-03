@@ -6,13 +6,43 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 )
+
+func validateSeedanceVideoResultURL(raw string) (string, error) {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || !parsed.IsAbs() || !strings.EqualFold(parsed.Scheme, "https") || parsed.Host == "" ||
+		parsed.User != nil || parsed.Opaque != "" || parsed.Fragment != "" {
+		return "", fmt.Errorf("seedance status returned an unsupported video content URL")
+	}
+
+	host := strings.TrimSuffix(strings.ToLower(parsed.Hostname()), ".")
+	if host == "" || strings.Contains(host, "%") {
+		return "", fmt.Errorf("seedance status returned an unsupported video content URL")
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		if ipv4 := ip.To4(); ipv4 != nil {
+			if ipv4[0] == 100 && ipv4[1] >= 64 && ipv4[1] <= 127 {
+				return "", fmt.Errorf("seedance status returned an unsupported video content URL")
+			}
+			host = ipv4.String()
+		}
+	}
+	if urlvalidator.IsBlockedHost(host) || !strings.Contains(host, ".") || strings.HasSuffix(host, ".internal") ||
+		strings.HasSuffix(host, ".local") || strings.HasSuffix(host, ".home.arpa") || strings.HasSuffix(host, ".arpa") ||
+		strings.HasSuffix(host, ".test") || strings.HasSuffix(host, ".invalid") || strings.HasSuffix(host, ".example") {
+		return "", fmt.Errorf("seedance status returned an unsupported video content URL")
+	}
+	return parsed.String(), nil
+}
 
 func prepareSeedanceCompatibleCreateBody(account *Account, body []byte, contentType, routingModel string) ([]byte, GrokMediaRequestInfo, string, error) {
 	if account == nil {
@@ -139,7 +169,7 @@ func seedanceCompatibleStatus(status string) string {
 		return "in_progress"
 	case "succeeded":
 		return "completed"
-	case "failed", "cancelled", "canceled", "expired":
+	case "failed", "cancelled", "canceled", "expired", "deleted":
 		return "failed"
 	default:
 		return "queued"
@@ -184,19 +214,24 @@ func (s *OpenAIGatewayService) ForwardSeedanceCompatibleVideo(
 			return nil, fmt.Errorf("seedance create response missing task ID")
 		}
 		publicID := SeedanceTaskKey(rawID)
-		response := gin.H{}
-		response["id"] = publicID
-		response["object"] = "video"
-		response["model"] = info.Model
-		response["status"] = "queued"
-		response["progress"] = 0
-		response["created_at"] = time.Now().Unix()
-		c.JSON(http.StatusOK, response)
+		response := gin.H{
+			"id": publicID, "object": "video", "model": info.Model,
+			"status": "queued", "progress": 0, "created_at": time.Now().Unix(),
+		}
+		responseBody, err = json.Marshal(response)
+		if err != nil {
+			return nil, err
+		}
 		return &OpenAIForwardResult{
 			ResponseID: publicID, Model: info.Model, BillingModel: info.Model,
 			UpstreamModel: upstreamModel, ResponseHeaders: headers,
 			Duration: time.Since(started), VideoResolution: info.Resolution,
 			VideoDurationSeconds: info.DurationSeconds,
+			DeferredMediaResponse: &DeferredMediaResponse{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       responseBody,
+			},
 		}, nil
 
 	case GrokMediaEndpointVideoStatus, GrokMediaEndpointVideoContent:
@@ -211,6 +246,12 @@ func (s *OpenAIGatewayService) ForwardSeedanceCompatibleVideo(
 		}
 		status := seedanceCompatibleStatus(gjson.GetBytes(responseBody, "status").String())
 		videoURL := strings.TrimSpace(gjson.GetBytes(responseBody, "content.video_url").String())
+		if videoURL != "" {
+			videoURL, err = validateSeedanceVideoResultURL(videoURL)
+			if err != nil {
+				return nil, err
+			}
+		}
 		if endpoint == GrokMediaEndpointVideoContent {
 			if status != "completed" || videoURL == "" {
 				return nil, fmt.Errorf("seedance video content is not available")

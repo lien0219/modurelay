@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+	addVideoModelPriceFamily,
   createVideoModelPricesForm,
+	removeVideoModelPriceFamily,
   serializeVideoModelPrices,
   videoModelPriceFamilyRows
 } from '../groupsVideoModelPricing'
@@ -43,5 +45,16 @@ describe('Grok video model pricing form', () => {
     expect(serializeVideoModelPrices(form)).toMatchObject({
       'grok-imagine-video-2': { '480p': 0.2 }
     })
+  })
+
+  it('supports custom protocol model prices without seeding Grok families', () => {
+    const form = createVideoModelPricesForm()
+    expect(videoModelPriceFamilyRows(form, false)).toEqual([])
+    expect(addVideoModelPriceFamily(form, ' Vendor-Video-X ')).toBe('vendor-video-x')
+    expect(videoModelPriceFamilyRows(form, false).map(({ key }) => key)).toEqual(['vendor-video-x'])
+    form['vendor-video-x']['720p'] = 0.12
+    expect(serializeVideoModelPrices(form)).toEqual({ 'vendor-video-x': { '720p': 0.12 } })
+    removeVideoModelPriceFamily(form, 'VENDOR-VIDEO-X')
+    expect(videoModelPriceFamilyRows(form, false)).toEqual([])
   })
 })

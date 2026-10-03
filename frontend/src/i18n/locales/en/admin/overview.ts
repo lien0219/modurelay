@@ -1048,6 +1048,7 @@ export default {
         deepseek: 'DeepSeek',
         minimax: 'MiniMax',
         opencode_go: 'OpenCode',
+        seedance: 'Seedance',
         composite: 'Composite',
       },
       deleteConfirm:
@@ -1088,9 +1089,15 @@ export default {
       videoPricing: {
         title: 'Video Generation Pricing',
         description:
-          'Configure Grok video generation prices in USD per second of output video. Leave empty to use the default per-second rates (grok-imagine-video: $0.05/s 480p, $0.07/s 720p; video-1.5: $0.08/s 480p, $0.14/s 720p, $0.25/s 1080p).',
+          'Set video prices in USD per second. Grok uses its published fallback rates when no price is configured. Seedance has no built-in fallback; configure a model or resolution price before serving requests.',
         modelOverridesTitle: 'Per-model video price overrides',
-        modelOverridesDescription: 'Each populated cell overrides the flat resolution price for that model family. Preview and legacy aliases for video-1.5 use the same family; empty cells fall back to the flat resolution price.',
+        modelOverridesDescription: 'A model price takes priority over the resolution price. Empty model prices use the resolution price. Add model IDs supported by your provider.',
+        addModel: 'Add model',
+        modelName: 'Model ID',
+        modelNamePlaceholder: 'Enter a provider model ID',
+        modelAlreadyExists: 'That model already has a price row.',
+        seedancePricingRequired: 'Seedance requests require an explicit model or resolution price. Requests without a configured price are rejected.',
+        removeModel: 'Remove model price',
         independentMultiplier: 'Use independent video multiplier',
         videoMultiplier: 'Video multiplier',
         modeHint:

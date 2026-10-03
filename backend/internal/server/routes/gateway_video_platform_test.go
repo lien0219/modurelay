@@ -21,7 +21,7 @@ func TestImageGatewayPlatformSupported(t *testing.T) {
 			t.Fatalf("expected %s to support /v1/images", platform)
 		}
 	}
-	for _, platform := range []string{service.PlatformAnthropic, service.PlatformGemini, ""} {
+	for _, platform := range []string{service.PlatformAnthropic, service.PlatformGemini, service.PlatformSeedance, ""} {
 		if imageGatewayPlatformSupported(platform) {
 			t.Fatalf("did not expect %s to support /v1/images", platform)
 		}
@@ -38,6 +38,7 @@ func TestVideoGatewayPlatformSupported(t *testing.T) {
 		service.PlatformDeepseek,
 		service.PlatformMiniMax,
 		service.PlatformOpenCodeGo,
+		service.PlatformSeedance,
 	} {
 		if !videoGatewayPlatformSupported(platform) {
 			t.Fatalf("expected %s to support /v1/videos", platform)

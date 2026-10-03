@@ -822,14 +822,8 @@ func (s *OpenAIGatewayService) HasVideoPricingForRequest(
 	if s == nil || s.billingService == nil || apiKey == nil {
 		return false
 	}
-	if IsSeedanceVideoModel(billingModel) {
-		if apiKeyHasConfiguredVideoModelPrice(apiKey, billingModel, resolution) {
-			return true
-		}
-		if refreshed := s.apiKeyWithFreshGroupMediaPricing(ctx, apiKey); refreshed != apiKey {
-			return apiKeyHasConfiguredVideoModelPrice(refreshed, billingModel, resolution)
-		}
-		return false
+	if apiKeyHasConfiguredVideoModelPrice(apiKey, billingModel, resolution) {
+		return true
 	}
 	if apiKeyHasConfiguredVideoPrice(apiKey, billingModel, resolution) {
 		return true
@@ -848,7 +842,8 @@ func (s *OpenAIGatewayService) HasVideoPricingForRequest(
 		}
 	}
 	if refreshed := s.apiKeyWithFreshGroupMediaPricing(ctx, apiKey); refreshed != apiKey {
-		return apiKeyHasConfiguredVideoPrice(refreshed, billingModel, resolution)
+		return apiKeyHasConfiguredVideoModelPrice(refreshed, billingModel, resolution) ||
+			apiKeyHasConfiguredVideoPrice(refreshed, billingModel, resolution)
 	}
 	return false
 }

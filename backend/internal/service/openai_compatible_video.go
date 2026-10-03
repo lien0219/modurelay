@@ -23,7 +23,7 @@ import (
 // it keeps the dedicated xAI media implementation and billing semantics.
 func IsOpenAICompatibleVideoPlatform(platform string) bool {
 	switch strings.TrimSpace(platform) {
-	case PlatformOpenAI, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo:
+	case PlatformOpenAI, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo, PlatformSeedance:
 		return true
 	default:
 		return false
@@ -269,7 +269,7 @@ func prepareCompatibleVideoBody(account *Account, body []byte, contentType, rout
 		if IsAIStarsLabOpenAICompatibleAccount(account) {
 			rewritten, err = normalizeAIStarsLabCompatibleVideoJSON(rewritten)
 		} else {
-			rewritten, err = normalizeCompatibleSeedanceVideoJSON(rewritten, upstreamModel)
+			rewritten, err = normalizeCompatibleSeedanceVideoJSON(rewritten, upstreamModel, account.Platform == PlatformSeedance)
 		}
 		if err != nil {
 			return nil, "", "", err
@@ -407,8 +407,8 @@ func normalizeAIStarsLabCompatibleVideoJSON(body []byte) ([]byte, error) {
 	return out, nil
 }
 
-func normalizeCompatibleSeedanceVideoJSON(body []byte, model string) ([]byte, error) {
-	if !strings.Contains(strings.ToLower(strings.TrimSpace(model)), "seedance") || !gjson.ValidBytes(body) {
+func normalizeCompatibleSeedanceVideoJSON(body []byte, model string, force bool) ([]byte, error) {
+	if (!force && !IsSeedanceVideoModel(model)) || !gjson.ValidBytes(body) {
 		return body, nil
 	}
 	out := body

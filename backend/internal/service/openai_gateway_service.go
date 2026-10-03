@@ -274,6 +274,7 @@ type OpenAIForwardResult struct {
 	// upstream Responses WebSocket turn. Empty preserves legacy/non-WS success.
 	UpstreamTerminalEvent string
 	ResponseHeaders       http.Header
+	DeferredMediaResponse *DeferredMediaResponse
 	Duration              time.Duration
 	FirstTokenMs          *int
 	ClientDisconnect      bool
@@ -304,6 +305,14 @@ type OpenAIForwardResult struct {
 	wsReplayInput                []json.RawMessage
 	wsReplayInputExists          bool
 	wsAccountFailoverReplayInput []json.RawMessage
+}
+
+// DeferredMediaResponse holds an accepted async task response until task ownership
+// and billing state have been stored by the gateway handler.
+type DeferredMediaResponse struct {
+	StatusCode int
+	Header     http.Header
+	Body       []byte
 }
 
 // SucceededForScheduling reports whether this result is an upstream success

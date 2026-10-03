@@ -182,7 +182,12 @@ export default {
         codexCli: 'Codex CLI',
         codexCliWs: 'Codex CLI (WebSocket)',
         grokCli: 'Grok CLI',
+        videoApi: 'Video API',
         opencode: 'OpenCode',
+      },
+      seedance: {
+        description: 'Send asynchronous video requests through the OpenAI-compatible /v1/videos endpoint.',
+        note: 'Replace the model placeholder with a model enabled for this group. The request creates a task that can be polled for status and content.',
       },
       antigravity: {
         description: 'Configure API access for Antigravity group. Select the configuration method based on your client.',

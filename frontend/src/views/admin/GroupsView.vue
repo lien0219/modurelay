@@ -1041,7 +1041,7 @@
           </p>
         </div>
 
-        <!-- 视频生成计费配置（仅 Grok 平台） -->
+        <!-- 视频生成计费配置 -->
         <div
           v-if="supportsVideoPricingPlatform(createForm.platform)"
           class="border-t pt-4"
@@ -1125,14 +1125,52 @@
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
               {{ t("admin.groups.videoPricing.modelOverridesDescription") }}
             </p>
+          <p
+            v-if="createForm.platform === 'seedance'"
+            class="mt-2 text-xs text-amber-700 dark:text-amber-300"
+          >
+            {{ t("admin.groups.videoPricing.seedancePricingRequired") }}
+          </p>
+          <div class="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
+            <label class="block min-w-0 flex-1">
+              <span class="input-label">{{ t("admin.groups.videoPricing.modelName") }}</span>
+              <input
+                v-model="createVideoModelPriceFamilyInput"
+                type="text"
+                class="input"
+                :placeholder="t('admin.groups.videoPricing.modelNamePlaceholder')"
+              />
+            </label>
+            <button
+              type="button"
+              class="btn btn-secondary self-end"
+              :disabled="!createVideoModelPriceFamilyInput.trim()"
+              @click="addCreateVideoModelPriceFamily"
+            >
+              <Icon name="plus" size="sm" class="mr-1" />
+              {{ t("admin.groups.videoPricing.addModel") }}
+            </button>
+          </div>
             <div class="mt-3 space-y-3">
               <div
-                v-for="family in videoModelPriceFamilyRows(createForm.video_model_prices)"
+              v-for="family in videoModelPriceFamilyRows(createForm.video_model_prices, createForm.platform === 'grok')"
                 :key="family.key"
                 class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_repeat(3,minmax(0,7rem))] sm:items-end"
               >
-                <div class="min-w-0 pb-1 font-mono text-xs text-gray-700 dark:text-gray-300">
+              <div class="flex min-w-0 items-center gap-2 pb-1">
+                <span class="min-w-0 break-all font-mono text-xs text-gray-700 dark:text-gray-300">
                   {{ family.label }}
+                </span>
+                <button
+                  v-if="family.removable"
+                  type="button"
+                  class="btn btn-ghost btn-icon flex h-8 w-8 items-center justify-center rounded-lg p-0 text-gray-500 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/40 dark:text-gray-400 dark:hover:text-red-400"
+                  :aria-label="t('admin.groups.videoPricing.removeModel')"
+                  :title="t('admin.groups.videoPricing.removeModel')"
+                  @click="removeVideoModelPriceFamily(createForm.video_model_prices, family.key)"
+                >
+                  <Icon name="trash" size="sm" />
+                </button>
                 </div>
                 <label
                   v-for="resolution in grokVideoPriceResolutions"
@@ -2681,7 +2719,7 @@
           </p>
         </div>
 
-        <!-- 视频生成计费配置（仅 Grok 平台） -->
+        <!-- 视频生成计费配置 -->
         <div
           v-if="supportsVideoPricingPlatform(editForm.platform)"
           class="border-t pt-4"
@@ -2765,14 +2803,52 @@
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
               {{ t("admin.groups.videoPricing.modelOverridesDescription") }}
             </p>
+          <p
+            v-if="editForm.platform === 'seedance'"
+            class="mt-2 text-xs text-amber-700 dark:text-amber-300"
+          >
+            {{ t("admin.groups.videoPricing.seedancePricingRequired") }}
+          </p>
+          <div class="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
+            <label class="block min-w-0 flex-1">
+              <span class="input-label">{{ t("admin.groups.videoPricing.modelName") }}</span>
+              <input
+                v-model="editVideoModelPriceFamilyInput"
+                type="text"
+                class="input"
+                :placeholder="t('admin.groups.videoPricing.modelNamePlaceholder')"
+              />
+            </label>
+            <button
+              type="button"
+              class="btn btn-secondary self-end"
+              :disabled="!editVideoModelPriceFamilyInput.trim()"
+              @click="addEditVideoModelPriceFamily"
+            >
+              <Icon name="plus" size="sm" class="mr-1" />
+              {{ t("admin.groups.videoPricing.addModel") }}
+            </button>
+          </div>
             <div class="mt-3 space-y-3">
               <div
-                v-for="family in videoModelPriceFamilyRows(editForm.video_model_prices)"
+              v-for="family in videoModelPriceFamilyRows(editForm.video_model_prices, editForm.platform === 'grok')"
                 :key="family.key"
                 class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_repeat(3,minmax(0,7rem))] sm:items-end"
               >
-                <div class="min-w-0 pb-1 font-mono text-xs text-gray-700 dark:text-gray-300">
+              <div class="flex min-w-0 items-center gap-2 pb-1">
+                <span class="min-w-0 break-all font-mono text-xs text-gray-700 dark:text-gray-300">
                   {{ family.label }}
+                </span>
+                <button
+                  v-if="family.removable"
+                  type="button"
+                  class="btn btn-ghost btn-icon flex h-8 w-8 items-center justify-center rounded-lg p-0 text-gray-500 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/40 dark:text-gray-400 dark:hover:text-red-400"
+                  :aria-label="t('admin.groups.videoPricing.removeModel')"
+                  :title="t('admin.groups.videoPricing.removeModel')"
+                  @click="removeVideoModelPriceFamily(editForm.video_model_prices, family.key)"
+                >
+                  <Icon name="trash" size="sm" />
+                </button>
                 </div>
                 <label
                   v-for="resolution in grokVideoPriceResolutions"
@@ -4371,11 +4447,40 @@ import {
   videoPricingI18nKey,
 } from "./groupsImagePricing";
 import {
+  addVideoModelPriceFamily,
   createVideoModelPricesForm,
   grokVideoPriceResolutions,
+  removeVideoModelPriceFamily,
   serializeVideoModelPrices,
   videoModelPriceFamilyRows,
 } from "./groupsVideoModelPricing";
+
+const createVideoModelPriceFamilyInput = ref("");
+const editVideoModelPriceFamilyInput = ref("");
+
+const addCreateVideoModelPriceFamily = () => {
+  const added = addVideoModelPriceFamily(
+    createForm.video_model_prices,
+    createVideoModelPriceFamilyInput.value,
+  );
+  if (!added) {
+    appStore.showError(t("admin.groups.videoPricing.modelAlreadyExists"));
+    return;
+  }
+  createVideoModelPriceFamilyInput.value = "";
+};
+
+const addEditVideoModelPriceFamily = () => {
+  const added = addVideoModelPriceFamily(
+    editForm.video_model_prices,
+    editVideoModelPriceFamilyInput.value,
+  );
+  if (!added) {
+    appStore.showError(t("admin.groups.videoPricing.modelAlreadyExists"));
+    return;
+  }
+  editVideoModelPriceFamilyInput.value = "";
+};
 
 const supportsLivePlatform = (platform: string): boolean =>
   platform === "openai" || platform === "composite";

@@ -214,6 +214,41 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
 
   afterEach(() => vi.useRealTimers())
 
+  it('creates Seedance API key accounts without requiring an upstream models sync', async () => {
+    authIsSimpleMode.value = false
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'Seedance')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('Seedance account')
+    await wrapper.get('[data-testid="seedance-base-url"]').setValue('https://provider.example/api/v3')
+    await wrapper.get('[data-testid="seedance-api-key"]').setValue('seedance-secret')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock).toHaveBeenCalledOnce()
+    expect(createAccountMock.mock.calls[0]?.[0]).toMatchObject({
+      platform: 'seedance',
+      type: 'apikey',
+      credentials: { api_key: 'seedance-secret', base_url: 'https://provider.example/api/v3' },
+    })
+    expect(syncUpstreamModelsMock).not.toHaveBeenCalled()
+  })
+
+  it('offers Videos consistently and saves an explicit OpenAI video disable', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await selectButtonByText(wrapper, 'API Key')
+    const videos = wrapper.get<HTMLInputElement>('[data-testid="openai-endpoint-capability-videos"]')
+    expect(videos.element.checked).toBe(true)
+    expect(wrapper.find('[data-testid="openai-endpoint-capability-seedance"]').exists()).toBe(false)
+    await videos.setValue(false)
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('OpenAI account')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('openai-secret')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock.mock.calls[0]?.[0]?.credentials?.openai_video_enabled).toBe(false)
+  })
+
   it('sets month and year expiry presets without submitting the account form', async () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date('2026-01-31T12:34:00'))

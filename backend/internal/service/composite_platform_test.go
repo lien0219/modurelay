@@ -169,6 +169,13 @@ func TestDetectModelPlatform(t *testing.T) {
 		{name: "learnlm", model: "learnlm-2.0-flash-experimental", platform: PlatformGemini, ok: true},
 		{name: "grok", model: "grok-4", platform: PlatformGrok, ok: true},
 		{name: "xai prefix", model: "xai/grok-4", platform: PlatformGrok, ok: true},
+		{name: "seedance", model: "seedance-2.0", platform: PlatformSeedance, ok: true},
+		{name: "seedance provider prefix", model: "seedance/seedance-2.0", platform: PlatformSeedance, ok: true},
+		{name: "kling requires explicit route", model: "kling-3.0", ok: false},
+		{name: "wan requires explicit route", model: "wan-3.0", ok: false},
+		{name: "minimax video requires explicit route", model: "minimax-video-01", ok: false},
+		{name: "minimax video explicit platform route", model: "minimax/minimax-video-01", platform: PlatformMiniMax, ok: true},
+		{name: "vendor video requires explicit route", model: "vendor-video-x", ok: false},
 		{name: "kimi", model: "kimi-k2-thinking", platform: PlatformKimi, ok: true},
 		{name: "kimi code bare k3", model: "K3", platform: PlatformKimi, ok: true},
 		{name: "kimi code bare k3 256k", model: "k3-256k", platform: PlatformKimi, ok: true},
@@ -216,13 +223,13 @@ func TestCompositeGroupSchedulerHasAllCanonicalPlatformBuckets(t *testing.T) {
 		platforms = append(platforms, platform)
 	}
 	require.ElementsMatch(t,
-		[]string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo},
+		[]string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo, PlatformSeedance},
 		platforms,
 	)
 }
 
 func TestCompositeConcretePlatformsIncludeCNProviders(t *testing.T) {
-	for _, platform := range []string{PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo} {
+	for _, platform := range []string{PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo, PlatformSeedance} {
 		require.True(t, isConcreteRequestPlatform(platform))
 		require.True(t, canCopyAccountsFromGroupPlatform(PlatformComposite, platform))
 	}
