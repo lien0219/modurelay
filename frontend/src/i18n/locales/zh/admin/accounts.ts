@@ -1035,6 +1035,7 @@ export default {
       fillRelatedModels: '同步最新支持模型',
       syncUpstreamModels: '同步上游支持的模型',
       syncUpstreamModelsLoading: '同步上游中...',
+      upstreamModelCatalogHint: '模型目录不代表当前 API Key 已开通或有权调用。请以控制台 API 调用示例中的 model 值为准，保留完整 API ID。',
       syncUpstreamModelsSuccess: '已从上游同步 {count} 个新模型（上游共 {total} 个）',
       syncUpstreamModelsNoChanges: '上游 {count} 个模型均已在白名单中',
       syncUpstreamModelsEmpty: '上游没有返回可同步的模型',

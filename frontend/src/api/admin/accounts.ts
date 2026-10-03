@@ -628,6 +628,7 @@ export interface UpstreamModelMetadata {
   default_reasoning_level?: string
   supported_reasoning_levels?: string[]
   input_modalities?: string[]
+  output_modalities?: string[]
   context_window?: number
   max_context_window?: number
   max_output_tokens?: number

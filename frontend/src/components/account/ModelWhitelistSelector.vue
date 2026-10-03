@@ -6,19 +6,20 @@
         @click="toggleDropdown"
         class="cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-dark-500 dark:bg-dark-700"
       >
-        <div class="grid grid-cols-2 gap-1.5">
+        <div class="grid max-h-48 grid-cols-1 gap-1.5 overflow-y-auto sm:grid-cols-2">
           <span
             v-for="model in modelValue"
             :key="model"
-            class="inline-flex items-center justify-between gap-1 rounded bg-gray-100 px-2 py-1 text-xs text-gray-700 dark:bg-dark-600 dark:text-gray-300"
+            class="inline-flex min-w-0 items-center justify-between gap-2 rounded bg-[var(--color-surface-soft)] px-2 py-1.5 text-xs"
           >
-            <span class="flex items-center gap-1 truncate">
-              <ModelIcon :model="model" size="14px" />
-              <span class="truncate">{{ model }}</span>
+            <span class="flex min-w-0 items-center gap-1.5">
+              <ModelIcon :model="model" size="14px" class="shrink-0" />
+              <ModelLabel :id="model" :name="getModelName(model)" />
             </span>
             <button
               type="button"
               @click.stop="removeModel(model)"
+              :aria-label="`${t('common.remove')} ${model}`"
               class="shrink-0 rounded-full hover:bg-gray-200 dark:hover:bg-dark-500"
             >
               <Icon name="x" size="xs" class="h-3.5 w-3.5" :stroke-width="2" />
@@ -71,8 +72,8 @@
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
                 </svg>
               </span>
-              <ModelIcon :model="model.value" size="18px" />
-              <span class="truncate text-gray-900 dark:text-white">{{ model.value }}</span>
+              <ModelIcon :model="model.value" size="18px" class="shrink-0" />
+              <ModelLabel :id="model.value" :name="model.label" />
             </button>
             <button
               type="button"
@@ -91,6 +92,10 @@
         </div>
       </div>
     </div>
+
+    <p v-if="canSyncUpstream" class="mb-3 text-xs leading-relaxed text-[var(--color-text-secondary)]">
+      {{ t('admin.accounts.upstreamModelCatalogHint') }}
+    </p>
 
     <!-- Quick Actions -->
     <div class="mb-4 flex flex-wrap gap-2">
@@ -145,13 +150,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { accountsAPI } from '@/api/admin/accounts'
-import type { SyncUpstreamPreviewParams } from '@/api/admin/accounts'
+import type { SyncUpstreamPreviewParams, UpstreamModelMetadata } from '@/api/admin/accounts'
 import { useClipboard } from '@/composables/useClipboard'
 import ModelIcon from '@/components/common/ModelIcon.vue'
+import ModelLabel from '@/components/common/ModelLabel.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { allModels, getModelsByPlatform } from '@/composables/useModelWhitelist'
 
@@ -163,6 +169,7 @@ const props = defineProps<{
   platform?: string
   platforms?: string[]
   accountId?: number
+  modelMetadata?: Record<string, UpstreamModelMetadata>
   syncCredentials?: {
     platform: string
     type: string
@@ -184,6 +191,38 @@ const searchQuery = ref('')
 const customModel = ref('')
 const isComposing = ref(false)
 const isSyncingUpstream = ref(false)
+const syncedMetadata = ref<Record<string, UpstreamModelMetadata>>({})
+const syncedModelIds = ref<string[]>([])
+const hasSyncedCatalog = ref(false)
+let catalogContextVersion = 0
+onBeforeUnmount(() => { catalogContextVersion += 1 })
+watch(
+  () => [props.accountId, props.platform, props.syncCredentials?.platform, props.syncCredentials?.base_url, props.syncCredentials?.api_key],
+  (values, previous) => {
+    if (values.some((value, index) => value !== previous[index])) {
+      catalogContextVersion += 1
+      syncedMetadata.value = {}
+      syncedModelIds.value = []
+      hasSyncedCatalog.value = false
+    }
+  }
+)
+const modelMetadata = computed(() => ({ ...props.modelMetadata, ...syncedMetadata.value }))
+const getModelMetadata = (id: string) => {
+  let target = id
+  let matchedPrefixLength = -1
+  for (const mapping of props.modelMappings ?? []) {
+    const pattern = mapping.from.trim()
+    if (pattern === id) return modelMetadata.value[mapping.to.trim()]
+    const prefix = pattern.slice(0, -1)
+    if (pattern.endsWith('*') && id.startsWith(prefix) && prefix.length > matchedPrefixLength) {
+      target = mapping.to.trim()
+      matchedPrefixLength = prefix.length
+    }
+  }
+  return modelMetadata.value[target]
+}
+const getModelName = (id: string) => getModelMetadata(id)?.display_name || id
 const normalizedPlatforms = computed(() => {
   const rawPlatforms =
     props.platforms && props.platforms.length > 0
@@ -224,12 +263,10 @@ const canSyncUpstream = computed(() => {
   }
   return false
 })
+const seedanceOnly = computed(() => normalizedPlatforms.value.length === 1 && normalizedPlatforms.value[0] === 'seedance')
+const hasSeedanceCatalog = computed(() => seedanceOnly.value && (hasSyncedCatalog.value || Object.keys(props.modelMetadata ?? {}).length > 0))
 
 const availableOptions = computed(() => {
-  if (normalizedPlatforms.value.length === 0) {
-    return allModels
-  }
-
   const allowedModels = new Set<string>()
   for (const platform of normalizedPlatforms.value) {
     for (const model of getModelsByPlatform(platform)) {
@@ -237,7 +274,18 @@ const availableOptions = computed(() => {
     }
   }
 
-  return allModels.filter(model => allowedModels.has(model.value))
+  const presets = normalizedPlatforms.value.length === 0
+    ? allModels
+    : allModels.filter(model => allowedModels.has(model.value))
+  const catalogIds = hasSeedanceCatalog.value ? Object.keys(modelMetadata.value) : []
+  const presetIds = hasSeedanceCatalog.value ? [] : presets.map(model => model.value)
+  const ids = Array.from(new Set([...syncedModelIds.value, ...props.modelValue, ...catalogIds, ...presetIds]))
+  return ids
+    .filter(id => {
+      const outputs = getModelMetadata(id)?.output_modalities ?? []
+      return !seedanceOnly.value || outputs.length === 0 || outputs.some(output => output.trim().toLowerCase() === 'video')
+    })
+    .map(id => ({ value: id, label: getModelName(id) }))
 })
 
 const filteredModels = computed(() => {
@@ -291,11 +339,12 @@ const handleEnter = () => {
 
 const fillRelated = () => {
   const newModels = [...props.modelValue]
-  for (const platform of normalizedPlatforms.value) {
-    for (const model of getModelsByPlatform(platform)) {
-      if (!newModels.includes(model)) {
-        newModels.push(model)
-      }
+  const models = hasSeedanceCatalog.value
+    ? availableOptions.value.map(model => model.value)
+    : normalizedPlatforms.value.flatMap(platform => getModelsByPlatform(platform))
+  for (const model of models) {
+    if (!newModels.includes(model)) {
+      newModels.push(model)
     }
   }
   emit('update:modelValue', newModels)
@@ -306,6 +355,7 @@ const syncUpstreamModels = async () => {
   if (!props.accountId && !props.syncCredentials) return
 
   isSyncingUpstream.value = true
+  const requestContextVersion = catalogContextVersion
   try {
     let result
     if (props.accountId) {
@@ -316,7 +366,11 @@ const syncUpstreamModels = async () => {
       return
     }
 
+    if (requestContextVersion !== catalogContextVersion) return
+    syncedMetadata.value = result.metadata ?? {}
+    hasSyncedCatalog.value = true
     const upstreamModels = result.models.map(model => model.trim()).filter(Boolean)
+    syncedModelIds.value = upstreamModels
     if (upstreamModels.length === 0) {
       appStore.showInfo(t('admin.accounts.syncUpstreamModelsEmpty'))
       return
@@ -356,6 +410,7 @@ const syncUpstreamModels = async () => {
       appStore.showWarning(t('admin.accounts.syncUpstreamModelsMetadataPartial'))
     }
   } catch (error) {
+    if (requestContextVersion !== catalogContextVersion) return
     const message = error instanceof Error ? error.message : t('admin.accounts.syncUpstreamModelsFailed')
     appStore.showError(t('admin.accounts.syncUpstreamModelsError', { message }))
   } finally {

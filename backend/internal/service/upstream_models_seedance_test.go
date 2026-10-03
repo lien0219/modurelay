@@ -2,12 +2,14 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 func TestBuildUpstreamModelsRequestSeedance(t *testing.T) {
@@ -110,4 +112,69 @@ func TestSyncUpstreamModelCatalogSeedanceDoesNotPretendConfiguredModelsAreLive(t
 	require.Equal(t, http.StatusNotFound, syncError.StatusCode)
 	require.NotContains(t, syncError.SafeMessage(), "test-seedance-key")
 	require.Len(t, upstream.requests, 1)
+}
+
+func TestSyncUpstreamModelCatalogSeedanceFiltersByOutputAndKeepsModelNames(t *testing.T) {
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body: io.NopCloser(strings.NewReader(`{"data":[
+		{"id":"doubao-seedance-1-0-pro-fast-251015","name":"doubao-seedance-1-0-pro-fast","modalities":{"input_modalities":["text","image"],"output_modalities":["video"]}},
+		{"id":"doubao-seed-mini","name":"Doubao Seed Mini","modalities":{"input_modalities":["text","video"],"output_modalities":["text"]}},
+		{"id":"seedance-lookalike","output_modalities":["image"]},
+		{"id":"ep-video-test"}
+	]}`)),
+	}}
+	repo := &upstreamModelMetadataRepoStub{}
+	service := &AccountTestService{cfg: upstreamModelSyncTestConfig(), httpUpstream: upstream, accountRepo: repo}
+	account := &Account{ID: 12, Platform: PlatformSeedance, Type: AccountTypeAPIKey,
+		Credentials: map[string]any{"base_url": "https://seedance.example.com/api/v3", "api_key": "test-key"}}
+
+	catalog, err := service.SyncUpstreamModelCatalog(context.Background(), account)
+	require.NoError(t, err)
+	require.Equal(t, []string{"doubao-seedance-1-0-pro-fast-251015", "ep-video-test"}, catalog.Models)
+	require.Equal(t, "doubao-seedance-1-0-pro-fast", catalog.Metadata["doubao-seedance-1-0-pro-fast-251015"].DisplayName)
+	require.Equal(t, []string{"text", "image"}, catalog.Metadata["doubao-seedance-1-0-pro-fast-251015"].InputModalities)
+	snapshot := account.GetUpstreamModelMetadataSnapshot()
+	require.NotNil(t, snapshot)
+	require.Equal(t, account.ID, repo.accountID)
+	require.Contains(t, repo.updates, UpstreamModelMetadataExtraKey)
+	body, err := json.Marshal(snapshot)
+	require.NoError(t, err)
+	require.Equal(t, "video", gjson.GetBytes(body, "models.doubao-seedance-1-0-pro-fast-251015.output_modalities.0").String())
+	require.Len(t, upstream.requests, 1, "video catalog sync must not query an unrelated provider registry")
+}
+
+func TestFetchSeedanceModelCatalogDoesNotPersistOrTreatVideoInputAsVideoOutput(t *testing.T) {
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}},
+		Body: io.NopCloser(strings.NewReader(`{"data":[{"id":"video-input-text","modalities":{"input":["text","video"],"output":["text"]}}]}`)),
+	}}
+	repo := &upstreamModelMetadataRepoStub{}
+	service := &AccountTestService{cfg: upstreamModelSyncTestConfig(), httpUpstream: upstream, accountRepo: repo}
+	account := &Account{ID: 12, Platform: PlatformSeedance, Type: AccountTypeAPIKey,
+		Credentials: map[string]any{"base_url": "https://seedance.example.com/api/v3", "api_key": "test-key"}}
+	catalog, err := service.FetchSeedanceModelCatalog(context.Background(), account)
+	require.NoError(t, err)
+	require.NotNil(t, catalog.Models, "the filtered response must remain an empty array")
+	require.Empty(t, catalog.Models)
+	require.Equal(t, []string{"text"}, catalog.Metadata["video-input-text"].OutputModalities)
+	require.Nil(t, account.GetUpstreamModelMetadataSnapshot())
+	require.Empty(t, repo.updates, "opening the picker must not persist account changes")
+	require.Len(t, upstream.requests, 1)
+	require.Equal(t, http.MethodGet, upstream.lastReq.Method)
+}
+
+func TestFetchSeedanceModelCatalogPreservesIDsWithUnrecognizedCapabilityFormats(t *testing.T) {
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}},
+		Body: io.NopCloser(strings.NewReader(`{"data":[{"id":"ep-compatible-video","modalities":["video"]}]}`)),
+	}}
+	service := &AccountTestService{cfg: upstreamModelSyncTestConfig(), httpUpstream: upstream}
+	catalog, err := service.FetchSeedanceModelCatalog(context.Background(), &Account{
+		Platform: PlatformSeedance, Type: AccountTypeAPIKey,
+		Credentials: map[string]any{"base_url": "https://seedance.example.com/api/v3", "api_key": "test-key"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"ep-compatible-video"}, catalog.Models)
 }

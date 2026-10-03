@@ -35,6 +35,7 @@ type UpstreamModelMetadata struct {
 	DefaultReasoningLevel    string                     `json:"default_reasoning_level,omitempty"`
 	SupportedReasoningLevels []string                   `json:"supported_reasoning_levels,omitempty"`
 	InputModalities          []string                   `json:"input_modalities,omitempty"`
+	OutputModalities         []string                   `json:"output_modalities,omitempty"`
 	ContextWindow            int64                      `json:"context_window,omitempty"`
 	MaxContextWindow         int64                      `json:"max_context_window,omitempty"`
 	MaxOutputTokens          int64                      `json:"max_output_tokens,omitempty"`
@@ -83,6 +84,20 @@ type modelsDevReasoningOption struct {
 type modelsDevModalities struct {
 	Input  []string `json:"input"`
 	Output []string `json:"output"`
+}
+
+// AllowsVideoOutput preserves opaque gateway IDs when output capabilities are
+// unknown. Explicit non-video outputs must not appear in a video-model picker.
+func (m UpstreamModelMetadata) AllowsVideoOutput() bool {
+	if len(m.OutputModalities) == 0 {
+		return true
+	}
+	for _, modality := range m.OutputModalities {
+		if strings.EqualFold(strings.TrimSpace(modality), "video") {
+			return true
+		}
+	}
+	return false
 }
 
 type modelsDevLimit struct {
@@ -198,6 +213,34 @@ func (s *AccountTestService) FetchUpstreamSupportedModels(ctx context.Context, a
 	return models, err
 }
 
+// FetchSeedanceModelCatalog reads the configured upstream without persisting or
+// checking activation. Keep all returned metadata so mapped targets can also be
+// filtered by their output capabilities, including old non-video whitelist IDs.
+func (s *AccountTestService) FetchSeedanceModelCatalog(ctx context.Context, account *Account) (*UpstreamModelCatalog, error) {
+	models, body, err := s.fetchUpstreamModelList(ctx, account)
+	if err != nil {
+		return nil, err
+	}
+	_, metadata, err := extractUpstreamModelCatalog(body, false)
+	if err != nil {
+		return nil, newUpstreamModelSyncUpstreamError("Failed to parse upstream model catalog", err)
+	}
+	if previous := account.GetUpstreamModelMetadataSnapshot(); previous != nil {
+		for _, modelID := range models {
+			if old, ok := previous.Models[modelID]; ok {
+				metadata[modelID], _ = mergeUpstreamModelMetadata(metadata[modelID], old)
+			}
+		}
+	}
+	videoModels := make([]string, 0, len(models))
+	for _, modelID := range models {
+		if metadata[modelID].AllowsVideoOutput() {
+			videoModels = append(videoModels, modelID)
+		}
+	}
+	return &UpstreamModelCatalog{Models: videoModels, Metadata: metadata}, nil
+}
+
 // SyncUpstreamModelCatalog fetches the account's live model list, enriches
 // missing capability fields from the provider registry used by the upstream,
 // and persists a normalized account snapshot when complete metadata is available.
@@ -208,13 +251,24 @@ func (s *AccountTestService) FetchUpstreamSupportedModels(ctx context.Context, a
 // snapshot. When no model is complete, the existing account snapshot is left
 // untouched.
 func (s *AccountTestService) SyncUpstreamModelCatalog(ctx context.Context, account *Account) (*UpstreamModelCatalog, error) {
-	models, body, err := s.fetchUpstreamModelList(ctx, account)
 	if account != nil && account.Platform == PlatformSeedance {
+		catalog, err := s.FetchSeedanceModelCatalog(ctx, account)
 		if err != nil {
 			return nil, err
 		}
-		return &UpstreamModelCatalog{Models: models, Metadata: make(map[string]UpstreamModelMetadata)}, nil
+		// Video catalogs do not need Codex reasoning or context-window metadata.
+		if len(catalog.Metadata) > 0 && account.ID > 0 && s.accountRepo != nil {
+			snapshot := UpstreamModelMetadataSnapshot{
+				Source: "upstream", SyncedAt: time.Now().UTC().Format(time.RFC3339), Models: catalog.Metadata,
+			}
+			if err := s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{UpstreamModelMetadataExtraKey: snapshot}); err != nil {
+				return nil, newUpstreamModelSyncInternalError("Failed to save upstream model metadata", err)
+			}
+			account.SetUpstreamModelMetadataSnapshot(snapshot)
+		}
+		return catalog, nil
 	}
+	models, body, err := s.fetchUpstreamModelList(ctx, account)
 	liveListAvailable := err == nil
 	if err != nil {
 		configuredModels := configuredUpstreamModelsForCapabilitySync(account)
@@ -394,6 +448,7 @@ func upstreamModelMetadataIsUseful(metadata UpstreamModelMetadata) bool {
 		metadata.Reasoning != nil ||
 		len(metadata.SupportedReasoningLevels) > 0 ||
 		len(metadata.InputModalities) > 0 ||
+		len(metadata.OutputModalities) > 0 ||
 		len(metadata.CodexToolCapabilities) > 0 ||
 		metadata.ContextWindow > 0 ||
 		metadata.MaxContextWindow > 0 ||
@@ -476,6 +531,10 @@ func mergeUpstreamModelMetadata(primary, fallback UpstreamModelMetadata) (Upstre
 	}
 	if len(merged.InputModalities) == 0 && len(fallback.InputModalities) > 0 {
 		merged.InputModalities = append([]string(nil), fallback.InputModalities...)
+		changed = true
+	}
+	if len(merged.OutputModalities) == 0 && len(fallback.OutputModalities) > 0 {
+		merged.OutputModalities = append([]string(nil), fallback.OutputModalities...)
 		changed = true
 	}
 	if merged.ContextWindow <= 0 && fallback.ContextWindow > 0 {
@@ -1292,11 +1351,16 @@ type upstreamModelCapabilityEntry struct {
 	SupportedReasoningLevels []json.RawMessage          `json:"supported_reasoning_levels"`
 	ReasoningOptions         []modelsDevReasoningOption `json:"reasoning_options"`
 	InputModalities          []string                   `json:"input_modalities"`
-	Modalities               modelsDevModalities        `json:"modalities"`
-	ContextWindow            int64                      `json:"context_window"`
-	MaxContextWindow         int64                      `json:"max_context_window"`
-	MaxOutputTokens          int64                      `json:"max_output_tokens"`
-	Limit                    modelsDevLimit             `json:"limit"`
+	OutputModalities         []string                   `json:"output_modalities"`
+	Modalities               struct {
+		modelsDevModalities
+		InputModalities  []string `json:"input_modalities"`
+		OutputModalities []string `json:"output_modalities"`
+	} `json:"modalities"`
+	ContextWindow    int64          `json:"context_window"`
+	MaxContextWindow int64          `json:"max_context_window"`
+	MaxOutputTokens  int64          `json:"max_output_tokens"`
+	Limit            modelsDevLimit `json:"limit"`
 }
 
 func extractUpstreamModelIDs(body []byte) ([]string, error) {
@@ -1374,6 +1438,16 @@ func upstreamMetadataFromCapabilityEntry(modelID string, entry upstreamModelCapa
 	if len(modalities) == 0 {
 		modalities = entry.Modalities.Input
 	}
+	if len(modalities) == 0 {
+		modalities = entry.Modalities.InputModalities
+	}
+	outputModalities := entry.OutputModalities
+	if len(outputModalities) == 0 {
+		outputModalities = entry.Modalities.Output
+	}
+	if len(outputModalities) == 0 {
+		outputModalities = entry.Modalities.OutputModalities
+	}
 	contextWindow := entry.ContextWindow
 	if contextWindow <= 0 {
 		contextWindow = entry.MaxContextWindow
@@ -1401,10 +1475,28 @@ func upstreamMetadataFromCapabilityEntry(modelID string, entry upstreamModelCapa
 		DefaultReasoningLevel:    defaultReasoningLevel,
 		SupportedReasoningLevels: levels,
 		InputModalities:          normalizeCodexInputModalities(modalities),
+		OutputModalities:         normalizeModelOutputModalities(outputModalities),
 		ContextWindow:            contextWindow,
 		MaxContextWindow:         entry.MaxContextWindow,
 		MaxOutputTokens:          maxOutputTokens,
 	}
+}
+
+func normalizeModelOutputModalities(modalities []string) []string {
+	seen := make(map[string]struct{}, len(modalities))
+	normalized := make([]string, 0, len(modalities))
+	for _, modality := range modalities {
+		modality = strings.ToLower(strings.TrimSpace(modality))
+		if modality == "" {
+			continue
+		}
+		if _, exists := seen[modality]; exists {
+			continue
+		}
+		seen[modality] = struct{}{}
+		normalized = append(normalized, modality)
+	}
+	return normalized
 }
 
 func reasoningLevelsFromRawEntries(entries []json.RawMessage) []string {

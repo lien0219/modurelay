@@ -47,12 +47,28 @@
         </label>
         <Select
           v-model="selectedModelId"
-          :options="availableModels"
+          class="account-test-model-select"
+          :options="modelOptions"
           :disabled="loadingModels || status === 'connecting'"
           value-key="id"
-          label-key="display_name"
+          label-key="search_label"
+          searchable
+          :search-placeholder="t('admin.accounts.searchModels')"
+          :aria-label="t('admin.accounts.selectTestModel')"
           :placeholder="loadingModels ? t('common.loading') + '...' : t('admin.accounts.selectTestModel')"
-        />
+        >
+          <template #selected="{ option }">
+            <ModelLabel v-if="option" :id="String(option.id)" :name="String(option.display_name || option.id)" />
+            <span v-else>{{ loadingModels ? t('common.loading') + '...' : t('admin.accounts.selectTestModel') }}</span>
+          </template>
+          <template #option="{ option, selected }">
+            <ModelLabel class="flex-1" :id="String(option.id)" :name="String(option.display_name || option.id)" />
+            <Icon v-if="selected" name="check" size="sm" class="shrink-0 text-primary-500" :stroke-width="2" />
+          </template>
+        </Select>
+        <p v-if="account?.type === 'apikey'" class="text-xs leading-relaxed text-[var(--color-text-secondary)]">
+          {{ t('admin.accounts.upstreamModelCatalogHint') }}
+        </p>
       </div>
 
       <div v-if="isOpenAIAccount" class="space-y-1.5">
@@ -246,6 +262,7 @@ import { computed, ref, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
+import ModelLabel from '@/components/common/ModelLabel.vue'
 import TextArea from '@/components/common/TextArea.vue'
 import { Icon } from '@/components/icons'
 import { useClipboard } from '@/composables/useClipboard'
@@ -281,6 +298,12 @@ const outputLines = ref<OutputLine[]>([])
 const streamingContent = ref('')
 const errorMessage = ref('')
 const availableModels = ref<ClaudeModel[]>([])
+const modelOptions = computed(() => availableModels.value.map(model => ({
+  ...model,
+  search_label: model.display_name && model.display_name !== model.id
+    ? `${model.display_name} ${model.id}`
+    : model.id
+})))
 const selectedModelId = ref('')
 const testPrompt = ref('')
 const loadingModels = ref(false)
@@ -560,6 +583,19 @@ const copyOutput = () => {
   copyToClipboard(text, t('admin.accounts.outputCopied'))
 }
 </script>
+
+<style scoped>
+.account-test-model-select :deep(.select-trigger) {
+  height: auto;
+  min-height: 42px;
+  padding-block: 0.5rem;
+}
+
+.account-test-model-select :deep(.select-value) {
+  min-width: 0;
+  white-space: normal;
+}
+</style>
 
 <style>
 .fade-enter-active,

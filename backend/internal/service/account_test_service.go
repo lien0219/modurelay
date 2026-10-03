@@ -208,8 +208,12 @@ func (s *AccountTestService) FetchOpenAIAccountModels(ctx context.Context, accou
 	// name when the catalog has one, otherwise the local catalog name for that model
 	// ID, otherwise the raw ID. Without this the picker mixes "GPT-5.6 Sol" with
 	// "gpt-5.6-sol" for the same catalog.
+	_, metadata, _ := extractUpstreamModelCatalog(projectedBody, false)
 	for i := range payload.Data {
 		model := &payload.Data[i]
+		if strings.TrimSpace(model.DisplayName) == "" {
+			model.DisplayName = metadata[model.ID].DisplayName
+		}
 		if strings.TrimSpace(model.DisplayName) == "" {
 			model.DisplayName = openaiCodexDisplayName(model.ID)
 		}

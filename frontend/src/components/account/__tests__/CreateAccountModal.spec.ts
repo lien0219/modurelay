@@ -260,6 +260,21 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     })
   })
 
+  it('persists Seedance catalog metadata after creating an account from a successful preview', async () => {
+    authIsSimpleMode.value = false
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'Seedance')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('Seedance account')
+    await wrapper.get('[data-testid="seedance-base-url"]').setValue('https://provider.example/api/v3')
+    await wrapper.get('[data-testid="seedance-api-key"]').setValue('test-key')
+    await wrapper.get('[data-testid="model-whitelist-selector"]').trigger('click')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(createAccountMock).toHaveBeenCalledOnce()
+    expect(syncUpstreamModelsMock).toHaveBeenCalledWith(42)
+    expect(probeUpstreamBillingMock).not.toHaveBeenCalled()
+  })
+
   it('offers Videos consistently and saves an explicit OpenAI video disable', async () => {
     const wrapper = mountModal()
     await selectButtonByText(wrapper, 'OpenAI')

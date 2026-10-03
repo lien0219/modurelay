@@ -141,6 +141,86 @@ describe('ModelWhitelistSelector', () => {
     expect(wrapper.emitted('update:modelValue')).toEqual([[['seedance-2.0']]])
   })
 
+  it('shows synced names and full API IDs, searches names, and copies the original ID', async () => {
+    const id = 'doubao-seedance-1-0-pro-fast-251015'
+    const name = 'Doubao-Seedance-1.0-pro-fast'
+    syncUpstreamModels.mockResolvedValue({
+      models: [id, 'ep-video-test'],
+      metadata: { [id]: { id, display_name: name, output_modalities: ['video'] } },
+    })
+    const wrapper = mountSelector({ platform: 'seedance', accountId: 73 })
+    await wrapper.findAll('button').find(button => button.text() === 'admin.accounts.syncUpstreamModels')!.trigger('click')
+    await flushPromises()
+    await wrapper.setProps({ modelValue: [id] })
+
+    expect(wrapper.get('div.cursor-pointer').text()).toContain(name)
+    expect(wrapper.get('div.cursor-pointer').text()).toContain(id)
+    expect(wrapper.text()).toContain('admin.accounts.upstreamModelCatalogHint')
+    await wrapper.get('div.cursor-pointer').trigger('click')
+    expect(wrapper.findAll('[data-testid="model-option"]')).toHaveLength(2)
+    await wrapper.get('input[placeholder="admin.accounts.searchModels"]').setValue('1.0-pro-fast')
+    const rows = wrapper.findAll('[data-testid="model-option"]')
+    expect(rows).toHaveLength(1)
+    expect(rows[0].text()).toContain(name)
+    expect(rows[0].text()).toContain(id)
+    await rows[0].get('[data-testid="copy-model-id"]').trigger('click')
+    expect(copyToClipboard).toHaveBeenCalledWith(id)
+    expect(wrapper.emitted('update:modelValue')).toEqual([[[id, 'ep-video-test']]])
+  })
+
+  it('filters Seedance choices by mapped output capabilities without deleting saved whitelist entries', async () => {
+    const wrapper = mountSelector({
+      platform: 'seedance',
+      accountId: 73,
+      modelValue: ['video-alias', 'seedance-lookalike', 'ep-custom', 'video-input-text'],
+      modelMappings: [{ from: 'video-alias', to: 'actual-video' }],
+      modelMetadata: {
+        'actual-video': { id: 'actual-video', display_name: 'Video Generator', output_modalities: ['video'] },
+        'seedance-lookalike': { id: 'seedance-lookalike', output_modalities: ['image'] },
+        'video-input-text': { id: 'video-input-text', input_modalities: ['video'], output_modalities: ['text'] },
+      },
+    })
+    await wrapper.get('div.cursor-pointer').trigger('click')
+    const rowIDs = wrapper.findAll('[data-testid="model-option"]').map(row => row.text())
+    expect(rowIDs.some(text => text.includes('video-alias') && text.includes('Video Generator'))).toBe(true)
+    expect(rowIDs.some(text => text.includes('ep-custom'))).toBe(true)
+    expect(rowIDs.some(text => text.includes('seedance-lookalike'))).toBe(false)
+    expect(rowIDs.some(text => text.includes('video-input-text'))).toBe(false)
+    expect(wrapper.get('div.cursor-pointer').text()).toContain('seedance-lookalike')
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+  })
+
+  it('does not reuse another account catalog after switching accounts', async () => {
+    syncUpstreamModels.mockResolvedValue({ models: ['ep-old'], metadata: { 'ep-old': { id: 'ep-old', display_name: 'Old Account Video' } } })
+    const wrapper = mountSelector({ platform: 'seedance', accountId: 73 })
+    await wrapper.findAll('button').find(button => button.text() === 'admin.accounts.syncUpstreamModels')!.trigger('click')
+    await flushPromises()
+    await wrapper.setProps({ accountId: 74, modelValue: ['ep-new'] })
+    await wrapper.get('div.cursor-pointer').trigger('click')
+    expect(wrapper.text()).not.toContain('Old Account Video')
+    expect(wrapper.text()).not.toContain('ep-old')
+    expect(wrapper.text()).toContain('ep-new')
+  })
+
+  it('uses wildcard mapping targets to decide video capability', async () => {
+    const wrapper = mountSelector({
+      platform: 'seedance',
+      modelValue: ['text-v1', 'seedance-video'],
+      modelMappings: [{ from: 'text-*', to: 'actual-video' }, { from: 'seedance-*', to: 'actual-text' }],
+      modelMetadata: {
+        'actual-video': { id: 'actual-video', display_name: 'Video Generator', output_modalities: ['video'] },
+        'actual-text': { id: 'actual-text', output_modalities: ['text'] },
+        'text-v1': { id: 'text-v1', output_modalities: ['text'] },
+        'seedance-video': { id: 'seedance-video', output_modalities: ['video'] },
+      },
+    })
+    await wrapper.get('div.cursor-pointer').trigger('click')
+    const rows = wrapper.findAll('[data-testid="model-option"]').map(row => row.text())
+    expect(rows.some(text => text.includes('text-v1') && text.includes('Video Generator'))).toBe(true)
+    expect(rows.some(text => text.includes('seedance-video'))).toBe(false)
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+  })
+
   it('keeps the whitelist unchanged when Seedance upstream model listing fails', async () => {
     syncUpstreamModelsPreview.mockRejectedValue(new Error('Upstream model listing is unavailable'))
     const wrapper = mountSelector({
@@ -159,6 +239,21 @@ describe('ModelWhitelistSelector', () => {
     expect(wrapper.emitted('update:modelValue')).toBeUndefined()
     expect(wrapper.emitted('upstream-synced')).toBeUndefined()
     expect(showError).toHaveBeenCalledOnce()
+    expect(showSuccess).not.toHaveBeenCalled()
+  })
+
+  it('ignores a pending sync result after switching accounts', async () => {
+    let finishSync!: (value: { models: string[]; metadata: Record<string, unknown> }) => void
+    syncUpstreamModels.mockReturnValue(new Promise(resolve => { finishSync = resolve }))
+    const wrapper = mountSelector({ platform: 'seedance', accountId: 73 })
+    await wrapper.findAll('button').find(button => button.text() === 'admin.accounts.syncUpstreamModels')!.trigger('click')
+    await wrapper.setProps({ accountId: 74, modelValue: ['ep-new'] })
+    finishSync({ models: ['ep-old'], metadata: { 'ep-old': { id: 'ep-old', display_name: 'Old Account Video' } } })
+    await flushPromises()
+    await wrapper.get('div.cursor-pointer').trigger('click')
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+    expect(wrapper.text()).not.toContain('ep-old')
+    expect(wrapper.text()).not.toContain('Old Account Video')
     expect(showSuccess).not.toHaveBeenCalled()
   })
 

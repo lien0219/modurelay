@@ -73,9 +73,95 @@ func setupSyncUpstreamModelsRouter(adminSvc service.AdminService, upstream servi
 		nil,
 	)
 	handler := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, nil, nil, accountTestSvc, nil, nil, nil, nil, nil)
+	router.GET("/api/v1/admin/accounts/:id/models", handler.GetAvailableModels)
 	router.POST("/api/v1/admin/accounts/:id/models/sync-upstream", handler.SyncUpstreamModels)
 	router.POST("/api/v1/admin/accounts/models/sync-upstream-preview", handler.SyncUpstreamModelsPreview)
 	return router
+}
+
+func TestAccountHandlerGetAvailableModels_SeedanceVideoCatalog(t *testing.T) {
+	for _, testCase := range []struct {
+		name    string
+		mapping map[string]any
+		wantIDs []string
+	}{
+		{"live catalog", nil, []string{"ep-video-test", "video-v1"}},
+		{"mapped targets", map[string]any{
+			"video-alias": "video-v1", "seedance-lookalike": "text-v1", "ep-custom": "ep-custom",
+		}, []string{"ep-custom", "video-alias"}},
+		{"wildcard mapping", map[string]any{"video-*": "video-v1"}, []string{"video-v1"}},
+		{"wildcard maps text name to video", map[string]any{"text-*": "video-v1"}, []string{"text-v1"}},
+		{"only non-video", map[string]any{"text-v1": "text-v1"}, []string{}},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			account := service.Account{ID: 73, Platform: service.PlatformSeedance, Type: service.AccountTypeAPIKey,
+				Credentials: map[string]any{"api_key": "test-key", "base_url": "https://seedance.example.com/api/v3"}}
+			if testCase.mapping != nil {
+				account.Credentials["model_mapping"] = testCase.mapping
+			}
+			svc := &availableModelsAdminService{stubAdminService: newStubAdminService(), account: account}
+			upstream := &syncUpstreamHTTPUpstream{resp: &http.Response{
+				StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}},
+				Body: io.NopCloser(strings.NewReader(`{"data":[
+				{"id":"video-v1","name":"Video Generator","modalities":{"output_modalities":["video"]}},
+				{"id":"text-v1","modalities":{"input_modalities":["video"],"output_modalities":["text"]}},
+				{"id":"image-v1","output_modalities":["image"]}, {"id":"ep-video-test"}
+			]}`)),
+			}}
+			router := setupSyncUpstreamModelsRouter(svc, upstream)
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/73/models", nil))
+			require.Equal(t, http.StatusOK, rec.Code)
+			var payload struct {
+				Data []struct {
+					ID          string `json:"id"`
+					DisplayName string `json:"display_name"`
+				} `json:"data"`
+			}
+			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &payload))
+			ids := make([]string, 0, len(payload.Data))
+			for _, model := range payload.Data {
+				ids = append(ids, model.ID)
+				if model.ID == "video-v1" || model.ID == "video-alias" {
+					require.Equal(t, "Video Generator", model.DisplayName)
+				}
+			}
+			require.Equal(t, testCase.wantIDs, ids)
+			require.NotContains(t, rec.Body.String(), "test-key")
+		})
+	}
+}
+
+func TestAccountHandlerGetAvailableModels_SeedanceDiscoveryFailureUsesSavedCapabilities(t *testing.T) {
+	account := service.Account{ID: 73, Platform: service.PlatformSeedance, Type: service.AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "test-key", "base_url": "https://seedance.example.com/api/v3",
+			"model_mapping": map[string]any{"video-alias": "video-v1", "text-v1": "text-v1", "ep-custom": "ep-custom"}}}
+	// Use the serialized shape so this also exercises persisted output metadata.
+	account.Extra = map[string]any{service.UpstreamModelMetadataExtraKey: map[string]any{"source": "upstream", "models": map[string]any{
+		"video-v1": map[string]any{"id": "video-v1", "display_name": "Saved Video Generator", "output_modalities": []string{"video"}},
+		"text-v1":  map[string]any{"id": "text-v1", "output_modalities": []string{"text"}},
+	}}}
+	svc := &availableModelsAdminService{stubAdminService: newStubAdminService(), account: account}
+	for _, withUpstream := range []bool{false, true} {
+		router := setupAvailableModelsRouter(svc)
+		if withUpstream {
+			router = setupSyncUpstreamModelsRouter(svc, &syncUpstreamHTTPUpstream{err: io.ErrUnexpectedEOF})
+		}
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/73/models", nil))
+		require.Equal(t, http.StatusOK, rec.Code)
+		var payload struct {
+			Data []struct {
+				ID          string `json:"id"`
+				DisplayName string `json:"display_name"`
+			} `json:"data"`
+		}
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &payload))
+		require.Len(t, payload.Data, 2)
+		require.Equal(t, "ep-custom", payload.Data[0].ID)
+		require.Equal(t, "video-alias", payload.Data[1].ID)
+		require.Equal(t, "Saved Video Generator", payload.Data[1].DisplayName)
+	}
 }
 
 func TestAccountHandlerGetAvailableModels_GrokUsesXAIModels(t *testing.T) {

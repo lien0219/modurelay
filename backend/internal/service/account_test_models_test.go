@@ -58,14 +58,15 @@ func TestFetchOpenAIAccountModelsAPIKeyPopulatesPickerFields(t *testing.T) {
 		return ordinaryModelsUpstreamResponse(`{"data":[
 			{"id":"new-api-model","owned_by":"provider","created":123},
 			{"id":"blank-label","display_name":"  ","type":""},
-			{"id":"named-model","display_name":"Provider Model","type":"model"}
+			{"id":"named-model","display_name":"Provider Model","type":"model"},
+			{"id":"doubao-seed-2-1-pro-260628","name":"Doubao-Seed-2.1-pro"}
 		]}`), nil
 	}})
 	svc := &AccountTestService{openaiGatewayService: gateway}
 	models, err := svc.FetchOpenAIAccountModels(context.Background(), newCodexModelsAPIKeyTestAccount("https://models.example/v1"))
 	require.NoError(t, err)
-	require.Len(t, models, 3)
-	for i, name := range []string{"new-api-model", "blank-label", "Provider Model"} {
+	require.Len(t, models, 4)
+	for i, name := range []string{"new-api-model", "blank-label", "Provider Model", "Doubao-Seed-2.1-pro"} {
 		require.Equal(t, name, models[i].DisplayName)
 		require.Equal(t, "model", models[i].Type)
 	}

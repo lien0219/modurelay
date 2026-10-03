@@ -5293,7 +5293,7 @@ const submitCreateAccount = async (payload: CreateAccountRequest) => {
       Object.values(modelMapping).some((target) =>
         typeof target === 'string' && target.trim() !== '' && !target.includes('*')
       )
-    if (payload.platform !== 'seedance' && (upstreamModelsPreviewed.value || hasConcreteMappedTarget)) {
+    if (upstreamModelsPreviewed.value || (payload.platform !== 'seedance' && hasConcreteMappedTarget)) {
       try {
         const result = await adminAPI.accounts.syncUpstreamModels(account.id)
         const warnings = result.warnings ?? []

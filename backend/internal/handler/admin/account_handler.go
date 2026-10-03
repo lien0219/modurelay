@@ -2843,6 +2843,65 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 		return
 	}
 
+	if account.Platform == service.PlatformSeedance {
+		metadata := make(map[string]service.UpstreamModelMetadata)
+		if snapshot := account.GetUpstreamModelMetadataSnapshot(); snapshot != nil {
+			metadata = snapshot.Models
+		}
+		requestedModels := make([]string, 0)
+		mapping := account.GetModelMapping()
+		liveCatalogAvailable := false
+		if h.accountTestService != nil {
+			if catalog, fetchErr := h.accountTestService.FetchSeedanceModelCatalog(c.Request.Context(), account); fetchErr == nil {
+				liveCatalogAvailable = true
+				requestedModels = catalog.Models
+				for modelID, entry := range catalog.Metadata {
+					metadata[modelID] = entry
+					if len(mapping) > 0 {
+						requestedModels = append(requestedModels, modelID)
+					}
+				}
+			}
+		}
+		if !liveCatalogAvailable {
+			for modelID := range metadata {
+				requestedModels = append(requestedModels, modelID)
+			}
+		}
+		if len(mapping) > 0 {
+			candidates := make(map[string]struct{}, len(mapping))
+			for _, modelID := range requestedModels {
+				if _, matched := account.ResolveMappedModel(modelID); matched {
+					candidates[modelID] = struct{}{}
+				}
+			}
+			for modelID := range mapping {
+				if strings.TrimSpace(modelID) != "" && !strings.Contains(modelID, "*") {
+					candidates[modelID] = struct{}{}
+				}
+			}
+			requestedModels = make([]string, 0, len(candidates))
+			for modelID := range candidates {
+				requestedModels = append(requestedModels, modelID)
+			}
+		}
+		sort.Strings(requestedModels)
+		models := make([]claude.Model, 0, len(requestedModels))
+		for _, modelID := range requestedModels {
+			entry := metadata[account.GetMappedModel(modelID)]
+			if !entry.AllowsVideoOutput() {
+				continue
+			}
+			displayName := strings.TrimSpace(entry.DisplayName)
+			if displayName == "" {
+				displayName = modelID
+			}
+			models = append(models, claude.Model{ID: modelID, Type: "model", DisplayName: displayName})
+		}
+		response.Success(c, models)
+		return
+	}
+
 	// Handle OpenAI accounts
 	if account.IsOpenAI() {
 		// Prefer the shared, account-keyed upstream catalog. If discovery fails,
