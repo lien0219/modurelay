@@ -929,6 +929,8 @@ export default {
       syncUpstreamModels: 'Sync upstream supported models',
       syncUpstreamModelsLoading: 'Syncing upstream...',
       upstreamModelCatalogHint: 'A model catalog does not confirm activation or access for this API key. Use the exact model value from the console API example, including the full API ID.',
+      upstreamModelNotOpenHint: 'The upstream reports that the account owning this API key has not activated this model version. Check the same account, project, and exact version in the Ark Console, then use the complete model value from an activated model API example.',
+      upstreamModelNotFoundHint: 'The upstream reports that the model or endpoint does not exist, or this API key cannot access it. Check the complete model value in the API example. If it uses ep-…, configure that endpoint ID.',
       syncUpstreamModelsSuccess: 'Synced {count} new model(s) from upstream ({total} upstream total)',
       syncUpstreamModelsNoChanges: 'All {count} upstream model(s) are already in the whitelist',
       syncUpstreamModelsEmpty: 'Upstream returned no models to sync',

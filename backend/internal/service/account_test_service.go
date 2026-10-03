@@ -456,6 +456,10 @@ func (s *AccountTestService) testSeedanceAccountConnection(c *gin.Context, accou
 	if testModelID == "" {
 		return s.sendErrorAndEnd(c, "Seedance model is empty after account mapping")
 	}
+	metadata, _ := account.GetUpstreamModelMetadata(testModelID)
+	if !metadata.AllowsVideoOutputForModel(testModelID) {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Seedance requires a video generation model; %s is a non-video model", testModelID))
+	}
 	apiURL, err := buildSeedanceURL(baseURL, SeedanceEndpointCreate, "")
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to build Seedance request URL: %s", err.Error()))

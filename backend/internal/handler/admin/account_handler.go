@@ -2888,8 +2888,9 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 		sort.Strings(requestedModels)
 		models := make([]claude.Model, 0, len(requestedModels))
 		for _, modelID := range requestedModels {
-			entry := metadata[account.GetMappedModel(modelID)]
-			if !entry.AllowsVideoOutput() {
+			targetID := account.GetMappedModel(modelID)
+			entry := metadata[targetID]
+			if !entry.AllowsVideoOutputForModel(targetID) {
 				continue
 			}
 			displayName := strings.TrimSpace(entry.DisplayName)

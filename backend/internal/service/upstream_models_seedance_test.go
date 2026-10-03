@@ -178,3 +178,28 @@ func TestFetchSeedanceModelCatalogPreservesIDsWithUnrecognizedCapabilityFormats(
 	require.NoError(t, err)
 	require.Equal(t, []string{"ep-compatible-video"}, catalog.Models)
 }
+
+func TestFetchSeedanceModelCatalogFiltersKnownNonVideoIDsWithoutCapabilities(t *testing.T) {
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Body: io.NopCloser(strings.NewReader(`{"data":[
+			{"id":"qwen3-8b-20250429","name":"qwen3-8b","modalities":{}},
+			{"id":"deepseek-v3-241226"},
+			{"id":"doubao-seed-2-1-pro-260628","name":"Doubao Seed Pro"},
+			{"id":"doubao-seedream-5-0-pro-260628"},
+			{"id":"doubao-seedance-2-0-260128","modalities":{"output_modalities":["video"]}},
+			{"id":"qwen3-video-gateway","output_modalities":["video"]},
+			{"id":"ep-custom-video"}, {"id":"48:seedance-2.0"}, {"id":"custom-video-gateway"}
+		]}`)),
+	}}
+	service := &AccountTestService{cfg: upstreamModelSyncTestConfig(), httpUpstream: upstream}
+	catalog, err := service.FetchSeedanceModelCatalog(context.Background(), &Account{
+		Platform: PlatformSeedance, Type: AccountTypeAPIKey,
+		Credentials: map[string]any{"base_url": "https://ark.cn-beijing.volces.com/api/v3", "api_key": "test-key"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"48:seedance-2.0", "custom-video-gateway", "doubao-seedance-2-0-260128", "ep-custom-video", "qwen3-video-gateway"}, catalog.Models)
+	require.Equal(t, "qwen3-8b", catalog.Metadata["qwen3-8b-20250429"].DisplayName)
+	require.Empty(t, catalog.Metadata["qwen3-8b-20250429"].OutputModalities, "filtering must not fabricate provider capabilities")
+	require.Len(t, upstream.requests, 1)
+}

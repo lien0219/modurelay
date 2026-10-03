@@ -82,6 +82,26 @@ function findModelRow(wrapper: ReturnType<typeof mountSelector>, modelId: string
 }
 
 describe('ModelWhitelistSelector', () => {
+  it('excludes legacy text IDs with empty metadata and preserves mapped video endpoints', async () => {
+    const wrapper = mountSelector({
+      platform: 'seedance',
+      modelValue: ['qwen3-8b-20250429', 'text-alias', 'qwen3-video-alias', 'ep-custom', 'qwen3-video-gateway'],
+      modelMappings: [{ from: 'text-alias', to: 'deepseek-v3-241226' }, { from: 'qwen3-video-alias', to: 'ep-video' }],
+      modelMetadata: {
+        'qwen3-8b-20250429': { id: 'qwen3-8b-20250429', display_name: 'qwen3-8b' },
+        'qwen3-video-gateway': { id: 'qwen3-video-gateway', output_modalities: ['video'] }
+      }
+    })
+    await wrapper.get('div.cursor-pointer').trigger('click')
+    const options = wrapper.findAll('[data-testid="model-option"]').map(option => option.text())
+    expect(options.some(option => option.includes('qwen3-8b-20250429'))).toBe(false)
+    expect(options.some(option => option.includes('text-alias'))).toBe(false)
+    expect(options.some(option => option.includes('qwen3-video-alias'))).toBe(true)
+    expect(options.some(option => option.includes('ep-custom'))).toBe(true)
+    expect(options.some(option => option.includes('qwen3-video-gateway'))).toBe(true)
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+    wrapper.unmount()
+  })
   beforeEach(() => {
     copyToClipboard.mockClear()
     showError.mockReset()

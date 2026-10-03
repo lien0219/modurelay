@@ -62,12 +62,28 @@
         </label>
         <Select
           v-model="selectedModelId"
+          class="account-test-model-select"
           :options="modelOptionsForMode"
           :disabled="loadingModels || status === 'connecting'"
           value-key="id"
-          label-key="display_name"
+          label-key="search_label"
+          searchable
+          :search-placeholder="t('admin.accounts.searchModels')"
+          :aria-label="t('admin.accounts.selectTestModel')"
           :placeholder="loadingModels ? t('common.loading') + '...' : t('admin.accounts.selectTestModel')"
-        />
+        >
+          <template #selected="{ option }">
+            <ModelLabel v-if="option" :id="String(option.id)" :name="String(option.display_name || option.id)" />
+            <span v-else>{{ loadingModels ? t('common.loading') + '...' : t('admin.accounts.selectTestModel') }}</span>
+          </template>
+          <template #option="{ option, selected }">
+            <ModelLabel class="flex-1" :id="String(option.id)" :name="String(option.display_name || option.id)" />
+            <Icon v-if="selected" name="check" size="sm" class="shrink-0 text-primary-500" :stroke-width="2" />
+          </template>
+        </Select>
+        <p v-if="account?.type === 'apikey'" class="text-xs leading-relaxed text-[var(--color-text-secondary)]">
+          {{ t('admin.accounts.upstreamModelCatalogHint') }}
+        </p>
       </div>
 
       <div v-if="isOpenAIAccount" class="space-y-1.5">
@@ -174,7 +190,7 @@
       <div class="group relative">
         <div
           ref="terminalRef"
-          class="max-h-[240px] min-h-[120px] overflow-y-auto rounded-xl border border-gray-700 bg-gray-900 p-4 font-mono text-sm dark:border-gray-800 dark:bg-black"
+          class="max-h-[240px] min-h-[120px] min-w-0 overflow-y-auto whitespace-pre-wrap rounded-xl border border-gray-700 bg-gray-900 p-4 font-mono text-sm [overflow-wrap:anywhere] dark:border-gray-800 dark:bg-black"
         >
           <!-- Status Line -->
           <div v-if="status === 'idle'" class="flex items-center gap-2 text-gray-500">
@@ -209,9 +225,13 @@
             class="mt-3 flex items-center gap-2 border-t border-gray-700 pt-3 text-red-400"
           >
             <Icon name="x" size="sm" :stroke-width="2" />
-            <span>{{ errorMessage }}</span>
+            <span class="min-w-0">{{ errorMessage }}</span>
           </div>
         </div>
+
+        <p v-if="upstreamModelErrorHint" role="note" class="mt-2 text-sm leading-relaxed text-[var(--color-text-secondary)]">
+          {{ upstreamModelErrorHint }}
+        </p>
 
         <!-- Copy Button -->
         <button
@@ -369,6 +389,7 @@ import { computed, ref, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
+import ModelLabel from '@/components/common/ModelLabel.vue'
 import TextArea from '@/components/common/TextArea.vue'
 import { Icon } from '@/components/icons'
 import { useClipboard } from '@/composables/useClipboard'
@@ -404,6 +425,12 @@ const status = ref<'idle' | 'connecting' | 'success' | 'error'>('idle')
 const outputLines = ref<OutputLine[]>([])
 const streamingContent = ref('')
 const errorMessage = ref('')
+const upstreamModelErrorHint = computed(() => {
+  if (status.value !== 'error') return ''
+  if (errorMessage.value.includes('ModelNotOpen')) return t('admin.accounts.upstreamModelNotOpenHint')
+  if (errorMessage.value.includes('InvalidEndpointOrModel.NotFound')) return t('admin.accounts.upstreamModelNotFoundHint')
+  return ''
+})
 const availableModels = ref<ClaudeModel[]>([])
 const selectedModelId = ref('')
 const testPrompt = ref('')
@@ -482,7 +509,7 @@ const showModelSelect = computed(() => {
   return grokTestMode.value === 'text' || grokTestMode.value === 'image' || grokTestMode.value === 'video'
 })
 
-const modelOptionsForMode = computed(() => {
+const modelsForMode = computed(() => {
   if (!isGrokAccount.value) return availableModels.value
   if (grokTestMode.value === 'image') {
     return availableModels.value.filter((m) => isGrokImageModel(m.id))
@@ -495,6 +522,10 @@ const modelOptionsForMode = computed(() => {
   }
   return []
 })
+const modelOptionsForMode = computed(() => modelsForMode.value.map(model => ({
+  ...model,
+  search_label: `${model.display_name || model.id} ${model.id}`
+})))
 
 const supportsPromptInput = computed(() => {
   if (!isGrokAccount.value) {
@@ -1052,6 +1083,19 @@ const copyOutput = () => {
   copyToClipboard(text, t('admin.accounts.outputCopied'))
 }
 </script>
+
+<style scoped>
+.account-test-model-select :deep(.select-trigger) {
+  height: auto;
+  min-height: 42px;
+  padding-block: 0.5rem;
+}
+
+.account-test-model-select :deep(.select-value) {
+  min-width: 0;
+  white-space: normal;
+}
+</style>
 
 <style>
 .fade-enter-active,

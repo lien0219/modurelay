@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -86,11 +87,20 @@ type modelsDevModalities struct {
 	Output []string `json:"output"`
 }
 
-// AllowsVideoOutput preserves opaque gateway IDs when output capabilities are
-// unknown. Explicit non-video outputs must not appear in a video-model picker.
+// Some Ark catalog entries omit capabilities for their published text/image
+// models. Reject those known families without treating arbitrary gateway IDs as
+// non-video. Explicit upstream output capabilities take precedence over names.
+var seedanceNonVideoModelID = regexp.MustCompile(`(?i)^(?:qwen-?\d|deepseek-(?:[vr]\d|coder|llm)|glm-\d|mistral-(?:\d|small|medium|large|nemo)|doubao-(?:pro-|lite-|embedding-|seedream-|seededit-|seed-(?:\d|code)|(?:1-5|1\.5)-))`)
+
 func (m UpstreamModelMetadata) AllowsVideoOutput() bool {
+	return m.AllowsVideoOutputForModel(m.ID)
+}
+
+// AllowsVideoOutputForModel also works when the catalog omitted all metadata.
+// Callers must pass the resolved mapping target, rather than the public alias.
+func (m UpstreamModelMetadata) AllowsVideoOutputForModel(modelID string) bool {
 	if len(m.OutputModalities) == 0 {
-		return true
+		return !seedanceNonVideoModelID.MatchString(strings.TrimSpace(modelID))
 	}
 	for _, modality := range m.OutputModalities {
 		if strings.EqualFold(strings.TrimSpace(modality), "video") {
@@ -234,7 +244,7 @@ func (s *AccountTestService) FetchSeedanceModelCatalog(ctx context.Context, acco
 	}
 	videoModels := make([]string, 0, len(models))
 	for _, modelID := range models {
-		if metadata[modelID].AllowsVideoOutput() {
+		if metadata[modelID].AllowsVideoOutputForModel(modelID) {
 			videoModels = append(videoModels, modelID)
 		}
 	}

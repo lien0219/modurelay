@@ -164,6 +164,47 @@ func TestAccountHandlerGetAvailableModels_SeedanceDiscoveryFailureUsesSavedCapab
 	}
 }
 
+func TestAccountHandlerGetAvailableModels_SeedanceLegacyTextWhitelist(t *testing.T) {
+	account := service.Account{ID: 73, Platform: service.PlatformSeedance, Type: service.AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key": "test-key", "base_url": "https://ark.cn-beijing.volces.com/api/v3",
+			"model_mapping": map[string]any{
+				"qwen3-8b-20250429": "qwen3-8b-20250429", "text-alias": "deepseek-v3-241226",
+				"qwen3-video-alias": "ep-video", "ep-custom": "ep-custom",
+			},
+		}}
+	account.Extra = map[string]any{service.UpstreamModelMetadataExtraKey: map[string]any{"models": map[string]any{
+		"qwen3-8b-20250429": map[string]any{"id": "qwen3-8b-20250429", "display_name": "qwen3-8b"},
+	}}}
+	svc := &availableModelsAdminService{stubAdminService: newStubAdminService(), account: account}
+	for _, discovery := range []string{"unavailable", "failed", "live"} {
+		router := setupAvailableModelsRouter(svc)
+		if discovery == "failed" {
+			router = setupSyncUpstreamModelsRouter(svc, &syncUpstreamHTTPUpstream{err: io.ErrUnexpectedEOF})
+		}
+		if discovery == "live" {
+			router = setupSyncUpstreamModelsRouter(svc, &syncUpstreamHTTPUpstream{resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(`{"data":[{"id":"qwen3-8b-20250429","name":"qwen3-8b","modalities":{}},{"id":"deepseek-v3-241226"},{"id":"ep-video","output_modalities":["video"]}]}`)),
+			}})
+		}
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/73/models", nil))
+		require.Equal(t, http.StatusOK, rec.Code)
+		var payload struct {
+			Data []struct {
+				ID string `json:"id"`
+			} `json:"data"`
+		}
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &payload))
+		ids := make([]string, 0, len(payload.Data))
+		for _, model := range payload.Data {
+			ids = append(ids, model.ID)
+		}
+		require.Equal(t, []string{"ep-custom", "qwen3-video-alias"}, ids, "discovery: %s", discovery)
+	}
+}
+
 func TestAccountHandlerGetAvailableModels_GrokUsesXAIModels(t *testing.T) {
 	svc := &availableModelsAdminService{
 		stubAdminService: newStubAdminService(),

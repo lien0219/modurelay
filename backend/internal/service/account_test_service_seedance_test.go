@@ -107,3 +107,54 @@ func seedanceAccountTestServiceFixture() *Account {
 		},
 	}
 }
+
+func TestAccountTestService_SeedanceRejectsNonVideoModelBeforeCallingUpstream(t *testing.T) {
+	for _, modelID := range []string{"qwen3-8b-20250429", "text-alias", "ep-text"} {
+		t.Run(modelID, func(t *testing.T) {
+			account := seedanceAccountTestServiceFixture()
+			account.Credentials["model_mapping"] = map[string]any{"text-alias": "deepseek-v3-241226"}
+			account.SetUpstreamModelMetadataSnapshot(UpstreamModelMetadataSnapshot{Models: map[string]UpstreamModelMetadata{
+				"ep-text": {ID: "ep-text", OutputModalities: []string{"text"}},
+			}})
+			upstream := &queuedHTTPUpstream{responses: []*http.Response{newJSONResponse(http.StatusOK, `{"id":"task-1","status":"queued"}`)}}
+			service := &AccountTestService{accountRepo: &mockAccountRepoForGemini{accountsByID: map[int64]*Account{account.ID: account}}, httpUpstream: upstream, cfg: &config.Config{}}
+			c, recorder := newTestContext()
+			err := service.TestAccountConnection(c, account.ID, modelID, "", AccountTestModeDefault)
+			require.Error(t, err)
+			require.Contains(t, recorder.Body.String(), "video generation model")
+			require.Empty(t, upstream.requests, "a text or image model must not create a video task")
+			require.NotContains(t, recorder.Body.String(), `"success":true`)
+		})
+	}
+}
+
+func TestAccountTestService_SeedancePreservesVideoCapabilitiesAndMappedEndpoints(t *testing.T) {
+	for _, testCase := range []struct {
+		requested string
+		target    string
+		outputs   []string
+	}{
+		{"qwen3-video-alias", "ep-video", nil},
+		{"qwen3-video-gateway", "qwen3-video-gateway", []string{"video"}},
+		{"48:seedance-2.0", "48:seedance-2.0", nil},
+	} {
+		t.Run(testCase.requested, func(t *testing.T) {
+			account := seedanceAccountTestServiceFixture()
+			account.Credentials["model_mapping"] = map[string]any{testCase.requested: testCase.target}
+			if testCase.outputs != nil {
+				account.SetUpstreamModelMetadataSnapshot(UpstreamModelMetadataSnapshot{Models: map[string]UpstreamModelMetadata{
+					testCase.target: {ID: testCase.target, OutputModalities: testCase.outputs},
+				}})
+			}
+			upstream := &queuedHTTPUpstream{responses: []*http.Response{newJSONResponse(http.StatusOK, `{"id":"task-1","status":"queued"}`)}}
+			service := &AccountTestService{accountRepo: &mockAccountRepoForGemini{accountsByID: map[int64]*Account{account.ID: account}}, httpUpstream: upstream, cfg: &config.Config{}}
+			c, recorder := newTestContext()
+			require.NoError(t, service.TestAccountConnection(c, account.ID, testCase.requested, "", AccountTestModeDefault))
+			require.Len(t, upstream.requests, 1)
+			body, err := io.ReadAll(upstream.requests[0].Body)
+			require.NoError(t, err)
+			require.Equal(t, testCase.target, gjson.GetBytes(body, "model").String())
+			require.Contains(t, recorder.Body.String(), `"success":true`)
+		})
+	}
+}

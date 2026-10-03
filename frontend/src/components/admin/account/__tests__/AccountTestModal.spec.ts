@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import AccountTestModal from '../AccountTestModal.vue'
+import Select from '@/components/common/Select.vue'
 
 const { getAvailableModels, copyToClipboard } = vi.hoisted(() => ({
   getAvailableModels: vi.fn(),
@@ -68,7 +69,7 @@ function mountModal(account: Record<string, unknown> = {
   platform: 'gemini',
   type: 'apikey',
   status: 'active'
-}) {
+}, realSelect = false) {
   return mount(AccountTestModal, {
     props: {
       show: false,
@@ -77,7 +78,8 @@ function mountModal(account: Record<string, unknown> = {
     global: {
       stubs: {
         BaseDialog: { template: '<div><slot /><slot name="footer" /></div>' },
-        Select: { template: '<div class="select-stub"></div>' },
+        Select: realSelect ? false : { template: '<div class="select-stub"></div>' },
+        Teleport: true,
         TextArea: {
           props: ['modelValue'],
           emits: ['update:modelValue'],
@@ -117,6 +119,50 @@ describe('AccountTestModal', () => {
 
   afterEach(() => {
     vi.restoreAllMocks()
+  })
+
+  it('the admin entry shows names and full IDs, searches both, and submits the original API ID', async () => {
+    const modelID = 'doubao-seedance-2-0-260128'
+    getAvailableModels.mockResolvedValue([
+      { id: modelID, display_name: 'Seedance Video Model' },
+      { id: 'ep-custom-video', display_name: 'Custom Endpoint' }
+    ])
+    const wrapper = mountModal({ id: 2, name: 'Seedance', platform: 'seedance', type: 'apikey', status: 'active' }, true)
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+    const picker = wrapper.findComponent(Select)
+    expect(picker.text()).toContain('Seedance Video Model')
+    expect(picker.text()).toContain(modelID)
+    expect(wrapper.text()).toContain('admin.accounts.upstreamModelCatalogHint')
+    await picker.get('button').trigger('click')
+    const search = wrapper.get('input.select-search-input')
+    await search.setValue('Seedance Video')
+    expect(wrapper.findAll('[role="option"]').map(option => option.text())).toEqual([expect.stringContaining(modelID)])
+    await search.setValue('ep-custom-video')
+    await wrapper.get('[role="option"]').trigger('click')
+    await (wrapper.vm as any).startTest()
+    await flushPromises()
+    const [, request] = (global.fetch as any).mock.calls[0]
+    expect(JSON.parse(request.body).model_id).toBe('ep-custom-video')
+    wrapper.unmount()
+  })
+
+  it.each([
+    ['seedance', 'ModelNotOpen', 'admin.accounts.upstreamModelNotOpenHint'],
+    ['openai', 'InvalidEndpointOrModel.NotFound', 'admin.accounts.upstreamModelNotFoundHint']
+  ])('explains %s %s while preserving the upstream error', async (platform, code, hint) => {
+    const modelID = platform === 'seedance' ? 'doubao-seedance-2-0-260128' : 'doubao-seed-2-1-pro-260628'
+    getAvailableModels.mockResolvedValue([{ id: modelID, display_name: 'Doubao' }])
+    const error = `${platform} upstream returned HTTP 404 (${code}): model access denied`
+    global.fetch = vi.fn().mockResolvedValue(createStreamResponse([`data: ${JSON.stringify({ type: 'error', error })}\n`])) as any
+    const wrapper = mountModal({ id: 2, name: 'Doubao', platform, type: 'apikey', status: 'active' })
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+    await (wrapper.vm as any).startTest()
+    await flushPromises()
+    expect(wrapper.text()).toContain(error)
+    expect(wrapper.text()).toContain(hint)
+    wrapper.unmount()
   })
 
   it('gemini 图片模型测试会携带提示词并渲染图片预览', async () => {

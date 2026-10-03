@@ -160,6 +160,7 @@ import ModelIcon from '@/components/common/ModelIcon.vue'
 import ModelLabel from '@/components/common/ModelLabel.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { allModels, getModelsByPlatform } from '@/composables/useModelWhitelist'
+import { allowsSeedanceVideoModel } from '@/utils/seedanceModels'
 
 const { t } = useI18n()
 
@@ -208,20 +209,21 @@ watch(
   }
 )
 const modelMetadata = computed(() => ({ ...props.modelMetadata, ...syncedMetadata.value }))
-const getModelMetadata = (id: string) => {
+const getModelTarget = (id: string) => {
   let target = id
   let matchedPrefixLength = -1
   for (const mapping of props.modelMappings ?? []) {
     const pattern = mapping.from.trim()
-    if (pattern === id) return modelMetadata.value[mapping.to.trim()]
+    if (pattern === id) return mapping.to.trim()
     const prefix = pattern.slice(0, -1)
     if (pattern.endsWith('*') && id.startsWith(prefix) && prefix.length > matchedPrefixLength) {
       target = mapping.to.trim()
       matchedPrefixLength = prefix.length
     }
   }
-  return modelMetadata.value[target]
+  return target
 }
+const getModelMetadata = (id: string) => modelMetadata.value[getModelTarget(id)]
 const getModelName = (id: string) => getModelMetadata(id)?.display_name || id
 const normalizedPlatforms = computed(() => {
   const rawPlatforms =
@@ -282,8 +284,7 @@ const availableOptions = computed(() => {
   const ids = Array.from(new Set([...syncedModelIds.value, ...props.modelValue, ...catalogIds, ...presetIds]))
   return ids
     .filter(id => {
-      const outputs = getModelMetadata(id)?.output_modalities ?? []
-      return !seedanceOnly.value || outputs.length === 0 || outputs.some(output => output.trim().toLowerCase() === 'video')
+      return !seedanceOnly.value || allowsSeedanceVideoModel(getModelTarget(id), getModelMetadata(id)?.output_modalities)
     })
     .map(id => ({ value: id, label: getModelName(id) }))
 })
