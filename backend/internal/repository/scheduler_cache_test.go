@@ -20,6 +20,23 @@ func TestFilterSchedulerCredentialsKeepsSubscriptionPlanType(t *testing.T) {
 	require.NotContains(t, filtered, "refresh_token")
 }
 
+func TestSchedulerMetadataAccountKeepsSeedanceBaseURLForEligibility(t *testing.T) {
+	account := service.Account{
+		ID:       25,
+		Platform: service.PlatformSeedance,
+		Type:     service.AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":  "provider-key",
+			"base_url": "https://provider.example/api/v3",
+		},
+	}
+
+	metadata := buildSchedulerMetadataAccount(account)
+
+	require.True(t, metadata.SupportsOpenAIEndpointCapability(service.OpenAIEndpointCapabilitySeedance))
+	require.Equal(t, "https://provider.example/api/v3", metadata.GetCredential("base_url"))
+}
+
 func TestSchedulerMetadataAccountKeepsOpenAISubscriptionIdentity(t *testing.T) {
 	account := service.Account{
 		ID:       24,
