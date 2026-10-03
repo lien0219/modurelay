@@ -163,6 +163,14 @@ func (s *OpenAIGatewayService) ForwardCompatibleVideo(
 		resp.Header.Get("x-trace-id"),
 	)
 	if resp.StatusCode >= http.StatusBadRequest {
+		if endpoint == GrokMediaEndpointVideoCancel && (resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusMethodNotAllowed) {
+			responseBody, readErr := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
+			if readErr != nil {
+				return nil, readErr
+			}
+			writeGrokMediaErrorResponse(c, http.StatusNotImplemented, "unsupported_capability", "The upstream video provider does not support task cancellation")
+			return nil, fmt.Errorf("compatible video upstream does not support task cancellation: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(responseBody)))
+		}
 		result, handleErr := s.handleCompatErrorResponse(resp, c, account, writeGrokMediaErrorResponse, upstreamModel)
 		if endpoint.IsGenerationRequest() {
 			var failoverErr *UpstreamFailoverError
@@ -237,6 +245,8 @@ func compatibleVideoEndpointPaths(endpoint GrokMediaEndpoint, requestID string) 
 	case GrokMediaEndpointVideosExtensions:
 		return []string{"/videos/extensions"}
 	case GrokMediaEndpointVideoStatus:
+		return []string{"/videos/" + escapedID, "/videos/generations/" + escapedID}
+	case GrokMediaEndpointVideoCancel:
 		return []string{"/videos/" + escapedID, "/videos/generations/" + escapedID}
 	case GrokMediaEndpointVideoContent:
 		return []string{"/videos/" + escapedID + "/content", "/videos/generations/" + escapedID + "/content"}

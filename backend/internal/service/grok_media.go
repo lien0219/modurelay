@@ -31,6 +31,7 @@ const (
 	GrokMediaEndpointVideosExtensions  GrokMediaEndpoint = "videos_extensions"
 	GrokMediaEndpointVideoStatus       GrokMediaEndpoint = "video_status"
 	GrokMediaEndpointVideoContent      GrokMediaEndpoint = "video_content"
+	GrokMediaEndpointVideoCancel       GrokMediaEndpoint = "video_cancel"
 
 	// Official xAI Imagine image-edit limit.
 	grokMediaMaxEditSourceImages = 3
@@ -41,7 +42,7 @@ func (e GrokMediaEndpoint) RequiresRequestBody() bool {
 }
 
 func (e GrokMediaEndpoint) IsVideoLookupRequest() bool {
-	return e == GrokMediaEndpointVideoStatus || e == GrokMediaEndpointVideoContent || e == SeedanceEndpointStatus || e == SeedanceEndpointDelete
+	return e == GrokMediaEndpointVideoStatus || e == GrokMediaEndpointVideoContent || e == GrokMediaEndpointVideoCancel || e == SeedanceEndpointStatus || e == SeedanceEndpointDelete
 }
 
 func (e GrokMediaEndpoint) IsGenerationRequest() bool {
@@ -113,6 +114,9 @@ func (r GrokMediaRequestInfo) ModerationBody() []byte {
 }
 
 func (e GrokMediaEndpoint) httpMethod() string {
+	if e == GrokMediaEndpointVideoCancel || e == SeedanceEndpointDelete {
+		return http.MethodDelete
+	}
 	if e.IsVideoLookupRequest() {
 		return http.MethodGet
 	}
@@ -520,6 +524,13 @@ type GrokVideoRecoveryCache interface {
 	RemoveGrokVideoRecovery(ctx context.Context, key string) error
 }
 
+// GrokVideoPendingBillingCleanup is implemented by the production cache. It
+// remains optional so existing cache test doubles and wrappers do not need to
+// grow a method for unrelated gateway behavior.
+type GrokVideoPendingBillingCleanup interface {
+	DeleteGrokVideoPendingBilling(ctx context.Context, key string) error
+}
+
 // StoreGrokVideoPendingBilling persists create-time billing params for deferred status billing.
 func (s *OpenAIGatewayService) StoreGrokVideoPendingBilling(
 	ctx context.Context,
@@ -592,6 +603,28 @@ func (s *OpenAIGatewayService) LoadGrokVideoPendingBilling(
 		return nil, err
 	}
 	return &pending, nil
+}
+
+// CancelGrokVideoPendingBilling removes the deferred billing snapshot and its
+// recovery index entry after an upstream task cancellation succeeds. It never
+// releases a completed billing claim, so cancellation cannot act as a refund.
+func (s *OpenAIGatewayService) CancelGrokVideoPendingBilling(
+	ctx context.Context,
+	requestID string,
+	userID, apiKeyID int64,
+) error {
+	if s == nil || s.cache == nil {
+		return fmt.Errorf("grok video pending billing cache is unavailable")
+	}
+	key := grokVideoPendingBillingKey(requestID, userID, apiKeyID)
+	if key == "" {
+		return fmt.Errorf("grok video pending billing key is invalid")
+	}
+	cleanup, ok := s.cache.(GrokVideoPendingBillingCleanup)
+	if !ok {
+		return fmt.Errorf("grok video pending billing cleanup is unavailable")
+	}
+	return cleanup.DeleteGrokVideoPendingBilling(ctx, key)
 }
 
 // ClaimGrokVideoBilling returns true once for a completed video request so status
@@ -752,6 +785,9 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 	}
 	if account.Platform != PlatformGrok {
 		return nil, fmt.Errorf("account platform %s is not supported for grok media", account.Platform)
+	}
+	if endpoint == GrokMediaEndpointVideoCancel {
+		return nil, fmt.Errorf("Grok upstream does not support video task cancellation")
 	}
 
 	token, _, err := s.getRequestCredential(ctx, c, account)

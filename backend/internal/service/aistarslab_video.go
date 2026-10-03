@@ -343,6 +343,8 @@ func (s *OpenAIGatewayService) ForwardAIStarsLabOpenAPIVideo(
 			result.VideoCount = 1
 		}
 		return result, nil
+	case GrokMediaEndpointVideoCancel:
+		return nil, fmt.Errorf("AIStarsLab OpenAPI does not support video task cancellation")
 	default:
 		return nil, fmt.Errorf("AIStarsLab OpenAPI does not support video endpoint %s", endpoint)
 	}

@@ -196,6 +196,26 @@ func TestGatewayRoutesGrokImagesAndVideosPathsAreRegistered(t *testing.T) {
 	}
 }
 
+func TestGatewayRoutesVideoCancelAliasesAreRegistered(t *testing.T) {
+	router := newGatewayRoutesTestRouter(service.PlatformOpenAI)
+	registered := make(map[string]bool)
+	for _, route := range router.Routes() {
+		registered[route.Method+" "+route.Path] = true
+	}
+	for _, route := range []string{
+		"DELETE /v1/videos/:request_id",
+		"DELETE /v1/videos/generations/:request_id",
+		"DELETE /v1/videos/edits/:request_id",
+		"DELETE /v1/videos/extensions/:request_id",
+		"DELETE /videos/:request_id",
+		"DELETE /videos/generations/:request_id",
+		"DELETE /videos/edits/:request_id",
+		"DELETE /videos/extensions/:request_id",
+	} {
+		require.True(t, registered[route], "%s should be registered", route)
+	}
+}
+
 func TestGatewayRoutesGrokCustomVoiceCRUDPathsAreRegistered(t *testing.T) {
 	router := newGatewayRoutesTestRouter(service.PlatformGrok)
 	registered := make(map[string]bool)

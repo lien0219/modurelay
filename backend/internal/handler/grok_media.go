@@ -51,6 +51,12 @@ func (h *OpenAIGatewayHandler) GrokVideoContent(c *gin.Context) {
 	h.handleGrokMedia(c, service.GrokMediaEndpointVideoContent, c.Param("request_id"))
 }
 
+// GrokVideoCancel cancels an asynchronous video task through the task owner's
+// configured upstream account.
+func (h *OpenAIGatewayHandler) GrokVideoCancel(c *gin.Context) {
+	h.handleGrokMedia(c, service.GrokMediaEndpointVideoCancel, c.Param("request_id"))
+}
+
 func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.GrokMediaEndpoint, requestID string) {
 	platform := service.PlatformGrok
 	compatibleVideo := false
@@ -621,6 +627,10 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 		service.SetOpsLatencyMs(c, service.OpsResponseLatencyMsKey, responseLatencyMs)
 
 		if err != nil {
+			if isGrokVideoCancelEndpoint(endpoint) && (account.Platform == service.PlatformGrok || service.IsAIStarsLabOpenAPIAccount(account)) {
+				h.errorResponse(c, http.StatusNotImplemented, "unsupported_capability", err.Error())
+				return
+			}
 			var failoverErr *service.UpstreamFailoverError
 			if errors.As(err, &failoverErr) {
 				if failoverClientGone(c) {
@@ -697,6 +707,15 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 		}
 
 		h.gatewayService.ReportOpenAIAccountScheduleResult(account, grokMediaScheduleModel(account, selectedRoutingModel, result), true, nil)
+		if isGrokVideoCancelEndpoint(endpoint) {
+			if cleanupErr := h.gatewayService.CancelGrokVideoPendingBilling(requestCtx, requestID, subject.UserID, apiKey.ID); cleanupErr != nil {
+				reqLog.Warn("grok_media.video_cancel_pending_billing_cleanup_failed",
+					zap.String("request_id", requestID),
+					zap.Error(cleanupErr),
+				)
+			}
+			return
+		}
 		if isGrokVideoCreateEndpoint(endpoint) && strings.TrimSpace(result.ResponseID) != "" {
 			var seedanceStateErr error
 			if err := h.gatewayService.BindGrokMediaVideoRequestAccount(
@@ -859,11 +878,16 @@ func isOpenAICompatibleVideoEndpoint(endpoint service.GrokMediaEndpoint) bool {
 		service.GrokMediaEndpointVideosEdits,
 		service.GrokMediaEndpointVideosExtensions,
 		service.GrokMediaEndpointVideoStatus,
-		service.GrokMediaEndpointVideoContent:
+		service.GrokMediaEndpointVideoContent,
+		service.GrokMediaEndpointVideoCancel:
 		return true
 	default:
 		return false
 	}
+}
+
+func isGrokVideoCancelEndpoint(endpoint service.GrokMediaEndpoint) bool {
+	return endpoint == service.GrokMediaEndpointVideoCancel || endpoint == service.SeedanceEndpointDelete
 }
 
 func restoreCompositeVideoLookupPlatform(c *gin.Context, apiKey *service.APIKey, platform string) {

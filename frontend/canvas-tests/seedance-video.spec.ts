@@ -4,6 +4,7 @@ import { mediaModelFamily, normalizeRoutedModelName, videoTransportKind } from '
 import { providerAxios } from '@/services/api/provider-transport'
 import {
   createVideoGenerationTask,
+  cancelVideoGenerationTask,
   pollVideoGenerationTask,
   waitForVideoGenerationTask,
   type VideoGenerationTask,
@@ -160,5 +161,17 @@ describe('Seedance through the Canvas OpenAI-compatible video API', () => {
 
     await expect(waitForVideoGenerationTask(videoConfig(), openAITask(), { deadlineAt: Date.now() - 1 }))
       .rejects.toMatchObject({ name: 'VideoTaskTimeout' })
+  })
+
+  it('cancels an OpenAI-compatible task through the shared video endpoint', async () => {
+    const del = vi.spyOn(providerAxios, 'delete').mockResolvedValue({ data: {} } as never)
+
+    await cancelVideoGenerationTask(videoConfig(), openAITask())
+
+    expect(del).toHaveBeenCalledOnce()
+    expect(del.mock.calls[0]?.[0]).toBe('https://relay.example/v1/videos/task-123')
+    expect(del.mock.calls[0]?.[1]).toMatchObject({
+      headers: { Authorization: `Bearer ${apiKey}` },
+    })
   })
 })

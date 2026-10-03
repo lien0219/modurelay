@@ -2,14 +2,41 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"mime"
 	"mime/multipart"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
+	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 )
+
+type compatibleVideoCancelUpstreamStub struct {
+	request  *http.Request
+	response *http.Response
+}
+
+func (s *compatibleVideoCancelUpstreamStub) Do(req *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
+	s.request = req
+	return s.response, nil
+}
+
+func (s *compatibleVideoCancelUpstreamStub) DoWithTLS(req *http.Request, proxyURL string, accountID int64, concurrency int, _ *tlsfingerprint.Profile) (*http.Response, error) {
+	return s.Do(req, proxyURL, accountID, concurrency)
+}
+
+func compatibleVideoCancelTestContext(method, target string) (*gin.Context, *httptest.ResponseRecorder) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(method, target, nil)
+	return c, recorder
+}
 
 func TestCompatibleVideoPlatformAndCapability(t *testing.T) {
 	for _, platform := range []string{PlatformOpenAI, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo, PlatformSeedance} {
@@ -51,6 +78,40 @@ func TestCompatibleVideoEndpointPaths(t *testing.T) {
 	got = compatibleVideoEndpointPaths(GrokMediaEndpointVideoStatus, "task/1")
 	if len(got) != 2 || got[0] != "/videos/task%2F1" || got[1] != "/videos/generations/task%2F1" {
 		t.Fatalf("unexpected status paths: %#v", got)
+	}
+
+	got = compatibleVideoEndpointPaths(GrokMediaEndpointVideoCancel, "task-1")
+	if len(got) != 2 || got[0] != "/videos/task-1" || got[1] != "/videos/generations/task-1" {
+		t.Fatalf("unexpected cancel paths: %#v", got)
+	}
+	if GrokMediaEndpointVideoCancel.httpMethod() != http.MethodDelete || !GrokMediaEndpointVideoCancel.IsVideoLookupRequest() {
+		t.Fatalf("cancel endpoint must use DELETE lookup semantics")
+	}
+}
+
+func TestForwardCompatibleVideoCancelUsesDeleteAndTaskID(t *testing.T) {
+	upstream := &compatibleVideoCancelUpstreamStub{response: &http.Response{
+		StatusCode: http.StatusNoContent,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader("")),
+	}}
+	svc := &OpenAIGatewayService{httpUpstream: upstream}
+	account := &Account{ID: 11, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{
+		"api_key": "openai-secret", "base_url": "https://video.example/v1",
+	}}
+	c, w := compatibleVideoCancelTestContext(http.MethodDelete, "/v1/videos/task-1")
+	result, err := svc.ForwardCompatibleVideo(context.Background(), c, account, GrokMediaEndpointVideoCancel, "task-1", nil, "", "task-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result == nil || result.ResponseID != "task-1" {
+		t.Fatalf("unexpected cancellation result: %#v", result)
+	}
+	if upstream.request.Method != http.MethodDelete || upstream.request.URL.String() != "https://video.example/v1/videos/task-1" {
+		t.Fatalf("unexpected upstream cancellation request: %s %s", upstream.request.Method, upstream.request.URL)
+	}
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("response status=%d want %d", w.Code, http.StatusNoContent)
 	}
 }
 

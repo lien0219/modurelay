@@ -199,6 +199,21 @@ func (c *gatewayCache) GetGrokVideoPendingBilling(ctx context.Context, key strin
 	return val, nil
 }
 
+func (c *gatewayCache) DeleteGrokVideoPendingBilling(ctx context.Context, key string) error {
+	if c == nil || c.rdb == nil {
+		return errors.New("gateway cache unavailable")
+	}
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return errors.New("invalid grok video pending billing key")
+	}
+	pipe := c.rdb.TxPipeline()
+	pipe.Del(ctx, grokVideoPendingBillingPrefix+key)
+	pipe.ZRem(ctx, grokVideoRecoveryIndexKey, key)
+	_, err := pipe.Exec(ctx)
+	return err
+}
+
 func (c *gatewayCache) ScheduleGrokVideoRecovery(ctx context.Context, key string, dueAt time.Time, ttl time.Duration) error {
 	if c == nil || c.rdb == nil {
 		return errors.New("gateway cache unavailable")

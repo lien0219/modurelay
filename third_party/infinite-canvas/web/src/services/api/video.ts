@@ -123,6 +123,21 @@ export async function pollVideoGenerationTask(config: AiConfig, task: VideoGener
     return pollOpenAIVideoTask(requestConfig, task, options);
 }
 
+/** Cancel an OpenAI-compatible async video task on the provider. */
+export async function cancelVideoGenerationTask(config: AiConfig, task: VideoGenerationTask, options?: RequestOptions): Promise<void> {
+    if (task.provider !== "openai") return;
+    const requestConfig = resolveModelRequestConfig(config, task.model);
+    assertVideoConfig(requestConfig, requestConfig.model);
+    try {
+        await providerAxios.delete(aiApiUrl(requestConfig, `/videos/${encodeURIComponent(task.id)}`), {
+            headers: aiHeaders(requestConfig),
+            signal: options?.signal,
+        });
+    } catch (error) {
+        throw videoRequestError(error, apiText("videoTaskCancelFailed"));
+    }
+}
+
 async function createPluginVideoTask(config: AiConfig, model: string, script: string, prompt: string, references: ReferenceImage[], options?: VideoMediaOptions): Promise<VideoGenerationTask> {
     if (!config.baseUrl.trim()) throw new Error(apiText("baseUrlRequired"));
     if (!config.apiKey.trim()) throw new Error(apiText("apiKeyRequired"));

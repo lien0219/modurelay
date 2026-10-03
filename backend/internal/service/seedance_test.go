@@ -6,6 +6,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -92,6 +93,42 @@ func TestSeedanceCompatibleVideoCreateAndStatus(t *testing.T) {
 	require.Equal(t, "completed", gjson.GetBytes(w.Body.Bytes(), "status").String())
 	require.Equal(t, "https://cdn.example.com/video.mp4", gjson.GetBytes(w.Body.Bytes(), "metadata.result_url").String())
 	require.Equal(t, 1, result.VideoCount)
+}
+
+func TestSeedanceCompatibleVideoCancelUsesDelete(t *testing.T) {
+	upstream := &grokMediaContentUpstreamStub{response: &http.Response{
+		StatusCode: http.StatusNoContent,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader("")),
+	}}
+	svc := &OpenAIGatewayService{httpUpstream: upstream}
+	c, w := grokMediaContentTestContext(http.MethodDelete, "/v1/videos/seedance:task-2", nil)
+	result, err := svc.ForwardSeedanceCompatibleVideo(
+		context.Background(), c, seedanceFirstClassTestAccount(), GrokMediaEndpointVideoCancel,
+		"seedance:task-2", nil, "", "video",
+	)
+	require.NoError(t, err)
+	require.Equal(t, "seedance:task-2", result.ResponseID)
+	require.Equal(t, http.MethodDelete, upstream.request.Method)
+	require.Equal(t, "/api/v3/contents/generations/tasks/task-2", upstream.request.URL.Path)
+	require.Equal(t, http.StatusNoContent, w.Code)
+}
+
+func TestSeedanceCompatibleVideoCancelRejectsUnsupportedUpstream(t *testing.T) {
+	upstream := &grokMediaContentUpstreamStub{response: &http.Response{
+		StatusCode: http.StatusNotFound,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"route not found"}}`)),
+	}}
+	svc := &OpenAIGatewayService{httpUpstream: upstream}
+	c, w := grokMediaContentTestContext(http.MethodDelete, "/v1/videos/seedance:task-2", nil)
+	_, err := svc.ForwardSeedanceCompatibleVideo(
+		context.Background(), c, seedanceFirstClassTestAccount(), GrokMediaEndpointVideoCancel,
+		"seedance:task-2", nil, "", "video",
+	)
+	require.Error(t, err)
+	require.Equal(t, http.StatusNotImplemented, w.Code)
+	require.Contains(t, w.Body.String(), "does not support task cancellation")
 }
 
 func TestSeedanceStatusAndDelete(t *testing.T) {

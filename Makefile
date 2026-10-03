@@ -42,7 +42,7 @@ build-frontend:
 
 # 构建两个独立前端，并将 React 产物放入 Go 的嵌入目录。
 build-infinite-canvas: build-frontend
-	@cd third_party/infinite-canvas/web && VITE_BASE=/infinite-canvas/ bun run build -- --outDir ../../../backend/internal/web/dist/infinite-canvas --emptyOutDir
+	@cd third_party/infinite-canvas/web && bun run build -- --base /infinite-canvas/ --outDir ../../../backend/internal/web/dist/infinite-canvas --emptyOutDir
 
 build-frontends: build-infinite-canvas
 

@@ -120,10 +120,10 @@ func prepareSeedanceCompatibleCreateBody(account *Account, body []byte, contentT
 	return encoded, info, upstreamModel, nil
 }
 
-func (s *OpenAIGatewayService) doSeedanceCompatibleRequest(ctx context.Context, c *gin.Context, account *Account, method, target string, body []byte) ([]byte, http.Header, error) {
+func (s *OpenAIGatewayService) doSeedanceCompatibleRequest(ctx context.Context, c *gin.Context, account *Account, method, target string, body []byte) ([]byte, http.Header, int, error) {
 	token := strings.TrimSpace(account.GetCredential("api_key"))
 	if token == "" {
-		return nil, nil, fmt.Errorf("seedance account missing api_key")
+		return nil, nil, 0, fmt.Errorf("seedance account missing api_key")
 	}
 	var reader io.Reader
 	if len(body) > 0 {
@@ -131,7 +131,7 @@ func (s *OpenAIGatewayService) doSeedanceCompatibleRequest(ctx context.Context, 
 	}
 	req, err := http.NewRequestWithContext(ctx, method, target, reader)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, 0, err
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/json")
@@ -148,17 +148,17 @@ func (s *OpenAIGatewayService) doSeedanceCompatibleRequest(ctx context.Context, 
 	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(started).Milliseconds())
 	if err != nil {
 		// Never fail over an ambiguous async creation transport failure.
-		return nil, nil, fmt.Errorf("seedance upstream transport failed: %w", err)
+		return nil, nil, 0, fmt.Errorf("seedance upstream transport failed: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	responseBody, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
-		return nil, resp.Header.Clone(), err
+		return nil, resp.Header.Clone(), resp.StatusCode, err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, resp.Header.Clone(), fmt.Errorf("seedance upstream status %d: %s", resp.StatusCode, strings.TrimSpace(string(responseBody)))
+		return responseBody, resp.Header.Clone(), resp.StatusCode, fmt.Errorf("seedance upstream status %d: %s", resp.StatusCode, strings.TrimSpace(string(responseBody)))
 	}
-	return responseBody, resp.Header.Clone(), nil
+	return responseBody, resp.Header.Clone(), resp.StatusCode, nil
 }
 
 func seedanceCompatibleStatus(status string) string {
@@ -205,7 +205,7 @@ func (s *OpenAIGatewayService) ForwardSeedanceCompatibleVideo(
 		if err != nil {
 			return nil, err
 		}
-		responseBody, headers, err := s.doSeedanceCompatibleRequest(ctx, c, account, http.MethodPost, target, createBody)
+		responseBody, headers, _, err := s.doSeedanceCompatibleRequest(ctx, c, account, http.MethodPost, target, createBody)
 		if err != nil {
 			return nil, err
 		}
@@ -234,15 +234,38 @@ func (s *OpenAIGatewayService) ForwardSeedanceCompatibleVideo(
 			},
 		}, nil
 
-	case GrokMediaEndpointVideoStatus, GrokMediaEndpointVideoContent:
+	case GrokMediaEndpointVideoStatus, GrokMediaEndpointVideoContent, GrokMediaEndpointVideoCancel:
 		rawID := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(requestID), "seedance:"))
-		target, err := buildSeedanceURL(base, SeedanceEndpointStatus, rawID)
+		upstreamEndpoint := SeedanceEndpointStatus
+		method := http.MethodGet
+		if endpoint == GrokMediaEndpointVideoCancel {
+			upstreamEndpoint = SeedanceEndpointDelete
+			method = http.MethodDelete
+		}
+		target, err := buildSeedanceURL(base, upstreamEndpoint, rawID)
 		if err != nil {
 			return nil, err
 		}
-		responseBody, headers, err := s.doSeedanceCompatibleRequest(ctx, c, account, http.MethodGet, target, nil)
+		responseBody, headers, statusCode, err := s.doSeedanceCompatibleRequest(ctx, c, account, method, target, nil)
 		if err != nil {
+			if endpoint == GrokMediaEndpointVideoCancel {
+				if statusCode == http.StatusNotFound || statusCode == http.StatusMethodNotAllowed {
+					writeGrokMediaErrorResponse(c, http.StatusNotImplemented, "unsupported_capability", "The upstream video provider does not support task cancellation")
+					return nil, fmt.Errorf("seedance compatible video upstream does not support task cancellation: status=%d body=%s", statusCode, strings.TrimSpace(string(responseBody)))
+				}
+				if statusCode > 0 {
+					writeGrokMediaResponse(c, &http.Response{StatusCode: statusCode, Header: headers}, responseBody, s.responseHeaderFilter)
+				}
+			}
 			return nil, err
+		}
+		if endpoint == GrokMediaEndpointVideoCancel {
+			writeGrokMediaResponse(c, &http.Response{StatusCode: statusCode, Header: headers}, responseBody, s.responseHeaderFilter)
+			return &OpenAIForwardResult{
+				ResponseID:      SeedanceTaskKey(rawID),
+				ResponseHeaders: headers,
+				Duration:        time.Since(started),
+			}, nil
 		}
 		status := seedanceCompatibleStatus(gjson.GetBytes(responseBody, "status").String())
 		videoURL := seedanceVideoURLFromResponse(responseBody)

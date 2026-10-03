@@ -18,6 +18,7 @@ import { resolveImageUrl, uploadImage } from "@/services/image-storage";
 import { pruneVideoGenerationHistory } from "@/services/generation-history";
 import {
     createVideoGenerationTask,
+    cancelVideoGenerationTask,
     pollVideoGenerationTask,
     storeGeneratedVideo,
     VIDEO_TASK_POLL_INTERVAL_MS,
@@ -27,7 +28,7 @@ import {
 import { useAssetStore } from "@/stores/use-asset-store";
 import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
 import { useWorkbenchAgentStore } from "@/stores/use-workbench-agent-store";
-import { boolConfig, mediaTaskRouteFingerprint, modelOptionLabel, useConfigStore, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
+import { boolConfig, mediaTaskRouteFingerprint, modelOptionLabel, resolveModelScript, useConfigStore, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 import type { ReferenceImage } from "@/types/image";
 import i18n from "@/i18n";
@@ -45,7 +46,7 @@ type GeneratedVideo = {
 
 type GenerationResult = {
     id: string;
-    status: "pending" | "success" | "failed";
+    status: "pending" | "success" | "failed" | "canceled";
     video?: GeneratedVideo;
     error?: string;
 };
@@ -63,7 +64,7 @@ type GenerationLog = {
     size: string;
     resolution: string;
     seconds: string;
-    status: "pending" | "success" | "failed";
+    status: "pending" | "success" | "failed" | "canceled";
     task?: VideoGenerationTask;
     video?: GeneratedVideo;
     error?: string;
@@ -84,6 +85,8 @@ export default function VideoPage() {
     const activeLogIdsRef = useRef<Set<string>>(new Set());
     const pollControllersRef = useRef<Map<string, AbortController>>(new Map());
     const createControllerRef = useRef<AbortController | null>(null);
+    const createCancellationModeRef = useRef<"openai" | "local" | null>(null);
+    const cancelRequestedRef = useRef(false);
     const visibleLogIdRef = useRef<string | null>(null);
     const config = useConfigStore((state) => state.config);
     const effectiveConfig = useEffectiveConfig();
@@ -96,6 +99,7 @@ export default function VideoPage() {
     const [results, setResults] = useState<GenerationResult[]>([]);
     const [logs, setLogs] = useState<GenerationLog[]>([]);
     const [running, setRunning] = useState(false);
+    const [canceling, setCanceling] = useState(false);
     const [logsOpen, setLogsOpen] = useState(false);
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [promptDialogOpen, setPromptDialogOpen] = useState(false);
@@ -171,28 +175,65 @@ export default function VideoPage() {
     };
 
     const cancelGeneration = async () => {
+        if (canceling) return;
         const canceled = t("common.requestCanceled");
-        createControllerRef.current?.abort();
-        createControllerRef.current = null;
+        setCanceling(true);
+        const createController = createControllerRef.current;
+        const createMode = createCancellationModeRef.current;
+        if (createController) {
+            cancelRequestedRef.current = true;
+            if (createMode === "local") {
+                createController.abort();
+                createControllerRef.current = null;
+                createCancellationModeRef.current = null;
+            }
+        }
         const activeIds = Array.from(pollControllersRef.current.keys());
-        pollControllersRef.current.forEach((controller) => controller.abort());
-        pollControllersRef.current.clear();
-        activeLogIdsRef.current.clear();
-        setResults((value) => value.map((item) => (item.status === "pending" ? { ...item, status: "failed", error: canceled } : item)));
-        setRunning(false);
-        setStartedAt(0);
-        setNowMs(Date.now());
-        if (activeIds.length) {
-            await Promise.all(
-                activeIds.map(async (id) => {
-                    const stored = await logStore.getItem<GenerationLog>(id);
-                    if (!stored || stored.status !== "pending") return;
-                    await logStore.setItem(id, serializeLog({ ...stored, status: "failed", task: undefined, durationMs: Math.max(0, Date.now() - stored.createdAt), error: canceled }));
-                }),
-            );
+        const canceledIds = new Set<string>();
+        const cancellationErrors: string[] = [];
+        await Promise.all(
+            activeIds.map(async (id) => {
+                const stored = await logStore.getItem<GenerationLog>(id);
+                if (!stored || stored.status !== "pending" || !stored.task) return;
+                try {
+                    const taskConfig = buildVideoConfig({ ...effectiveConfig, ...stored.config }, stored.task.model || stored.model);
+                    await cancelVideoGenerationTask(taskConfig, stored.task);
+                    canceledIds.add(id);
+                    pollControllersRef.current.get(id)?.abort();
+                    pollControllersRef.current.delete(id);
+                    activeLogIdsRef.current.delete(id);
+                    await logStore.setItem(
+                        id,
+                        serializeLog({
+                            ...stored,
+                            status: "canceled",
+                            durationMs: Math.max(0, Date.now() - stored.createdAt),
+                            error: canceled,
+                        }),
+                    );
+                } catch (error) {
+                    cancellationErrors.push(error instanceof Error ? error.message : t("workbench.generationFailed"));
+                }
+            }),
+        );
+        if (canceledIds.size) {
+            setResults((value) => value.map((item) => (canceledIds.has(item.id) ? { ...item, status: "canceled", error: canceled } : item)));
             await refreshLogs(false);
         }
-        message.info(canceled);
+        const waitingForCreateCancellation = Boolean(createControllerRef.current && createCancellationModeRef.current === "openai");
+        if (!waitingForCreateCancellation && !pollControllersRef.current.size) {
+            setRunning(false);
+            setStartedAt(0);
+            setNowMs(Date.now());
+        }
+        setCanceling(false);
+        if (cancellationErrors.length) {
+            message.error(cancellationErrors[0]);
+        } else if (waitingForCreateCancellation) {
+            message.info(t("workbench.cancelRequested"));
+        } else if (canceledIds.size || createMode === "local") {
+            message.info(canceled);
+        }
     };
 
     const addReferencesFromClipboard = async () => {
@@ -218,6 +259,7 @@ export default function VideoPage() {
     const generate = async () => {
         const agentTaskId = agentTaskIdRef.current;
         agentTaskIdRef.current = undefined;
+        cancelRequestedRef.current = false;
         const snapshot = buildRequestSnapshot();
         if (!snapshot) {
             if (agentTaskId) updateAgentTask(agentTaskId, { status: "failed", error: t("videoWorkbench.invalidParams") });
@@ -232,9 +274,33 @@ export default function VideoPage() {
         setNowMs(batchStartedAt);
         const controller = new AbortController();
         createControllerRef.current = controller;
+        createCancellationModeRef.current = resolveModelScript(snapshot.config, model) || snapshot.config.apiFormat === "gemini" ? "local" : "openai";
         try {
             const task = await createVideoGenerationTask(snapshot.config, snapshot.text, snapshot.references, { signal: controller.signal });
+            const cancellationRequested = cancelRequestedRef.current;
+            cancelRequestedRef.current = false;
             if (controller.signal.aborted) return;
+            if (cancellationRequested) {
+                let cancellationSucceeded = task.provider !== "openai";
+                if (task.provider === "openai") {
+                    try {
+                        await cancelVideoGenerationTask(snapshot.config, task);
+                        cancellationSucceeded = true;
+                    } catch (error) {
+                        message.error(error instanceof Error ? error.message : t("workbench.generationFailed"));
+                    }
+                }
+                if (cancellationSucceeded) {
+                    const canceledLog = buildLog({ prompt: snapshot.text, model, config: snapshot.config, references: snapshot.references, durationMs: Date.now() - batchStartedAt, status: "canceled", task, error: t("common.requestCanceled") });
+                    visibleLogIdRef.current = canceledLog.id;
+                    await saveLog(canceledLog, false);
+                    setResults([{ id: canceledLog.id, status: "canceled", error: t("common.requestCanceled") }]);
+                    setRunning(false);
+                    setStartedAt(0);
+                    message.info(t("common.requestCanceled"));
+                    return;
+                }
+            }
             const routeFingerprint = task.provider === "plugin" ? undefined : await mediaTaskRouteFingerprint(snapshot.config, task.model);
             const log = buildLog({ prompt: snapshot.text, model, config: snapshot.config, references: snapshot.references, durationMs: 0, status: "pending", task, routeFingerprint });
             visibleLogIdRef.current = log.id;
@@ -242,6 +308,17 @@ export default function VideoPage() {
             if (createControllerRef.current === controller) createControllerRef.current = null;
             void pollGenerationLog(log, snapshot.config, agentTaskId, controller);
         } catch (error) {
+            const cancellationRequested = cancelRequestedRef.current;
+            cancelRequestedRef.current = false;
+            if (cancellationRequested) {
+                const errorMessage = t("common.requestCanceled");
+                if (agentTaskId) updateAgentTask(agentTaskId, { status: "failed", successCount: 0, failCount: 1, error: errorMessage });
+                setResults([{ id: nanoid(), status: "canceled", error: errorMessage }]);
+                await saveLog(buildLog({ prompt: snapshot.text, model, config: snapshot.config, references: snapshot.references, durationMs: Date.now() - batchStartedAt, status: "canceled", error: errorMessage }), false);
+                setRunning(false);
+                setStartedAt(0);
+                return;
+            }
             if (controller.signal.aborted || (error instanceof Error && error.name === "AbortError")) {
                 if (agentTaskId) updateAgentTask(agentTaskId, { status: "failed", successCount: 0, failCount: 1, error: t("common.requestCanceled") });
                 setResults([{ id: nanoid(), status: "failed", error: t("common.requestCanceled") }]);
@@ -257,6 +334,7 @@ export default function VideoPage() {
             setRunning(false);
         } finally {
             if (createControllerRef.current === controller) createControllerRef.current = null;
+            if (createCancellationModeRef.current === "openai" || createCancellationModeRef.current === "local") createCancellationModeRef.current = null;
         }
     };
 
@@ -464,7 +542,7 @@ export default function VideoPage() {
         if (log.config.videoGenerateAudio) updateConfig("videoGenerateAudio", log.config.videoGenerateAudio);
         if (log.config.videoWatermark) updateConfig("videoWatermark", log.config.videoWatermark);
         if (log.config.videoMode) updateConfig("videoMode", log.config.videoMode);
-        setResults(log.status === "pending" ? [{ id: log.id, status: "pending" }] : log.video ? [{ id: log.video.id, status: "success", video: log.video }] : [{ id: log.id, status: "failed", error: log.error || t("workbench.generationFailed") }]);
+        setResults(log.status === "pending" ? [{ id: log.id, status: "pending" }] : log.status === "canceled" ? [{ id: log.id, status: "canceled", error: log.error || t("common.requestCanceled") }] : log.video ? [{ id: log.video.id, status: "success", video: log.video }] : [{ id: log.id, status: "failed", error: log.error || t("workbench.generationFailed") }]);
     };
 
     return (
@@ -556,7 +634,7 @@ export default function VideoPage() {
 
                         <div className="mt-auto pt-6">
                             {running ? (
-                                <Button danger size="large" block icon={<Square className="size-4" />} onClick={() => void cancelGeneration()}>
+                                <Button danger size="large" block loading={canceling} icon={<Square className="size-4" />} onClick={() => void cancelGeneration()}>
                                     {t("workbench.cancelGeneration")}
                                 </Button>
                             ) : (
@@ -574,7 +652,7 @@ export default function VideoPage() {
                         </div>
                         {results.length ? (
                             <div className="grid gap-4">
-                                {results.map((result) => (result.status === "success" && result.video ? <ResultVideoCard key={result.id} video={result.video} onDownload={downloadVideo} onSaveAsset={saveResultToAssets} /> : result.status === "failed" ? <FailedVideoCard key={result.id} error={result.error || t("workbench.generationFailed")} onRetry={retryResult} /> : <PendingVideoCard key={result.id} />))}
+                                {results.map((result) => (result.status === "success" && result.video ? <ResultVideoCard key={result.id} video={result.video} onDownload={downloadVideo} onSaveAsset={saveResultToAssets} /> : result.status === "failed" ? <FailedVideoCard key={result.id} error={result.error || t("workbench.generationFailed")} onRetry={retryResult} /> : result.status === "canceled" ? <CanceledVideoCard key={result.id} onRetry={retryResult} /> : <PendingVideoCard key={result.id} />))}
                             </div>
                         ) : (
                             <div className="flex min-h-[320px] flex-col items-center justify-center rounded-lg border border-dashed border-stone-300 text-center dark:border-stone-700 lg:min-h-[560px]">
@@ -687,6 +765,22 @@ function FailedVideoCard({ error, onRetry }: { error: string; onRetry: () => voi
     );
 }
 
+function CanceledVideoCard({ onRetry }: { onRetry: () => void }) {
+    const { t } = useTranslation();
+    return (
+        <div className="overflow-hidden rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-950 dark:bg-amber-950/20">
+            <div className="flex aspect-video flex-col items-center justify-center gap-3 p-5 text-center">
+                <div className="text-sm font-medium text-amber-700 dark:text-amber-300">{t("workbench.canceled")}</div>
+            </div>
+            <div className="flex justify-end border-t border-amber-200 p-3 dark:border-amber-950">
+                <Button size="small" onClick={onRetry}>
+                    {t("workbench.retry")}
+                </Button>
+            </div>
+        </div>
+    );
+}
+
 function LogPanel({
     logs,
     selectedLogIds,
@@ -752,8 +846,8 @@ function LogCard({ log, selected, active, currentTimeMs, onSelectedChange, onCli
                         <Tag className="m-0 flex h-6 max-w-full items-center rounded-md px-1.5 text-xs leading-none">{log.size}</Tag>
                         <Tag className="m-0 flex h-6 max-w-full items-center rounded-md px-1.5 text-xs leading-none">{log.resolution}p</Tag>
                         <Tag className="m-0 flex h-6 max-w-full items-center rounded-md px-1.5 text-xs leading-none">{log.seconds}s</Tag>
-                        <Tag className="m-0 flex h-6 max-w-full items-center rounded-md px-1.5 text-xs leading-none" color={log.status === "success" ? "blue" : log.status === "pending" ? "processing" : "red"}>
-                            {t(`workbench.${log.status === "success" ? "success" : log.status === "pending" ? "generating" : "failed"}`)}
+                        <Tag className="m-0 flex h-6 max-w-full items-center rounded-md px-1.5 text-xs leading-none" color={log.status === "success" ? "blue" : log.status === "pending" ? "processing" : log.status === "canceled" ? "orange" : "red"}>
+                            {t(`workbench.${log.status === "success" ? "success" : log.status === "pending" ? "generating" : log.status === "canceled" ? "canceled" : "failed"}`)}
                         </Tag>
                         <Tag className="m-0 flex h-6 max-w-full items-center rounded-md px-1.5 text-xs leading-none" color="green">
                             {formatDuration(displayedDurationMs)}

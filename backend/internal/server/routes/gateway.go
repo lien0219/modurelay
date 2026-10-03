@@ -124,6 +124,14 @@ func RegisterGatewayRoutes(
 		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
 		c.JSON(http.StatusNotFound, gin.H{"error": gin.H{"type": "not_found_error", "message": "Videos API is not supported for this platform"}})
 	}
+	videoCancelHandler := func(c *gin.Context) {
+		if videoGatewaySupported(c) {
+			h.OpenAIGateway.GrokVideoCancel(c)
+			return
+		}
+		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+		c.JSON(http.StatusNotFound, gin.H{"error": gin.H{"type": "not_found_error", "message": "Videos API is not supported for this platform"}})
+	}
 	videoEditHandler := func(c *gin.Context) {
 		if videoGatewaySupported(c) {
 			h.OpenAIGateway.GrokVideoEdit(c)
@@ -264,6 +272,10 @@ func RegisterGatewayRoutes(
 		gateway.GET("/videos/extensions/:request_id", videoStatusHandler)
 		gateway.GET("/videos/:request_id", videoStatusHandler)
 		gateway.GET("/videos/:request_id/content", videoContentHandler)
+		gateway.DELETE("/videos/generations/:request_id", videoCancelHandler)
+		gateway.DELETE("/videos/edits/:request_id", videoCancelHandler)
+		gateway.DELETE("/videos/extensions/:request_id", videoCancelHandler)
+		gateway.DELETE("/videos/:request_id", videoCancelHandler)
 
 		// xAI Voice APIs (Grok platform only): HTTP TTS/STT + Realtime WS.
 		// Not part of the creation-center product surface — gateway relay only.
@@ -414,6 +426,10 @@ func RegisterGatewayRoutes(
 	rootRoute(http.MethodGet, "/videos/extensions/:request_id", bodyLimit, videoStatusHandler)
 	rootRoute(http.MethodGet, "/videos/:request_id", bodyLimit, videoStatusHandler)
 	rootRoute(http.MethodGet, "/videos/:request_id/content", bodyLimit, videoContentHandler)
+	rootRoute(http.MethodDelete, "/videos/generations/:request_id", bodyLimit, videoCancelHandler)
+	rootRoute(http.MethodDelete, "/videos/edits/:request_id", bodyLimit, videoCancelHandler)
+	rootRoute(http.MethodDelete, "/videos/extensions/:request_id", bodyLimit, videoCancelHandler)
+	rootRoute(http.MethodDelete, "/videos/:request_id", bodyLimit, videoCancelHandler)
 
 	rootVoiceHandler := func(endpoint string) gin.HandlerFunc {
 		return func(c *gin.Context) {
