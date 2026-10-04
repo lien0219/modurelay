@@ -225,14 +225,16 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 		defer userReleaseFunc()
 	}
 
-	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription, service.QuotaPlatform(c.Request.Context(), apiKey)); err != nil {
-		reqLog.Info("grok_media.billing_eligibility_check_failed", zap.Error(err))
-		status, code, message, retryAfter := billingErrorDetails(err)
-		if retryAfter > 0 {
-			c.Header("Retry-After", strconv.Itoa(retryAfter))
+	if requiresGrokMediaBillingEligibility(endpoint) {
+		if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription, service.QuotaPlatform(c.Request.Context(), apiKey)); err != nil {
+			reqLog.Info("grok_media.billing_eligibility_check_failed", zap.Error(err))
+			status, code, message, retryAfter := billingErrorDetails(err)
+			if retryAfter > 0 {
+				c.Header("Retry-After", strconv.Itoa(retryAfter))
+			}
+			h.errorResponse(c, status, code, message)
+			return
 		}
-		h.errorResponse(c, status, code, message)
-		return
 	}
 
 	// 余额模式在途预留（与计费同口径估算；计费任务扣减余额缓存后才释放）。
@@ -888,6 +890,10 @@ func isOpenAICompatibleVideoEndpoint(endpoint service.GrokMediaEndpoint) bool {
 
 func isGrokVideoCancelEndpoint(endpoint service.GrokMediaEndpoint) bool {
 	return endpoint == service.GrokMediaEndpointVideoCancel || endpoint == service.SeedanceEndpointDelete
+}
+
+func requiresGrokMediaBillingEligibility(endpoint service.GrokMediaEndpoint) bool {
+	return endpoint.IsGenerationRequest()
 }
 
 func restoreCompositeVideoLookupPlatform(c *gin.Context, apiKey *service.APIKey, platform string) {

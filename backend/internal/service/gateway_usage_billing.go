@@ -371,6 +371,14 @@ func applyUsageBilling(ctx context.Context, requestID string, usageLog *UsageLog
 
 	result, err := repo.Apply(billingCtx, cmd)
 	if err != nil {
+		if errors.Is(err, ErrInsufficientBalance) && deps.billingCacheService != nil && p.User != nil {
+			if invalidateErr := deps.billingCacheService.InvalidateUserBalance(billingCtx, p.User.ID); invalidateErr != nil {
+				slog.Warn("invalidate balance cache after insufficient billing balance failed",
+					"user_id", p.User.ID,
+					"error", invalidateErr,
+				)
+			}
+		}
 		return false, err
 	}
 

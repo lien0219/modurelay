@@ -119,6 +119,31 @@ func TestGrokMediaRequiredCapability(t *testing.T) {
 	}
 }
 
+func TestGrokMediaBillingEligibilityOnlyAppliesToGeneration(t *testing.T) {
+	tests := []struct {
+		name     string
+		endpoint service.GrokMediaEndpoint
+		want     bool
+	}{
+		{name: "image generation", endpoint: service.GrokMediaEndpointImagesGenerations, want: true},
+		{name: "video generation", endpoint: service.GrokMediaEndpointVideosGenerations, want: true},
+		{name: "video edit", endpoint: service.GrokMediaEndpointVideosEdits, want: true},
+		{name: "video extension", endpoint: service.GrokMediaEndpointVideosExtensions, want: true},
+		{name: "seedance generation", endpoint: service.SeedanceEndpointCreate, want: true},
+		{name: "video status", endpoint: service.GrokMediaEndpointVideoStatus, want: false},
+		{name: "video content", endpoint: service.GrokMediaEndpointVideoContent, want: false},
+		{name: "video cancel", endpoint: service.GrokMediaEndpointVideoCancel, want: false},
+		{name: "seedance status", endpoint: service.SeedanceEndpointStatus, want: false},
+		{name: "seedance delete", endpoint: service.SeedanceEndpointDelete, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, requiresGrokMediaBillingEligibility(tt.endpoint))
+		})
+	}
+}
+
 func TestGrokMediaScheduleModelUsesNormalizedMappedUpstream(t *testing.T) {
 	account := &service.Account{
 		Platform: service.PlatformGrok,

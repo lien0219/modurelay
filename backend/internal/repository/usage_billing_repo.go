@@ -256,20 +256,14 @@ func deductUsageBillingBalance(ctx context.Context, tx *sql.Tx, userID int64, am
 		return 0, false, err
 	}
 
-	err = tx.QueryRowContext(ctx, `
-		UPDATE users
-		SET balance = balance - $1,
-			updated_at = NOW()
-		WHERE id = $2 AND deleted_at IS NULL
-		RETURNING balance
-	`, amount, userID).Scan(&newBalance)
-	if errors.Is(err, sql.ErrNoRows) {
+	exists, existsErr := userExistsForBilling(ctx, tx, userID)
+	if existsErr != nil {
+		return 0, false, existsErr
+	}
+	if !exists {
 		return 0, false, service.ErrUserNotFound
 	}
-	if err != nil {
-		return 0, false, err
-	}
-	return newBalance, false, nil
+	return 0, false, service.ErrInsufficientBalance
 }
 
 func reserveUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error) {
