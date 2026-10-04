@@ -37,6 +37,10 @@ test("video generation can be canceled and a pending task resumes after reload",
             await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ id: `task-${createCount}`, status: "queued" }) });
             return;
         }
+        if (request.method() === "DELETE" && /\/v1\/videos\/task-/.test(url.pathname)) {
+            await route.fulfill({ status: 204 });
+            return;
+        }
         if (request.method() === "GET" && /\/v1\/videos\/task-/.test(url.pathname)) {
             pollCount += 1;
             await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ id: url.pathname.split("/").pop(), status: "processing" }) });

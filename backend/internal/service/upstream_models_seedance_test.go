@@ -90,7 +90,11 @@ func TestFetchSeedanceModelCatalogUsesKuaiziDocumentModels(t *testing.T) {
 		"doubao-seedance-2-5-260628",
 	}, catalog.Models)
 	require.Equal(t, "Kuaizi documented model catalog; live model discovery is unavailable", catalog.Warnings[0].Message)
-	require.Empty(t, service.httpUpstream.(*httpUpstreamRecorder).requests)
+	recorder, ok := service.httpUpstream.(*httpUpstreamRecorder)
+	if !ok {
+		t.Fatalf("http upstream has type %T, want *httpUpstreamRecorder", service.httpUpstream)
+	}
+	require.Empty(t, recorder.requests)
 }
 
 func TestSyncUpstreamModelCatalogKuaiziPersistsDocumentationSource(t *testing.T) {

@@ -131,10 +131,10 @@ func TestFinalizeSimpleModePreservesLastUsedWithoutFinancialCacheWrites(t *testi
 				Account: &Account{ID: 9}, IsSubscriptionBill: subscription,
 				SimpleModeKeyRateLimitOnly: true,
 			}
-			finalizePostUsageBilling(context.Background(), p, &billingDeps{
+			require.NoError(t, finalizePostUsageBilling(context.Background(), p, &billingDeps{
 				billingCacheService: &BillingCacheService{cache: cache, cacheWriteChan: writes},
 				deferredService:     deferred,
-			}, &UsageBillingApplyResult{Applied: true})
+			}, &UsageBillingApplyResult{Applied: true}))
 			require.Equal(t, []int64{13}, cache.invalidated)
 			require.Empty(t, writes, "simple mode must not enqueue balance, subscription or window increments")
 			_, scheduled := deferred.lastUsedUpdates.Load(int64(9))

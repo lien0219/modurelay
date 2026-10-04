@@ -789,7 +789,7 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 		return nil, fmt.Errorf("account platform %s is not supported for grok media", account.Platform)
 	}
 	if endpoint == GrokMediaEndpointVideoCancel {
-		return nil, fmt.Errorf("Grok upstream does not support video task cancellation")
+		return nil, fmt.Errorf("grok upstream does not support video task cancellation")
 	}
 
 	token, _, err := s.getRequestCredential(ctx, c, account)
