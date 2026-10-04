@@ -43,6 +43,26 @@ func TestStableGrokAudioBillingRequestID(t *testing.T) {
 	require.Greater(t, len(got), len("grok_audio:"))
 }
 
+func TestStableGrokVideoBillingRequestIDPreservesLongTaskIDs(t *testing.T) {
+	t.Parallel()
+
+	longTaskID := "seedance:kz-cgt-" + strings.Repeat("a", 50)
+	got := StableGrokVideoBillingRequestID(longTaskID)
+
+	// Historical billing dedup keys must remain unchanged when usage log storage expands.
+	require.Len(t, got, 77)
+	require.Equal(t, "grok-video:"+longTaskID, got)
+	require.Equal(t, got, StableGrokVideoBillingRequestID(longTaskID))
+	require.Equal(t, got, StableGrokVideoBillingRequestID("grok-video:"+longTaskID))
+}
+
+func TestStableGrokVideoBillingRequestIDPreservesShortTaskIDs(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, "grok-video:seedance:task-1", StableGrokVideoBillingRequestID("seedance:task-1"))
+	require.Equal(t, "grok-video:seedance:task-1", StableGrokVideoBillingRequestID("grok-video:seedance:task-1"))
+}
+
 func TestStableGrokRealtimeBillingRequestID(t *testing.T) {
 	t.Parallel()
 	require.Equal(t, "grok_realtime:s1", StableGrokRealtimeBillingRequestID("s1"))

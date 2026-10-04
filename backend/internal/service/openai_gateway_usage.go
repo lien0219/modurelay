@@ -508,9 +508,12 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 
 	simpleModeKeyRateLimitOnly := simpleModeKeyRateLimitBillingEnabled(s.cfg, apiKey)
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple && !simpleModeKeyRateLimitOnly {
-		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
-		logger.LegacyPrintf("service.openai_gateway", "[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())
+		usageErr := writeUsageLog(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
 		s.deferredService.ScheduleLastUsedUpdate(account.ID)
+		if result.VideoCount > 0 && usageErr != nil {
+			return usageErr
+		}
+		logger.LegacyPrintf("service.openai_gateway", "[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())
 		return nil
 	}
 
@@ -536,11 +539,21 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	}, s.billingDeps(), s.usageBillingRepo)
 
 	if billingErr != nil {
+		if result.VideoCount > 0 {
+			// Keep deferred video usage pending until billing settles. A zero-cost
+			// row would occupy the unique key and hide the charged cost on retry.
+			return billingErr
+		}
 		usageLog.ActualCost = 0
 		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
 		return billingErr
 	}
-	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
+	usageErr := writeUsageLog(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
+	if result.VideoCount > 0 {
+		// A video task is complete only after both billing and its usage record
+		// persist. Recovery retries with the unchanged, deduplicated billing ID.
+		return usageErr
+	}
 
 	return nil
 }

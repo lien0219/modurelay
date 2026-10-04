@@ -36,7 +36,7 @@ func (UsageLog) Fields() []ent.Field {
 		field.Int64("api_key_id"),
 		field.Int64("account_id"),
 		field.String("request_id").
-			MaxLen(64).
+			MaxLen(255).
 			NotEmpty(),
 		field.String("model").
 			MaxLen(100).

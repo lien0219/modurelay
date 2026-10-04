@@ -621,8 +621,14 @@ func (s *GatewayService) billingDeps() *billingDeps {
 }
 
 func writeUsageLogBestEffort(ctx context.Context, repo UsageLogRepository, usageLog *UsageLog, logKey string) {
+	_ = writeUsageLog(ctx, repo, usageLog, logKey)
+}
+
+// writeUsageLog reports persistence failures after the synchronous fallback so
+// async video completion can retry without losing its usage record.
+func writeUsageLog(ctx context.Context, repo UsageLogRepository, usageLog *UsageLog, logKey string) error {
 	if repo == nil || usageLog == nil {
-		return
+		return nil
 	}
 	usageCtx, cancel := detachedBillingContext(ctx)
 	defer cancel()
@@ -642,14 +648,17 @@ func writeUsageLogBestEffort(ctx context.Context, repo UsageLogRepository, usage
 			}
 			if _, syncErr := repo.Create(fallbackCtx, usageLog); syncErr != nil {
 				logger.LegacyPrintf(logKey, "Create usage log sync fallback failed: %v", syncErr)
+				return syncErr
 			}
 		}
-		return
+		return nil
 	}
 
 	if _, err := repo.Create(usageCtx, usageLog); err != nil {
 		logger.LegacyPrintf(logKey, "Create usage log failed: %v", err)
+		return err
 	}
+	return nil
 }
 
 // RecordUsage 记录使用量并扣费（或更新订阅用量）
