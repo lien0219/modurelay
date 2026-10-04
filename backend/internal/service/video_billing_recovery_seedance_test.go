@@ -38,12 +38,12 @@ func TestVideoRecoveryResultBillablePreservesSeedanceBillingModes(t *testing.T) 
 			want:   true,
 		},
 		{
-			name: "legacy Seedance without completion tokens is not billed by video count",
+			name: "legacy Seedance playable video can use explicit video pricing",
 			pending: GrokVideoPendingBilling{
 				RequestID: "seedance:task-1", QuotaPlatform: PlatformOpenAI, NativeProtocol: true,
 			},
 			result: OpenAIForwardResult{VideoCount: 1},
-			want:   false,
+			want:   true,
 		},
 		{
 			name: "failed Seedance result is not billable",

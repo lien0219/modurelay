@@ -163,11 +163,12 @@ type AccountQuotaState struct {
 }
 
 type UsageBillingApplyResult struct {
-	Applied              bool
-	APIKeyQuotaExhausted bool
-	NewBalance           *float64           // post-deduction balance (nil = no balance deduction)
-	BalanceOverdrafted   bool               // true when the sufficient-balance guard missed and debt was still recorded
-	QuotaState           *AccountQuotaState // post-increment quota state (nil = no quota increment)
+	Applied                bool
+	VideoUsageLogPersisted bool // video billing and its usage row committed together
+	APIKeyQuotaExhausted   bool
+	NewBalance             *float64           // post-deduction balance (nil = no balance deduction)
+	BalanceOverdrafted     bool               // true when the sufficient-balance guard missed and debt was still recorded
+	QuotaState             *AccountQuotaState // post-increment quota state (nil = no quota increment)
 }
 
 // BatchImageBalanceHoldCommand describes an idempotent balance hold operation.

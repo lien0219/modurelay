@@ -502,9 +502,10 @@ type OpenAIGatewayService struct {
 	openaiProxyStreamCircuit       *openAIProxyStreamCircuit
 	openaiProxyStreamFailOpenLogAt atomic.Int64
 
-	videoRecoveryMu     sync.Mutex
-	videoRecoveryCancel context.CancelFunc
-	videoRecoveryDone   chan struct{}
+	videoRecoveryMu            sync.Mutex
+	videoRecoveryCancel        context.CancelFunc
+	videoRecoveryDone          chan struct{}
+	videoRecoveryAPIKeyService atomic.Pointer[APIKeyService]
 
 	openaiWSFallbackUntil               sync.Map // key: int64(accountID), value: time.Time
 	openaiAccountRuntimeBlockUntil      sync.Map // key: int64(accountID), value: time.Time

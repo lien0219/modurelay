@@ -33,6 +33,7 @@ type OpenAIRecordUsageInput struct {
 	RequestPayloadHash string
 	APIKeyService      APIKeyQuotaUpdater
 	QuotaPlatform      string // user×platform quota platform resolved by the handler before async billing.
+	VideoTaskID        string // original task identity; synchronous videos use their request identity
 	// PricingAt 是请求级定价时刻（请求开始捕获，与利润门的 D 同源）：高峰因子
 	// 按该时刻计算，保证同一请求从准入到扣费不中途变价。零值回退记录时刻
 	//（既有行为），供未装配的路径（图片/异步/cyber 等）沿用。
@@ -158,6 +159,15 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	result := input.Result
 	if result == nil {
 		return errors.New("openai usage result is nil")
+	}
+	if result.VideoCount > 0 {
+		settlement, settled, err := s.loadVideoUsageSettlement(ctx, input)
+		if err != nil || settled {
+			return err
+		}
+		if settlement != nil {
+			return s.recordVideoUsageSettlement(ctx, input, settlement)
+		}
 	}
 	if s.rateLimitService != nil && input.Account != nil && input.Account.Platform == PlatformOpenAI {
 		s.rateLimitService.ResetOpenAI403Counter(ctx, input.Account.ID)
@@ -348,13 +358,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	// share one bill). Context-local client/local IDs would otherwise create a new row
 	// per poll if Redis claim is lost.
 	if result.VideoCount > 0 {
-		if stable := StableGrokVideoBillingRequestID(firstNonEmpty(
-			strings.TrimPrefix(strings.TrimSpace(result.RequestID), "grok-video:"),
-			strings.TrimSpace(result.ResponseID),
-			strings.TrimPrefix(strings.TrimSpace(requestID), "grok-video:"),
-		)); stable != "" {
-			requestID = stable
-		}
+		requestID = StableGrokVideoBillingRequestID(videoUsageTaskID(ctx, input))
 	}
 
 	// 确定 RequestedModel（渠道映射前的原始模型）
@@ -507,12 +511,25 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	}
 
 	simpleModeKeyRateLimitOnly := simpleModeKeyRateLimitBillingEnabled(s.cfg, apiKey)
-	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple && !simpleModeKeyRateLimitOnly {
-		usageErr := writeUsageLog(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
-		s.deferredService.ScheduleLastUsedUpdate(account.ID)
-		if result.VideoCount > 0 && usageErr != nil {
-			return usageErr
+	if result.VideoCount > 0 {
+		p := &postUsageBillingParams{
+			Cost: cost, User: user, APIKey: apiKey, Account: account, Subscription: subscription,
+			RequestPayloadHash:    resolveUsageBillingPayloadFingerprint(ctx, input.RequestPayloadHash),
+			IsSubscriptionBill:    isSubscriptionBilling && !simpleModeKeyRateLimitOnly,
+			AccountRateMultiplier: accountRateMultiplier, APIKeyService: input.APIKeyService,
+			Platform:                   firstNonEmpty(input.QuotaPlatform, PlatformFromAPIKey(apiKey)),
+			SimpleModeKeyRateLimitOnly: simpleModeKeyRateLimitOnly,
 		}
+		logOnly := s.cfg != nil && s.cfg.RunMode == config.RunModeSimple && !simpleModeKeyRateLimitOnly
+		settlement, err := s.prepareVideoUsageSettlement(ctx, input, usageLog, p, logOnly)
+		if err != nil {
+			return err
+		}
+		return s.recordVideoUsageSettlement(ctx, input, settlement)
+	}
+	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple && !simpleModeKeyRateLimitOnly {
+		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
+		s.deferredService.ScheduleLastUsedUpdate(account.ID)
 		logger.LegacyPrintf("service.openai_gateway", "[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())
 		return nil
 	}
@@ -539,21 +556,11 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	}, s.billingDeps(), s.usageBillingRepo)
 
 	if billingErr != nil {
-		if result.VideoCount > 0 {
-			// Keep deferred video usage pending until billing settles. A zero-cost
-			// row would occupy the unique key and hide the charged cost on retry.
-			return billingErr
-		}
 		usageLog.ActualCost = 0
 		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
 		return billingErr
 	}
-	usageErr := writeUsageLog(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
-	if result.VideoCount > 0 {
-		// A video task is complete only after both billing and its usage record
-		// persist. Recovery retries with the unchanged, deduplicated billing ID.
-		return usageErr
-	}
+	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
 
 	return nil
 }

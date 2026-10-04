@@ -20,6 +20,39 @@ func NewUsageBillingRepository(_ *dbent.Client, sqlDB *sql.DB) service.UsageBill
 }
 
 func (r *usageBillingRepository) Apply(ctx context.Context, cmd *service.UsageBillingCommand) (_ *service.UsageBillingApplyResult, err error) {
+	return r.apply(ctx, cmd, nil)
+}
+
+func (r *usageBillingRepository) ApplyVideoUsage(ctx context.Context, cmd *service.UsageBillingCommand, log *service.UsageLog) (*service.UsageBillingApplyResult, error) {
+	if cmd == nil || log == nil || log.VideoCount <= 0 || !strings.HasPrefix(cmd.RequestID, "grok-video:") ||
+		cmd.RequestID != log.RequestID || cmd.UserID != log.UserID || cmd.APIKeyID != log.APIKeyID || cmd.AccountID != log.AccountID {
+		return nil, errors.New("video billing usage identity mismatch")
+	}
+	return r.apply(ctx, cmd, log)
+}
+
+func (r *usageBillingRepository) IsVideoUsageSettled(ctx context.Context, requestID string, userID, apiKeyID, accountID int64, logOnly bool) (bool, error) {
+	if r == nil || r.db == nil {
+		return false, errors.New("usage billing repository db is nil")
+	}
+	var settled bool
+	err := r.db.QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM usage_logs ul
+			WHERE ul.request_id = $1 AND ul.user_id = $2 AND ul.api_key_id = $3
+				AND ul.account_id = $4 AND ul.video_count > 0
+				AND ($5 OR NOT (ul.actual_cost = 0 AND ul.total_cost > 0 AND ul.rate_multiplier > 0))
+				AND ($5 OR EXISTS (
+					SELECT 1 FROM usage_billing_dedup d WHERE d.request_id = $1 AND d.api_key_id = $3
+				) OR EXISTS (
+					SELECT 1 FROM usage_billing_dedup_archive d WHERE d.request_id = $1 AND d.api_key_id = $3
+				))
+		)
+	`, requestID, userID, apiKeyID, accountID, logOnly).Scan(&settled)
+	return settled, err
+}
+
+func (r *usageBillingRepository) apply(ctx context.Context, cmd *service.UsageBillingCommand, videoLog *service.UsageLog) (_ *service.UsageBillingApplyResult, err error) {
 	if cmd == nil {
 		return &service.UsageBillingApplyResult{}, nil
 	}
@@ -46,13 +79,32 @@ func (r *usageBillingRepository) Apply(ctx context.Context, cmd *service.UsageBi
 	if err != nil {
 		return nil, err
 	}
-	if !applied {
+	if !applied && videoLog == nil {
 		return &service.UsageBillingApplyResult{Applied: false}, nil
 	}
 
-	result := &service.UsageBillingApplyResult{Applied: true}
-	if err := r.applyUsageBillingEffects(ctx, tx, cmd, result); err != nil {
-		return nil, err
+	result := &service.UsageBillingApplyResult{Applied: applied}
+	if applied {
+		if err := r.applyUsageBillingEffects(ctx, tx, cmd, result, videoLog != nil); err != nil {
+			return nil, err
+		}
+	}
+	if videoLog != nil {
+		query, args := buildUsageLogInsertQuery([]usageLogInsertPrepared{prepareUsageLogInsert(videoLog)}, videoUsageLogConflictClause)
+		if _, err := tx.ExecContext(ctx, query, args...); err != nil {
+			return nil, err
+		}
+		var owned bool
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS (
+			SELECT 1 FROM usage_logs WHERE request_id = $1 AND api_key_id = $2
+				AND user_id = $3 AND account_id = $4 AND video_count > 0
+		)`, cmd.RequestID, cmd.APIKeyID, cmd.UserID, cmd.AccountID).Scan(&owned); err != nil {
+			return nil, err
+		}
+		if !owned {
+			return nil, errors.New("video usage log ownership mismatch")
+		}
+		result.VideoUsageLogPersisted = true
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -61,6 +113,41 @@ func (r *usageBillingRepository) Apply(ctx context.Context, cmd *service.UsageBi
 	tx = nil
 	return result, nil
 }
+
+// Only failed historical placeholders may be corrected by a validated settlement.
+// Free and simple-mode logs, already paid rows and other owners remain intact.
+const videoUsageLogConflictClause = `
+	ON CONFLICT (request_id, api_key_id) DO UPDATE SET
+		model = EXCLUDED.model,
+		requested_model = EXCLUDED.requested_model,
+		upstream_model = EXCLUDED.upstream_model,
+		upstream_response_model = EXCLUDED.upstream_response_model,
+		upstream_model_mismatch = EXCLUDED.upstream_model_mismatch,
+		group_id = EXCLUDED.group_id,
+		subscription_id = EXCLUDED.subscription_id,
+		input_tokens = EXCLUDED.input_tokens,
+		output_tokens = EXCLUDED.output_tokens,
+		input_cost = EXCLUDED.input_cost,
+		output_cost = EXCLUDED.output_cost,
+		cache_creation_cost = EXCLUDED.cache_creation_cost,
+		cache_read_cost = EXCLUDED.cache_read_cost,
+		total_cost = EXCLUDED.total_cost,
+		actual_cost = EXCLUDED.actual_cost,
+		rate_multiplier = EXCLUDED.rate_multiplier,
+		account_rate_multiplier = EXCLUDED.account_rate_multiplier,
+		billing_type = EXCLUDED.billing_type,
+		video_count = EXCLUDED.video_count,
+		video_resolution = EXCLUDED.video_resolution,
+		video_duration_seconds = EXCLUDED.video_duration_seconds,
+		model_mapping_chain = EXCLUDED.model_mapping_chain,
+		billing_tier = EXCLUDED.billing_tier,
+		billing_mode = EXCLUDED.billing_mode,
+		account_stats_cost = EXCLUDED.account_stats_cost
+	WHERE usage_logs.user_id = EXCLUDED.user_id AND usage_logs.account_id = EXCLUDED.account_id
+		AND usage_logs.video_count > 0 AND usage_logs.actual_cost = 0
+		AND usage_logs.total_cost > 0 AND usage_logs.rate_multiplier > 0
+		AND EXCLUDED.actual_cost >= 0
+`
 
 func (r *usageBillingRepository) claimUsageBillingKey(ctx context.Context, tx *sql.Tx, cmd *service.UsageBillingCommand) (bool, error) {
 	return r.claimUsageBillingRequest(ctx, tx, cmd.RequestID, cmd.APIKeyID, cmd.RequestFingerprint)
@@ -171,7 +258,7 @@ func (r *usageBillingRepository) applyBatchImageBalanceHold(
 	return result, nil
 }
 
-func (r *usageBillingRepository) applyUsageBillingEffects(ctx context.Context, tx *sql.Tx, cmd *service.UsageBillingCommand, result *service.UsageBillingApplyResult) error {
+func (r *usageBillingRepository) applyUsageBillingEffects(ctx context.Context, tx *sql.Tx, cmd *service.UsageBillingCommand, result *service.UsageBillingApplyResult, allowDeletedAPIKey ...bool) error {
 	if cmd.SubscriptionCost > 0 && cmd.SubscriptionID != nil {
 		if err := incrementUsageBillingSubscription(ctx, tx, *cmd.SubscriptionID, cmd.SubscriptionCost); err != nil {
 			return err
@@ -188,7 +275,7 @@ func (r *usageBillingRepository) applyUsageBillingEffects(ctx context.Context, t
 	}
 
 	if cmd.APIKeyQuotaCost > 0 {
-		exhausted, err := incrementUsageBillingAPIKeyQuota(ctx, tx, cmd.APIKeyID, cmd.APIKeyQuotaCost)
+		exhausted, err := incrementUsageBillingAPIKeyQuota(ctx, tx, cmd.APIKeyID, cmd.APIKeyQuotaCost, allowDeletedAPIKey...)
 		if err != nil {
 			return err
 		}
@@ -196,7 +283,7 @@ func (r *usageBillingRepository) applyUsageBillingEffects(ctx context.Context, t
 	}
 
 	if cmd.APIKeyRateLimitCost > 0 {
-		if err := incrementUsageBillingAPIKeyRateLimit(ctx, tx, cmd.APIKeyID, cmd.APIKeyRateLimitCost); err != nil {
+		if err := incrementUsageBillingAPIKeyRateLimit(ctx, tx, cmd.APIKeyID, cmd.APIKeyRateLimitCost, allowDeletedAPIKey...); err != nil {
 			return err
 		}
 	}
@@ -407,7 +494,11 @@ func userExistsForBilling(ctx context.Context, tx *sql.Tx, userID int64) (bool, 
 	return true, nil
 }
 
-func incrementUsageBillingAPIKeyQuota(ctx context.Context, tx *sql.Tx, apiKeyID int64, amount float64) (bool, error) {
+func incrementUsageBillingAPIKeyQuota(ctx context.Context, tx *sql.Tx, apiKeyID int64, amount float64, allowDeleted ...bool) (bool, error) {
+	activeFilter := " AND deleted_at IS NULL"
+	if len(allowDeleted) > 0 && allowDeleted[0] {
+		activeFilter = ""
+	}
 	var exhausted bool
 	err := tx.QueryRowContext(ctx, `
 		UPDATE api_keys
@@ -421,7 +512,7 @@ func incrementUsageBillingAPIKeyQuota(ctx context.Context, tx *sql.Tx, apiKeyID 
 				ELSE status
 			END,
 			updated_at = NOW()
-		WHERE id = $2 AND deleted_at IS NULL
+		WHERE id = $2`+activeFilter+`
 		RETURNING quota > 0 AND quota_used >= quota AND quota_used - $1 < quota
 	`, amount, apiKeyID, service.StatusAPIKeyActive, service.StatusAPIKeyQuotaExhausted).Scan(&exhausted)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -433,7 +524,11 @@ func incrementUsageBillingAPIKeyQuota(ctx context.Context, tx *sql.Tx, apiKeyID 
 	return exhausted, nil
 }
 
-func incrementUsageBillingAPIKeyRateLimit(ctx context.Context, tx *sql.Tx, apiKeyID int64, cost float64) error {
+func incrementUsageBillingAPIKeyRateLimit(ctx context.Context, tx *sql.Tx, apiKeyID int64, cost float64, allowDeleted ...bool) error {
+	activeFilter := " AND deleted_at IS NULL"
+	if len(allowDeleted) > 0 && allowDeleted[0] {
+		activeFilter = ""
+	}
 	res, err := tx.ExecContext(ctx, `
 		UPDATE api_keys SET
 			usage_5h = CASE WHEN window_5h_start IS NOT NULL AND window_5h_start + INTERVAL '5 hours' <= NOW() THEN $1 ELSE usage_5h + $1 END,
@@ -443,7 +538,7 @@ func incrementUsageBillingAPIKeyRateLimit(ctx context.Context, tx *sql.Tx, apiKe
 			window_1d_start = CASE WHEN window_1d_start IS NULL OR window_1d_start + INTERVAL '24 hours' <= NOW() THEN date_trunc('day', NOW()) ELSE window_1d_start END,
 			window_7d_start = CASE WHEN window_7d_start IS NULL OR window_7d_start + INTERVAL '7 days' <= NOW() THEN date_trunc('day', NOW()) ELSE window_7d_start END,
 			updated_at = NOW()
-		WHERE id = $2 AND deleted_at IS NULL
+		WHERE id = $2`+activeFilter+`
 	`, cost, apiKeyID)
 	if err != nil {
 		return err

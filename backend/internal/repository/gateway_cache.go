@@ -175,10 +175,53 @@ func (c *gatewayCache) SetGrokVideoPendingBilling(ctx context.Context, key strin
 	if key == "" || len(payload) == 0 {
 		return errors.New("invalid grok video pending billing payload")
 	}
-	if ttl <= 0 {
-		ttl = 24 * time.Hour
+	if ttl < 0 {
+		ttl = 0
 	}
-	return c.rdb.Set(ctx, grokVideoPendingBillingPrefix+key, payload, ttl).Err()
+	// Create replies can arrive before this write. Keep any first snapshot,
+	// especially a settlement frozen by an earlier completion/status query.
+	return c.rdb.SetNX(ctx, grokVideoPendingBillingPrefix+key, payload, ttl).Err()
+}
+
+var prepareGrokVideoSettlementScript = redis.NewScript(`
+local payload = redis.call('GET', KEYS[1])
+if payload then
+    local pending = cjson.decode(payload)
+    if not pending.settlement then
+        payload = ARGV[1]
+        redis.call('SET', KEYS[1], payload)
+    end
+else
+    payload = ARGV[1]
+    redis.call('SET', KEYS[1], payload)
+end
+redis.call('PERSIST', KEYS[1])
+redis.call('ZADD', KEYS[2], 'NX', ARGV[2], ARGV[3])
+redis.call('PERSIST', KEYS[2])
+return payload
+`)
+
+func (c *gatewayCache) PrepareGrokVideoSettlement(ctx context.Context, key string, payload []byte) ([]byte, error) {
+	if c == nil || c.rdb == nil || strings.TrimSpace(key) == "" || len(payload) == 0 {
+		return nil, errors.New("invalid video settlement cache payload")
+	}
+	key = strings.TrimSpace(key)
+	stored, err := prepareGrokVideoSettlementScript.Run(ctx, c.rdb,
+		[]string{grokVideoPendingBillingPrefix + key, grokVideoRecoveryIndexKey},
+		payload, time.Now().Add(30*time.Second).UnixMilli(), key).Text()
+	return []byte(stored), err
+}
+
+func (c *gatewayCache) CompleteGrokVideoRecovery(ctx context.Context, key string, ttl time.Duration) error {
+	if c == nil || c.rdb == nil || strings.TrimSpace(key) == "" || ttl <= 0 {
+		return errors.New("invalid video recovery completion")
+	}
+	key = strings.TrimSpace(key)
+	pipe := c.rdb.TxPipeline()
+	pipe.Expire(ctx, grokVideoPendingBillingPrefix+key, ttl)
+	pipe.ZRem(ctx, grokVideoRecoveryIndexKey, key)
+	_, err := pipe.Exec(ctx)
+	return err
 }
 
 func (c *gatewayCache) GetGrokVideoPendingBilling(ctx context.Context, key string) ([]byte, error) {
@@ -199,6 +242,19 @@ func (c *gatewayCache) GetGrokVideoPendingBilling(ctx context.Context, key strin
 	return val, nil
 }
 
+var deleteGrokVideoPendingBillingScript = redis.NewScript(`
+local payload = redis.call('GET', KEYS[1])
+if payload then
+    local pending = cjson.decode(payload)
+    if pending.settlement then
+        return 0
+    end
+end
+redis.call('DEL', KEYS[1])
+redis.call('ZREM', KEYS[2], ARGV[1])
+return 1
+`)
+
 func (c *gatewayCache) DeleteGrokVideoPendingBilling(ctx context.Context, key string) error {
 	if c == nil || c.rdb == nil {
 		return errors.New("gateway cache unavailable")
@@ -207,11 +263,10 @@ func (c *gatewayCache) DeleteGrokVideoPendingBilling(ctx context.Context, key st
 	if key == "" {
 		return errors.New("invalid grok video pending billing key")
 	}
-	pipe := c.rdb.TxPipeline()
-	pipe.Del(ctx, grokVideoPendingBillingPrefix+key)
-	pipe.ZRem(ctx, grokVideoRecoveryIndexKey, key)
-	_, err := pipe.Exec(ctx)
-	return err
+	// A successful upstream DELETE may remove an already generated asset. It
+	// cannot erase an observed completion that is still waiting for payment.
+	return deleteGrokVideoPendingBillingScript.Run(ctx, c.rdb,
+		[]string{grokVideoPendingBillingPrefix + key, grokVideoRecoveryIndexKey}, key).Err()
 }
 
 func (c *gatewayCache) ScheduleGrokVideoRecovery(ctx context.Context, key string, dueAt time.Time, ttl time.Duration) error {
@@ -225,12 +280,12 @@ func (c *gatewayCache) ScheduleGrokVideoRecovery(ctx context.Context, key string
 	if dueAt.IsZero() {
 		dueAt = time.Now()
 	}
-	if ttl <= 0 {
-		ttl = 24 * time.Hour
-	}
 	pipe := c.rdb.TxPipeline()
 	pipe.ZAdd(ctx, grokVideoRecoveryIndexKey, redis.Z{Score: float64(dueAt.UnixMilli()), Member: key})
-	pipe.Expire(ctx, grokVideoRecoveryIndexKey, ttl+time.Hour)
+	// Existing installations may still have 24h snapshots. Keep outstanding
+	// settlement state and its index until a terminal outcome is confirmed.
+	pipe.Persist(ctx, grokVideoPendingBillingPrefix+key)
+	pipe.Persist(ctx, grokVideoRecoveryIndexKey)
 	_, err := pipe.Exec(ctx)
 	return err
 }
@@ -266,6 +321,17 @@ func (c *gatewayCache) RemoveGrokVideoRecovery(ctx context.Context, key string) 
 	return c.rdb.ZRem(ctx, grokVideoRecoveryIndexKey, key).Err()
 }
 
+var claimGrokVideoBillingScript = redis.NewScript(`
+if redis.call('SET', KEYS[1], '1', 'PX', ARGV[1], 'NX') then
+    return 1
+end
+local remaining = redis.call('PTTL', KEYS[1])
+if remaining > tonumber(ARGV[1]) or remaining == -1 then
+    redis.call('PEXPIRE', KEYS[1], ARGV[1])
+end
+return 0
+`)
+
 func (c *gatewayCache) ClaimGrokVideoBilled(ctx context.Context, key string, ttl time.Duration) (bool, error) {
 	if c == nil || c.rdb == nil {
 		return false, errors.New("gateway cache unavailable")
@@ -275,9 +341,10 @@ func (c *gatewayCache) ClaimGrokVideoBilled(ctx context.Context, key string, ttl
 		return false, errors.New("invalid grok video billed key")
 	}
 	if ttl <= 0 {
-		ttl = 48 * time.Hour
+		ttl = 2 * time.Minute
 	}
-	return c.rdb.SetNX(ctx, grokVideoBilledPrefix+key, "1", ttl).Result()
+	claimed, err := claimGrokVideoBillingScript.Run(ctx, c.rdb, []string{grokVideoBilledPrefix + key}, ttl.Milliseconds()).Int()
+	return claimed == 1, err
 }
 
 func (c *gatewayCache) ReleaseGrokVideoBilled(ctx context.Context, key string) error {

@@ -945,6 +945,10 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 }
 
 func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (string, []any) {
+	return buildUsageLogInsertQuery(preparedList, "ON CONFLICT (request_id, api_key_id) DO NOTHING")
+}
+
+func buildUsageLogInsertQuery(preparedList []usageLogInsertPrepared, conflictClause string) (string, []any) {
 	var query strings.Builder
 	_, _ = query.WriteString(`
 		WITH input (
@@ -1165,8 +1169,8 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			native_compaction_v2,
 			created_at
 		FROM input
-		ON CONFLICT (request_id, api_key_id) DO NOTHING
 	`)
+	_, _ = query.WriteString(conflictClause)
 
 	return query.String(), args
 }

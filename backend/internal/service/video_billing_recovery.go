@@ -25,6 +25,18 @@ type videoRecoveryAPIKeyLoader interface {
 	GetByID(ctx context.Context, id int64) (*APIKey, error)
 }
 
+type videoRecoveryDeletedAPIKeyLoader interface {
+	GetByIDForVideoBilling(ctx context.Context, id int64) (*APIKey, error)
+}
+
+// SetVideoRecoveryAPIKeyService wires the same auth-cache invalidator used by
+// foreground billing without changing existing gateway constructor callers.
+func (s *OpenAIGatewayService) SetVideoRecoveryAPIKeyService(keys *APIKeyService) {
+	if s != nil && keys != nil {
+		s.videoRecoveryAPIKeyService.Store(keys)
+	}
+}
+
 func (s *OpenAIGatewayService) videoRecoveryAPIKeyLoader() videoRecoveryAPIKeyLoader {
 	if s == nil || s.billingCacheService == nil || s.billingCacheService.apiKeyRateLimitLoader == nil {
 		return nil
@@ -115,6 +127,12 @@ func (s *OpenAIGatewayService) recoverDueVideoBilling(ctx context.Context) {
 			continue
 		}
 		if terminal {
+			if _, ok := s.cache.(GrokVideoRecoveryFinalizer); ok {
+				if err := s.completeVideoRecovery(ctx, key); err != nil {
+					logger.L().Warn("video_billing_recovery.finalize_failed", zap.String("key", key), zap.Error(err))
+				}
+				continue
+			}
 			if err := recovery.RemoveGrokVideoRecovery(ctx, key); err != nil {
 				logger.L().Warn("video_billing_recovery.remove_failed", zap.String("key", key), zap.Error(err))
 			}
@@ -141,20 +159,40 @@ func (s *OpenAIGatewayService) recoverVideoBillingKey(ctx context.Context, key s
 	if pending.RequestID == "" || pending.UserID <= 0 || pending.APIKeyID <= 0 || pending.AccountID <= 0 {
 		return true, fmt.Errorf("pending video recovery metadata is incomplete")
 	}
+	if grokVideoPendingBillingKey(pending.RequestID, pending.UserID, pending.APIKeyID) != strings.TrimSpace(key) {
+		return false, errors.New("pending video recovery ownership mismatch")
+	}
+	logOnly := pending.Settlement != nil && pending.Settlement.LogOnly
+	if settled, err := s.videoUsageSettled(ctx, pending.RequestID, pending.UserID, pending.APIKeyID, pending.AccountID, logOnly); err != nil {
+		return false, err
+	} else if settled {
+		if err := s.invalidateSettledVideoCaches(ctx, pending.UserID, pending.APIKeyID, pending.GroupID, "", nil); err != nil {
+			return false, err
+		}
+		return true, nil
+	}
 
 	account, err := s.accountRepo.GetByID(ctx, pending.AccountID)
 	if err != nil || account == nil {
 		return false, fmt.Errorf("load video account %d: %w", pending.AccountID, err)
 	}
-	result, terminalStatus, err := s.queryRecoveredVideoStatus(ctx, account, &pending)
-	if err != nil {
-		return false, err
-	}
-	if terminalStatus && (result == nil || !videoRecoveryResultBillable(&pending, result)) {
-		return true, nil
-	}
-	if result == nil || !videoRecoveryResultBillable(&pending, result) {
-		return false, nil
+	var result *OpenAIForwardResult
+	if pending.Settlement != nil {
+		// Completion has already been observed. A retry uses its accounting
+		// snapshot and never re-queries an expired/deleted upstream task.
+		result = &OpenAIForwardResult{VideoCount: 1, RequestID: pending.RequestID, ResponseID: pending.RequestID}
+	} else {
+		var terminalStatus bool
+		result, terminalStatus, err = s.queryRecoveredVideoStatus(ctx, account, &pending)
+		if err != nil {
+			return false, err
+		}
+		if terminalStatus && (result == nil || !videoRecoveryResultBillable(&pending, result)) {
+			return true, nil
+		}
+		if result == nil || !videoRecoveryResultBillable(&pending, result) {
+			return false, nil
+		}
 	}
 
 	claimed, err := s.ClaimGrokVideoBilling(ctx, pending.RequestID, pending.UserID, pending.APIKeyID)
@@ -162,7 +200,7 @@ func (s *OpenAIGatewayService) recoverVideoBillingKey(ctx context.Context, key s
 		return false, err
 	}
 	if !claimed {
-		return true, nil
+		return false, nil
 	}
 
 	if err := s.recordRecoveredVideoUsage(ctx, account, &pending, result); err != nil {
@@ -180,10 +218,6 @@ func (s *OpenAIGatewayService) recoverVideoBillingKey(ctx context.Context, key s
 func videoRecoveryResultBillable(pending *GrokVideoPendingBilling, result *OpenAIForwardResult) bool {
 	if result == nil {
 		return false
-	}
-	if pending != nil && strings.HasPrefix(strings.TrimSpace(pending.RequestID), "seedance:") &&
-		pending.QuotaPlatform != PlatformSeedance {
-		return result.Usage.OutputTokens > 0
 	}
 	return result.VideoCount > 0
 }
@@ -251,7 +285,13 @@ func (s *OpenAIGatewayService) recordRecoveredVideoUsage(
 	if loader == nil {
 		return errors.New("video recovery api key loader is unavailable")
 	}
-	apiKey, err := loader.GetByID(ctx, pending.APIKeyID)
+	var apiKey *APIKey
+	var err error
+	if billingLoader, ok := loader.(videoRecoveryDeletedAPIKeyLoader); ok {
+		apiKey, err = billingLoader.GetByIDForVideoBilling(ctx, pending.APIKeyID)
+	} else {
+		apiKey, err = loader.GetByID(ctx, pending.APIKeyID)
+	}
 	if err != nil || apiKey == nil {
 		return fmt.Errorf("load api key %d: %w", pending.APIKeyID, err)
 	}
@@ -290,29 +330,43 @@ func (s *OpenAIGatewayService) recordRecoveredVideoUsage(
 	}
 
 	merged := *result
-	merged.Model = firstNonEmpty(pending.Model, merged.Model)
-	merged.BillingModel = firstNonEmpty(pending.BillingModel, pending.Model, merged.BillingModel, merged.Model)
-	merged.UpstreamModel = firstNonEmpty(pending.UpstreamModel, merged.UpstreamModel)
+	merged.Model = firstNonEmpty(merged.Model, pending.BillingModel, pending.Model, pending.OriginalModel)
+	merged.BillingModel = firstNonEmpty(merged.BillingModel, pending.BillingModel, pending.Model, merged.Model)
+	merged.UpstreamModel = firstNonEmpty(merged.UpstreamModel, pending.UpstreamModel)
+	legacySeedance := strings.HasPrefix(strings.TrimSpace(pending.RequestID), "seedance:") && pending.QuotaPlatform != PlatformSeedance
+	if strings.HasPrefix(strings.TrimSpace(pending.RequestID), "seedance:") {
+		merged.Model = pending.Model
+		merged.BillingModel = firstNonEmpty(pending.BillingModel, pending.Model)
+		merged.UpstreamModel = firstNonEmpty(pending.UpstreamModel, merged.UpstreamModel)
+	}
 	if pending.VideoResolution != "" {
 		merged.VideoResolution = pending.VideoResolution
 	}
 	if merged.VideoDurationSeconds <= 0 {
 		merged.VideoDurationSeconds = pending.VideoDurationSeconds
 	}
-	merged.ResponseID = firstNonEmpty(merged.ResponseID, pending.RequestID)
+	merged.ResponseID = pending.RequestID
 	merged.RequestID = StableGrokVideoBillingRequestID(pending.RequestID)
 	merged.Duration = GrokVideoE2EDuration(pending.CreatedAt, time.Now())
 	merged.VideoCount = 1
-	merged.ForceTokenBilling = strings.HasPrefix(strings.TrimSpace(pending.RequestID), "seedance:") &&
-		pending.QuotaPlatform != PlatformSeedance
+	merged.ForceTokenBilling = legacySeedance && merged.Usage.OutputTokens > 0
+	if pending.Settlement == nil && legacySeedance && merged.Usage.OutputTokens <= 0 &&
+		!s.HasVideoPricingForRequest(ctx, apiKey, merged.BillingModel, merged.VideoResolution) {
+		return errors.New("legacy Seedance video pricing is not configured and completion tokens are missing")
+	}
 
 	pricingAt := time.Time{}
 	if created := strings.TrimSpace(pending.CreatedAt); created != "" {
 		pricingAt, _ = time.Parse(time.RFC3339Nano, created)
 	}
+	var keyService APIKeyQuotaUpdater
+	if service := s.videoRecoveryAPIKeyService.Load(); service != nil {
+		keyService = service
+	}
 	return s.RecordUsage(ctx, &OpenAIRecordUsageInput{
 		Result:             &merged,
 		APIKey:             apiKey,
+		APIKeyService:      keyService,
 		User:               apiKey.User,
 		Account:            account,
 		Subscription:       subscription,
@@ -322,6 +376,7 @@ func (s *OpenAIGatewayService) recordRecoveredVideoUsage(
 		RequestPayloadHash: HashUsageRequestPayload([]byte(pending.RequestID)),
 		QuotaPlatform:      firstNonEmpty(pending.QuotaPlatform, PlatformFromAPIKey(apiKey)),
 		PricingAt:          pricingAt,
+		VideoTaskID:        pending.RequestID,
 		ChannelUsageFields: ChannelUsageFields{
 			OriginalModel:      pending.OriginalModel,
 			ChannelMappedModel: pending.Model,

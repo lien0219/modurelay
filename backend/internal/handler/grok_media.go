@@ -1028,8 +1028,8 @@ func prepareGrokVideoCompletionBilling(
 	}
 	// Always force durable task id so usage_billing_dedup survives multi-poll +
 	// context-local request ids (do not prefer empty-only fill).
-	merged.RequestID = service.StableGrokVideoBillingRequestID(firstNonEmptyString(merged.ResponseID, taskRequestID))
-	merged.ResponseID = firstNonEmptyString(merged.ResponseID, taskRequestID)
+	merged.RequestID = service.StableGrokVideoBillingRequestID(taskRequestID)
+	merged.ResponseID = taskRequestID
 	merged.VideoCount = 1
 	// Pure video: do not keep legacy ImageCount (avoids image-path heuristics).
 	merged.ImageCount = 0
@@ -1110,6 +1110,7 @@ func recordGrokMediaUsage(
 	}
 	// Async video: force durable task request id and release claim if billing fails.
 	videoTaskID := ""
+	pricingAt := time.Time{}
 	if result != nil && (result.VideoCount > 0 || strings.HasPrefix(result.ResponseID, "seedance:")) {
 		videoTaskID = strings.TrimSpace(firstNonEmptyString(requestID, result.ResponseID))
 		if stable := service.StableGrokVideoBillingRequestID(firstNonEmptyString(result.ResponseID, requestID)); stable != "" {
@@ -1118,6 +1119,11 @@ func recordGrokMediaUsage(
 		// Prefer task id hash for payload fingerprint stability across status/content.
 		if len(body) == 0 && videoTaskID != "" {
 			payloadForHash = []byte(videoTaskID)
+		}
+		if videoTaskID != "" {
+			if pending, err := h.gatewayService.LoadGrokVideoPendingBilling(c.Request.Context(), videoTaskID, subject.UserID, apiKey.ID); err == nil && pending != nil {
+				pricingAt, _ = time.Parse(time.RFC3339Nano, pending.CreatedAt)
+			}
 		}
 	}
 	h.submitOpenAIUsageRecordTask(c.Request.Context(), result, func(ctx context.Context) {
@@ -1135,6 +1141,8 @@ func recordGrokMediaUsage(
 			APIKeyService:      h.apiKeyService,
 			QuotaPlatform:      quotaPlatform,
 			SessionID:          sessionID,
+			VideoTaskID:        videoTaskID,
+			PricingAt:          pricingAt,
 			ChannelUsageFields: channelUsageFields,
 		}); err != nil {
 			if videoTaskID != "" {

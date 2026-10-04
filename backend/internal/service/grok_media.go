@@ -445,7 +445,8 @@ type GrokVideoPendingBilling struct {
 	// duration_ms for deferred billing is measured from this instant until the
 	// first official done+video.url observation (status poll or content download),
 	// not the latency of that single discovery request alone.
-	CreatedAt string `json:"created_at,omitempty"`
+	CreatedAt  string                `json:"created_at,omitempty"`
+	Settlement *VideoUsageSettlement `json:"settlement,omitempty"`
 }
 
 // GrokVideoPendingCreatedAtNow formats a create-accept timestamp for pending billing.
@@ -489,9 +490,9 @@ func grokVideoPendingBillingKey(requestID string, userID, apiKeyID int64) string
 }
 
 func grokVideoPendingBillingTTL(cfg *config.Config) time.Duration {
-	// Video generation can take several minutes; keep create-time pricing for a day.
+	// Pending money events have no expiry. Terminal recovery sets a bounded TTL.
 	_ = cfg
-	return 24 * time.Hour
+	return 0
 }
 
 func grokVideoRequestBindingTTL(cfg *config.Config) time.Duration {
@@ -509,7 +510,8 @@ func grokVideoRequestBindingTTL(cfg *config.Config) time.Duration {
 
 func grokVideoBilledClaimTTL(cfg *config.Config) time.Duration {
 	_ = cfg
-	return 48 * time.Hour
+	// This is an in-flight lease, not evidence that durable billing completed.
+	return 2 * time.Minute
 }
 
 const (
@@ -605,9 +607,9 @@ func (s *OpenAIGatewayService) LoadGrokVideoPendingBilling(
 	return &pending, nil
 }
 
-// CancelGrokVideoPendingBilling removes the deferred billing snapshot and its
-// recovery index entry after an upstream task cancellation succeeds. It never
-// releases a completed billing claim, so cancellation cannot act as a refund.
+// CancelGrokVideoPendingBilling removes uncompleted task recovery after upstream
+// cancellation. An already frozen completion stays payable; deleting the asset
+// cannot waive settlement or act as a refund.
 func (s *OpenAIGatewayService) CancelGrokVideoPendingBilling(
 	ctx context.Context,
 	requestID string,
@@ -627,8 +629,8 @@ func (s *OpenAIGatewayService) CancelGrokVideoPendingBilling(
 	return cleanup.DeleteGrokVideoPendingBilling(ctx, key)
 }
 
-// ClaimGrokVideoBilling returns true once for a completed video request so status
-// polls do not double-bill. Fail-closed: claim errors are treated as already billed.
+// ClaimGrokVideoBilling acquires a short lease for completion processing. The
+// durable billing receipt enforces exactly-once charging after the lease ends.
 func (s *OpenAIGatewayService) ClaimGrokVideoBilling(
 	ctx context.Context,
 	requestID string,

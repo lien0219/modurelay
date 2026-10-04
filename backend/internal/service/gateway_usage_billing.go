@@ -87,6 +87,7 @@ type postUsageBillingParams struct {
 	// path that records only API-key 5h/1d/7d window usage. It must not trigger
 	// balance, subscription, account, platform, or lifetime-key-quota effects.
 	SimpleModeKeyRateLimitOnly bool
+	VideoUsageLog              *UsageLog
 }
 
 var ErrSimpleModeKeyRateLimitBillingUnavailable = errors.New("simple mode api key rate-limit billing unavailable")
@@ -336,10 +337,10 @@ func buildUsageBillingCommand(requestID string, usageLog *UsageLog, p *postUsage
 		cmd.BalanceCost = p.Cost.ActualCost
 	}
 
-	if p.shouldDeductAPIKeyQuota() {
+	if p.shouldDeductAPIKeyQuota() || (p.VideoUsageLog != nil && p.Cost.ActualCost > 0 && p.APIKey.Quota > 0) {
 		cmd.APIKeyQuotaCost = p.Cost.ActualCost
 	}
-	if p.shouldUpdateRateLimits() {
+	if p.shouldUpdateRateLimits() || (p.VideoUsageLog != nil && p.Cost.ActualCost > 0 && p.APIKey.HasRateLimits()) {
 		cmd.APIKeyRateLimitCost = p.Cost.ActualCost
 	}
 	if p.shouldUpdateAccountQuota() {
@@ -351,25 +352,37 @@ func buildUsageBillingCommand(requestID string, usageLog *UsageLog, p *postUsage
 }
 
 func applyUsageBilling(ctx context.Context, requestID string, usageLog *UsageLog, p *postUsageBillingParams, deps *billingDeps, repo UsageBillingRepository) (bool, error) {
+	result, err := applyPreparedUsageBilling(ctx, buildUsageBillingCommand(requestID, usageLog, p), p, deps, repo)
+	return result != nil && result.Applied, err
+}
+
+// applyPreparedUsageBilling also accepts a frozen video command. Recovery must
+// not rebuild the fingerprint from mutable prices, models or quota settings.
+func applyPreparedUsageBilling(ctx context.Context, cmd *UsageBillingCommand, p *postUsageBillingParams, deps *billingDeps, repo UsageBillingRepository) (*UsageBillingApplyResult, error) {
 	if p == nil || deps == nil {
-		return false, nil
+		return nil, nil
 	}
 
-	cmd := buildUsageBillingCommand(requestID, usageLog, p)
 	if cmd == nil || cmd.RequestID == "" || repo == nil {
 		if p.SimpleModeKeyRateLimitOnly {
-			return false, ErrSimpleModeKeyRateLimitBillingUnavailable
+			return nil, ErrSimpleModeKeyRateLimitBillingUnavailable
 		}
 		// The legacy path is only a fallback for standard billing. Simple mode
 		// must retain request-id deduplication and never bill other balances.
 		postUsageBilling(ctx, p, deps)
-		return true, nil
+		return &UsageBillingApplyResult{Applied: true}, nil
 	}
 
 	billingCtx, cancel := detachedBillingContext(ctx)
 	defer cancel()
 
-	result, err := repo.Apply(billingCtx, cmd)
+	var result *UsageBillingApplyResult
+	var err error
+	if videoRepo, ok := repo.(VideoUsageBillingRepository); ok && p.VideoUsageLog != nil {
+		result, err = videoRepo.ApplyVideoUsage(billingCtx, cmd, p.VideoUsageLog)
+	} else {
+		result, err = repo.Apply(billingCtx, cmd)
+	}
 	if err != nil {
 		if errors.Is(err, ErrInsufficientBalance) && deps.billingCacheService != nil && p.User != nil {
 			if invalidateErr := deps.billingCacheService.InvalidateUserBalance(billingCtx, p.User.ID); invalidateErr != nil {
@@ -379,12 +392,21 @@ func applyUsageBilling(ctx context.Context, requestID string, usageLog *UsageLog
 				)
 			}
 		}
-		return false, err
+		return nil, err
 	}
 
 	if result == nil || !result.Applied {
+		if result != nil && p.VideoUsageLog != nil && p.User != nil && p.APIKey != nil {
+			groupID := int64(0)
+			if p.VideoUsageLog.GroupID != nil {
+				groupID = *p.VideoUsageLog.GroupID
+			}
+			if err := invalidateVideoUsageCaches(billingCtx, deps.billingCacheService, p.APIKeyService, p.User.ID, p.APIKey.ID, groupID, p.APIKey.Key); err != nil {
+				return result, err
+			}
+		}
 		deps.deferredService.ScheduleLastUsedUpdate(p.Account.ID)
-		return false, nil
+		return result, nil
 	}
 
 	if result.APIKeyQuotaExhausted {
@@ -393,13 +415,25 @@ func applyUsageBilling(ctx context.Context, requestID string, usageLog *UsageLog
 		}
 	}
 
-	finalizePostUsageBilling(billingCtx, p, deps, result)
-	return true, nil
+	if err := finalizePostUsageBilling(billingCtx, p, deps, result); err != nil {
+		return result, err
+	}
+	return result, nil
 }
 
-func finalizePostUsageBilling(ctx context.Context, p *postUsageBillingParams, deps *billingDeps, result *UsageBillingApplyResult) {
+func finalizePostUsageBilling(ctx context.Context, p *postUsageBillingParams, deps *billingDeps, result *UsageBillingApplyResult) error {
 	if p == nil || p.Cost == nil || deps == nil {
-		return
+		return nil
+	}
+	var videoCacheErr error
+	if p.VideoUsageLog != nil && p.User != nil && p.APIKey != nil {
+		groupID := int64(0)
+		if p.VideoUsageLog.GroupID != nil {
+			groupID = *p.VideoUsageLog.GroupID
+		}
+		// Videos are DB-authoritative. A queued delta could run after another
+		// worker reloads the committed amount and count that same charge twice.
+		videoCacheErr = invalidateVideoUsageCaches(ctx, deps.billingCacheService, p.APIKeyService, p.User.ID, p.APIKey.ID, groupID, p.APIKey.Key)
 	}
 
 	if p.SimpleModeKeyRateLimitOnly {
@@ -407,25 +441,27 @@ func finalizePostUsageBilling(ctx context.Context, p *postUsageBillingParams, de
 		// any Redis snapshot after the committed increment as a best-effort aid
 		// when switching back to standard mode. Enforcement here never relies on
 		// successful cache invalidation.
-		if p.APIKey != nil && deps.billingCacheService != nil {
+		if p.VideoUsageLog == nil && p.APIKey != nil && deps.billingCacheService != nil {
 			if err := deps.billingCacheService.InvalidateAPIKeyRateLimit(ctx, p.APIKey.ID); err != nil {
 				logger.LegacyPrintf("service.gateway", "Warning: invalidate simple-mode api key rate-limit cache failed for key %d: %v", p.APIKey.ID, err)
 			}
 		}
 		deps.deferredService.ScheduleLastUsedUpdate(p.Account.ID)
-		return
+		return videoCacheErr
 	}
 
-	if p.IsSubscriptionBill {
-		if p.Cost.ActualCost > 0 && p.User != nil && p.APIKey != nil && p.APIKey.GroupID != nil {
-			deps.billingCacheService.QueueUpdateSubscriptionUsage(p.User.ID, *p.APIKey.GroupID, p.Cost.ActualCost)
+	if p.VideoUsageLog == nil {
+		if p.IsSubscriptionBill {
+			if p.Cost.ActualCost > 0 && p.User != nil && p.APIKey != nil && p.APIKey.GroupID != nil {
+				deps.billingCacheService.QueueUpdateSubscriptionUsage(p.User.ID, *p.APIKey.GroupID, p.Cost.ActualCost)
+			}
+		} else if p.Cost.ActualCost > 0 && p.User != nil {
+			syncBalanceCacheAfterDeduction(ctx, p, deps, result)
 		}
-	} else if p.Cost.ActualCost > 0 && p.User != nil {
-		syncBalanceCacheAfterDeduction(ctx, p, deps, result)
-	}
 
-	if p.Cost.ActualCost > 0 && p.APIKey != nil && p.APIKey.HasRateLimits() && deps.billingCacheService != nil {
-		deps.billingCacheService.QueueUpdateAPIKeyRateLimitUsage(p.APIKey.ID, p.Cost.ActualCost)
+		if p.Cost.ActualCost > 0 && p.APIKey != nil && p.APIKey.HasRateLimits() && deps.billingCacheService != nil {
+			deps.billingCacheService.QueueUpdateAPIKeyRateLimitUsage(p.APIKey.ID, p.Cost.ActualCost)
+		}
 	}
 
 	deps.deferredService.ScheduleLastUsedUpdate(p.Account.ID)
@@ -468,6 +504,7 @@ func finalizePostUsageBilling(ctx context.Context, p *postUsageBillingParams, de
 	// no dependency on the request context or upstream connection.
 	go notifyBalanceLow(p, deps, result)
 	go notifyAccountQuota(p, deps, result)
+	return videoCacheErr
 }
 
 func syncBalanceCacheAfterDeduction(ctx context.Context, p *postUsageBillingParams, deps *billingDeps, result *UsageBillingApplyResult) {

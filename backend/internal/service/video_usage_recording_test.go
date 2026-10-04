@@ -116,6 +116,12 @@ type videoUsageRecoveryCacheStub struct {
 	removals  int
 }
 
+func (s *videoUsageRecoveryCacheStub) SetGrokVideoPendingBilling(_ context.Context, key string, payload []byte, _ time.Duration) error {
+	s.key = key
+	s.payload = append([]byte(nil), payload...)
+	return nil
+}
+
 func (s *videoUsageRecoveryCacheStub) GetGrokVideoPendingBilling(context.Context, string) ([]byte, error) {
 	return s.payload, nil
 }
@@ -186,7 +192,7 @@ func TestVideoBillingRecoveryRetriesUsageLogPersistenceFailure(t *testing.T) {
 
 	gateway.recoverDueVideoBilling(context.Background())
 	require.Equal(t, 1, cache.releases, "failed usage persistence releases the claim for recovery")
-	require.Equal(t, 1, cache.schedules)
+	require.Equal(t, 2, cache.schedules, "both the frozen settlement and its failed attempt schedule recovery")
 	require.Zero(t, cache.removals, "pending recovery must survive a missing usage record")
 	require.False(t, cache.claimed)
 	require.Equal(t, StableGrokVideoBillingRequestID(pending.RequestID), billingRepo.lastCmd.RequestID)
