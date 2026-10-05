@@ -22,7 +22,9 @@ func outboxFixture(t *testing.T) (context.Context, *service.WorkspaceService, *s
 	ctx, workspaceService, owner, workspace := workspaceFixture(t)
 	var projectID int64
 	require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT id FROM projects WHERE workspace_id=$1 AND is_default`, workspace.ID).Scan(&projectID))
-	_, err := integrationDB.ExecContext(ctx, `UPDATE domain_event_outbox o SET delivered_at=now() FROM domain_events e WHERE o.event_id=e.id AND (e.workspace_id=$1 OR e.actor_user_id=$2)`, workspace.ID, owner.ID)
+	// Claim reads the shared queue across all workspaces. Archive existing
+	// pending events, including those emitted by earlier committed user fixtures.
+	_, err := integrationDB.ExecContext(ctx, `UPDATE domain_event_outbox SET delivered_at=now() WHERE delivered_at IS NULL`)
 	require.NoError(t, err)
 	return ctx, workspaceService, owner, workspace, projectID
 }
@@ -222,6 +224,13 @@ func TestDomainEventOutboxConcurrentClaimsAndExpiredFence(t *testing.T) {
 }
 
 func TestDomainEventOutboxTenThousandEventsStayInBoundedBatches(t *testing.T) {
+	// An earlier committed user fixture also leaves a personal-workspace event
+	// in the shared queue. Reproduce that setup even when this test runs alone.
+	isolateWorkspaceTestFixtures(t)
+	existingOwner := mustCreateUser(t, testEntClient(t), &service.User{})
+	var existingPending int
+	require.NoError(t, integrationDB.QueryRow(`SELECT count(*) FROM domain_event_outbox o JOIN domain_events e ON e.id=o.event_id WHERE o.delivered_at IS NULL AND e.actor_user_id=$1`, existingOwner.ID).Scan(&existingPending))
+	require.Equal(t, 1, existingPending)
 	ctx, _, owner, workspace, projectID := outboxFixture(t)
 	prefix := "evt_" + uuid.NewString() + "_"
 	_, err := integrationDB.ExecContext(ctx, `WITH scope AS (SELECT $1::text AS prefix,$2::bigint AS workspace_id,$3::bigint AS project_id,$4::bigint AS actor_id) INSERT INTO domain_events(id,event_type,event_version,created_at,workspace_id,project_id,actor_user_id,subject_type,subject_id,payload) SELECT prefix||n,'project.updated',1,now(),workspace_id,project_id,actor_id,'project',project_id::text,jsonb_build_object('id',prefix||n,'type','project.updated','version',1,'created_at',now(),'workspace_id',workspace_id,'project_id',project_id,'actor_user_id',actor_id,'subject',jsonb_build_object('type','project','id',project_id::text),'data',jsonb_build_object('status','active')) FROM scope CROSS JOIN generate_series(1,10000)n`, prefix, workspace.ID, projectID, owner.ID)
