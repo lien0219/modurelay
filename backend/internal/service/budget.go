@@ -22,6 +22,7 @@ var (
 )
 
 type BudgetAttribution struct {
+	ServiceAccountID       int64
 	WorkspaceID            int64
 	ProjectID              int64
 	BillingPrincipalUserID int64
@@ -29,7 +30,13 @@ type BudgetAttribution struct {
 	APIKeyID               int64
 }
 
+// ValidExecutionAttribution enforces an exclusive human or machine actor.
+func ValidExecutionAttribution(userID, serviceAccountID int64) bool {
+	return (userID > 0 && serviceAccountID == 0) || (userID == 0 && serviceAccountID > 0)
+}
+
 type BudgetReservation struct {
+	ServiceAccountID       int64
 	ID                     string
 	RequestID              string
 	ActorUserID            int64
@@ -77,7 +84,7 @@ func (s *BudgetService) Reserve(ctx context.Context, a BudgetAttribution, reques
 	if err := s.CheckEligibility(ctx, a, estimate, true); err != nil {
 		return nil, err
 	}
-	if a.WorkspaceID <= 0 || a.ProjectID <= 0 || a.BillingPrincipalUserID <= 0 || a.ActorUserID <= 0 || a.APIKeyID <= 0 || strings.TrimSpace(requestID) == "" {
+	if a.WorkspaceID <= 0 || a.ProjectID <= 0 || a.BillingPrincipalUserID <= 0 || !ValidExecutionAttribution(a.ActorUserID, a.ServiceAccountID) || a.APIKeyID <= 0 || strings.TrimSpace(requestID) == "" {
 		return nil, ErrBudgetReservationInvalid
 	}
 	return s.repo.Reserve(ctx, a, requestID, estimate)
@@ -122,7 +129,7 @@ func (s *BudgetService) Admit(ctx context.Context, key *APIKey, requestID string
 		return nil, nil
 	}
 	t := key.Tenant
-	a := BudgetAttribution{WorkspaceID: t.WorkspaceID, ProjectID: t.ProjectID, BillingPrincipalUserID: t.BillingPrincipalUserID, ActorUserID: key.UserID, APIKeyID: key.ID}
+	a := BudgetAttribution{WorkspaceID: t.WorkspaceID, ProjectID: t.ProjectID, BillingPrincipalUserID: t.BillingPrincipalUserID, ActorUserID: key.UserID, APIKeyID: key.ID, ServiceAccountID: valueOrZero(key.ServiceAccountID)}
 	if err := s.CheckEligibility(ctx, a, estimate, priced); err != nil {
 		return nil, err
 	}
@@ -136,7 +143,7 @@ func (s *BudgetService) Admit(ctx context.Context, key *APIKey, requestID string
 	if r.Status != "pending" {
 		return nil, ErrBudgetReservationClosed
 	}
-	if r.WorkspaceID != a.WorkspaceID || r.ProjectID != a.ProjectID || r.BillingPrincipalUserID != a.BillingPrincipalUserID || r.ActorUserID != a.ActorUserID || r.APIKeyID != a.APIKeyID || QuantizeUsageBillingAmount(r.Estimate) != QuantizeUsageBillingAmount(estimate) {
+	if r.WorkspaceID != a.WorkspaceID || r.ProjectID != a.ProjectID || r.BillingPrincipalUserID != a.BillingPrincipalUserID || r.ActorUserID != a.ActorUserID || r.ServiceAccountID != a.ServiceAccountID || r.APIKeyID != a.APIKeyID || QuantizeUsageBillingAmount(r.Estimate) != QuantizeUsageBillingAmount(estimate) {
 		return nil, ErrBudgetReservationConflict
 	}
 	return NewBudgetReservationHandle(s, r.ID), nil

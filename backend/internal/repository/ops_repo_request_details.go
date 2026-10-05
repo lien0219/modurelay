@@ -47,6 +47,9 @@ func (r *opsRepository) ListRequestDetails(ctx context.Context, filter *service.
 		if filter.UserID != nil && *filter.UserID > 0 {
 			addCondition(fmt.Sprintf("user_id = $%d", len(args)+1), *filter.UserID)
 		}
+		if filter.ServiceAccountID != nil && *filter.ServiceAccountID > 0 {
+			addCondition(fmt.Sprintf("service_account_id = $%d", len(args)+1), *filter.ServiceAccountID)
+		}
 		if filter.APIKeyID != nil && *filter.APIKeyID > 0 {
 			addCondition(fmt.Sprintf("api_key_id = $%d", len(args)+1), *filter.APIKeyID)
 		}
@@ -100,6 +103,7 @@ WITH combined AS (
     NULL::TEXT AS severity,
     NULL::TEXT AS message,
     ul.user_id AS user_id,
+    ul.service_account_id AS service_account_id,
     ul.api_key_id AS api_key_id,
     ul.account_id AS account_id,
     ul.group_id AS group_id,
@@ -125,6 +129,7 @@ WITH combined AS (
     o.severity AS severity,
     o.error_message AS message,
     o.user_id AS user_id,
+    o.service_account_id AS service_account_id,
     o.api_key_id AS api_key_id,
     o.account_id AS account_id,
     o.group_id AS group_id,
@@ -177,6 +182,7 @@ SELECT
   severity,
   message,
   user_id,
+  service_account_id,
   api_key_id,
   account_id,
   group_id,
@@ -227,10 +233,11 @@ LIMIT $%d OFFSET $%d
 			severity sql.NullString
 			message  sql.NullString
 
-			userID    sql.NullInt64
-			apiKeyID  sql.NullInt64
-			accountID sql.NullInt64
-			groupID   sql.NullInt64
+			userID           sql.NullInt64
+			serviceAccountID sql.NullInt64
+			apiKeyID         sql.NullInt64
+			accountID        sql.NullInt64
+			groupID          sql.NullInt64
 
 			stream bool
 		)
@@ -249,6 +256,7 @@ LIMIT $%d OFFSET $%d
 			&severity,
 			&message,
 			&userID,
+			&serviceAccountID,
 			&apiKeyID,
 			&accountID,
 			&groupID,
@@ -272,10 +280,11 @@ LIMIT $%d OFFSET $%d
 			Severity:     severity.String,
 			Message:      message.String,
 
-			UserID:    toInt64Ptr(userID),
-			APIKeyID:  toInt64Ptr(apiKeyID),
-			AccountID: toInt64Ptr(accountID),
-			GroupID:   toInt64Ptr(groupID),
+			UserID:           toInt64Ptr(userID),
+			ServiceAccountID: toInt64Ptr(serviceAccountID),
+			APIKeyID:         toInt64Ptr(apiKeyID),
+			AccountID:        toInt64Ptr(accountID),
+			GroupID:          toInt64Ptr(groupID),
 
 			Stream: stream,
 		}

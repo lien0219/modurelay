@@ -75,6 +75,16 @@ func UserID(v int64) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldUserID, v))
 }
 
+// ServiceAccountID applies equality check predicate on the "service_account_id" field. It's identical to ServiceAccountIDEQ.
+func ServiceAccountID(v int64) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldServiceAccountID, v))
+}
+
+// KeySuffix applies equality check predicate on the "key_suffix" field. It's identical to KeySuffixEQ.
+func KeySuffix(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldKeySuffix, v))
+}
+
 // ProjectID applies equality check predicate on the "project_id" field. It's identical to ProjectIDEQ.
 func ProjectID(v int64) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldProjectID, v))
@@ -313,6 +323,141 @@ func UserIDIn(vs ...int64) predicate.APIKey {
 // UserIDNotIn applies the NotIn predicate on the "user_id" field.
 func UserIDNotIn(vs ...int64) predicate.APIKey {
 	return predicate.APIKey(sql.FieldNotIn(FieldUserID, vs...))
+}
+
+// UserIDIsNil applies the IsNil predicate on the "user_id" field.
+func UserIDIsNil() predicate.APIKey {
+	return predicate.APIKey(sql.FieldIsNull(FieldUserID))
+}
+
+// UserIDNotNil applies the NotNil predicate on the "user_id" field.
+func UserIDNotNil() predicate.APIKey {
+	return predicate.APIKey(sql.FieldNotNull(FieldUserID))
+}
+
+// ServiceAccountIDEQ applies the EQ predicate on the "service_account_id" field.
+func ServiceAccountIDEQ(v int64) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldServiceAccountID, v))
+}
+
+// ServiceAccountIDNEQ applies the NEQ predicate on the "service_account_id" field.
+func ServiceAccountIDNEQ(v int64) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNEQ(FieldServiceAccountID, v))
+}
+
+// ServiceAccountIDIn applies the In predicate on the "service_account_id" field.
+func ServiceAccountIDIn(vs ...int64) predicate.APIKey {
+	return predicate.APIKey(sql.FieldIn(FieldServiceAccountID, vs...))
+}
+
+// ServiceAccountIDNotIn applies the NotIn predicate on the "service_account_id" field.
+func ServiceAccountIDNotIn(vs ...int64) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNotIn(FieldServiceAccountID, vs...))
+}
+
+// ServiceAccountIDGT applies the GT predicate on the "service_account_id" field.
+func ServiceAccountIDGT(v int64) predicate.APIKey {
+	return predicate.APIKey(sql.FieldGT(FieldServiceAccountID, v))
+}
+
+// ServiceAccountIDGTE applies the GTE predicate on the "service_account_id" field.
+func ServiceAccountIDGTE(v int64) predicate.APIKey {
+	return predicate.APIKey(sql.FieldGTE(FieldServiceAccountID, v))
+}
+
+// ServiceAccountIDLT applies the LT predicate on the "service_account_id" field.
+func ServiceAccountIDLT(v int64) predicate.APIKey {
+	return predicate.APIKey(sql.FieldLT(FieldServiceAccountID, v))
+}
+
+// ServiceAccountIDLTE applies the LTE predicate on the "service_account_id" field.
+func ServiceAccountIDLTE(v int64) predicate.APIKey {
+	return predicate.APIKey(sql.FieldLTE(FieldServiceAccountID, v))
+}
+
+// ServiceAccountIDIsNil applies the IsNil predicate on the "service_account_id" field.
+func ServiceAccountIDIsNil() predicate.APIKey {
+	return predicate.APIKey(sql.FieldIsNull(FieldServiceAccountID))
+}
+
+// ServiceAccountIDNotNil applies the NotNil predicate on the "service_account_id" field.
+func ServiceAccountIDNotNil() predicate.APIKey {
+	return predicate.APIKey(sql.FieldNotNull(FieldServiceAccountID))
+}
+
+// KeySuffixEQ applies the EQ predicate on the "key_suffix" field.
+func KeySuffixEQ(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldKeySuffix, v))
+}
+
+// KeySuffixNEQ applies the NEQ predicate on the "key_suffix" field.
+func KeySuffixNEQ(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNEQ(FieldKeySuffix, v))
+}
+
+// KeySuffixIn applies the In predicate on the "key_suffix" field.
+func KeySuffixIn(vs ...string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldIn(FieldKeySuffix, vs...))
+}
+
+// KeySuffixNotIn applies the NotIn predicate on the "key_suffix" field.
+func KeySuffixNotIn(vs ...string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNotIn(FieldKeySuffix, vs...))
+}
+
+// KeySuffixGT applies the GT predicate on the "key_suffix" field.
+func KeySuffixGT(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldGT(FieldKeySuffix, v))
+}
+
+// KeySuffixGTE applies the GTE predicate on the "key_suffix" field.
+func KeySuffixGTE(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldGTE(FieldKeySuffix, v))
+}
+
+// KeySuffixLT applies the LT predicate on the "key_suffix" field.
+func KeySuffixLT(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldLT(FieldKeySuffix, v))
+}
+
+// KeySuffixLTE applies the LTE predicate on the "key_suffix" field.
+func KeySuffixLTE(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldLTE(FieldKeySuffix, v))
+}
+
+// KeySuffixContains applies the Contains predicate on the "key_suffix" field.
+func KeySuffixContains(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldContains(FieldKeySuffix, v))
+}
+
+// KeySuffixHasPrefix applies the HasPrefix predicate on the "key_suffix" field.
+func KeySuffixHasPrefix(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldHasPrefix(FieldKeySuffix, v))
+}
+
+// KeySuffixHasSuffix applies the HasSuffix predicate on the "key_suffix" field.
+func KeySuffixHasSuffix(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldHasSuffix(FieldKeySuffix, v))
+}
+
+// KeySuffixIsNil applies the IsNil predicate on the "key_suffix" field.
+func KeySuffixIsNil() predicate.APIKey {
+	return predicate.APIKey(sql.FieldIsNull(FieldKeySuffix))
+}
+
+// KeySuffixNotNil applies the NotNil predicate on the "key_suffix" field.
+func KeySuffixNotNil() predicate.APIKey {
+	return predicate.APIKey(sql.FieldNotNull(FieldKeySuffix))
+}
+
+// KeySuffixEqualFold applies the EqualFold predicate on the "key_suffix" field.
+func KeySuffixEqualFold(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEqualFold(FieldKeySuffix, v))
+}
+
+// KeySuffixContainsFold applies the ContainsFold predicate on the "key_suffix" field.
+func KeySuffixContainsFold(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldContainsFold(FieldKeySuffix, v))
 }
 
 // ProjectIDEQ applies the EQ predicate on the "project_id" field.

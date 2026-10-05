@@ -37,6 +37,28 @@ type GrokVideoRecoveryFinalizer interface {
 	CompleteGrokVideoRecovery(ctx context.Context, key string, ttl time.Duration) error
 }
 
+func videoSettlementOwnershipID(input *OpenAIRecordUsageInput) int64 {
+	if input == nil || input.APIKey == nil {
+		return 0
+	}
+	if id := input.APIKey.VideoTaskOwnershipID(); id != 0 {
+		return id
+	}
+	if input.User != nil {
+		return input.User.ID
+	}
+	return 0
+}
+func videoSettlementUsagePrincipalMatches(log *UsageLog, input *OpenAIRecordUsageInput) bool {
+	if log == nil || input == nil || input.APIKey == nil {
+		return false
+	}
+	if input.APIKey.ServiceAccountID != nil {
+		return log.UserID == 0 && valueOrZero(log.ServiceAccountID) == *input.APIKey.ServiceAccountID
+	}
+	return log.ServiceAccountID == nil && input.User != nil && log.UserID == input.User.ID
+}
+
 // A replay may follow a crash between database commit and cache updates.
 // Invalidate authoritative snapshots without repeating any quota increments.
 func invalidateVideoUsageCaches(ctx context.Context, cache *BillingCacheService, keyService APIKeyQuotaUpdater, userID, keyID, groupID int64, credential string) error {
@@ -73,7 +95,7 @@ func (s *OpenAIGatewayService) finalizeSettledVideoUsage(ctx context.Context, in
 	if err := s.invalidateSettledVideoCaches(ctx, input.User.ID, input.APIKey.ID, groupID, input.APIKey.Key, input.APIKeyService); err != nil {
 		return err
 	}
-	return s.completeVideoRecovery(ctx, grokVideoPendingBillingKey(videoUsageTaskID(ctx, input), input.User.ID, input.APIKey.ID))
+	return s.completeVideoRecovery(ctx, grokVideoPendingBillingKey(videoUsageTaskID(ctx, input), videoSettlementOwnershipID(input), input.APIKey.ID))
 }
 
 func videoUsageTaskID(ctx context.Context, input *OpenAIRecordUsageInput) string {
@@ -110,11 +132,11 @@ func (s *OpenAIGatewayService) loadVideoUsageSettlement(ctx context.Context, inp
 	logOnly := s.cfg != nil && s.cfg.RunMode == config.RunModeSimple && !simpleModeKeyRateLimitBillingEnabled(s.cfg, input.APIKey)
 	// A durable row wins over a stale cache, even after model/price changes. A
 	// temporary DB outage must still allow us to freeze a new retry in Redis.
-	if settled, err := s.videoUsageSettled(ctx, taskID, input.User.ID, input.APIKey.ID, input.Account.ID, false); err == nil && settled {
+	if settled, err := s.videoUsageSettled(ctx, taskID, videoSettlementOwnershipID(input), input.APIKey.ID, input.Account.ID, false); err == nil && settled {
 		return nil, true, s.finalizeSettledVideoUsage(ctx, input, 0)
 	}
 	if s.cache != nil {
-		pending, err := s.LoadGrokVideoPendingBilling(ctx, taskID, input.User.ID, input.APIKey.ID)
+		pending, err := s.LoadGrokVideoPendingBilling(ctx, taskID, videoSettlementOwnershipID(input), input.APIKey.ID)
 		if err != nil {
 			return nil, false, err
 		}
@@ -122,11 +144,11 @@ func (s *OpenAIGatewayService) loadVideoUsageSettlement(ctx context.Context, inp
 			if pending.Cancelled {
 				return nil, false, ErrGrokVideoBillingCancelled
 			}
-			if pending.UserID != input.User.ID || pending.APIKeyID != input.APIKey.ID || pending.AccountID != input.Account.ID {
+			if pending.OwnershipID() != videoSettlementOwnershipID(input) || pending.APIKeyID != input.APIKey.ID || pending.AccountID != input.Account.ID {
 				return nil, false, errors.New("video settlement ownership mismatch")
 			}
 			if pending.Settlement != nil {
-				if settled, err := s.videoUsageSettled(ctx, taskID, input.User.ID, input.APIKey.ID, input.Account.ID, pending.Settlement.LogOnly); err == nil && settled {
+				if settled, err := s.videoUsageSettled(ctx, taskID, videoSettlementOwnershipID(input), input.APIKey.ID, input.Account.ID, pending.Settlement.LogOnly); err == nil && settled {
 					return nil, true, s.finalizeSettledVideoUsage(ctx, input, pending.GroupID)
 				}
 				return pending.Settlement, false, nil
@@ -136,7 +158,7 @@ func (s *OpenAIGatewayService) loadVideoUsageSettlement(ctx context.Context, inp
 	// Only an unfrozen legacy task may use the current mode's log-only lookup.
 	// Frozen standard-mode money effects survive later configuration changes.
 	if logOnly {
-		if settled, err := s.videoUsageSettled(ctx, taskID, input.User.ID, input.APIKey.ID, input.Account.ID, true); err == nil && settled {
+		if settled, err := s.videoUsageSettled(ctx, taskID, videoSettlementOwnershipID(input), input.APIKey.ID, input.Account.ID, true); err == nil && settled {
 			return nil, true, s.finalizeSettledVideoUsage(ctx, input, 0)
 		}
 	}
@@ -166,13 +188,13 @@ func (s *OpenAIGatewayService) prepareVideoUsageSettlement(ctx context.Context, 
 		return settlement, nil
 	}
 	taskID := videoUsageTaskID(ctx, input)
-	pending, err := s.LoadGrokVideoPendingBilling(ctx, taskID, input.User.ID, input.APIKey.ID)
+	pending, err := s.LoadGrokVideoPendingBilling(ctx, taskID, videoSettlementOwnershipID(input), input.APIKey.ID)
 	if err != nil {
 		return nil, err
 	}
 	if pending == nil {
 		pending = &GrokVideoPendingBilling{
-			RequestID: taskID, UserID: input.User.ID, APIKeyID: input.APIKey.ID, AccountID: input.Account.ID,
+			RequestID: taskID, UserID: input.APIKey.ExecutionPrincipal().UserID, ServiceAccountID: input.APIKey.ExecutionPrincipal().ServiceAccountID, APIKeyID: input.APIKey.ID, AccountID: input.Account.ID,
 			Model: usageLog.Model, OriginalModel: usageLog.RequestedModel, QuotaPlatform: p.Platform,
 			CreatedAt: usageLog.CreatedAt.UTC().Format(time.RFC3339Nano),
 		}
@@ -183,7 +205,7 @@ func (s *OpenAIGatewayService) prepareVideoUsageSettlement(ctx context.Context, 
 			pending.SubscriptionID = *usageLog.SubscriptionID
 		}
 	}
-	if pending.UserID != input.User.ID || pending.APIKeyID != input.APIKey.ID || pending.AccountID != input.Account.ID {
+	if pending.OwnershipID() != videoSettlementOwnershipID(input) || pending.APIKeyID != input.APIKey.ID || pending.AccountID != input.Account.ID {
 		return nil, errors.New("video settlement ownership mismatch")
 	}
 	pending.Settlement = settlement
@@ -191,7 +213,7 @@ func (s *OpenAIGatewayService) prepareVideoUsageSettlement(ctx context.Context, 
 	if err != nil {
 		return nil, err
 	}
-	key := grokVideoPendingBillingKey(taskID, input.User.ID, input.APIKey.ID)
+	key := grokVideoPendingBillingKey(taskID, videoSettlementOwnershipID(input), input.APIKey.ID)
 	if preparer, ok := s.cache.(GrokVideoSettlementPreparer); ok {
 		// First writer wins, including after a lease expires. Competing workers
 		// must use the same amounts, model and request fingerprint.
@@ -223,13 +245,13 @@ func (s *OpenAIGatewayService) recordVideoUsageSettlement(ctx context.Context, i
 		return errors.New("video settlement usage is missing")
 	}
 	log := settlement.UsageLog
-	if log.UserID != input.User.ID || log.APIKeyID != input.APIKey.ID || log.AccountID != input.Account.ID ||
+	if !videoSettlementUsagePrincipalMatches(log, input) || log.APIKeyID != input.APIKey.ID || log.AccountID != input.Account.ID ||
 		log.RequestID != StableGrokVideoBillingRequestID(videoUsageTaskID(ctx, input)) || log.VideoCount <= 0 {
 		return errors.New("video settlement usage ownership mismatch")
 	}
 	p := &postUsageBillingParams{
 		Cost: &CostBreakdown{ActualCost: log.ActualCost, TotalCost: log.TotalCost},
-		User: input.User, APIKey: input.APIKey, Account: input.Account, Subscription: input.Subscription,
+		User: input.User, BillingUser: input.APIKey.BillingUser(), APIKey: input.APIKey, Account: input.Account, Subscription: input.Subscription,
 		IsSubscriptionBill: log.BillingType == BillingTypeSubscription,
 		APIKeyService:      input.APIKeyService, Platform: settlement.QuotaPlatform,
 		SimpleModeKeyRateLimitOnly: settlement.SimpleModeKeyRateLimitOnly, VideoUsageLog: log,
@@ -239,7 +261,7 @@ func (s *OpenAIGatewayService) recordVideoUsageSettlement(ctx context.Context, i
 	}
 	if !settlement.LogOnly {
 		cmd := settlement.Command
-		if cmd == nil || cmd.RequestID != log.RequestID || cmd.UserID != log.UserID || cmd.APIKeyID != log.APIKeyID || cmd.AccountID != log.AccountID {
+		if cmd == nil || cmd.RequestID != log.RequestID || cmd.UserID != log.UserID || cmd.ServiceAccountID != valueOrZero(log.ServiceAccountID) || cmd.APIKeyID != log.APIKeyID || cmd.AccountID != log.AccountID {
 			return errors.New("video settlement billing ownership mismatch")
 		}
 		result, err := applyPreparedUsageBilling(ctx, cmd, p, s.billingDeps(), s.usageBillingRepo)
@@ -260,7 +282,7 @@ func (s *OpenAIGatewayService) recordVideoUsageSettlement(ctx context.Context, i
 				// Older log-only snapshots did not contain a receipt command.
 				cmd = buildUsageBillingCommand(log.RequestID, log, p)
 			}
-			if cmd == nil || cmd.RequestID != log.RequestID || cmd.UserID != log.UserID || cmd.APIKeyID != log.APIKeyID || cmd.AccountID != log.AccountID ||
+			if cmd == nil || cmd.RequestID != log.RequestID || cmd.UserID != log.UserID || cmd.ServiceAccountID != valueOrZero(log.ServiceAccountID) || cmd.APIKeyID != log.APIKeyID || cmd.AccountID != log.AccountID ||
 				cmd.BalanceCost != 0 || cmd.SubscriptionCost != 0 || cmd.APIKeyQuotaCost != 0 || cmd.APIKeyRateLimitCost != 0 || cmd.AccountQuotaCost != 0 {
 				return errors.New("log-only video settlement must have zero money effects")
 			}
@@ -277,7 +299,7 @@ func (s *OpenAIGatewayService) recordVideoUsageSettlement(ctx context.Context, i
 			s.deferredService.ScheduleLastUsedUpdate(input.Account.ID)
 		}
 	}
-	return s.completeVideoRecovery(ctx, grokVideoPendingBillingKey(videoUsageTaskID(ctx, input), input.User.ID, input.APIKey.ID))
+	return s.completeVideoRecovery(ctx, grokVideoPendingBillingKey(videoUsageTaskID(ctx, input), videoSettlementOwnershipID(input), input.APIKey.ID))
 }
 
 func (s *OpenAIGatewayService) completeVideoRecovery(ctx context.Context, key string) error {

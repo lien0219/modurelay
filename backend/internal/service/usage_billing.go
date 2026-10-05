@@ -17,6 +17,7 @@ var ErrUsageBillingRequestConflict = errors.New("usage billing request fingerpri
 
 // UsageBillingCommand describes one billable request that must be applied at most once.
 type UsageBillingCommand struct {
+	ServiceAccountID   int64
 	RequestID          string
 	APIKeyID           int64
 	RequestFingerprint string
@@ -148,6 +149,9 @@ func buildUsageBillingFingerprint(c *UsageBillingCommand) string {
 			raw += "|usage-log-cost-telemetry-only"
 		}
 	}
+	if c.ServiceAccountID > 0 {
+		raw += fmt.Sprintf("|service-account:%d", c.ServiceAccountID)
+	}
 	sum := sha256.Sum256([]byte(raw))
 	return hex.EncodeToString(sum[:])
 }
@@ -190,6 +194,7 @@ type UsageBillingApplyResult struct {
 
 // BatchImageBalanceHoldCommand describes an idempotent balance hold operation.
 type BatchImageBalanceHoldCommand struct {
+	ServiceAccountID       int64
 	RequestID              string
 	APIKeyID               int64
 	RequestFingerprint     string
@@ -234,6 +239,9 @@ func buildBatchImageBalanceHoldFingerprint(c *BatchImageBalanceHoldCommand) stri
 	}
 	if c.WorkspaceID > 0 || c.ProjectID > 0 || c.BillingPrincipalUserID > 0 || strings.TrimSpace(c.BudgetReservationID) != "" {
 		raw += fmt.Sprintf("|tenant:%d|%d|%d|%s", c.WorkspaceID, c.ProjectID, c.BillingPrincipalUserID, strings.TrimSpace(c.BudgetReservationID))
+	}
+	if c.ServiceAccountID > 0 {
+		raw += fmt.Sprintf("|service-account:%d", c.ServiceAccountID)
 	}
 	sum := sha256.Sum256([]byte(raw))
 	return hex.EncodeToString(sum[:])

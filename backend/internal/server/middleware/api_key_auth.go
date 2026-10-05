@@ -150,13 +150,13 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		}
 
 		// 检查关联的用户
-		if apiKey.User == nil {
+		if (apiKey.ServiceAccountID == nil && apiKey.User == nil) || apiKey.BillingUser() == nil {
 			AbortWithError(c, 401, "USER_NOT_FOUND", "User associated with API key not found")
 			return
 		}
 
 		// 检查用户状态
-		if !apiKey.User.IsActive() {
+		if (apiKey.User != nil && !apiKey.User.IsActive()) || !apiKey.BillingUser().IsActive() || (apiKey.ServiceAccountID != nil && (apiKey.ExecutionPrincipal().Validate() != nil || apiKey.ServiceAccountStatus != service.StatusActive)) {
 			MarkIngressRejected(c, IngressRejectUserInactive)
 			AbortWithError(c, 401, "USER_INACTIVE", "User account is not active")
 			return
@@ -167,7 +167,10 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		if abortIfAPIKeyGroupNotAllowed(c, apiKey) {
 			return
 		}
-		ctx := context.WithValue(c.Request.Context(), ctxkey.UserID, apiKey.User.ID)
+		// ctxkey.UserID is a funding-only compatibility subject; execution attribution
+		// must use WithExecutionPrincipal or the authenticated key.
+		ctx := context.WithValue(c.Request.Context(), ctxkey.UserID, apiKey.BillingUserID())
+		ctx = service.WithExecutionPrincipal(ctx, apiKey.ExecutionPrincipal())
 		ctx = service.WithBudgetService(ctx, apiKeyService.BudgetService())
 		c.Request = c.Request.WithContext(ctx)
 		billingInfoRequest := c.Request.URL.Path == "/v1/sub2api/billing"
@@ -180,11 +183,8 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 
 		if cfg.RunMode == config.RunModeSimple {
 			c.Set(string(ContextKeyAPIKey), apiKey)
-			c.Set(string(ContextKeyUser), AuthSubject{
-				UserID:      apiKey.User.ID,
-				Concurrency: apiKey.User.Concurrency,
-			})
-			c.Set(string(ContextKeyUserRole), apiKey.User.Role)
+			c.Set(string(ContextKeyUser), authSubjectForAPIKey(apiKey))
+			c.Set(string(ContextKeyUserRole), apiKeySubjectRole(apiKey))
 			setGroupContext(c, apiKey.Group)
 			if !billingInfoRequest {
 				_ = apiKeyService.TouchLastUsed(c.Request.Context(), apiKey.ID)
@@ -278,11 +278,8 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 			c.Set(string(ContextKeySubscription), subscription)
 		}
 		c.Set(string(ContextKeyAPIKey), apiKey)
-		c.Set(string(ContextKeyUser), AuthSubject{
-			UserID:      apiKey.User.ID,
-			Concurrency: apiKey.User.Concurrency,
-		})
-		c.Set(string(ContextKeyUserRole), apiKey.User.Role)
+		c.Set(string(ContextKeyUser), authSubjectForAPIKey(apiKey))
+		c.Set(string(ContextKeyUserRole), apiKeySubjectRole(apiKey))
 		setGroupContext(c, apiKey.Group)
 		if !billingInfoRequest {
 			_ = apiKeyService.TouchLastUsed(c.Request.Context(), apiKey.ID)
@@ -429,7 +426,7 @@ func abortIfAPIKeyGroupNotAllowed(c *gin.Context, apiKey *service.APIKey) bool {
 }
 
 func validateAPIKeyGroupAllowed(apiKey *service.APIKey) bool {
-	if apiKey == nil || apiKey.GroupID == nil || apiKey.User == nil || apiKey.Group == nil {
+	if apiKey == nil || apiKey.GroupID == nil || apiKey.BillingUser() == nil || apiKey.Group == nil {
 		return true
 	}
 	group := apiKey.Group

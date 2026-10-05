@@ -140,6 +140,8 @@ const allowedEvents = [
   'member.invited', 'member.joined', 'member.role_changed', 'member.suspended', 'member.removed',
   'project.created', 'project.updated', 'project.archived', 'project.restored',
   'api_key.created', 'api_key.updated', 'api_key.revoked',
+  'service_account.created', 'service_account.updated', 'service_account.disabled', 'service_account.enabled',
+  'service_account.credential.created', 'service_account.credential.updated', 'service_account.credential.revoked', 'service_account.credential.rotated', 'service_account.credential.expiring', 'service_account.credential.expired',
   'budget.threshold_reached', 'budget.soft_limit_exceeded', 'budget.hard_limit_reached', 'budget.updated',
   'billing.settlement_pending', 'billing.settlement_recovered', 'quota.threshold_reached', 'quota.exhausted', 'webhook.test',
 ]

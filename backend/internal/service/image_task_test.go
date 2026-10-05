@@ -96,6 +96,39 @@ func TestImageTaskRejectsIncompleteTenantSnapshot(t *testing.T) {
 	require.Nil(t, store.task)
 }
 
+func TestImageTaskMachineIdentitySnapshotAndOwnership(t *testing.T) {
+	store := &imageTaskMemoryStore{}
+	svc := NewImageTaskService(store)
+	owner := ImageTaskOwner{ServiceAccountID: 31, APIKeyID: 9, WorkspaceID: 1, ProjectID: 2, BillingPrincipalUserID: 3, BudgetReservationID: "machine-reservation"}
+
+	created, err := svc.Create(context.Background(), owner)
+	require.NoError(t, err)
+	require.Zero(t, store.task.UserID)
+	require.Equal(t, int64(31), store.task.ServiceAccountID)
+	require.Equal(t, owner.BillingPrincipalUserID, store.task.BillingPrincipalUserID)
+
+	_, err = svc.Get(context.Background(), owner, created.ID)
+	require.NoError(t, err)
+	otherCredential := owner
+	otherCredential.APIKeyID++
+	_, err = svc.Get(context.Background(), otherCredential, created.ID)
+	require.ErrorIs(t, err, ErrImageTaskNotFound)
+	otherServiceAccount := owner
+	otherServiceAccount.ServiceAccountID++
+	_, err = svc.Get(context.Background(), otherServiceAccount, created.ID)
+	require.ErrorIs(t, err, ErrImageTaskNotFound)
+}
+
+func TestImageTaskRejectsMixedHumanAndMachineOwner(t *testing.T) {
+	store := &imageTaskMemoryStore{}
+	_, err := NewImageTaskService(store).Create(context.Background(), ImageTaskOwner{
+		UserID: 7, ServiceAccountID: 31, APIKeyID: 9,
+		WorkspaceID: 1, ProjectID: 2, BillingPrincipalUserID: 3, BudgetReservationID: "reservation",
+	})
+	require.Error(t, err)
+	require.Nil(t, store.task)
+}
+
 func TestImageTaskServiceInvalidResultBecomesFailed(t *testing.T) {
 	store := &imageTaskMemoryStore{}
 	svc := NewImageTaskServiceWithOptions(store, time.Hour, time.Minute)

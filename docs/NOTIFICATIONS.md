@@ -84,6 +84,8 @@ version.
 | Membership and invitations | `member.invited`, `member.joined`, `member.role_changed`, `member.suspended`, `member.removed` |
 | Project mutations | `project.created`, `project.updated`, `project.archived` |
 | Project API key mutations | `api_key.created`, `api_key.updated`, `api_key.revoked` |
+| Service Account mutations | `service_account.created`, `service_account.updated`, `service_account.disabled`, `service_account.enabled` |
+| Service Account Credential mutations | `service_account.credential.created`, `service_account.credential.updated`, `service_account.credential.revoked`, `service_account.credential.rotated` |
 | Budget policy and actual spend | `budget.updated`, `budget.threshold_reached`, `budget.soft_limit_exceeded`, `budget.hard_limit_reached` |
 | Accepted video settlement | `billing.settlement_pending`, `billing.settlement_recovered` |
 | Explicit endpoint test | `webhook.test` |
@@ -93,6 +95,13 @@ so no `billing.settlement_failed` producer is added. Quota period/reset state is
 not durable enough for new tenant quota events; the existing operator quota
 notifications remain in place. There is no project restore operation in the
 current API. Reserved event identifiers do not imply an implemented producer.
+
+Service Account state, human management audit and outbox share the mutation
+transaction. Payloads contain only public metadata and SA/credential IDs, never
+the one-time secret or stored digest. Rotation records old/new credential IDs.
+`service_account.credential.expiring` and `.expired` are reserved; automatic
+expiration producers are **DEFERRED**. Credential expiration admission still
+uses the existing API-key check. See [SERVICE_ACCOUNTS.md](SERVICE_ACCOUNTS.md).
 
 ## Budget alert semantics
 
@@ -161,6 +170,7 @@ recipients must have active membership and an active, undeleted user identity.
 | Membership | Owner, Admin, affected active user identity, including the just-removed or suspended member |
 | Project | Owner, Admin, Developer |
 | API key | Owner, Admin, mutation actor |
+| Service Account / Credential | Active Owner, Admin, Developer; includes platform disable/revoke |
 | Webhook test | Initiating actor |
 
 Roles are resolved from the current control plane at dispatch. A removed member

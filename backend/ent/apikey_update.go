@@ -72,6 +72,59 @@ func (_u *APIKeyUpdate) SetNillableUserID(v *int64) *APIKeyUpdate {
 	return _u
 }
 
+// ClearUserID clears the value of the "user_id" field.
+func (_u *APIKeyUpdate) ClearUserID() *APIKeyUpdate {
+	_u.mutation.ClearUserID()
+	return _u
+}
+
+// SetServiceAccountID sets the "service_account_id" field.
+func (_u *APIKeyUpdate) SetServiceAccountID(v int64) *APIKeyUpdate {
+	_u.mutation.ResetServiceAccountID()
+	_u.mutation.SetServiceAccountID(v)
+	return _u
+}
+
+// SetNillableServiceAccountID sets the "service_account_id" field if the given value is not nil.
+func (_u *APIKeyUpdate) SetNillableServiceAccountID(v *int64) *APIKeyUpdate {
+	if v != nil {
+		_u.SetServiceAccountID(*v)
+	}
+	return _u
+}
+
+// AddServiceAccountID adds value to the "service_account_id" field.
+func (_u *APIKeyUpdate) AddServiceAccountID(v int64) *APIKeyUpdate {
+	_u.mutation.AddServiceAccountID(v)
+	return _u
+}
+
+// ClearServiceAccountID clears the value of the "service_account_id" field.
+func (_u *APIKeyUpdate) ClearServiceAccountID() *APIKeyUpdate {
+	_u.mutation.ClearServiceAccountID()
+	return _u
+}
+
+// SetKeySuffix sets the "key_suffix" field.
+func (_u *APIKeyUpdate) SetKeySuffix(v string) *APIKeyUpdate {
+	_u.mutation.SetKeySuffix(v)
+	return _u
+}
+
+// SetNillableKeySuffix sets the "key_suffix" field if the given value is not nil.
+func (_u *APIKeyUpdate) SetNillableKeySuffix(v *string) *APIKeyUpdate {
+	if v != nil {
+		_u.SetKeySuffix(*v)
+	}
+	return _u
+}
+
+// ClearKeySuffix clears the value of the "key_suffix" field.
+func (_u *APIKeyUpdate) ClearKeySuffix() *APIKeyUpdate {
+	_u.mutation.ClearKeySuffix()
+	return _u
+}
+
 // SetProjectID sets the "project_id" field.
 func (_u *APIKeyUpdate) SetProjectID(v int64) *APIKeyUpdate {
 	_u.mutation.ResetProjectID()
@@ -572,6 +625,11 @@ func (_u *APIKeyUpdate) defaults() error {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *APIKeyUpdate) check() error {
+	if v, ok := _u.mutation.KeySuffix(); ok {
+		if err := apikey.KeySuffixValidator(v); err != nil {
+			return &ValidationError{Name: "key_suffix", err: fmt.Errorf(`ent: validator failed for field "APIKey.key_suffix": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Key(); ok {
 		if err := apikey.KeyValidator(v); err != nil {
 			return &ValidationError{Name: "key", err: fmt.Errorf(`ent: validator failed for field "APIKey.key": %w`, err)}
@@ -586,9 +644,6 @@ func (_u *APIKeyUpdate) check() error {
 		if err := apikey.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "APIKey.status": %w`, err)}
 		}
-	}
-	if _u.mutation.UserCleared() && len(_u.mutation.UserIDs()) > 0 {
-		return errors.New(`ent: clearing a required unique edge "APIKey.user"`)
 	}
 	return nil
 }
@@ -613,6 +668,21 @@ func (_u *APIKeyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.DeletedAtCleared() {
 		_spec.ClearField(apikey.FieldDeletedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.ServiceAccountID(); ok {
+		_spec.SetField(apikey.FieldServiceAccountID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedServiceAccountID(); ok {
+		_spec.AddField(apikey.FieldServiceAccountID, field.TypeInt64, value)
+	}
+	if _u.mutation.ServiceAccountIDCleared() {
+		_spec.ClearField(apikey.FieldServiceAccountID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.KeySuffix(); ok {
+		_spec.SetField(apikey.FieldKeySuffix, field.TypeString, value)
+	}
+	if _u.mutation.KeySuffixCleared() {
+		_spec.ClearField(apikey.FieldKeySuffix, field.TypeString)
 	}
 	if value, ok := _u.mutation.ProjectID(); ok {
 		_spec.SetField(apikey.FieldProjectID, field.TypeInt64, value)
@@ -892,6 +962,59 @@ func (_u *APIKeyUpdateOne) SetNillableUserID(v *int64) *APIKeyUpdateOne {
 	if v != nil {
 		_u.SetUserID(*v)
 	}
+	return _u
+}
+
+// ClearUserID clears the value of the "user_id" field.
+func (_u *APIKeyUpdateOne) ClearUserID() *APIKeyUpdateOne {
+	_u.mutation.ClearUserID()
+	return _u
+}
+
+// SetServiceAccountID sets the "service_account_id" field.
+func (_u *APIKeyUpdateOne) SetServiceAccountID(v int64) *APIKeyUpdateOne {
+	_u.mutation.ResetServiceAccountID()
+	_u.mutation.SetServiceAccountID(v)
+	return _u
+}
+
+// SetNillableServiceAccountID sets the "service_account_id" field if the given value is not nil.
+func (_u *APIKeyUpdateOne) SetNillableServiceAccountID(v *int64) *APIKeyUpdateOne {
+	if v != nil {
+		_u.SetServiceAccountID(*v)
+	}
+	return _u
+}
+
+// AddServiceAccountID adds value to the "service_account_id" field.
+func (_u *APIKeyUpdateOne) AddServiceAccountID(v int64) *APIKeyUpdateOne {
+	_u.mutation.AddServiceAccountID(v)
+	return _u
+}
+
+// ClearServiceAccountID clears the value of the "service_account_id" field.
+func (_u *APIKeyUpdateOne) ClearServiceAccountID() *APIKeyUpdateOne {
+	_u.mutation.ClearServiceAccountID()
+	return _u
+}
+
+// SetKeySuffix sets the "key_suffix" field.
+func (_u *APIKeyUpdateOne) SetKeySuffix(v string) *APIKeyUpdateOne {
+	_u.mutation.SetKeySuffix(v)
+	return _u
+}
+
+// SetNillableKeySuffix sets the "key_suffix" field if the given value is not nil.
+func (_u *APIKeyUpdateOne) SetNillableKeySuffix(v *string) *APIKeyUpdateOne {
+	if v != nil {
+		_u.SetKeySuffix(*v)
+	}
+	return _u
+}
+
+// ClearKeySuffix clears the value of the "key_suffix" field.
+func (_u *APIKeyUpdateOne) ClearKeySuffix() *APIKeyUpdateOne {
+	_u.mutation.ClearKeySuffix()
 	return _u
 }
 
@@ -1408,6 +1531,11 @@ func (_u *APIKeyUpdateOne) defaults() error {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *APIKeyUpdateOne) check() error {
+	if v, ok := _u.mutation.KeySuffix(); ok {
+		if err := apikey.KeySuffixValidator(v); err != nil {
+			return &ValidationError{Name: "key_suffix", err: fmt.Errorf(`ent: validator failed for field "APIKey.key_suffix": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Key(); ok {
 		if err := apikey.KeyValidator(v); err != nil {
 			return &ValidationError{Name: "key", err: fmt.Errorf(`ent: validator failed for field "APIKey.key": %w`, err)}
@@ -1422,9 +1550,6 @@ func (_u *APIKeyUpdateOne) check() error {
 		if err := apikey.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "APIKey.status": %w`, err)}
 		}
-	}
-	if _u.mutation.UserCleared() && len(_u.mutation.UserIDs()) > 0 {
-		return errors.New(`ent: clearing a required unique edge "APIKey.user"`)
 	}
 	return nil
 }
@@ -1466,6 +1591,21 @@ func (_u *APIKeyUpdateOne) sqlSave(ctx context.Context) (_node *APIKey, err erro
 	}
 	if _u.mutation.DeletedAtCleared() {
 		_spec.ClearField(apikey.FieldDeletedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.ServiceAccountID(); ok {
+		_spec.SetField(apikey.FieldServiceAccountID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedServiceAccountID(); ok {
+		_spec.AddField(apikey.FieldServiceAccountID, field.TypeInt64, value)
+	}
+	if _u.mutation.ServiceAccountIDCleared() {
+		_spec.ClearField(apikey.FieldServiceAccountID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.KeySuffix(); ok {
+		_spec.SetField(apikey.FieldKeySuffix, field.TypeString, value)
+	}
+	if _u.mutation.KeySuffixCleared() {
+		_spec.ClearField(apikey.FieldKeySuffix, field.TypeString)
 	}
 	if value, ok := _u.mutation.ProjectID(); ok {
 		_spec.SetField(apikey.FieldProjectID, field.TypeInt64, value)

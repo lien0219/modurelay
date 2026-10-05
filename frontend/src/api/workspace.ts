@@ -121,6 +121,11 @@ export interface WorkspaceUsageBreakdown {
   spend: number
 }
 
+export interface ServiceAccountUsageBreakdown extends WorkspaceUsageBreakdown {
+  tokens: number
+  models: string[]
+}
+
 export interface WorkspaceDailySpendPoint {
   date: string
   requests: number
@@ -145,6 +150,7 @@ export interface WorkspaceOverview {
   platforms?: WorkspaceUsageBreakdown[] | null
   models?: WorkspaceUsageBreakdown[] | null
   api_keys?: WorkspaceUsageBreakdown[] | null
+  service_accounts?: ServiceAccountUsageBreakdown[] | null
   daily_spend?: WorkspaceDailySpendPoint[] | null
   workspace?: Workspace
   members?: number

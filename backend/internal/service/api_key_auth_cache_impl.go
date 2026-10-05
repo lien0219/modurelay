@@ -2,8 +2,6 @@ package service
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -14,7 +12,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 25 // v25: immutable project assignment; live tenant admission remains uncached.
+const apiKeyAuthSnapshotVersion = 26 // v26: exclusive machine execution identity; live admission remains authoritative.
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -192,8 +190,7 @@ func (s *APIKeyService) StopAuthCacheInvalidationSubscriber() {
 }
 
 func (s *APIKeyService) authCacheKey(key string) string {
-	sum := sha256.Sum256([]byte(key))
-	return hex.EncodeToString(sum[:])
+	return CredentialAuthCacheDigest(key)
 }
 
 func (s *APIKeyService) getAuthCacheEntry(ctx context.Context, cacheKey string) (*APIKeyAuthCacheEntry, bool) {
@@ -282,6 +279,12 @@ func (s *APIKeyService) loadAuthCacheEntry(ctx context.Context, key, cacheKey st
 		return nil, fmt.Errorf("get api key: %w", err)
 	}
 	apiKey.Key = key
+	if apiKey.ServiceAccountID != nil {
+		apiKey.Key = HashServiceAccountCredential(key)
+	}
+	if err := s.RevalidateTenant(ctx, apiKey); err != nil {
+		return nil, err
+	}
 	snapshot := s.snapshotFromAPIKey(ctx, apiKey)
 	if snapshot == nil {
 		return nil, fmt.Errorf("get api key: %w", ErrAPIKeyNotFound)
@@ -332,49 +335,55 @@ func (s *APIKeyService) applyAuthCacheEntry(key string, entry *APIKeyAuthCacheEn
 }
 
 func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) *APIKeyAuthSnapshot {
-	if apiKey == nil || apiKey.User == nil {
+	if apiKey == nil || (apiKey.ServiceAccountID == nil && apiKey.User == nil) || (apiKey.ServiceAccountID != nil && apiKey.ExecutionPrincipal().Validate() != nil) {
 		return nil
 	}
 	snapshot := &APIKeyAuthSnapshot{
-		Version:     apiKeyAuthSnapshotVersion,
-		APIKeyID:    apiKey.ID,
-		ProjectID:   apiKey.ProjectID,
-		UserID:      apiKey.UserID,
-		GroupID:     apiKey.GroupID,
-		Name:        apiKey.Name,
-		Status:      apiKey.Status,
-		IPWhitelist: apiKey.IPWhitelist,
-		IPBlacklist: apiKey.IPBlacklist,
-		Quota:       apiKey.Quota,
-		QuotaUsed:   apiKey.QuotaUsed,
-		ExpiresAt:   apiKey.ExpiresAt,
-		RateLimit5h: apiKey.RateLimit5h,
-		RateLimit1d: apiKey.RateLimit1d,
-		RateLimit7d: apiKey.RateLimit7d,
-		User: APIKeyAuthUserSnapshot{
-			ID:                         apiKey.User.ID,
-			Status:                     apiKey.User.Status,
-			Role:                       apiKey.User.Role,
-			Balance:                    apiKey.User.Balance,
-			Concurrency:                apiKey.User.Concurrency,
-			AllowedGroups:              apiKey.User.AllowedGroups,
-			Email:                      apiKey.User.Email,
-			Username:                   apiKey.User.Username,
-			BalanceNotifyEnabled:       apiKey.User.BalanceNotifyEnabled,
-			RestrictPublicGroups:       apiKey.User.RestrictPublicGroups,
-			BalanceNotifyThresholdType: apiKey.User.BalanceNotifyThresholdType,
-			BalanceNotifyThreshold:     apiKey.User.BalanceNotifyThreshold,
-			BalanceNotifyExtraEmails:   apiKey.User.BalanceNotifyExtraEmails,
-			TotalRecharged:             apiKey.User.TotalRecharged,
-			RPMLimit:                   apiKey.User.RPMLimit,
-		},
+		Version:              apiKeyAuthSnapshotVersion,
+		ServiceAccountID:     apiKey.ServiceAccountID,
+		ServiceAccountStatus: apiKey.ServiceAccountStatus,
+		Tenant:               apiKey.Tenant,
+		APIKeyID:             apiKey.ID,
+		ProjectID:            apiKey.ProjectID,
+		UserID:               apiKey.UserID,
+		GroupID:              apiKey.GroupID,
+		Name:                 apiKey.Name,
+		Status:               apiKey.Status,
+		IPWhitelist:          apiKey.IPWhitelist,
+		IPBlacklist:          apiKey.IPBlacklist,
+		Quota:                apiKey.Quota,
+		QuotaUsed:            apiKey.QuotaUsed,
+		ExpiresAt:            apiKey.ExpiresAt,
+		RateLimit5h:          apiKey.RateLimit5h,
+		RateLimit1d:          apiKey.RateLimit1d,
+		RateLimit7d:          apiKey.RateLimit7d,
 	}
 
 	// 填充 (user, group) RPM override —— snapshot 构建时查一次 DB，后续请求零 DB 往返。
+	if apiKey.User != nil {
+		snapshot.User = *authUserSnapshot(apiKey.User)
+	}
+	if apiKey.BillingPrincipal != nil {
+		snapshot.BillingPrincipal = authUserSnapshot(apiKey.BillingPrincipal)
+	}
+
 	if apiKey.GroupID != nil && *apiKey.GroupID > 0 && s.userGroupRateRepo != nil {
-		override, err := s.userGroupRateRepo.GetRPMOverrideByUserAndGroup(ctx, apiKey.UserID, *apiKey.GroupID)
+		rpmUserID := apiKey.UserID
+		if apiKey.ServiceAccountID != nil {
+			rpmUserID = apiKey.BillingUserID()
+		}
+		override, err := s.userGroupRateRepo.GetRPMOverrideByUserAndGroup(ctx, rpmUserID, *apiKey.GroupID)
 		if err == nil && override != nil {
-			snapshot.User.UserGroupRPMOverride = override
+			if apiKey.ServiceAccountID != nil {
+				if snapshot.BillingPrincipal == nil {
+					snapshot.BillingPrincipal = authUserSnapshot(apiKey.BillingPrincipal)
+				}
+				if snapshot.BillingPrincipal != nil {
+					snapshot.BillingPrincipal.UserGroupRPMOverride = override
+				}
+			} else {
+				snapshot.User.UserGroupRPMOverride = override
+			}
 		}
 		// 查询失败或无 override 时留 nil，checkRPM 会回退到 DB 查询
 	}
@@ -446,39 +455,30 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 		return nil
 	}
 	apiKey := &APIKey{
-		ID:          snapshot.APIKeyID,
-		ProjectID:   snapshot.ProjectID,
-		UserID:      snapshot.UserID,
-		GroupID:     snapshot.GroupID,
-		Key:         key,
-		Name:        snapshot.Name,
-		Status:      snapshot.Status,
-		IPWhitelist: snapshot.IPWhitelist,
-		IPBlacklist: snapshot.IPBlacklist,
-		Quota:       snapshot.Quota,
-		QuotaUsed:   snapshot.QuotaUsed,
-		ExpiresAt:   snapshot.ExpiresAt,
-		RateLimit5h: snapshot.RateLimit5h,
-		RateLimit1d: snapshot.RateLimit1d,
-		RateLimit7d: snapshot.RateLimit7d,
-		User: &User{
-			ID:                         snapshot.User.ID,
-			Status:                     snapshot.User.Status,
-			Role:                       snapshot.User.Role,
-			Balance:                    snapshot.User.Balance,
-			Concurrency:                snapshot.User.Concurrency,
-			AllowedGroups:              snapshot.User.AllowedGroups,
-			Email:                      snapshot.User.Email,
-			Username:                   snapshot.User.Username,
-			BalanceNotifyEnabled:       snapshot.User.BalanceNotifyEnabled,
-			RestrictPublicGroups:       snapshot.User.RestrictPublicGroups,
-			BalanceNotifyThresholdType: snapshot.User.BalanceNotifyThresholdType,
-			BalanceNotifyThreshold:     snapshot.User.BalanceNotifyThreshold,
-			BalanceNotifyExtraEmails:   snapshot.User.BalanceNotifyExtraEmails,
-			TotalRecharged:             snapshot.User.TotalRecharged,
-			RPMLimit:                   snapshot.User.RPMLimit,
-			UserGroupRPMOverride:       snapshot.User.UserGroupRPMOverride,
-		},
+		ID:                   snapshot.APIKeyID,
+		ServiceAccountID:     snapshot.ServiceAccountID,
+		ServiceAccountStatus: snapshot.ServiceAccountStatus,
+		Tenant:               snapshot.Tenant,
+		ProjectID:            snapshot.ProjectID,
+		UserID:               snapshot.UserID,
+		GroupID:              snapshot.GroupID,
+		Key:                  key,
+		Name:                 snapshot.Name,
+		Status:               snapshot.Status,
+		IPWhitelist:          snapshot.IPWhitelist,
+		IPBlacklist:          snapshot.IPBlacklist,
+		Quota:                snapshot.Quota,
+		QuotaUsed:            snapshot.QuotaUsed,
+		ExpiresAt:            snapshot.ExpiresAt,
+		RateLimit5h:          snapshot.RateLimit5h,
+		RateLimit1d:          snapshot.RateLimit1d,
+		RateLimit7d:          snapshot.RateLimit7d,
+		User:                 userFromAuthSnapshot(&snapshot.User),
+		BillingPrincipal:     userFromAuthSnapshot(snapshot.BillingPrincipal),
+	}
+	if snapshot.ServiceAccountID != nil {
+		apiKey.User = nil
+		apiKey.Key = HashServiceAccountCredential(key)
 	}
 	if snapshot.Group != nil {
 		apiKey.Group = &Group{
@@ -543,4 +543,23 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 	}
 	s.compileAPIKeyIPRules(apiKey)
 	return apiKey
+}
+
+func authUserSnapshot(u *User) *APIKeyAuthUserSnapshot {
+	if u == nil {
+		return nil
+	}
+	return &APIKeyAuthUserSnapshot{ID: u.ID, Status: u.Status, Role: u.Role, Balance: u.Balance, Concurrency: u.Concurrency, AllowedGroups: u.AllowedGroups,
+		Email: u.Email, Username: u.Username, BalanceNotifyEnabled: u.BalanceNotifyEnabled, RestrictPublicGroups: u.RestrictPublicGroups,
+		BalanceNotifyThresholdType: u.BalanceNotifyThresholdType, BalanceNotifyThreshold: u.BalanceNotifyThreshold, BalanceNotifyExtraEmails: u.BalanceNotifyExtraEmails,
+		TotalRecharged: u.TotalRecharged, RPMLimit: u.RPMLimit, UserGroupRPMOverride: u.UserGroupRPMOverride}
+}
+func userFromAuthSnapshot(u *APIKeyAuthUserSnapshot) *User {
+	if u == nil || u.ID <= 0 {
+		return nil
+	}
+	return &User{ID: u.ID, Status: u.Status, Role: u.Role, Balance: u.Balance, Concurrency: u.Concurrency, AllowedGroups: u.AllowedGroups,
+		Email: u.Email, Username: u.Username, BalanceNotifyEnabled: u.BalanceNotifyEnabled, RestrictPublicGroups: u.RestrictPublicGroups,
+		BalanceNotifyThresholdType: u.BalanceNotifyThresholdType, BalanceNotifyThreshold: u.BalanceNotifyThreshold, BalanceNotifyExtraEmails: u.BalanceNotifyExtraEmails,
+		TotalRecharged: u.TotalRecharged, RPMLimit: u.RPMLimit, UserGroupRPMOverride: u.UserGroupRPMOverride}
 }

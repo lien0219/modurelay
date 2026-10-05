@@ -73,6 +73,7 @@ type usageLogBestEffortWriter interface {
 
 // postUsageBillingParams 统一扣费所需的参数
 type postUsageBillingParams struct {
+	ServiceAccountID       int64
 	Cost                   *CostBreakdown
 	User                   *User
 	BillingUser            *User
@@ -138,6 +139,19 @@ func usageBillingUserID(apiKey *APIKey, user *User) int64 {
 	return 0
 }
 
+func usageActorUserID(key *APIKey, user *User) int64 {
+	if key != nil && key.ServiceAccountID != nil {
+		return 0
+	}
+	if key != nil && key.UserID > 0 {
+		return key.UserID
+	}
+	if user != nil {
+		return user.ID
+	}
+	return 0
+}
+
 func tenantBillingSnapshot(apiKey *APIKey) (workspaceID, projectID, principalID int64, reservationID string) {
 	// Legacy keys have no tenant admission snapshot. Their creator remains the
 	// payer through billingUserForParams, but must not make a billing command
@@ -158,6 +172,16 @@ func tenantBillingSnapshot(apiKey *APIKey) (workspaceID, projectID, principalID 
 func applyTenantUsageSnapshot(ctx context.Context, log *UsageLog, apiKey *APIKey, resolvedPlatform, reservationID string) {
 	if log == nil || apiKey == nil || apiKey.Tenant == nil {
 		return
+	}
+	if apiKey.ServiceAccountID != nil {
+		id := *apiKey.ServiceAccountID
+		log.ServiceAccountID = &id
+		log.UserID = 0
+	} else {
+		log.ServiceAccountID = nil
+		if apiKey.UserID > 0 {
+			log.UserID = apiKey.UserID
+		}
 	}
 	workspaceID, projectID, principalID, tenantReservation := tenantBillingSnapshot(apiKey)
 	if workspaceID > 0 {
@@ -385,7 +409,7 @@ func resolveUsageBillingPayloadFingerprint(ctx context.Context, requestPayloadHa
 }
 
 func buildUsageBillingCommand(requestID string, usageLog *UsageLog, p *postUsageBillingParams) *UsageBillingCommand {
-	if p == nil || p.Cost == nil || p.APIKey == nil || p.User == nil || p.Account == nil {
+	if p == nil || p.Cost == nil || p.APIKey == nil || (p.User == nil && p.APIKey.ServiceAccountID == nil) || p.Account == nil {
 		return nil
 	}
 	if p.BillingUser == nil {
@@ -430,7 +454,8 @@ func buildUsageBillingCommand(requestID string, usageLog *UsageLog, p *postUsage
 	cmd := &UsageBillingCommand{
 		RequestID:                 requestID,
 		APIKeyID:                  p.APIKey.ID,
-		UserID:                    p.User.ID,
+		UserID:                    usageActorUserID(p.APIKey, p.User),
+		ServiceAccountID:          valueOrZero(p.APIKey.ServiceAccountID),
 		AccountID:                 p.Account.ID,
 		AccountType:               p.Account.Type,
 		RequestPayloadHash:        strings.TrimSpace(p.RequestPayloadHash),

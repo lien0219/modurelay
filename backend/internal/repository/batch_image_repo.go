@@ -61,7 +61,7 @@ func (r *batchImageRepository) GetBatchImageJobByBatchID(ctx context.Context, ba
 
 func (r *batchImageRepository) GetBatchImageJobByIdempotencyKey(ctx context.Context, userID, apiKeyID int64, key string) (*service.BatchImageJob, error) {
 	job, err := scanBatchImageJob(r.sql.QueryRowContext(ctx, batchImageJobSelectSQL+`
- WHERE user_id = $1 AND api_key_id = $2 AND idempotency_key = $3
+ WHERE (user_id = $1 OR (service_account_id IS NOT NULL AND service_account_id=(SELECT k.service_account_id FROM api_keys k WHERE k.id=$2))) AND api_key_id = $2 AND idempotency_key = $3
  ORDER BY id DESC LIMIT 1`, userID, apiKeyID, key))
 	if err != nil {
 		return nil, translatePersistenceError(err, service.ErrBatchImageJobNotFound, nil)
@@ -71,7 +71,7 @@ func (r *batchImageRepository) GetBatchImageJobByIdempotencyKey(ctx context.Cont
 
 func (r *batchImageRepository) GetBatchImageJobByBatchIDForOwner(ctx context.Context, userID, apiKeyID int64, batchID string) (*service.BatchImageJob, error) {
 	job, err := scanBatchImageJob(r.sql.QueryRowContext(ctx, batchImageJobSelectSQL+`
- WHERE batch_id = $1 AND user_id = $2 AND api_key_id = $3 AND user_deleted_at IS NULL`, batchID, userID, apiKeyID))
+ WHERE batch_id = $1 AND (user_id = $2 OR (service_account_id IS NOT NULL AND service_account_id=(SELECT k.service_account_id FROM api_keys k WHERE k.id=$3))) AND api_key_id = $3 AND user_deleted_at IS NULL`, batchID, userID, apiKeyID))
 	if err != nil {
 		return nil, translatePersistenceError(err, service.ErrBatchImageJobNotFound, nil)
 	}
@@ -87,7 +87,7 @@ func (r *batchImageRepository) ListBatchImageJobsForOwner(ctx context.Context, u
 		filter.Offset = 0
 	}
 
-	query := batchImageJobSelectSQL + " WHERE user_id = $1 AND api_key_id = $2"
+	query := batchImageJobSelectSQL + " WHERE (user_id = $1 OR (service_account_id IS NOT NULL AND service_account_id=(SELECT k.service_account_id FROM api_keys k WHERE k.id=$2))) AND api_key_id = $2"
 	args := []any{userID, apiKeyID}
 	if filter.ExcludeDeleted {
 		query += " AND user_deleted_at IS NULL"
@@ -737,7 +737,7 @@ UPDATE batch_image_jobs
 SET user_deleted_at = CASE WHEN user_deleted_at IS NULL THEN $4 ELSE user_deleted_at END,
     updated_at = $4
 WHERE batch_id = $1
-  AND user_id = $2
+  AND (user_id = $2 OR (service_account_id IS NOT NULL AND service_account_id=(SELECT k.service_account_id FROM api_keys k WHERE k.id=$3)))
   AND api_key_id = $3
   AND user_deleted_at IS NULL
   AND status IN ('completed', 'failed', 'cancelled', 'output_deleted')`, batchID, userID, apiKeyID, deletedAt)
@@ -800,7 +800,7 @@ INSERT INTO batch_image_jobs (
     pricing_snapshot_version,
     currency, hold_id,
     idempotency_key, request_hash, manifest_hash, retry_count, session_id, output_expires_at,
-    workspace_id, project_id, billing_principal_user_id, budget_reservation_id
+    workspace_id, project_id, billing_principal_user_id, budget_reservation_id, service_account_id
 ) VALUES (
     $1, $2, $3, $4, $5, $6, $7, $8, $9,
     $10, $11, $12, $13, $14,
@@ -811,7 +811,7 @@ INSERT INTO batch_image_jobs (
     $29,
     $30, $31,
     $32, $33, $34, $35, $36, $37,
-    $38, $39, $40, $41
+    $38, $39, $40, $41, $42
 )
 RETURNING `+batchImageJobColumns,
 		params.BatchID, params.UserID, params.APIKeyID, params.AccountID, params.Provider, params.Model, params.TaskName, params.ParentBatchID, params.Status,
@@ -823,7 +823,7 @@ RETURNING `+batchImageJobColumns,
 		params.PricingSnapshotVersion,
 		params.Currency, params.HoldID,
 		params.IdempotencyKey, params.RequestHash, params.ManifestHash, params.RetryCount, params.SessionID, params.OutputExpiresAt,
-		params.WorkspaceID, params.ProjectID, params.BillingPrincipalUserID, params.BudgetReservationID,
+		params.WorkspaceID, params.ProjectID, params.BillingPrincipalUserID, params.BudgetReservationID, params.ServiceAccountID,
 	))
 }
 
@@ -880,7 +880,7 @@ idempotency_key, request_hash, manifest_hash,
 retry_count, version, session_id, output_expires_at, input_deleted_at, output_deleted_at, downloaded_at, user_deleted_at,
 last_error_code, last_error_message,
 created_at, updated_at, submitted_at, started_at, finished_at, settled_at,
-workspace_id, project_id, billing_principal_user_id, budget_reservation_id, provider_create_started_at`
+workspace_id, project_id, billing_principal_user_id, budget_reservation_id, provider_create_started_at, service_account_id`
 
 const batchImageJobSelectSQL = `SELECT ` + batchImageJobColumns + ` FROM batch_image_jobs`
 
@@ -888,6 +888,7 @@ func scanBatchImageJob(row rowScanner) (*service.BatchImageJob, error) {
 	var job service.BatchImageJob
 	var apiKeyID, accountID sql.NullInt64
 	var workspaceID, projectID, billingPrincipalUserID sql.NullInt64
+	var serviceAccountID sql.NullInt64
 	var budgetReservationID sql.NullString
 	var providerCreateStartedAt sql.NullTime
 	var providerJobName, providerInputRef, providerOutputRef, gcsInputURI, gcsOutputURI sql.NullString
@@ -912,12 +913,13 @@ func scanBatchImageJob(row rowScanner) (*service.BatchImageJob, error) {
 		&job.RetryCount, &job.Version, &sessionID, &outputExpiresAt, &inputDeletedAt, &outputDeletedAt, &downloadedAt, &userDeletedAt,
 		&lastErrorCode, &lastErrorMessage,
 		&job.CreatedAt, &job.UpdatedAt, &submittedAt, &startedAt, &finishedAt, &settledAt,
-		&workspaceID, &projectID, &billingPrincipalUserID, &budgetReservationID, &providerCreateStartedAt,
+		&workspaceID, &projectID, &billingPrincipalUserID, &budgetReservationID, &providerCreateStartedAt, &serviceAccountID,
 	)
 	if err != nil {
 		return nil, err
 	}
 
+	job.ServiceAccountID = batchImageNullInt64Ptr(serviceAccountID)
 	job.APIKeyID = batchImageNullInt64Ptr(apiKeyID)
 	job.AccountID = batchImageNullInt64Ptr(accountID)
 	job.WorkspaceID = batchImageNullInt64Ptr(workspaceID)

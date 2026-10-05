@@ -74,7 +74,7 @@ func (r *apiKeyRepository) PersonalProject(ctx context.Context, a int64) (int64,
 }
 func (r *apiKeyRepository) ProjectForKey(ctx context.Context, id int64) (int64, int64, error) {
 	var w, p sql.NullInt64
-	rows, e := r.sql.QueryContext(ctx, `SELECT p.workspace_id,k.project_id FROM api_keys k LEFT JOIN projects p ON p.id=k.project_id WHERE k.id=$1 AND k.deleted_at IS NULL`, id)
+	rows, e := r.sql.QueryContext(ctx, `SELECT p.workspace_id,k.project_id FROM api_keys k LEFT JOIN projects p ON p.id=k.project_id WHERE k.id=$1 AND k.deleted_at IS NULL AND k.service_account_id IS NULL`, id)
 	if e != nil {
 		return 0, 0, e
 	}
@@ -90,20 +90,25 @@ func (r *apiKeyRepository) ProjectForKey(ctx context.Context, id int64) (int64, 
 // A missing legacy assignment takes a separate bounded, conditional UPDATE;
 // already-assigned keys execute only the joined gate and principal load.
 func (r *apiKeyRepository) ResolveTenant(ctx context.Context, k *service.APIKey) (*service.TenantContext, error) {
-	if k.ProjectID == nil {
+	if k.ProjectID == nil && k.ServiceAccountID == nil {
 		_, e := r.sql.ExecContext(ctx, `UPDATE api_keys k SET project_id=p.id FROM projects p,workspaces w WHERE k.id=$1 AND k.key=$2 AND k.project_id IS NULL AND k.deleted_at IS NULL AND w.id=ensure_personal_workspace(k.user_id) AND w.type='personal' AND w.owner_user_id=k.user_id AND p.workspace_id=w.id AND p.is_default`, k.ID, k.Key)
 		if e != nil {
 			return nil, e
 		}
 	}
-	rows, e := r.sql.QueryContext(ctx, `SELECT p.workspace_id,p.id,w.billing_owner_user_id,p.allowed_group_ids,p.allowed_models,k.status,k.group_id,u.status,m.status,w.status,p.status,b.status,bm.status,to_jsonb(g)
+	rows, e := r.sql.QueryContext(ctx, `SELECT p.workspace_id,p.id,w.billing_owner_user_id,p.allowed_group_ids,p.allowed_models,k.status,k.group_id,
+ COALESCE(u.status,''),COALESCE(m.status,''),w.status,p.status,b.status,bm.status,to_jsonb(g),
+ k.service_account_id,COALESCE(sa.status,''),k.quota,k.quota_used,k.expires_at,k.ip_whitelist,k.ip_blacklist,k.rate_limit_5h,k.rate_limit_1d,k.rate_limit_7d
  FROM api_keys k JOIN projects p ON p.id=k.project_id JOIN workspaces w ON w.id=p.workspace_id
- JOIN users u ON u.id=k.user_id AND u.deleted_at IS NULL
- JOIN workspace_members m ON m.workspace_id=w.id AND m.user_id=k.user_id
+ LEFT JOIN users u ON u.id=k.user_id AND u.deleted_at IS NULL
+ LEFT JOIN workspace_members m ON m.workspace_id=w.id AND m.user_id=k.user_id
+ LEFT JOIN service_accounts sa ON sa.id=k.service_account_id AND sa.project_id=p.id AND sa.workspace_id=w.id
  JOIN users b ON b.id=w.billing_owner_user_id AND b.deleted_at IS NULL
  JOIN workspace_members bm ON bm.workspace_id=w.id AND bm.user_id=b.id
  LEFT JOIN groups g ON g.id=k.group_id AND g.deleted_at IS NULL
- WHERE k.id=$1 AND k.key=$2 AND k.user_id=$3 AND k.deleted_at IS NULL`, k.ID, k.Key, k.UserID)
+ WHERE k.id=$1 AND k.key=$2 AND k.deleted_at IS NULL
+ AND ((k.service_account_id IS NULL AND k.user_id=$3 AND $4::bigint IS NULL) OR
+ (k.user_id IS NULL AND k.service_account_id=$4 AND $3=0))`, k.ID, k.Key, k.UserID, k.ServiceAccountID)
 	if e != nil {
 		return nil, e
 	}
@@ -116,14 +121,33 @@ func (r *apiKeyRepository) ResolveTenant(ctx context.Context, k *service.APIKey)
 	}
 	tenant := &service.TenantContext{}
 	var actor, member, workspace, project, payer, billingMember string
-	var groupJSON []byte
-	e = rows.Scan(&tenant.WorkspaceID, &tenant.ProjectID, &tenant.BillingPrincipalUserID, pq.Array(&tenant.AllowedGroupIDs), pq.Array(&tenant.AllowedModels), &k.Status, &k.GroupID, &actor, &member, &workspace, &project, &payer, &billingMember, &groupJSON)
+	var groupJSON, white, black []byte
+	e = rows.Scan(&tenant.WorkspaceID, &tenant.ProjectID, &tenant.BillingPrincipalUserID, pq.Array(&tenant.AllowedGroupIDs), pq.Array(&tenant.AllowedModels), &k.Status, &k.GroupID, &actor, &member, &workspace, &project, &payer, &billingMember, &groupJSON, &k.ServiceAccountID, &k.ServiceAccountStatus, &k.Quota, &k.QuotaUsed, &k.ExpiresAt, &white, &black, &k.RateLimit5h, &k.RateLimit1d, &k.RateLimit7d)
 	if e != nil {
 		return nil, e
 	}
-	if actor != "active" || member != "active" || payer != "active" || billingMember != "active" {
+	if k.ExecutionPrincipal().Validate() != nil {
 		return nil, service.ErrWorkspaceForbidden
 	}
+	if (k.ServiceAccountID == nil && (actor != "active" || member != "active")) ||
+		(k.ServiceAccountID != nil && k.ServiceAccountStatus != "active") || payer != "active" || billingMember != "active" {
+		return nil, service.ErrWorkspaceForbidden
+	}
+	k.IPWhitelist, k.IPBlacklist = nil, nil
+	if len(white) > 0 {
+		if e = json.Unmarshal(white, &k.IPWhitelist); e != nil {
+			return nil, e
+		}
+	}
+	if len(black) > 0 {
+		if e = json.Unmarshal(black, &k.IPBlacklist); e != nil {
+			return nil, e
+		}
+	}
+	if k.ServiceAccountID != nil {
+		k.User = nil
+	}
+
 	if workspace != "active" || project != "active" {
 		return nil, service.ErrWorkspaceConflict
 	}
@@ -154,7 +178,7 @@ func (r *apiKeyRepository) ResolveTenant(ctx context.Context, k *service.APIKey)
 
 // Reads constrain membership, workspace, project and key in SQL, even if an
 // earlier service permission check saw a different membership state.
-const projectKeyReadWhere = ` FROM api_keys k JOIN projects p ON p.id=k.project_id JOIN workspaces w ON w.id=p.workspace_id JOIN workspace_members m ON m.workspace_id=w.id JOIN users u ON u.id=m.user_id WHERE m.user_id=$1 AND m.status='active' AND m.role IN ('owner','admin','developer') AND u.status='active' AND u.deleted_at IS NULL AND w.id=$2 AND p.id=$3 AND k.deleted_at IS NULL`
+const projectKeyReadWhere = ` FROM api_keys k JOIN projects p ON p.id=k.project_id JOIN workspaces w ON w.id=p.workspace_id JOIN workspace_members m ON m.workspace_id=w.id JOIN users u ON u.id=m.user_id WHERE m.user_id=$1 AND m.status='active' AND m.role IN ('owner','admin','developer') AND u.status='active' AND u.deleted_at IS NULL AND w.id=$2 AND p.id=$3 AND k.deleted_at IS NULL AND k.service_account_id IS NULL`
 
 const projectKeyColumns = `k.id,k.user_id,k.project_id,k.key,k.name,k.group_id,k.status,k.ip_whitelist,k.ip_blacklist,k.quota,k.quota_used,k.expires_at,k.rate_limit_5h,k.rate_limit_1d,k.rate_limit_7d,k.usage_5h,k.usage_1d,k.usage_7d,k.window_5h_start,k.window_1d_start,k.window_7d_start,k.last_used_at,k.created_at,k.updated_at`
 
@@ -311,18 +335,20 @@ func (r *apiKeyRepository) ListWorkspaceKeySecrets(ctx context.Context, w int64)
 	return out, rows.Err()
 }
 
-func (r *apiKeyRepository) checkProjectKeyBinding(ctx context.Context, k *service.APIKey) error {
-	_, w, p, _, scoped := service.ProjectKeyScopeFromContext(ctx)
-	if !scoped {
-		return nil
-	}
-	rows, e := clientFromContext(ctx, r.client).QueryContext(ctx, `SELECT CASE WHEN $3::bigint IS NULL THEN p.allowed_group_ids IS NULL ELSE
+const projectKeyBindingSQL = `SELECT CASE WHEN $3::bigint IS NULL THEN p.allowed_group_ids IS NULL ELSE
  (p.allowed_group_ids IS NULL OR $3=ANY(p.allowed_group_ids)) AND EXISTS(
  SELECT 1 FROM groups g JOIN users b ON b.id=w.billing_owner_user_id
  WHERE g.id=$3 AND g.status='active' AND g.deleted_at IS NULL AND b.status='active' AND b.deleted_at IS NULL
  AND CASE WHEN g.subscription_type='subscription' THEN EXISTS(SELECT 1 FROM user_subscriptions s WHERE s.user_id=b.id AND s.group_id=g.id AND s.status='active' AND s.expires_at>now() AND s.deleted_at IS NULL)
  ELSE (NOT g.is_exclusive AND NOT b.restrict_public_groups) OR EXISTS(SELECT 1 FROM user_allowed_groups ag WHERE ag.user_id=b.id AND ag.group_id=g.id) END) END
- FROM projects p JOIN workspaces w ON w.id=p.workspace_id WHERE p.id=$1 AND w.id=$2`, p, w, k.GroupID)
+ FROM projects p JOIN workspaces w ON w.id=p.workspace_id WHERE p.id=$1 AND w.id=$2`
+
+func (r *apiKeyRepository) checkProjectKeyBinding(ctx context.Context, k *service.APIKey) error {
+	_, w, p, _, scoped := service.ProjectKeyScopeFromContext(ctx)
+	if !scoped {
+		return nil
+	}
+	rows, e := clientFromContext(ctx, r.client).QueryContext(ctx, projectKeyBindingSQL, p, w, k.GroupID)
 	if e != nil {
 		return e
 	}

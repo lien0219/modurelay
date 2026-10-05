@@ -68,6 +68,16 @@ func Logger() gin.HandlerFunc {
 				zap.Bool(logger.OpsSystemLogSkipField, true),
 			)
 		}
+		if subject, ok := GetAuthSubjectFromContext(c); ok {
+			if subject.ServiceAccountID > 0 {
+				fields = append(fields, zap.Int64("service_account_id", subject.ServiceAccountID))
+			} else if subject.UserID > 0 {
+				fields = append(fields, zap.Int64("user_id", subject.UserID))
+			}
+		}
+		if key, ok := GetAPIKeyFromContext(c); ok && key != nil {
+			fields = append(fields, zap.Int64("api_key_id", key.ID))
+		}
 		if hasAccountID && accountID > 0 {
 			fields = append(fields, zap.Int64("account_id", accountID))
 		}

@@ -130,6 +130,9 @@ func (s *OpenAIGatewayService) CreateLiveCall(
 	if err := ValidateLiveCallRequest(request); err != nil {
 		return nil, err
 	}
+	if identity.ServiceAccountID > 0 && (identity.UserID != 0 || identity.WorkspaceID <= 0 || identity.ProjectID <= 0 || identity.BillingPrincipalUserID <= 0 || strings.TrimSpace(identity.BudgetReservationID) == "") {
+		return nil, ErrBudgetReservationInvalid
+	}
 	store, err := s.liveStore()
 	if err != nil {
 		return nil, err
@@ -181,7 +184,7 @@ func (s *OpenAIGatewayService) CreateLiveCall(
 			ctx,
 			account.ID,
 			account.Concurrency,
-			identity.UserID,
+			identity.FundingUserID(),
 			userMaxConcurrency,
 			identity.APIKeyID,
 			leaseID,
@@ -198,7 +201,7 @@ func (s *OpenAIGatewayService) CreateLiveCall(
 		created, createErr := s.createUpstreamLiveCall(ctx, account, request, attestation)
 		selection.ReleaseFunc()
 		if createErr != nil {
-			s.releaseLiveLease(account.ID, identity.UserID, identity.APIKeyID, leaseID)
+			s.releaseLiveLease(account.ID, identity.FundingUserID(), identity.APIKeyID, leaseID)
 			if !s.shouldFailoverLiveCreateError(account, createErr) {
 				return nil, createErr
 			}
@@ -213,26 +216,31 @@ func (s *OpenAIGatewayService) CreateLiveCall(
 			model = "gpt-live"
 		}
 		record := &LiveCallRecord{
-			CallID:                created.CallID,
-			CallHash:              hashLiveCallID(created.CallID),
-			AccountID:             account.ID,
-			APIKeyID:              identity.APIKeyID,
-			UserID:                identity.UserID,
-			GroupID:               liveGroupID(identity.GroupID),
-			SubscriptionID:        liveGroupID(identity.SubscriptionID),
-			LeaseID:               leaseID,
-			Model:                 model,
-			CreatedAt:             now,
-			ExpiresAt:             now.Add(s.liveMaxSessionDuration()),
-			Controller:            LiveControllerPending,
-			UserAgent:             identity.UserAgent,
-			IPAddress:             identity.IPAddress,
-			InboundEndpoint:       identity.InboundEndpoint,
-			AttestationCiphertext: attestationCiphertext,
+			BudgetReservationID:    identity.BudgetReservationID,
+			CallID:                 created.CallID,
+			CallHash:               hashLiveCallID(created.CallID),
+			AccountID:              account.ID,
+			APIKeyID:               identity.APIKeyID,
+			UserID:                 identity.UserID,
+			ServiceAccountID:       identity.ServiceAccountID,
+			WorkspaceID:            identity.WorkspaceID,
+			ProjectID:              identity.ProjectID,
+			BillingPrincipalUserID: identity.BillingPrincipalUserID,
+			GroupID:                liveGroupID(identity.GroupID),
+			SubscriptionID:         liveGroupID(identity.SubscriptionID),
+			LeaseID:                leaseID,
+			Model:                  model,
+			CreatedAt:              now,
+			ExpiresAt:              now.Add(s.liveMaxSessionDuration()),
+			Controller:             LiveControllerPending,
+			UserAgent:              identity.UserAgent,
+			IPAddress:              identity.IPAddress,
+			InboundEndpoint:        identity.InboundEndpoint,
+			AttestationCiphertext:  attestationCiphertext,
 		}
 		mappingTTL := s.liveMaxSessionDuration() + 5*time.Minute
 		if saveErr := store.SaveLiveCall(ctx, record, mappingTTL); saveErr != nil {
-			s.releaseLiveLease(account.ID, identity.UserID, identity.APIKeyID, leaseID)
+			s.releaseLiveLease(account.ID, identity.FundingUserID(), identity.APIKeyID, leaseID)
 			return nil, fmt.Errorf("save live call mapping: %w", saveErr)
 		}
 		created.Account = account
@@ -478,7 +486,7 @@ func (s *OpenAIGatewayService) GetLiveCallForIdentity(
 	}
 	if record.CallID != callID ||
 		record.APIKeyID != identity.APIKeyID ||
-		record.UserID != identity.UserID ||
+		record.UserID != identity.UserID || record.ServiceAccountID != identity.ServiceAccountID ||
 		record.GroupID != liveGroupID(identity.GroupID) {
 		return nil, ErrLiveIdentityMismatch
 	}
@@ -780,7 +788,7 @@ func (s *OpenAIGatewayService) refreshLiveLease(record *LiveCallRecord) bool {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), liveRedisOperationTimeout)
 	defer cancel()
-	refreshed, err := cache.RefreshLiveLease(ctx, record.AccountID, record.UserID, record.APIKeyID, record.LeaseID)
+	refreshed, err := cache.RefreshLiveLease(ctx, record.AccountID, record.FundingUserID(), record.APIKeyID, record.LeaseID)
 	return err == nil && refreshed
 }
 
@@ -808,10 +816,16 @@ func (s *OpenAIGatewayService) finalizeLiveCall(record *LiveCallRecord) {
 	if err != nil || !first {
 		return
 	}
-	s.releaseLiveLease(record.AccountID, record.UserID, record.APIKeyID, record.LeaseID)
+	s.releaseLiveLease(record.AccountID, record.FundingUserID(), record.APIKeyID, record.LeaseID)
 	if s.usageLogRepo == nil {
 		return
 	}
+	writeUsageLogBestEffort(context.Background(), s.usageLogRepo, record.UsageLog(), "service.openai_live")
+}
+
+// UsageLog uses the accepted call's frozen identity; later credential or payer
+// changes must not reassign Live telemetry. Live retains its zero-cost contract.
+func (record *LiveCallRecord) UsageLog() *UsageLog {
 	duration := int(time.Since(record.CreatedAt).Milliseconds())
 	if duration < 0 {
 		duration = 0
@@ -832,8 +846,9 @@ func (s *OpenAIGatewayService) finalizeLiveCall(record *LiveCallRecord) {
 	//
 	// 这是该会话唯一一次落库机会（MarkLiveCallClosed 已标记 first），失败即永久
 	// 丢失，因此走带日志与同步兜底的 writeUsageLogBestEffort（issue #3656）。
-	writeUsageLogBestEffort(context.Background(), s.usageLogRepo, &UsageLog{
+	usage := &UsageLog{
 		UserID:           record.UserID,
+		ServiceAccountID: liveOptionalID(record.ServiceAccountID),
 		APIKeyID:         record.APIKeyID,
 		AccountID:        record.AccountID,
 		RequestID:        record.CallHash,
@@ -850,5 +865,14 @@ func (s *OpenAIGatewayService) finalizeLiveCall(record *LiveCallRecord) {
 		InboundEndpoint:  &inboundEndpoint,
 		UpstreamEndpoint: &upstreamEndpoint,
 		CreatedAt:        record.CreatedAt,
-	}, "service.openai_live")
+	}
+	if record.BudgetReservationID != "" {
+		usage.BudgetReservationID = &record.BudgetReservationID
+		usage.WorkspaceID = liveOptionalID(record.WorkspaceID)
+		usage.ProjectID = liveOptionalID(record.ProjectID)
+		usage.BillingPrincipalUserID = liveOptionalID(record.BillingPrincipalUserID)
+		platform := PlatformOpenAI
+		usage.ResolvedPlatform = &platform
+	}
+	return usage
 }

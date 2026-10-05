@@ -751,6 +751,9 @@ func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user 
 	if apiKey != nil && apiKey.BillingUser() != nil {
 		payer = apiKey.BillingUser()
 	}
+	if payer == nil || payer.ID <= 0 {
+		return ErrBillingServiceUnavailable
+	}
 	isSubscriptionMode := group != nil && group.IsSubscriptionType() && subscription != nil
 
 	if isSubscriptionMode {
@@ -778,7 +781,11 @@ func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user 
 	}
 
 	// RPM 限流：级联回落（Override → Group → User），放在最后以避免为注定失败的请求增加计数。
-	if err := s.checkRPM(ctx, user, group); err != nil {
+	rpmUser := payer
+	if apiKey != nil && apiKey.ServiceAccountID == nil && apiKey.User != nil {
+		rpmUser = apiKey.User
+	}
+	if err := s.checkRPM(ctx, rpmUser, group); err != nil {
 		return err
 	}
 

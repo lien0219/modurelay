@@ -44,6 +44,19 @@ Only the workspace-visible producer events listed in
 [NOTIFICATIONS.md](NOTIFICATIONS.md) can be subscribed. Internal worker,
 provider credential/health and global operator events are excluded.
 
+Service Account subscriptions use the eight concrete event names:
+`service_account.created`, `.updated`, `.disabled`, `.enabled`, and
+`service_account.credential.created`, `.updated`, `.revoked`, `.rotated`
+(expand each shorthand to its complete prefix when submitting `event_types`).
+They use the same immutable envelope, HMAC, SSRF checks, lease, retry and
+at-least-once delivery. Credential payloads expose safe IDs/names/expiration;
+rotation includes `old_credential_id` and `new_credential_id`. Neither raw
+secret nor lookup digest is delivered. Global Admin disable/revoke produces the
+corresponding scoped tenant event, not platform-private risk notes.
+Expiration event names are reserved without an automatic producer in this
+release. See [SERVICE_ACCOUNTS.md](SERVICE_ACCOUNTS.md) and the
+[manual acceptance runbook](SERVICE_ACCOUNTS_ACCEPTANCE.md).
+
 ## Immutable envelope
 
 ```json

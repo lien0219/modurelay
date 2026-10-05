@@ -129,10 +129,17 @@ func (r *usageBillingRepository) ApplyTenantUsage(ctx context.Context, cmd *serv
 	return result, nil
 }
 
+func valueOrZeroRepository(v *int64) int64 {
+	if v == nil {
+		return 0
+	}
+	return *v
+}
+
 func validateTenantUsageSnapshot(cmd *service.UsageBillingCommand, log *service.UsageLog) error {
-	if cmd == nil || log == nil || cmd.UserID <= 0 || cmd.APIKeyID <= 0 || cmd.AccountID <= 0 ||
+	if cmd == nil || log == nil || !service.ValidExecutionAttribution(cmd.UserID, cmd.ServiceAccountID) || cmd.APIKeyID <= 0 || cmd.AccountID <= 0 ||
 		cmd.WorkspaceID <= 0 || cmd.ProjectID <= 0 || cmd.BillingPrincipalUserID <= 0 || strings.TrimSpace(cmd.BudgetReservationID) == "" ||
-		log.UserID != cmd.UserID || log.APIKeyID != cmd.APIKeyID || log.AccountID != cmd.AccountID || strings.TrimSpace(log.RequestID) != strings.TrimSpace(cmd.RequestID) {
+		(log.UserID != cmd.UserID || valueOrZeroRepository(log.ServiceAccountID) != cmd.ServiceAccountID) || log.APIKeyID != cmd.APIKeyID || log.AccountID != cmd.AccountID || strings.TrimSpace(log.RequestID) != strings.TrimSpace(cmd.RequestID) {
 		return service.ErrBudgetReservationConflict
 	}
 	if log.WorkspaceID == nil || *log.WorkspaceID != cmd.WorkspaceID || log.ProjectID == nil || *log.ProjectID != cmd.ProjectID ||
@@ -165,14 +172,15 @@ const tenantUsageLogConflictClause = `
 
 func verifyTenantUsageLog(ctx context.Context, tx *sql.Tx, cmd *service.UsageBillingCommand) (bool, error) {
 	var (
-		userID, keyID, accountID, workspaceID, projectID, principalID int64
-		actual, total                                                 float64
-		model, platform, reservation                                  sql.NullString
+		keyID, accountID, workspaceID, projectID, principalID int64
+		userID, machineID                                     sql.NullInt64
+		actual, total                                         float64
+		model, platform, reservation                          sql.NullString
 	)
-	err := tx.QueryRowContext(ctx, `SELECT user_id,api_key_id,account_id,workspace_id,project_id,billing_principal_user_id,
+	err := tx.QueryRowContext(ctx, `SELECT user_id,service_account_id,api_key_id,account_id,workspace_id,project_id,billing_principal_user_id,
 		budget_reservation_id::text,resolved_platform,model,actual_cost,total_cost
 		FROM usage_logs WHERE request_id=$1 AND api_key_id=$2`, cmd.RequestID, cmd.APIKeyID).Scan(
-		&userID, &keyID, &accountID, &workspaceID, &projectID, &principalID, &reservation, &platform, &model, &actual, &total)
+		&userID, &machineID, &keyID, &accountID, &workspaceID, &projectID, &principalID, &reservation, &platform, &model, &actual, &total)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
@@ -183,7 +191,7 @@ func verifyTenantUsageLog(ctx context.Context, tx *sql.Tx, cmd *service.UsageBil
 	if cmd.UsageLogCostTelemetryOnly {
 		amountMatches = cmd.BudgetActualCost == 0 && cmd.BalanceCost == 0 && cmd.SubscriptionCost == 0 && cmd.APIKeyQuotaCost == 0 && cmd.AccountQuotaCost == 0
 	}
-	return userID == cmd.UserID && keyID == cmd.APIKeyID && accountID == cmd.AccountID && workspaceID == cmd.WorkspaceID &&
+	return userID.Int64 == cmd.UserID && userID.Valid == (cmd.UserID > 0) && machineID.Int64 == cmd.ServiceAccountID && machineID.Valid == (cmd.ServiceAccountID > 0) && keyID == cmd.APIKeyID && accountID == cmd.AccountID && workspaceID == cmd.WorkspaceID &&
 		projectID == cmd.ProjectID && principalID == cmd.BillingPrincipalUserID && reservation.Valid && strings.TrimSpace(reservation.String) == strings.TrimSpace(cmd.BudgetReservationID) &&
 		(!platform.Valid || strings.TrimSpace(platform.String) == strings.TrimSpace(cmd.ResolvedPlatform)) &&
 		(strings.TrimSpace(cmd.Model) == "" || strings.TrimSpace(model.String) == strings.TrimSpace(cmd.Model)) &&
@@ -198,7 +206,7 @@ func (r *usageBillingRepository) IsVideoUsageSettled(ctx context.Context, reques
 	err := r.db.QueryRowContext(ctx, `
 		SELECT EXISTS (
 			SELECT 1 FROM usage_logs ul
-			WHERE ul.request_id = $1 AND ul.user_id = $2 AND ul.api_key_id = $3
+			WHERE ul.request_id = $1 AND (( $2::bigint>0 AND ul.user_id=$2 AND ul.service_account_id IS NULL) OR ($2::bigint<0 AND ul.user_id IS NULL AND ul.service_account_id=-$2)) AND ul.api_key_id = $3
 				AND ul.account_id = $4 AND ul.video_count > 0
 				AND ($5 OR NOT (ul.actual_cost = 0 AND ul.total_cost > 0 AND ul.rate_multiplier > 0))
 				AND ($5 OR EXISTS (
@@ -256,8 +264,8 @@ func (r *usageBillingRepository) apply(ctx context.Context, cmd *service.UsageBi
 		var owned bool
 		if err := tx.QueryRowContext(ctx, `SELECT EXISTS (
 			SELECT 1 FROM usage_logs WHERE request_id = $1 AND api_key_id = $2
-				AND user_id = $3 AND account_id = $4 AND video_count > 0
-		)`, cmd.RequestID, cmd.APIKeyID, cmd.UserID, cmd.AccountID).Scan(&owned); err != nil {
+				AND user_id IS NOT DISTINCT FROM NULLIF($3,0) AND service_account_id IS NOT DISTINCT FROM NULLIF($5,0) AND account_id = $4 AND video_count > 0
+		)`, cmd.RequestID, cmd.APIKeyID, cmd.UserID, cmd.AccountID, cmd.ServiceAccountID).Scan(&owned); err != nil {
 			return nil, err
 		}
 		if !owned {

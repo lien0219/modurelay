@@ -891,6 +891,7 @@ func ProvideDomainEventDispatcher(outbox DomainEventOutboxRepository, notificati
 var ProviderSet = wire.NewSet(
 	ProvideWorkspaceService,
 	NewWorkspaceAccessService,
+	NewServiceAccountService,
 	ProvideWorkspaceWebhookService,
 	ProvideWorkspaceWebhookWorker,
 	NewNotificationCenterService,

@@ -56,19 +56,27 @@ func finopsUsageCTE(scope service.FinOpsScope, start, end time.Time) (string, []
 	if err != nil {
 		return "", nil, err
 	}
+	rollupTable := "usage_tenant_hourly_rollups"
+	if scope.ServiceAccountID > 0 {
+		where, args, err = serviceAccountFinOpsWhere(scope, "u")
+		if err != nil {
+			return "", nil, err
+		}
+		rollupTable = "usage_service_account_hourly_rollups"
+	}
 	first, last := finopsWholeHours(start, end)
 	n := len(args)
 	args = append(args, start, end, first, last)
 	query := fmt.Sprintf(`WITH finops_usage AS (
  SELECT project_id,api_key_id,resolved_platform,model,request_count,actual_cost
- FROM usage_tenant_hourly_rollups u WHERE %s AND bucket_start >= $%d AND bucket_start < $%d
+ FROM %s u WHERE %s AND bucket_start >= $%d AND bucket_start < $%d
  UNION ALL
  SELECT project_id,api_key_id,resolved_platform,model,1::bigint,actual_cost
  FROM usage_logs u WHERE %s AND created_at >= $%d AND created_at < LEAST($%d::timestamptz,$%d::timestamptz)
  UNION ALL
  SELECT project_id,api_key_id,resolved_platform,model,1::bigint,actual_cost
  FROM usage_logs u WHERE %s AND created_at >= GREATEST($%d::timestamptz,$%d::timestamptz,$%d::timestamptz) AND created_at < $%d
-)`, where, n+3, n+4, where, n+1, n+2, n+3, where, n+1, n+3, n+4, n+2)
+)`, rollupTable, where, n+3, n+4, where, n+1, n+2, n+3, where, n+1, n+3, n+4, n+2)
 	return query, args, nil
 }
 
@@ -78,6 +86,14 @@ func finopsDailyQuery(scope service.FinOpsScope, start, end time.Time, timezone 
 	where, args, err := finopsScopeWhere(scope, "u")
 	if err != nil {
 		return "", nil, err
+	}
+	rollupTable := "usage_tenant_hourly_rollups"
+	if scope.ServiceAccountID > 0 {
+		where, args, err = serviceAccountFinOpsWhere(scope, "u")
+		if err != nil {
+			return "", nil, err
+		}
+		rollupTable = "usage_service_account_hourly_rollups"
 	}
 	loc, err := time.LoadLocation(timezone)
 	if err != nil {
@@ -111,12 +127,12 @@ func finopsDailyQuery(scope service.FinOpsScope, start, end time.Time, timezone 
  UNION ALL
  SELECT date,GREATEST(start_at,full_start,full_end),end_at FROM ranges WHERE GREATEST(start_at,full_start,full_end) < end_at
 ), daily_usage AS (
- SELECT b.date,u.request_count,u.actual_cost FROM ranges b JOIN usage_tenant_hourly_rollups u
+ SELECT b.date,u.request_count,u.actual_cost FROM ranges b JOIN %s u
  ON u.bucket_start >= b.full_start AND u.bucket_start < b.full_end WHERE %s
  UNION ALL
  SELECT b.date,1::bigint,u.actual_cost FROM edges b JOIN usage_logs u
  ON u.created_at >= b.start_at AND u.created_at < b.end_at WHERE %s
 )
-SELECT date,SUM(request_count)::bigint,SUM(actual_cost) FROM daily_usage GROUP BY 1 ORDER BY 1`, n+1, n+2, n+3, n+4, n+5, where, where)
+SELECT date,SUM(request_count)::bigint,SUM(actual_cost) FROM daily_usage GROUP BY 1 ORDER BY 1`, n+1, n+2, n+3, n+4, n+5, rollupTable, where, where)
 	return query, args, nil
 }

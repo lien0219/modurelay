@@ -6,20 +6,21 @@ import (
 )
 
 type OpsSystemLog struct {
-	ID              int64          `json:"id"`
-	CreatedAt       time.Time      `json:"created_at"`
-	Host            string         `json:"host"`
-	Level           string         `json:"level"`
-	Component       string         `json:"component"`
-	Message         string         `json:"message"`
-	RequestID       string         `json:"request_id"`
-	ClientRequestID string         `json:"client_request_id"`
-	UserID          *int64         `json:"user_id"`
-	APIKeyID        *int64         `json:"api_key_id"`
-	AccountID       *int64         `json:"account_id"`
-	Platform        string         `json:"platform"`
-	Model           string         `json:"model"`
-	Extra           map[string]any `json:"extra,omitempty"`
+	ID               int64          `json:"id"`
+	CreatedAt        time.Time      `json:"created_at"`
+	Host             string         `json:"host"`
+	Level            string         `json:"level"`
+	Component        string         `json:"component"`
+	Message          string         `json:"message"`
+	RequestID        string         `json:"request_id"`
+	ClientRequestID  string         `json:"client_request_id"`
+	UserID           *int64         `json:"user_id"`
+	ServiceAccountID *int64         `json:"service_account_id,omitempty"`
+	APIKeyID         *int64         `json:"api_key_id"`
+	AccountID        *int64         `json:"account_id"`
+	Platform         string         `json:"platform"`
+	Model            string         `json:"model"`
+	Extra            map[string]any `json:"extra,omitempty"`
 }
 
 type OpsErrorLog struct {
@@ -52,13 +53,14 @@ type OpsErrorLog struct {
 	RequestID       string `json:"request_id"`
 	Message         string `json:"message"`
 
-	UserID      *int64 `json:"user_id"`
-	UserEmail   string `json:"user_email"`
-	APIKeyID    *int64 `json:"api_key_id"`
-	AccountID   *int64 `json:"account_id"`
-	AccountName string `json:"account_name"`
-	GroupID     *int64 `json:"group_id"`
-	GroupName   string `json:"group_name"`
+	UserID           *int64 `json:"user_id"`
+	ServiceAccountID *int64 `json:"service_account_id,omitempty"`
+	UserEmail        string `json:"user_email"`
+	APIKeyID         *int64 `json:"api_key_id"`
+	AccountID        *int64 `json:"account_id"`
+	AccountName      string `json:"account_name"`
+	GroupID          *int64 `json:"group_id"`
+	GroupName        string `json:"group_name"`
 
 	ClientIP    *string `json:"client_ip"`
 	RequestPath string  `json:"request_path"`
@@ -124,8 +126,9 @@ type OpsErrorLogFilter struct {
 
 	// User-scoped filters (used by the user-facing error requests endpoint and
 	// by admin drill-down from the usage page).
-	UserID   *int64
-	APIKeyID *int64
+	UserID           *int64
+	ServiceAccountID *int64
+	APIKeyID         *int64
 
 	// Model matches against requested_model first, then model.
 	Model string

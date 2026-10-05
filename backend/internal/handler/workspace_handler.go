@@ -14,9 +14,10 @@ import (
 )
 
 type WorkspaceHandler struct {
-	workspaces *service.WorkspaceService
-	keys       *service.APIKeyService
-	webhooks   *service.WorkspaceWebhookService
+	workspaces      *service.WorkspaceService
+	keys            *service.APIKeyService
+	webhooks        *service.WorkspaceWebhookService
+	serviceAccounts *ServiceAccountHandler
 }
 
 func finopsRange(c *gin.Context) (time.Time, time.Time, string, error) {
@@ -55,6 +56,9 @@ func (h *WorkspaceHandler) SetWebhookService(webhooks *service.WorkspaceWebhookS
 	h.webhooks = webhooks
 }
 func (h *WorkspaceHandler) RegisterTenantRoutes(v1 *gin.RouterGroup) {
+	if h.serviceAccounts != nil {
+		h.serviceAccounts.RegisterTenantRoutes(v1)
+	}
 	routes := []struct{ method, path, action string }{
 		{"GET", "/workspaces", "workspace.list"}, {"POST", "/workspaces", "workspace.create"}, {"GET", "/workspaces/:id", "workspace.get"}, {"PATCH", "/workspaces/:id", "workspace.update"}, {"DELETE", "/workspaces/:id", "workspace.archive"},
 		{"GET", "/workspaces/:id/members", "member.list"}, {"PATCH", "/workspaces/:id/members/:member_id", "member.update"}, {"DELETE", "/workspaces/:id/members/:member_id", "member.remove"},
@@ -70,6 +74,9 @@ func (h *WorkspaceHandler) RegisterTenantRoutes(v1 *gin.RouterGroup) {
 	}
 }
 func (h *WorkspaceHandler) RegisterAdminRoutes(admin *gin.RouterGroup) {
+	if h.serviceAccounts != nil {
+		h.serviceAccounts.RegisterAdminRoutes(admin)
+	}
 	admin.GET("/workspaces", h.handle("admin.list"))
 	admin.GET("/workspaces/:id", h.handle("admin.inspect"))
 	admin.PATCH("/workspaces/:id/status", h.handle("admin.status"))
@@ -440,6 +447,15 @@ func (h *WorkspaceHandler) handle(action string) gin.HandlerFunc {
 			}
 			out, err = h.webhooks.Retry(ctx, a, w, ids["webhook_id"], ids["delivery_id"])
 		case "finops.workspace.usage", "finops.project.usage", "finops.workspace.overview", "finops.project.overview":
+			var serviceAccountIDs []int64
+			if raw := c.Query("service_account_id"); raw != "" {
+				id, parseErr := strconv.ParseInt(raw, 10, 64)
+				if parseErr != nil || id <= 0 {
+					response.ErrorFrom(c, service.ErrWorkspaceNotFound)
+					return
+				}
+				serviceAccountIDs = []int64{id}
+			}
 			start, end, tz, parseErr := finopsRange(c)
 			if parseErr != nil {
 				response.ErrorFrom(c, parseErr)
@@ -450,9 +466,9 @@ func (h *WorkspaceHandler) handle(action string) gin.HandlerFunc {
 				projectID = p
 			}
 			if strings.HasSuffix(action, "overview") {
-				out, err = h.workspaces.GetOverview(ctx, a, w, projectID, start, end, tz)
+				out, err = h.workspaces.GetOverview(ctx, a, w, projectID, start, end, tz, serviceAccountIDs...)
 			} else {
-				out, err = h.workspaces.GetUsageSummary(ctx, a, w, projectID, start, end, tz)
+				out, err = h.workspaces.GetUsageSummary(ctx, a, w, projectID, start, end, tz, serviceAccountIDs...)
 			}
 		case "finops.workspace.budget.get", "finops.project.budget.get":
 			projectID := int64(0)

@@ -919,6 +919,7 @@ const adminNavItems = computed((): NavItem[] => {
   const baseItems: NavItem[] = [
     { path: '/admin/dashboard', label: t('nav.dashboard'), icon: DashboardIcon },
     { path: '/admin/workspaces', label: t('workspace.adminTitle'), icon: FolderIcon },
+    { path: '/admin/service-accounts', label: t('serviceAccounts.adminTitle'), icon: FolderIcon },
     { path: '/admin/ops', label: t('nav.ops'), icon: ChartIcon, featureFlag: flagOpsMonitoring },
     { path: '/admin/detection-center', label: t('nav.detectionCenter'), icon: SignalIcon },
     { path: '/admin/users', label: t('nav.users'), icon: UsersIcon, hideInSimpleMode: true },

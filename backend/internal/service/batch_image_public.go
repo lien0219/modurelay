@@ -76,6 +76,7 @@ type BatchImageReferenceInput struct {
 }
 
 type BatchImageOwner struct {
+	ServiceAccountID       int64
 	UserID                 int64
 	APIKeyID               int64
 	GroupID                *int64
@@ -207,8 +208,8 @@ func (s *BatchImagePublicService) Submit(ctx context.Context, owner BatchImageOw
 	if !s.enabled() {
 		return nil, ErrBatchImageDisabled
 	}
-	if (owner.WorkspaceID != 0 || owner.ProjectID != 0 || owner.BillingPrincipalUserID != 0 || owner.BudgetReservationID != "") &&
-		(owner.WorkspaceID <= 0 || owner.ProjectID <= 0 || owner.BillingPrincipalUserID <= 0) {
+	if (owner.WorkspaceID != 0 || owner.ProjectID != 0 || owner.BillingPrincipalUserID != 0 || owner.BudgetReservationID != "" || owner.ServiceAccountID != 0) &&
+		(owner.WorkspaceID <= 0 || owner.ProjectID <= 0 || owner.BillingPrincipalUserID <= 0 || owner.ServiceAccountID < 0) {
 		return nil, ErrBudgetReservationInvalid
 	}
 	normalized, err := s.validateSubmitRequest(req)
@@ -269,6 +270,7 @@ func (s *BatchImagePublicService) Submit(ctx context.Context, owner BatchImageOw
 	holdAmount := pricingSnapshot.HoldAmount
 	job, err := s.Repo.CreateBatchImageJob(ctx, CreateBatchImageJobParams{
 		BatchID:                 batchID,
+		ServiceAccountID:        batchImagePositiveIDPtr(owner.ServiceAccountID),
 		UserID:                  owner.UserID,
 		APIKeyID:                &apiKeyID,
 		WorkspaceID:             batchImagePositiveIDPtr(owner.WorkspaceID),
@@ -459,7 +461,7 @@ func (s *BatchImagePublicService) reserveBatchImageBudget(ctx context.Context, j
 	if s.Budget == nil {
 		return ErrBudgetUnavailable
 	}
-	attribution := BudgetAttribution{WorkspaceID: valueOrZero(job.WorkspaceID), ProjectID: valueOrZero(job.ProjectID), BillingPrincipalUserID: valueOrZero(job.BillingPrincipalUserID), ActorUserID: job.UserID, APIKeyID: valueOrZero(job.APIKeyID)}
+	attribution := BudgetAttribution{WorkspaceID: valueOrZero(job.WorkspaceID), ProjectID: valueOrZero(job.ProjectID), BillingPrincipalUserID: valueOrZero(job.BillingPrincipalUserID), ActorUserID: batchImageExecutionUserID(job), ServiceAccountID: valueOrZero(job.ServiceAccountID), APIKeyID: valueOrZero(job.APIKeyID)}
 	reservation, err := s.Budget.Reserve(ctx, attribution, BatchImageHoldRequestID(job.BatchID), job.EstimatedCost)
 	if err != nil {
 		return err
@@ -467,7 +469,7 @@ func (s *BatchImagePublicService) reserveBatchImageBudget(ctx context.Context, j
 	if reservation == nil || strings.TrimSpace(reservation.ID) == "" {
 		return ErrBudgetUnavailable
 	}
-	if reservation.WorkspaceID != attribution.WorkspaceID || reservation.ProjectID != attribution.ProjectID || reservation.BillingPrincipalUserID != attribution.BillingPrincipalUserID || reservation.ActorUserID != attribution.ActorUserID || reservation.APIKeyID != attribution.APIKeyID || reservation.RequestID != BatchImageHoldRequestID(job.BatchID) || reservation.Status != "pending" || QuantizeUsageBillingAmount(reservation.Estimate) != QuantizeUsageBillingAmount(job.EstimatedCost) {
+	if reservation.WorkspaceID != attribution.WorkspaceID || reservation.ProjectID != attribution.ProjectID || reservation.BillingPrincipalUserID != attribution.BillingPrincipalUserID || reservation.ActorUserID != attribution.ActorUserID || reservation.ServiceAccountID != attribution.ServiceAccountID || reservation.APIKeyID != attribution.APIKeyID || reservation.RequestID != BatchImageHoldRequestID(job.BatchID) || reservation.Status != "pending" || QuantizeUsageBillingAmount(reservation.Estimate) != QuantizeUsageBillingAmount(job.EstimatedCost) {
 		return ErrBudgetReservationConflict
 	}
 	reservationRepo, supported := s.Repo.(interface {

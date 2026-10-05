@@ -113,6 +113,7 @@
 
       <section v-if="store.can('usage.read')" class="workspace-panel">
         <div class="workspace-panel__heading"><div><h2>{{ t('workspace.usage') }}</h2><p>{{ t('workspace.usageDescription') }}</p></div></div>
+        <label v-if="serviceAccountChoices.length" class="workspace-machine-filter"><span>{{ t('serviceAccounts.filter') }}</span><select v-model="selectedServiceAccountId" class="input" data-testid="service-account-usage-filter" :disabled="loading" @change="load"><option value="">{{ t('serviceAccounts.allPrincipals') }}</option><option v-for="row in serviceAccountChoices" :key="row.id" :value="row.id">{{ row.name || row.id }} (#{{ row.id }})</option></select></label>
         <div v-if="loading" class="workspace-state" role="status">{{ t('common.loading') }}</div>
         <template v-else-if="projectUsage || projectOverview">
           <div class="workspace-project-usage"><span>{{ t('workspace.requests') }}: {{ projectUsageSummary.requests ?? '—' }}</span><span>{{ t('workspace.spend') }}: {{ formatMoney(projectUsageSummary.spend) }}</span></div>
@@ -151,7 +152,7 @@ import { useI18n } from 'vue-i18n'
 import WorkspaceFrame from '@/components/workspace/WorkspaceFrame.vue'
 import WorkspaceUsageBreakdowns from '@/components/workspace/WorkspaceUsageBreakdowns.vue'
 import WorkspaceDailySpend from '@/components/workspace/WorkspaceDailySpend.vue'
-import { workspaceAPI, type Project, type ProjectKey, type WorkspaceAvailableGroup, type WorkspaceBudget, type WorkspaceOverview, type WorkspaceUsage } from '@/api/workspace'
+import { workspaceAPI, type Project, type ProjectKey, type WorkspaceAvailableGroup, type WorkspaceBudget, type WorkspaceOverview, type WorkspaceUsage, type ServiceAccountUsageBreakdown } from '@/api/workspace'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useAppStore } from '@/stores/app'
 
@@ -166,6 +167,8 @@ const keys = ref<ProjectKey[]>([])
 const projectBudget = ref<WorkspaceBudget | null>(null)
 const projectUsage = ref<WorkspaceUsage | null>(null)
 const projectOverview = ref<WorkspaceOverview | null>(null)
+const selectedServiceAccountId = ref('')
+const serviceAccountChoices = ref<ServiceAccountUsageBreakdown[]>([])
 const loading = ref(false)
 const budgetSaving = ref(false)
 const availableGroups = ref<WorkspaceAvailableGroup[]>([])
@@ -232,9 +235,10 @@ async function load() {
     availableGroups.value = groupsResult.status === 'fulfilled' ? groupsResult.value : []
     const policy = projectBudget.value?.policy || projectBudget.value?.project || projectBudget.value?.workspace
     Object.assign(projectBudgetForm, { amount: policy?.amount ?? 0, hard_limit: policy?.hard_limit ?? false, enabled: policy?.enabled ?? true, timezone: policy?.timezone || 'UTC' })
-    const params = projectBudget.value?.period_start && projectBudget.value.period_end
+    const params: Record<string, unknown> = projectBudget.value?.period_start && projectBudget.value.period_end
       ? { start: projectBudget.value.period_start, end: projectBudget.value.period_end, timezone: policy?.timezone || 'UTC' }
       : {}
+    if (selectedServiceAccountId.value) params.service_account_id = Number(selectedServiceAccountId.value)
     const [usageResult, overviewResult] = await Promise.allSettled([
       store.can('usage.read') ? workspaceAPI.getProjectUsage(wid, pid, params, signal) : Promise.resolve(null),
       store.can('usage.read') ? workspaceAPI.getProjectOverview(wid, pid, signal, params) : Promise.resolve(null),
@@ -242,6 +246,7 @@ async function load() {
     if (currentGeneration !== loadGeneration) return
     projectUsage.value = usageResult.status === 'fulfilled' ? usageResult.value : null
     projectOverview.value = overviewResult.status === 'fulfilled' ? overviewResult.value : null
+    if (!selectedServiceAccountId.value) serviceAccountChoices.value = (projectOverview.value?.service_accounts || []).filter(row => /^[1-9]\d*$/.test(row.id))
   } catch (error) {
     if (currentGeneration === loadGeneration) app.showError((error as { message?: string })?.message || t('workspace.loadError'))
   } finally {
@@ -318,6 +323,8 @@ watch([workspaceId, projectId], () => {
   projectBudget.value = null
   projectUsage.value = null
   projectOverview.value = null
+  selectedServiceAccountId.value = ''
+  serviceAccountChoices.value = []
   availableGroups.value = []
   secret.value = ''
   closeCreateForm()
@@ -337,6 +344,7 @@ onBeforeUnmount(() => { ++loadGeneration; loadController?.abort() })
 .workspace-panel h2 { margin: 0; color: var(--color-text-primary); font-size: 17px; }
 .workspace-panel h3 { margin: 0; color: var(--color-text-primary); font-size: 15px; }
 .workspace-panel p { margin: 5px 0 0; color: var(--color-text-secondary); font-size: 13px; }
+.workspace-machine-filter { display: grid; gap: 6px; margin-top: 16px; max-width: 360px; color: var(--color-text-secondary); font-size: 14px; }
 .workspace-eyebrow { color: var(--color-text-muted) !important; font-size: 12px !important; font-weight: 700; text-transform: uppercase; }
 .workspace-details { display: grid; min-width: 0; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 20px 0 0; }
 .workspace-details div { display: grid; gap: 5px; }

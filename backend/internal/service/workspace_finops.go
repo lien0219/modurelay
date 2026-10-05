@@ -6,8 +6,9 @@ import (
 )
 
 type FinOpsScope struct {
-	WorkspaceID int64
-	ProjectID   int64
+	WorkspaceID      int64
+	ProjectID        int64
+	ServiceAccountID int64
 }
 
 type FinOpsUsageSummary struct {
@@ -38,12 +39,21 @@ type FinOpsDailySpendPoint struct {
 }
 
 type FinOpsOverview struct {
-	Summary    FinOpsUsageSummary      `json:"summary"`
-	DailySpend []FinOpsDailySpendPoint `json:"daily_spend"`
-	Projects   []FinOpsBreakdown       `json:"projects"`
-	Platforms  []FinOpsBreakdown       `json:"platforms"`
-	Models     []FinOpsBreakdown       `json:"models"`
-	APIKeys    []FinOpsBreakdown       `json:"api_keys"`
+	ServiceAccounts []FinOpsServiceAccountBreakdown `json:"service_accounts"`
+	Summary         FinOpsUsageSummary              `json:"summary"`
+	DailySpend      []FinOpsDailySpendPoint         `json:"daily_spend"`
+	Projects        []FinOpsBreakdown               `json:"projects"`
+	Platforms       []FinOpsBreakdown               `json:"platforms"`
+	Models          []FinOpsBreakdown               `json:"models"`
+	APIKeys         []FinOpsBreakdown               `json:"api_keys"`
+}
+type FinOpsServiceAccountBreakdown struct {
+	ID       string   `json:"id"`
+	Name     string   `json:"name"`
+	Requests int64    `json:"requests"`
+	Spend    float64  `json:"spend"`
+	Tokens   int64    `json:"tokens"`
+	Models   []string `json:"models"`
 }
 
 type BudgetView struct {
@@ -72,7 +82,7 @@ type FinOpsRepository interface {
 	SetBudget(context.Context, int64, FinOpsScope, BudgetPolicyInput) (*BudgetView, error)
 }
 
-func (s *WorkspaceService) GetUsageSummary(ctx context.Context, actorID, workspaceID, projectID int64, start, end time.Time, timezone string) (*FinOpsUsageSummary, error) {
+func (s *WorkspaceService) GetUsageSummary(ctx context.Context, actorID, workspaceID, projectID int64, start, end time.Time, timezone string, serviceAccountIDs ...int64) (*FinOpsUsageSummary, error) {
 	if timezone == "" {
 		timezone = "UTC"
 	}
@@ -90,10 +100,14 @@ func (s *WorkspaceService) GetUsageSummary(ctx context.Context, actorID, workspa
 	if !ok {
 		return nil, ErrWorkspaceConflict
 	}
-	return r.GetUsageSummary(ctx, FinOpsScope{WorkspaceID: workspaceID, ProjectID: projectID}, start, end, timezone)
+	scope, err := s.serviceAccountFinOpsScope(ctx, actorID, workspaceID, projectID, serviceAccountIDs)
+	if err != nil {
+		return nil, err
+	}
+	return r.GetUsageSummary(ctx, scope, start, end, timezone)
 }
 
-func (s *WorkspaceService) GetOverview(ctx context.Context, actorID, workspaceID, projectID int64, start, end time.Time, timezone string) (*FinOpsOverview, error) {
+func (s *WorkspaceService) GetOverview(ctx context.Context, actorID, workspaceID, projectID int64, start, end time.Time, timezone string, serviceAccountIDs ...int64) (*FinOpsOverview, error) {
 	if timezone == "" {
 		timezone = "UTC"
 	}
@@ -111,7 +125,32 @@ func (s *WorkspaceService) GetOverview(ctx context.Context, actorID, workspaceID
 	if !ok {
 		return nil, ErrWorkspaceConflict
 	}
-	return r.GetOverview(ctx, FinOpsScope{WorkspaceID: workspaceID, ProjectID: projectID}, start, end, timezone)
+	scope, err := s.serviceAccountFinOpsScope(ctx, actorID, workspaceID, projectID, serviceAccountIDs)
+	if err != nil {
+		return nil, err
+	}
+	return r.GetOverview(ctx, scope, start, end, timezone)
+}
+
+func (s *WorkspaceService) serviceAccountFinOpsScope(ctx context.Context, actor, workspace, project int64, ids []int64) (FinOpsScope, error) {
+	scope := FinOpsScope{WorkspaceID: workspace, ProjectID: project}
+	if len(ids) == 0 {
+		return scope, nil
+	}
+	if len(ids) != 1 || ids[0] <= 0 {
+		return scope, ErrWorkspaceNotFound
+	}
+	r, ok := s.repo.(interface {
+		ValidateServiceAccountUsageScope(context.Context, int64, int64, int64, int64) error
+	})
+	if !ok {
+		return scope, ErrWorkspaceForbidden
+	}
+	if err := r.ValidateServiceAccountUsageScope(ctx, actor, workspace, project, ids[0]); err != nil {
+		return scope, err
+	}
+	scope.ServiceAccountID = ids[0]
+	return scope, nil
 }
 
 func (s *WorkspaceService) GetBudget(ctx context.Context, actorID, workspaceID, projectID int64) (*BudgetView, error) {

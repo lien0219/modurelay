@@ -373,7 +373,7 @@ func parseGrokMediaMultipartRequest(contentType string, body []byte, info *GrokM
 
 func GrokMediaVideoRequestSessionHash(requestID string, userID, apiKeyID int64) string {
 	requestID = strings.TrimSpace(requestID)
-	if requestID == "" || userID <= 0 || apiKeyID <= 0 {
+	if requestID == "" || userID == 0 || apiKeyID <= 0 {
 		return ""
 	}
 	ownerSeed := fmt.Sprintf("%d:%d:%s", userID, apiKeyID, requestID)
@@ -460,9 +460,10 @@ func (s *OpenAIGatewayService) SelectMediaVideoRequestAccount(
 // first observes a completed video URL. Status may omit model/duration; we fall
 // back to this snapshot, then defaults.
 type GrokVideoPendingBilling struct {
-	RequestID string `json:"request_id,omitempty"`
-	UserID    int64  `json:"user_id,omitempty"`
-	APIKeyID  int64  `json:"api_key_id,omitempty"`
+	ServiceAccountID int64  `json:"service_account_id,omitempty"`
+	RequestID        string `json:"request_id,omitempty"`
+	UserID           int64  `json:"user_id,omitempty"`
+	APIKeyID         int64  `json:"api_key_id,omitempty"`
 	// Tenant attribution is captured when the async task is accepted. Completion
 	// and recovery must never infer it from a later API-key/project lookup.
 	WorkspaceID            int64  `json:"workspace_id,omitempty"`
@@ -501,8 +502,11 @@ func validateGrokVideoPendingBillingTenant(pending *GrokVideoPendingBilling) err
 	if pending == nil {
 		return ErrBudgetReservationInvalid
 	}
+	if pending.ServiceAccountID < 0 || (pending.ServiceAccountID > 0 && pending.UserID != 0) {
+		return ErrBudgetReservationInvalid
+	}
 	hasTenant := pending.WorkspaceID != 0 || pending.ProjectID != 0 ||
-		pending.BillingPrincipalUserID != 0 || strings.TrimSpace(pending.BudgetReservationID) != ""
+		pending.BillingPrincipalUserID != 0 || pending.ServiceAccountID != 0 || strings.TrimSpace(pending.BudgetReservationID) != ""
 	if !hasTenant {
 		return nil
 	}
@@ -535,6 +539,11 @@ func (p *GrokVideoPendingBilling) ApplyTenantSnapshot(key *APIKey) *APIKey {
 		return key
 	}
 	copyKey := *key
+	if p.ServiceAccountID > 0 {
+		id := p.ServiceAccountID
+		copyKey.ServiceAccountID = &id
+		copyKey.UserID, copyKey.User = 0, nil
+	}
 	tenant := &TenantContext{
 		WorkspaceID:            p.WorkspaceID,
 		ProjectID:              p.ProjectID,
@@ -579,10 +588,43 @@ func GrokVideoE2EDuration(createdAt string, discoveredAt time.Time) time.Duratio
 
 func grokVideoPendingBillingKey(requestID string, userID, apiKeyID int64) string {
 	requestID = strings.TrimSpace(requestID)
-	if requestID == "" || userID <= 0 || apiKeyID <= 0 {
+	if requestID == "" || userID == 0 || apiKeyID <= 0 {
 		return ""
 	}
+	if userID < 0 {
+		return fmt.Sprintf("sa:%d:%d:%s", -userID, apiKeyID, requestID)
+	}
 	return fmt.Sprintf("%d:%d:%s", userID, apiKeyID, requestID)
+}
+
+// VideoTaskOwnershipID encodes machine ownership only for Redis routing/claim
+// keys. Negative values are never human IDs or written into usage/billing rows.
+func (k *APIKey) VideoTaskOwnershipID() int64 {
+	if k == nil {
+		return 0
+	}
+	if k.ServiceAccountID != nil && *k.ServiceAccountID > 0 {
+		return -*k.ServiceAccountID
+	}
+	return k.UserID
+}
+func (p *GrokVideoPendingBilling) OwnershipID() int64 {
+	if p == nil {
+		return 0
+	}
+	if p.ServiceAccountID > 0 {
+		return -p.ServiceAccountID
+	}
+	return p.UserID
+}
+func (p *GrokVideoPendingBilling) BillingUserID() int64 {
+	if p == nil {
+		return 0
+	}
+	if p.BillingPrincipalUserID > 0 {
+		return p.BillingPrincipalUserID
+	}
+	return p.UserID
 }
 
 func grokVideoPendingBillingTTL(cfg *config.Config) time.Duration {
@@ -644,7 +686,17 @@ func (s *OpenAIGatewayService) StoreGrokVideoPendingBilling(
 		return fmt.Errorf("grok video pending billing key is invalid")
 	}
 	pending.RequestID = strings.TrimSpace(requestID)
-	pending.UserID = userID
+	if pending.ServiceAccountID > 0 {
+		if userID != -pending.ServiceAccountID {
+			return ErrBudgetReservationInvalid
+		}
+		pending.UserID = 0
+	} else {
+		if userID <= 0 {
+			return ErrBudgetReservationInvalid
+		}
+		pending.UserID = userID
+	}
 	pending.APIKeyID = apiKeyID
 	if err := validateGrokVideoPendingBillingTenant(&pending); err != nil {
 		return err

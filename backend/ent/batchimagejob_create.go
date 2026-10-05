@@ -34,6 +34,20 @@ func (_c *BatchImageJobCreate) SetUserID(v int64) *BatchImageJobCreate {
 	return _c
 }
 
+// SetServiceAccountID sets the "service_account_id" field.
+func (_c *BatchImageJobCreate) SetServiceAccountID(v int64) *BatchImageJobCreate {
+	_c.mutation.SetServiceAccountID(v)
+	return _c
+}
+
+// SetNillableServiceAccountID sets the "service_account_id" field if the given value is not nil.
+func (_c *BatchImageJobCreate) SetNillableServiceAccountID(v *int64) *BatchImageJobCreate {
+	if v != nil {
+		_c.SetServiceAccountID(*v)
+	}
+	return _c
+}
+
 // SetAPIKeyID sets the "api_key_id" field.
 func (_c *BatchImageJobCreate) SetAPIKeyID(v int64) *BatchImageJobCreate {
 	_c.mutation.SetAPIKeyID(v)
@@ -788,6 +802,10 @@ func (_c *BatchImageJobCreate) createSpec() (*BatchImageJob, *sqlgraph.CreateSpe
 		_spec.SetField(batchimagejob.FieldUserID, field.TypeInt64, value)
 		_node.UserID = value
 	}
+	if value, ok := _c.mutation.ServiceAccountID(); ok {
+		_spec.SetField(batchimagejob.FieldServiceAccountID, field.TypeInt64, value)
+		_node.ServiceAccountID = &value
+	}
 	if value, ok := _c.mutation.APIKeyID(); ok {
 		_spec.SetField(batchimagejob.FieldAPIKeyID, field.TypeInt64, value)
 		_node.APIKeyID = &value
@@ -1007,6 +1025,30 @@ func (u *BatchImageJobUpsert) UpdateUserID() *BatchImageJobUpsert {
 // AddUserID adds v to the "user_id" field.
 func (u *BatchImageJobUpsert) AddUserID(v int64) *BatchImageJobUpsert {
 	u.Add(batchimagejob.FieldUserID, v)
+	return u
+}
+
+// SetServiceAccountID sets the "service_account_id" field.
+func (u *BatchImageJobUpsert) SetServiceAccountID(v int64) *BatchImageJobUpsert {
+	u.Set(batchimagejob.FieldServiceAccountID, v)
+	return u
+}
+
+// UpdateServiceAccountID sets the "service_account_id" field to the value that was provided on create.
+func (u *BatchImageJobUpsert) UpdateServiceAccountID() *BatchImageJobUpsert {
+	u.SetExcluded(batchimagejob.FieldServiceAccountID)
+	return u
+}
+
+// AddServiceAccountID adds v to the "service_account_id" field.
+func (u *BatchImageJobUpsert) AddServiceAccountID(v int64) *BatchImageJobUpsert {
+	u.Add(batchimagejob.FieldServiceAccountID, v)
+	return u
+}
+
+// ClearServiceAccountID clears the value of the "service_account_id" field.
+func (u *BatchImageJobUpsert) ClearServiceAccountID() *BatchImageJobUpsert {
+	u.SetNull(batchimagejob.FieldServiceAccountID)
 	return u
 }
 
@@ -1730,6 +1772,34 @@ func (u *BatchImageJobUpsertOne) AddUserID(v int64) *BatchImageJobUpsertOne {
 func (u *BatchImageJobUpsertOne) UpdateUserID() *BatchImageJobUpsertOne {
 	return u.Update(func(s *BatchImageJobUpsert) {
 		s.UpdateUserID()
+	})
+}
+
+// SetServiceAccountID sets the "service_account_id" field.
+func (u *BatchImageJobUpsertOne) SetServiceAccountID(v int64) *BatchImageJobUpsertOne {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.SetServiceAccountID(v)
+	})
+}
+
+// AddServiceAccountID adds v to the "service_account_id" field.
+func (u *BatchImageJobUpsertOne) AddServiceAccountID(v int64) *BatchImageJobUpsertOne {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.AddServiceAccountID(v)
+	})
+}
+
+// UpdateServiceAccountID sets the "service_account_id" field to the value that was provided on create.
+func (u *BatchImageJobUpsertOne) UpdateServiceAccountID() *BatchImageJobUpsertOne {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.UpdateServiceAccountID()
+	})
+}
+
+// ClearServiceAccountID clears the value of the "service_account_id" field.
+func (u *BatchImageJobUpsertOne) ClearServiceAccountID() *BatchImageJobUpsertOne {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.ClearServiceAccountID()
 	})
 }
 
@@ -2728,6 +2798,34 @@ func (u *BatchImageJobUpsertBulk) AddUserID(v int64) *BatchImageJobUpsertBulk {
 func (u *BatchImageJobUpsertBulk) UpdateUserID() *BatchImageJobUpsertBulk {
 	return u.Update(func(s *BatchImageJobUpsert) {
 		s.UpdateUserID()
+	})
+}
+
+// SetServiceAccountID sets the "service_account_id" field.
+func (u *BatchImageJobUpsertBulk) SetServiceAccountID(v int64) *BatchImageJobUpsertBulk {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.SetServiceAccountID(v)
+	})
+}
+
+// AddServiceAccountID adds v to the "service_account_id" field.
+func (u *BatchImageJobUpsertBulk) AddServiceAccountID(v int64) *BatchImageJobUpsertBulk {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.AddServiceAccountID(v)
+	})
+}
+
+// UpdateServiceAccountID sets the "service_account_id" field to the value that was provided on create.
+func (u *BatchImageJobUpsertBulk) UpdateServiceAccountID() *BatchImageJobUpsertBulk {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.UpdateServiceAccountID()
+	})
+}
+
+// ClearServiceAccountID clears the value of the "service_account_id" field.
+func (u *BatchImageJobUpsertBulk) ClearServiceAccountID() *BatchImageJobUpsertBulk {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.ClearServiceAccountID()
 	})
 }
 

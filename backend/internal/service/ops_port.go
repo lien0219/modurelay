@@ -65,11 +65,12 @@ type OpsInsertErrorLogInput struct {
 	RequestID       string
 	ClientRequestID string
 
-	UserID    *int64
-	APIKeyID  *int64
-	AccountID *int64
-	GroupID   *int64
-	ClientIP  *string
+	UserID           *int64
+	ServiceAccountID *int64
+	APIKeyID         *int64
+	AccountID        *int64
+	GroupID          *int64
+	ClientIP         *string
 
 	Platform    string
 	Model       string
@@ -180,19 +181,20 @@ type OpsInsertSystemMetricsInput struct {
 }
 
 type OpsInsertSystemLogInput struct {
-	CreatedAt       time.Time
-	Host            string
-	Level           string
-	Component       string
-	Message         string
-	RequestID       string
-	ClientRequestID string
-	UserID          *int64
-	APIKeyID        *int64
-	AccountID       *int64
-	Platform        string
-	Model           string
-	ExtraJSON       string
+	CreatedAt        time.Time
+	Host             string
+	Level            string
+	Component        string
+	Message          string
+	RequestID        string
+	ClientRequestID  string
+	UserID           *int64
+	ServiceAccountID *int64
+	APIKeyID         *int64
+	AccountID        *int64
+	Platform         string
+	Model            string
+	ExtraJSON        string
 }
 
 type OpsSystemLogFilter struct {
@@ -203,14 +205,15 @@ type OpsSystemLogFilter struct {
 	Level     string
 	Component string
 
-	RequestID       string
-	ClientRequestID string
-	UserID          *int64
-	APIKeyID        *int64
-	AccountID       *int64
-	Platform        string
-	Model           string
-	Query           string
+	RequestID        string
+	ClientRequestID  string
+	UserID           *int64
+	ServiceAccountID *int64
+	APIKeyID         *int64
+	AccountID        *int64
+	Platform         string
+	Model            string
+	Query            string
 
 	Page     int
 	PageSize int
@@ -224,14 +227,15 @@ type OpsSystemLogCleanupFilter struct {
 	Level     string
 	Component string
 
-	RequestID       string
-	ClientRequestID string
-	UserID          *int64
-	APIKeyID        *int64
-	AccountID       *int64
-	Platform        string
-	Model           string
-	Query           string
+	RequestID        string
+	ClientRequestID  string
+	UserID           *int64
+	ServiceAccountID *int64
+	APIKeyID         *int64
+	AccountID        *int64
+	Platform         string
+	Model            string
+	Query            string
 }
 
 type OpsSystemLogList struct {

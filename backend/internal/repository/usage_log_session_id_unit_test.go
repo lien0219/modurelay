@@ -32,7 +32,7 @@ const sessionIDArgIndex = 59
 
 // TestPrepareUsageLogInsert_SessionIDArgWiring pins the session_id column to the
 // arg slice / arg-type table so the five INSERT column lists stay in sync. session_id
-// is immediately before native_compaction_v2; created_at is always last.
+// is immediately before native_compaction_v2; service_account_id is last.
 func TestPrepareUsageLogInsert_SessionIDArgWiring(t *testing.T) {
 	sessionID := "sess-persisted-123"
 	prepared := prepareUsageLogInsert(newSessionIDUsageLog(&sessionID))
@@ -40,8 +40,8 @@ func TestPrepareUsageLogInsert_SessionIDArgWiring(t *testing.T) {
 	require.Len(t, prepared.args, len(usageLogInsertArgTypes),
 		"prepared args must match the arg-type table length")
 
-	// Tenant attribution fields follow session_id; native_compaction_v2 and
-	// created_at remain the final two arguments.
+	// Tenant attribution fields follow session_id; native_compaction_v2,
+	// created_at, and service_account_id remain the final three arguments.
 	sessionArg := prepared.args[sessionIDArgIndex]
 	ns, ok := sessionArg.(sql.NullString)
 	require.True(t, ok, "session_id arg should be a sql.NullString, got %T", sessionArg)
@@ -50,8 +50,10 @@ func TestPrepareUsageLogInsert_SessionIDArgWiring(t *testing.T) {
 
 	require.Equal(t, "text", usageLogInsertArgTypes[sessionIDArgIndex],
 		"session_id arg type must be text")
-	require.Equal(t, "boolean", usageLogInsertArgTypes[len(usageLogInsertArgTypes)-2],
+	require.Equal(t, "boolean", usageLogInsertArgTypes[len(usageLogInsertArgTypes)-3],
 		"native_compaction_v2 arg type must be boolean")
+	require.Equal(t, "timestamptz", usageLogInsertArgTypes[len(usageLogInsertArgTypes)-2])
+	require.Equal(t, "bigint", usageLogInsertArgTypes[len(usageLogInsertArgTypes)-1])
 }
 
 // TestPrepareUsageLogInsert_SessionIDNullWhenAbsent proves an absent session id is

@@ -162,6 +162,14 @@ func (h *OpsHandler) GetErrorLogs(c *gin.Context) {
 		}
 		filter.UserID = &id
 	}
+	if v := strings.TrimSpace(c.Query("service_account_id")); v != "" {
+		id, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || id <= 0 {
+			response.BadRequest(c, "Invalid service_account_id")
+			return
+		}
+		filter.ServiceAccountID = &id
+	}
 	if v := strings.TrimSpace(c.Query("api_key_id")); v != "" {
 		id, err := strconv.ParseInt(v, 10, 64)
 		if err != nil || id <= 0 {
@@ -583,6 +591,14 @@ func (h *OpsHandler) ListRequestDetails(c *gin.Context) {
 	}
 
 	filter.Kind = strings.TrimSpace(c.Query("kind"))
+	if v := strings.TrimSpace(c.Query("service_account_id")); v != "" {
+		id, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || id <= 0 {
+			response.BadRequest(c, "Invalid service_account_id")
+			return
+		}
+		filter.ServiceAccountID = &id
+	}
 	filter.Platform = strings.TrimSpace(c.Query("platform"))
 	filter.Model = strings.TrimSpace(c.Query("model"))
 	filter.RequestID = strings.TrimSpace(c.Query("request_id"))

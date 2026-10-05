@@ -249,6 +249,12 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, requiresAdmin: false, title: 'Project Keys', titleKey: 'workspace.keys', descriptionKey: 'workspace.keyDescription' }
   },
   {
+    path: '/workspaces/:workspaceId/projects/:projectId/service-accounts/:serviceAccountId?',
+    name: 'WorkspaceServiceAccounts',
+    component: () => import('@/views/workspace/WorkspaceServiceAccountsView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: false, title: 'Service Accounts', titleKey: 'serviceAccounts.title', descriptionKey: 'serviceAccounts.description' }
+  },
+  {
     path: '/workspaces/:workspaceId/members',
     name: 'WorkspaceMembers',
     component: () => import('@/views/workspace/WorkspaceMembersView.vue'),
@@ -669,6 +675,12 @@ const routes: RouteRecordRaw[] = [
     name: 'AdminWorkspaces',
     component: () => import('@/views/admin/WorkspaceAdminView.vue'),
     meta: { requiresAuth: true, requiresAdmin: true, title: 'Workspace administration', titleKey: 'workspace.adminTitle', descriptionKey: 'workspace.adminDescription' }
+  },
+  {
+    path: '/admin/service-accounts',
+    name: 'AdminServiceAccounts',
+    component: () => import('@/views/admin/ServiceAccountAdminView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true, title: 'Service account administration', titleKey: 'serviceAccounts.adminTitle', descriptionKey: 'serviceAccounts.adminDescription' }
   },
   {
     path: '/admin/ops',

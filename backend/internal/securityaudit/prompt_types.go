@@ -67,20 +67,21 @@ const (
 )
 
 type Request struct {
-	RequestID  string
-	UserID     int64
-	Username   string
-	UserEmail  string
-	APIKeyID   int64
-	APIKeyName string
-	GroupID    *int64
-	GroupName  string
-	Provider   string
-	Endpoint   string
-	Protocol   string
-	Model      string
-	Body       []byte
-	Stage      string
+	RequestID        string
+	UserID           int64
+	ServiceAccountID int64
+	Username         string
+	UserEmail        string
+	APIKeyID         int64
+	APIKeyName       string
+	GroupID          *int64
+	GroupName        string
+	Provider         string
+	Endpoint         string
+	Protocol         string
+	Model            string
+	Body             []byte
+	Stage            string
 }
 
 func (r Request) Clone() Request {
@@ -95,6 +96,7 @@ func (r Request) Clone() Request {
 type PromptSnapshot struct {
 	RequestID          string `json:"request_id"`
 	UserID             int64  `json:"user_id"`
+	ServiceAccountID   int64  `json:"service_account_id,omitempty"`
 	UsernameSnapshot   string `json:"username"`
 	UserEmailSnapshot  string `json:"user_email"`
 	APIKeyID           int64  `json:"api_key_id"`

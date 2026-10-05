@@ -40,32 +40,42 @@ type LiveCallRequest struct {
 }
 
 type LiveCallIdentity struct {
-	APIKeyID        int64
-	UserID          int64
-	GroupID         *int64
-	SubscriptionID  *int64
-	UserAgent       string
-	IPAddress       string
-	InboundEndpoint string
+	BudgetReservationID    string
+	ServiceAccountID       int64
+	WorkspaceID            int64
+	ProjectID              int64
+	BillingPrincipalUserID int64
+	APIKeyID               int64
+	UserID                 int64
+	GroupID                *int64
+	SubscriptionID         *int64
+	UserAgent              string
+	IPAddress              string
+	InboundEndpoint        string
 }
 
 type LiveCallRecord struct {
-	CallID          string
-	CallHash        string
-	AccountID       int64
-	APIKeyID        int64
-	UserID          int64
-	GroupID         int64
-	SubscriptionID  int64
-	LeaseID         string
-	Model           string
-	CreatedAt       time.Time
-	ExpiresAt       time.Time
-	Controller      string
-	ControllerOwner string
-	UserAgent       string
-	IPAddress       string
-	InboundEndpoint string
+	BudgetReservationID    string
+	ServiceAccountID       int64
+	WorkspaceID            int64
+	ProjectID              int64
+	BillingPrincipalUserID int64
+	CallID                 string
+	CallHash               string
+	AccountID              int64
+	APIKeyID               int64
+	UserID                 int64
+	GroupID                int64
+	SubscriptionID         int64
+	LeaseID                string
+	Model                  string
+	CreatedAt              time.Time
+	ExpiresAt              time.Time
+	Controller             string
+	ControllerOwner        string
+	UserAgent              string
+	IPAddress              string
+	InboundEndpoint        string
 	// AttestationCiphertext 仅用于让同一会话的 Sideband 复用创建时的证明。
 	AttestationCiphertext string
 }
@@ -100,4 +110,17 @@ type LiveConcurrencyCache interface {
 	) (bool, error)
 	RefreshLiveLease(ctx context.Context, accountID, userID, apiKeyID int64, leaseID string) (bool, error)
 	ReleaseLiveLease(ctx context.Context, accountID, userID, apiKeyID int64, leaseID string) error
+}
+
+func (i LiveCallIdentity) FundingUserID() int64 {
+	if i.ServiceAccountID > 0 && i.BillingPrincipalUserID > 0 {
+		return i.BillingPrincipalUserID
+	}
+	return i.UserID
+}
+func (r *LiveCallRecord) FundingUserID() int64 {
+	if r.ServiceAccountID > 0 && r.BillingPrincipalUserID > 0 {
+		return r.BillingPrincipalUserID
+	}
+	return r.UserID
 }

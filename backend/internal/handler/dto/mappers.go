@@ -81,10 +81,17 @@ func APIKeyFromService(k *service.APIKey) *APIKey {
 	if k == nil {
 		return nil
 	}
+	key := k.Key
+	if k.ServiceAccountID != nil {
+		key = "****"
+		if k.KeySuffix != nil {
+			key += *k.KeySuffix
+		}
+	}
 	out := &APIKey{
 		ID:                 k.ID,
 		UserID:             k.UserID,
-		Key:                k.Key,
+		Key:                key,
 		Name:               k.Name,
 		GroupID:            k.GroupID,
 		Status:             k.Status,
@@ -690,6 +697,7 @@ func usageLogFromServiceUser(l *service.UsageLog) UsageLog {
 		requestedModel = l.Model
 	}
 	return UsageLog{
+		ServiceAccountID:          l.ServiceAccountID,
 		ID:                        l.ID,
 		UserID:                    l.UserID,
 		APIKeyID:                  l.APIKeyID,

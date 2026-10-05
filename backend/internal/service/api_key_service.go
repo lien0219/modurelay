@@ -772,6 +772,9 @@ func (s *APIKeyService) GetByID(ctx context.Context, id int64) (*APIKey, error) 
 	if apiKey != nil {
 		apiKey.CurrentConcurrency = s.currentConcurrencyForAPIKey(ctx, apiKey.ID)
 	}
+	if apiKey != nil && apiKey.ServiceAccountID != nil {
+		maskProjectKey(apiKey)
+	}
 	return apiKey, nil
 }
 
@@ -839,7 +842,7 @@ func (s *APIKeyService) GetByKey(ctx context.Context, key string) (*APIKey, erro
 	return k, nil
 }
 func (s *APIKeyService) getByKeyCached(ctx context.Context, key string) (*APIKey, error) {
-	if len(key) == 0 || len(key) > MaxAPIKeyCredentialBytes {
+	if len(key) == 0 || len(key) > MaxAPIKeyCredentialBytes || strings.HasPrefix(key, "sha256:") {
 		return nil, ErrAPIKeyNotFound
 	}
 	cacheKey := s.authCacheKey(key)
@@ -888,6 +891,9 @@ func (s *APIKeyService) getByKeyCached(ctx context.Context, key string) (*APIKey
 		return nil, fmt.Errorf("get api key: %w", err)
 	}
 	apiKey.Key = key
+	if apiKey.ServiceAccountID != nil {
+		apiKey.Key = HashServiceAccountCredential(key)
+	}
 	s.compileAPIKeyIPRules(apiKey)
 	return apiKey, nil
 }
@@ -918,6 +924,9 @@ func (s *APIKeyService) update(ctx context.Context, id int64, userID int64, req 
 		return nil, fmt.Errorf("get api key: %w", err)
 	}
 
+	if apiKey.ServiceAccountID != nil {
+		return nil, ErrAPIKeyNotFound
+	}
 	// 验证所有权
 	if _, _, p, _, scoped := ProjectKeyScopeFromContext(ctx); scoped {
 		if apiKey.ProjectID == nil || *apiKey.ProjectID != p {

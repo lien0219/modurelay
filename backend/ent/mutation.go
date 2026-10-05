@@ -133,53 +133,56 @@ const (
 // APIKeyMutation represents an operation that mutates the APIKey nodes in the graph.
 type APIKeyMutation struct {
 	config
-	op                 Op
-	typ                string
-	id                 *int64
-	created_at         *time.Time
-	updated_at         *time.Time
-	deleted_at         *time.Time
-	project_id         *int64
-	addproject_id      *int64
-	key                *string
-	name               *string
-	status             *string
-	last_used_at       *time.Time
-	ip_whitelist       *[]string
-	appendip_whitelist []string
-	ip_blacklist       *[]string
-	appendip_blacklist []string
-	quota              *float64
-	addquota           *float64
-	quota_used         *float64
-	addquota_used      *float64
-	expires_at         *time.Time
-	rate_limit_5h      *float64
-	addrate_limit_5h   *float64
-	rate_limit_1d      *float64
-	addrate_limit_1d   *float64
-	rate_limit_7d      *float64
-	addrate_limit_7d   *float64
-	usage_5h           *float64
-	addusage_5h        *float64
-	usage_1d           *float64
-	addusage_1d        *float64
-	usage_7d           *float64
-	addusage_7d        *float64
-	window_5h_start    *time.Time
-	window_1d_start    *time.Time
-	window_7d_start    *time.Time
-	clearedFields      map[string]struct{}
-	user               *int64
-	cleareduser        bool
-	group              *int64
-	clearedgroup       bool
-	usage_logs         map[int64]struct{}
-	removedusage_logs  map[int64]struct{}
-	clearedusage_logs  bool
-	done               bool
-	oldValue           func(context.Context) (*APIKey, error)
-	predicates         []predicate.APIKey
+	op                    Op
+	typ                   string
+	id                    *int64
+	created_at            *time.Time
+	updated_at            *time.Time
+	deleted_at            *time.Time
+	service_account_id    *int64
+	addservice_account_id *int64
+	key_suffix            *string
+	project_id            *int64
+	addproject_id         *int64
+	key                   *string
+	name                  *string
+	status                *string
+	last_used_at          *time.Time
+	ip_whitelist          *[]string
+	appendip_whitelist    []string
+	ip_blacklist          *[]string
+	appendip_blacklist    []string
+	quota                 *float64
+	addquota              *float64
+	quota_used            *float64
+	addquota_used         *float64
+	expires_at            *time.Time
+	rate_limit_5h         *float64
+	addrate_limit_5h      *float64
+	rate_limit_1d         *float64
+	addrate_limit_1d      *float64
+	rate_limit_7d         *float64
+	addrate_limit_7d      *float64
+	usage_5h              *float64
+	addusage_5h           *float64
+	usage_1d              *float64
+	addusage_1d           *float64
+	usage_7d              *float64
+	addusage_7d           *float64
+	window_5h_start       *time.Time
+	window_1d_start       *time.Time
+	window_7d_start       *time.Time
+	clearedFields         map[string]struct{}
+	user                  *int64
+	cleareduser           bool
+	group                 *int64
+	clearedgroup          bool
+	usage_logs            map[int64]struct{}
+	removedusage_logs     map[int64]struct{}
+	clearedusage_logs     bool
+	done                  bool
+	oldValue              func(context.Context) (*APIKey, error)
+	predicates            []predicate.APIKey
 }
 
 var _ ent.Mutation = (*APIKeyMutation)(nil)
@@ -432,9 +435,141 @@ func (m *APIKeyMutation) OldUserID(ctx context.Context) (v int64, err error) {
 	return oldValue.UserID, nil
 }
 
+// ClearUserID clears the value of the "user_id" field.
+func (m *APIKeyMutation) ClearUserID() {
+	m.user = nil
+	m.clearedFields[apikey.FieldUserID] = struct{}{}
+}
+
+// UserIDCleared returns if the "user_id" field was cleared in this mutation.
+func (m *APIKeyMutation) UserIDCleared() bool {
+	_, ok := m.clearedFields[apikey.FieldUserID]
+	return ok
+}
+
 // ResetUserID resets all changes to the "user_id" field.
 func (m *APIKeyMutation) ResetUserID() {
 	m.user = nil
+	delete(m.clearedFields, apikey.FieldUserID)
+}
+
+// SetServiceAccountID sets the "service_account_id" field.
+func (m *APIKeyMutation) SetServiceAccountID(i int64) {
+	m.service_account_id = &i
+	m.addservice_account_id = nil
+}
+
+// ServiceAccountID returns the value of the "service_account_id" field in the mutation.
+func (m *APIKeyMutation) ServiceAccountID() (r int64, exists bool) {
+	v := m.service_account_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldServiceAccountID returns the old "service_account_id" field's value of the APIKey entity.
+// If the APIKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyMutation) OldServiceAccountID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldServiceAccountID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldServiceAccountID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldServiceAccountID: %w", err)
+	}
+	return oldValue.ServiceAccountID, nil
+}
+
+// AddServiceAccountID adds i to the "service_account_id" field.
+func (m *APIKeyMutation) AddServiceAccountID(i int64) {
+	if m.addservice_account_id != nil {
+		*m.addservice_account_id += i
+	} else {
+		m.addservice_account_id = &i
+	}
+}
+
+// AddedServiceAccountID returns the value that was added to the "service_account_id" field in this mutation.
+func (m *APIKeyMutation) AddedServiceAccountID() (r int64, exists bool) {
+	v := m.addservice_account_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearServiceAccountID clears the value of the "service_account_id" field.
+func (m *APIKeyMutation) ClearServiceAccountID() {
+	m.service_account_id = nil
+	m.addservice_account_id = nil
+	m.clearedFields[apikey.FieldServiceAccountID] = struct{}{}
+}
+
+// ServiceAccountIDCleared returns if the "service_account_id" field was cleared in this mutation.
+func (m *APIKeyMutation) ServiceAccountIDCleared() bool {
+	_, ok := m.clearedFields[apikey.FieldServiceAccountID]
+	return ok
+}
+
+// ResetServiceAccountID resets all changes to the "service_account_id" field.
+func (m *APIKeyMutation) ResetServiceAccountID() {
+	m.service_account_id = nil
+	m.addservice_account_id = nil
+	delete(m.clearedFields, apikey.FieldServiceAccountID)
+}
+
+// SetKeySuffix sets the "key_suffix" field.
+func (m *APIKeyMutation) SetKeySuffix(s string) {
+	m.key_suffix = &s
+}
+
+// KeySuffix returns the value of the "key_suffix" field in the mutation.
+func (m *APIKeyMutation) KeySuffix() (r string, exists bool) {
+	v := m.key_suffix
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldKeySuffix returns the old "key_suffix" field's value of the APIKey entity.
+// If the APIKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyMutation) OldKeySuffix(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldKeySuffix is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldKeySuffix requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldKeySuffix: %w", err)
+	}
+	return oldValue.KeySuffix, nil
+}
+
+// ClearKeySuffix clears the value of the "key_suffix" field.
+func (m *APIKeyMutation) ClearKeySuffix() {
+	m.key_suffix = nil
+	m.clearedFields[apikey.FieldKeySuffix] = struct{}{}
+}
+
+// KeySuffixCleared returns if the "key_suffix" field was cleared in this mutation.
+func (m *APIKeyMutation) KeySuffixCleared() bool {
+	_, ok := m.clearedFields[apikey.FieldKeySuffix]
+	return ok
+}
+
+// ResetKeySuffix resets all changes to the "key_suffix" field.
+func (m *APIKeyMutation) ResetKeySuffix() {
+	m.key_suffix = nil
+	delete(m.clearedFields, apikey.FieldKeySuffix)
 }
 
 // SetProjectID sets the "project_id" field.
@@ -1495,7 +1630,7 @@ func (m *APIKeyMutation) ClearUser() {
 
 // UserCleared reports if the "user" edge to the User entity was cleared.
 func (m *APIKeyMutation) UserCleared() bool {
-	return m.cleareduser
+	return m.UserIDCleared() || m.cleareduser
 }
 
 // UserIDs returns the "user" edge IDs in the mutation.
@@ -1629,7 +1764,7 @@ func (m *APIKeyMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *APIKeyMutation) Fields() []string {
-	fields := make([]string, 0, 24)
+	fields := make([]string, 0, 26)
 	if m.created_at != nil {
 		fields = append(fields, apikey.FieldCreatedAt)
 	}
@@ -1641,6 +1776,12 @@ func (m *APIKeyMutation) Fields() []string {
 	}
 	if m.user != nil {
 		fields = append(fields, apikey.FieldUserID)
+	}
+	if m.service_account_id != nil {
+		fields = append(fields, apikey.FieldServiceAccountID)
+	}
+	if m.key_suffix != nil {
+		fields = append(fields, apikey.FieldKeySuffix)
 	}
 	if m.project_id != nil {
 		fields = append(fields, apikey.FieldProjectID)
@@ -1718,6 +1859,10 @@ func (m *APIKeyMutation) Field(name string) (ent.Value, bool) {
 		return m.DeletedAt()
 	case apikey.FieldUserID:
 		return m.UserID()
+	case apikey.FieldServiceAccountID:
+		return m.ServiceAccountID()
+	case apikey.FieldKeySuffix:
+		return m.KeySuffix()
 	case apikey.FieldProjectID:
 		return m.ProjectID()
 	case apikey.FieldKey:
@@ -1775,6 +1920,10 @@ func (m *APIKeyMutation) OldField(ctx context.Context, name string) (ent.Value, 
 		return m.OldDeletedAt(ctx)
 	case apikey.FieldUserID:
 		return m.OldUserID(ctx)
+	case apikey.FieldServiceAccountID:
+		return m.OldServiceAccountID(ctx)
+	case apikey.FieldKeySuffix:
+		return m.OldKeySuffix(ctx)
 	case apikey.FieldProjectID:
 		return m.OldProjectID(ctx)
 	case apikey.FieldKey:
@@ -1851,6 +2000,20 @@ func (m *APIKeyMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetUserID(v)
+		return nil
+	case apikey.FieldServiceAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetServiceAccountID(v)
+		return nil
+	case apikey.FieldKeySuffix:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetKeySuffix(v)
 		return nil
 	case apikey.FieldProjectID:
 		v, ok := value.(int64)
@@ -2000,6 +2163,9 @@ func (m *APIKeyMutation) SetField(name string, value ent.Value) error {
 // this mutation.
 func (m *APIKeyMutation) AddedFields() []string {
 	var fields []string
+	if m.addservice_account_id != nil {
+		fields = append(fields, apikey.FieldServiceAccountID)
+	}
 	if m.addproject_id != nil {
 		fields = append(fields, apikey.FieldProjectID)
 	}
@@ -2035,6 +2201,8 @@ func (m *APIKeyMutation) AddedFields() []string {
 // was not set, or was not defined in the schema.
 func (m *APIKeyMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
+	case apikey.FieldServiceAccountID:
+		return m.AddedServiceAccountID()
 	case apikey.FieldProjectID:
 		return m.AddedProjectID()
 	case apikey.FieldQuota:
@@ -2062,6 +2230,13 @@ func (m *APIKeyMutation) AddedField(name string) (ent.Value, bool) {
 // type.
 func (m *APIKeyMutation) AddField(name string, value ent.Value) error {
 	switch name {
+	case apikey.FieldServiceAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddServiceAccountID(v)
+		return nil
 	case apikey.FieldProjectID:
 		v, ok := value.(int64)
 		if !ok {
@@ -2136,6 +2311,15 @@ func (m *APIKeyMutation) ClearedFields() []string {
 	if m.FieldCleared(apikey.FieldDeletedAt) {
 		fields = append(fields, apikey.FieldDeletedAt)
 	}
+	if m.FieldCleared(apikey.FieldUserID) {
+		fields = append(fields, apikey.FieldUserID)
+	}
+	if m.FieldCleared(apikey.FieldServiceAccountID) {
+		fields = append(fields, apikey.FieldServiceAccountID)
+	}
+	if m.FieldCleared(apikey.FieldKeySuffix) {
+		fields = append(fields, apikey.FieldKeySuffix)
+	}
 	if m.FieldCleared(apikey.FieldProjectID) {
 		fields = append(fields, apikey.FieldProjectID)
 	}
@@ -2179,6 +2363,15 @@ func (m *APIKeyMutation) ClearField(name string) error {
 	switch name {
 	case apikey.FieldDeletedAt:
 		m.ClearDeletedAt()
+		return nil
+	case apikey.FieldUserID:
+		m.ClearUserID()
+		return nil
+	case apikey.FieldServiceAccountID:
+		m.ClearServiceAccountID()
+		return nil
+	case apikey.FieldKeySuffix:
+		m.ClearKeySuffix()
 		return nil
 	case apikey.FieldProjectID:
 		m.ClearProjectID()
@@ -2226,6 +2419,12 @@ func (m *APIKeyMutation) ResetField(name string) error {
 		return nil
 	case apikey.FieldUserID:
 		m.ResetUserID()
+		return nil
+	case apikey.FieldServiceAccountID:
+		m.ResetServiceAccountID()
+		return nil
+	case apikey.FieldKeySuffix:
+		m.ResetKeySuffix()
 		return nil
 	case apikey.FieldProjectID:
 		m.ResetProjectID()
@@ -11439,65 +11638,67 @@ func (m *BatchImageItemMutation) ResetEdge(name string) error {
 // BatchImageJobMutation represents an operation that mutates the BatchImageJob nodes in the graph.
 type BatchImageJobMutation struct {
 	config
-	op                  Op
-	typ                 string
-	id                  *int64
-	batch_id            *string
-	user_id             *int64
-	adduser_id          *int64
-	api_key_id          *int64
-	addapi_key_id       *int64
-	account_id          *int64
-	addaccount_id       *int64
-	provider            *string
-	model               *string
-	task_name           *string
-	status              *string
-	provider_job_name   *string
-	provider_input_ref  *string
-	provider_output_ref *string
-	gcs_input_uri       *string
-	gcs_output_uri      *string
-	item_count          *int
-	additem_count       *int
-	success_count       *int
-	addsuccess_count    *int
-	fail_count          *int
-	addfail_count       *int
-	cancelled_count     *int
-	addcancelled_count  *int
-	estimated_cost      *float64
-	addestimated_cost   *float64
-	hold_amount         *float64
-	addhold_amount      *float64
-	actual_cost         *float64
-	addactual_cost      *float64
-	currency            *string
-	hold_id             *string
-	idempotency_key     *string
-	request_hash        *string
-	manifest_hash       *string
-	retry_count         *int
-	addretry_count      *int
-	version             *int
-	addversion          *int
-	output_expires_at   *time.Time
-	input_deleted_at    *time.Time
-	output_deleted_at   *time.Time
-	downloaded_at       *time.Time
-	user_deleted_at     *time.Time
-	last_error_code     *string
-	last_error_message  *string
-	created_at          *time.Time
-	updated_at          *time.Time
-	submitted_at        *time.Time
-	started_at          *time.Time
-	finished_at         *time.Time
-	settled_at          *time.Time
-	clearedFields       map[string]struct{}
-	done                bool
-	oldValue            func(context.Context) (*BatchImageJob, error)
-	predicates          []predicate.BatchImageJob
+	op                    Op
+	typ                   string
+	id                    *int64
+	batch_id              *string
+	user_id               *int64
+	adduser_id            *int64
+	service_account_id    *int64
+	addservice_account_id *int64
+	api_key_id            *int64
+	addapi_key_id         *int64
+	account_id            *int64
+	addaccount_id         *int64
+	provider              *string
+	model                 *string
+	task_name             *string
+	status                *string
+	provider_job_name     *string
+	provider_input_ref    *string
+	provider_output_ref   *string
+	gcs_input_uri         *string
+	gcs_output_uri        *string
+	item_count            *int
+	additem_count         *int
+	success_count         *int
+	addsuccess_count      *int
+	fail_count            *int
+	addfail_count         *int
+	cancelled_count       *int
+	addcancelled_count    *int
+	estimated_cost        *float64
+	addestimated_cost     *float64
+	hold_amount           *float64
+	addhold_amount        *float64
+	actual_cost           *float64
+	addactual_cost        *float64
+	currency              *string
+	hold_id               *string
+	idempotency_key       *string
+	request_hash          *string
+	manifest_hash         *string
+	retry_count           *int
+	addretry_count        *int
+	version               *int
+	addversion            *int
+	output_expires_at     *time.Time
+	input_deleted_at      *time.Time
+	output_deleted_at     *time.Time
+	downloaded_at         *time.Time
+	user_deleted_at       *time.Time
+	last_error_code       *string
+	last_error_message    *string
+	created_at            *time.Time
+	updated_at            *time.Time
+	submitted_at          *time.Time
+	started_at            *time.Time
+	finished_at           *time.Time
+	settled_at            *time.Time
+	clearedFields         map[string]struct{}
+	done                  bool
+	oldValue              func(context.Context) (*BatchImageJob, error)
+	predicates            []predicate.BatchImageJob
 }
 
 var _ ent.Mutation = (*BatchImageJobMutation)(nil)
@@ -11688,6 +11889,76 @@ func (m *BatchImageJobMutation) AddedUserID() (r int64, exists bool) {
 func (m *BatchImageJobMutation) ResetUserID() {
 	m.user_id = nil
 	m.adduser_id = nil
+}
+
+// SetServiceAccountID sets the "service_account_id" field.
+func (m *BatchImageJobMutation) SetServiceAccountID(i int64) {
+	m.service_account_id = &i
+	m.addservice_account_id = nil
+}
+
+// ServiceAccountID returns the value of the "service_account_id" field in the mutation.
+func (m *BatchImageJobMutation) ServiceAccountID() (r int64, exists bool) {
+	v := m.service_account_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldServiceAccountID returns the old "service_account_id" field's value of the BatchImageJob entity.
+// If the BatchImageJob object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BatchImageJobMutation) OldServiceAccountID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldServiceAccountID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldServiceAccountID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldServiceAccountID: %w", err)
+	}
+	return oldValue.ServiceAccountID, nil
+}
+
+// AddServiceAccountID adds i to the "service_account_id" field.
+func (m *BatchImageJobMutation) AddServiceAccountID(i int64) {
+	if m.addservice_account_id != nil {
+		*m.addservice_account_id += i
+	} else {
+		m.addservice_account_id = &i
+	}
+}
+
+// AddedServiceAccountID returns the value that was added to the "service_account_id" field in this mutation.
+func (m *BatchImageJobMutation) AddedServiceAccountID() (r int64, exists bool) {
+	v := m.addservice_account_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearServiceAccountID clears the value of the "service_account_id" field.
+func (m *BatchImageJobMutation) ClearServiceAccountID() {
+	m.service_account_id = nil
+	m.addservice_account_id = nil
+	m.clearedFields[batchimagejob.FieldServiceAccountID] = struct{}{}
+}
+
+// ServiceAccountIDCleared returns if the "service_account_id" field was cleared in this mutation.
+func (m *BatchImageJobMutation) ServiceAccountIDCleared() bool {
+	_, ok := m.clearedFields[batchimagejob.FieldServiceAccountID]
+	return ok
+}
+
+// ResetServiceAccountID resets all changes to the "service_account_id" field.
+func (m *BatchImageJobMutation) ResetServiceAccountID() {
+	m.service_account_id = nil
+	m.addservice_account_id = nil
+	delete(m.clearedFields, batchimagejob.FieldServiceAccountID)
 }
 
 // SetAPIKeyID sets the "api_key_id" field.
@@ -13628,12 +13899,15 @@ func (m *BatchImageJobMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *BatchImageJobMutation) Fields() []string {
-	fields := make([]string, 0, 40)
+	fields := make([]string, 0, 41)
 	if m.batch_id != nil {
 		fields = append(fields, batchimagejob.FieldBatchID)
 	}
 	if m.user_id != nil {
 		fields = append(fields, batchimagejob.FieldUserID)
+	}
+	if m.service_account_id != nil {
+		fields = append(fields, batchimagejob.FieldServiceAccountID)
 	}
 	if m.api_key_id != nil {
 		fields = append(fields, batchimagejob.FieldAPIKeyID)
@@ -13761,6 +14035,8 @@ func (m *BatchImageJobMutation) Field(name string) (ent.Value, bool) {
 		return m.BatchID()
 	case batchimagejob.FieldUserID:
 		return m.UserID()
+	case batchimagejob.FieldServiceAccountID:
+		return m.ServiceAccountID()
 	case batchimagejob.FieldAPIKeyID:
 		return m.APIKeyID()
 	case batchimagejob.FieldAccountID:
@@ -13850,6 +14126,8 @@ func (m *BatchImageJobMutation) OldField(ctx context.Context, name string) (ent.
 		return m.OldBatchID(ctx)
 	case batchimagejob.FieldUserID:
 		return m.OldUserID(ctx)
+	case batchimagejob.FieldServiceAccountID:
+		return m.OldServiceAccountID(ctx)
 	case batchimagejob.FieldAPIKeyID:
 		return m.OldAPIKeyID(ctx)
 	case batchimagejob.FieldAccountID:
@@ -13948,6 +14226,13 @@ func (m *BatchImageJobMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetUserID(v)
+		return nil
+	case batchimagejob.FieldServiceAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetServiceAccountID(v)
 		return nil
 	case batchimagejob.FieldAPIKeyID:
 		v, ok := value.(int64)
@@ -14226,6 +14511,9 @@ func (m *BatchImageJobMutation) AddedFields() []string {
 	if m.adduser_id != nil {
 		fields = append(fields, batchimagejob.FieldUserID)
 	}
+	if m.addservice_account_id != nil {
+		fields = append(fields, batchimagejob.FieldServiceAccountID)
+	}
 	if m.addapi_key_id != nil {
 		fields = append(fields, batchimagejob.FieldAPIKeyID)
 	}
@@ -14269,6 +14557,8 @@ func (m *BatchImageJobMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
 	case batchimagejob.FieldUserID:
 		return m.AddedUserID()
+	case batchimagejob.FieldServiceAccountID:
+		return m.AddedServiceAccountID()
 	case batchimagejob.FieldAPIKeyID:
 		return m.AddedAPIKeyID()
 	case batchimagejob.FieldAccountID:
@@ -14306,6 +14596,13 @@ func (m *BatchImageJobMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddUserID(v)
+		return nil
+	case batchimagejob.FieldServiceAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddServiceAccountID(v)
 		return nil
 	case batchimagejob.FieldAPIKeyID:
 		v, ok := value.(int64)
@@ -14392,6 +14689,9 @@ func (m *BatchImageJobMutation) AddField(name string, value ent.Value) error {
 // mutation.
 func (m *BatchImageJobMutation) ClearedFields() []string {
 	var fields []string
+	if m.FieldCleared(batchimagejob.FieldServiceAccountID) {
+		fields = append(fields, batchimagejob.FieldServiceAccountID)
+	}
 	if m.FieldCleared(batchimagejob.FieldAPIKeyID) {
 		fields = append(fields, batchimagejob.FieldAPIKeyID)
 	}
@@ -14478,6 +14778,9 @@ func (m *BatchImageJobMutation) FieldCleared(name string) bool {
 // error if the field is not defined in the schema.
 func (m *BatchImageJobMutation) ClearField(name string) error {
 	switch name {
+	case batchimagejob.FieldServiceAccountID:
+		m.ClearServiceAccountID()
+		return nil
 	case batchimagejob.FieldAPIKeyID:
 		m.ClearAPIKeyID()
 		return nil
@@ -14563,6 +14866,9 @@ func (m *BatchImageJobMutation) ResetField(name string) error {
 		return nil
 	case batchimagejob.FieldUserID:
 		m.ResetUserID()
+		return nil
+	case batchimagejob.FieldServiceAccountID:
+		m.ResetServiceAccountID()
 		return nil
 	case batchimagejob.FieldAPIKeyID:
 		m.ResetAPIKeyID()
@@ -59258,6 +59564,8 @@ type UsageLogMutation struct {
 	op                           Op
 	typ                          string
 	id                           *int64
+	service_account_id           *int64
+	addservice_account_id        *int64
 	workspace_id                 *int64
 	addworkspace_id              *int64
 	project_id                   *int64
@@ -59474,9 +59782,92 @@ func (m *UsageLogMutation) OldUserID(ctx context.Context) (v int64, err error) {
 	return oldValue.UserID, nil
 }
 
+// ClearUserID clears the value of the "user_id" field.
+func (m *UsageLogMutation) ClearUserID() {
+	m.user = nil
+	m.clearedFields[usagelog.FieldUserID] = struct{}{}
+}
+
+// UserIDCleared returns if the "user_id" field was cleared in this mutation.
+func (m *UsageLogMutation) UserIDCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldUserID]
+	return ok
+}
+
 // ResetUserID resets all changes to the "user_id" field.
 func (m *UsageLogMutation) ResetUserID() {
 	m.user = nil
+	delete(m.clearedFields, usagelog.FieldUserID)
+}
+
+// SetServiceAccountID sets the "service_account_id" field.
+func (m *UsageLogMutation) SetServiceAccountID(i int64) {
+	m.service_account_id = &i
+	m.addservice_account_id = nil
+}
+
+// ServiceAccountID returns the value of the "service_account_id" field in the mutation.
+func (m *UsageLogMutation) ServiceAccountID() (r int64, exists bool) {
+	v := m.service_account_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldServiceAccountID returns the old "service_account_id" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldServiceAccountID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldServiceAccountID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldServiceAccountID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldServiceAccountID: %w", err)
+	}
+	return oldValue.ServiceAccountID, nil
+}
+
+// AddServiceAccountID adds i to the "service_account_id" field.
+func (m *UsageLogMutation) AddServiceAccountID(i int64) {
+	if m.addservice_account_id != nil {
+		*m.addservice_account_id += i
+	} else {
+		m.addservice_account_id = &i
+	}
+}
+
+// AddedServiceAccountID returns the value that was added to the "service_account_id" field in this mutation.
+func (m *UsageLogMutation) AddedServiceAccountID() (r int64, exists bool) {
+	v := m.addservice_account_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearServiceAccountID clears the value of the "service_account_id" field.
+func (m *UsageLogMutation) ClearServiceAccountID() {
+	m.service_account_id = nil
+	m.addservice_account_id = nil
+	m.clearedFields[usagelog.FieldServiceAccountID] = struct{}{}
+}
+
+// ServiceAccountIDCleared returns if the "service_account_id" field was cleared in this mutation.
+func (m *UsageLogMutation) ServiceAccountIDCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldServiceAccountID]
+	return ok
+}
+
+// ResetServiceAccountID resets all changes to the "service_account_id" field.
+func (m *UsageLogMutation) ResetServiceAccountID() {
+	m.service_account_id = nil
+	m.addservice_account_id = nil
+	delete(m.clearedFields, usagelog.FieldServiceAccountID)
 }
 
 // SetAPIKeyID sets the "api_key_id" field.
@@ -62162,7 +62553,7 @@ func (m *UsageLogMutation) ClearUser() {
 
 // UserCleared reports if the "user" edge to the User entity was cleared.
 func (m *UsageLogMutation) UserCleared() bool {
-	return m.cleareduser
+	return m.UserIDCleared() || m.cleareduser
 }
 
 // UserIDs returns the "user" edge IDs in the mutation.
@@ -62323,9 +62714,12 @@ func (m *UsageLogMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UsageLogMutation) Fields() []string {
-	fields := make([]string, 0, 52)
+	fields := make([]string, 0, 53)
 	if m.user != nil {
 		fields = append(fields, usagelog.FieldUserID)
+	}
+	if m.service_account_id != nil {
+		fields = append(fields, usagelog.FieldServiceAccountID)
 	}
 	if m.api_key != nil {
 		fields = append(fields, usagelog.FieldAPIKeyID)
@@ -62490,6 +62884,8 @@ func (m *UsageLogMutation) Field(name string) (ent.Value, bool) {
 	switch name {
 	case usagelog.FieldUserID:
 		return m.UserID()
+	case usagelog.FieldServiceAccountID:
+		return m.ServiceAccountID()
 	case usagelog.FieldAPIKeyID:
 		return m.APIKeyID()
 	case usagelog.FieldAccountID:
@@ -62603,6 +62999,8 @@ func (m *UsageLogMutation) OldField(ctx context.Context, name string) (ent.Value
 	switch name {
 	case usagelog.FieldUserID:
 		return m.OldUserID(ctx)
+	case usagelog.FieldServiceAccountID:
+		return m.OldServiceAccountID(ctx)
 	case usagelog.FieldAPIKeyID:
 		return m.OldAPIKeyID(ctx)
 	case usagelog.FieldAccountID:
@@ -62720,6 +63118,13 @@ func (m *UsageLogMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetUserID(v)
+		return nil
+	case usagelog.FieldServiceAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetServiceAccountID(v)
 		return nil
 	case usagelog.FieldAPIKeyID:
 		v, ok := value.(int64)
@@ -63086,6 +63491,9 @@ func (m *UsageLogMutation) SetField(name string, value ent.Value) error {
 // this mutation.
 func (m *UsageLogMutation) AddedFields() []string {
 	var fields []string
+	if m.addservice_account_id != nil {
+		fields = append(fields, usagelog.FieldServiceAccountID)
+	}
 	if m.addworkspace_id != nil {
 		fields = append(fields, usagelog.FieldWorkspaceID)
 	}
@@ -63166,6 +63574,8 @@ func (m *UsageLogMutation) AddedFields() []string {
 // was not set, or was not defined in the schema.
 func (m *UsageLogMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
+	case usagelog.FieldServiceAccountID:
+		return m.AddedServiceAccountID()
 	case usagelog.FieldWorkspaceID:
 		return m.AddedWorkspaceID()
 	case usagelog.FieldProjectID:
@@ -63223,6 +63633,13 @@ func (m *UsageLogMutation) AddedField(name string) (ent.Value, bool) {
 // type.
 func (m *UsageLogMutation) AddField(name string, value ent.Value) error {
 	switch name {
+	case usagelog.FieldServiceAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddServiceAccountID(v)
+		return nil
 	case usagelog.FieldWorkspaceID:
 		v, ok := value.(int64)
 		if !ok {
@@ -63399,6 +63816,12 @@ func (m *UsageLogMutation) AddField(name string, value ent.Value) error {
 // mutation.
 func (m *UsageLogMutation) ClearedFields() []string {
 	var fields []string
+	if m.FieldCleared(usagelog.FieldUserID) {
+		fields = append(fields, usagelog.FieldUserID)
+	}
+	if m.FieldCleared(usagelog.FieldServiceAccountID) {
+		fields = append(fields, usagelog.FieldServiceAccountID)
+	}
 	if m.FieldCleared(usagelog.FieldWorkspaceID) {
 		fields = append(fields, usagelog.FieldWorkspaceID)
 	}
@@ -63494,6 +63917,12 @@ func (m *UsageLogMutation) FieldCleared(name string) bool {
 // error if the field is not defined in the schema.
 func (m *UsageLogMutation) ClearField(name string) error {
 	switch name {
+	case usagelog.FieldUserID:
+		m.ClearUserID()
+		return nil
+	case usagelog.FieldServiceAccountID:
+		m.ClearServiceAccountID()
+		return nil
 	case usagelog.FieldWorkspaceID:
 		m.ClearWorkspaceID()
 		return nil
@@ -63585,6 +64014,9 @@ func (m *UsageLogMutation) ResetField(name string) error {
 	switch name {
 	case usagelog.FieldUserID:
 		m.ResetUserID()
+		return nil
+	case usagelog.FieldServiceAccountID:
+		m.ResetServiceAccountID()
 		return nil
 	case usagelog.FieldAPIKeyID:
 		m.ResetAPIKeyID()

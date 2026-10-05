@@ -49,7 +49,8 @@ var knownLogEvents = map[string]struct{}{
 
 var allowedLogFields = map[string]struct{}{
 	"request_id": {}, "user_id": {}, "api_key_id": {}, "group_id": {}, "provider": {},
-	"protocol": {}, "endpoint": {}, "model": {}, "job_id": {}, "event_id": {},
+	"service_account_id": {},
+	"protocol":           {}, "endpoint": {}, "model": {}, "job_id": {}, "event_id": {},
 	"config_version": {}, "guard_endpoint_id": {}, "decision": {}, "risk_level": {},
 	"action": {}, "chunk_index": {}, "chunk_total": {}, "chunk_chars": {}, "input_chars": {},
 	"input_limit": {}, "latency_ms": {}, "status": {}, "error_code": {}, "error_kind": {},
@@ -110,7 +111,8 @@ func mergeLogFields(base map[string]any, extra map[string]any) map[string]any {
 func requestLogFields(req Request) map[string]any {
 	return map[string]any{
 		"request_id": req.RequestID, "user_id": req.UserID, "api_key_id": req.APIKeyID,
-		"group_id": pointerLogID(req.GroupID), "provider": req.Provider, "protocol": req.Protocol,
+		"service_account_id": req.ServiceAccountID,
+		"group_id":           pointerLogID(req.GroupID), "provider": req.Provider, "protocol": req.Protocol,
 		"endpoint": req.Endpoint, "model": req.Model, "stage": req.Stage,
 	}
 }
@@ -118,7 +120,8 @@ func requestLogFields(req Request) map[string]any {
 func snapshotLogFields(snapshot PromptSnapshot) map[string]any {
 	return map[string]any{
 		"request_id": snapshot.RequestID, "user_id": snapshot.UserID, "api_key_id": snapshot.APIKeyID,
-		"group_id": pointerLogID(snapshot.GroupID), "provider": snapshot.Provider, "protocol": snapshot.Protocol,
+		"service_account_id": snapshot.ServiceAccountID,
+		"group_id":           pointerLogID(snapshot.GroupID), "provider": snapshot.Provider, "protocol": snapshot.Protocol,
 		"endpoint": snapshot.Endpoint, "model": snapshot.Model, "stage": snapshot.Stage,
 	}
 }

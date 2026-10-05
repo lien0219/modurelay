@@ -47,6 +47,39 @@ func (_u *UsageLogUpdate) SetNillableUserID(v *int64) *UsageLogUpdate {
 	return _u
 }
 
+// ClearUserID clears the value of the "user_id" field.
+func (_u *UsageLogUpdate) ClearUserID() *UsageLogUpdate {
+	_u.mutation.ClearUserID()
+	return _u
+}
+
+// SetServiceAccountID sets the "service_account_id" field.
+func (_u *UsageLogUpdate) SetServiceAccountID(v int64) *UsageLogUpdate {
+	_u.mutation.ResetServiceAccountID()
+	_u.mutation.SetServiceAccountID(v)
+	return _u
+}
+
+// SetNillableServiceAccountID sets the "service_account_id" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableServiceAccountID(v *int64) *UsageLogUpdate {
+	if v != nil {
+		_u.SetServiceAccountID(*v)
+	}
+	return _u
+}
+
+// AddServiceAccountID adds value to the "service_account_id" field.
+func (_u *UsageLogUpdate) AddServiceAccountID(v int64) *UsageLogUpdate {
+	_u.mutation.AddServiceAccountID(v)
+	return _u
+}
+
+// ClearServiceAccountID clears the value of the "service_account_id" field.
+func (_u *UsageLogUpdate) ClearServiceAccountID() *UsageLogUpdate {
+	_u.mutation.ClearServiceAccountID()
+	return _u
+}
+
 // SetAPIKeyID sets the "api_key_id" field.
 func (_u *UsageLogUpdate) SetAPIKeyID(v int64) *UsageLogUpdate {
 	_u.mutation.SetAPIKeyID(v)
@@ -1238,9 +1271,6 @@ func (_u *UsageLogUpdate) check() error {
 			return &ValidationError{Name: "video_resolution", err: fmt.Errorf(`ent: validator failed for field "UsageLog.video_resolution": %w`, err)}
 		}
 	}
-	if _u.mutation.UserCleared() && len(_u.mutation.UserIDs()) > 0 {
-		return errors.New(`ent: clearing a required unique edge "UsageLog.user"`)
-	}
 	if _u.mutation.APIKeyCleared() && len(_u.mutation.APIKeyIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "UsageLog.api_key"`)
 	}
@@ -1261,6 +1291,15 @@ func (_u *UsageLogUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := _u.mutation.ServiceAccountID(); ok {
+		_spec.SetField(usagelog.FieldServiceAccountID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedServiceAccountID(); ok {
+		_spec.AddField(usagelog.FieldServiceAccountID, field.TypeInt64, value)
+	}
+	if _u.mutation.ServiceAccountIDCleared() {
+		_spec.ClearField(usagelog.FieldServiceAccountID, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.WorkspaceID(); ok {
 		_spec.SetField(usagelog.FieldWorkspaceID, field.TypeInt64, value)
@@ -1723,6 +1762,39 @@ func (_u *UsageLogUpdateOne) SetNillableUserID(v *int64) *UsageLogUpdateOne {
 	if v != nil {
 		_u.SetUserID(*v)
 	}
+	return _u
+}
+
+// ClearUserID clears the value of the "user_id" field.
+func (_u *UsageLogUpdateOne) ClearUserID() *UsageLogUpdateOne {
+	_u.mutation.ClearUserID()
+	return _u
+}
+
+// SetServiceAccountID sets the "service_account_id" field.
+func (_u *UsageLogUpdateOne) SetServiceAccountID(v int64) *UsageLogUpdateOne {
+	_u.mutation.ResetServiceAccountID()
+	_u.mutation.SetServiceAccountID(v)
+	return _u
+}
+
+// SetNillableServiceAccountID sets the "service_account_id" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableServiceAccountID(v *int64) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetServiceAccountID(*v)
+	}
+	return _u
+}
+
+// AddServiceAccountID adds value to the "service_account_id" field.
+func (_u *UsageLogUpdateOne) AddServiceAccountID(v int64) *UsageLogUpdateOne {
+	_u.mutation.AddServiceAccountID(v)
+	return _u
+}
+
+// ClearServiceAccountID clears the value of the "service_account_id" field.
+func (_u *UsageLogUpdateOne) ClearServiceAccountID() *UsageLogUpdateOne {
+	_u.mutation.ClearServiceAccountID()
 	return _u
 }
 
@@ -2930,9 +3002,6 @@ func (_u *UsageLogUpdateOne) check() error {
 			return &ValidationError{Name: "video_resolution", err: fmt.Errorf(`ent: validator failed for field "UsageLog.video_resolution": %w`, err)}
 		}
 	}
-	if _u.mutation.UserCleared() && len(_u.mutation.UserIDs()) > 0 {
-		return errors.New(`ent: clearing a required unique edge "UsageLog.user"`)
-	}
 	if _u.mutation.APIKeyCleared() && len(_u.mutation.APIKeyIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "UsageLog.api_key"`)
 	}
@@ -2970,6 +3039,15 @@ func (_u *UsageLogUpdateOne) sqlSave(ctx context.Context) (_node *UsageLog, err 
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := _u.mutation.ServiceAccountID(); ok {
+		_spec.SetField(usagelog.FieldServiceAccountID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedServiceAccountID(); ok {
+		_spec.AddField(usagelog.FieldServiceAccountID, field.TypeInt64, value)
+	}
+	if _u.mutation.ServiceAccountIDCleared() {
+		_spec.ClearField(usagelog.FieldServiceAccountID, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.WorkspaceID(); ok {
 		_spec.SetField(usagelog.FieldWorkspaceID, field.TypeInt64, value)

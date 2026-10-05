@@ -91,6 +91,7 @@ var usageLogInsertArgTypes = [...]string{
 	"uuid",        // budget_reservation_id
 	"boolean",     // native_compaction_v2
 	"timestamptz", // created_at
+	"bigint",      // service_account_id
 }
 
 const (
@@ -296,14 +297,15 @@ func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor,
 			resolved_platform,
 			budget_reservation_id,
 			native_compaction_v2,
-			created_at
+			created_at,
+			service_account_id
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7, $8, $9,
 			$10, $11,
 			$12, $13, $14, $15,
 			$16, $17, $18, $19,
 			$20, $21, $22, $23, $24, $25,
-			$26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58, $59, $60, $61, $62, $63, $64, $65, $66, $67
+			$26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58, $59, $60, $61, $62, $63, $64, $65, $66, $67, $68
 		)
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
 		RETURNING id, created_at
@@ -761,7 +763,8 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 			resolved_platform,
 			budget_reservation_id,
 			native_compaction_v2,
-			created_at
+			created_at,
+			service_account_id
 		) AS (VALUES `)
 
 	// Each batch row prepends the synthetic input_index before the 60
@@ -861,7 +864,8 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 				resolved_platform,
 				budget_reservation_id,
 				native_compaction_v2,
-				created_at
+				created_at,
+				service_account_id
 			)
 			SELECT
 				user_id,
@@ -930,7 +934,8 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 				resolved_platform,
 				budget_reservation_id,
 				native_compaction_v2,
-				created_at
+				created_at,
+				service_account_id
 			FROM input
 			ON CONFLICT (request_id, api_key_id) DO NOTHING
 			RETURNING request_id, api_key_id, id, created_at
@@ -1043,7 +1048,8 @@ func buildUsageLogInsertQuery(preparedList []usageLogInsertPrepared, conflictCla
 			resolved_platform,
 			budget_reservation_id,
 			native_compaction_v2,
-			created_at
+			created_at,
+			service_account_id
 		) AS (VALUES `)
 
 	args := make([]any, 0, len(preparedList)*60)
@@ -1138,7 +1144,8 @@ func buildUsageLogInsertQuery(preparedList []usageLogInsertPrepared, conflictCla
 			resolved_platform,
 			budget_reservation_id,
 			native_compaction_v2,
-			created_at
+			created_at,
+			service_account_id
 		)
 		SELECT
 			user_id,
@@ -1207,7 +1214,8 @@ func buildUsageLogInsertQuery(preparedList []usageLogInsertPrepared, conflictCla
 			resolved_platform,
 			budget_reservation_id,
 			native_compaction_v2,
-			created_at
+			created_at,
+			service_account_id
 		FROM input
 	`)
 	_, _ = query.WriteString(conflictClause)
@@ -1284,14 +1292,15 @@ func execUsageLogInsertNoResult(ctx context.Context, sqlq sqlExecutor, prepared 
 			resolved_platform,
 			budget_reservation_id,
 			native_compaction_v2,
-			created_at
+			created_at,
+			service_account_id
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7, $8, $9,
 			$10, $11,
 			$12, $13, $14, $15,
 			$16, $17, $18, $19,
 			$20, $21, $22, $23, $24, $25,
-			$26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58, $59, $60, $61, $62, $63, $64, $65, $66, $67
+			$26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58, $59, $60, $61, $62, $63, $64, $65, $66, $67, $68
 		)
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
 	`, prepared.args...)
@@ -1359,7 +1368,7 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 		rateMultiplier: rateMultiplier,
 		requestType:    requestType,
 		args: []any{
-			log.UserID,
+			usageLogActorSQLValue(log),
 			log.APIKeyID,
 			log.AccountID,
 			requestIDArg,
@@ -1426,6 +1435,7 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 			budgetReservationID,
 			log.NativeCompactionV2,
 			createdAt,
+			nullInt64(log.ServiceAccountID),
 		},
 	}
 }
@@ -1450,4 +1460,11 @@ func (r *usageLogRepository) bestEffortRecentKey(requestID string, apiKeyID int6
 		return "", false
 	}
 	return usageLogBatchKey(requestID, apiKeyID), true
+}
+
+func usageLogActorSQLValue(log *service.UsageLog) any {
+	if log.UserID == 0 && log.ServiceAccountID != nil {
+		return nil
+	}
+	return log.UserID
 }

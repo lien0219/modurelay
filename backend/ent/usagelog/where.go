@@ -61,6 +61,11 @@ func UserID(v int64) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldUserID, v))
 }
 
+// ServiceAccountID applies equality check predicate on the "service_account_id" field. It's identical to ServiceAccountIDEQ.
+func ServiceAccountID(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldServiceAccountID, v))
+}
+
 // APIKeyID applies equality check predicate on the "api_key_id" field. It's identical to APIKeyIDEQ.
 func APIKeyID(v int64) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldAPIKeyID, v))
@@ -329,6 +334,66 @@ func UserIDIn(vs ...int64) predicate.UsageLog {
 // UserIDNotIn applies the NotIn predicate on the "user_id" field.
 func UserIDNotIn(vs ...int64) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldNotIn(FieldUserID, vs...))
+}
+
+// UserIDIsNil applies the IsNil predicate on the "user_id" field.
+func UserIDIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldUserID))
+}
+
+// UserIDNotNil applies the NotNil predicate on the "user_id" field.
+func UserIDNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldUserID))
+}
+
+// ServiceAccountIDEQ applies the EQ predicate on the "service_account_id" field.
+func ServiceAccountIDEQ(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldServiceAccountID, v))
+}
+
+// ServiceAccountIDNEQ applies the NEQ predicate on the "service_account_id" field.
+func ServiceAccountIDNEQ(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldServiceAccountID, v))
+}
+
+// ServiceAccountIDIn applies the In predicate on the "service_account_id" field.
+func ServiceAccountIDIn(vs ...int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldServiceAccountID, vs...))
+}
+
+// ServiceAccountIDNotIn applies the NotIn predicate on the "service_account_id" field.
+func ServiceAccountIDNotIn(vs ...int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldServiceAccountID, vs...))
+}
+
+// ServiceAccountIDGT applies the GT predicate on the "service_account_id" field.
+func ServiceAccountIDGT(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldServiceAccountID, v))
+}
+
+// ServiceAccountIDGTE applies the GTE predicate on the "service_account_id" field.
+func ServiceAccountIDGTE(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldServiceAccountID, v))
+}
+
+// ServiceAccountIDLT applies the LT predicate on the "service_account_id" field.
+func ServiceAccountIDLT(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldServiceAccountID, v))
+}
+
+// ServiceAccountIDLTE applies the LTE predicate on the "service_account_id" field.
+func ServiceAccountIDLTE(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldServiceAccountID, v))
+}
+
+// ServiceAccountIDIsNil applies the IsNil predicate on the "service_account_id" field.
+func ServiceAccountIDIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldServiceAccountID))
+}
+
+// ServiceAccountIDNotNil applies the NotNil predicate on the "service_account_id" field.
+func ServiceAccountIDNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldServiceAccountID))
 }
 
 // APIKeyIDEQ applies the EQ predicate on the "api_key_id" field.

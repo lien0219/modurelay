@@ -34,6 +34,28 @@ func (_c *UsageLogCreate) SetUserID(v int64) *UsageLogCreate {
 	return _c
 }
 
+// SetNillableUserID sets the "user_id" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableUserID(v *int64) *UsageLogCreate {
+	if v != nil {
+		_c.SetUserID(*v)
+	}
+	return _c
+}
+
+// SetServiceAccountID sets the "service_account_id" field.
+func (_c *UsageLogCreate) SetServiceAccountID(v int64) *UsageLogCreate {
+	_c.mutation.SetServiceAccountID(v)
+	return _c
+}
+
+// SetNillableServiceAccountID sets the "service_account_id" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableServiceAccountID(v *int64) *UsageLogCreate {
+	if v != nil {
+		_c.SetServiceAccountID(*v)
+	}
+	return _c
+}
+
 // SetAPIKeyID sets the "api_key_id" field.
 func (_c *UsageLogCreate) SetAPIKeyID(v int64) *UsageLogCreate {
 	_c.mutation.SetAPIKeyID(v)
@@ -852,9 +874,6 @@ func (_c *UsageLogCreate) defaults() {
 
 // check runs all checks and user-defined validators on the builder.
 func (_c *UsageLogCreate) check() error {
-	if _, ok := _c.mutation.UserID(); !ok {
-		return &ValidationError{Name: "user_id", err: errors.New(`ent: missing required field "UsageLog.user_id"`)}
-	}
 	if _, ok := _c.mutation.APIKeyID(); !ok {
 		return &ValidationError{Name: "api_key_id", err: errors.New(`ent: missing required field "UsageLog.api_key_id"`)}
 	}
@@ -1007,9 +1026,6 @@ func (_c *UsageLogCreate) check() error {
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "UsageLog.created_at"`)}
 	}
-	if len(_c.mutation.UserIDs()) == 0 {
-		return &ValidationError{Name: "user", err: errors.New(`ent: missing required edge "UsageLog.user"`)}
-	}
 	if len(_c.mutation.APIKeyIDs()) == 0 {
 		return &ValidationError{Name: "api_key", err: errors.New(`ent: missing required edge "UsageLog.api_key"`)}
 	}
@@ -1043,6 +1059,10 @@ func (_c *UsageLogCreate) createSpec() (*UsageLog, *sqlgraph.CreateSpec) {
 		_spec = sqlgraph.NewCreateSpec(usagelog.Table, sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64))
 	)
 	_spec.OnConflict = _c.conflict
+	if value, ok := _c.mutation.ServiceAccountID(); ok {
+		_spec.SetField(usagelog.FieldServiceAccountID, field.TypeInt64, value)
+		_node.ServiceAccountID = &value
+	}
 	if value, ok := _c.mutation.WorkspaceID(); ok {
 		_spec.SetField(usagelog.FieldWorkspaceID, field.TypeInt64, value)
 		_node.WorkspaceID = &value
@@ -1377,6 +1397,36 @@ func (u *UsageLogUpsert) SetUserID(v int64) *UsageLogUpsert {
 // UpdateUserID sets the "user_id" field to the value that was provided on create.
 func (u *UsageLogUpsert) UpdateUserID() *UsageLogUpsert {
 	u.SetExcluded(usagelog.FieldUserID)
+	return u
+}
+
+// ClearUserID clears the value of the "user_id" field.
+func (u *UsageLogUpsert) ClearUserID() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldUserID)
+	return u
+}
+
+// SetServiceAccountID sets the "service_account_id" field.
+func (u *UsageLogUpsert) SetServiceAccountID(v int64) *UsageLogUpsert {
+	u.Set(usagelog.FieldServiceAccountID, v)
+	return u
+}
+
+// UpdateServiceAccountID sets the "service_account_id" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateServiceAccountID() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldServiceAccountID)
+	return u
+}
+
+// AddServiceAccountID adds v to the "service_account_id" field.
+func (u *UsageLogUpsert) AddServiceAccountID(v int64) *UsageLogUpsert {
+	u.Add(usagelog.FieldServiceAccountID, v)
+	return u
+}
+
+// ClearServiceAccountID clears the value of the "service_account_id" field.
+func (u *UsageLogUpsert) ClearServiceAccountID() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldServiceAccountID)
 	return u
 }
 
@@ -2342,6 +2392,41 @@ func (u *UsageLogUpsertOne) SetUserID(v int64) *UsageLogUpsertOne {
 func (u *UsageLogUpsertOne) UpdateUserID() *UsageLogUpsertOne {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateUserID()
+	})
+}
+
+// ClearUserID clears the value of the "user_id" field.
+func (u *UsageLogUpsertOne) ClearUserID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearUserID()
+	})
+}
+
+// SetServiceAccountID sets the "service_account_id" field.
+func (u *UsageLogUpsertOne) SetServiceAccountID(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetServiceAccountID(v)
+	})
+}
+
+// AddServiceAccountID adds v to the "service_account_id" field.
+func (u *UsageLogUpsertOne) AddServiceAccountID(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddServiceAccountID(v)
+	})
+}
+
+// UpdateServiceAccountID sets the "service_account_id" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateServiceAccountID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateServiceAccountID()
+	})
+}
+
+// ClearServiceAccountID clears the value of the "service_account_id" field.
+func (u *UsageLogUpsertOne) ClearServiceAccountID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearServiceAccountID()
 	})
 }
 
@@ -3624,6 +3709,41 @@ func (u *UsageLogUpsertBulk) SetUserID(v int64) *UsageLogUpsertBulk {
 func (u *UsageLogUpsertBulk) UpdateUserID() *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateUserID()
+	})
+}
+
+// ClearUserID clears the value of the "user_id" field.
+func (u *UsageLogUpsertBulk) ClearUserID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearUserID()
+	})
+}
+
+// SetServiceAccountID sets the "service_account_id" field.
+func (u *UsageLogUpsertBulk) SetServiceAccountID(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetServiceAccountID(v)
+	})
+}
+
+// AddServiceAccountID adds v to the "service_account_id" field.
+func (u *UsageLogUpsertBulk) AddServiceAccountID(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddServiceAccountID(v)
+	})
+}
+
+// UpdateServiceAccountID sets the "service_account_id" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateServiceAccountID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateServiceAccountID()
+	})
+}
+
+// ClearServiceAccountID clears the value of the "service_account_id" field.
+func (u *UsageLogUpsertBulk) ClearServiceAccountID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearServiceAccountID()
 	})
 }
 

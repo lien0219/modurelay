@@ -33,10 +33,11 @@ type OpsRequestDetail struct {
 	Severity string `json:"severity,omitempty"`
 	Message  string `json:"message,omitempty"`
 
-	UserID    *int64 `json:"user_id,omitempty"`
-	APIKeyID  *int64 `json:"api_key_id,omitempty"`
-	AccountID *int64 `json:"account_id,omitempty"`
-	GroupID   *int64 `json:"group_id,omitempty"`
+	UserID           *int64 `json:"user_id,omitempty"`
+	ServiceAccountID *int64 `json:"service_account_id,omitempty"`
+	APIKeyID         *int64 `json:"api_key_id,omitempty"`
+	AccountID        *int64 `json:"account_id,omitempty"`
+	GroupID          *int64 `json:"group_id,omitempty"`
 
 	Stream bool `json:"stream"`
 }
@@ -51,9 +52,10 @@ type OpsRequestDetailFilter struct {
 	Platform string
 	GroupID  *int64
 
-	UserID    *int64
-	APIKeyID  *int64
-	AccountID *int64
+	UserID           *int64
+	ServiceAccountID *int64
+	APIKeyID         *int64
+	AccountID        *int64
 
 	Model     string
 	RequestID string

@@ -73,6 +73,42 @@ func (_c *APIKeyCreate) SetUserID(v int64) *APIKeyCreate {
 	return _c
 }
 
+// SetNillableUserID sets the "user_id" field if the given value is not nil.
+func (_c *APIKeyCreate) SetNillableUserID(v *int64) *APIKeyCreate {
+	if v != nil {
+		_c.SetUserID(*v)
+	}
+	return _c
+}
+
+// SetServiceAccountID sets the "service_account_id" field.
+func (_c *APIKeyCreate) SetServiceAccountID(v int64) *APIKeyCreate {
+	_c.mutation.SetServiceAccountID(v)
+	return _c
+}
+
+// SetNillableServiceAccountID sets the "service_account_id" field if the given value is not nil.
+func (_c *APIKeyCreate) SetNillableServiceAccountID(v *int64) *APIKeyCreate {
+	if v != nil {
+		_c.SetServiceAccountID(*v)
+	}
+	return _c
+}
+
+// SetKeySuffix sets the "key_suffix" field.
+func (_c *APIKeyCreate) SetKeySuffix(v string) *APIKeyCreate {
+	_c.mutation.SetKeySuffix(v)
+	return _c
+}
+
+// SetNillableKeySuffix sets the "key_suffix" field if the given value is not nil.
+func (_c *APIKeyCreate) SetNillableKeySuffix(v *string) *APIKeyCreate {
+	if v != nil {
+		_c.SetKeySuffix(*v)
+	}
+	return _c
+}
+
 // SetProjectID sets the "project_id" field.
 func (_c *APIKeyCreate) SetProjectID(v int64) *APIKeyCreate {
 	_c.mutation.SetProjectID(v)
@@ -444,8 +480,10 @@ func (_c *APIKeyCreate) check() error {
 	if _, ok := _c.mutation.UpdatedAt(); !ok {
 		return &ValidationError{Name: "updated_at", err: errors.New(`ent: missing required field "APIKey.updated_at"`)}
 	}
-	if _, ok := _c.mutation.UserID(); !ok {
-		return &ValidationError{Name: "user_id", err: errors.New(`ent: missing required field "APIKey.user_id"`)}
+	if v, ok := _c.mutation.KeySuffix(); ok {
+		if err := apikey.KeySuffixValidator(v); err != nil {
+			return &ValidationError{Name: "key_suffix", err: fmt.Errorf(`ent: validator failed for field "APIKey.key_suffix": %w`, err)}
+		}
 	}
 	if _, ok := _c.mutation.Key(); !ok {
 		return &ValidationError{Name: "key", err: errors.New(`ent: missing required field "APIKey.key"`)}
@@ -495,9 +533,6 @@ func (_c *APIKeyCreate) check() error {
 	if _, ok := _c.mutation.Usage7d(); !ok {
 		return &ValidationError{Name: "usage_7d", err: errors.New(`ent: missing required field "APIKey.usage_7d"`)}
 	}
-	if len(_c.mutation.UserIDs()) == 0 {
-		return &ValidationError{Name: "user", err: errors.New(`ent: missing required edge "APIKey.user"`)}
-	}
 	return nil
 }
 
@@ -536,6 +571,14 @@ func (_c *APIKeyCreate) createSpec() (*APIKey, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.DeletedAt(); ok {
 		_spec.SetField(apikey.FieldDeletedAt, field.TypeTime, value)
 		_node.DeletedAt = &value
+	}
+	if value, ok := _c.mutation.ServiceAccountID(); ok {
+		_spec.SetField(apikey.FieldServiceAccountID, field.TypeInt64, value)
+		_node.ServiceAccountID = &value
+	}
+	if value, ok := _c.mutation.KeySuffix(); ok {
+		_spec.SetField(apikey.FieldKeySuffix, field.TypeString, value)
+		_node.KeySuffix = &value
 	}
 	if value, ok := _c.mutation.ProjectID(); ok {
 		_spec.SetField(apikey.FieldProjectID, field.TypeInt64, value)
@@ -754,6 +797,54 @@ func (u *APIKeyUpsert) SetUserID(v int64) *APIKeyUpsert {
 // UpdateUserID sets the "user_id" field to the value that was provided on create.
 func (u *APIKeyUpsert) UpdateUserID() *APIKeyUpsert {
 	u.SetExcluded(apikey.FieldUserID)
+	return u
+}
+
+// ClearUserID clears the value of the "user_id" field.
+func (u *APIKeyUpsert) ClearUserID() *APIKeyUpsert {
+	u.SetNull(apikey.FieldUserID)
+	return u
+}
+
+// SetServiceAccountID sets the "service_account_id" field.
+func (u *APIKeyUpsert) SetServiceAccountID(v int64) *APIKeyUpsert {
+	u.Set(apikey.FieldServiceAccountID, v)
+	return u
+}
+
+// UpdateServiceAccountID sets the "service_account_id" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdateServiceAccountID() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldServiceAccountID)
+	return u
+}
+
+// AddServiceAccountID adds v to the "service_account_id" field.
+func (u *APIKeyUpsert) AddServiceAccountID(v int64) *APIKeyUpsert {
+	u.Add(apikey.FieldServiceAccountID, v)
+	return u
+}
+
+// ClearServiceAccountID clears the value of the "service_account_id" field.
+func (u *APIKeyUpsert) ClearServiceAccountID() *APIKeyUpsert {
+	u.SetNull(apikey.FieldServiceAccountID)
+	return u
+}
+
+// SetKeySuffix sets the "key_suffix" field.
+func (u *APIKeyUpsert) SetKeySuffix(v string) *APIKeyUpsert {
+	u.Set(apikey.FieldKeySuffix, v)
+	return u
+}
+
+// UpdateKeySuffix sets the "key_suffix" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdateKeySuffix() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldKeySuffix)
+	return u
+}
+
+// ClearKeySuffix clears the value of the "key_suffix" field.
+func (u *APIKeyUpsert) ClearKeySuffix() *APIKeyUpsert {
+	u.SetNull(apikey.FieldKeySuffix)
 	return u
 }
 
@@ -1196,6 +1287,62 @@ func (u *APIKeyUpsertOne) SetUserID(v int64) *APIKeyUpsertOne {
 func (u *APIKeyUpsertOne) UpdateUserID() *APIKeyUpsertOne {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.UpdateUserID()
+	})
+}
+
+// ClearUserID clears the value of the "user_id" field.
+func (u *APIKeyUpsertOne) ClearUserID() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.ClearUserID()
+	})
+}
+
+// SetServiceAccountID sets the "service_account_id" field.
+func (u *APIKeyUpsertOne) SetServiceAccountID(v int64) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetServiceAccountID(v)
+	})
+}
+
+// AddServiceAccountID adds v to the "service_account_id" field.
+func (u *APIKeyUpsertOne) AddServiceAccountID(v int64) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.AddServiceAccountID(v)
+	})
+}
+
+// UpdateServiceAccountID sets the "service_account_id" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdateServiceAccountID() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateServiceAccountID()
+	})
+}
+
+// ClearServiceAccountID clears the value of the "service_account_id" field.
+func (u *APIKeyUpsertOne) ClearServiceAccountID() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.ClearServiceAccountID()
+	})
+}
+
+// SetKeySuffix sets the "key_suffix" field.
+func (u *APIKeyUpsertOne) SetKeySuffix(v string) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetKeySuffix(v)
+	})
+}
+
+// UpdateKeySuffix sets the "key_suffix" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdateKeySuffix() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateKeySuffix()
+	})
+}
+
+// ClearKeySuffix clears the value of the "key_suffix" field.
+func (u *APIKeyUpsertOne) ClearKeySuffix() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.ClearKeySuffix()
 	})
 }
 
@@ -1862,6 +2009,62 @@ func (u *APIKeyUpsertBulk) SetUserID(v int64) *APIKeyUpsertBulk {
 func (u *APIKeyUpsertBulk) UpdateUserID() *APIKeyUpsertBulk {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.UpdateUserID()
+	})
+}
+
+// ClearUserID clears the value of the "user_id" field.
+func (u *APIKeyUpsertBulk) ClearUserID() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.ClearUserID()
+	})
+}
+
+// SetServiceAccountID sets the "service_account_id" field.
+func (u *APIKeyUpsertBulk) SetServiceAccountID(v int64) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetServiceAccountID(v)
+	})
+}
+
+// AddServiceAccountID adds v to the "service_account_id" field.
+func (u *APIKeyUpsertBulk) AddServiceAccountID(v int64) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.AddServiceAccountID(v)
+	})
+}
+
+// UpdateServiceAccountID sets the "service_account_id" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdateServiceAccountID() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateServiceAccountID()
+	})
+}
+
+// ClearServiceAccountID clears the value of the "service_account_id" field.
+func (u *APIKeyUpsertBulk) ClearServiceAccountID() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.ClearServiceAccountID()
+	})
+}
+
+// SetKeySuffix sets the "key_suffix" field.
+func (u *APIKeyUpsertBulk) SetKeySuffix(v string) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetKeySuffix(v)
+	})
+}
+
+// UpdateKeySuffix sets the "key_suffix" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdateKeySuffix() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateKeySuffix()
+	})
+}
+
+// ClearKeySuffix clears the value of the "key_suffix" field.
+func (u *APIKeyUpsertBulk) ClearKeySuffix() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.ClearKeySuffix()
 	})
 }
 

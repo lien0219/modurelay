@@ -28,6 +28,7 @@ export default {
       billing: { settlement_pending: 'Settlement pending', settlement_recovered: 'Settlement recovered' },
       quota: { threshold_reached: 'Quota threshold reached', exhausted: 'Quota exhausted' },
       webhook: { test: 'Webhook test' },
+      service_account: { created: 'Service account created', updated: 'Service account updated', disabled: 'Service account disabled', enabled: 'Service account enabled', credential: { created: 'Service account credential created', updated: 'Service account credential updated', revoked: 'Service account credential revoked', rotated: 'Service account credential rotated', expiring: 'Service account credential expiring', expired: 'Service account credential expired' } },
     },
     reasons: {
       admission_rejected: 'Request rejected by the budget limit',
@@ -37,7 +38,7 @@ export default {
       settled: 'Settlement completed',
     },
     categories: {
-      system: 'System', workspace: 'Workspace', project: 'Project', api_key: 'API key', budget: 'Budget', billing: 'Billing', quota: 'Quota', security: 'Security', resources: 'Forum',
+      system: 'System', workspace: 'Workspace', project: 'Project', api_key: 'API key', service_account: 'Service account', budget: 'Budget', billing: 'Billing', quota: 'Quota', security: 'Security', resources: 'Forum',
     },
     workspace: { title: 'Workspace update', body: 'A workspace event needs your attention.' },
     member: { title: 'Member update', body: 'A workspace member changed.' },
@@ -46,5 +47,6 @@ export default {
     budget: { title: 'Budget update', body: 'A budget event needs your attention.' },
     billing: { title: 'Billing update', body: 'A billing event needs your attention.' },
     webhook_test: { title: 'Webhook test', body: 'A webhook test delivery was queued.' },
+    service_account: { title: 'Service account update', body: 'A service account changed.' },
   },
 }

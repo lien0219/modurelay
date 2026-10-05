@@ -79,7 +79,7 @@ type CyberPolicyUsageInput struct {
 // 扣费与用量行写入（request_type=cyber 由 CyberBlocked 置位）。仅 forward 返回错误的
 // 路径由 handler 调用，避免与成功路径的正常 RecordUsage 重复。
 func (s *OpenAIGatewayService) RecordCyberPolicyUsageLog(ctx context.Context, in CyberPolicyUsageInput) {
-	if s == nil || in.APIKey == nil || in.APIKey.User == nil || in.Account == nil || strings.TrimSpace(in.Model) == "" {
+	if s == nil || in.APIKey == nil || in.APIKey.BillingUser() == nil || in.Account == nil || strings.TrimSpace(in.Model) == "" {
 		return
 	}
 	result := &OpenAIForwardResult{
@@ -155,6 +155,14 @@ func groupBillsOpenAIFastAtStandard(apiKey *APIKey, account *Account, serviceTie
 func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRecordUsageInput) error {
 	if input == nil {
 		return errors.New("openai usage input is nil")
+	}
+	if input.User == nil && input.APIKey != nil && input.APIKey.ServiceAccountID != nil {
+		copyInput := *input
+		copyInput.User = input.APIKey.BillingUser()
+		input = &copyInput
+	}
+	if input.User == nil {
+		return errors.New("openai usage funding identity is missing")
 	}
 	result := input.Result
 	if result == nil {

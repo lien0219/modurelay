@@ -217,7 +217,7 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 	subscription, _ := middleware2.GetSubscriptionFromContext(c)
 	service.SetOpsLatencyMs(c, service.OpsAuthLatencyMsKey, time.Since(requestStart).Milliseconds())
 
-	userReleaseFunc, acquired := h.acquireResponsesUserSlot(c, subject.UserID, subject.Concurrency, false, &streamStarted, reqLog)
+	userReleaseFunc, acquired := h.acquireResponsesUserSlot(c, subject.FundingUserID(), subject.Concurrency, false, &streamStarted, reqLog)
 	if !acquired {
 		return
 	}
@@ -226,7 +226,7 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 	}
 
 	if requiresGrokMediaBillingEligibility(endpoint) {
-		if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription, service.QuotaPlatform(c.Request.Context(), apiKey)); err != nil {
+		if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.BillingUser(), apiKey, apiKey.Group, subscription, service.QuotaPlatform(c.Request.Context(), apiKey)); err != nil {
 			reqLog.Info("grok_media.billing_eligibility_check_failed", zap.Error(err))
 			status, code, message, retryAfter := billingErrorDetails(err)
 			if retryAfter > 0 {
@@ -256,9 +256,9 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 	sessionHash := h.gatewayService.GenerateExplicitSessionHash(c, sessionSeed)
 	boundLookupAccountID := int64(0)
 	if endpoint.IsVideoLookupRequest() {
-		sessionHash = service.GrokMediaVideoRequestSessionHash(requestID, subject.UserID, apiKey.ID)
+		sessionHash = service.GrokMediaVideoRequestSessionHash(requestID, subject.OwnershipID(), apiKey.ID)
 		boundLookupAccountID, err = h.gatewayService.ResolveGrokMediaVideoRequestAccount(
-			c.Request.Context(), apiKey.GroupID, requestID, subject.UserID, apiKey.ID,
+			c.Request.Context(), apiKey.GroupID, requestID, subject.OwnershipID(), apiKey.ID,
 		)
 		if err != nil || boundLookupAccountID <= 0 {
 			reqLog.Info("grok_media.video_lookup_owner_binding_missing", zap.Error(err))
@@ -728,7 +728,7 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 
 		h.gatewayService.ReportOpenAIAccountScheduleResult(account, grokMediaScheduleModel(account, selectedRoutingModel, result), true, nil)
 		if isGrokVideoCancelEndpoint(endpoint) {
-			if cleanupErr := h.gatewayService.CancelGrokVideoPendingBilling(requestCtx, requestID, subject.UserID, apiKey.ID); cleanupErr != nil {
+			if cleanupErr := h.gatewayService.CancelGrokVideoPendingBilling(requestCtx, requestID, subject.OwnershipID(), apiKey.ID); cleanupErr != nil {
 				reqLog.Warn("grok_media.video_cancel_pending_billing_cleanup_failed",
 					zap.String("request_id", requestID),
 					zap.Error(cleanupErr),
@@ -743,7 +743,7 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 			}
 			var seedanceStateErr error
 			if err := h.gatewayService.BindGrokMediaVideoRequestAccount(
-				requestCtx, apiKey.GroupID, result.ResponseID, subject.UserID, apiKey.ID, account.ID,
+				requestCtx, apiKey.GroupID, result.ResponseID, subject.OwnershipID(), apiKey.ID, account.ID,
 			); err != nil {
 				reqLog.Warn("grok_media.bind_video_request_account_failed_retrying",
 					zap.Int64("account_id", account.ID),
@@ -751,7 +751,7 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 					zap.Error(err),
 				)
 				if err2 := h.gatewayService.BindGrokMediaVideoRequestAccount(
-					requestCtx, apiKey.GroupID, result.ResponseID, subject.UserID, apiKey.ID, account.ID,
+					requestCtx, apiKey.GroupID, result.ResponseID, subject.OwnershipID(), apiKey.ID, account.ID,
 				); err2 != nil {
 					reqLog.Error("grok_media.bind_video_request_account_failed",
 						zap.Int64("account_id", account.ID),
@@ -806,18 +806,19 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 				CreatedAt: videoCreateStartedAt,
 			}
 			if apiKey.Tenant != nil {
+				pending.ServiceAccountID = apiKey.ExecutionPrincipal().ServiceAccountID
 				pending.WorkspaceID = tenantWorkspaceID(apiKey)
 				pending.ProjectID = tenantProjectID(apiKey)
 				pending.BillingPrincipalUserID = apiKey.BillingUserID()
 				pending.BudgetReservationID = service.BudgetReservationIDFromContext(requestCtx)
 			}
-			if err := h.gatewayService.StoreGrokVideoPendingBilling(requestCtx, result.ResponseID, subject.UserID, apiKey.ID, pending); err != nil {
+			if err := h.gatewayService.StoreGrokVideoPendingBilling(requestCtx, result.ResponseID, subject.OwnershipID(), apiKey.ID, pending); err != nil {
 				reqLog.Warn("grok_media.store_video_pending_billing_failed_retrying",
 					zap.Int64("account_id", account.ID),
 					zap.String("request_id", result.ResponseID),
 					zap.Error(err),
 				)
-				if err2 := h.gatewayService.StoreGrokVideoPendingBilling(requestCtx, result.ResponseID, subject.UserID, apiKey.ID, pending); err2 != nil {
+				if err2 := h.gatewayService.StoreGrokVideoPendingBilling(requestCtx, result.ResponseID, subject.OwnershipID(), apiKey.ID, pending); err2 != nil {
 					// Response body may already be committed; completion path will fail-closed
 					// when pending is still missing and status cannot price duration.
 					reqLog.Error("grok_media.store_video_pending_billing_failed",
@@ -1015,7 +1016,7 @@ func prepareGrokVideoCompletionBilling(
 	}
 	// Load create-time snapshot before claim so we can fail-closed without burning the claim
 	// when Redis lost pending and status cannot price the job.
-	pending, loadErr := h.gatewayService.LoadGrokVideoPendingBilling(ctx, taskRequestID, subject.UserID, apiKey.ID)
+	pending, loadErr := h.gatewayService.LoadGrokVideoPendingBilling(ctx, taskRequestID, subject.OwnershipID(), apiKey.ID)
 	if loadErr != nil {
 		reqLog.Warn("grok_media.video_pending_billing_load_failed", zap.String("request_id", taskRequestID), zap.Error(loadErr))
 	}
@@ -1050,7 +1051,7 @@ func prepareGrokVideoCompletionBilling(
 		)
 		return nil
 	}
-	claimed, err := h.gatewayService.ClaimGrokVideoBilling(ctx, taskRequestID, subject.UserID, apiKey.ID)
+	claimed, err := h.gatewayService.ClaimGrokVideoBilling(ctx, taskRequestID, subject.OwnershipID(), apiKey.ID)
 	if err != nil {
 		reqLog.Warn("grok_media.video_billing_claim_failed", zap.String("request_id", taskRequestID), zap.Error(err))
 		return nil
@@ -1183,7 +1184,7 @@ func recordGrokMediaUsage(
 			payloadForHash = []byte(videoTaskID)
 		}
 		if videoTaskID != "" {
-			if pending, err := h.gatewayService.LoadGrokVideoPendingBilling(c.Request.Context(), videoTaskID, subject.UserID, apiKey.ID); err == nil && pending != nil {
+			if pending, err := h.gatewayService.LoadGrokVideoPendingBilling(c.Request.Context(), videoTaskID, subject.OwnershipID(), apiKey.ID); err == nil && pending != nil {
 				pricingAt, _ = time.Parse(time.RFC3339Nano, pending.CreatedAt)
 			}
 		}
@@ -1191,7 +1192,7 @@ func recordGrokMediaUsage(
 	h.submitOpenAIUsageRecordTask(c.Request.Context(), result, func(ctx context.Context) {
 		settlementKey := apiKey
 		if videoTaskID != "" && h.apiKeyService != nil {
-			pending, loadErr := h.gatewayService.LoadGrokVideoPendingBilling(ctx, videoTaskID, subject.UserID, apiKey.ID)
+			pending, loadErr := h.gatewayService.LoadGrokVideoPendingBilling(ctx, videoTaskID, subject.OwnershipID(), apiKey.ID)
 			if loadErr != nil && apiKey.Tenant != nil {
 				reqLog.Warn("grok_media.video_tenant_snapshot_load_failed", zap.String("request_id", videoTaskID), zap.Error(loadErr))
 				return
@@ -1220,7 +1221,7 @@ func recordGrokMediaUsage(
 		if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
 			Result:             result,
 			APIKey:             settlementKey,
-			User:               settlementKey.User,
+			User:               settlementKey.BillingUser(),
 			Account:            account,
 			Subscription:       subscription,
 			InboundEndpoint:    inboundEndpoint,
@@ -1236,7 +1237,7 @@ func recordGrokMediaUsage(
 			ChannelUsageFields: channelUsageFields,
 		}); err != nil {
 			if videoTaskID != "" {
-				if releaseErr := h.gatewayService.ReleaseGrokVideoBilling(ctx, videoTaskID, subject.UserID, apiKey.ID); releaseErr != nil {
+				if releaseErr := h.gatewayService.ReleaseGrokVideoBilling(ctx, videoTaskID, subject.OwnershipID(), apiKey.ID); releaseErr != nil {
 					reqLog.Warn("grok_media.video_billing_claim_release_failed",
 						zap.String("request_id", videoTaskID),
 						zap.Error(releaseErr),

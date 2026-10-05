@@ -262,7 +262,8 @@ func (s *BatchImageSettlementService) recordUsageLog(ctx context.Context, job *B
 	upstreamEndpoint := "vertex:batchPredictionJobs"
 	imageSize := "1K"
 	usageLog := &UsageLog{
-		UserID:                 job.UserID,
+		UserID:                 batchImageExecutionUserID(job),
+		ServiceAccountID:       job.ServiceAccountID,
 		WorkspaceID:            job.WorkspaceID,
 		ProjectID:              job.ProjectID,
 		BillingPrincipalUserID: job.BillingPrincipalUserID,

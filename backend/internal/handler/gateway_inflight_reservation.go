@@ -98,7 +98,7 @@ func reserveInflightBalanceCtx(
 			_ = h.Release(cleanup)
 		}
 	}
-	if billing == nil || estimator == nil || apiKey == nil || apiKey.User == nil || !billing.InflightReservationEnabled() {
+	if billing == nil || estimator == nil || apiKey == nil || apiKey.BillingUser() == nil || !billing.InflightReservationEnabled() {
 		return ctx, budgetDone, nil
 	}
 	if apiKey.Group != nil && apiKey.Group.IsSubscriptionType() && subscription != nil {

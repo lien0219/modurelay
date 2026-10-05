@@ -28,6 +28,10 @@ type APIKey struct {
 	DeletedAt *time.Time `json:"deleted_at,omitempty"`
 	// UserID holds the value of the "user_id" field.
 	UserID int64 `json:"user_id,omitempty"`
+	// ServiceAccountID holds the value of the "service_account_id" field.
+	ServiceAccountID *int64 `json:"service_account_id,omitempty"`
+	// KeySuffix holds the value of the "key_suffix" field.
+	KeySuffix *string `json:"key_suffix,omitempty"`
 	// ProjectID holds the value of the "project_id" field.
 	ProjectID *int64 `json:"project_id,omitempty"`
 	// Key holds the value of the "key" field.
@@ -127,9 +131,9 @@ func (*APIKey) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case apikey.FieldQuota, apikey.FieldQuotaUsed, apikey.FieldRateLimit5h, apikey.FieldRateLimit1d, apikey.FieldRateLimit7d, apikey.FieldUsage5h, apikey.FieldUsage1d, apikey.FieldUsage7d:
 			values[i] = new(sql.NullFloat64)
-		case apikey.FieldID, apikey.FieldUserID, apikey.FieldProjectID, apikey.FieldGroupID:
+		case apikey.FieldID, apikey.FieldUserID, apikey.FieldServiceAccountID, apikey.FieldProjectID, apikey.FieldGroupID:
 			values[i] = new(sql.NullInt64)
-		case apikey.FieldKey, apikey.FieldName, apikey.FieldStatus:
+		case apikey.FieldKeySuffix, apikey.FieldKey, apikey.FieldName, apikey.FieldStatus:
 			values[i] = new(sql.NullString)
 		case apikey.FieldCreatedAt, apikey.FieldUpdatedAt, apikey.FieldDeletedAt, apikey.FieldLastUsedAt, apikey.FieldExpiresAt, apikey.FieldWindow5hStart, apikey.FieldWindow1dStart, apikey.FieldWindow7dStart:
 			values[i] = new(sql.NullTime)
@@ -178,6 +182,20 @@ func (_m *APIKey) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field user_id", values[i])
 			} else if value.Valid {
 				_m.UserID = value.Int64
+			}
+		case apikey.FieldServiceAccountID:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field service_account_id", values[i])
+			} else if value.Valid {
+				_m.ServiceAccountID = new(int64)
+				*_m.ServiceAccountID = value.Int64
+			}
+		case apikey.FieldKeySuffix:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field key_suffix", values[i])
+			} else if value.Valid {
+				_m.KeySuffix = new(string)
+				*_m.KeySuffix = value.String
 			}
 		case apikey.FieldProjectID:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -374,6 +392,16 @@ func (_m *APIKey) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("user_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.UserID))
+	builder.WriteString(", ")
+	if v := _m.ServiceAccountID; v != nil {
+		builder.WriteString("service_account_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.KeySuffix; v != nil {
+		builder.WriteString("key_suffix=")
+		builder.WriteString(*v)
+	}
 	builder.WriteString(", ")
 	if v := _m.ProjectID; v != nil {
 		builder.WriteString("project_id=")

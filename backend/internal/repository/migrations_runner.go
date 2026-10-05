@@ -324,6 +324,20 @@ func prepareNonTransactionalMigration(ctx context.Context, db migrationConnectio
 			}
 		}
 		return nil
+	case "286_service_account_indexes_notx.sql":
+		for _, indexName := range []string{"api_keys_service_account_id", "usage_logs_service_account_created", "budget_reservations_service_account_pending", "batch_image_jobs_service_account_created"} {
+			if err := dropInvalidIndexIfPresent(ctx, db, indexName); err != nil {
+				return err
+			}
+		}
+		return nil
+	case "289_service_account_audit_indexes_notx.sql":
+		for _, indexName := range []string{"idx_content_moderation_logs_service_account_created", "idx_prompt_audit_jobs_service_account_created", "idx_prompt_audit_events_service_account_created", "idx_ops_error_logs_service_account_created", "idx_ops_system_logs_service_account_created"} {
+			if err := dropInvalidIndexIfPresent(ctx, db, indexName); err != nil {
+				return err
+			}
+		}
+		return nil
 	default:
 		return nil
 	}

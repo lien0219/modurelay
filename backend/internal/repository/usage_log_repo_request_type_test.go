@@ -108,6 +108,7 @@ func TestUsageLogRepositoryCreateSyncRequestTypeAndLegacyFields(t *testing.T) {
 			sqlmock.AnyArg(), // budget_reservation_id
 			log.NativeCompactionV2,
 			createdAt,
+			sqlmock.AnyArg(), // service_account_id
 		).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"}).AddRow(int64(99), createdAt))
 
@@ -208,6 +209,7 @@ func TestUsageLogRepositoryCreate_PersistsServiceTier(t *testing.T) {
 			sqlmock.AnyArg(), // budget_reservation_id
 			log.NativeCompactionV2,
 			createdAt,
+			sqlmock.AnyArg(), // service_account_id
 		).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"}).AddRow(int64(100), createdAt))
 
@@ -288,8 +290,10 @@ func TestPrepareUsageLogInsert_PersistsNativeCompactionV2WithoutChangingRequestT
 	prepared := prepareUsageLogInsert(log)
 
 	require.Len(t, prepared.args, len(usageLogInsertArgTypes))
-	require.Equal(t, "boolean", usageLogInsertArgTypes[len(usageLogInsertArgTypes)-2])
-	require.Equal(t, true, prepared.args[len(prepared.args)-2])
+	require.Equal(t, "boolean", usageLogInsertArgTypes[len(usageLogInsertArgTypes)-3])
+	require.Equal(t, true, prepared.args[len(prepared.args)-3])
+	require.Equal(t, "timestamptz", usageLogInsertArgTypes[len(usageLogInsertArgTypes)-2])
+	require.Equal(t, "bigint", usageLogInsertArgTypes[len(usageLogInsertArgTypes)-1])
 	require.Equal(t, int16(service.RequestTypeStream), prepared.args[30])
 	require.Equal(t, service.RequestTypeStream, log.RequestType)
 	require.True(t, log.Stream)
@@ -921,7 +925,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 		now := time.Now().UTC()
 		log, err := scanUsageLog(usageLogScannerStub{values: []any{
 			int64(4),
-			int64(13),
+			sql.NullInt64{Int64: 13, Valid: true},
 			int64(23),
 			int64(33),
 			sql.NullString{Valid: true, String: "req-image-metadata"},
@@ -976,6 +980,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{}, // budget_reservation_id
 			false,            // native_compaction_v2
 			now,
+			sql.NullInt64{}, // service_account_id
 		}})
 		require.NoError(t, err)
 		require.Equal(t, 2, log.ImageCount)
@@ -993,10 +998,10 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 	t.Run("request_type_ws_v2_overrides_legacy", func(t *testing.T) {
 		now := time.Now().UTC()
 		log, err := scanUsageLog(usageLogScannerStub{values: []any{
-			int64(1),  // id
-			int64(10), // user_id
-			int64(20), // api_key_id
-			int64(30), // account_id
+			int64(1),                              // id
+			sql.NullInt64{Int64: 10, Valid: true}, // user_id
+			int64(20),                             // api_key_id
+			int64(30),                             // account_id
 			sql.NullString{Valid: true, String: "req-1"},
 			"gpt-5", // model
 			sql.NullString{Valid: true, String: "gpt-5"}, // requested_model
@@ -1061,6 +1066,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},  // budget_reservation_id
 			false,             // native_compaction_v2
 			now,
+			sql.NullInt64{}, // service_account_id
 		}})
 		require.NoError(t, err)
 		require.NotNil(t, log.ServiceTier)
@@ -1074,7 +1080,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 		now := time.Now().UTC()
 		log, err := scanUsageLog(usageLogScannerStub{values: []any{
 			int64(2),
-			int64(11),
+			sql.NullInt64{Int64: 11, Valid: true},
 			int64(21),
 			int64(31),
 			sql.NullString{Valid: true, String: "req-2"},
@@ -1129,6 +1135,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},  // budget_reservation_id
 			true,              // native_compaction_v2
 			now,
+			sql.NullInt64{}, // service_account_id
 		}})
 		require.NoError(t, err)
 		require.NotNil(t, log.ServiceTier)
@@ -1143,7 +1150,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 		now := time.Now().UTC()
 		log, err := scanUsageLog(usageLogScannerStub{values: []any{
 			int64(3),
-			int64(12),
+			sql.NullInt64{Int64: 12, Valid: true},
 			int64(22),
 			int64(32),
 			sql.NullString{Valid: true, String: "req-3"},
@@ -1198,6 +1205,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},  // budget_reservation_id
 			false,             // native_compaction_v2
 			now,
+			sql.NullInt64{}, // service_account_id
 		}})
 		require.NoError(t, err)
 		require.NotNil(t, log.ServiceTier)

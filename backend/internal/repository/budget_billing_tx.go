@@ -10,7 +10,7 @@ import (
 )
 
 func tenantBudgetReservationTx(ctx context.Context, tx *sql.Tx, cmd *service.UsageBillingCommand) (*service.BudgetReservation, error) {
-	if cmd == nil || cmd.WorkspaceID <= 0 || cmd.ProjectID <= 0 || cmd.BillingPrincipalUserID <= 0 || cmd.UserID <= 0 || cmd.APIKeyID <= 0 {
+	if cmd == nil || cmd.WorkspaceID <= 0 || cmd.ProjectID <= 0 || cmd.BillingPrincipalUserID <= 0 || !service.ValidExecutionAttribution(cmd.UserID, cmd.ServiceAccountID) || cmd.APIKeyID <= 0 {
 		return nil, service.ErrBudgetReservationInvalid
 	}
 	id := strings.TrimSpace(cmd.BudgetReservationID)
@@ -21,7 +21,7 @@ func tenantBudgetReservationTx(ctx context.Context, tx *sql.Tx, cmd *service.Usa
 	if err != nil {
 		return nil, err
 	}
-	if !budgetAttributionMatches(res, service.BudgetAttribution{ActorUserID: cmd.UserID, APIKeyID: cmd.APIKeyID, WorkspaceID: cmd.WorkspaceID, ProjectID: cmd.ProjectID, BillingPrincipalUserID: cmd.BillingPrincipalUserID}) {
+	if !budgetAttributionMatches(res, service.BudgetAttribution{ActorUserID: cmd.UserID, ServiceAccountID: cmd.ServiceAccountID, APIKeyID: cmd.APIKeyID, WorkspaceID: cmd.WorkspaceID, ProjectID: cmd.ProjectID, BillingPrincipalUserID: cmd.BillingPrincipalUserID}) {
 		return nil, service.ErrBudgetReservationConflict
 	}
 	return res, nil

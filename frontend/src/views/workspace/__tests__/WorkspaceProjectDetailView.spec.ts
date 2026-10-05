@@ -97,6 +97,34 @@ describe('project workspace context and FinOps', () => {
     expect(wrapper.text()).toContain('$9.00')
   })
 
+  it('renders server-aggregated machine usage and filters both usage requests by service account', async () => {
+    api.getProjectOverview.mockResolvedValue({ summary, service_accounts: [
+      { id: '31', name: 'backend-api', requests: 3, spend: 9, tokens: 123, models: ['machine-model'] },
+      { id: 'legacy', name: 'Human / Legacy', requests: 2, spend: 3.5, tokens: 0, models: [] },
+    ] })
+    const { wrapper } = await render()
+    const rows = wrapper.find('[data-testid="service-account-breakdown"]')
+    expect(rows.text()).toContain('backend-api')
+    expect(rows.text()).toContain('123')
+    expect(rows.text()).toContain('machine-model')
+    expect(rows.text()).toContain('$3.50')
+    await wrapper.find('[data-testid="service-account-usage-filter"]').setValue('31')
+    await flushPromises()
+    expect(api.getProjectUsage).toHaveBeenLastCalledWith(1, 20, expect.objectContaining({ service_account_id: 31 }), expect.any(AbortSignal))
+    expect(api.getProjectOverview).toHaveBeenLastCalledWith(1, 20, expect.any(AbortSignal), expect.objectContaining({ service_account_id: 31 }))
+  })
+
+  it('clears the machine usage filter when navigating between projects', async () => {
+    api.getProjectOverview.mockResolvedValue({ summary, service_accounts: [{ id: '31', name: 'backend-api', requests: 3, spend: 9, tokens: 123, models: [] }] })
+    const { wrapper, router } = await render()
+    await wrapper.find('[data-testid="service-account-usage-filter"]').setValue('31')
+    await flushPromises()
+    await router.push('/workspaces/1/projects/10')
+    await flushPromises()
+    expect(wrapper.find('[data-testid="service-account-usage-filter"]').element.value).toBe('')
+    expect(api.getProjectOverview.mock.lastCall?.[3]).not.toHaveProperty('service_account_id')
+  })
+
   it('shows project daily spend with its server-reported timezone', async () => {
     const { wrapper } = await render(['workspace.read', 'project.read', 'usage.read', 'budget.read'])
     const dailyTable = wrapper.findAll('table').find(table => table.find('caption').text() === 'Daily spend')

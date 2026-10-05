@@ -1,20 +1,27 @@
 package service
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // APIKeyAuthSnapshot API Key 认证缓存快照（仅包含认证所需字段）
 type APIKeyAuthSnapshot struct {
-	Version     int                      `json:"version"`
-	APIKeyID    int64                    `json:"api_key_id"`
-	ProjectID   *int64                   `json:"project_id,omitempty"`
-	UserID      int64                    `json:"user_id"`
-	GroupID     *int64                   `json:"group_id,omitempty"`
-	Name        string                   `json:"name"`
-	Status      string                   `json:"status"`
-	IPWhitelist []string                 `json:"ip_whitelist,omitempty"`
-	IPBlacklist []string                 `json:"ip_blacklist,omitempty"`
-	User        APIKeyAuthUserSnapshot   `json:"user"`
-	Group       *APIKeyAuthGroupSnapshot `json:"group,omitempty"`
+	ServiceAccountID     *int64                   `json:"service_account_id,omitempty"`
+	ServiceAccountStatus string                   `json:"service_account_status,omitempty"`
+	BillingPrincipal     *APIKeyAuthUserSnapshot  `json:"billing_principal,omitempty"`
+	Tenant               *TenantContext           `json:"tenant,omitempty"`
+	Version              int                      `json:"version"`
+	APIKeyID             int64                    `json:"api_key_id"`
+	ProjectID            *int64                   `json:"project_id,omitempty"`
+	UserID               int64                    `json:"user_id"`
+	GroupID              *int64                   `json:"group_id,omitempty"`
+	Name                 string                   `json:"name"`
+	Status               string                   `json:"status"`
+	IPWhitelist          []string                 `json:"ip_whitelist,omitempty"`
+	IPBlacklist          []string                 `json:"ip_blacklist,omitempty"`
+	User                 APIKeyAuthUserSnapshot   `json:"user"`
+	Group                *APIKeyAuthGroupSnapshot `json:"group,omitempty"`
 
 	// Quota fields for API Key independent quota feature
 	Quota     float64 `json:"quota"`      // Quota limit in USD (0 = unlimited)
@@ -27,6 +34,20 @@ type APIKeyAuthSnapshot struct {
 	RateLimit5h float64 `json:"rate_limit_5h"`
 	RateLimit1d float64 `json:"rate_limit_1d"`
 	RateLimit7d float64 `json:"rate_limit_7d"`
+}
+
+// Machine snapshots contain an execution principal, never a synthetic user.
+// Keep the existing value field source-compatible with human snapshot callers.
+func (s APIKeyAuthSnapshot) MarshalJSON() ([]byte, error) {
+	type snapshotAlias APIKeyAuthSnapshot
+	var user *APIKeyAuthUserSnapshot
+	if s.ServiceAccountID == nil {
+		user = &s.User
+	}
+	return json.Marshal(struct {
+		*snapshotAlias
+		User *APIKeyAuthUserSnapshot `json:"user,omitempty"`
+	}{snapshotAlias: (*snapshotAlias)(&s), User: user})
 }
 
 // APIKeyAuthUserSnapshot 用户快照

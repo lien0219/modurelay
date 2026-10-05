@@ -14,6 +14,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	coderws "github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 	"go.uber.org/zap"
@@ -83,7 +84,7 @@ func (h *OpenAIGatewayHandler) Live(c *gin.Context) {
 	}
 	if err := h.billingCacheService.CheckBillingEligibility(
 		c.Request.Context(),
-		apiKey.User,
+		apiKey.BillingUser(),
 		apiKey,
 		apiKey.Group,
 		subscription,
@@ -99,7 +100,7 @@ func (h *OpenAIGatewayHandler) Live(c *gin.Context) {
 
 	userRelease, acquired, err := h.concurrencyHelper.TryAcquireUserSlot(
 		c.Request.Context(),
-		subject.UserID,
+		subject.FundingUserID(),
 		subject.Concurrency,
 	)
 	if err != nil {
@@ -111,6 +112,29 @@ func (h *OpenAIGatewayHandler) Live(c *gin.Context) {
 		return
 	}
 	defer userRelease()
+	if apiKey.ServiceAccountID != nil {
+		// Live currently emits free telemetry. Persist a zero-cost admission
+		// receipt before contacting the provider so it has the same immutable
+		// machine and tenant identity as every other machine usage record.
+		budget := service.BudgetServiceFromContext(c.Request.Context())
+		handle, admissionErr := budget.Admit(c.Request.Context(), apiKey, uuid.NewString(), 0, true)
+		if admissionErr == nil && handle == nil {
+			admissionErr = service.ErrBudgetUnavailable
+		}
+		if admissionErr == nil {
+			admissionErr = budget.Finalize(c.Request.Context(), handle.ID(), 0)
+		}
+		if admissionErr != nil {
+			if handle != nil {
+				_ = handle.Release(c.Request.Context())
+			}
+			status, code, message, _ := billingErrorDetails(admissionErr)
+			h.errorResponse(c, status, code, message)
+			return
+		}
+		handle.MarkSettled()
+		c.Request = c.Request.WithContext(service.WithBudgetReservation(c.Request.Context(), handle))
+	}
 
 	identity := liveCallIdentity(c, apiKey, subject.UserID, subscription)
 	created, err := h.gatewayService.CreateLiveCall(c.Request.Context(), request, identity, subject.Concurrency)
@@ -166,7 +190,7 @@ func liveCallIdentity(
 		value := subscription.ID
 		subscriptionID = &value
 	}
-	return service.LiveCallIdentity{
+	identity := service.LiveCallIdentity{
 		APIKeyID:        apiKey.ID,
 		UserID:          userID,
 		GroupID:         apiKey.GroupID,
@@ -175,6 +199,17 @@ func liveCallIdentity(
 		IPAddress:       ip.GetClientIP(c),
 		InboundEndpoint: GetInboundEndpoint(c),
 	}
+	if apiKey.ServiceAccountID != nil {
+		identity.ServiceAccountID = *apiKey.ServiceAccountID
+		identity.UserID = 0
+		identity.BudgetReservationID = service.BudgetReservationIDFromContext(c.Request.Context())
+	}
+	if apiKey.Tenant != nil {
+		identity.WorkspaceID = apiKey.Tenant.WorkspaceID
+		identity.ProjectID = apiKey.Tenant.ProjectID
+		identity.BillingPrincipalUserID = apiKey.BillingUserID()
+	}
+	return identity
 }
 
 func (h *OpenAIGatewayHandler) writeLiveCreateError(c *gin.Context, err error) {
@@ -214,9 +249,10 @@ func (h *OpenAIGatewayHandler) LiveSideband(c *gin.Context) {
 		return
 	}
 	identity := service.LiveCallIdentity{
-		APIKeyID: apiKey.ID,
-		UserID:   subject.UserID,
-		GroupID:  apiKey.GroupID,
+		APIKeyID:         apiKey.ID,
+		UserID:           subject.UserID,
+		ServiceAccountID: subject.ServiceAccountID,
+		GroupID:          apiKey.GroupID,
 	}
 	record, err := h.gatewayService.GetLiveCallForIdentity(c.Request.Context(), c.Param("call_id"), identity)
 	if err != nil {

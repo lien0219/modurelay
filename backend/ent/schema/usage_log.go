@@ -34,7 +34,8 @@ func (UsageLog) Annotations() []schema.Annotation {
 func (UsageLog) Fields() []ent.Field {
 	return []ent.Field{
 		// 关联字段
-		field.Int64("user_id"),
+		field.Int64("user_id").Optional(),
+		field.Int64("service_account_id").Optional().Nillable(),
 		field.Int64("api_key_id"),
 		field.Int64("account_id"),
 		// Tenant attribution is immutable request-time context. Historical rows
@@ -204,7 +205,6 @@ func (UsageLog) Edges() []ent.Edge {
 		edge.From("user", User.Type).
 			Ref("usage_logs").
 			Field("user_id").
-			Required().
 			Unique(),
 		edge.From("api_key", APIKey.Type).
 			Ref("usage_logs").

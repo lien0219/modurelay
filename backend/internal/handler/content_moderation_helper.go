@@ -82,13 +82,14 @@ func runContentModeration(c *gin.Context, reqLog *zap.Logger, svc *service.Conte
 
 func buildContentModerationInput(c *gin.Context, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol string, model string, body []byte) service.ContentModerationCheckInput {
 	input := service.ContentModerationCheckInput{
-		RequestID: contentModerationRequestID(c.Request.Context()),
-		UserID:    subject.UserID,
-		Endpoint:  GetInboundEndpoint(c),
-		Provider:  contentModerationProvider(apiKey),
-		Model:     clientRequestedModel(c, model),
-		Protocol:  protocol,
-		Body:      body,
+		RequestID:        contentModerationRequestID(c.Request.Context()),
+		UserID:           subject.UserID,
+		ServiceAccountID: subject.ServiceAccountID,
+		Endpoint:         GetInboundEndpoint(c),
+		Provider:         contentModerationProvider(apiKey),
+		Model:            clientRequestedModel(c, model),
+		Protocol:         protocol,
+		Body:             body,
 	}
 	if resolvedPlatform, ok := service.ResolvedTargetPlatformFromContext(c.Request.Context()); ok {
 		input.Provider = resolvedPlatform
@@ -99,7 +100,7 @@ func buildContentModerationInput(c *gin.Context, apiKey *service.APIKey, subject
 	if apiKey != nil {
 		input.APIKeyID = apiKey.ID
 		input.APIKeyName = apiKey.Name
-		if apiKey.User != nil {
+		if subject.ServiceAccountID == 0 && apiKey.User != nil {
 			input.UserEmail = apiKey.User.Email
 		}
 		if apiKey.GroupID != nil {

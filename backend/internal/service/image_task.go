@@ -34,6 +34,7 @@ var (
 type ImageTaskRecord struct {
 	ID                     string             `json:"id"`
 	UserID                 int64              `json:"user_id"`
+	ServiceAccountID       int64              `json:"service_account_id,omitempty"`
 	APIKeyID               int64              `json:"api_key_id"`
 	WorkspaceID            int64              `json:"workspace_id,omitempty"`
 	ProjectID              int64              `json:"project_id,omitempty"`
@@ -66,6 +67,7 @@ type ImageTask struct {
 
 type ImageTaskOwner struct {
 	UserID                 int64
+	ServiceAccountID       int64 `json:"service_account_id,omitempty"`
 	APIKeyID               int64
 	WorkspaceID            int64  `json:"workspace_id,omitempty"`
 	ProjectID              int64  `json:"project_id,omitempty"`
@@ -163,17 +165,28 @@ func (s *ImageTaskService) Create(ctx context.Context, owner ImageTaskOwner) (*I
 	if s == nil || s.store == nil {
 		return nil, ErrImageTaskUnavailable
 	}
-	if owner.WorkspaceID != 0 || owner.ProjectID != 0 || owner.BillingPrincipalUserID != 0 || owner.BudgetReservationID != "" {
-		if owner.UserID <= 0 || owner.APIKeyID <= 0 || owner.WorkspaceID <= 0 || owner.ProjectID <= 0 || owner.BillingPrincipalUserID <= 0 || strings.TrimSpace(owner.BudgetReservationID) == "" {
+	if owner.APIKeyID <= 0 || !ValidExecutionAttribution(owner.UserID, owner.ServiceAccountID) {
+		return nil, ErrBudgetReservationInvalid
+	}
+	hasTenantSnapshot := owner.WorkspaceID != 0 || owner.ProjectID != 0 || owner.BillingPrincipalUserID != 0 || owner.BudgetReservationID != ""
+	if hasTenantSnapshot {
+		if owner.WorkspaceID <= 0 || owner.ProjectID <= 0 || owner.BillingPrincipalUserID <= 0 || strings.TrimSpace(owner.BudgetReservationID) == "" {
 			return nil, ErrBudgetReservationInvalid
 		}
+	} else if owner.ServiceAccountID > 0 {
+		// Machine work always needs the full frozen tenant and funding context.
+		return nil, ErrBudgetReservationInvalid
+	}
+	if owner.ServiceAccountID > 0 && owner.UserID != 0 {
+		return nil, ErrBudgetReservationInvalid
 	}
 	now := time.Now().UTC()
 	task := &ImageTaskRecord{
-		ID:          "imgtask_" + strings.ReplaceAll(uuid.NewString(), "-", ""),
-		UserID:      owner.UserID,
-		APIKeyID:    owner.APIKeyID,
-		WorkspaceID: owner.WorkspaceID, ProjectID: owner.ProjectID, BillingPrincipalUserID: owner.BillingPrincipalUserID, BudgetReservationID: owner.BudgetReservationID,
+		ID:               "imgtask_" + strings.ReplaceAll(uuid.NewString(), "-", ""),
+		UserID:           owner.UserID,
+		ServiceAccountID: owner.ServiceAccountID,
+		APIKeyID:         owner.APIKeyID,
+		WorkspaceID:      owner.WorkspaceID, ProjectID: owner.ProjectID, BillingPrincipalUserID: owner.BillingPrincipalUserID, BudgetReservationID: owner.BudgetReservationID,
 		Status:    ImageTaskStatusProcessing,
 		CreatedAt: now.Unix(),
 		ExpiresAt: now.Add(s.ttl).Unix(),
@@ -195,7 +208,7 @@ func (s *ImageTaskService) Get(ctx context.Context, owner ImageTaskOwner, id str
 		}
 		return nil, ErrImageTaskUnavailable.WithCause(err)
 	}
-	if task.UserID != owner.UserID || task.APIKeyID != owner.APIKeyID {
+	if task.UserID != owner.UserID || task.ServiceAccountID != owner.ServiceAccountID || task.APIKeyID != owner.APIKeyID {
 		// Do not reveal whether a random task ID exists for another caller.
 		return nil, ErrImageTaskNotFound
 	}

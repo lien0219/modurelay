@@ -47,7 +47,8 @@ func buildBatchImageHoldCommand(job *BatchImageJob, requestID string, actualAmou
 	return &BatchImageBalanceHoldCommand{
 		RequestID:              requestID,
 		APIKeyID:               *job.APIKeyID,
-		UserID:                 job.UserID,
+		UserID:                 batchImageExecutionUserID(job),
+		ServiceAccountID:       valueOrZero(job.ServiceAccountID),
 		WorkspaceID:            valueOrZero(job.WorkspaceID),
 		ProjectID:              valueOrZero(job.ProjectID),
 		BillingPrincipalUserID: valueOrZero(job.BillingPrincipalUserID),
@@ -146,4 +147,14 @@ func invalidateBatchImageAuthCache(ctx context.Context, cache APIKeyAuthCacheInv
 			cache.InvalidateAuthCacheByUserID(ctx, job.UserID)
 		}
 	}
+}
+
+func batchImageExecutionUserID(job *BatchImageJob) int64 {
+	if job != nil && job.ServiceAccountID != nil {
+		return 0
+	}
+	if job == nil {
+		return 0
+	}
+	return job.UserID
 }

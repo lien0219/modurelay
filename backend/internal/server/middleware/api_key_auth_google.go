@@ -108,11 +108,11 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 			}
 		}
 
-		if apiKey.User == nil {
+		if (apiKey.ServiceAccountID == nil && apiKey.User == nil) || apiKey.BillingUser() == nil {
 			abortWithGoogleError(c, 401, "User associated with API key not found")
 			return
 		}
-		if !apiKey.User.IsActive() {
+		if (apiKey.User != nil && !apiKey.User.IsActive()) || !apiKey.BillingUser().IsActive() || (apiKey.ServiceAccountID != nil && (apiKey.ExecutionPrincipal().Validate() != nil || apiKey.ServiceAccountStatus != service.StatusActive)) {
 			MarkIngressRejected(c, IngressRejectUserInactive)
 			abortWithGoogleError(c, 401, "User account is not active")
 			return
@@ -135,15 +135,13 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 			return
 		}
 
-		c.Request = c.Request.WithContext(service.WithBudgetService(c.Request.Context(), apiKeyService.BudgetService()))
+		ctx := service.WithExecutionPrincipal(c.Request.Context(), apiKey.ExecutionPrincipal())
+		c.Request = c.Request.WithContext(service.WithBudgetService(ctx, apiKeyService.BudgetService()))
 		// 简易模式：跳过余额和订阅检查
 		if cfg.RunMode == config.RunModeSimple {
 			c.Set(string(ContextKeyAPIKey), apiKey)
-			c.Set(string(ContextKeyUser), AuthSubject{
-				UserID:      apiKey.User.ID,
-				Concurrency: apiKey.User.Concurrency,
-			})
-			c.Set(string(ContextKeyUserRole), apiKey.User.Role)
+			c.Set(string(ContextKeyUser), authSubjectForAPIKey(apiKey))
+			c.Set(string(ContextKeyUserRole), apiKeySubjectRole(apiKey))
 			setGroupContext(c, apiKey.Group)
 			_ = apiKeyService.TouchLastUsed(c.Request.Context(), apiKey.ID)
 			c.Next()
@@ -212,11 +210,8 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 		}
 
 		c.Set(string(ContextKeyAPIKey), apiKey)
-		c.Set(string(ContextKeyUser), AuthSubject{
-			UserID:      apiKey.User.ID,
-			Concurrency: apiKey.User.Concurrency,
-		})
-		c.Set(string(ContextKeyUserRole), apiKey.User.Role)
+		c.Set(string(ContextKeyUser), authSubjectForAPIKey(apiKey))
+		c.Set(string(ContextKeyUserRole), apiKeySubjectRole(apiKey))
 		setGroupContext(c, apiKey.Group)
 		_ = apiKeyService.TouchLastUsed(c.Request.Context(), apiKey.ID)
 		c.Next()

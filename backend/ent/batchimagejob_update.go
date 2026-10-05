@@ -49,6 +49,33 @@ func (_u *BatchImageJobUpdate) AddUserID(v int64) *BatchImageJobUpdate {
 	return _u
 }
 
+// SetServiceAccountID sets the "service_account_id" field.
+func (_u *BatchImageJobUpdate) SetServiceAccountID(v int64) *BatchImageJobUpdate {
+	_u.mutation.ResetServiceAccountID()
+	_u.mutation.SetServiceAccountID(v)
+	return _u
+}
+
+// SetNillableServiceAccountID sets the "service_account_id" field if the given value is not nil.
+func (_u *BatchImageJobUpdate) SetNillableServiceAccountID(v *int64) *BatchImageJobUpdate {
+	if v != nil {
+		_u.SetServiceAccountID(*v)
+	}
+	return _u
+}
+
+// AddServiceAccountID adds value to the "service_account_id" field.
+func (_u *BatchImageJobUpdate) AddServiceAccountID(v int64) *BatchImageJobUpdate {
+	_u.mutation.AddServiceAccountID(v)
+	return _u
+}
+
+// ClearServiceAccountID clears the value of the "service_account_id" field.
+func (_u *BatchImageJobUpdate) ClearServiceAccountID() *BatchImageJobUpdate {
+	_u.mutation.ClearServiceAccountID()
+	return _u
+}
+
 // SetAPIKeyID sets the "api_key_id" field.
 func (_u *BatchImageJobUpdate) SetAPIKeyID(v int64) *BatchImageJobUpdate {
 	_u.mutation.ResetAPIKeyID()
@@ -919,6 +946,15 @@ func (_u *BatchImageJobUpdate) sqlSave(ctx context.Context) (_node int, err erro
 	if value, ok := _u.mutation.AddedUserID(); ok {
 		_spec.AddField(batchimagejob.FieldUserID, field.TypeInt64, value)
 	}
+	if value, ok := _u.mutation.ServiceAccountID(); ok {
+		_spec.SetField(batchimagejob.FieldServiceAccountID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedServiceAccountID(); ok {
+		_spec.AddField(batchimagejob.FieldServiceAccountID, field.TypeInt64, value)
+	}
+	if _u.mutation.ServiceAccountIDCleared() {
+		_spec.ClearField(batchimagejob.FieldServiceAccountID, field.TypeInt64)
+	}
 	if value, ok := _u.mutation.APIKeyID(); ok {
 		_spec.SetField(batchimagejob.FieldAPIKeyID, field.TypeInt64, value)
 	}
@@ -1173,6 +1209,33 @@ func (_u *BatchImageJobUpdateOne) SetNillableUserID(v *int64) *BatchImageJobUpda
 // AddUserID adds value to the "user_id" field.
 func (_u *BatchImageJobUpdateOne) AddUserID(v int64) *BatchImageJobUpdateOne {
 	_u.mutation.AddUserID(v)
+	return _u
+}
+
+// SetServiceAccountID sets the "service_account_id" field.
+func (_u *BatchImageJobUpdateOne) SetServiceAccountID(v int64) *BatchImageJobUpdateOne {
+	_u.mutation.ResetServiceAccountID()
+	_u.mutation.SetServiceAccountID(v)
+	return _u
+}
+
+// SetNillableServiceAccountID sets the "service_account_id" field if the given value is not nil.
+func (_u *BatchImageJobUpdateOne) SetNillableServiceAccountID(v *int64) *BatchImageJobUpdateOne {
+	if v != nil {
+		_u.SetServiceAccountID(*v)
+	}
+	return _u
+}
+
+// AddServiceAccountID adds value to the "service_account_id" field.
+func (_u *BatchImageJobUpdateOne) AddServiceAccountID(v int64) *BatchImageJobUpdateOne {
+	_u.mutation.AddServiceAccountID(v)
+	return _u
+}
+
+// ClearServiceAccountID clears the value of the "service_account_id" field.
+func (_u *BatchImageJobUpdateOne) ClearServiceAccountID() *BatchImageJobUpdateOne {
+	_u.mutation.ClearServiceAccountID()
 	return _u
 }
 
@@ -2075,6 +2138,15 @@ func (_u *BatchImageJobUpdateOne) sqlSave(ctx context.Context) (_node *BatchImag
 	}
 	if value, ok := _u.mutation.AddedUserID(); ok {
 		_spec.AddField(batchimagejob.FieldUserID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.ServiceAccountID(); ok {
+		_spec.SetField(batchimagejob.FieldServiceAccountID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedServiceAccountID(); ok {
+		_spec.AddField(batchimagejob.FieldServiceAccountID, field.TypeInt64, value)
+	}
+	if _u.mutation.ServiceAccountIDCleared() {
+		_spec.ClearField(batchimagejob.FieldServiceAccountID, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.APIKeyID(); ok {
 		_spec.SetField(batchimagejob.FieldAPIKeyID, field.TypeInt64, value)

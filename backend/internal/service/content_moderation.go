@@ -319,6 +319,7 @@ type ContentModerationCheckInput struct {
 	riskControlLogOnly bool // Captured at admission and retained by asynchronous tasks.
 	RequestID          string
 	UserID             int64
+	ServiceAccountID   int64
 	UserEmail          string
 	APIKeyID           int64
 	APIKeyName         string
@@ -400,6 +401,7 @@ type ContentModerationLog struct {
 	ID                int64                        `json:"id"`
 	RequestID         string                       `json:"request_id"`
 	UserID            *int64                       `json:"user_id,omitempty"`
+	ServiceAccountID  *int64                       `json:"service_account_id,omitempty"`
 	UserEmail         string                       `json:"user_email"`
 	APIKeyID          *int64                       `json:"api_key_id,omitempty"`
 	APIKeyName        string                       `json:"api_key_name"`
@@ -428,13 +430,14 @@ type ContentModerationLog struct {
 }
 
 type ContentModerationLogFilter struct {
-	Pagination pagination.PaginationParams
-	Result     string
-	GroupID    *int64
-	Endpoint   string
-	Search     string
-	From       *time.Time
-	To         *time.Time
+	Pagination       pagination.PaginationParams
+	Result           string
+	GroupID          *int64
+	ServiceAccountID *int64
+	Endpoint         string
+	Search           string
+	From             *time.Time
+	To               *time.Time
 }
 
 type ContentModerationCleanupResult struct {
@@ -1901,6 +1904,10 @@ func (s *ContentModerationService) buildLog(input ContentModerationCheckInput, c
 	if input.APIKeyID > 0 {
 		apiKeyID = &input.APIKeyID
 	}
+	var serviceAccountID *int64
+	if input.ServiceAccountID > 0 {
+		serviceAccountID = &input.ServiceAccountID
+	}
 	mode := cfg.Mode
 	if input.riskControlLogOnly {
 		mode = ContentModerationModeRiskControlLogOnly
@@ -1909,6 +1916,7 @@ func (s *ContentModerationService) buildLog(input ContentModerationCheckInput, c
 	return &ContentModerationLog{
 		RequestID:         input.RequestID,
 		UserID:            userID,
+		ServiceAccountID:  serviceAccountID,
 		UserEmail:         input.UserEmail,
 		APIKeyID:          apiKeyID,
 		APIKeyName:        input.APIKeyName,
@@ -3025,21 +3033,22 @@ func maskSecretTail(secret string) string {
 
 // CyberPolicyRecordInput 是一次 cyber_policy 硬阻断的风控记录入参。
 type CyberPolicyRecordInput struct {
-	LogOnly         bool // Trusted platform user: retain evidence without penalties or notifications.
-	RequestID       string
-	UserID          int64
-	UserEmail       string
-	APIKeyID        int64
-	APIKeyName      string
-	GroupID         *int64
-	GroupName       string
-	Endpoint        string
-	Model           string
-	UpstreamMessage string
-	UpstreamBody    string
-	UpstreamStatus  int
-	UpstreamInTok   int
-	UpstreamOutTok  int
+	LogOnly          bool // Trusted platform user: retain evidence without penalties or notifications.
+	RequestID        string
+	UserID           int64
+	ServiceAccountID int64
+	UserEmail        string
+	APIKeyID         int64
+	APIKeyName       string
+	GroupID          *int64
+	GroupName        string
+	Endpoint         string
+	Model            string
+	UpstreamMessage  string
+	UpstreamBody     string
+	UpstreamStatus   int
+	UpstreamInTok    int
+	UpstreamOutTok   int
 }
 
 // RecordCyberPolicyEvent 把一次 cyber_policy 硬阻断写入风控中心日志、计入违规计数、
@@ -3070,6 +3079,10 @@ func (s *ContentModerationService) RecordCyberPolicyEvent(ctx context.Context, i
 	if in.APIKeyID > 0 {
 		apiKeyID = &in.APIKeyID
 	}
+	var serviceAccountID *int64
+	if in.ServiceAccountID > 0 {
+		serviceAccountID = &in.ServiceAccountID
+	}
 	errBody := strings.TrimSpace(in.UpstreamMessage)
 	if b := strings.TrimSpace(in.UpstreamBody); b != "" {
 		// 原始 body 不在此预脱敏；写入 log.Error 前由 redactContentModerationSecrets 统一脱敏。
@@ -3079,23 +3092,24 @@ func (s *ContentModerationService) RecordCyberPolicyEvent(ctx context.Context, i
 		errBody = fmt.Sprintf("%s\nupstream_usage=in:%d,out:%d", errBody, in.UpstreamInTok, in.UpstreamOutTok)
 	}
 	log := &ContentModerationLog{
-		RequestID:       in.RequestID,
-		UserID:          userID,
-		UserEmail:       in.UserEmail,
-		APIKeyID:        apiKeyID,
-		APIKeyName:      in.APIKeyName,
-		GroupID:         cloneInt64Ptr(in.GroupID),
-		GroupName:       in.GroupName,
-		Endpoint:        in.Endpoint,
-		Provider:        "openai",
-		Model:           in.Model,
-		Mode:            "post_upstream",
-		Action:          ContentModerationActionCyberPolicy,
-		Flagged:         true,
-		HighestCategory: "cyber_policy",
-		HighestScore:    1.0,
-		Error:           trimRunes(redactContentModerationSecrets(errBody), maxModerationExcerptRunes*4),
-		CreatedAt:       time.Now(),
+		RequestID:        in.RequestID,
+		UserID:           userID,
+		ServiceAccountID: serviceAccountID,
+		UserEmail:        in.UserEmail,
+		APIKeyID:         apiKeyID,
+		APIKeyName:       in.APIKeyName,
+		GroupID:          cloneInt64Ptr(in.GroupID),
+		GroupName:        in.GroupName,
+		Endpoint:         in.Endpoint,
+		Provider:         "openai",
+		Model:            in.Model,
+		Mode:             "post_upstream",
+		Action:           ContentModerationActionCyberPolicy,
+		Flagged:          true,
+		HighestCategory:  "cyber_policy",
+		HighestScore:     1.0,
+		Error:            trimRunes(redactContentModerationSecrets(errBody), maxModerationExcerptRunes*4),
+		CreatedAt:        time.Now(),
 	}
 	// 开关开时 cyber_policy 不参与封号计数：当次不判定（此处跳过），
 	// 历史行由 CountFlaggedByUserSince 的 excludeCyberPolicy 排除。

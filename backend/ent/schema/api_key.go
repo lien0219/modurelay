@@ -33,7 +33,9 @@ func (APIKey) Mixin() []ent.Mixin {
 
 func (APIKey) Fields() []ent.Field {
 	return []ent.Field{
-		field.Int64("user_id"),
+		field.Int64("user_id").Optional(),
+		field.Int64("service_account_id").Optional().Nillable(),
+		field.String("key_suffix").MaxLen(16).Optional().Nillable(),
 		field.Int64("project_id").Optional().Nillable(),
 		field.String("key").
 			MaxLen(128).
@@ -124,8 +126,7 @@ func (APIKey) Edges() []ent.Edge {
 		edge.From("user", User.Type).
 			Ref("api_keys").
 			Field("user_id").
-			Unique().
-			Required(),
+			Unique(),
 		edge.From("group", Group.Type).
 			Ref("api_keys").
 			Field("group_id").

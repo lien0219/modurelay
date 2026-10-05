@@ -1973,6 +1973,14 @@ func openAIFastPolicyUserID(ctx context.Context) int64 {
 	if ctx == nil {
 		return 0
 	}
+	// Funding is a separate identity. New gateway contexts carry the explicit
+	// execution principal; user-targeted rules never match a machine's payer.
+	if principal := ExecutionPrincipalFromContext(ctx); principal.Type != "" {
+		if principal.Type != PrincipalTypeUser || principal.Validate() != nil {
+			return 0
+		}
+		return principal.UserID
+	}
 	userID, _ := ctx.Value(ctxkey.UserID).(int64)
 	if userID <= 0 {
 		return 0

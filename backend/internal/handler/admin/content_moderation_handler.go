@@ -184,6 +184,14 @@ func (h *ContentModerationHandler) ListLogs(c *gin.Context) {
 		}
 		filter.GroupID = &groupID
 	}
+	if raw := strings.TrimSpace(c.Query("service_account_id")); raw != "" {
+		id, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || id <= 0 {
+			response.BadRequest(c, "Invalid service_account_id")
+			return
+		}
+		filter.ServiceAccountID = &id
+	}
 	if raw := strings.TrimSpace(c.Query("from")); raw != "" {
 		t, _, err := parseContentModerationDate(raw)
 		if err != nil {

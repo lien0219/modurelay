@@ -25,6 +25,17 @@ import (
 const (
 	EventVersion = 1
 
+	EventServiceAccountCreated            = "service_account.created"
+	EventServiceAccountUpdated            = "service_account.updated"
+	EventServiceAccountDisabled           = "service_account.disabled"
+	EventServiceAccountEnabled            = "service_account.enabled"
+	EventServiceAccountCredentialCreated  = "service_account.credential.created"
+	EventServiceAccountCredentialUpdated  = "service_account.credential.updated"
+	EventServiceAccountCredentialRevoked  = "service_account.credential.revoked"
+	EventServiceAccountCredentialRotated  = "service_account.credential.rotated"
+	EventServiceAccountCredentialExpiring = "service_account.credential.expiring"
+	EventServiceAccountCredentialExpired  = "service_account.credential.expired"
+
 	EventWorkspaceCreated   = "workspace.created"
 	EventWorkspaceUpdated   = "workspace.updated"
 	EventWorkspaceSuspended = "workspace.suspended"
@@ -54,6 +65,17 @@ const (
 )
 
 var allowedDomainEventTypes = map[string]struct{}{
+	EventServiceAccountCreated:            {},
+	EventServiceAccountUpdated:            {},
+	EventServiceAccountDisabled:           {},
+	EventServiceAccountEnabled:            {},
+	EventServiceAccountCredentialCreated:  {},
+	EventServiceAccountCredentialUpdated:  {},
+	EventServiceAccountCredentialRevoked:  {},
+	EventServiceAccountCredentialRotated:  {},
+	EventServiceAccountCredentialExpiring: {},
+	EventServiceAccountCredentialExpired:  {},
+
 	EventWorkspaceCreated: {}, EventWorkspaceUpdated: {}, EventWorkspaceSuspended: {},
 	EventWorkspaceResumed: {}, EventWorkspaceArchived: {}, EventMemberInvited: {},
 	EventMemberJoined: {}, EventMemberRoleChanged: {}, EventMemberSuspended: {},
@@ -76,6 +98,7 @@ type EventSubject struct {
 type DomainEventData map[string]any
 
 var allowedDomainEventDataKeys = map[string]struct{}{
+	"service_account_id": {}, "credential_id": {}, "credential_name": {}, "old_credential_id": {}, "new_credential_id": {}, "expires_at": {},
 	"name": {}, "slug": {}, "status": {}, "role": {}, "user_id": {},
 	"member_id": {}, "invitation_id": {}, "key_id": {}, "key_name": {},
 	"project_id": {}, "workspace_id": {}, "scope_type": {}, "scope_id": {},
@@ -194,7 +217,8 @@ func (e *DomainEvent) MarshalPayload() ([]byte, error) {
 
 func IsWorkspaceVisibleEvent(eventType string) bool {
 	switch strings.TrimSpace(eventType) {
-	case EventWorkspaceCreated, EventWorkspaceUpdated, EventWorkspaceSuspended, EventWorkspaceResumed, EventWorkspaceArchived,
+	case EventServiceAccountCreated, EventServiceAccountUpdated, EventServiceAccountDisabled, EventServiceAccountEnabled, EventServiceAccountCredentialCreated, EventServiceAccountCredentialUpdated, EventServiceAccountCredentialRevoked, EventServiceAccountCredentialRotated, EventServiceAccountCredentialExpiring, EventServiceAccountCredentialExpired,
+		EventWorkspaceCreated, EventWorkspaceUpdated, EventWorkspaceSuspended, EventWorkspaceResumed, EventWorkspaceArchived,
 		EventMemberInvited, EventMemberJoined, EventMemberRoleChanged, EventMemberSuspended, EventMemberRemoved,
 		EventProjectCreated, EventProjectUpdated, EventProjectArchived, EventProjectRestored,
 		EventAPIKeyCreated, EventAPIKeyUpdated, EventAPIKeyRevoked, EventBudgetThreshold, EventBudgetSoftLimit,
@@ -581,4 +605,9 @@ func notificationPresentation(eventType string) (category, titleKey, bodyKey str
 	default:
 		return "workspace", "notifications.workspace.title", "notifications.workspace.body"
 	}
+}
+
+// ServiceAccountEventTypes includes the reserved optional expiration notices.
+func ServiceAccountEventTypes() []string {
+	return []string{EventServiceAccountCreated, EventServiceAccountUpdated, EventServiceAccountDisabled, EventServiceAccountEnabled, EventServiceAccountCredentialCreated, EventServiceAccountCredentialUpdated, EventServiceAccountCredentialRevoked, EventServiceAccountCredentialRotated, EventServiceAccountCredentialExpiring, EventServiceAccountCredentialExpired}
 }

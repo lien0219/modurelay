@@ -33,7 +33,7 @@ func (r *budgetRepository) Reserve(ctx context.Context, a service.BudgetAttribut
 		return nil, service.ErrBudgetUnavailable
 	}
 	requestID = strings.TrimSpace(requestID)
-	if a.WorkspaceID <= 0 || a.ProjectID <= 0 || a.BillingPrincipalUserID <= 0 || a.ActorUserID <= 0 || a.APIKeyID <= 0 || requestID == "" {
+	if a.WorkspaceID <= 0 || a.ProjectID <= 0 || a.BillingPrincipalUserID <= 0 || !service.ValidExecutionAttribution(a.ActorUserID, a.ServiceAccountID) || a.APIKeyID <= 0 || requestID == "" {
 		return nil, service.ErrBudgetReservationInvalid
 	}
 	if !validBudgetAmount(estimate) {
@@ -110,15 +110,15 @@ func (r *budgetRepository) Reserve(ctx context.Context, a service.BudgetAttribut
 		}
 	}
 	reservation := &service.BudgetReservation{
-		ID: uuid.NewString(), RequestID: requestID, ActorUserID: a.ActorUserID, APIKeyID: a.APIKeyID,
+		ID: uuid.NewString(), RequestID: requestID, ActorUserID: a.ActorUserID, ServiceAccountID: a.ServiceAccountID, APIKeyID: a.APIKeyID,
 		WorkspaceID: a.WorkspaceID, ProjectID: a.ProjectID, BillingPrincipalUserID: a.BillingPrincipalUserID,
 		PeriodStart: workspacePeriod, PeriodEnd: workspacePeriod.AddDate(0, 1, 0),
 		ProjectPeriodStart: projectPeriod, ProjectPeriodEnd: projectPeriod.AddDate(0, 1, 0),
 		Estimate: estimate, Status: "pending",
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO budget_reservations(id,request_id,actor_user_id,api_key_id,workspace_id,project_id,billing_principal_user_id,period_start,period_end,project_period_start,project_period_end,estimate,status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'pending')`,
+	_, err = tx.ExecContext(ctx, `INSERT INTO budget_reservations(id,request_id,actor_user_id,api_key_id,workspace_id,project_id,billing_principal_user_id,period_start,period_end,project_period_start,project_period_end,estimate,status,service_account_id) VALUES($1,$2,NULLIF($3,0),$4,$5,$6,$7,$8,$9,$10,$11,$12,'pending',NULLIF($13,0))`,
 		reservation.ID, requestID, a.ActorUserID, a.APIKeyID, a.WorkspaceID, a.ProjectID, a.BillingPrincipalUserID,
-		reservation.PeriodStart, reservation.PeriodEnd, reservation.ProjectPeriodStart, reservation.ProjectPeriodEnd, estimate)
+		reservation.PeriodStart, reservation.PeriodEnd, reservation.ProjectPeriodStart, reservation.ProjectPeriodEnd, estimate, a.ServiceAccountID)
 	if err != nil {
 		return nil, err
 	}
@@ -158,7 +158,7 @@ func lockBudgetAdmissionUsers(ctx context.Context, tx *sql.Tx, a service.BudgetA
 		return err
 	}
 	want := 2
-	if a.ActorUserID == a.BillingPrincipalUserID {
+	if a.ActorUserID == a.BillingPrincipalUserID || a.ActorUserID == 0 {
 		want = 1
 	}
 	if count != want {
@@ -197,7 +197,14 @@ func lockBudgetScopes(ctx context.Context, tx *sql.Tx, workspaceID, projectID in
 
 func validateBudgetAdmissionKey(ctx context.Context, tx *sql.Tx, a service.BudgetAttribution) error {
 	var id int64
-	err := tx.QueryRowContext(ctx, `SELECT id FROM api_keys WHERE id=$1 AND user_id=$2 AND project_id=$3 AND deleted_at IS NULL AND status='active' AND (expires_at IS NULL OR expires_at>now()) AND (quota=0 OR quota_used<quota) FOR SHARE`, a.APIKeyID, a.ActorUserID, a.ProjectID).Scan(&id)
+	var err error
+	if a.ServiceAccountID > 0 {
+		err = tx.QueryRowContext(ctx, `SELECT k.id FROM api_keys k JOIN service_accounts sa ON sa.id=k.service_account_id AND sa.project_id=k.project_id
+ WHERE k.id=$1 AND k.user_id IS NULL AND k.service_account_id=$2 AND k.project_id=$3 AND sa.workspace_id=$4 AND sa.status='active'
+ AND k.deleted_at IS NULL AND k.status='active' AND (k.expires_at IS NULL OR k.expires_at>now()) AND (k.quota=0 OR k.quota_used<k.quota) FOR SHARE OF k,sa`, a.APIKeyID, a.ServiceAccountID, a.ProjectID, a.WorkspaceID).Scan(&id)
+	} else {
+		err = tx.QueryRowContext(ctx, `SELECT id FROM api_keys WHERE id=$1 AND user_id=$2 AND service_account_id IS NULL AND project_id=$3 AND deleted_at IS NULL AND status='active' AND (expires_at IS NULL OR expires_at>now()) AND (quota=0 OR quota_used<quota) FOR SHARE`, a.APIKeyID, a.ActorUserID, a.ProjectID).Scan(&id)
+	}
 	if errors.Is(err, sql.ErrNoRows) {
 		return service.ErrWorkspaceForbidden
 	}
@@ -220,7 +227,7 @@ func validateBudgetAdmissionKey(ctx context.Context, tx *sql.Tx, a service.Budge
 		return err
 	}
 	want := 2
-	if a.ActorUserID == a.BillingPrincipalUserID {
+	if a.ActorUserID == a.BillingPrincipalUserID || a.ActorUserID == 0 {
 		want = 1
 	}
 	if count != want {
@@ -344,17 +351,19 @@ func reserveBudgetCounter(ctx context.Context, tx *sql.Tx, scope budgetScope, es
 	return err
 }
 
-const budgetReservationColumns = `id,request_id,actor_user_id,api_key_id,workspace_id,project_id,billing_principal_user_id,period_start,period_end,project_period_start,project_period_end,estimate,actual,status`
+const budgetReservationColumns = `id,request_id,actor_user_id,service_account_id,api_key_id,workspace_id,project_id,billing_principal_user_id,period_start,period_end,project_period_start,project_period_end,estimate,actual,status`
 
 func scanBudgetReservation(row interface{ Scan(...any) error }) (*service.BudgetReservation, error) {
 	var out service.BudgetReservation
-	err := row.Scan(&out.ID, &out.RequestID, &out.ActorUserID, &out.APIKeyID, &out.WorkspaceID, &out.ProjectID, &out.BillingPrincipalUserID,
+	var actor, machine sql.NullInt64
+	err := row.Scan(&out.ID, &out.RequestID, &actor, &machine, &out.APIKeyID, &out.WorkspaceID, &out.ProjectID, &out.BillingPrincipalUserID,
 		&out.PeriodStart, &out.PeriodEnd, &out.ProjectPeriodStart, &out.ProjectPeriodEnd, &out.Estimate, &out.Actual, &out.Status)
+	out.ActorUserID, out.ServiceAccountID = actor.Int64, machine.Int64
 	return &out, err
 }
 
 func budgetAttributionMatches(res *service.BudgetReservation, a service.BudgetAttribution) bool {
-	return res.ActorUserID == a.ActorUserID && res.APIKeyID == a.APIKeyID && res.WorkspaceID == a.WorkspaceID && res.ProjectID == a.ProjectID && res.BillingPrincipalUserID == a.BillingPrincipalUserID
+	return res.ActorUserID == a.ActorUserID && res.ServiceAccountID == a.ServiceAccountID && res.APIKeyID == a.APIKeyID && res.WorkspaceID == a.WorkspaceID && res.ProjectID == a.ProjectID && res.BillingPrincipalUserID == a.BillingPrincipalUserID
 }
 
 func reservationBudgetScopes(res *service.BudgetReservation) []budgetScope {

@@ -162,17 +162,17 @@ func (s *OpenAIGatewayService) recoverVideoBillingKey(ctx context.Context, key s
 		}
 		return true, nil
 	}
-	if pending.RequestID == "" || pending.UserID <= 0 || pending.APIKeyID <= 0 || pending.AccountID <= 0 {
+	if pending.RequestID == "" || pending.OwnershipID() == 0 || pending.APIKeyID <= 0 || pending.AccountID <= 0 {
 		return true, fmt.Errorf("pending video recovery metadata is incomplete")
 	}
-	if grokVideoPendingBillingKey(pending.RequestID, pending.UserID, pending.APIKeyID) != strings.TrimSpace(key) {
+	if grokVideoPendingBillingKey(pending.RequestID, pending.OwnershipID(), pending.APIKeyID) != strings.TrimSpace(key) {
 		return false, errors.New("pending video recovery ownership mismatch")
 	}
 	logOnly := pending.Settlement != nil && pending.Settlement.LogOnly
-	if settled, err := s.videoUsageSettled(ctx, pending.RequestID, pending.UserID, pending.APIKeyID, pending.AccountID, logOnly); err != nil {
+	if settled, err := s.videoUsageSettled(ctx, pending.RequestID, pending.OwnershipID(), pending.APIKeyID, pending.AccountID, logOnly); err != nil {
 		return false, err
 	} else if settled {
-		if err := s.invalidateSettledVideoCaches(ctx, pending.UserID, pending.APIKeyID, pending.GroupID, "", nil); err != nil {
+		if err := s.invalidateSettledVideoCaches(ctx, pending.BillingUserID(), pending.APIKeyID, pending.GroupID, "", nil); err != nil {
 			return false, err
 		}
 		return true, nil
@@ -204,7 +204,7 @@ func (s *OpenAIGatewayService) recoverVideoBillingKey(ctx context.Context, key s
 		}
 	}
 
-	claimed, err := s.ClaimGrokVideoBilling(ctx, pending.RequestID, pending.UserID, pending.APIKeyID)
+	claimed, err := s.ClaimGrokVideoBilling(ctx, pending.RequestID, pending.OwnershipID(), pending.APIKeyID)
 	if err != nil {
 		return false, err
 	}
@@ -213,7 +213,7 @@ func (s *OpenAIGatewayService) recoverVideoBillingKey(ctx context.Context, key s
 	}
 
 	if err := s.recordRecoveredVideoUsage(ctx, account, &pending, result); err != nil {
-		if releaseErr := s.ReleaseGrokVideoBilling(ctx, pending.RequestID, pending.UserID, pending.APIKeyID); releaseErr != nil {
+		if releaseErr := s.ReleaseGrokVideoBilling(ctx, pending.RequestID, pending.OwnershipID(), pending.APIKeyID); releaseErr != nil {
 			logger.L().Error("video_billing_recovery.claim_release_failed",
 				zap.String("request_id", pending.RequestID),
 				zap.Error(releaseErr),
@@ -304,7 +304,7 @@ func (s *OpenAIGatewayService) recordRecoveredVideoUsage(
 	if err != nil || apiKey == nil {
 		return fmt.Errorf("load api key %d: %w", pending.APIKeyID, err)
 	}
-	if apiKey.User == nil || apiKey.UserID != pending.UserID {
+	if apiKey.VideoTaskOwnershipID() != pending.OwnershipID() || (pending.ServiceAccountID == 0 && apiKey.User == nil) {
 		return errors.New("video recovery api key ownership mismatch")
 	}
 	// Recover against the create-time tenant/payer snapshot. A live resolver here
@@ -340,7 +340,7 @@ func (s *OpenAIGatewayService) recordRecoveredVideoUsage(
 		if err != nil {
 			return fmt.Errorf("load video recovery subscription %d: %w", pending.SubscriptionID, err)
 		}
-		if subscription == nil || subscription.UserID != pending.UserID || subscription.GroupID != pending.GroupID {
+		if subscription == nil || subscription.UserID != pending.BillingUserID() || subscription.GroupID != pending.GroupID {
 			return errors.New("video recovery subscription ownership mismatch")
 		}
 	} else if apiKey.Group != nil && apiKey.Group.IsSubscriptionType() {

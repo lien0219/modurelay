@@ -54,7 +54,7 @@ func (h *AsyncImageHandler) Submit(c *gin.Context) {
 		return
 	}
 	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
-	if !ok || apiKey == nil || apiKey.UserID <= 0 || apiKey.ID <= 0 {
+	if !ok || apiKey == nil || apiKey.ID <= 0 || apiKey.ExecutionPrincipal().Validate() != nil {
 		imageTaskError(c, service.ErrImageTaskForbidden)
 		return
 	}
@@ -99,7 +99,8 @@ func (h *AsyncImageHandler) Submit(c *gin.Context) {
 	if !h.checkSecurityAuditBeforeSubmit(c, apiKey, platform, body) {
 		return
 	}
-	owner := service.ImageTaskOwner{UserID: apiKey.UserID, APIKeyID: apiKey.ID}
+	principal := apiKey.ExecutionPrincipal()
+	owner := service.ImageTaskOwner{UserID: principal.UserID, ServiceAccountID: principal.ServiceAccountID, APIKeyID: apiKey.ID}
 	workerDone := func() {}
 	if apiKey.Tenant != nil {
 		keyCopy := *apiKey
@@ -211,11 +212,12 @@ func (h *AsyncImageHandler) Get(c *gin.Context) {
 		return
 	}
 	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
-	if !ok || apiKey == nil || apiKey.UserID <= 0 || apiKey.ID <= 0 {
+	if !ok || apiKey == nil || apiKey.ID <= 0 || apiKey.ExecutionPrincipal().Validate() != nil {
 		imageTaskError(c, service.ErrImageTaskForbidden)
 		return
 	}
-	task, err := h.tasks.Get(c.Request.Context(), service.ImageTaskOwner{UserID: apiKey.UserID, APIKeyID: apiKey.ID}, c.Param("task_id"))
+	principal := apiKey.ExecutionPrincipal()
+	task, err := h.tasks.Get(c.Request.Context(), service.ImageTaskOwner{UserID: principal.UserID, ServiceAccountID: principal.ServiceAccountID, APIKeyID: apiKey.ID}, c.Param("task_id"))
 	if err != nil {
 		imageTaskError(c, err)
 		return

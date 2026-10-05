@@ -1,5 +1,6 @@
 export default {
   notifications: {
+    service_account: { title: '服务账号更新', body: '服务账号发生了变化。' },
     title: '通知',
     unreadCount: '{count} 条未读通知',
     markAllRead: '全部已读',
@@ -20,6 +21,7 @@ export default {
     readError: '已读状态保存失败。',
     threshold: '阈值：{threshold}%',
     events: {
+      service_account: { created: '服务账号已创建', updated: '服务账号已更新', disabled: '服务账号已禁用', enabled: '服务账号已启用', credential: { created: '服务账号凭证已创建', updated: '服务账号凭证已更新', revoked: '服务账号凭证已撤销', rotated: '服务账号凭证已轮换', expiring: '服务账号凭证即将过期', expired: '服务账号凭证已过期' } },
       workspace: { created: '工作区已创建', updated: '工作区已更新', suspended: '工作区已暂停', resumed: '工作区已恢复', archived: '工作区已归档' },
       member: { invited: '成员已受邀', joined: '成员已加入', role_changed: '成员角色已变更', suspended: '成员已暂停', removed: '成员已移除' },
       project: { created: '项目已创建', updated: '项目已更新', archived: '项目已归档', restored: '项目已恢复' },
@@ -37,6 +39,7 @@ export default {
       settled: '结算已完成',
     },
     categories: {
+      service_account: '服务账号',
       system: '系统', workspace: '工作区', project: '项目', api_key: 'API 密钥', budget: '预算', billing: '账单', quota: '配额', security: '安全', resources: '论坛',
     },
     workspace: { title: '工作区更新', body: '有一项工作区事件需要处理。' },

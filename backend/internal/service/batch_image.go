@@ -102,6 +102,7 @@ type BatchImageJob struct {
 	ID                      int64
 	BatchID                 string
 	UserID                  int64
+	ServiceAccountID        *int64
 	APIKeyID                *int64
 	WorkspaceID             *int64
 	ProjectID               *int64
@@ -167,6 +168,7 @@ type BatchImageJob struct {
 type CreateBatchImageJobParams struct {
 	BatchID                string
 	UserID                 int64
+	ServiceAccountID       *int64
 	APIKeyID               *int64
 	WorkspaceID            *int64
 	ProjectID              *int64

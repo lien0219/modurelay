@@ -110,6 +110,10 @@ func (r *workspaceRepository) GetOverview(ctx context.Context, scope service.Fin
 	if err = load(` SELECT api_key_id::text,api_key_id::text,SUM(request_count)::bigint,SUM(actual_cost) FROM finops_usage GROUP BY 1 ORDER BY 4 DESC LIMIT 100`, &out.APIKeys); err != nil {
 		return nil, err
 	}
+	out.ServiceAccounts, err = loadServiceAccountFinOps(ctx, tx, scope, summary.Start, summary.End, *summary)
+	if err != nil {
+		return nil, err
+	}
 	return out, tx.Commit()
 }
 

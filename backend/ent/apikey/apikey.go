@@ -23,6 +23,10 @@ const (
 	FieldDeletedAt = "deleted_at"
 	// FieldUserID holds the string denoting the user_id field in the database.
 	FieldUserID = "user_id"
+	// FieldServiceAccountID holds the string denoting the service_account_id field in the database.
+	FieldServiceAccountID = "service_account_id"
+	// FieldKeySuffix holds the string denoting the key_suffix field in the database.
+	FieldKeySuffix = "key_suffix"
 	// FieldProjectID holds the string denoting the project_id field in the database.
 	FieldProjectID = "project_id"
 	// FieldKey holds the string denoting the key field in the database.
@@ -101,6 +105,8 @@ var Columns = []string{
 	FieldUpdatedAt,
 	FieldDeletedAt,
 	FieldUserID,
+	FieldServiceAccountID,
+	FieldKeySuffix,
 	FieldProjectID,
 	FieldKey,
 	FieldName,
@@ -147,6 +153,8 @@ var (
 	DefaultUpdatedAt func() time.Time
 	// UpdateDefaultUpdatedAt holds the default value on update for the "updated_at" field.
 	UpdateDefaultUpdatedAt func() time.Time
+	// KeySuffixValidator is a validator for the "key_suffix" field. It is called by the builders before save.
+	KeySuffixValidator func(string) error
 	// KeyValidator is a validator for the "key" field. It is called by the builders before save.
 	KeyValidator func(string) error
 	// NameValidator is a validator for the "name" field. It is called by the builders before save.
@@ -199,6 +207,16 @@ func ByDeletedAt(opts ...sql.OrderTermOption) OrderOption {
 // ByUserID orders the results by the user_id field.
 func ByUserID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldUserID, opts...).ToFunc()
+}
+
+// ByServiceAccountID orders the results by the service_account_id field.
+func ByServiceAccountID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldServiceAccountID, opts...).ToFunc()
+}
+
+// ByKeySuffix orders the results by the key_suffix field.
+func ByKeySuffix(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldKeySuffix, opts...).ToFunc()
 }
 
 // ByProjectID orders the results by the project_id field.

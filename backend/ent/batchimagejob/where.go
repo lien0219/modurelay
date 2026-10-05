@@ -64,6 +64,11 @@ func UserID(v int64) predicate.BatchImageJob {
 	return predicate.BatchImageJob(sql.FieldEQ(FieldUserID, v))
 }
 
+// ServiceAccountID applies equality check predicate on the "service_account_id" field. It's identical to ServiceAccountIDEQ.
+func ServiceAccountID(v int64) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldEQ(FieldServiceAccountID, v))
+}
+
 // APIKeyID applies equality check predicate on the "api_key_id" field. It's identical to APIKeyIDEQ.
 func APIKeyID(v int64) predicate.BatchImageJob {
 	return predicate.BatchImageJob(sql.FieldEQ(FieldAPIKeyID, v))
@@ -357,6 +362,56 @@ func UserIDLT(v int64) predicate.BatchImageJob {
 // UserIDLTE applies the LTE predicate on the "user_id" field.
 func UserIDLTE(v int64) predicate.BatchImageJob {
 	return predicate.BatchImageJob(sql.FieldLTE(FieldUserID, v))
+}
+
+// ServiceAccountIDEQ applies the EQ predicate on the "service_account_id" field.
+func ServiceAccountIDEQ(v int64) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldEQ(FieldServiceAccountID, v))
+}
+
+// ServiceAccountIDNEQ applies the NEQ predicate on the "service_account_id" field.
+func ServiceAccountIDNEQ(v int64) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldNEQ(FieldServiceAccountID, v))
+}
+
+// ServiceAccountIDIn applies the In predicate on the "service_account_id" field.
+func ServiceAccountIDIn(vs ...int64) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldIn(FieldServiceAccountID, vs...))
+}
+
+// ServiceAccountIDNotIn applies the NotIn predicate on the "service_account_id" field.
+func ServiceAccountIDNotIn(vs ...int64) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldNotIn(FieldServiceAccountID, vs...))
+}
+
+// ServiceAccountIDGT applies the GT predicate on the "service_account_id" field.
+func ServiceAccountIDGT(v int64) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldGT(FieldServiceAccountID, v))
+}
+
+// ServiceAccountIDGTE applies the GTE predicate on the "service_account_id" field.
+func ServiceAccountIDGTE(v int64) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldGTE(FieldServiceAccountID, v))
+}
+
+// ServiceAccountIDLT applies the LT predicate on the "service_account_id" field.
+func ServiceAccountIDLT(v int64) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldLT(FieldServiceAccountID, v))
+}
+
+// ServiceAccountIDLTE applies the LTE predicate on the "service_account_id" field.
+func ServiceAccountIDLTE(v int64) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldLTE(FieldServiceAccountID, v))
+}
+
+// ServiceAccountIDIsNil applies the IsNil predicate on the "service_account_id" field.
+func ServiceAccountIDIsNil() predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldIsNull(FieldServiceAccountID))
+}
+
+// ServiceAccountIDNotNil applies the NotNil predicate on the "service_account_id" field.
+func ServiceAccountIDNotNil() predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldNotNull(FieldServiceAccountID))
 }
 
 // APIKeyIDEQ applies the EQ predicate on the "api_key_id" field.

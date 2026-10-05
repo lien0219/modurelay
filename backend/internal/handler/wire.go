@@ -253,9 +253,10 @@ func ProvideHandlers(
 	}
 }
 
-func ProvideWorkspaceHandler(workspaceService *service.WorkspaceService, apiKeyService *service.APIKeyService, webhookService *service.WorkspaceWebhookService) *WorkspaceHandler {
+func ProvideWorkspaceHandler(workspaceService *service.WorkspaceService, apiKeyService *service.APIKeyService, webhookService *service.WorkspaceWebhookService, serviceAccountService *service.ServiceAccountService) *WorkspaceHandler {
 	h := NewWorkspaceHandler(workspaceService, apiKeyService)
 	h.SetWebhookService(webhookService)
+	h.SetServiceAccountService(serviceAccountService)
 	return h
 }
 

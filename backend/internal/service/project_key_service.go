@@ -63,6 +63,7 @@ func (s *APIKeyService) RevalidateTenant(ctx context.Context, k *APIKey) error {
 		return ErrWorkspaceForbidden
 	}
 	k.Tenant = tenant
+	s.compileAPIKeyIPRules(k)
 	// The principal is fresh even when the key and actor came from L1/Redis.
 	if s.userRepo != nil {
 		principal, e := s.userRepo.GetByID(ctx, tenant.BillingPrincipalUserID)
@@ -193,6 +194,13 @@ func (k *APIKey) FilterModels(models []string) []string {
 }
 func maskProjectKey(k *APIKey) {
 	if k == nil {
+		return
+	}
+	if k.ServiceAccountID != nil {
+		k.Key = "****"
+		if k.KeySuffix != nil {
+			k.Key += *k.KeySuffix
+		}
 		return
 	}
 	secret := k.Key
@@ -353,7 +361,7 @@ func (s *APIKeyService) GetForUser(ctx context.Context, a, id int64) (*APIKey, e
 	if e != nil {
 		return nil, e
 	}
-	if k.UserID != a {
+	if k.ServiceAccountID != nil || k.UserID != a {
 		return nil, ErrAPIKeyNotFound
 	}
 	_, org, e := s.legacyKeyScope(ctx, a, id, "key.read")

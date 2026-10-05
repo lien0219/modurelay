@@ -113,7 +113,7 @@ func (r *apiKeyRepository) GetByIDForVideoBilling(ctx context.Context, id int64)
 //   - 适用于删除等只需 key 与用户 ID 的场景
 func (r *apiKeyRepository) GetKeyAndOwnerID(ctx context.Context, id int64) (string, int64, error) {
 	m, err := r.activeQuery().
-		Where(apikey.IDEQ(id)).
+		Where(apikey.IDEQ(id), apikey.ServiceAccountIDIsNil()).
 		Select(apikey.FieldKey, apikey.FieldUserID).
 		Only(ctx)
 	if err != nil {
@@ -126,8 +126,11 @@ func (r *apiKeyRepository) GetKeyAndOwnerID(ctx context.Context, id int64) (stri
 }
 
 func (r *apiKeyRepository) GetByKey(ctx context.Context, key string) (*service.APIKey, error) {
+	if strings.HasPrefix(key, "sha256:") {
+		return nil, service.ErrAPIKeyNotFound
+	}
 	m, err := r.activeQuery().
-		Where(apikey.KeyEQ(key)).
+		Where(apikey.Or(apikey.And(apikey.ServiceAccountIDIsNil(), apikey.KeyEQ(key)), apikey.And(apikey.ServiceAccountIDNotNil(), apikey.KeyEQ(service.HashServiceAccountCredential(key))))).
 		WithUser(func(q *dbent.UserQuery) {
 			q.WithAllowedGroups(func(gq *dbent.GroupQuery) {
 				gq.Select(group.FieldID)
@@ -145,11 +148,16 @@ func (r *apiKeyRepository) GetByKey(ctx context.Context, key string) (*service.A
 }
 
 func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*service.APIKey, error) {
+	if strings.HasPrefix(key, "sha256:") {
+		return nil, service.ErrAPIKeyNotFound
+	}
 	m, err := r.activeQuery().
-		Where(apikey.KeyEQ(key)).
+		Where(apikey.Or(apikey.And(apikey.ServiceAccountIDIsNil(), apikey.KeyEQ(key)), apikey.And(apikey.ServiceAccountIDNotNil(), apikey.KeyEQ(service.HashServiceAccountCredential(key))))).
 		Select(
 			apikey.FieldID,
 			apikey.FieldUserID,
+			apikey.FieldServiceAccountID,
+			apikey.FieldKeySuffix,
 			apikey.FieldProjectID,
 			apikey.FieldGroupID,
 			apikey.FieldName,
@@ -279,7 +287,7 @@ func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey, fiel
 	client := clientFromContext(ctx, r.client)
 	now := time.Now()
 	builder := client.APIKey.Update().
-		Where(apikey.IDEQ(key.ID), apikey.DeletedAtIsNil()).
+		Where(apikey.IDEQ(key.ID), apikey.DeletedAtIsNil(), apikey.ServiceAccountIDIsNil()).
 		SetUpdatedAt(now)
 	if _, _, project, _, scoped := service.ProjectKeyScopeFromContext(ctx); scoped {
 		builder.Where(apikey.ProjectIDEQ(project))
@@ -431,7 +439,7 @@ func (r *apiKeyRepository) DeleteWithAudit(ctx context.Context, id int64) error 
 }
 
 func (r *apiKeyRepository) deleteWithTombstone(ctx context.Context, exec *dbent.Client, id int64, tombstoneKey string) error {
-	query := `UPDATE api_keys SET key=$1,deleted_at=NOW(),updated_at=NOW() WHERE id=$2 AND deleted_at IS NULL`
+	query := `UPDATE api_keys SET key=$1,deleted_at=NOW(),updated_at=NOW() WHERE id=$2 AND deleted_at IS NULL AND service_account_id IS NULL`
 	args := []any{tombstoneKey, id}
 	if _, _, project, _, scoped := service.ProjectKeyScopeFromContext(ctx); scoped {
 		query += ` AND project_id=$3`
@@ -448,7 +456,7 @@ func (r *apiKeyRepository) deleteWithTombstone(ctx context.Context, exec *dbent.
 	if affected == 0 {
 		// 并发/重复删除:记录已存在(已软删)则幂等返回 nil(defer 回滚空事务),否则 NotFound。
 		exists, existErr := r.client.APIKey.Query().
-			Where(apikey.IDEQ(id)).
+			Where(apikey.IDEQ(id), apikey.ServiceAccountIDIsNil()).
 			Exist(mixins.SkipSoftDelete(ctx))
 		if existErr != nil {
 			return existErr
@@ -462,7 +470,7 @@ func (r *apiKeyRepository) deleteWithTombstone(ctx context.Context, exec *dbent.
 }
 
 func (r *apiKeyRepository) apiKeyListByUserIDQuery(ctx context.Context, userID int64, filters service.APIKeyListFilters) *dbent.APIKeyQuery {
-	q := r.activeQuery().Where(apikey.UserIDEQ(userID))
+	q := r.activeQuery().Where(apikey.UserIDEQ(userID), apikey.ServiceAccountIDIsNil())
 	if service.TenantKeyReadsEnabled(ctx) {
 		q = q.Where(legacyTenantReadPredicate(userID))
 	}
@@ -643,7 +651,7 @@ func (r *apiKeyRepository) VerifyOwnership(ctx context.Context, userID int64, ap
 	}
 
 	ids, err := r.client.APIKey.Query().
-		Where(apikey.UserIDEQ(userID), apikey.IDIn(apiKeyIDs...), apikey.DeletedAtIsNil()).
+		Where(apikey.UserIDEQ(userID), apikey.ServiceAccountIDIsNil(), apikey.IDIn(apiKeyIDs...), apikey.DeletedAtIsNil()).
 		IDs(ctx)
 	if err != nil {
 		return nil, err
@@ -652,17 +660,17 @@ func (r *apiKeyRepository) VerifyOwnership(ctx context.Context, userID int64, ap
 }
 
 func (r *apiKeyRepository) CountByUserID(ctx context.Context, userID int64) (int64, error) {
-	count, err := r.activeQuery().Where(apikey.UserIDEQ(userID)).Count(ctx)
+	count, err := r.activeQuery().Where(apikey.UserIDEQ(userID), apikey.ServiceAccountIDIsNil()).Count(ctx)
 	return int64(count), err
 }
 
 func (r *apiKeyRepository) ExistsByKey(ctx context.Context, key string) (bool, error) {
-	count, err := r.activeQuery().Where(apikey.KeyEQ(key)).Count(ctx)
+	count, err := r.activeQuery().Where(apikey.Or(apikey.And(apikey.ServiceAccountIDIsNil(), apikey.KeyEQ(key)), apikey.And(apikey.ServiceAccountIDNotNil(), apikey.KeyEQ(service.HashServiceAccountCredential(key))))).Count(ctx)
 	return count > 0, err
 }
 
 func (r *apiKeyRepository) ListByGroupID(ctx context.Context, groupID int64, params pagination.PaginationParams) ([]service.APIKey, *pagination.PaginationResult, error) {
-	q := r.activeQuery().Where(apikey.GroupIDEQ(groupID))
+	q := r.activeQuery().Where(apikey.GroupIDEQ(groupID), apikey.ServiceAccountIDIsNil())
 
 	total, err := q.Count(ctx)
 	if err != nil {
@@ -733,7 +741,7 @@ func (r *apiKeyRepository) SearchAPIKeys(ctx context.Context, userID int64, keyw
 		q = q.Where(legacyTenantReadPredicate(userID))
 	}
 	if userID > 0 {
-		q = q.Where(apikey.UserIDEQ(userID))
+		q = q.Where(apikey.UserIDEQ(userID), apikey.ServiceAccountIDIsNil())
 	}
 
 	if keyword != "" {
@@ -784,7 +792,7 @@ func (r *apiKeyRepository) CountByGroupID(ctx context.Context, groupID int64) (i
 
 func (r *apiKeyRepository) ListKeysByUserID(ctx context.Context, userID int64) ([]string, error) {
 	keys, err := r.activeQuery().
-		Where(apikey.UserIDEQ(userID)).
+		Where(apikey.UserIDEQ(userID), apikey.ServiceAccountIDIsNil()).
 		Select(apikey.FieldKey).
 		Strings(ctx)
 	if err != nil {
@@ -923,30 +931,32 @@ func apiKeyEntityToService(m *dbent.APIKey) *service.APIKey {
 		return nil
 	}
 	out := &service.APIKey{
-		ID:            m.ID,
-		UserID:        m.UserID,
-		ProjectID:     m.ProjectID,
-		Key:           m.Key,
-		Name:          m.Name,
-		Status:        m.Status,
-		IPWhitelist:   m.IPWhitelist,
-		IPBlacklist:   m.IPBlacklist,
-		LastUsedAt:    m.LastUsedAt,
-		CreatedAt:     m.CreatedAt,
-		UpdatedAt:     m.UpdatedAt,
-		GroupID:       m.GroupID,
-		Quota:         m.Quota,
-		QuotaUsed:     m.QuotaUsed,
-		ExpiresAt:     m.ExpiresAt,
-		RateLimit5h:   m.RateLimit5h,
-		RateLimit1d:   m.RateLimit1d,
-		RateLimit7d:   m.RateLimit7d,
-		Usage5h:       m.Usage5h,
-		Usage1d:       m.Usage1d,
-		Usage7d:       m.Usage7d,
-		Window5hStart: m.Window5hStart,
-		Window1dStart: m.Window1dStart,
-		Window7dStart: m.Window7dStart,
+		ID:               m.ID,
+		UserID:           m.UserID,
+		ServiceAccountID: m.ServiceAccountID,
+		KeySuffix:        m.KeySuffix,
+		ProjectID:        m.ProjectID,
+		Key:              m.Key,
+		Name:             m.Name,
+		Status:           m.Status,
+		IPWhitelist:      m.IPWhitelist,
+		IPBlacklist:      m.IPBlacklist,
+		LastUsedAt:       m.LastUsedAt,
+		CreatedAt:        m.CreatedAt,
+		UpdatedAt:        m.UpdatedAt,
+		GroupID:          m.GroupID,
+		Quota:            m.Quota,
+		QuotaUsed:        m.QuotaUsed,
+		ExpiresAt:        m.ExpiresAt,
+		RateLimit5h:      m.RateLimit5h,
+		RateLimit1d:      m.RateLimit1d,
+		RateLimit7d:      m.RateLimit7d,
+		Usage5h:          m.Usage5h,
+		Usage1d:          m.Usage1d,
+		Usage7d:          m.Usage7d,
+		Window5hStart:    m.Window5hStart,
+		Window1dStart:    m.Window1dStart,
+		Window7dStart:    m.Window7dStart,
 	}
 	if m.Edges.User != nil {
 		out.User = userEntityToService(m.Edges.User)

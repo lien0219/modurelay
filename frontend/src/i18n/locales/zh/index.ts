@@ -12,6 +12,7 @@ import tools from './tools'
 import workspace from './workspace'
 import workspaceWebhooks from './workspaceWebhooks'
 import notifications from './notifications'
+import serviceAccounts from './serviceAccounts'
 
 export default {
   ...landing,
@@ -27,6 +28,7 @@ export default {
   ...tools,
   workspace: { ...workspace.workspace, ...workspaceWebhooks.workspace },
   ...notifications,
+  ...serviceAccounts,
   nav: {
     ...common.nav,
     ...tools.nav,

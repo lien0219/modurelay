@@ -160,12 +160,12 @@ func securityAuditWSTurn(c *gin.Context) (int, bool) {
 func buildSecurityAuditRequest(c *gin.Context, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol, model string, body []byte, stage string) securityaudit.Request {
 	legacy := buildContentModerationInput(c, apiKey, subject, protocol, model, body)
 	request := securityaudit.Request{
-		RequestID: legacy.RequestID, UserID: legacy.UserID, UserEmail: legacy.UserEmail,
+		RequestID: legacy.RequestID, UserID: legacy.UserID, ServiceAccountID: legacy.ServiceAccountID, UserEmail: legacy.UserEmail,
 		APIKeyID: legacy.APIKeyID, APIKeyName: legacy.APIKeyName, GroupID: cloneSecurityAuditGroupID(legacy.GroupID),
 		GroupName: legacy.GroupName, Provider: legacy.Provider, Endpoint: legacy.Endpoint,
 		Protocol: legacy.Protocol, Model: legacy.Model, Body: body, Stage: strings.TrimSpace(stage),
 	}
-	if apiKey != nil && apiKey.User != nil {
+	if subject.ServiceAccountID == 0 && apiKey != nil && apiKey.User != nil {
 		request.Username = apiKey.User.Username
 		if request.UserEmail == "" {
 			request.UserEmail = apiKey.User.Email

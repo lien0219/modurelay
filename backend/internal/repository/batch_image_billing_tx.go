@@ -48,7 +48,12 @@ func validateBatchImageHoldSnapshotTx(ctx context.Context, tx *sql.Tx, cmd *serv
 	if job.HoldAmount != nil {
 		hold = *job.HoldAmount
 	}
-	if job.UserID != cmd.UserID || batchImageSnapshotID(job.APIKeyID) != cmd.APIKeyID || batchImageSnapshotID(job.WorkspaceID) != cmd.WorkspaceID || batchImageSnapshotID(job.ProjectID) != cmd.ProjectID || batchImageSnapshotID(job.BillingPrincipalUserID) != cmd.BillingPrincipalUserID || service.QuantizeUsageBillingAmount(hold) != service.QuantizeUsageBillingAmount(cmd.HoldAmount) {
+	actorID := job.UserID
+	machineID := batchImageSnapshotID(job.ServiceAccountID)
+	if machineID > 0 {
+		actorID = 0
+	}
+	if actorID != cmd.UserID || machineID != cmd.ServiceAccountID || !service.ValidExecutionAttribution(cmd.UserID, cmd.ServiceAccountID) || batchImageSnapshotID(job.APIKeyID) != cmd.APIKeyID || batchImageSnapshotID(job.WorkspaceID) != cmd.WorkspaceID || batchImageSnapshotID(job.ProjectID) != cmd.ProjectID || batchImageSnapshotID(job.BillingPrincipalUserID) != cmd.BillingPrincipalUserID || service.QuantizeUsageBillingAmount(hold) != service.QuantizeUsageBillingAmount(cmd.HoldAmount) {
 		return nil, nil, service.ErrBudgetReservationConflict
 	}
 	if operation == "release" && job.ProviderCreateStartedAt != nil && (job.ProviderJobName == nil || strings.TrimSpace(*job.ProviderJobName) == "") && (job.Status == service.BatchImageJobStatusUploading || job.Status == service.BatchImageJobStatusCreated || (job.LastErrorCode != nil && *job.LastErrorCode == "SUBMIT_OUTCOME_UNKNOWN")) {
@@ -77,9 +82,9 @@ func validateBatchImageHoldSnapshotTx(ctx context.Context, tx *sql.Tx, cmd *serv
 		// its returned ID. The hold request ID plus the complete frozen owner
 		// safely recovers that reservation without relying on live membership.
 		err = tx.QueryRowContext(ctx, `SELECT id::text FROM budget_reservations
-			WHERE request_id=$1 AND api_key_id=$2 AND actor_user_id=$3
+			WHERE request_id=$1 AND api_key_id=$2 AND actor_user_id IS NOT DISTINCT FROM NULLIF($3,0) AND service_account_id IS NOT DISTINCT FROM NULLIF($7,0)
 				AND workspace_id=$4 AND project_id=$5 AND billing_principal_user_id=$6`,
-			service.BatchImageHoldRequestID(job.BatchID), cmd.APIKeyID, cmd.UserID, cmd.WorkspaceID, cmd.ProjectID, cmd.BillingPrincipalUserID).Scan(&reservationID)
+			service.BatchImageHoldRequestID(job.BatchID), cmd.APIKeyID, cmd.UserID, cmd.WorkspaceID, cmd.ProjectID, cmd.BillingPrincipalUserID, cmd.ServiceAccountID).Scan(&reservationID)
 		if errors.Is(err, sql.ErrNoRows) {
 			if strings.TrimSpace(cmd.BudgetReservationID) != "" {
 				return nil, nil, service.ErrBudgetReservationConflict
@@ -98,7 +103,7 @@ func validateBatchImageHoldSnapshotTx(ctx context.Context, tx *sql.Tx, cmd *serv
 	}
 	cmd.BudgetReservationID = reservationID
 	budgetCmd := &service.UsageBillingCommand{
-		RequestID: cmd.RequestID, UserID: cmd.UserID, APIKeyID: cmd.APIKeyID,
+		RequestID: cmd.RequestID, UserID: cmd.UserID, ServiceAccountID: cmd.ServiceAccountID, APIKeyID: cmd.APIKeyID,
 		WorkspaceID: cmd.WorkspaceID, ProjectID: cmd.ProjectID,
 		BillingPrincipalUserID: cmd.BillingPrincipalUserID, BudgetReservationID: reservationID,
 		BudgetActualCost: service.QuantizeUsageBillingAmount(cmd.ActualAmount), ResolvedPlatform: service.PlatformGemini,
@@ -170,7 +175,7 @@ func persistBatchImageSummaryTx(ctx context.Context, tx *sql.Tx, job *service.Ba
 	}
 	reservationID := cmd.BudgetReservationID
 	log := &service.UsageLog{
-		UserID: job.UserID, APIKeyID: *job.APIKeyID, AccountID: *job.AccountID,
+		UserID: cmd.UserID, ServiceAccountID: job.ServiceAccountID, APIKeyID: *job.APIKeyID, AccountID: *job.AccountID,
 		WorkspaceID: job.WorkspaceID, ProjectID: job.ProjectID, BillingPrincipalUserID: job.BillingPrincipalUserID,
 		BudgetReservationID: &reservationID, ResolvedPlatform: &platform,
 		RequestID: cmd.RequestID, Model: job.Model, RequestedModel: job.Model,
@@ -186,11 +191,11 @@ func persistBatchImageSummaryTx(ctx context.Context, tx *sql.Tx, job *service.Ba
 	}
 	var owned bool
 	err := tx.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM usage_logs
-		WHERE request_id=$1 AND api_key_id=$2 AND user_id=$3 AND account_id=$4
+		WHERE request_id=$1 AND api_key_id=$2 AND user_id IS NOT DISTINCT FROM NULLIF($3,0) AND service_account_id IS NOT DISTINCT FROM NULLIF($12,0) AND account_id=$4
 			AND workspace_id=$5 AND project_id=$6 AND billing_principal_user_id=$7
 			AND budget_reservation_id=$8 AND image_count=$9 AND actual_cost=$10::numeric AND model=$11)`,
 		cmd.RequestID, cmd.APIKeyID, cmd.UserID, *job.AccountID, cmd.WorkspaceID, cmd.ProjectID,
-		cmd.BillingPrincipalUserID, cmd.BudgetReservationID, job.SuccessCount, cmd.ActualAmount, job.Model).Scan(&owned)
+		cmd.BillingPrincipalUserID, cmd.BudgetReservationID, job.SuccessCount, cmd.ActualAmount, job.Model, cmd.ServiceAccountID).Scan(&owned)
 	if err != nil {
 		return err
 	}

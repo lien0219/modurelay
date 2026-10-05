@@ -21,6 +21,7 @@ INSERT INTO ops_error_logs (
   request_id,
   client_request_id,
   user_id,
+  service_account_id,
   api_key_id,
   account_id,
   group_id,
@@ -57,7 +58,7 @@ INSERT INTO ops_error_logs (
   created_at,
   api_key_prefix
 ) VALUES (
-  $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38
+  $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39
 )`
 
 func NewOpsRepository(db *sql.DB) service.OpsRepository {
@@ -132,6 +133,7 @@ func opsInsertErrorLogArgs(input *service.OpsInsertErrorLogInput) []any {
 		opsNullString(input.RequestID),
 		opsNullString(input.ClientRequestID),
 		opsNullInt64(input.UserID),
+		opsNullInt64(input.ServiceAccountID),
 		opsNullInt64(input.APIKeyID),
 		opsNullInt64(input.AccountID),
 		opsNullInt64(input.GroupID),
@@ -251,6 +253,7 @@ SELECT
   COALESCE(e.request_id, ''),
   COALESCE(e.error_message, ''),
   e.user_id,
+  e.service_account_id,
   COALESCE(u.email, ''),
   e.api_key_id,
   e.account_id,
@@ -290,6 +293,7 @@ LIMIT $` + itoa(len(args)+1) + ` OFFSET $` + itoa(len(args)+2)
 		var statusCode sql.NullInt64
 		var clientIP sql.NullString
 		var userID sql.NullInt64
+		var serviceAccountID sql.NullInt64
 		var apiKeyID sql.NullInt64
 		var accountID sql.NullInt64
 		var accountName string
@@ -321,6 +325,7 @@ LIMIT $` + itoa(len(args)+1) + ` OFFSET $` + itoa(len(args)+2)
 			&item.RequestID,
 			&item.Message,
 			&userID,
+			&serviceAccountID,
 			&userEmail,
 			&apiKeyID,
 			&accountID,
@@ -358,6 +363,10 @@ LIMIT $` + itoa(len(args)+1) + ` OFFSET $` + itoa(len(args)+2)
 		if userID.Valid {
 			v := userID.Int64
 			item.UserID = &v
+		}
+		if serviceAccountID.Valid {
+			v := serviceAccountID.Int64
+			item.ServiceAccountID = &v
 		}
 		item.UserEmail = userEmail
 		if apiKeyID.Valid {
@@ -427,6 +436,7 @@ SELECT
   COALESCE(e.upstream_errors::text, ''),
   e.is_business_limited,
   e.user_id,
+  e.service_account_id,
   COALESCE(u.email, ''),
   e.api_key_id,
   e.account_id,
@@ -465,6 +475,7 @@ LIMIT 1`
 	var resolvedBy sql.NullInt64
 	var clientIP sql.NullString
 	var userID sql.NullInt64
+	var serviceAccountID sql.NullInt64
 	var apiKeyID sql.NullInt64
 	var accountID sql.NullInt64
 	var groupID sql.NullInt64
@@ -501,6 +512,7 @@ LIMIT 1`
 		&out.UpstreamErrors,
 		&out.IsBusinessLimited,
 		&userID,
+		&serviceAccountID,
 		&out.UserEmail,
 		&apiKeyID,
 		&accountID,
@@ -549,6 +561,10 @@ LIMIT 1`
 	if userID.Valid {
 		v := userID.Int64
 		out.UserID = &v
+	}
+	if serviceAccountID.Valid {
+		v := serviceAccountID.Int64
+		out.ServiceAccountID = &v
 	}
 	if apiKeyID.Valid {
 		v := apiKeyID.Int64
@@ -655,6 +671,7 @@ func (r *opsRepository) BatchInsertSystemLogs(ctx context.Context, inputs []*ser
 		"request_id",
 		"client_request_id",
 		"user_id",
+		"service_account_id",
 		"api_key_id",
 		"account_id",
 		"platform",
@@ -698,6 +715,7 @@ func (r *opsRepository) BatchInsertSystemLogs(ctx context.Context, inputs []*ser
 			opsNullString(input.RequestID),
 			opsNullString(input.ClientRequestID),
 			opsNullInt64(input.UserID),
+			opsNullInt64(input.ServiceAccountID),
 			opsNullInt64(input.APIKeyID),
 			opsNullInt64(input.AccountID),
 			opsNullString(input.Platform),
@@ -766,6 +784,7 @@ SELECT
   COALESCE(l.request_id, ''),
   COALESCE(l.client_request_id, ''),
   l.user_id,
+  l.service_account_id,
   l.api_key_id,
   l.account_id,
   COALESCE(l.platform, ''),
@@ -786,6 +805,7 @@ LIMIT $` + itoa(len(args)+1) + ` OFFSET $` + itoa(len(args)+2)
 	for rows.Next() {
 		item := &service.OpsSystemLog{}
 		var userID sql.NullInt64
+		var serviceAccountID sql.NullInt64
 		var apiKeyID sql.NullInt64
 		var accountID sql.NullInt64
 		var extraRaw string
@@ -799,6 +819,7 @@ LIMIT $` + itoa(len(args)+1) + ` OFFSET $` + itoa(len(args)+2)
 			&item.RequestID,
 			&item.ClientRequestID,
 			&userID,
+			&serviceAccountID,
 			&apiKeyID,
 			&accountID,
 			&item.Platform,
@@ -810,6 +831,10 @@ LIMIT $` + itoa(len(args)+1) + ` OFFSET $` + itoa(len(args)+2)
 		if userID.Valid {
 			v := userID.Int64
 			item.UserID = &v
+		}
+		if serviceAccountID.Valid {
+			v := serviceAccountID.Int64
+			item.ServiceAccountID = &v
 		}
 		if apiKeyID.Valid {
 			v := apiKeyID.Int64
@@ -1014,6 +1039,10 @@ func buildOpsErrorLogsWhere(filter *service.OpsErrorLogFilter) (string, []any) {
 		n := itoa(len(args))
 		clauses = append(clauses, "e.user_id = $"+n)
 	}
+	if filter.ServiceAccountID != nil && *filter.ServiceAccountID > 0 {
+		args = append(args, *filter.ServiceAccountID)
+		clauses = append(clauses, "e.service_account_id = $"+itoa(len(args)))
+	}
 	if filter.APIKeyID != nil && *filter.APIKeyID > 0 {
 		args = append(args, *filter.APIKeyID)
 		clauses = append(clauses, "e.api_key_id = $"+itoa(len(args)))
@@ -1111,6 +1140,11 @@ func buildOpsSystemLogsWhere(filter *service.OpsSystemLogFilter) (string, []any,
 			clauses = append(clauses, "l.user_id = $"+itoa(len(args)))
 			hasConstraint = true
 		}
+		if filter.ServiceAccountID != nil && *filter.ServiceAccountID > 0 {
+			args = append(args, *filter.ServiceAccountID)
+			clauses = append(clauses, "l.service_account_id = $"+itoa(len(args)))
+			hasConstraint = true
+		}
 		if filter.APIKeyID != nil && *filter.APIKeyID > 0 {
 			args = append(args, *filter.APIKeyID)
 			clauses = append(clauses, "l.api_key_id = $"+itoa(len(args)))
@@ -1148,19 +1182,20 @@ func buildOpsSystemLogsCleanupWhere(filter *service.OpsSystemLogCleanupFilter) (
 		filter = &service.OpsSystemLogCleanupFilter{}
 	}
 	listFilter := &service.OpsSystemLogFilter{
-		StartTime:       filter.StartTime,
-		EndTime:         filter.EndTime,
-		Host:            filter.Host,
-		Level:           filter.Level,
-		Component:       filter.Component,
-		RequestID:       filter.RequestID,
-		ClientRequestID: filter.ClientRequestID,
-		UserID:          filter.UserID,
-		APIKeyID:        filter.APIKeyID,
-		AccountID:       filter.AccountID,
-		Platform:        filter.Platform,
-		Model:           filter.Model,
-		Query:           filter.Query,
+		StartTime:        filter.StartTime,
+		EndTime:          filter.EndTime,
+		Host:             filter.Host,
+		Level:            filter.Level,
+		Component:        filter.Component,
+		RequestID:        filter.RequestID,
+		ClientRequestID:  filter.ClientRequestID,
+		UserID:           filter.UserID,
+		ServiceAccountID: filter.ServiceAccountID,
+		APIKeyID:         filter.APIKeyID,
+		AccountID:        filter.AccountID,
+		Platform:         filter.Platform,
+		Model:            filter.Model,
+		Query:            filter.Query,
 	}
 	return buildOpsSystemLogsWhere(listFilter)
 }

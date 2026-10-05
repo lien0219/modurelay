@@ -17,16 +17,17 @@ type opsSystemLogCleanupRequest struct {
 	EndTime   string `json:"end_time"`
 	Host      string `json:"host"`
 
-	Level           string `json:"level"`
-	Component       string `json:"component"`
-	RequestID       string `json:"request_id"`
-	ClientRequestID string `json:"client_request_id"`
-	UserID          *int64 `json:"user_id"`
-	APIKeyID        *int64 `json:"api_key_id"`
-	AccountID       *int64 `json:"account_id"`
-	Platform        string `json:"platform"`
-	Model           string `json:"model"`
-	Query           string `json:"q"`
+	Level            string `json:"level"`
+	Component        string `json:"component"`
+	RequestID        string `json:"request_id"`
+	ClientRequestID  string `json:"client_request_id"`
+	UserID           *int64 `json:"user_id"`
+	ServiceAccountID *int64 `json:"service_account_id"`
+	APIKeyID         *int64 `json:"api_key_id"`
+	AccountID        *int64 `json:"account_id"`
+	Platform         string `json:"platform"`
+	Model            string `json:"model"`
+	Query            string `json:"q"`
 }
 
 // ListSystemLogs returns indexed system logs.
@@ -73,6 +74,14 @@ func (h *OpsHandler) ListSystemLogs(c *gin.Context) {
 			return
 		}
 		filter.UserID = &id
+	}
+	if v := strings.TrimSpace(c.Query("service_account_id")); v != "" {
+		id, parseErr := strconv.ParseInt(v, 10, 64)
+		if parseErr != nil || id <= 0 {
+			response.BadRequest(c, "Invalid service_account_id")
+			return
+		}
+		filter.ServiceAccountID = &id
 	}
 	if v := strings.TrimSpace(c.Query("api_key_id")); v != "" {
 		id, parseErr := strconv.ParseInt(v, 10, 64)
@@ -151,21 +160,26 @@ func (h *OpsHandler) CleanupSystemLogs(c *gin.Context) {
 		response.BadRequest(c, "Invalid api_key_id")
 		return
 	}
+	if req.ServiceAccountID != nil && *req.ServiceAccountID <= 0 {
+		response.BadRequest(c, "Invalid service_account_id")
+		return
+	}
 
 	filter := &service.OpsSystemLogCleanupFilter{
-		StartTime:       start,
-		EndTime:         end,
-		Host:            strings.TrimSpace(req.Host),
-		Level:           strings.TrimSpace(req.Level),
-		Component:       strings.TrimSpace(req.Component),
-		RequestID:       strings.TrimSpace(req.RequestID),
-		ClientRequestID: strings.TrimSpace(req.ClientRequestID),
-		UserID:          req.UserID,
-		APIKeyID:        req.APIKeyID,
-		AccountID:       req.AccountID,
-		Platform:        strings.TrimSpace(req.Platform),
-		Model:           strings.TrimSpace(req.Model),
-		Query:           strings.TrimSpace(req.Query),
+		StartTime:        start,
+		EndTime:          end,
+		Host:             strings.TrimSpace(req.Host),
+		Level:            strings.TrimSpace(req.Level),
+		Component:        strings.TrimSpace(req.Component),
+		RequestID:        strings.TrimSpace(req.RequestID),
+		ClientRequestID:  strings.TrimSpace(req.ClientRequestID),
+		UserID:           req.UserID,
+		ServiceAccountID: req.ServiceAccountID,
+		APIKeyID:         req.APIKeyID,
+		AccountID:        req.AccountID,
+		Platform:         strings.TrimSpace(req.Platform),
+		Model:            strings.TrimSpace(req.Model),
+		Query:            strings.TrimSpace(req.Query),
 	}
 
 	deleted, err := h.opsService.CleanupSystemLogs(c.Request.Context(), filter, subject.UserID)

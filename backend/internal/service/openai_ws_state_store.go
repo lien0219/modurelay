@@ -131,7 +131,7 @@ func NewOpenAIWSStateStore(cache GatewayCache) OpenAIWSStateStore {
 
 func (s *defaultOpenAIWSStateStore) BindHTTPResponseOwner(ctx context.Context, groupID int64, responseID string, userID, apiKeyID int64, ttl time.Duration) error {
 	id := normalizeOpenAIWSResponseID(responseID)
-	if id == "" || userID <= 0 || apiKeyID <= 0 {
+	if id == "" || userID == 0 || apiKeyID <= 0 {
 		return nil
 	}
 	ttl = normalizeOpenAIWSTTL(ttl)
@@ -178,7 +178,7 @@ func (s *defaultOpenAIWSStateStore) GetHTTPResponseOwner(ctx context.Context, gr
 	cacheCtx, cancel := withOpenAIWSStateStoreRedisTimeout(ctx)
 	defer cancel()
 	userID, err := s.cache.GetSessionAccountID(cacheCtx, groupID, openAIHTTPResponseOwnerCacheKey(openAIHTTPResponseOwnerUserPrefix, id))
-	if err != nil || userID <= 0 {
+	if err != nil || userID == 0 {
 		return 0, 0, false, err
 	}
 	apiKeyID, err := s.cache.GetSessionAccountID(cacheCtx, groupID, openAIHTTPResponseOwnerCacheKey(openAIHTTPResponseOwnerKeyPrefix, id))
