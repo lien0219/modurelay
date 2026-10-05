@@ -42,7 +42,14 @@ func webhookControlledDNS(t *testing.T) *atomic.Value {
 				if question.Type != dnsmessage.TypeA {
 					continue
 				}
-				ip := address.Load().(net.IP).To4()
+				storedIP, ok := address.Load().(net.IP)
+				if !ok {
+					continue
+				}
+				ip := storedIP.To4()
+				if ip == nil {
+					continue
+				}
 				response.Answers = append(response.Answers, dnsmessage.Resource{
 					Header: dnsmessage.ResourceHeader{Name: question.Name, Type: dnsmessage.TypeA, Class: dnsmessage.ClassINET, TTL: 0},
 					Body:   &dnsmessage.AResource{A: [4]byte{ip[0], ip[1], ip[2], ip[3]}},

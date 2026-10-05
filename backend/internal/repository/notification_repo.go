@@ -48,7 +48,7 @@ func (r *notificationRepository) CreateForRecipients(ctx context.Context, notifi
 	for start := 0; start < len(notifications); start += notificationInsertBatchSize {
 		end := min(start+notificationInsertBatchSize, len(notifications))
 		var query strings.Builder
-		query.WriteString(`INSERT INTO user_notifications(event_id,recipient_user_id,workspace_id,project_id,category,title_key,body_key,data) VALUES`)
+		_, _ = query.WriteString(`INSERT INTO user_notifications(event_id,recipient_user_id,workspace_id,project_id,category,title_key,body_key,data) VALUES`)
 		args := make([]any, 0, (end-start)*8)
 		for i, item := range notifications[start:end] {
 			if item.Data == nil {
@@ -59,20 +59,20 @@ func (r *notificationRepository) CreateForRecipients(ctx context.Context, notifi
 				return marshalErr
 			}
 			if i > 0 {
-				query.WriteByte(',')
+				_ = query.WriteByte(',')
 			}
-			query.WriteByte('(')
+			_ = query.WriteByte('(')
 			for column := 0; column < 8; column++ {
 				if column > 0 {
-					query.WriteByte(',')
+					_ = query.WriteByte(',')
 				}
-				query.WriteByte('$')
-				query.WriteString(itoa(len(args) + column + 1))
+				_ = query.WriteByte('$')
+				_, _ = query.WriteString(itoa(len(args) + column + 1))
 			}
-			query.WriteByte(')')
+			_ = query.WriteByte(')')
 			args = append(args, item.EventID, item.RecipientUserID, item.WorkspaceID, item.ProjectID, item.Category, item.TitleKey, item.BodyKey, payload)
 		}
-		query.WriteString(` ON CONFLICT(event_id,recipient_user_id) DO NOTHING`)
+		_, _ = query.WriteString(` ON CONFLICT(event_id,recipient_user_id) DO NOTHING`)
 		if _, err = tx.ExecContext(ctx, query.String(), args...); err != nil {
 			return err
 		}
