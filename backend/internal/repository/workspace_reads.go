@@ -183,5 +183,8 @@ func (r *workspaceRepository) AdminSetStatus(ctx context.Context, a, w int64, st
 	if e = appendWorkspaceAudit(ctx, tx, w, a, nil, "workspace_"+status, "workspace", w, map[string]any{"previous_status": ws.Status, "status": status}); e != nil {
 		return e
 	}
+	if e = insertWorkspaceMutationEvent(ctx, tx, w, 0, a, "workspace_"+status, "workspace", w, service.DomainEventData{"previous_status": ws.Status, "status": status}); e != nil {
+		return e
+	}
 	return tx.Commit()
 }

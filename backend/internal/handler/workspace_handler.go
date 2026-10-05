@@ -16,6 +16,7 @@ import (
 type WorkspaceHandler struct {
 	workspaces *service.WorkspaceService
 	keys       *service.APIKeyService
+	webhooks   *service.WorkspaceWebhookService
 }
 
 func finopsRange(c *gin.Context) (time.Time, time.Time, string, error) {
@@ -47,7 +48,11 @@ func finopsRange(c *gin.Context) (time.Time, time.Time, string, error) {
 }
 
 func NewWorkspaceHandler(w *service.WorkspaceService, k *service.APIKeyService) *WorkspaceHandler {
-	return &WorkspaceHandler{w, k}
+	return &WorkspaceHandler{workspaces: w, keys: k}
+}
+
+func (h *WorkspaceHandler) SetWebhookService(webhooks *service.WorkspaceWebhookService) {
+	h.webhooks = webhooks
 }
 func (h *WorkspaceHandler) RegisterTenantRoutes(v1 *gin.RouterGroup) {
 	routes := []struct{ method, path, action string }{
@@ -56,6 +61,7 @@ func (h *WorkspaceHandler) RegisterTenantRoutes(v1 *gin.RouterGroup) {
 		{"GET", "/workspaces/:id/invitations", "invitation.list"}, {"POST", "/workspaces/:id/invitations", "invitation.create"}, {"DELETE", "/workspaces/:id/invitations/:invitation_id", "invitation.revoke"}, {"POST", "/workspace-invitations/accept", "invitation.accept"},
 		{"GET", "/workspaces/:id/projects", "project.list"}, {"POST", "/workspaces/:id/projects", "project.create"}, {"GET", "/workspaces/:id/projects/:project_id", "project.get"}, {"PATCH", "/workspaces/:id/projects/:project_id", "project.update"}, {"DELETE", "/workspaces/:id/projects/:project_id", "project.archive"},
 		{"GET", "/workspaces/:id/projects/:project_id/keys", "key.list"}, {"POST", "/workspaces/:id/projects/:project_id/keys", "key.create"}, {"GET", "/workspaces/:id/projects/:project_id/keys/:key_id", "key.get"}, {"PATCH", "/workspaces/:id/projects/:project_id/keys/:key_id", "key.update"}, {"DELETE", "/workspaces/:id/projects/:project_id/keys/:key_id", "key.revoke"}, {"GET", "/workspaces/:id/projects/:project_id/groups/available", "group.available"}, {"GET", "/workspaces/:id/audit", "audit.list"},
+		{"GET", "/workspaces/:id/webhooks", "webhook.list"}, {"POST", "/workspaces/:id/webhooks", "webhook.create"}, {"PATCH", "/workspaces/:id/webhooks/:webhook_id", "webhook.update"}, {"DELETE", "/workspaces/:id/webhooks/:webhook_id", "webhook.delete"}, {"POST", "/workspaces/:id/webhooks/:webhook_id/rotate", "webhook.rotate"}, {"POST", "/workspaces/:id/webhooks/:webhook_id/test", "webhook.test"}, {"GET", "/workspaces/:id/webhooks/:webhook_id/deliveries", "webhook.deliveries"}, {"POST", "/workspaces/:id/webhooks/:webhook_id/deliveries/:delivery_id/retry", "webhook.retry"},
 		{"GET", "/workspaces/:id/usage", "finops.workspace.usage"}, {"GET", "/workspaces/:id/overview", "finops.workspace.overview"}, {"GET", "/workspaces/:id/budget", "finops.workspace.budget.get"}, {"PUT", "/workspaces/:id/budget", "finops.workspace.budget.put"},
 		{"GET", "/workspaces/:id/projects/:project_id/usage", "finops.project.usage"}, {"GET", "/workspaces/:id/projects/:project_id/overview", "finops.project.overview"}, {"GET", "/workspaces/:id/projects/:project_id/budget", "finops.project.budget.get"}, {"PUT", "/workspaces/:id/projects/:project_id/budget", "finops.project.budget.put"},
 	}
@@ -108,7 +114,7 @@ func (h *WorkspaceHandler) handle(action string) gin.HandlerFunc {
 			return
 		}
 		ids := map[string]int64{}
-		for _, name := range []string{"id", "project_id", "member_id", "invitation_id", "key_id"} {
+		for _, name := range []string{"id", "project_id", "member_id", "invitation_id", "key_id", "webhook_id", "delivery_id"} {
 			if raw := c.Param(name); raw != "" {
 				id, e := strconv.ParseInt(raw, 10, 64)
 				if e != nil || id <= 0 {
@@ -357,6 +363,82 @@ func (h *WorkspaceHandler) handle(action string) gin.HandlerFunc {
 		case "audit.list":
 			out, total, err = h.workspaces.ListAudit(ctx, a, w, params)
 			list = true
+		case "webhook.list":
+			if h.webhooks == nil {
+				err = service.ErrWorkspaceNotFound
+				break
+			}
+			out, err = h.webhooks.List(ctx, a, w)
+		case "webhook.create":
+			if h.webhooks == nil {
+				err = service.ErrWorkspaceNotFound
+				break
+			}
+			var req struct {
+				Name       string   `json:"name"`
+				URL        string   `json:"url"`
+				EventTypes []string `json:"event_types"`
+			}
+			if !workspaceBind(c, &req) {
+				return
+			}
+			var webhook *service.WorkspaceWebhook
+			var secret string
+			webhook, secret, err = h.webhooks.Create(ctx, a, w, service.CreateWorkspaceWebhookInput{Name: req.Name, URL: req.URL, EventTypes: req.EventTypes})
+			out = gin.H{"webhook": webhook, "secret": secret}
+		case "webhook.update":
+			if h.webhooks == nil {
+				err = service.ErrWorkspaceNotFound
+				break
+			}
+			var req struct {
+				Name       *string   `json:"name"`
+				URL        *string   `json:"url"`
+				Enabled    *bool     `json:"enabled"`
+				EventTypes *[]string `json:"event_types"`
+			}
+			if !workspaceBind(c, &req) {
+				return
+			}
+			out, err = h.webhooks.Update(ctx, a, w, ids["webhook_id"], service.UpdateWorkspaceWebhookInput{Name: req.Name, URL: req.URL, Enabled: req.Enabled, EventTypes: req.EventTypes})
+		case "webhook.delete":
+			if h.webhooks == nil {
+				err = service.ErrWorkspaceNotFound
+				break
+			}
+			err = h.webhooks.Delete(ctx, a, w, ids["webhook_id"])
+		case "webhook.rotate":
+			if h.webhooks == nil {
+				err = service.ErrWorkspaceNotFound
+				break
+			}
+			var webhook *service.WorkspaceWebhook
+			var secret string
+			webhook, secret, err = h.webhooks.Rotate(ctx, a, w, ids["webhook_id"])
+			out = gin.H{"webhook": webhook, "secret": secret}
+		case "webhook.test":
+			if h.webhooks == nil {
+				err = service.ErrWorkspaceNotFound
+				break
+			}
+			out, err = h.webhooks.Test(ctx, a, w, ids["webhook_id"])
+			if err == nil {
+				response.Accepted(c, out)
+				return
+			}
+		case "webhook.deliveries":
+			if h.webhooks == nil {
+				err = service.ErrWorkspaceNotFound
+				break
+			}
+			out, total, err = h.webhooks.Deliveries(ctx, a, w, ids["webhook_id"], page, size)
+			list = true
+		case "webhook.retry":
+			if h.webhooks == nil {
+				err = service.ErrWorkspaceNotFound
+				break
+			}
+			out, err = h.webhooks.Retry(ctx, a, w, ids["webhook_id"], ids["delivery_id"])
 		case "finops.workspace.usage", "finops.project.usage", "finops.workspace.overview", "finops.project.overview":
 			start, end, tz, parseErr := finopsRange(c)
 			if parseErr != nil {

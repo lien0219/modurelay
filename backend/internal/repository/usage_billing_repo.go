@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -35,7 +36,15 @@ func (r *usageBillingRepository) ApplyVideoUsage(ctx context.Context, cmd *servi
 			return nil, err
 		}
 	}
-	return r.apply(ctx, cmd, log)
+	result, err := r.apply(ctx, cmd, log)
+	if err != nil && cmd.WorkspaceID > 0 && strings.TrimSpace(cmd.BudgetReservationID) != "" {
+		// The money transaction has rolled back. Persist the actual pending
+		// obligation and its alert together on a separate committed transaction.
+		if pendingErr := r.recordPendingVideoSettlement(ctx, cmd, log, err); pendingErr != nil {
+			return nil, fmt.Errorf("%w (persist pending settlement: %v)", err, pendingErr)
+		}
+	}
+	return result, err
 }
 
 // ApplyTenantUsage commits the balance/quota effects, budget settlement, and
@@ -264,6 +273,11 @@ func (r *usageBillingRepository) apply(ctx context.Context, cmd *service.UsageBi
 			}
 		}
 		result.VideoUsageLogPersisted = true
+		if cmd.WorkspaceID > 0 {
+			if err := recordRecoveredVideoSettlementTx(ctx, tx, cmd); err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	if err := tx.Commit(); err != nil {

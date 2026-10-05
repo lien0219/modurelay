@@ -11,6 +11,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/lib/pq"
+	"strconv"
 )
 
 func legacyTenantReadPredicate(actor int64) predicate.APIKey {
@@ -265,6 +266,30 @@ func (r *apiKeyRepository) WithProjectKeyMutation(ctx context.Context, a, w, p i
 		return service.ErrWorkspaceInvalid
 	}
 	if _, e = client.ExecContext(ctx, `INSERT INTO workspace_audit_logs(workspace_id,project_id,actor_user_id,action,target_type,target_id,metadata) VALUES($1,$2,$3,$4,'api_key',$5,'{}'::jsonb)`, w, p, a, permission, target); e != nil {
+		return e
+	}
+	// Read only the public key metadata on the same Ent transaction. Secrets,
+	// credential hashes and upstream configuration never enter the envelope.
+	rows, e = client.QueryContext(ctx, `SELECT name FROM api_keys WHERE id=$1 AND project_id=$2`, target, p)
+	if e != nil {
+		return e
+	}
+	if !rows.Next() {
+		_ = rows.Close()
+		return service.ErrWorkspaceNotFound
+	}
+	var name string
+	e = rows.Scan(&name)
+	_ = rows.Close()
+	if e != nil {
+		return e
+	}
+	eventType := map[string]string{"key.create": service.EventAPIKeyCreated, "key.update": service.EventAPIKeyUpdated, "key.revoke": service.EventAPIKeyRevoked}[permission]
+	event, e := service.NewDomainEvent(eventType, w, p, a, "api_key", strconv.FormatInt(target, 10), service.DomainEventData{"key_id": target, "key_name": name, "project_id": p})
+	if e != nil {
+		return e
+	}
+	if e = insertDomainEventTx(ctx, client, event, ""); e != nil {
 		return e
 	}
 	return tx.Commit()

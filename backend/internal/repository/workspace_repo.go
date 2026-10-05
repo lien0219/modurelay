@@ -127,6 +127,8 @@ func (r *workspaceRepository) EnsurePersonalWorkspace(ctx context.Context, userI
 	if e != nil {
 		return nil, e
 	}
+	// The personal-workspace insert trigger records creation atomically for
+	// both registration and lazy bootstrap, including concurrent first access.
 	// Lazy first access fills one bounded page. Remaining keys are picked up by
 	// Bootstrap; never rewrite already assigned keys or any historical usage.
 	_, e = tx.ExecContext(ctx, `UPDATE api_keys SET project_id=(SELECT id FROM projects WHERE workspace_id=$1 AND is_default) WHERE id IN(SELECT id FROM api_keys WHERE user_id=$2 AND project_id IS NULL ORDER BY id LIMIT 100) AND project_id IS NULL`, id, userID)
@@ -215,6 +217,9 @@ func (r *workspaceRepository) CreateOrganization(ctx context.Context, a int64, n
 		return nil, e
 	}
 	if e = appendWorkspaceAudit(ctx, tx, w.ID, a, nil, "workspace_created", "workspace", w.ID, nil); e != nil {
+		return nil, e
+	}
+	if e = insertWorkspaceMutationEvent(ctx, tx, w.ID, 0, a, "workspace_created", "workspace", w.ID, service.DomainEventData{"name": w.Name, "slug": w.Slug, "status": w.Status}); e != nil {
 		return nil, e
 	}
 	w.Permissions = service.WorkspacePermissions("owner")

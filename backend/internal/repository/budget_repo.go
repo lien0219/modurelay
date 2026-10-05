@@ -100,6 +100,12 @@ func (r *budgetRepository) Reserve(ctx context.Context, a service.BudgetAttribut
 			policy = projectPolicy
 		}
 		if err = reserveBudgetCounter(ctx, tx, scope, estimate, policy); err != nil {
+			if errors.Is(err, budgetExceeded(scope.typ)) {
+				_ = tx.Rollback()
+				if persistErr := r.recordHardBudgetReject(ctx, scope, a.WorkspaceID, a.ProjectID, estimate); persistErr != nil {
+					return nil, fmt.Errorf("%w (persist hard budget transition: %v)", err, persistErr)
+				}
+			}
 			return nil, err
 		}
 	}
@@ -235,6 +241,66 @@ type budgetPolicyState struct {
 	timezone      string
 }
 
+func (r *budgetRepository) recordHardBudgetReject(ctx context.Context, scope budgetScope, workspaceID, projectID int64, estimate float64) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err = lockBudgetScopes(ctx, tx, workspaceID, projectID, nil); err != nil {
+		return err
+	}
+	policy, err := loadBudgetPolicy(ctx, tx, scope.typ, scope.id)
+	if err != nil {
+		return err
+	}
+	if !policy.enabled || !policy.hard {
+		return tx.Commit()
+	}
+	now := time.Now()
+	if r.now != nil {
+		now = r.now()
+	}
+	if scope.period, err = budgetMonthStart(now, policy.timezone); err != nil {
+		return err
+	}
+	var revision int64
+	if err = tx.QueryRowContext(ctx, `SELECT policy_revision FROM `+budgetPolicyTable(scope.typ)+` WHERE `+budgetPolicyColumn(scope.typ)+`=$1 FOR SHARE`, scope.id).Scan(&revision); err != nil {
+		return err
+	}
+	var spent, reserved float64
+	err = tx.QueryRowContext(ctx, `SELECT spent,reserved FROM budget_counters WHERE scope_type=$1 AND scope_id=$2 AND period_start=$3 FOR UPDATE`, scope.typ, scope.id, scope.period).Scan(&spent, &reserved)
+	if errors.Is(err, sql.ErrNoRows) {
+		// A rejected first request must not create an empty counter. The scope
+		// locks above serialize its zero snapshot and alert transition instead.
+		spent, reserved, err = 0, 0, nil
+	}
+	if err != nil {
+		return err
+	}
+	if spent+reserved+estimate <= policy.amount {
+		return tx.Commit()
+	}
+	if err = insertBudgetTransitionTx(ctx, tx, scope, workspaceID, projectID, revision, 100, service.EventBudgetHardLimit, spent, reserved, policy.amount, "admission_rejected"); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func budgetPolicyTable(scopeType string) string {
+	if scopeType == "project" {
+		return "project_budget_policies"
+	}
+	return "workspace_budget_policies"
+}
+
+func budgetPolicyColumn(scopeType string) string {
+	if scopeType == "project" {
+		return "project_id"
+	}
+	return "workspace_id"
+}
+
 func loadBudgetPolicy(ctx context.Context, tx *sql.Tx, typ string, id int64) (budgetPolicyState, error) {
 	policy := budgetPolicyState{timezone: "UTC"}
 	table, column := "workspace_budget_policies", "workspace_id"
@@ -350,10 +416,11 @@ func settleBudgetReservationTx(ctx context.Context, tx *sql.Tx, res *service.Bud
 		}
 		enforceCapacity := status == "finalized" && actual > res.Estimate && policy.hard && policy.enabled
 		var id int64
+		var spentAfter, reservedAfter float64
 		err = tx.QueryRowContext(ctx, `UPDATE budget_counters SET reserved=reserved-$1::numeric,spent=spent+$2::numeric
 			WHERE scope_type=$3 AND scope_id=$4 AND period_start=$5 AND reserved>=$1::numeric
 				AND (NOT $6::boolean OR spent+reserved-$1::numeric+$2::numeric<=$7::numeric)
-			RETURNING scope_id`, res.Estimate, actual, scope.typ, scope.id, scope.period, enforceCapacity, policy.amount).Scan(&id)
+			RETURNING scope_id,spent,reserved`, res.Estimate, actual, scope.typ, scope.id, scope.period, enforceCapacity, policy.amount).Scan(&id, &spentAfter, &reservedAfter)
 		if errors.Is(err, sql.ErrNoRows) {
 			if enforceCapacity {
 				return budgetExceeded(scope.typ)
@@ -362,6 +429,26 @@ func settleBudgetReservationTx(ctx context.Context, tx *sql.Tx, res *service.Bud
 		}
 		if err != nil {
 			return err
+		}
+		if status == "finalized" && policy.enabled && policy.amount > 0 && spentAfter >= 0 {
+			var revision int64
+			if err = tx.QueryRowContext(ctx, `SELECT policy_revision FROM `+budgetPolicyTable(scope.typ)+` WHERE `+budgetPolicyColumn(scope.typ)+`=$1 FOR SHARE`, scope.id).Scan(&revision); err != nil {
+				return err
+			}
+			spentBefore := spentAfter - actual
+			for _, threshold := range []int{50, 80, 100} {
+				if spentBefore*100 < policy.amount*float64(threshold) && spentAfter*100 >= policy.amount*float64(threshold) {
+					eventType := service.EventBudgetThreshold
+					if threshold == 100 && policy.hard {
+						eventType = service.EventBudgetHardLimit
+					} else if threshold == 100 {
+						eventType = service.EventBudgetSoftLimit
+					}
+					if err = insertBudgetTransitionTx(ctx, tx, scope, res.WorkspaceID, res.ProjectID, revision, threshold, eventType, spentAfter, reservedAfter, policy.amount, "finalized_spend"); err != nil {
+						return err
+					}
+				}
+			}
 		}
 	}
 	result, err := tx.ExecContext(ctx, `UPDATE budget_reservations SET actual=$2,status=$3,finalized_at=now() WHERE id=$1 AND status='pending'`, res.ID, actual, status)
@@ -376,6 +463,34 @@ func settleBudgetReservationTx(ctx context.Context, tx *sql.Tx, res *service.Bud
 		return service.ErrBudgetReservationClosed
 	}
 	return nil
+}
+
+func insertBudgetTransitionTx(ctx context.Context, tx *sql.Tx, scope budgetScope, workspaceID, projectID, revision int64, threshold int, eventType string, spent, reserved, amount float64, reason string) error {
+	result, err := tx.ExecContext(ctx, `INSERT INTO budget_alert_transitions(scope_type,scope_id,period_start,policy_revision,threshold) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING`, scope.typ, scope.id, scope.period, revision, threshold)
+	if err != nil {
+		return err
+	}
+	n, err := result.RowsAffected()
+	if err != nil || n == 0 {
+		return err
+	}
+	if eventType == "" {
+		eventType = service.EventBudgetThreshold
+	}
+	project := int64(0)
+	if scope.typ == "project" {
+		project = projectID
+	}
+	event, err := service.NewDomainEvent(eventType, workspaceID, project, 0, scope.typ, fmt.Sprintf("%d", scope.id), service.DomainEventData{
+		"scope_type": scope.typ, "scope_id": scope.id, "period_start": scope.period.Format("2006-01-02"),
+		"policy_revision": revision, "threshold": threshold, "amount": amount,
+		"spent": spent, "reserved": reserved, "reason_code": reason,
+	})
+	if err != nil {
+		return err
+	}
+	dedupeKey := fmt.Sprintf("budget:%s:%d:%s:%d:%d", scope.typ, scope.id, scope.period.Format("2006-01"), revision, threshold)
+	return insertDomainEventTx(ctx, tx, event, dedupeKey)
 }
 
 func (r *budgetRepository) Finalize(ctx context.Context, id string, actual float64) error {

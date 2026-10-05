@@ -136,6 +136,14 @@ func RegisterUserRoutes(
 			announcements.POST("/:id/read", h.Announcement.MarkRead)
 		}
 
+		notifications := authenticated.Group("/notifications")
+		{
+			notifications.GET("", h.Notification.List)
+			notifications.GET("/unread-count", h.Notification.UnreadCount)
+			notifications.POST("/:id/read", h.Notification.MarkRead)
+			notifications.POST("/read-all", h.Notification.MarkAllRead)
+		}
+
 		resources := authenticated.Group("/resource-center")
 		{
 			resources.GET("/config", h.ResourceCenter.Config)

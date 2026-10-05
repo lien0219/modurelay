@@ -10,6 +10,8 @@ import distribution from './distribution'
 import canvas from './canvas'
 import tools from './tools'
 import workspace from './workspace'
+import workspaceWebhooks from './workspaceWebhooks'
+import notifications from './notifications'
 
 export default {
   ...landing,
@@ -23,7 +25,8 @@ export default {
   ...distribution,
   ...canvas,
   ...tools,
-  ...workspace,
+  workspace: { ...workspace.workspace, ...workspaceWebhooks.workspace },
+  ...notifications,
   nav: {
     ...common.nav,
     ...tools.nav,

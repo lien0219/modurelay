@@ -7,10 +7,10 @@ import (
 
 // The only tenant role map. Global admin is deliberately not a tenant role.
 var workspaceRolePermissions = map[string][]string{
-	"owner":     {"workspace.read", "workspace.update", "workspace.archive", "member.read", "invitation.read", "member.invite", "member.update", "member.remove", "owner.manage", "billing.owner.update", "project.read", "project.create", "project.update", "project.archive", "key.read", "key.create", "key.update", "key.revoke", "usage.read", "billing.read", "budget.read", "budget.update", "audit.read"},
-	"admin":     {"workspace.read", "workspace.update", "member.read", "invitation.read", "member.invite", "member.update", "member.remove", "project.read", "project.create", "project.update", "project.archive", "key.read", "key.create", "key.update", "key.revoke", "usage.read", "budget.read", "budget.update", "audit.read"},
-	"developer": {"workspace.read", "member.read", "project.read", "key.read", "key.create", "key.update", "key.revoke", "usage.read", "budget.read"},
-	"billing":   {"workspace.read", "project.read", "usage.read", "billing.read", "budget.read", "budget.update"},
+	"owner":     {"workspace.read", "workspace.update", "workspace.archive", "member.read", "invitation.read", "member.invite", "member.update", "member.remove", "owner.manage", "billing.owner.update", "project.read", "project.create", "project.update", "project.archive", "key.read", "key.create", "key.update", "key.revoke", "usage.read", "billing.read", "budget.read", "budget.update", "audit.read", "webhook.read", "webhook.create", "webhook.update", "webhook.delete", "webhook.secret.rotate", "webhook.test", "webhook.delivery.read", "webhook.delivery.retry"},
+	"admin":     {"workspace.read", "workspace.update", "member.read", "invitation.read", "member.invite", "member.update", "member.remove", "project.read", "project.create", "project.update", "project.archive", "key.read", "key.create", "key.update", "key.revoke", "usage.read", "budget.read", "budget.update", "audit.read", "webhook.read", "webhook.create", "webhook.update", "webhook.delete", "webhook.secret.rotate", "webhook.test", "webhook.delivery.read", "webhook.delivery.retry"},
+	"developer": {"workspace.read", "member.read", "project.read", "key.read", "key.create", "key.update", "key.revoke", "usage.read", "budget.read", "webhook.read", "webhook.delivery.read"},
+	"billing":   {"workspace.read", "project.read", "usage.read", "billing.read", "budget.read", "budget.update", "webhook.read"},
 	"viewer":    {"workspace.read", "project.read", "usage.read", "budget.read"},
 }
 

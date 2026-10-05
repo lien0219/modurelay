@@ -182,13 +182,33 @@ func (r *workspaceRepository) SetBudget(ctx context.Context, actorID int64, scop
 			return nil, err
 		}
 	}
+	var revision int64
 	if scope.ProjectID > 0 {
-		_, err = tx.ExecContext(ctx, `INSERT INTO project_budget_policies(project_id,amount,hard_limit,enabled,timezone,updated_at) VALUES($1,$2,$3,$4,$5,now()) ON CONFLICT(project_id) DO UPDATE SET amount=EXCLUDED.amount,hard_limit=EXCLUDED.hard_limit,enabled=EXCLUDED.enabled,timezone=EXCLUDED.timezone,updated_at=now()`, scope.ProjectID, in.Amount, in.HardLimit, in.Enabled, in.Timezone)
+		err = tx.QueryRowContext(ctx, `INSERT INTO project_budget_policies(project_id,amount,hard_limit,enabled,timezone,updated_at) VALUES($1,$2,$3,$4,$5,now()) ON CONFLICT(project_id) DO UPDATE SET amount=EXCLUDED.amount,hard_limit=EXCLUDED.hard_limit,enabled=EXCLUDED.enabled,timezone=EXCLUDED.timezone,policy_revision=project_budget_policies.policy_revision+1,updated_at=now() RETURNING policy_revision`, scope.ProjectID, in.Amount, in.HardLimit, in.Enabled, in.Timezone).Scan(&revision)
 	} else {
-		_, err = tx.ExecContext(ctx, `INSERT INTO workspace_budget_policies(workspace_id,amount,hard_limit,enabled,timezone,updated_at) VALUES($1,$2,$3,$4,$5,now()) ON CONFLICT(workspace_id) DO UPDATE SET amount=EXCLUDED.amount,hard_limit=EXCLUDED.hard_limit,enabled=EXCLUDED.enabled,timezone=EXCLUDED.timezone,updated_at=now()`, scope.WorkspaceID, in.Amount, in.HardLimit, in.Enabled, in.Timezone)
+		err = tx.QueryRowContext(ctx, `INSERT INTO workspace_budget_policies(workspace_id,amount,hard_limit,enabled,timezone,updated_at) VALUES($1,$2,$3,$4,$5,now()) ON CONFLICT(workspace_id) DO UPDATE SET amount=EXCLUDED.amount,hard_limit=EXCLUDED.hard_limit,enabled=EXCLUDED.enabled,timezone=EXCLUDED.timezone,policy_revision=workspace_budget_policies.policy_revision+1,updated_at=now() RETURNING policy_revision`, scope.WorkspaceID, in.Amount, in.HardLimit, in.Enabled, in.Timezone).Scan(&revision)
 	}
 	if err != nil {
 		return nil, err
+	}
+	scopeType := "workspace"
+	if scope.ProjectID > 0 {
+		scopeType = "project"
+	}
+	if in.Enabled && in.Amount > 0 {
+		period, periodErr := budgetMonthStart(time.Now(), in.Timezone)
+		if periodErr != nil {
+			return nil, periodErr
+		}
+		// Editing a policy creates a new revision. Mark already-crossed actual
+		// spend without replaying old consumption as new alerts.
+		_, err = tx.ExecContext(ctx, `INSERT INTO budget_alert_transitions(scope_type,scope_id,period_start,policy_revision,threshold)
+		 SELECT c.scope_type,c.scope_id,c.period_start,$4,t.threshold FROM budget_counters c CROSS JOIN (VALUES(50),(80),(100)) t(threshold)
+		 WHERE c.scope_type=$1 AND c.scope_id=$2 AND c.period_start=$3 AND c.spent*100 >= $5::numeric*t.threshold
+		 ON CONFLICT DO NOTHING`, scopeType, keyID(scope), period, revision, in.Amount)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if err = appendWorkspaceAudit(ctx, tx, scope.WorkspaceID, actorID, func() *int64 {
 		if scope.ProjectID > 0 {
@@ -197,6 +217,13 @@ func (r *workspaceRepository) SetBudget(ctx context.Context, actorID int64, scop
 		}
 		return nil
 	}(), "budget_updated", "budget", keyID(scope), map[string]any{"amount": in.Amount, "hard_limit": in.HardLimit, "enabled": in.Enabled, "timezone": in.Timezone}); err != nil {
+		return nil, err
+	}
+	var projectID int64
+	if scope.ProjectID > 0 {
+		projectID = scope.ProjectID
+	}
+	if err = insertWorkspaceMutationEvent(ctx, tx, scope.WorkspaceID, projectID, actorID, "budget_updated", "budget", keyID(scope), service.DomainEventData{"amount": in.Amount, "status": "updated", "scope_type": scopeType, "scope_id": keyID(scope), "policy_revision": revision}); err != nil {
 		return nil, err
 	}
 	if err = tx.Commit(); err != nil {

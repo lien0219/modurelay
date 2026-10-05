@@ -497,6 +497,31 @@ export interface ResourceNotification {
   created_at: string
 }
 
+export type NotificationCategory = 'system' | 'workspace' | 'project' | 'api_key' | 'budget' | 'billing' | 'security' | 'resources' | string
+
+/** User-scoped domain notification returned by the notification center API. */
+export interface UserNotification {
+  id: number | string
+  event_id?: string
+  recipient_user_id?: number
+  workspace_id?: number | null
+  project_id?: number | null
+  category: NotificationCategory
+  title?: string
+  body?: string
+  title_key?: string
+  body_key?: string
+  data?: Record<string, unknown> | null
+  read?: boolean
+  is_read?: boolean
+  read_at?: string | null
+  created_at: string
+  target_path?: string | null
+  target_url?: string | null
+  target_type?: string | null
+  target_id?: number | string | null
+}
+
 export interface AuthResponse {
   access_token: string
   refresh_token?: string  // New: Refresh Token for token renewal

@@ -25,6 +25,8 @@ func isolateWorkspaceTestFixtures(t *testing.T) {
 			query string
 			args  []any
 		}{
+			{`DELETE FROM domain_events WHERE workspace_id>$1 OR actor_user_id>$2`, []any{workspaceID, userID}},
+			{`DELETE FROM budget_alert_transitions WHERE (scope_type='workspace' AND scope_id>$1) OR (scope_type='project' AND scope_id IN (SELECT id FROM projects WHERE workspace_id>$1))`, []any{workspaceID}},
 			{`DELETE FROM usage_logs WHERE user_id>$1 OR workspace_id>$2`, []any{userID, workspaceID}},
 			{`DELETE FROM batch_image_jobs WHERE user_id>$1 OR workspace_id>$2`, []any{userID, workspaceID}},
 			{`DELETE FROM usage_tenant_hourly_rollups WHERE workspace_id>$1`, []any{workspaceID}},
@@ -65,6 +67,7 @@ func deletePersonalWorkspaceFixtures(t *testing.T, scope string, args ...any) {
 	t.Helper()
 	workspaces := `SELECT id FROM workspaces WHERE ` + scope
 	for _, query := range []string{
+		`DELETE FROM domain_events WHERE workspace_id IN (` + workspaces + `)`,
 		`DELETE FROM api_keys WHERE project_id IN (SELECT id FROM projects WHERE workspace_id IN (` + workspaces + `))`,
 		`DELETE FROM workspace_audit_logs WHERE workspace_id IN (` + workspaces + `)`,
 		`DELETE FROM workspace_invitations WHERE workspace_id IN (` + workspaces + `)`,

@@ -95,6 +95,8 @@ func provideCleanup(
 	opsIngressReject *service.OpsIngressRejectAggregator,
 	apiKeyService *service.APIKeyService,
 	workspaceService *service.WorkspaceService,
+	domainEventDispatcher *service.DomainEventDispatcher,
+	workspaceWebhookWorker *service.WorkspaceWebhookWorker,
 	authCacheInvalidationWorker *service.AuthCacheInvalidationWorker,
 	schedulerSnapshot *service.SchedulerSnapshotService,
 	tokenRefresh *service.TokenRefreshService,
@@ -146,6 +148,18 @@ func provideCleanup(
 
 		// 应用层清理步骤可并行执行，基础设施资源（Redis/Ent）最后按顺序关闭。
 		parallelSteps := []cleanupStep{
+			{"DomainEventDispatcher", func() error {
+				if domainEventDispatcher != nil {
+					domainEventDispatcher.Stop()
+				}
+				return nil
+			}},
+			{"WorkspaceWebhookWorker", func() error {
+				if workspaceWebhookWorker != nil {
+					workspaceWebhookWorker.Stop()
+				}
+				return nil
+			}},
 			{"PluginManager", func() error {
 				if pluginManager != nil {
 					pluginManager.Stop()

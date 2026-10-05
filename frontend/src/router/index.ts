@@ -273,6 +273,12 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, requiresAdmin: false, title: 'Workspace Audit', titleKey: 'workspace.audit', descriptionKey: 'workspace.auditDescription' }
   },
   {
+    path: '/workspaces/:workspaceId/webhooks',
+    name: 'WorkspaceWebhooks',
+    component: () => import('@/views/workspace/WorkspaceWebhooksView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: false, title: 'Workspace Webhooks', titleKey: 'workspace.webhooks', descriptionKey: 'workspace.webhooksDescription' }
+  },
+  {
     path: '/canvas',
     name: 'CanvasHome',
     component: () => import('@/views/user/CanvasAppRedirectView.vue'),

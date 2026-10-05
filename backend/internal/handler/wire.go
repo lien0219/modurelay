@@ -193,6 +193,7 @@ func ProvideHandlers(
 	redeemHandler *RedeemHandler,
 	subscriptionHandler *SubscriptionHandler,
 	announcementHandler *AnnouncementHandler,
+	notificationHandler *NotificationHandler,
 	channelMonitorUserHandler *ChannelMonitorUserHandler,
 	channelMonitorV2Handler *ChannelMonitorV2Handler,
 	adminHandlers *AdminHandlers,
@@ -227,6 +228,7 @@ func ProvideHandlers(
 		Redeem:              redeemHandler,
 		Subscription:        subscriptionHandler,
 		Announcement:        announcementHandler,
+		Notification:        notificationHandler,
 		ChannelMonitor:      channelMonitorUserHandler,
 		ChannelMonitorV2:    channelMonitorV2Handler,
 		Admin:               adminHandlers,
@@ -251,17 +253,24 @@ func ProvideHandlers(
 	}
 }
 
+func ProvideWorkspaceHandler(workspaceService *service.WorkspaceService, apiKeyService *service.APIKeyService, webhookService *service.WorkspaceWebhookService) *WorkspaceHandler {
+	h := NewWorkspaceHandler(workspaceService, apiKeyService)
+	h.SetWebhookService(webhookService)
+	return h
+}
+
 // ProviderSet is the Wire provider set for all handlers
 var ProviderSet = wire.NewSet(
 	// Top-level handlers
 	NewAuthHandler,
 	NewUserHandler,
 	NewAPIKeyHandler,
-	NewWorkspaceHandler,
+	ProvideWorkspaceHandler,
 	NewUsageHandler,
 	NewRedeemHandler,
 	NewSubscriptionHandler,
 	NewAnnouncementHandler,
+	NewNotificationHandler,
 	NewChannelMonitorUserHandler,
 	NewChannelMonitorV2Handler,
 	ProvideGatewayHandler,

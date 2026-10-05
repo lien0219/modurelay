@@ -69,6 +69,7 @@ const tabs = computed(() => {
     { to: `/workspaces/${id}/invitations`, label: t('workspace.invitations') },
     { to: `/workspaces/${id}/finops`, label: t('workspace.finops') },
     { to: `/workspaces/${id}/audit`, label: t('workspace.audit') },
+    ...(store.can('webhook.read') ? [{ to: `/workspaces/${id}/webhooks`, label: t('workspace.webhooks') }] : []),
   ]
 })
 

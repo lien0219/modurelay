@@ -224,10 +224,42 @@ func (r *workspaceRepository) Mutate(ctx context.Context, a, w int64, m service.
 	if e = appendWorkspaceAudit(ctx, tx, w, a, project, action, target, id, meta); e != nil {
 		return nil, e
 	}
+	if e = insertWorkspaceMutationEvent(ctx, tx, w, valueOrWorkspaceProject(project), a, action, target, id, mutationEventData(out, meta)); e != nil {
+		return nil, e
+	}
 	if out.Workspace != nil {
 		out.Workspace.Permissions = ac.Permissions
 	}
 	return out, workspaceError(tx.Commit())
+}
+
+func valueOrWorkspaceProject(project *int64) int64 {
+	if project == nil {
+		return 0
+	}
+	return *project
+}
+
+func mutationEventData(out *service.WorkspaceMutationResult, meta map[string]any) service.DomainEventData {
+	data := service.DomainEventData{}
+	for k, v := range meta {
+		switch k {
+		case "name", "slug", "status", "role", "user_id", "member_id", "invitation_id", "key_id", "key_name", "project_id", "workspace_id", "scope_type", "scope_id", "period_start", "policy_revision", "threshold", "amount", "spent", "reserved", "estimated_amount", "actual_amount", "reason_code", "request_id", "task_id", "model", "platform", "previous_status", "category":
+			data[k] = v
+		case "previous_user_id":
+			data["user_id"] = v
+		}
+	}
+	if out != nil && out.Workspace != nil {
+		data["name"], data["slug"], data["status"] = out.Workspace.Name, out.Workspace.Slug, out.Workspace.Status
+	}
+	if out != nil && out.Project != nil {
+		data["name"], data["slug"], data["status"], data["project_id"] = out.Project.Name, out.Project.Slug, out.Project.Status, out.Project.ID
+	}
+	if out != nil && out.Invitation != nil {
+		data["invitation_id"], data["role"] = out.Invitation.ID, out.Invitation.Role
+	}
+	return data
 }
 
 func (r *workspaceRepository) AcceptInvitation(ctx context.Context, a int64, hash []byte) (*service.Workspace, error) {
@@ -283,6 +315,9 @@ func (r *workspaceRepository) AcceptInvitation(ctx context.Context, a int64, has
 		return nil, e
 	}
 	if e = appendWorkspaceAudit(ctx, tx, w, a, nil, "member_joined", "user", a, map[string]any{"role": inv.Role}); e != nil {
+		return nil, e
+	}
+	if e = insertWorkspaceMutationEvent(ctx, tx, w, 0, a, "member_joined", "user", a, service.DomainEventData{"role": inv.Role, "user_id": a}); e != nil {
 		return nil, e
 	}
 	ws := inviter.Workspace

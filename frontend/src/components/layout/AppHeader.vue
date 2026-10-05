@@ -40,7 +40,13 @@
       <div class="flex min-w-0 items-center gap-1 sm:gap-3">
         <!-- Announcement Bell -->
         <AnnouncementBell v-if="user" />
-        <ResourceNotificationBell v-if="user && resourceCenterEnabled" />
+        <NotificationCenterBell
+          v-if="user"
+          :include-resource="resourceCenterEnabled"
+          :workspace-id="workspaceStore.selectedWorkspaceId"
+          :project-id="workspaceStore.selectedProjectId"
+          :user-key="user.id"
+        />
 
         <!-- Docs Link -->
         <a
@@ -287,7 +293,7 @@ import { useAdminSettingsStore } from '@/stores/adminSettings'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import SubscriptionProgressMini from '@/components/common/SubscriptionProgressMini.vue'
 import AnnouncementBell from '@/components/common/AnnouncementBell.vue'
-import ResourceNotificationBell from '@/components/common/ResourceNotificationBell.vue'
+import NotificationCenterBell from '@/components/common/NotificationCenterBell.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { sanitizeUrl } from '@/utils/url'
 import { usePrefersReducedMotion } from '@/composables/usePrefersReducedMotion'

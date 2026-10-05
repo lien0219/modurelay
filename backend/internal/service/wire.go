@@ -870,10 +870,31 @@ func ProvideAPIKeyService(
 	return svc
 }
 
+func ProvideWorkspaceWebhookService(repo WorkspaceWebhookRepository, access *WorkspaceAccessService, encryptor SecretEncryptor, cfg *config.Config) *WorkspaceWebhookService {
+	ready := cfg != nil && cfg.Totp.EncryptionKeyConfigured
+	return NewWorkspaceWebhookService(repo, access, encryptor, ready)
+}
+
+func ProvideWorkspaceWebhookWorker(repo WorkspaceWebhookRepository, encryptor SecretEncryptor) *WorkspaceWebhookWorker {
+	worker := NewWorkspaceWebhookWorker(repo, encryptor)
+	worker.Start()
+	return worker
+}
+
+func ProvideDomainEventDispatcher(outbox DomainEventOutboxRepository, notifications NotificationRepository, recipients NotificationRecipientResolver, webhooks WorkspaceWebhookRepository) *DomainEventDispatcher {
+	dispatcher := NewDomainEventDispatcher(outbox, notifications, recipients, webhooks)
+	dispatcher.Start()
+	return dispatcher
+}
+
 // ProviderSet is the Wire provider set for all services
 var ProviderSet = wire.NewSet(
 	ProvideWorkspaceService,
 	NewWorkspaceAccessService,
+	ProvideWorkspaceWebhookService,
+	ProvideWorkspaceWebhookWorker,
+	NewNotificationCenterService,
+	ProvideDomainEventDispatcher,
 	NewBudgetService,
 	wire.Bind(new(BalanceRedeemActivityQualifier), new(*ActivityService)),
 	// Core services
