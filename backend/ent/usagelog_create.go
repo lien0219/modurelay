@@ -17,6 +17,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
+	"github.com/google/uuid"
 )
 
 // UsageLogCreate is the builder for creating a UsageLog entity.
@@ -42,6 +43,76 @@ func (_c *UsageLogCreate) SetAPIKeyID(v int64) *UsageLogCreate {
 // SetAccountID sets the "account_id" field.
 func (_c *UsageLogCreate) SetAccountID(v int64) *UsageLogCreate {
 	_c.mutation.SetAccountID(v)
+	return _c
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (_c *UsageLogCreate) SetWorkspaceID(v int64) *UsageLogCreate {
+	_c.mutation.SetWorkspaceID(v)
+	return _c
+}
+
+// SetNillableWorkspaceID sets the "workspace_id" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableWorkspaceID(v *int64) *UsageLogCreate {
+	if v != nil {
+		_c.SetWorkspaceID(*v)
+	}
+	return _c
+}
+
+// SetProjectID sets the "project_id" field.
+func (_c *UsageLogCreate) SetProjectID(v int64) *UsageLogCreate {
+	_c.mutation.SetProjectID(v)
+	return _c
+}
+
+// SetNillableProjectID sets the "project_id" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableProjectID(v *int64) *UsageLogCreate {
+	if v != nil {
+		_c.SetProjectID(*v)
+	}
+	return _c
+}
+
+// SetBillingPrincipalUserID sets the "billing_principal_user_id" field.
+func (_c *UsageLogCreate) SetBillingPrincipalUserID(v int64) *UsageLogCreate {
+	_c.mutation.SetBillingPrincipalUserID(v)
+	return _c
+}
+
+// SetNillableBillingPrincipalUserID sets the "billing_principal_user_id" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableBillingPrincipalUserID(v *int64) *UsageLogCreate {
+	if v != nil {
+		_c.SetBillingPrincipalUserID(*v)
+	}
+	return _c
+}
+
+// SetResolvedPlatform sets the "resolved_platform" field.
+func (_c *UsageLogCreate) SetResolvedPlatform(v string) *UsageLogCreate {
+	_c.mutation.SetResolvedPlatform(v)
+	return _c
+}
+
+// SetNillableResolvedPlatform sets the "resolved_platform" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableResolvedPlatform(v *string) *UsageLogCreate {
+	if v != nil {
+		_c.SetResolvedPlatform(*v)
+	}
+	return _c
+}
+
+// SetBudgetReservationID sets the "budget_reservation_id" field.
+func (_c *UsageLogCreate) SetBudgetReservationID(v uuid.UUID) *UsageLogCreate {
+	_c.mutation.SetBudgetReservationID(v)
+	return _c
+}
+
+// SetNillableBudgetReservationID sets the "budget_reservation_id" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableBudgetReservationID(v *uuid.UUID) *UsageLogCreate {
+	if v != nil {
+		_c.SetBudgetReservationID(*v)
+	}
 	return _c
 }
 
@@ -790,6 +861,11 @@ func (_c *UsageLogCreate) check() error {
 	if _, ok := _c.mutation.AccountID(); !ok {
 		return &ValidationError{Name: "account_id", err: errors.New(`ent: missing required field "UsageLog.account_id"`)}
 	}
+	if v, ok := _c.mutation.ResolvedPlatform(); ok {
+		if err := usagelog.ResolvedPlatformValidator(v); err != nil {
+			return &ValidationError{Name: "resolved_platform", err: fmt.Errorf(`ent: validator failed for field "UsageLog.resolved_platform": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.RequestID(); !ok {
 		return &ValidationError{Name: "request_id", err: errors.New(`ent: missing required field "UsageLog.request_id"`)}
 	}
@@ -967,6 +1043,26 @@ func (_c *UsageLogCreate) createSpec() (*UsageLog, *sqlgraph.CreateSpec) {
 		_spec = sqlgraph.NewCreateSpec(usagelog.Table, sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64))
 	)
 	_spec.OnConflict = _c.conflict
+	if value, ok := _c.mutation.WorkspaceID(); ok {
+		_spec.SetField(usagelog.FieldWorkspaceID, field.TypeInt64, value)
+		_node.WorkspaceID = &value
+	}
+	if value, ok := _c.mutation.ProjectID(); ok {
+		_spec.SetField(usagelog.FieldProjectID, field.TypeInt64, value)
+		_node.ProjectID = &value
+	}
+	if value, ok := _c.mutation.BillingPrincipalUserID(); ok {
+		_spec.SetField(usagelog.FieldBillingPrincipalUserID, field.TypeInt64, value)
+		_node.BillingPrincipalUserID = &value
+	}
+	if value, ok := _c.mutation.ResolvedPlatform(); ok {
+		_spec.SetField(usagelog.FieldResolvedPlatform, field.TypeString, value)
+		_node.ResolvedPlatform = &value
+	}
+	if value, ok := _c.mutation.BudgetReservationID(); ok {
+		_spec.SetField(usagelog.FieldBudgetReservationID, field.TypeUUID, value)
+		_node.BudgetReservationID = &value
+	}
 	if value, ok := _c.mutation.RequestID(); ok {
 		_spec.SetField(usagelog.FieldRequestID, field.TypeString, value)
 		_node.RequestID = value
@@ -1305,6 +1401,114 @@ func (u *UsageLogUpsert) SetAccountID(v int64) *UsageLogUpsert {
 // UpdateAccountID sets the "account_id" field to the value that was provided on create.
 func (u *UsageLogUpsert) UpdateAccountID() *UsageLogUpsert {
 	u.SetExcluded(usagelog.FieldAccountID)
+	return u
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *UsageLogUpsert) SetWorkspaceID(v int64) *UsageLogUpsert {
+	u.Set(usagelog.FieldWorkspaceID, v)
+	return u
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateWorkspaceID() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldWorkspaceID)
+	return u
+}
+
+// AddWorkspaceID adds v to the "workspace_id" field.
+func (u *UsageLogUpsert) AddWorkspaceID(v int64) *UsageLogUpsert {
+	u.Add(usagelog.FieldWorkspaceID, v)
+	return u
+}
+
+// ClearWorkspaceID clears the value of the "workspace_id" field.
+func (u *UsageLogUpsert) ClearWorkspaceID() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldWorkspaceID)
+	return u
+}
+
+// SetProjectID sets the "project_id" field.
+func (u *UsageLogUpsert) SetProjectID(v int64) *UsageLogUpsert {
+	u.Set(usagelog.FieldProjectID, v)
+	return u
+}
+
+// UpdateProjectID sets the "project_id" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateProjectID() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldProjectID)
+	return u
+}
+
+// AddProjectID adds v to the "project_id" field.
+func (u *UsageLogUpsert) AddProjectID(v int64) *UsageLogUpsert {
+	u.Add(usagelog.FieldProjectID, v)
+	return u
+}
+
+// ClearProjectID clears the value of the "project_id" field.
+func (u *UsageLogUpsert) ClearProjectID() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldProjectID)
+	return u
+}
+
+// SetBillingPrincipalUserID sets the "billing_principal_user_id" field.
+func (u *UsageLogUpsert) SetBillingPrincipalUserID(v int64) *UsageLogUpsert {
+	u.Set(usagelog.FieldBillingPrincipalUserID, v)
+	return u
+}
+
+// UpdateBillingPrincipalUserID sets the "billing_principal_user_id" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateBillingPrincipalUserID() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldBillingPrincipalUserID)
+	return u
+}
+
+// AddBillingPrincipalUserID adds v to the "billing_principal_user_id" field.
+func (u *UsageLogUpsert) AddBillingPrincipalUserID(v int64) *UsageLogUpsert {
+	u.Add(usagelog.FieldBillingPrincipalUserID, v)
+	return u
+}
+
+// ClearBillingPrincipalUserID clears the value of the "billing_principal_user_id" field.
+func (u *UsageLogUpsert) ClearBillingPrincipalUserID() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldBillingPrincipalUserID)
+	return u
+}
+
+// SetResolvedPlatform sets the "resolved_platform" field.
+func (u *UsageLogUpsert) SetResolvedPlatform(v string) *UsageLogUpsert {
+	u.Set(usagelog.FieldResolvedPlatform, v)
+	return u
+}
+
+// UpdateResolvedPlatform sets the "resolved_platform" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateResolvedPlatform() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldResolvedPlatform)
+	return u
+}
+
+// ClearResolvedPlatform clears the value of the "resolved_platform" field.
+func (u *UsageLogUpsert) ClearResolvedPlatform() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldResolvedPlatform)
+	return u
+}
+
+// SetBudgetReservationID sets the "budget_reservation_id" field.
+func (u *UsageLogUpsert) SetBudgetReservationID(v uuid.UUID) *UsageLogUpsert {
+	u.Set(usagelog.FieldBudgetReservationID, v)
+	return u
+}
+
+// UpdateBudgetReservationID sets the "budget_reservation_id" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateBudgetReservationID() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldBudgetReservationID)
+	return u
+}
+
+// ClearBudgetReservationID clears the value of the "budget_reservation_id" field.
+func (u *UsageLogUpsert) ClearBudgetReservationID() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldBudgetReservationID)
 	return u
 }
 
@@ -2166,6 +2370,132 @@ func (u *UsageLogUpsertOne) SetAccountID(v int64) *UsageLogUpsertOne {
 func (u *UsageLogUpsertOne) UpdateAccountID() *UsageLogUpsertOne {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateAccountID()
+	})
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *UsageLogUpsertOne) SetWorkspaceID(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetWorkspaceID(v)
+	})
+}
+
+// AddWorkspaceID adds v to the "workspace_id" field.
+func (u *UsageLogUpsertOne) AddWorkspaceID(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddWorkspaceID(v)
+	})
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateWorkspaceID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateWorkspaceID()
+	})
+}
+
+// ClearWorkspaceID clears the value of the "workspace_id" field.
+func (u *UsageLogUpsertOne) ClearWorkspaceID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearWorkspaceID()
+	})
+}
+
+// SetProjectID sets the "project_id" field.
+func (u *UsageLogUpsertOne) SetProjectID(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetProjectID(v)
+	})
+}
+
+// AddProjectID adds v to the "project_id" field.
+func (u *UsageLogUpsertOne) AddProjectID(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddProjectID(v)
+	})
+}
+
+// UpdateProjectID sets the "project_id" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateProjectID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateProjectID()
+	})
+}
+
+// ClearProjectID clears the value of the "project_id" field.
+func (u *UsageLogUpsertOne) ClearProjectID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearProjectID()
+	})
+}
+
+// SetBillingPrincipalUserID sets the "billing_principal_user_id" field.
+func (u *UsageLogUpsertOne) SetBillingPrincipalUserID(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetBillingPrincipalUserID(v)
+	})
+}
+
+// AddBillingPrincipalUserID adds v to the "billing_principal_user_id" field.
+func (u *UsageLogUpsertOne) AddBillingPrincipalUserID(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddBillingPrincipalUserID(v)
+	})
+}
+
+// UpdateBillingPrincipalUserID sets the "billing_principal_user_id" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateBillingPrincipalUserID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateBillingPrincipalUserID()
+	})
+}
+
+// ClearBillingPrincipalUserID clears the value of the "billing_principal_user_id" field.
+func (u *UsageLogUpsertOne) ClearBillingPrincipalUserID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearBillingPrincipalUserID()
+	})
+}
+
+// SetResolvedPlatform sets the "resolved_platform" field.
+func (u *UsageLogUpsertOne) SetResolvedPlatform(v string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetResolvedPlatform(v)
+	})
+}
+
+// UpdateResolvedPlatform sets the "resolved_platform" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateResolvedPlatform() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateResolvedPlatform()
+	})
+}
+
+// ClearResolvedPlatform clears the value of the "resolved_platform" field.
+func (u *UsageLogUpsertOne) ClearResolvedPlatform() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearResolvedPlatform()
+	})
+}
+
+// SetBudgetReservationID sets the "budget_reservation_id" field.
+func (u *UsageLogUpsertOne) SetBudgetReservationID(v uuid.UUID) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetBudgetReservationID(v)
+	})
+}
+
+// UpdateBudgetReservationID sets the "budget_reservation_id" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateBudgetReservationID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateBudgetReservationID()
+	})
+}
+
+// ClearBudgetReservationID clears the value of the "budget_reservation_id" field.
+func (u *UsageLogUpsertOne) ClearBudgetReservationID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearBudgetReservationID()
 	})
 }
 
@@ -3322,6 +3652,132 @@ func (u *UsageLogUpsertBulk) SetAccountID(v int64) *UsageLogUpsertBulk {
 func (u *UsageLogUpsertBulk) UpdateAccountID() *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateAccountID()
+	})
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *UsageLogUpsertBulk) SetWorkspaceID(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetWorkspaceID(v)
+	})
+}
+
+// AddWorkspaceID adds v to the "workspace_id" field.
+func (u *UsageLogUpsertBulk) AddWorkspaceID(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddWorkspaceID(v)
+	})
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateWorkspaceID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateWorkspaceID()
+	})
+}
+
+// ClearWorkspaceID clears the value of the "workspace_id" field.
+func (u *UsageLogUpsertBulk) ClearWorkspaceID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearWorkspaceID()
+	})
+}
+
+// SetProjectID sets the "project_id" field.
+func (u *UsageLogUpsertBulk) SetProjectID(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetProjectID(v)
+	})
+}
+
+// AddProjectID adds v to the "project_id" field.
+func (u *UsageLogUpsertBulk) AddProjectID(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddProjectID(v)
+	})
+}
+
+// UpdateProjectID sets the "project_id" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateProjectID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateProjectID()
+	})
+}
+
+// ClearProjectID clears the value of the "project_id" field.
+func (u *UsageLogUpsertBulk) ClearProjectID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearProjectID()
+	})
+}
+
+// SetBillingPrincipalUserID sets the "billing_principal_user_id" field.
+func (u *UsageLogUpsertBulk) SetBillingPrincipalUserID(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetBillingPrincipalUserID(v)
+	})
+}
+
+// AddBillingPrincipalUserID adds v to the "billing_principal_user_id" field.
+func (u *UsageLogUpsertBulk) AddBillingPrincipalUserID(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddBillingPrincipalUserID(v)
+	})
+}
+
+// UpdateBillingPrincipalUserID sets the "billing_principal_user_id" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateBillingPrincipalUserID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateBillingPrincipalUserID()
+	})
+}
+
+// ClearBillingPrincipalUserID clears the value of the "billing_principal_user_id" field.
+func (u *UsageLogUpsertBulk) ClearBillingPrincipalUserID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearBillingPrincipalUserID()
+	})
+}
+
+// SetResolvedPlatform sets the "resolved_platform" field.
+func (u *UsageLogUpsertBulk) SetResolvedPlatform(v string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetResolvedPlatform(v)
+	})
+}
+
+// UpdateResolvedPlatform sets the "resolved_platform" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateResolvedPlatform() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateResolvedPlatform()
+	})
+}
+
+// ClearResolvedPlatform clears the value of the "resolved_platform" field.
+func (u *UsageLogUpsertBulk) ClearResolvedPlatform() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearResolvedPlatform()
+	})
+}
+
+// SetBudgetReservationID sets the "budget_reservation_id" field.
+func (u *UsageLogUpsertBulk) SetBudgetReservationID(v uuid.UUID) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetBudgetReservationID(v)
+	})
+}
+
+// UpdateBudgetReservationID sets the "budget_reservation_id" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateBudgetReservationID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateBudgetReservationID()
+	})
+}
+
+// ClearBudgetReservationID clears the value of the "budget_reservation_id" field.
+func (u *UsageLogUpsertBulk) ClearBudgetReservationID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearBudgetReservationID()
 	})
 }
 

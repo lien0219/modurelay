@@ -128,6 +128,7 @@ func (s *OpenAIGatewayService) ForwardCompatibleVideo(
 			proxyURL = account.Proxy.URL()
 		}
 		upstreamStart := time.Now()
+		markVideoProviderStarted(ctx, endpoint)
 		resp, err = s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
 		releaseUpstreamCtx()
 		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
@@ -162,6 +163,7 @@ func (s *OpenAIGatewayService) ForwardCompatibleVideo(
 		resp.Header.Get("request-id"),
 		resp.Header.Get("x-trace-id"),
 	)
+	markVideoProviderRejected(ctx, endpoint, resp.StatusCode)
 	if resp.StatusCode >= http.StatusBadRequest {
 		if endpoint == GrokMediaEndpointVideoCancel && (resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusMethodNotAllowed) {
 			responseBody, readErr := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)

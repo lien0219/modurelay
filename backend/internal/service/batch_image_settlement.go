@@ -149,14 +149,15 @@ func (s *BatchImageSettlementService) Settle(ctx context.Context, batchID string
 		return nil, ErrBatchImageSettlementCostExceedsHold
 	}
 
-	if err := captureBatchImageBalanceHold(ctx, s.BillingRepo, job, actualCost, manifestHash); err != nil {
+	usageLogPersisted, err := captureBatchImageBalanceHold(ctx, s.BillingRepo, job, actualCost, manifestHash)
+	if err != nil {
 		msg := truncateBatchImageMessage(err.Error(), batchImageMaxErrorMessageLength)
 		if failErr := s.recordSettlementFailure(ctx, job, "SETTLEMENT_BILLING_FAILED", msg); failErr != nil {
 			return nil, failErr
 		}
 		return nil, err
 	}
-	s.invalidateAuthCache(ctx, job.UserID)
+	invalidateBatchImageAuthCache(ctx, s.AuthCache, job)
 
 	now := time.Now()
 	outputExpiresAt := now.Add(s.outputRetentionAfterTerminal())
@@ -177,7 +178,9 @@ func (s *BatchImageSettlementService) Settle(ctx context.Context, batchID string
 	}); err != nil {
 		return nil, err
 	}
-	s.recordUsageLog(ctx, job, actualCost, result.RequestID, now)
+	if !usageLogPersisted {
+		s.recordUsageLog(ctx, job, actualCost, result.RequestID, now)
+	}
 
 	return result, nil
 }
@@ -230,7 +233,7 @@ func (s *BatchImageSettlementService) failExhaustedSettlement(ctx context.Contex
 		}
 		return ErrBatchImageSettlementBillingFailed.WithCause(err)
 	}
-	s.invalidateAuthCache(ctx, job.UserID)
+	invalidateBatchImageAuthCache(ctx, s.AuthCache, job)
 	msg := strings.TrimSpace(message)
 	if msg == "" {
 		msg = "settlement billing retry limit reached"
@@ -259,34 +262,33 @@ func (s *BatchImageSettlementService) recordUsageLog(ctx context.Context, job *B
 	upstreamEndpoint := "vertex:batchPredictionJobs"
 	imageSize := "1K"
 	usageLog := &UsageLog{
-		UserID:                job.UserID,
-		APIKeyID:              *job.APIKeyID,
-		AccountID:             *job.AccountID,
-		RequestID:             strings.TrimSpace(requestID),
-		Model:                 job.Model,
-		RequestedModel:        job.Model,
-		InboundEndpoint:       &inboundEndpoint,
-		UpstreamEndpoint:      &upstreamEndpoint,
-		ImageCount:            job.SuccessCount,
-		ImageOutputCost:       actualCost,
-		TotalCost:             actualCost,
-		ActualCost:            actualCost,
-		RateMultiplier:        job.GroupRateMultiplier * job.BatchDiscountMultiplier,
-		AccountRateMultiplier: &accountRateMultiplier,
-		BillingType:           BillingTypeBalance,
-		RequestType:           RequestTypeSync,
-		BillingMode:           &billingMode,
-		ImageSize:             &imageSize,
-		SessionID:             job.SessionID,
-		CreatedAt:             createdAt,
+		UserID:                 job.UserID,
+		WorkspaceID:            job.WorkspaceID,
+		ProjectID:              job.ProjectID,
+		BillingPrincipalUserID: job.BillingPrincipalUserID,
+		BudgetReservationID:    job.BudgetReservationID,
+		ResolvedPlatform:       batchImageStringPtr(PlatformGemini),
+		APIKeyID:               *job.APIKeyID,
+		AccountID:              *job.AccountID,
+		RequestID:              strings.TrimSpace(requestID),
+		Model:                  job.Model,
+		RequestedModel:         job.Model,
+		InboundEndpoint:        &inboundEndpoint,
+		UpstreamEndpoint:       &upstreamEndpoint,
+		ImageCount:             job.SuccessCount,
+		ImageOutputCost:        actualCost,
+		TotalCost:              actualCost,
+		ActualCost:             actualCost,
+		RateMultiplier:         job.GroupRateMultiplier * job.BatchDiscountMultiplier,
+		AccountRateMultiplier:  &accountRateMultiplier,
+		BillingType:            BillingTypeBalance,
+		RequestType:            RequestTypeSync,
+		BillingMode:            &billingMode,
+		ImageSize:              &imageSize,
+		SessionID:              job.SessionID,
+		CreatedAt:              createdAt,
 	}
 	writeUsageLogBestEffort(ctx, s.UsageLogRepo, usageLog, "service.batch_image_settlement")
-}
-
-func (s *BatchImageSettlementService) invalidateAuthCache(ctx context.Context, userID int64) {
-	if s != nil && s.AuthCache != nil && userID > 0 {
-		s.AuthCache.InvalidateAuthCacheByUserID(ctx, userID)
-	}
 }
 
 func (s *BatchImageSettlementService) settlementUnitPrice(ctx context.Context, job *BatchImageJob) (float64, error) {

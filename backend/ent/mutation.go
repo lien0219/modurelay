@@ -139,6 +139,8 @@ type APIKeyMutation struct {
 	created_at         *time.Time
 	updated_at         *time.Time
 	deleted_at         *time.Time
+	project_id         *int64
+	addproject_id      *int64
 	key                *string
 	name               *string
 	status             *string
@@ -433,6 +435,76 @@ func (m *APIKeyMutation) OldUserID(ctx context.Context) (v int64, err error) {
 // ResetUserID resets all changes to the "user_id" field.
 func (m *APIKeyMutation) ResetUserID() {
 	m.user = nil
+}
+
+// SetProjectID sets the "project_id" field.
+func (m *APIKeyMutation) SetProjectID(i int64) {
+	m.project_id = &i
+	m.addproject_id = nil
+}
+
+// ProjectID returns the value of the "project_id" field in the mutation.
+func (m *APIKeyMutation) ProjectID() (r int64, exists bool) {
+	v := m.project_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProjectID returns the old "project_id" field's value of the APIKey entity.
+// If the APIKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyMutation) OldProjectID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProjectID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProjectID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProjectID: %w", err)
+	}
+	return oldValue.ProjectID, nil
+}
+
+// AddProjectID adds i to the "project_id" field.
+func (m *APIKeyMutation) AddProjectID(i int64) {
+	if m.addproject_id != nil {
+		*m.addproject_id += i
+	} else {
+		m.addproject_id = &i
+	}
+}
+
+// AddedProjectID returns the value that was added to the "project_id" field in this mutation.
+func (m *APIKeyMutation) AddedProjectID() (r int64, exists bool) {
+	v := m.addproject_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearProjectID clears the value of the "project_id" field.
+func (m *APIKeyMutation) ClearProjectID() {
+	m.project_id = nil
+	m.addproject_id = nil
+	m.clearedFields[apikey.FieldProjectID] = struct{}{}
+}
+
+// ProjectIDCleared returns if the "project_id" field was cleared in this mutation.
+func (m *APIKeyMutation) ProjectIDCleared() bool {
+	_, ok := m.clearedFields[apikey.FieldProjectID]
+	return ok
+}
+
+// ResetProjectID resets all changes to the "project_id" field.
+func (m *APIKeyMutation) ResetProjectID() {
+	m.project_id = nil
+	m.addproject_id = nil
+	delete(m.clearedFields, apikey.FieldProjectID)
 }
 
 // SetKey sets the "key" field.
@@ -1557,7 +1629,7 @@ func (m *APIKeyMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *APIKeyMutation) Fields() []string {
-	fields := make([]string, 0, 23)
+	fields := make([]string, 0, 24)
 	if m.created_at != nil {
 		fields = append(fields, apikey.FieldCreatedAt)
 	}
@@ -1569,6 +1641,9 @@ func (m *APIKeyMutation) Fields() []string {
 	}
 	if m.user != nil {
 		fields = append(fields, apikey.FieldUserID)
+	}
+	if m.project_id != nil {
+		fields = append(fields, apikey.FieldProjectID)
 	}
 	if m.key != nil {
 		fields = append(fields, apikey.FieldKey)
@@ -1643,6 +1718,8 @@ func (m *APIKeyMutation) Field(name string) (ent.Value, bool) {
 		return m.DeletedAt()
 	case apikey.FieldUserID:
 		return m.UserID()
+	case apikey.FieldProjectID:
+		return m.ProjectID()
 	case apikey.FieldKey:
 		return m.Key()
 	case apikey.FieldName:
@@ -1698,6 +1775,8 @@ func (m *APIKeyMutation) OldField(ctx context.Context, name string) (ent.Value, 
 		return m.OldDeletedAt(ctx)
 	case apikey.FieldUserID:
 		return m.OldUserID(ctx)
+	case apikey.FieldProjectID:
+		return m.OldProjectID(ctx)
 	case apikey.FieldKey:
 		return m.OldKey(ctx)
 	case apikey.FieldName:
@@ -1772,6 +1851,13 @@ func (m *APIKeyMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetUserID(v)
+		return nil
+	case apikey.FieldProjectID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProjectID(v)
 		return nil
 	case apikey.FieldKey:
 		v, ok := value.(string)
@@ -1914,6 +2000,9 @@ func (m *APIKeyMutation) SetField(name string, value ent.Value) error {
 // this mutation.
 func (m *APIKeyMutation) AddedFields() []string {
 	var fields []string
+	if m.addproject_id != nil {
+		fields = append(fields, apikey.FieldProjectID)
+	}
 	if m.addquota != nil {
 		fields = append(fields, apikey.FieldQuota)
 	}
@@ -1946,6 +2035,8 @@ func (m *APIKeyMutation) AddedFields() []string {
 // was not set, or was not defined in the schema.
 func (m *APIKeyMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
+	case apikey.FieldProjectID:
+		return m.AddedProjectID()
 	case apikey.FieldQuota:
 		return m.AddedQuota()
 	case apikey.FieldQuotaUsed:
@@ -1971,6 +2062,13 @@ func (m *APIKeyMutation) AddedField(name string) (ent.Value, bool) {
 // type.
 func (m *APIKeyMutation) AddField(name string, value ent.Value) error {
 	switch name {
+	case apikey.FieldProjectID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddProjectID(v)
+		return nil
 	case apikey.FieldQuota:
 		v, ok := value.(float64)
 		if !ok {
@@ -2038,6 +2136,9 @@ func (m *APIKeyMutation) ClearedFields() []string {
 	if m.FieldCleared(apikey.FieldDeletedAt) {
 		fields = append(fields, apikey.FieldDeletedAt)
 	}
+	if m.FieldCleared(apikey.FieldProjectID) {
+		fields = append(fields, apikey.FieldProjectID)
+	}
 	if m.FieldCleared(apikey.FieldGroupID) {
 		fields = append(fields, apikey.FieldGroupID)
 	}
@@ -2078,6 +2179,9 @@ func (m *APIKeyMutation) ClearField(name string) error {
 	switch name {
 	case apikey.FieldDeletedAt:
 		m.ClearDeletedAt()
+		return nil
+	case apikey.FieldProjectID:
+		m.ClearProjectID()
 		return nil
 	case apikey.FieldGroupID:
 		m.ClearGroupID()
@@ -2122,6 +2226,9 @@ func (m *APIKeyMutation) ResetField(name string) error {
 		return nil
 	case apikey.FieldUserID:
 		m.ResetUserID()
+		return nil
+	case apikey.FieldProjectID:
+		m.ResetProjectID()
 		return nil
 	case apikey.FieldKey:
 		m.ResetKey()
@@ -59151,6 +59258,14 @@ type UsageLogMutation struct {
 	op                           Op
 	typ                          string
 	id                           *int64
+	workspace_id                 *int64
+	addworkspace_id              *int64
+	project_id                   *int64
+	addproject_id                *int64
+	billing_principal_user_id    *int64
+	addbilling_principal_user_id *int64
+	resolved_platform            *string
+	budget_reservation_id        *uuid.UUID
 	request_id                   *string
 	model                        *string
 	requested_model              *string
@@ -59434,6 +59549,314 @@ func (m *UsageLogMutation) OldAccountID(ctx context.Context) (v int64, err error
 // ResetAccountID resets all changes to the "account_id" field.
 func (m *UsageLogMutation) ResetAccountID() {
 	m.account = nil
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (m *UsageLogMutation) SetWorkspaceID(i int64) {
+	m.workspace_id = &i
+	m.addworkspace_id = nil
+}
+
+// WorkspaceID returns the value of the "workspace_id" field in the mutation.
+func (m *UsageLogMutation) WorkspaceID() (r int64, exists bool) {
+	v := m.workspace_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWorkspaceID returns the old "workspace_id" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldWorkspaceID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWorkspaceID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWorkspaceID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWorkspaceID: %w", err)
+	}
+	return oldValue.WorkspaceID, nil
+}
+
+// AddWorkspaceID adds i to the "workspace_id" field.
+func (m *UsageLogMutation) AddWorkspaceID(i int64) {
+	if m.addworkspace_id != nil {
+		*m.addworkspace_id += i
+	} else {
+		m.addworkspace_id = &i
+	}
+}
+
+// AddedWorkspaceID returns the value that was added to the "workspace_id" field in this mutation.
+func (m *UsageLogMutation) AddedWorkspaceID() (r int64, exists bool) {
+	v := m.addworkspace_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearWorkspaceID clears the value of the "workspace_id" field.
+func (m *UsageLogMutation) ClearWorkspaceID() {
+	m.workspace_id = nil
+	m.addworkspace_id = nil
+	m.clearedFields[usagelog.FieldWorkspaceID] = struct{}{}
+}
+
+// WorkspaceIDCleared returns if the "workspace_id" field was cleared in this mutation.
+func (m *UsageLogMutation) WorkspaceIDCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldWorkspaceID]
+	return ok
+}
+
+// ResetWorkspaceID resets all changes to the "workspace_id" field.
+func (m *UsageLogMutation) ResetWorkspaceID() {
+	m.workspace_id = nil
+	m.addworkspace_id = nil
+	delete(m.clearedFields, usagelog.FieldWorkspaceID)
+}
+
+// SetProjectID sets the "project_id" field.
+func (m *UsageLogMutation) SetProjectID(i int64) {
+	m.project_id = &i
+	m.addproject_id = nil
+}
+
+// ProjectID returns the value of the "project_id" field in the mutation.
+func (m *UsageLogMutation) ProjectID() (r int64, exists bool) {
+	v := m.project_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProjectID returns the old "project_id" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldProjectID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProjectID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProjectID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProjectID: %w", err)
+	}
+	return oldValue.ProjectID, nil
+}
+
+// AddProjectID adds i to the "project_id" field.
+func (m *UsageLogMutation) AddProjectID(i int64) {
+	if m.addproject_id != nil {
+		*m.addproject_id += i
+	} else {
+		m.addproject_id = &i
+	}
+}
+
+// AddedProjectID returns the value that was added to the "project_id" field in this mutation.
+func (m *UsageLogMutation) AddedProjectID() (r int64, exists bool) {
+	v := m.addproject_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearProjectID clears the value of the "project_id" field.
+func (m *UsageLogMutation) ClearProjectID() {
+	m.project_id = nil
+	m.addproject_id = nil
+	m.clearedFields[usagelog.FieldProjectID] = struct{}{}
+}
+
+// ProjectIDCleared returns if the "project_id" field was cleared in this mutation.
+func (m *UsageLogMutation) ProjectIDCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldProjectID]
+	return ok
+}
+
+// ResetProjectID resets all changes to the "project_id" field.
+func (m *UsageLogMutation) ResetProjectID() {
+	m.project_id = nil
+	m.addproject_id = nil
+	delete(m.clearedFields, usagelog.FieldProjectID)
+}
+
+// SetBillingPrincipalUserID sets the "billing_principal_user_id" field.
+func (m *UsageLogMutation) SetBillingPrincipalUserID(i int64) {
+	m.billing_principal_user_id = &i
+	m.addbilling_principal_user_id = nil
+}
+
+// BillingPrincipalUserID returns the value of the "billing_principal_user_id" field in the mutation.
+func (m *UsageLogMutation) BillingPrincipalUserID() (r int64, exists bool) {
+	v := m.billing_principal_user_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBillingPrincipalUserID returns the old "billing_principal_user_id" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldBillingPrincipalUserID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBillingPrincipalUserID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBillingPrincipalUserID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBillingPrincipalUserID: %w", err)
+	}
+	return oldValue.BillingPrincipalUserID, nil
+}
+
+// AddBillingPrincipalUserID adds i to the "billing_principal_user_id" field.
+func (m *UsageLogMutation) AddBillingPrincipalUserID(i int64) {
+	if m.addbilling_principal_user_id != nil {
+		*m.addbilling_principal_user_id += i
+	} else {
+		m.addbilling_principal_user_id = &i
+	}
+}
+
+// AddedBillingPrincipalUserID returns the value that was added to the "billing_principal_user_id" field in this mutation.
+func (m *UsageLogMutation) AddedBillingPrincipalUserID() (r int64, exists bool) {
+	v := m.addbilling_principal_user_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearBillingPrincipalUserID clears the value of the "billing_principal_user_id" field.
+func (m *UsageLogMutation) ClearBillingPrincipalUserID() {
+	m.billing_principal_user_id = nil
+	m.addbilling_principal_user_id = nil
+	m.clearedFields[usagelog.FieldBillingPrincipalUserID] = struct{}{}
+}
+
+// BillingPrincipalUserIDCleared returns if the "billing_principal_user_id" field was cleared in this mutation.
+func (m *UsageLogMutation) BillingPrincipalUserIDCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldBillingPrincipalUserID]
+	return ok
+}
+
+// ResetBillingPrincipalUserID resets all changes to the "billing_principal_user_id" field.
+func (m *UsageLogMutation) ResetBillingPrincipalUserID() {
+	m.billing_principal_user_id = nil
+	m.addbilling_principal_user_id = nil
+	delete(m.clearedFields, usagelog.FieldBillingPrincipalUserID)
+}
+
+// SetResolvedPlatform sets the "resolved_platform" field.
+func (m *UsageLogMutation) SetResolvedPlatform(s string) {
+	m.resolved_platform = &s
+}
+
+// ResolvedPlatform returns the value of the "resolved_platform" field in the mutation.
+func (m *UsageLogMutation) ResolvedPlatform() (r string, exists bool) {
+	v := m.resolved_platform
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldResolvedPlatform returns the old "resolved_platform" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldResolvedPlatform(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldResolvedPlatform is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldResolvedPlatform requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldResolvedPlatform: %w", err)
+	}
+	return oldValue.ResolvedPlatform, nil
+}
+
+// ClearResolvedPlatform clears the value of the "resolved_platform" field.
+func (m *UsageLogMutation) ClearResolvedPlatform() {
+	m.resolved_platform = nil
+	m.clearedFields[usagelog.FieldResolvedPlatform] = struct{}{}
+}
+
+// ResolvedPlatformCleared returns if the "resolved_platform" field was cleared in this mutation.
+func (m *UsageLogMutation) ResolvedPlatformCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldResolvedPlatform]
+	return ok
+}
+
+// ResetResolvedPlatform resets all changes to the "resolved_platform" field.
+func (m *UsageLogMutation) ResetResolvedPlatform() {
+	m.resolved_platform = nil
+	delete(m.clearedFields, usagelog.FieldResolvedPlatform)
+}
+
+// SetBudgetReservationID sets the "budget_reservation_id" field.
+func (m *UsageLogMutation) SetBudgetReservationID(u uuid.UUID) {
+	m.budget_reservation_id = &u
+}
+
+// BudgetReservationID returns the value of the "budget_reservation_id" field in the mutation.
+func (m *UsageLogMutation) BudgetReservationID() (r uuid.UUID, exists bool) {
+	v := m.budget_reservation_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBudgetReservationID returns the old "budget_reservation_id" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldBudgetReservationID(ctx context.Context) (v *uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBudgetReservationID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBudgetReservationID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBudgetReservationID: %w", err)
+	}
+	return oldValue.BudgetReservationID, nil
+}
+
+// ClearBudgetReservationID clears the value of the "budget_reservation_id" field.
+func (m *UsageLogMutation) ClearBudgetReservationID() {
+	m.budget_reservation_id = nil
+	m.clearedFields[usagelog.FieldBudgetReservationID] = struct{}{}
+}
+
+// BudgetReservationIDCleared returns if the "budget_reservation_id" field was cleared in this mutation.
+func (m *UsageLogMutation) BudgetReservationIDCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldBudgetReservationID]
+	return ok
+}
+
+// ResetBudgetReservationID resets all changes to the "budget_reservation_id" field.
+func (m *UsageLogMutation) ResetBudgetReservationID() {
+	m.budget_reservation_id = nil
+	delete(m.clearedFields, usagelog.FieldBudgetReservationID)
 }
 
 // SetRequestID sets the "request_id" field.
@@ -61900,7 +62323,7 @@ func (m *UsageLogMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UsageLogMutation) Fields() []string {
-	fields := make([]string, 0, 47)
+	fields := make([]string, 0, 52)
 	if m.user != nil {
 		fields = append(fields, usagelog.FieldUserID)
 	}
@@ -61909,6 +62332,21 @@ func (m *UsageLogMutation) Fields() []string {
 	}
 	if m.account != nil {
 		fields = append(fields, usagelog.FieldAccountID)
+	}
+	if m.workspace_id != nil {
+		fields = append(fields, usagelog.FieldWorkspaceID)
+	}
+	if m.project_id != nil {
+		fields = append(fields, usagelog.FieldProjectID)
+	}
+	if m.billing_principal_user_id != nil {
+		fields = append(fields, usagelog.FieldBillingPrincipalUserID)
+	}
+	if m.resolved_platform != nil {
+		fields = append(fields, usagelog.FieldResolvedPlatform)
+	}
+	if m.budget_reservation_id != nil {
+		fields = append(fields, usagelog.FieldBudgetReservationID)
 	}
 	if m.request_id != nil {
 		fields = append(fields, usagelog.FieldRequestID)
@@ -62056,6 +62494,16 @@ func (m *UsageLogMutation) Field(name string) (ent.Value, bool) {
 		return m.APIKeyID()
 	case usagelog.FieldAccountID:
 		return m.AccountID()
+	case usagelog.FieldWorkspaceID:
+		return m.WorkspaceID()
+	case usagelog.FieldProjectID:
+		return m.ProjectID()
+	case usagelog.FieldBillingPrincipalUserID:
+		return m.BillingPrincipalUserID()
+	case usagelog.FieldResolvedPlatform:
+		return m.ResolvedPlatform()
+	case usagelog.FieldBudgetReservationID:
+		return m.BudgetReservationID()
 	case usagelog.FieldRequestID:
 		return m.RequestID()
 	case usagelog.FieldModel:
@@ -62159,6 +62607,16 @@ func (m *UsageLogMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldAPIKeyID(ctx)
 	case usagelog.FieldAccountID:
 		return m.OldAccountID(ctx)
+	case usagelog.FieldWorkspaceID:
+		return m.OldWorkspaceID(ctx)
+	case usagelog.FieldProjectID:
+		return m.OldProjectID(ctx)
+	case usagelog.FieldBillingPrincipalUserID:
+		return m.OldBillingPrincipalUserID(ctx)
+	case usagelog.FieldResolvedPlatform:
+		return m.OldResolvedPlatform(ctx)
+	case usagelog.FieldBudgetReservationID:
+		return m.OldBudgetReservationID(ctx)
 	case usagelog.FieldRequestID:
 		return m.OldRequestID(ctx)
 	case usagelog.FieldModel:
@@ -62276,6 +62734,41 @@ func (m *UsageLogMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetAccountID(v)
+		return nil
+	case usagelog.FieldWorkspaceID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWorkspaceID(v)
+		return nil
+	case usagelog.FieldProjectID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProjectID(v)
+		return nil
+	case usagelog.FieldBillingPrincipalUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBillingPrincipalUserID(v)
+		return nil
+	case usagelog.FieldResolvedPlatform:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetResolvedPlatform(v)
+		return nil
+	case usagelog.FieldBudgetReservationID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBudgetReservationID(v)
 		return nil
 	case usagelog.FieldRequestID:
 		v, ok := value.(string)
@@ -62593,6 +63086,15 @@ func (m *UsageLogMutation) SetField(name string, value ent.Value) error {
 // this mutation.
 func (m *UsageLogMutation) AddedFields() []string {
 	var fields []string
+	if m.addworkspace_id != nil {
+		fields = append(fields, usagelog.FieldWorkspaceID)
+	}
+	if m.addproject_id != nil {
+		fields = append(fields, usagelog.FieldProjectID)
+	}
+	if m.addbilling_principal_user_id != nil {
+		fields = append(fields, usagelog.FieldBillingPrincipalUserID)
+	}
 	if m.addchannel_id != nil {
 		fields = append(fields, usagelog.FieldChannelID)
 	}
@@ -62664,6 +63166,12 @@ func (m *UsageLogMutation) AddedFields() []string {
 // was not set, or was not defined in the schema.
 func (m *UsageLogMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
+	case usagelog.FieldWorkspaceID:
+		return m.AddedWorkspaceID()
+	case usagelog.FieldProjectID:
+		return m.AddedProjectID()
+	case usagelog.FieldBillingPrincipalUserID:
+		return m.AddedBillingPrincipalUserID()
 	case usagelog.FieldChannelID:
 		return m.AddedChannelID()
 	case usagelog.FieldInputTokens:
@@ -62715,6 +63223,27 @@ func (m *UsageLogMutation) AddedField(name string) (ent.Value, bool) {
 // type.
 func (m *UsageLogMutation) AddField(name string, value ent.Value) error {
 	switch name {
+	case usagelog.FieldWorkspaceID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddWorkspaceID(v)
+		return nil
+	case usagelog.FieldProjectID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddProjectID(v)
+		return nil
+	case usagelog.FieldBillingPrincipalUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddBillingPrincipalUserID(v)
+		return nil
 	case usagelog.FieldChannelID:
 		v, ok := value.(int64)
 		if !ok {
@@ -62870,6 +63399,21 @@ func (m *UsageLogMutation) AddField(name string, value ent.Value) error {
 // mutation.
 func (m *UsageLogMutation) ClearedFields() []string {
 	var fields []string
+	if m.FieldCleared(usagelog.FieldWorkspaceID) {
+		fields = append(fields, usagelog.FieldWorkspaceID)
+	}
+	if m.FieldCleared(usagelog.FieldProjectID) {
+		fields = append(fields, usagelog.FieldProjectID)
+	}
+	if m.FieldCleared(usagelog.FieldBillingPrincipalUserID) {
+		fields = append(fields, usagelog.FieldBillingPrincipalUserID)
+	}
+	if m.FieldCleared(usagelog.FieldResolvedPlatform) {
+		fields = append(fields, usagelog.FieldResolvedPlatform)
+	}
+	if m.FieldCleared(usagelog.FieldBudgetReservationID) {
+		fields = append(fields, usagelog.FieldBudgetReservationID)
+	}
 	if m.FieldCleared(usagelog.FieldRequestedModel) {
 		fields = append(fields, usagelog.FieldRequestedModel)
 	}
@@ -62950,6 +63494,21 @@ func (m *UsageLogMutation) FieldCleared(name string) bool {
 // error if the field is not defined in the schema.
 func (m *UsageLogMutation) ClearField(name string) error {
 	switch name {
+	case usagelog.FieldWorkspaceID:
+		m.ClearWorkspaceID()
+		return nil
+	case usagelog.FieldProjectID:
+		m.ClearProjectID()
+		return nil
+	case usagelog.FieldBillingPrincipalUserID:
+		m.ClearBillingPrincipalUserID()
+		return nil
+	case usagelog.FieldResolvedPlatform:
+		m.ClearResolvedPlatform()
+		return nil
+	case usagelog.FieldBudgetReservationID:
+		m.ClearBudgetReservationID()
+		return nil
 	case usagelog.FieldRequestedModel:
 		m.ClearRequestedModel()
 		return nil
@@ -63032,6 +63591,21 @@ func (m *UsageLogMutation) ResetField(name string) error {
 		return nil
 	case usagelog.FieldAccountID:
 		m.ResetAccountID()
+		return nil
+	case usagelog.FieldWorkspaceID:
+		m.ResetWorkspaceID()
+		return nil
+	case usagelog.FieldProjectID:
+		m.ResetProjectID()
+		return nil
+	case usagelog.FieldBillingPrincipalUserID:
+		m.ResetBillingPrincipalUserID()
+		return nil
+	case usagelog.FieldResolvedPlatform:
+		m.ResetResolvedPlatform()
+		return nil
+	case usagelog.FieldBudgetReservationID:
+		m.ResetBudgetReservationID()
 		return nil
 	case usagelog.FieldRequestID:
 		m.ResetRequestID()

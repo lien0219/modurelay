@@ -20,6 +20,16 @@ const (
 	FieldAPIKeyID = "api_key_id"
 	// FieldAccountID holds the string denoting the account_id field in the database.
 	FieldAccountID = "account_id"
+	// FieldWorkspaceID holds the string denoting the workspace_id field in the database.
+	FieldWorkspaceID = "workspace_id"
+	// FieldProjectID holds the string denoting the project_id field in the database.
+	FieldProjectID = "project_id"
+	// FieldBillingPrincipalUserID holds the string denoting the billing_principal_user_id field in the database.
+	FieldBillingPrincipalUserID = "billing_principal_user_id"
+	// FieldResolvedPlatform holds the string denoting the resolved_platform field in the database.
+	FieldResolvedPlatform = "resolved_platform"
+	// FieldBudgetReservationID holds the string denoting the budget_reservation_id field in the database.
+	FieldBudgetReservationID = "budget_reservation_id"
 	// FieldRequestID holds the string denoting the request_id field in the database.
 	FieldRequestID = "request_id"
 	// FieldModel holds the string denoting the model field in the database.
@@ -163,6 +173,11 @@ var Columns = []string{
 	FieldUserID,
 	FieldAPIKeyID,
 	FieldAccountID,
+	FieldWorkspaceID,
+	FieldProjectID,
+	FieldBillingPrincipalUserID,
+	FieldResolvedPlatform,
+	FieldBudgetReservationID,
 	FieldRequestID,
 	FieldModel,
 	FieldRequestedModel,
@@ -220,6 +235,8 @@ func ValidColumn(column string) bool {
 }
 
 var (
+	// ResolvedPlatformValidator is a validator for the "resolved_platform" field. It is called by the builders before save.
+	ResolvedPlatformValidator func(string) error
 	// RequestIDValidator is a validator for the "request_id" field. It is called by the builders before save.
 	RequestIDValidator func(string) error
 	// ModelValidator is a validator for the "model" field. It is called by the builders before save.
@@ -313,6 +330,31 @@ func ByAPIKeyID(opts ...sql.OrderTermOption) OrderOption {
 // ByAccountID orders the results by the account_id field.
 func ByAccountID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAccountID, opts...).ToFunc()
+}
+
+// ByWorkspaceID orders the results by the workspace_id field.
+func ByWorkspaceID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldWorkspaceID, opts...).ToFunc()
+}
+
+// ByProjectID orders the results by the project_id field.
+func ByProjectID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldProjectID, opts...).ToFunc()
+}
+
+// ByBillingPrincipalUserID orders the results by the billing_principal_user_id field.
+func ByBillingPrincipalUserID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldBillingPrincipalUserID, opts...).ToFunc()
+}
+
+// ByResolvedPlatform orders the results by the resolved_platform field.
+func ByResolvedPlatform(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldResolvedPlatform, opts...).ToFunc()
+}
+
+// ByBudgetReservationID orders the results by the budget_reservation_id field.
+func ByBudgetReservationID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldBudgetReservationID, opts...).ToFunc()
 }
 
 // ByRequestID orders the results by the request_id field.

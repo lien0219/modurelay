@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -161,6 +162,44 @@ WHERE batch_id = $1
 	return err
 }
 
+func (r *batchImageRepository) SetBatchImageBudgetReservation(ctx context.Context, batchID, reservationID string) error {
+	res, err := r.sql.ExecContext(ctx, `
+UPDATE batch_image_jobs
+SET budget_reservation_id = $2::uuid, updated_at = NOW()
+WHERE batch_id = $1
+  AND status IN ('created', 'uploading')
+  AND provider_create_started_at IS NULL
+  AND (budget_reservation_id IS NULL OR budget_reservation_id = $2::uuid)`, batchID, strings.TrimSpace(reservationID))
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return err
+	} else if n != 1 {
+		return service.ErrBatchImageInvalidTransition
+	}
+	return nil
+}
+
+func (r *batchImageRepository) MarkBatchImageProviderCreateStarted(ctx context.Context, batchID string) error {
+	res, err := r.sql.ExecContext(ctx, `
+UPDATE batch_image_jobs
+SET provider_create_started_at = NOW(), updated_at = NOW()
+WHERE batch_id = $1
+  AND status = 'uploading'
+  AND provider_create_started_at IS NULL
+  AND (workspace_id IS NULL OR budget_reservation_id IS NOT NULL)`, batchID)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return err
+	} else if n != 1 {
+		return service.ErrBatchImageInvalidTransition
+	}
+	return nil
+}
+
 func (r *batchImageRepository) FailStaleUnsubmittedBatchImageJob(ctx context.Context, batchID string, cutoff time.Time, code, message string) (bool, error) {
 	now := time.Now()
 	res, err := r.sql.ExecContext(ctx, `
@@ -174,6 +213,7 @@ SET status = 'failed',
 WHERE batch_id = $1
   AND status IN ('created', 'uploading')
   AND provider_job_name IS NULL
+  AND provider_create_started_at IS NULL
   AND updated_at <= $5`, batchID, code, message, now, cutoff)
 	if err != nil {
 		return false, err
@@ -270,6 +310,9 @@ WHERE batch_id = $1`, batchID, code, message, now)
 	eventType := "submit_failed"
 	if !markFailed {
 		eventType = "queue_failed"
+		if code == "SUBMIT_OUTCOME_UNKNOWN" {
+			eventType = "submit_outcome_unknown"
+		}
 	}
 	return appendBatchImageEventWithSQL(ctx, r.sql, batchID, eventType, map[string]any{"error_code": code})
 }
@@ -356,11 +399,16 @@ RETURNING retry_count`, batchID, code, message, time.Now()).Scan(&retryCount)
 
 func (r *batchImageRepository) transitionBatchImageJobStatusWithSQL(ctx context.Context, sqlq batchImageSQLExecutor, batchID, toStatus string, opts service.BatchImageTransitionOptions) error {
 	var current string
-	if err := sqlq.QueryRowContext(ctx, `SELECT status FROM batch_image_jobs WHERE batch_id = $1 FOR UPDATE`, batchID).Scan(&current); err != nil {
+	var providerCreateStartedAt sql.NullTime
+	var providerJobName sql.NullString
+	if err := sqlq.QueryRowContext(ctx, `SELECT status, provider_create_started_at, provider_job_name FROM batch_image_jobs WHERE batch_id = $1 FOR UPDATE`, batchID).Scan(&current, &providerCreateStartedAt, &providerJobName); err != nil {
 		return translatePersistenceError(err, service.ErrBatchImageJobNotFound, nil)
 	}
 	if !service.CanTransitionBatchImageJob(current, toStatus) {
 		return service.ErrBatchImageInvalidTransition
+	}
+	if toStatus == service.BatchImageJobStatusCancelled && providerCreateStartedAt.Valid && strings.TrimSpace(providerJobName.String) == "" {
+		return service.ErrBatchImageProviderSubmitUncertain
 	}
 
 	now := time.Now()
@@ -611,7 +659,8 @@ func (r *batchImageRepository) ListStaleUnsubmittedBatchImageJobs(ctx context.Co
 	rows, err := r.sql.QueryContext(ctx, batchImageJobSelectSQL+`
  WHERE status IN ('created', 'uploading')
    AND provider_job_name IS NULL
-   AND COALESCE(hold_amount, estimated_cost, 0) > 0
+   AND provider_create_started_at IS NULL
+   AND (COALESCE(hold_amount, estimated_cost, 0) > 0 OR workspace_id IS NOT NULL)
    AND updated_at <= $1
  ORDER BY updated_at ASC, id ASC
  LIMIT $2`, cutoff, limit)
@@ -750,7 +799,8 @@ INSERT INTO batch_image_jobs (
     batch_discount_multiplier, hold_multiplier, billable_unit_price, hold_unit_price,
     pricing_snapshot_version,
     currency, hold_id,
-    idempotency_key, request_hash, manifest_hash, retry_count, session_id, output_expires_at
+    idempotency_key, request_hash, manifest_hash, retry_count, session_id, output_expires_at,
+    workspace_id, project_id, billing_principal_user_id, budget_reservation_id
 ) VALUES (
     $1, $2, $3, $4, $5, $6, $7, $8, $9,
     $10, $11, $12, $13, $14,
@@ -760,7 +810,8 @@ INSERT INTO batch_image_jobs (
     $25, $26, $27, $28,
     $29,
     $30, $31,
-    $32, $33, $34, $35, $36, $37
+    $32, $33, $34, $35, $36, $37,
+    $38, $39, $40, $41
 )
 RETURNING `+batchImageJobColumns,
 		params.BatchID, params.UserID, params.APIKeyID, params.AccountID, params.Provider, params.Model, params.TaskName, params.ParentBatchID, params.Status,
@@ -772,6 +823,7 @@ RETURNING `+batchImageJobColumns,
 		params.PricingSnapshotVersion,
 		params.Currency, params.HoldID,
 		params.IdempotencyKey, params.RequestHash, params.ManifestHash, params.RetryCount, params.SessionID, params.OutputExpiresAt,
+		params.WorkspaceID, params.ProjectID, params.BillingPrincipalUserID, params.BudgetReservationID,
 	))
 }
 
@@ -827,13 +879,17 @@ currency, hold_id,
 idempotency_key, request_hash, manifest_hash,
 retry_count, version, session_id, output_expires_at, input_deleted_at, output_deleted_at, downloaded_at, user_deleted_at,
 last_error_code, last_error_message,
-created_at, updated_at, submitted_at, started_at, finished_at, settled_at`
+created_at, updated_at, submitted_at, started_at, finished_at, settled_at,
+workspace_id, project_id, billing_principal_user_id, budget_reservation_id, provider_create_started_at`
 
 const batchImageJobSelectSQL = `SELECT ` + batchImageJobColumns + ` FROM batch_image_jobs`
 
 func scanBatchImageJob(row rowScanner) (*service.BatchImageJob, error) {
 	var job service.BatchImageJob
 	var apiKeyID, accountID sql.NullInt64
+	var workspaceID, projectID, billingPrincipalUserID sql.NullInt64
+	var budgetReservationID sql.NullString
+	var providerCreateStartedAt sql.NullTime
 	var providerJobName, providerInputRef, providerOutputRef, gcsInputURI, gcsOutputURI sql.NullString
 	var parentBatchID sql.NullString
 	var holdAmount, actualCost sql.NullFloat64
@@ -856,6 +912,7 @@ func scanBatchImageJob(row rowScanner) (*service.BatchImageJob, error) {
 		&job.RetryCount, &job.Version, &sessionID, &outputExpiresAt, &inputDeletedAt, &outputDeletedAt, &downloadedAt, &userDeletedAt,
 		&lastErrorCode, &lastErrorMessage,
 		&job.CreatedAt, &job.UpdatedAt, &submittedAt, &startedAt, &finishedAt, &settledAt,
+		&workspaceID, &projectID, &billingPrincipalUserID, &budgetReservationID, &providerCreateStartedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -863,6 +920,11 @@ func scanBatchImageJob(row rowScanner) (*service.BatchImageJob, error) {
 
 	job.APIKeyID = batchImageNullInt64Ptr(apiKeyID)
 	job.AccountID = batchImageNullInt64Ptr(accountID)
+	job.WorkspaceID = batchImageNullInt64Ptr(workspaceID)
+	job.ProjectID = batchImageNullInt64Ptr(projectID)
+	job.BillingPrincipalUserID = batchImageNullInt64Ptr(billingPrincipalUserID)
+	job.BudgetReservationID = batchImageNullStringPtr(budgetReservationID)
+	job.ProviderCreateStartedAt = batchImageNullTimePtr(providerCreateStartedAt)
 	job.ProviderJobName = batchImageNullStringPtr(providerJobName)
 	job.ProviderInputRef = batchImageNullStringPtr(providerInputRef)
 	job.ProviderOutputRef = batchImageNullStringPtr(providerOutputRef)

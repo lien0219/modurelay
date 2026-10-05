@@ -665,6 +665,11 @@ func dropUsageLogsPartitionWithRollupInvalidation(ctx context.Context, db *sql.D
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf("DROP TABLE IF EXISTS %s", pq.QuoteIdentifier(name))); err != nil {
 		return rollback(err)
 	}
+	// Dropping a partition bypasses row DELETE triggers. Retire the matching
+	// tenant aggregates atomically so FinOps follows the source retention range.
+	if _, err := tx.ExecContext(ctx, `DELETE FROM usage_tenant_hourly_rollups WHERE bucket_start >= $1 AND bucket_start < $2`, monthStart, monthStart.AddDate(0, 1, 0)); err != nil {
+		return rollback(err)
+	}
 	return tx.Commit()
 }
 

@@ -255,6 +255,10 @@ func usageRecordContext(parent context.Context, base context.Context) context.Co
 	if requestID, _ := parent.Value(ctxkey.RequestID).(string); strings.TrimSpace(requestID) != "" {
 		base = context.WithValue(base, ctxkey.RequestID, strings.TrimSpace(requestID))
 	}
+	base = service.WithBudgetReservation(base, service.BudgetReservationFromContext(parent))
+	if budget := service.BudgetServiceFromContext(parent); budget != nil {
+		base = service.WithBudgetService(base, budget)
+	}
 	return base
 }
 
@@ -266,11 +270,16 @@ func wrapUsageRecordTaskContext(parent context.Context, task service.UsageRecord
 		return nil, func() {}
 	}
 	done := func() {}
+	budget := service.BudgetReservationFromContext(parent)
 	if parent != nil {
-		done = service.InflightReservationFromContext(parent).Acquire()
+		walletDone := service.InflightReservationFromContext(parent).Acquire()
+		budgetDone := budget.Acquire()
+		done = func() { walletDone(); budgetDone() }
 	}
 	return func(ctx context.Context) {
 		defer done()
+		// Upstream usage exists. A failed settlement must remain payable.
+		budget.Preserve()
 		task(usageRecordContext(parent, ctx))
 	}, done
 }
@@ -2431,6 +2440,17 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	// 必须在合成路由解析和上游模型映射之前执行。
 	// 与 HTTP 准入一致：帧内重复 model 键/大小写变体可能被上游按末值绑定，
 	// 全部候选值逐一校验，任一未命中即拒绝。
+	admittedKey, tenantErr := h.admitWorkspaceWSTurn(ctx, apiKey, firstMessage, reqModel)
+	if tenantErr != nil {
+		var closeErr *service.OpenAIWSClientCloseError
+		if errors.As(tenantErr, &closeErr) {
+			closeOpenAIClientWS(wsConn, closeErr.StatusCode(), closeErr.Reason())
+		} else {
+			closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "tenant access denied")
+		}
+		return
+	}
+	apiKey = admittedKey
 	if blocked := blockedModelAllowlistCandidate(apiKey.Group, requestmodel.FromBodyCandidates("", "application/json", firstMessage)); blocked != "" {
 		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalModelConfiguration)
 		middleware2.MarkIngressRejected(c, middleware2.IngressRejectModelNotAllowed)
@@ -2854,6 +2874,20 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		}
 		// Passthrough rejects overlapping response.create frames, so one immutable
 		// turn-tagged slot preserves the exact mapping used for the in-flight request.
+		var turnTenantSnapshots sync.Map
+		type budgetTurn struct {
+			ctx  context.Context
+			done func()
+		}
+		var turnBudgetSnapshots sync.Map
+		turnTenantSnapshots.Store(1, apiKey)
+		turnBudgetSnapshots.Store(1, budgetTurn{ctx: ctx, done: inflightNoop})
+		defer turnBudgetSnapshots.Range(func(_, value any) bool {
+			if turn, ok := value.(budgetTurn); ok {
+				turn.done()
+			}
+			return true
+		})
 		var turnChannelMapping atomic.Pointer[openAIWSTurnChannelMappingSnapshot]
 		turnChannelMapping.Store(&openAIWSTurnChannelMappingSnapshot{turn: 1, mapping: channelMappingWS})
 		// turn 级定价：首轮回退到 TurnStarted 的所属 turn 时刻；后续 turn 由
@@ -2873,6 +2907,36 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			ReasoningEffortMappings:     reasoningEffortMappings,
 			TurnStarted:                 recordTurnStart,
 			BeforeRequest: func(turn int, payload []byte, originalModel string) error {
+				liveModel := strings.TrimSpace(originalModel)
+				if liveModel == "" {
+					liveModel = reqModel
+				}
+				latestAdmission, tenantErr := h.admitWorkspaceWSTurn(ctx, apiKey, payload, liveModel)
+				if tenantErr != nil {
+					return tenantErr
+				}
+				if h.billingCacheService != nil {
+					if e := h.billingCacheService.CheckBillingEligibility(ctx, apiKey.User, latestAdmission, latestAdmission.Group, subscription, service.QuotaPlatform(ctx, latestAdmission)); e != nil {
+						return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "billing check failed", e)
+					}
+				}
+				turnCtx, turnDone := ctx, inflightNoop
+				if turn == 1 {
+					if latestAdmission.Tenant != nil && service.BudgetReservationFromContext(ctx) != nil {
+						tenantCopy := *latestAdmission.Tenant
+						tenantCopy.BudgetReservationID = service.BudgetReservationFromContext(ctx).ID()
+						latestAdmission.Tenant = &tenantCopy
+					}
+				} else {
+					var budgetErr error
+					turnCtx, turnDone, budgetErr = reserveInflightBalanceCtx(service.WithoutBudgetReservation(ctx), nil, h.gatewayService, latestAdmission, subscription, tokenInflightEstimate(liveModel, payload))
+					if budgetErr != nil {
+						return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, budgetErr.Error(), budgetErr)
+					}
+				}
+				turnTenantSnapshots.Store(turn, latestAdmission)
+				turnBudgetSnapshots.Store(turn, budgetTurn{ctx: turnCtx, done: turnDone})
+				c.Request = c.Request.WithContext(turnCtx)
 				c.Set(securityAuditWSTurnContextKey, turn)
 				service.BeginOpsStreamTurn(c, turn)
 				setCyberTurnBody(turn, payload)
@@ -2901,7 +2965,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				// 帧内重复 model 键/大小写变体/嵌套 session.model 额外逐一校验，
 				// 防止候选集非空时掩盖被轮换掉的禁用模型。
 				candidates := append([]string{model}, requestmodel.FromBodyCandidates("", "application/json", payload)...)
-				if blocked := blockedModelAllowlistCandidate(apiKey.Group, candidates); blocked != "" {
+				if blocked := blockedModelAllowlistCandidate(latestAdmission.Group, candidates); blocked != "" {
 					service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalModelConfiguration)
 					middleware2.MarkIngressRejected(c, middleware2.IngressRejectModelNotAllowed)
 					return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, fmt.Sprintf("Model %q is not available for this group", blocked), nil)
@@ -2986,6 +3050,19 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				return checkSimpleModeTurnBilling()
 			},
 			AfterTurn: func(turn int, result *service.OpenAIForwardResult, turnErr error) {
+				usageCtx := ctx
+				if saved, ok := turnBudgetSnapshots.LoadAndDelete(turn); ok {
+					if b, valid := saved.(budgetTurn); valid {
+						usageCtx = b.ctx
+						defer b.done()
+					}
+				}
+				usageAPIKey := apiKey
+				if saved, ok := turnTenantSnapshots.LoadAndDelete(turn); ok {
+					if key, valid := saved.(*service.APIKey); valid {
+						usageAPIKey = key
+					}
+				}
 				turnStart := getTurnStart(turn)
 				cyberBlockBody := takeCyberTurnBody(turn)
 				// 每次 attempt 都清 cyber mark；failover 链结束前保留 recorded guard，
@@ -3063,11 +3140,11 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				sessionID := service.ExtractClientSessionID(c)
 				turnRecordPricingAt := turnPricing.currentOr(turnStart)
 				cyberBlocked := service.GetOpsCyberPolicy(c) != nil
-				h.submitOpenAIUsageRecordTask(ctx, result, func(taskCtx context.Context) {
+				h.submitOpenAIUsageRecordTask(usageCtx, result, func(taskCtx context.Context) {
 					if err := h.gatewayService.RecordUsage(taskCtx, &service.OpenAIRecordUsageInput{
 						Result:             result,
-						APIKey:             apiKey,
-						User:               apiKey.User,
+						APIKey:             usageAPIKey,
+						User:               usageAPIKey.User,
 						Account:            account,
 						Subscription:       subscription,
 						InboundEndpoint:    inboundEndpoint,
@@ -3335,6 +3412,10 @@ func getContextInt64(c *gin.Context, key string) (int64, bool) {
 
 func (h *OpenAIGatewayHandler) submitUsageRecordTask(parent context.Context, task service.UsageRecordTask) {
 	if task == nil {
+		return
+	}
+	if service.BudgetReservationFromContext(parent) != nil {
+		h.submitMandatoryUsageRecordTask(parent, task)
 		return
 	}
 	task, abandon := wrapUsageRecordTaskContext(parent, task)

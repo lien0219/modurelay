@@ -16,6 +16,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
+	"github.com/google/uuid"
 )
 
 // UsageLog is the model entity for the UsageLog schema.
@@ -29,6 +30,16 @@ type UsageLog struct {
 	APIKeyID int64 `json:"api_key_id,omitempty"`
 	// AccountID holds the value of the "account_id" field.
 	AccountID int64 `json:"account_id,omitempty"`
+	// WorkspaceID holds the value of the "workspace_id" field.
+	WorkspaceID *int64 `json:"workspace_id,omitempty"`
+	// ProjectID holds the value of the "project_id" field.
+	ProjectID *int64 `json:"project_id,omitempty"`
+	// BillingPrincipalUserID holds the value of the "billing_principal_user_id" field.
+	BillingPrincipalUserID *int64 `json:"billing_principal_user_id,omitempty"`
+	// ResolvedPlatform holds the value of the "resolved_platform" field.
+	ResolvedPlatform *string `json:"resolved_platform,omitempty"`
+	// BudgetReservationID holds the value of the "budget_reservation_id" field.
+	BudgetReservationID *uuid.UUID `json:"budget_reservation_id,omitempty"`
 	// RequestID holds the value of the "request_id" field.
 	RequestID string `json:"request_id,omitempty"`
 	// Model holds the value of the "model" field.
@@ -200,15 +211,17 @@ func (*UsageLog) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
+		case usagelog.FieldBudgetReservationID:
+			values[i] = &sql.NullScanner{S: new(uuid.UUID)}
 		case usagelog.FieldImageSizeBreakdown:
 			values[i] = new([]byte)
 		case usagelog.FieldUpstreamModelMismatch, usagelog.FieldLongContextBillingApplied, usagelog.FieldStream, usagelog.FieldCacheTTLOverridden:
 			values[i] = new(sql.NullBool)
 		case usagelog.FieldInputCost, usagelog.FieldOutputCost, usagelog.FieldCacheCreationCost, usagelog.FieldCacheReadCost, usagelog.FieldTotalCost, usagelog.FieldActualCost, usagelog.FieldRateMultiplier, usagelog.FieldAccountRateMultiplier:
 			values[i] = new(sql.NullFloat64)
-		case usagelog.FieldID, usagelog.FieldUserID, usagelog.FieldAPIKeyID, usagelog.FieldAccountID, usagelog.FieldChannelID, usagelog.FieldGroupID, usagelog.FieldSubscriptionID, usagelog.FieldInputTokens, usagelog.FieldOutputTokens, usagelog.FieldCacheCreationTokens, usagelog.FieldCacheReadTokens, usagelog.FieldCacheCreation5mTokens, usagelog.FieldCacheCreation1hTokens, usagelog.FieldBillingType, usagelog.FieldDurationMs, usagelog.FieldFirstTokenMs, usagelog.FieldImageCount, usagelog.FieldVideoCount, usagelog.FieldVideoDurationSeconds:
+		case usagelog.FieldID, usagelog.FieldUserID, usagelog.FieldAPIKeyID, usagelog.FieldAccountID, usagelog.FieldWorkspaceID, usagelog.FieldProjectID, usagelog.FieldBillingPrincipalUserID, usagelog.FieldChannelID, usagelog.FieldGroupID, usagelog.FieldSubscriptionID, usagelog.FieldInputTokens, usagelog.FieldOutputTokens, usagelog.FieldCacheCreationTokens, usagelog.FieldCacheReadTokens, usagelog.FieldCacheCreation5mTokens, usagelog.FieldCacheCreation1hTokens, usagelog.FieldBillingType, usagelog.FieldDurationMs, usagelog.FieldFirstTokenMs, usagelog.FieldImageCount, usagelog.FieldVideoCount, usagelog.FieldVideoDurationSeconds:
 			values[i] = new(sql.NullInt64)
-		case usagelog.FieldRequestID, usagelog.FieldModel, usagelog.FieldRequestedModel, usagelog.FieldUpstreamModel, usagelog.FieldUpstreamResponseModel, usagelog.FieldModelMappingChain, usagelog.FieldBillingTier, usagelog.FieldBillingMode, usagelog.FieldUserAgent, usagelog.FieldIPAddress, usagelog.FieldImageSize, usagelog.FieldImageInputSize, usagelog.FieldImageOutputSize, usagelog.FieldImageSizeSource, usagelog.FieldVideoResolution:
+		case usagelog.FieldResolvedPlatform, usagelog.FieldRequestID, usagelog.FieldModel, usagelog.FieldRequestedModel, usagelog.FieldUpstreamModel, usagelog.FieldUpstreamResponseModel, usagelog.FieldModelMappingChain, usagelog.FieldBillingTier, usagelog.FieldBillingMode, usagelog.FieldUserAgent, usagelog.FieldIPAddress, usagelog.FieldImageSize, usagelog.FieldImageInputSize, usagelog.FieldImageOutputSize, usagelog.FieldImageSizeSource, usagelog.FieldVideoResolution:
 			values[i] = new(sql.NullString)
 		case usagelog.FieldCreatedAt:
 			values[i] = new(sql.NullTime)
@@ -250,6 +263,41 @@ func (_m *UsageLog) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field account_id", values[i])
 			} else if value.Valid {
 				_m.AccountID = value.Int64
+			}
+		case usagelog.FieldWorkspaceID:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field workspace_id", values[i])
+			} else if value.Valid {
+				_m.WorkspaceID = new(int64)
+				*_m.WorkspaceID = value.Int64
+			}
+		case usagelog.FieldProjectID:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field project_id", values[i])
+			} else if value.Valid {
+				_m.ProjectID = new(int64)
+				*_m.ProjectID = value.Int64
+			}
+		case usagelog.FieldBillingPrincipalUserID:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field billing_principal_user_id", values[i])
+			} else if value.Valid {
+				_m.BillingPrincipalUserID = new(int64)
+				*_m.BillingPrincipalUserID = value.Int64
+			}
+		case usagelog.FieldResolvedPlatform:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field resolved_platform", values[i])
+			} else if value.Valid {
+				_m.ResolvedPlatform = new(string)
+				*_m.ResolvedPlatform = value.String
+			}
+		case usagelog.FieldBudgetReservationID:
+			if value, ok := values[i].(*sql.NullScanner); !ok {
+				return fmt.Errorf("unexpected type %T for field budget_reservation_id", values[i])
+			} else if value.Valid {
+				_m.BudgetReservationID = new(uuid.UUID)
+				*_m.BudgetReservationID = *value.S.(*uuid.UUID)
 			}
 		case usagelog.FieldRequestID:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -607,6 +655,31 @@ func (_m *UsageLog) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("account_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.AccountID))
+	builder.WriteString(", ")
+	if v := _m.WorkspaceID; v != nil {
+		builder.WriteString("workspace_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.ProjectID; v != nil {
+		builder.WriteString("project_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.BillingPrincipalUserID; v != nil {
+		builder.WriteString("billing_principal_user_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.ResolvedPlatform; v != nil {
+		builder.WriteString("resolved_platform=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.BudgetReservationID; v != nil {
+		builder.WriteString("budget_reservation_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
 	builder.WriteString(", ")
 	builder.WriteString("request_id=")
 	builder.WriteString(_m.RequestID)

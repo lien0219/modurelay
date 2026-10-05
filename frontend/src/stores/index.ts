@@ -12,6 +12,7 @@ export { useAnnouncementStore } from './announcements'
 export { usePaymentStore } from './payment'
 export { useAdminComplianceStore } from './adminCompliance'
 export { useCanvasStore } from './canvas'
+export { useWorkspaceStore } from './workspace'
 
 // Re-export types for convenience
 export type { User, LoginRequest, RegisterRequest, AuthResponse } from '@/types'

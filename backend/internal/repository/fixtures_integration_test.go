@@ -315,6 +315,9 @@ func mustCreateApiKey(t *testing.T, client *dbent.Client, k *service.APIKey) *se
 	if k.GroupID != nil {
 		create.SetGroupID(*k.GroupID)
 	}
+	if k.ProjectID != nil {
+		create.SetProjectID(*k.ProjectID)
+	}
 	if !k.CreatedAt.IsZero() {
 		create.SetCreatedAt(k.CreatedAt)
 	}

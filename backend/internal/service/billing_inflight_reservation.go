@@ -434,7 +434,7 @@ func (d inflightEstimateDeps) rates(ctx context.Context, apiKey *APIKey) (text, 
 	if apiKey != nil && apiKey.GroupID != nil && apiKey.Group != nil {
 		rate = apiKey.Group.RateMultiplier
 		if d.userGroupRate != nil && apiKey.User != nil {
-			rate = d.userGroupRate(ctx, apiKey.User.ID, *apiKey.GroupID, rate)
+			rate = d.userGroupRate(ctx, apiKey.BillingUserID(), *apiKey.GroupID, rate)
 		}
 	}
 	return computePeakAwareMultipliers(apiKey, rate, timezone.Now())
@@ -574,6 +574,9 @@ func (d inflightEstimateDeps) estimateOne(ctx context.Context, apiKey *APIKey, m
 
 // estimate 返回保守的单请求费用（USD，已乘倍率）；无法定价返回 (0,false)。
 func (d inflightEstimateDeps) estimate(ctx context.Context, apiKey *APIKey, req InflightEstimateRequest) (float64, bool) {
+	if d.cfg != nil && d.cfg.RunMode == config.RunModeSimple {
+		return 0, true
+	}
 	if apiKey == nil || apiKey.User == nil {
 		return 0, false
 	}

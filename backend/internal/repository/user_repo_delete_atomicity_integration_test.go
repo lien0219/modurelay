@@ -41,6 +41,7 @@ func TestUserRepository_DeleteUser_AtomicWithAPIKeys(t *testing.T) {
 		// testEntClient 的写入不会自动回滚，best-effort 清理避免污染共享库。
 		_, _ = integrationDB.Exec(`DELETE FROM deleted_api_key_audits WHERE user_id = $1`, user.ID)
 		_, _ = integrationDB.Exec(`DELETE FROM api_keys WHERE user_id = $1`, user.ID)
+		deletePersonalWorkspaceFixture(t, user.ID)
 		_, _ = integrationDB.Exec(`DELETE FROM users WHERE id = $1`, user.ID)
 	})
 

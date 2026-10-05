@@ -119,6 +119,9 @@ func (s *OpenAIGatewayService) loadVideoUsageSettlement(ctx context.Context, inp
 			return nil, false, err
 		}
 		if pending != nil {
+			if pending.Cancelled {
+				return nil, false, ErrGrokVideoBillingCancelled
+			}
 			if pending.UserID != input.User.ID || pending.APIKeyID != input.APIKey.ID || pending.AccountID != input.Account.ID {
 				return nil, false, errors.New("video settlement ownership mismatch")
 			}
@@ -149,10 +152,14 @@ func (s *OpenAIGatewayService) prepareVideoUsageSettlement(ctx context.Context, 
 		SimpleModeKeyRateLimitOnly: p.SimpleModeKeyRateLimitOnly,
 	}
 	billingParams := *p
+	if billingParams.BudgetReservationID == "" {
+		billingParams.BudgetReservationID = BudgetReservationIDFromContext(ctx)
+	}
 	if logOnly {
 		// Record a durable zero-money receipt too. A later run-mode change or
 		// loss of Redis state must never make this completed video payable.
 		billingParams.Cost = &CostBreakdown{}
+		billingParams.UsageLogCostTelemetryOnly = true
 	}
 	settlement.Command = buildUsageBillingCommand(usageLog.RequestID, &logCopy, &billingParams)
 	if s.cache == nil {
@@ -194,6 +201,9 @@ func (s *OpenAIGatewayService) prepareVideoUsageSettlement(ctx context.Context, 
 		}
 		if err := json.Unmarshal(payload, pending); err != nil {
 			return nil, err
+		}
+		if pending.Cancelled {
+			return nil, ErrGrokVideoBillingCancelled
 		}
 		return pending.Settlement, nil
 	}

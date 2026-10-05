@@ -32,17 +32,21 @@ var (
 // ImageTaskRecord is the private Redis representation of an asynchronous image
 // request. Ownership fields are intentionally omitted from the public view.
 type ImageTaskRecord struct {
-	ID           string             `json:"id"`
-	UserID       int64              `json:"user_id"`
-	APIKeyID     int64              `json:"api_key_id"`
-	Status       string             `json:"status"`
-	HTTPStatus   int                `json:"http_status,omitempty"`
-	Result       json.RawMessage    `json:"result,omitempty"`
-	Error        json.RawMessage    `json:"error,omitempty"`
-	CreatedAt    int64              `json:"created_at"`
-	CompletedAt  *int64             `json:"completed_at,omitempty"`
-	ExpiresAt    int64              `json:"expires_at"`
-	StoredAssets []StoredImageAsset `json:"stored_assets,omitempty"`
+	ID                     string             `json:"id"`
+	UserID                 int64              `json:"user_id"`
+	APIKeyID               int64              `json:"api_key_id"`
+	WorkspaceID            int64              `json:"workspace_id,omitempty"`
+	ProjectID              int64              `json:"project_id,omitempty"`
+	BillingPrincipalUserID int64              `json:"billing_principal_user_id,omitempty"`
+	BudgetReservationID    string             `json:"budget_reservation_id,omitempty"`
+	Status                 string             `json:"status"`
+	HTTPStatus             int                `json:"http_status,omitempty"`
+	Result                 json.RawMessage    `json:"result,omitempty"`
+	Error                  json.RawMessage    `json:"error,omitempty"`
+	CreatedAt              int64              `json:"created_at"`
+	CompletedAt            *int64             `json:"completed_at,omitempty"`
+	ExpiresAt              int64              `json:"expires_at"`
+	StoredAssets           []StoredImageAsset `json:"stored_assets,omitempty"`
 }
 
 // ImageTask is the API-safe task representation returned to callers.
@@ -61,8 +65,12 @@ type ImageTask struct {
 }
 
 type ImageTaskOwner struct {
-	UserID   int64
-	APIKeyID int64
+	UserID                 int64
+	APIKeyID               int64
+	WorkspaceID            int64  `json:"workspace_id,omitempty"`
+	ProjectID              int64  `json:"project_id,omitempty"`
+	BillingPrincipalUserID int64  `json:"billing_principal_user_id,omitempty"`
+	BudgetReservationID    string `json:"budget_reservation_id,omitempty"`
 }
 
 type ImageTaskStore interface {
@@ -155,11 +163,17 @@ func (s *ImageTaskService) Create(ctx context.Context, owner ImageTaskOwner) (*I
 	if s == nil || s.store == nil {
 		return nil, ErrImageTaskUnavailable
 	}
+	if owner.WorkspaceID != 0 || owner.ProjectID != 0 || owner.BillingPrincipalUserID != 0 || owner.BudgetReservationID != "" {
+		if owner.UserID <= 0 || owner.APIKeyID <= 0 || owner.WorkspaceID <= 0 || owner.ProjectID <= 0 || owner.BillingPrincipalUserID <= 0 || strings.TrimSpace(owner.BudgetReservationID) == "" {
+			return nil, ErrBudgetReservationInvalid
+		}
+	}
 	now := time.Now().UTC()
 	task := &ImageTaskRecord{
-		ID:        "imgtask_" + strings.ReplaceAll(uuid.NewString(), "-", ""),
-		UserID:    owner.UserID,
-		APIKeyID:  owner.APIKeyID,
+		ID:          "imgtask_" + strings.ReplaceAll(uuid.NewString(), "-", ""),
+		UserID:      owner.UserID,
+		APIKeyID:    owner.APIKeyID,
+		WorkspaceID: owner.WorkspaceID, ProjectID: owner.ProjectID, BillingPrincipalUserID: owner.BillingPrincipalUserID, BudgetReservationID: owner.BudgetReservationID,
 		Status:    ImageTaskStatusProcessing,
 		CreatedAt: now.Unix(),
 		ExpiresAt: now.Add(s.ttl).Unix(),

@@ -2,8 +2,10 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -136,6 +138,7 @@ const (
 )
 
 var (
+	ErrBatchImageProviderSubmitUncertain         = infraerrors.New(http.StatusBadGateway, "BATCH_IMAGE_SUBMIT_OUTCOME_UNKNOWN", "batch image submission outcome is unknown")
 	ErrBatchImageProviderUnsupportedAccount      = infraerrors.New(http.StatusBadRequest, "BATCH_IMAGE_PROVIDER_UNSUPPORTED_ACCOUNT", "batch image provider does not support this account")
 	ErrBatchImageProviderMissingAPIKey           = infraerrors.New(http.StatusBadRequest, "BATCH_IMAGE_PROVIDER_MISSING_API_KEY", "batch image provider account is missing api key")
 	ErrBatchImageProviderMissingServiceAccount   = infraerrors.New(http.StatusBadRequest, "BATCH_IMAGE_PROVIDER_MISSING_SERVICE_ACCOUNT", "batch image provider account is missing service account credentials")
@@ -146,6 +149,32 @@ var (
 	ErrBatchImageProviderUnsafeCleanupPath       = infraerrors.New(http.StatusBadRequest, "VERTEX_UNSAFE_CLEANUP_PATH", "unsafe batch image cleanup path")
 	ErrUnsupportedCleanupTarget                  = infraerrors.New(http.StatusBadRequest, "BATCH_IMAGE_PROVIDER_UNSUPPORTED_CLEANUP_TARGET", "unsupported batch image cleanup target")
 )
+
+// The create stage can time out after the provider has accepted the job.
+// Earlier validation/upload failures can safely return the local hold.
+type batchImageSubmitError struct {
+	err       error
+	uncertain bool
+}
+
+func (e *batchImageSubmitError) Error() string { return e.err.Error() }
+func (e *batchImageSubmitError) Unwrap() error { return e.err }
+
+func batchImageSubmitOutcomeUncertain(err error) bool {
+	var outcome *batchImageSubmitError
+	if errors.As(err, &outcome) {
+		return outcome.uncertain
+	}
+	var networkError net.Error
+	return errors.Is(err, ErrBatchImageProviderSubmitUncertain) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.As(err, &networkError)
+}
+
+func batchImageSubmitStageError(err error, uncertain bool) error {
+	if err == nil {
+		return nil
+	}
+	return &batchImageSubmitError{err: err, uncertain: uncertain}
+}
 
 func batchImageProviderJobName(job *BatchImageJob) string {
 	if job == nil || job.ProviderJobName == nil {

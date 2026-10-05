@@ -247,6 +247,9 @@ func TestDashboardAggregationRepositoryCleanupUsageLogsPartitionedSortsAndInvali
 			WillReturnResult(sqlmock.NewResult(0, 1))
 		mock.ExpectExec(`DROP TABLE IF EXISTS "` + partition.name + `"`).
 			WillReturnResult(sqlmock.NewResult(0, 0))
+		mock.ExpectExec(`DELETE FROM usage_tenant_hourly_rollups`).
+			WithArgs(partition.start, partition.start.AddDate(0, 1, 0)).
+			WillReturnResult(sqlmock.NewResult(0, 0))
 		mock.ExpectCommit()
 	}
 	// The boundary partition is pruned by exact timestamp. tableoid is required

@@ -404,6 +404,10 @@ func (r *fakeBatchImageRepository) CreateBatchImageJob(_ context.Context, params
 		BatchID:                 params.BatchID,
 		UserID:                  params.UserID,
 		APIKeyID:                params.APIKeyID,
+		WorkspaceID:             params.WorkspaceID,
+		ProjectID:               params.ProjectID,
+		BillingPrincipalUserID:  params.BillingPrincipalUserID,
+		BudgetReservationID:     params.BudgetReservationID,
 		AccountID:               params.AccountID,
 		Status:                  params.Status,
 		Provider:                params.Provider,
@@ -430,6 +434,31 @@ func (r *fakeBatchImageRepository) CreateBatchImageJob(_ context.Context, params
 	}
 	r.jobs[job.BatchID] = job
 	return job, nil
+}
+
+func (r *fakeBatchImageRepository) SetBatchImageBudgetReservation(_ context.Context, batchID, reservationID string) error {
+	job, ok := r.jobs[batchID]
+	if !ok {
+		return ErrBatchImageJobNotFound
+	}
+	if job.BudgetReservationID != nil && *job.BudgetReservationID != reservationID {
+		return ErrUsageBillingRequestConflict
+	}
+	job.BudgetReservationID = &reservationID
+	return nil
+}
+
+func (r *fakeBatchImageRepository) MarkBatchImageProviderCreateStarted(_ context.Context, batchID string) error {
+	job, ok := r.jobs[batchID]
+	if !ok {
+		return ErrBatchImageJobNotFound
+	}
+	if job.Status != BatchImageJobStatusUploading {
+		return ErrBatchImageInvalidTransition
+	}
+	now := time.Now()
+	job.ProviderCreateStartedAt = &now
+	return nil
 }
 
 func (r *fakeBatchImageRepository) GetBatchImageJobByBatchID(_ context.Context, batchID string) (*BatchImageJob, error) {

@@ -199,7 +199,7 @@ func (p *VertexBatchImageProvider) Submit(ctx context.Context, job *BatchImageJo
 
 	accessToken, err := p.accessToken(ctx, account)
 	if err != nil {
-		return nil, mapVertexClientError(err)
+		return nil, batchImageSubmitStageError(mapVertexClientError(err), false)
 	}
 	if err := p.objectStore.UploadJSONL(ctx, accessToken, refs.InputURI, bytes.NewReader(jsonl)); err != nil {
 		return nil, vertexProviderError("VERTEX_GCS_UPLOAD_FAILED", "Vertex managed GCS upload failed", nil)
@@ -228,10 +228,12 @@ func (p *VertexBatchImageProvider) Submit(ctx context.Context, job *BatchImageJo
 	}
 	created, err := p.client.CreateBatchPredictionJob(ctx, accessToken, req)
 	if err != nil {
-		return nil, mapVertexClientError(err)
+		var apiErr *VertexAPIError
+		definiteRejection := errors.As(err, &apiErr) && apiErr.StatusCode >= 400 && apiErr.StatusCode < 500
+		return nil, batchImageSubmitStageError(mapVertexClientError(err), !definiteRejection)
 	}
 	if created == nil || strings.TrimSpace(created.Name) == "" {
-		return nil, vertexProviderError("VERTEX_INVALID_RESPONSE", "Vertex batch response is missing job name", nil)
+		return nil, batchImageSubmitStageError(vertexProviderError("VERTEX_INVALID_RESPONSE", "Vertex batch response is missing job name", nil), true)
 	}
 	return &BatchProviderJob{
 		ProviderJobName:   created.Name,

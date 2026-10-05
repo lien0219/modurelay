@@ -297,6 +297,10 @@ type RateLimitCacheInvalidator interface {
 
 type APIKeyService struct {
 	apiKeyRepo                APIKeyRepository
+	tenantResolver            TenantKeyResolver
+	budgetService             *BudgetService
+	workspaceRepo             WorkspaceRepository
+	workspaceAccess           *WorkspaceAccessService
 	userRepo                  UserRepository
 	groupRepo                 GroupRepository
 	userSubRepo               UserSubscriptionRepository
@@ -500,11 +504,29 @@ func (s *APIKeyService) canUserBindGroup(ctx context.Context, user *User, group 
 
 // Create 创建API Key
 func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIKeyRequest) (*APIKey, error) {
+	if s.workspaceRepo != nil {
+		r, e := s.projectRepository()
+		if e != nil {
+			return nil, e
+		}
+		w, p, e := r.PersonalProject(ctx, userID)
+		if e != nil {
+			return nil, e
+		}
+		return s.CreateForProject(ctx, userID, w, p, req)
+	}
+	return s.create(ctx, userID, req)
+}
+func (s *APIKeyService) create(ctx context.Context, userID int64, req CreateAPIKeyRequest) (*APIKey, error) {
 	if err := validateCreateAPIKeyRequest(req); err != nil {
 		return nil, err
 	}
 	// 验证用户存在
-	user, err := s.userRepo.GetByID(ctx, userID)
+	payerID := userID
+	if scope, ok := ctx.Value(projectKeyScopeContextKey{}).(*projectKeyScope); ok {
+		payerID = scope.PayerID
+	}
+	user, err := s.userRepo.GetByID(ctx, payerID)
 	if err != nil {
 		return nil, fmt.Errorf("get user: %w", err)
 	}
@@ -597,10 +619,17 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 		apiKey.ExpiresAt = &expiresAt
 	}
 
+	if scope, ok := ctx.Value(projectKeyScopeContextKey{}).(*projectKeyScope); ok {
+		p := scope.ProjectID
+		apiKey.ProjectID = &p
+	}
 	if err := s.apiKeyRepo.Create(ctx, apiKey); err != nil {
 		return nil, fmt.Errorf("create api key: %w", err)
 	}
 
+	if scope, ok := ctx.Value(projectKeyScopeContextKey{}).(*projectKeyScope); ok {
+		scope.TargetID = apiKey.ID
+	}
 	s.InvalidateAuthCacheByKey(ctx, apiKey.Key)
 	s.compileAPIKeyIPRules(apiKey)
 
@@ -609,6 +638,7 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 
 // List 获取用户的API Key列表
 func (s *APIKeyService) List(ctx context.Context, userID int64, params pagination.PaginationParams, filters APIKeyListFilters) ([]APIKey, *pagination.PaginationResult, error) {
+	ctx = s.tenantKeyReadContext(ctx)
 	if normalizedAPIKeySortBy(params.SortBy) == apiKeySortCurrentConcurrency {
 		return s.listByCurrentConcurrency(ctx, userID, params, filters)
 	}
@@ -759,6 +789,9 @@ func (s *APIKeyService) GetAuthoritativeFundingState(ctx context.Context, id int
 	if apiKey == nil {
 		return nil, ErrAPIKeyNotFound
 	}
+	if err := s.RevalidateTenant(ctx, apiKey); err != nil {
+		return nil, err
+	}
 	state := &APIKeyFundingState{
 		Quota:     apiKey.Quota,
 		QuotaUsed: apiKey.QuotaUsed,
@@ -771,7 +804,7 @@ func (s *APIKeyService) GetAuthoritativeFundingState(ctx context.Context, id int
 		if s.userSubRepo == nil {
 			return nil, fmt.Errorf("user subscription repository is unavailable")
 		}
-		subscription, subErr := s.userSubRepo.GetActiveByUserIDAndGroupID(ctx, apiKey.UserID, apiKey.Group.ID)
+		subscription, subErr := s.userSubRepo.GetActiveByUserIDAndGroupID(ctx, apiKey.BillingUserID(), apiKey.Group.ID)
 		if subErr != nil {
 			return nil, fmt.Errorf("get api key subscription funding state: %w", subErr)
 		}
@@ -786,16 +819,26 @@ func (s *APIKeyService) GetAuthoritativeFundingState(ctx context.Context, id int
 		state.Subscription = &subscriptions[0]
 		return state, nil
 	}
-	if apiKey.User == nil {
+	if apiKey.BillingUser() == nil {
 		return nil, fmt.Errorf("api key user funding state is unavailable")
 	}
-	balance := apiKey.User.Balance
+	balance := apiKey.BillingUser().Balance
 	state.WalletBalance = &balance
 	return state, nil
 }
 
 // GetByKey 根据Key字符串获取API Key（用于认证）
 func (s *APIKeyService) GetByKey(ctx context.Context, key string) (*APIKey, error) {
+	k, e := s.getByKeyCached(ctx, key)
+	if e != nil {
+		return nil, e
+	}
+	if e = s.RevalidateTenant(ctx, k); e != nil {
+		return nil, e
+	}
+	return k, nil
+}
+func (s *APIKeyService) getByKeyCached(ctx context.Context, key string) (*APIKey, error) {
 	if len(key) == 0 || len(key) > MaxAPIKeyCredentialBytes {
 		return nil, ErrAPIKeyNotFound
 	}
@@ -851,6 +894,22 @@ func (s *APIKeyService) GetByKey(ctx context.Context, key string) (*APIKey, erro
 
 // Update 更新API Key
 func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req UpdateAPIKeyRequest) (*APIKey, error) {
+	if s.workspaceRepo != nil {
+		scoped, org, e := s.legacyKeyScope(ctx, userID, id, "key.update")
+		if e != nil {
+			return nil, e
+		}
+		if a, w, p, _, ok := ProjectKeyScopeFromContext(scoped); ok {
+			k, e := s.UpdateForProject(scoped, a, w, p, id, req)
+			if !org && e == nil {
+				return s.GetForUser(ctx, userID, id)
+			}
+			return k, e
+		}
+	}
+	return s.update(ctx, id, userID, req)
+}
+func (s *APIKeyService) update(ctx context.Context, id int64, userID int64, req UpdateAPIKeyRequest) (*APIKey, error) {
 	if err := validateUpdateAPIKeyRequest(req); err != nil {
 		return nil, err
 	}
@@ -860,7 +919,11 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 	}
 
 	// 验证所有权
-	if apiKey.UserID != userID {
+	if _, _, p, _, scoped := ProjectKeyScopeFromContext(ctx); scoped {
+		if apiKey.ProjectID == nil || *apiKey.ProjectID != p {
+			return nil, ErrWorkspaceNotFound
+		}
+	} else if apiKey.UserID != userID {
 		return nil, ErrInsufficientPerms
 	}
 
@@ -893,7 +956,11 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 
 	if req.GroupID != nil {
 		// 验证分组权限
-		user, err := s.userRepo.GetByID(ctx, userID)
+		payerID := userID
+		if scope, ok := ctx.Value(projectKeyScopeContextKey{}).(*projectKeyScope); ok {
+			payerID = scope.PayerID
+		}
+		user, err := s.userRepo.GetByID(ctx, payerID)
 		if err != nil {
 			return nil, fmt.Errorf("get user: %w", err)
 		}
@@ -988,6 +1055,9 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 		fields.Status = true
 	}
 
+	if scope, ok := ctx.Value(projectKeyScopeContextKey{}).(*projectKeyScope); ok {
+		scope.TargetID = apiKey.ID
+	}
 	if err := s.apiKeyRepo.Update(ctx, apiKey, fields); err != nil {
 		return nil, fmt.Errorf("update api key: %w", err)
 	}
@@ -1005,17 +1075,32 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 
 // Delete 删除API Key
 func (s *APIKeyService) Delete(ctx context.Context, id int64, userID int64) error {
+	if s.workspaceRepo != nil {
+		scoped, _, e := s.legacyKeyScope(ctx, userID, id, "key.revoke")
+		if e != nil {
+			return e
+		}
+		if a, w, p, _, ok := ProjectKeyScopeFromContext(scoped); ok {
+			return s.DeleteForProject(scoped, a, w, p, id)
+		}
+	}
+	return s.delete(ctx, id, userID)
+}
+func (s *APIKeyService) delete(ctx context.Context, id int64, userID int64) error {
 	key, ownerID, err := s.apiKeyRepo.GetKeyAndOwnerID(ctx, id)
 	if err != nil {
 		return fmt.Errorf("get api key: %w", err)
 	}
 
 	// 验证当前用户是否为该 API Key 的所有者
-	if ownerID != userID {
+	if _, _, _, _, scoped := ProjectKeyScopeFromContext(ctx); !scoped && ownerID != userID {
 		return ErrInsufficientPerms
 	}
 
 	// 事务内:写审计 + 软删除(tombstone)。
+	if scope, ok := ctx.Value(projectKeyScopeContextKey{}).(*projectKeyScope); ok {
+		scope.TargetID = id
+	}
 	if err := s.apiKeyRepo.DeleteWithAudit(ctx, id); err != nil {
 		return fmt.Errorf("delete api key: %w", err)
 	}
@@ -1152,7 +1237,7 @@ func (s *APIKeyService) canUserBindGroupInternal(user *User, group *Group, subsc
 }
 
 func (s *APIKeyService) SearchAPIKeys(ctx context.Context, userID int64, keyword string, limit int) ([]APIKey, error) {
-	keys, err := s.apiKeyRepo.SearchAPIKeys(ctx, userID, keyword, limit)
+	keys, err := s.apiKeyRepo.SearchAPIKeys(s.tenantKeyReadContext(ctx), userID, keyword, limit)
 	if err != nil {
 		return nil, fmt.Errorf("search api keys: %w", err)
 	}

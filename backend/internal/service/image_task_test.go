@@ -68,6 +68,34 @@ func TestImageTaskServiceLifecycleAndOwnership(t *testing.T) {
 	require.NotNil(t, completed.CompletedAt)
 }
 
+func TestImageTaskPersistsPrivateTenantSnapshot(t *testing.T) {
+	var owner ImageTaskOwner
+	require.NoError(t, json.Unmarshal([]byte(`{"UserID":7,"APIKeyID":9,"workspace_id":1,"project_id":2,"billing_principal_user_id":3,"budget_reservation_id":"private-reservation"}`), &owner))
+	store := &imageTaskMemoryStore{}
+	svc := NewImageTaskServiceWithOptions(store, time.Hour, time.Minute)
+	public, err := svc.Create(context.Background(), owner)
+	require.NoError(t, err)
+	privateJSON, err := json.Marshal(store.task)
+	require.NoError(t, err)
+	require.Contains(t, string(privateJSON), `"workspace_id":1`)
+	require.Contains(t, string(privateJSON), `"project_id":2`)
+	require.Contains(t, string(privateJSON), `"billing_principal_user_id":3`)
+	require.Contains(t, string(privateJSON), `"budget_reservation_id":"private-reservation"`)
+	publicJSON, err := json.Marshal(public)
+	require.NoError(t, err)
+	require.NotContains(t, string(publicJSON), "private-reservation")
+	require.NotContains(t, string(publicJSON), "billing_principal")
+}
+
+func TestImageTaskRejectsIncompleteTenantSnapshot(t *testing.T) {
+	var owner ImageTaskOwner
+	require.NoError(t, json.Unmarshal([]byte(`{"UserID":7,"APIKeyID":9,"workspace_id":1}`), &owner))
+	store := &imageTaskMemoryStore{}
+	_, err := NewImageTaskService(store).Create(context.Background(), owner)
+	require.Error(t, err)
+	require.Nil(t, store.task)
+}
+
 func TestImageTaskServiceInvalidResultBecomesFailed(t *testing.T) {
 	store := &imageTaskMemoryStore{}
 	svc := NewImageTaskServiceWithOptions(store, time.Hour, time.Minute)

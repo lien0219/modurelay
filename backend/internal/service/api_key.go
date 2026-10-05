@@ -28,14 +28,17 @@ func IsWindowExpired(windowStart *time.Time, duration time.Duration) bool {
 }
 
 type APIKey struct {
-	ID          int64
-	UserID      int64
-	Key         string
-	Name        string
-	GroupID     *int64
-	Status      string
-	IPWhitelist []string
-	IPBlacklist []string
+	ProjectID        *int64
+	Tenant           *TenantContext
+	BillingPrincipal *User
+	ID               int64
+	UserID           int64
+	Key              string
+	Name             string
+	GroupID          *int64
+	Status           string
+	IPWhitelist      []string
+	IPBlacklist      []string
 	// 预编译的 IP 规则，用于认证热路径避免重复 ParseIP/ParseCIDR。
 	CompiledIPWhitelist *ip.CompiledIPRules `json:"-"`
 	CompiledIPBlacklist *ip.CompiledIPRules `json:"-"`
@@ -62,6 +65,42 @@ type APIKey struct {
 	Window5hStart *time.Time // Start of current 5h window
 	Window1dStart *time.Time // Start of current 1d window
 	Window7dStart *time.Time // Start of current 7d window
+}
+
+// BillingUser preserves creator identity while resolving the request's payer.
+func (k *APIKey) BillingUser() *User {
+	if k == nil {
+		return nil
+	}
+	if k.Tenant != nil {
+		id := k.Tenant.BillingPrincipalUserID
+		if id <= 0 {
+			return nil
+		}
+		if k.BillingPrincipal != nil && k.BillingPrincipal.ID == id {
+			return k.BillingPrincipal
+		}
+		if k.User != nil && k.User.ID == id {
+			return k.User
+		}
+		return nil
+	}
+	if k.BillingPrincipal != nil {
+		return k.BillingPrincipal
+	}
+	return k.User
+}
+func (k *APIKey) BillingUserID() int64 {
+	if k != nil && k.Tenant != nil {
+		return k.Tenant.BillingPrincipalUserID
+	}
+	if u := k.BillingUser(); u != nil {
+		return u.ID
+	}
+	if k != nil {
+		return k.UserID
+	}
+	return 0
 }
 
 func (k *APIKey) IsActive() bool {

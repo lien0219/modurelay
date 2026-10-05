@@ -120,7 +120,7 @@ func prepareSeedanceCompatibleCreateBody(account *Account, body []byte, contentT
 	return encoded, info, upstreamModel, nil
 }
 
-func (s *OpenAIGatewayService) doSeedanceCompatibleRequest(ctx context.Context, c *gin.Context, account *Account, method, target string, body []byte) ([]byte, http.Header, int, error) {
+func (s *OpenAIGatewayService) doSeedanceCompatibleRequest(ctx context.Context, c *gin.Context, account *Account, endpoint GrokMediaEndpoint, method, target string, body []byte) ([]byte, http.Header, int, error) {
 	token := strings.TrimSpace(account.GetCredential("api_key"))
 	if token == "" {
 		return nil, nil, 0, fmt.Errorf("seedance account missing api_key")
@@ -143,6 +143,7 @@ func (s *OpenAIGatewayService) doSeedanceCompatibleRequest(ctx context.Context, 
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxy = account.Proxy.URL()
 	}
+	markVideoProviderStarted(ctx, endpoint)
 	started := time.Now()
 	resp, err := s.httpUpstream.Do(req, proxy, account.ID, account.Concurrency)
 	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(started).Milliseconds())
@@ -151,6 +152,7 @@ func (s *OpenAIGatewayService) doSeedanceCompatibleRequest(ctx context.Context, 
 		return nil, nil, 0, fmt.Errorf("seedance upstream transport failed: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
+	markVideoProviderRejected(ctx, endpoint, resp.StatusCode)
 	responseBody, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
 		return nil, resp.Header.Clone(), resp.StatusCode, err
@@ -205,7 +207,7 @@ func (s *OpenAIGatewayService) ForwardSeedanceCompatibleVideo(
 		if err != nil {
 			return nil, err
 		}
-		responseBody, headers, _, err := s.doSeedanceCompatibleRequest(ctx, c, account, http.MethodPost, target, createBody)
+		responseBody, headers, _, err := s.doSeedanceCompatibleRequest(ctx, c, account, endpoint, http.MethodPost, target, createBody)
 		if err != nil {
 			return nil, err
 		}
@@ -246,7 +248,7 @@ func (s *OpenAIGatewayService) ForwardSeedanceCompatibleVideo(
 		if err != nil {
 			return nil, err
 		}
-		responseBody, headers, statusCode, err := s.doSeedanceCompatibleRequest(ctx, c, account, method, target, nil)
+		responseBody, headers, statusCode, err := s.doSeedanceCompatibleRequest(ctx, c, account, endpoint, method, target, nil)
 		if err != nil {
 			if endpoint == GrokMediaEndpointVideoCancel {
 				if statusCode == http.StatusNotFound || statusCode == http.StatusMethodNotAllowed {

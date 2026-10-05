@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 24 // v24: group model_allowlist field (renamed from models_list_config, enforcing semantics)
+const apiKeyAuthSnapshotVersion = 25 // v25: immutable project assignment; live tenant admission remains uncached.
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -338,6 +338,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 	snapshot := &APIKeyAuthSnapshot{
 		Version:     apiKeyAuthSnapshotVersion,
 		APIKeyID:    apiKey.ID,
+		ProjectID:   apiKey.ProjectID,
 		UserID:      apiKey.UserID,
 		GroupID:     apiKey.GroupID,
 		Name:        apiKey.Name,
@@ -446,6 +447,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 	}
 	apiKey := &APIKey{
 		ID:          snapshot.APIKeyID,
+		ProjectID:   snapshot.ProjectID,
 		UserID:      snapshot.UserID,
 		GroupID:     snapshot.GroupID,
 		Key:         key,

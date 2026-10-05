@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -54,6 +55,38 @@ func (e GrokMediaEndpoint) IsGenerationRequest() bool {
 		return true
 	default:
 		return false
+	}
+}
+
+func isAsyncVideoCreateEndpoint(endpoint GrokMediaEndpoint) bool {
+	switch endpoint {
+	case SeedanceEndpointCreate, GrokMediaEndpointVideosGenerations,
+		GrokMediaEndpointVideosEdits, GrokMediaEndpointVideosExtensions:
+		return true
+	default:
+		return false
+	}
+}
+
+// markVideoProviderStarted is called immediately before an async provider
+// request is sent, after all local validation and request construction passed.
+// Transport failures and malformed successful responses therefore retain the
+// reservation for recovery, while local validation failures still release it.
+func markVideoProviderStarted(ctx context.Context, endpoint GrokMediaEndpoint) {
+	if !isAsyncVideoCreateEndpoint(endpoint) {
+		return
+	}
+	if handle := BudgetReservationFromContext(ctx); handle != nil {
+		handle.MarkProviderStarted()
+	}
+}
+
+func markVideoProviderRejected(ctx context.Context, endpoint GrokMediaEndpoint, statusCode int) {
+	if !isAsyncVideoCreateEndpoint(endpoint) || statusCode < 400 || statusCode >= 500 {
+		return
+	}
+	if handle := BudgetReservationFromContext(ctx); handle != nil {
+		handle.MarkProviderRejected()
 	}
 }
 
@@ -427,26 +460,89 @@ func (s *OpenAIGatewayService) SelectMediaVideoRequestAccount(
 // first observes a completed video URL. Status may omit model/duration; we fall
 // back to this snapshot, then defaults.
 type GrokVideoPendingBilling struct {
-	RequestID            string `json:"request_id,omitempty"`
-	UserID               int64  `json:"user_id,omitempty"`
-	APIKeyID             int64  `json:"api_key_id,omitempty"`
-	AccountID            int64  `json:"account_id,omitempty"`
-	GroupID              int64  `json:"group_id,omitempty"`
-	SubscriptionID       int64  `json:"subscription_id,omitempty"`
-	QuotaPlatform        string `json:"quota_platform,omitempty"`
-	Model                string `json:"model"`
-	BillingModel         string `json:"billing_model,omitempty"`
-	UpstreamModel        string `json:"upstream_model,omitempty"`
-	VideoResolution      string `json:"video_resolution,omitempty"`
-	VideoDurationSeconds int    `json:"video_duration_seconds,omitempty"`
-	NativeProtocol       bool   `json:"native_protocol,omitempty"`
-	OriginalModel        string `json:"original_model,omitempty"`
+	RequestID string `json:"request_id,omitempty"`
+	UserID    int64  `json:"user_id,omitempty"`
+	APIKeyID  int64  `json:"api_key_id,omitempty"`
+	// Tenant attribution is captured when the async task is accepted. Completion
+	// and recovery must never infer it from a later API-key/project lookup.
+	WorkspaceID            int64  `json:"workspace_id,omitempty"`
+	ProjectID              int64  `json:"project_id,omitempty"`
+	BillingPrincipalUserID int64  `json:"billing_principal_user_id,omitempty"`
+	BudgetReservationID    string `json:"budget_reservation_id,omitempty"`
+	AccountID              int64  `json:"account_id,omitempty"`
+	GroupID                int64  `json:"group_id,omitempty"`
+	SubscriptionID         int64  `json:"subscription_id,omitempty"`
+	QuotaPlatform          string `json:"quota_platform,omitempty"`
+	Model                  string `json:"model"`
+	BillingModel           string `json:"billing_model,omitempty"`
+	UpstreamModel          string `json:"upstream_model,omitempty"`
+	VideoResolution        string `json:"video_resolution,omitempty"`
+	VideoDurationSeconds   int    `json:"video_duration_seconds,omitempty"`
+	NativeProtocol         bool   `json:"native_protocol,omitempty"`
+	OriginalModel          string `json:"original_model,omitempty"`
 	// CreatedAt is when the gateway accepted the async create (RFC3339Nano UTC).
 	// duration_ms for deferred billing is measured from this instant until the
 	// first official done+video.url observation (status poll or content download),
 	// not the latency of that single discovery request alone.
 	CreatedAt  string                `json:"created_at,omitempty"`
+	Cancelled  bool                  `json:"cancelled,omitempty"`
 	Settlement *VideoUsageSettlement `json:"settlement,omitempty"`
+}
+
+// ErrGrokVideoBillingCancelled prevents a late completion observer from
+// reviving an async task whose upstream cancellation already released its
+// budget reservation.
+var ErrGrokVideoBillingCancelled = errors.New("grok video billing task cancelled")
+
+// validateGrokVideoPendingBillingTenant enforces an all-or-nothing tenant
+// snapshot. Legacy unscoped records have no tenant fields; once a record is
+// tenant-bound, recovery must have the payer and durable reservation as well.
+func validateGrokVideoPendingBillingTenant(pending *GrokVideoPendingBilling) error {
+	if pending == nil {
+		return ErrBudgetReservationInvalid
+	}
+	hasTenant := pending.WorkspaceID != 0 || pending.ProjectID != 0 ||
+		pending.BillingPrincipalUserID != 0 || strings.TrimSpace(pending.BudgetReservationID) != ""
+	if !hasTenant {
+		return nil
+	}
+	if pending.WorkspaceID <= 0 || pending.ProjectID <= 0 || pending.BillingPrincipalUserID <= 0 ||
+		strings.TrimSpace(pending.BudgetReservationID) == "" {
+		return ErrBudgetReservationInvalid
+	}
+	return nil
+}
+
+func (s *OpenAIGatewayService) releaseGrokVideoBudgetReservation(ctx context.Context, pending *GrokVideoPendingBilling) error {
+	if err := validateGrokVideoPendingBillingTenant(pending); err != nil {
+		return err
+	}
+	if pending == nil || strings.TrimSpace(pending.BudgetReservationID) == "" {
+		return nil
+	}
+	keys := s.videoRecoveryAPIKeyService.Load()
+	if keys == nil || keys.BudgetService() == nil {
+		return ErrBudgetUnavailable
+	}
+	return keys.BudgetService().Release(ctx, strings.TrimSpace(pending.BudgetReservationID))
+}
+
+// ApplyTenantSnapshot copies the create-time tenant attribution onto an API key
+// value used by deferred settlement. It deliberately returns a copy so a later
+// live admission/revalidation cannot mutate the async task's identity.
+func (p *GrokVideoPendingBilling) ApplyTenantSnapshot(key *APIKey) *APIKey {
+	if p == nil || key == nil || p.WorkspaceID <= 0 || p.ProjectID <= 0 || p.BillingPrincipalUserID <= 0 {
+		return key
+	}
+	copyKey := *key
+	tenant := &TenantContext{
+		WorkspaceID:            p.WorkspaceID,
+		ProjectID:              p.ProjectID,
+		BillingPrincipalUserID: p.BillingPrincipalUserID,
+		BudgetReservationID:    strings.TrimSpace(p.BudgetReservationID),
+	}
+	copyKey.Tenant = tenant
+	return &copyKey
 }
 
 // GrokVideoPendingCreatedAtNow formats a create-accept timestamp for pending billing.
@@ -550,6 +646,9 @@ func (s *OpenAIGatewayService) StoreGrokVideoPendingBilling(
 	pending.RequestID = strings.TrimSpace(requestID)
 	pending.UserID = userID
 	pending.APIKeyID = apiKeyID
+	if err := validateGrokVideoPendingBillingTenant(&pending); err != nil {
+		return err
+	}
 	pending.QuotaPlatform = strings.TrimSpace(pending.QuotaPlatform)
 	pending.Model = strings.TrimSpace(pending.Model)
 	pending.BillingModel = strings.TrimSpace(pending.BillingModel)
@@ -604,6 +703,9 @@ func (s *OpenAIGatewayService) LoadGrokVideoPendingBilling(
 	if err := json.Unmarshal(payload, &pending); err != nil {
 		return nil, err
 	}
+	if err := validateGrokVideoPendingBillingTenant(&pending); err != nil {
+		return nil, err
+	}
 	return &pending, nil
 }
 
@@ -626,7 +728,36 @@ func (s *OpenAIGatewayService) CancelGrokVideoPendingBilling(
 	if !ok {
 		return fmt.Errorf("grok video pending billing cleanup is unavailable")
 	}
-	return cleanup.DeleteGrokVideoPendingBilling(ctx, key)
+	pending, err := s.LoadGrokVideoPendingBilling(ctx, requestID, userID, apiKeyID)
+	if err != nil {
+		return err
+	}
+	if err := cleanup.DeleteGrokVideoPendingBilling(ctx, key); err != nil {
+		return err
+	}
+	// The delete script preserves a frozen settlement. Re-read after the
+	// atomic delete so a concurrent completion can never race a reservation
+	// release. A remaining non-settlement snapshot is also kept fail-closed.
+	remaining, err := s.LoadGrokVideoPendingBilling(ctx, requestID, userID, apiKeyID)
+	if err != nil {
+		return err
+	}
+	if remaining != nil {
+		if remaining.Settlement != nil {
+			return nil
+		}
+		if !remaining.Cancelled {
+			return fmt.Errorf("grok video pending billing was not removed")
+		}
+		if err := s.releaseGrokVideoBudgetReservation(ctx, remaining); err != nil {
+			return err
+		}
+		return s.completeVideoRecovery(ctx, key)
+	}
+	if err := s.releaseGrokVideoBudgetReservation(ctx, pending); err != nil {
+		return err
+	}
+	return s.completeVideoRecovery(ctx, key)
 }
 
 // ClaimGrokVideoBilling acquires a short lease for completion processing. The
@@ -859,6 +990,7 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
 	}
+	markVideoProviderStarted(ctx, endpoint)
 	upstreamStart := time.Now()
 	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
@@ -868,6 +1000,7 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 	defer func() { _ = resp.Body.Close() }()
 
 	requestIDHeader := firstNonEmpty(resp.Header.Get("x-request-id"), resp.Header.Get("xai-request-id"))
+	markVideoProviderRejected(ctx, endpoint, resp.StatusCode)
 	requestModel := requestInfo.Model
 	if resp.StatusCode >= 400 {
 		return s.handleGrokMediaErrorResponse(ctx, resp, c, account, requestIDHeader, requestModel)

@@ -4,6 +4,8 @@ package schema
 import (
 	"time"
 
+	"github.com/google/uuid"
+
 	"entgo.io/ent"
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/entsql"
@@ -35,6 +37,13 @@ func (UsageLog) Fields() []ent.Field {
 		field.Int64("user_id"),
 		field.Int64("api_key_id"),
 		field.Int64("account_id"),
+		// Tenant attribution is immutable request-time context. Historical rows
+		// remain NULL and are never inferred from the current API key project.
+		field.Int64("workspace_id").Optional().Nillable(),
+		field.Int64("project_id").Optional().Nillable(),
+		field.Int64("billing_principal_user_id").Optional().Nillable(),
+		field.String("resolved_platform").MaxLen(64).Optional().Nillable(),
+		field.UUID("budget_reservation_id", uuid.UUID{}).Optional().Nillable(),
 		field.String("request_id").
 			MaxLen(255).
 			NotEmpty(),

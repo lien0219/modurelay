@@ -73,24 +73,122 @@ type usageLogBestEffortWriter interface {
 
 // postUsageBillingParams 统一扣费所需的参数
 type postUsageBillingParams struct {
-	Cost                  *CostBreakdown
-	User                  *User
-	APIKey                *APIKey
-	Account               *Account
-	Subscription          *UserSubscription
-	RequestPayloadHash    string
-	IsSubscriptionBill    bool
-	AccountRateMultiplier float64
-	APIKeyService         APIKeyQuotaUpdater
-	Platform              string // 来自 APIKey 关联 Group 的平台标识
+	Cost                   *CostBreakdown
+	User                   *User
+	BillingUser            *User
+	APIKey                 *APIKey
+	Account                *Account
+	Subscription           *UserSubscription
+	RequestPayloadHash     string
+	IsSubscriptionBill     bool
+	AccountRateMultiplier  float64
+	WorkspaceID            int64
+	ProjectID              int64
+	BillingPrincipalUserID int64
+	BudgetReservationID    string
+	ResolvedPlatform       string
+	// UsageLogCostTelemetryOnly keeps the measured usage cost in the immutable
+	// usage row while the command settles zero wallet/budget spend in simple mode.
+	UsageLogCostTelemetryOnly bool
+	APIKeyService             APIKeyQuotaUpdater
+	Platform                  string // 来自 APIKey 关联 Group 的平台标识
 	// SimpleModeKeyRateLimitOnly opts the request into the simple-mode billing
 	// path that records only API-key 5h/1d/7d window usage. It must not trigger
 	// balance, subscription, account, platform, or lifetime-key-quota effects.
 	SimpleModeKeyRateLimitOnly bool
 	VideoUsageLog              *UsageLog
+	TenantUsageLog             *UsageLog
+}
+
+// TenantUsageBillingRepository persists billed usage in the money transaction.
+type TenantUsageBillingRepository interface {
+	ApplyTenantUsage(context.Context, *UsageBillingCommand, *UsageLog) (*UsageBillingApplyResult, error)
 }
 
 var ErrSimpleModeKeyRateLimitBillingUnavailable = errors.New("simple mode api key rate-limit billing unavailable")
+var ErrTenantBillingRepositoryRequired = errors.New("tenant billing requires the unified billing repository")
+
+func billingUserForParams(p *postUsageBillingParams) *User {
+	if p == nil {
+		return nil
+	}
+	if p.BillingUser != nil {
+		return p.BillingUser
+	}
+	if p.APIKey != nil {
+		if payer := p.APIKey.BillingUser(); payer != nil {
+			return payer
+		}
+	}
+	return p.User
+}
+
+// usageBillingUserID keeps legacy usage callers compatible with the newer
+// billing-principal snapshot. Older gateway paths pass the authenticated user
+// separately and may carry an API-key value without UserID/User attached.
+func usageBillingUserID(apiKey *APIKey, user *User) int64 {
+	if apiKey != nil {
+		if id := apiKey.BillingUserID(); id > 0 {
+			return id
+		}
+	}
+	if user != nil {
+		return user.ID
+	}
+	return 0
+}
+
+func tenantBillingSnapshot(apiKey *APIKey) (workspaceID, projectID, principalID int64, reservationID string) {
+	// Legacy keys have no tenant admission snapshot. Their creator remains the
+	// payer through billingUserForParams, but must not make a billing command
+	// look tenant-scoped and require a workspace reservation.
+	if apiKey == nil || apiKey.Tenant == nil {
+		return 0, 0, 0, ""
+	}
+	workspaceID = apiKey.Tenant.WorkspaceID
+	projectID = apiKey.Tenant.ProjectID
+	principalID = apiKey.Tenant.BillingPrincipalUserID
+	reservationID = strings.TrimSpace(apiKey.Tenant.BudgetReservationID)
+	if principalID <= 0 {
+		principalID = apiKey.BillingUserID()
+	}
+	return workspaceID, projectID, principalID, reservationID
+}
+
+func applyTenantUsageSnapshot(ctx context.Context, log *UsageLog, apiKey *APIKey, resolvedPlatform, reservationID string) {
+	if log == nil || apiKey == nil || apiKey.Tenant == nil {
+		return
+	}
+	workspaceID, projectID, principalID, tenantReservation := tenantBillingSnapshot(apiKey)
+	if workspaceID > 0 {
+		v := workspaceID
+		log.WorkspaceID = &v
+	}
+	if projectID > 0 {
+		v := projectID
+		log.ProjectID = &v
+	}
+	if principalID > 0 {
+		v := principalID
+		log.BillingPrincipalUserID = &v
+	}
+	platform := strings.TrimSpace(resolvedPlatform)
+	if platform == "" {
+		platform = strings.TrimSpace(PlatformFromAPIKey(apiKey))
+	}
+	if platform != "" && platform != PlatformComposite {
+		log.ResolvedPlatform = &platform
+	}
+	if reservationID == "" {
+		reservationID = tenantReservation
+	}
+	if reservationID == "" {
+		reservationID = BudgetReservationIDFromContext(ctx)
+	}
+	if reservationID != "" {
+		log.BudgetReservationID = &reservationID
+	}
+}
 
 func simpleModeKeyRateLimitBillingEnabled(cfg *config.Config, apiKey *APIKey) bool {
 	return cfg != nil && cfg.RunMode == config.RunModeSimple && cfg.SimpleModeKeyRateLimitEnabled && apiKey != nil && apiKey.HasRateLimits()
@@ -290,16 +388,76 @@ func buildUsageBillingCommand(requestID string, usageLog *UsageLog, p *postUsage
 	if p == nil || p.Cost == nil || p.APIKey == nil || p.User == nil || p.Account == nil {
 		return nil
 	}
-
-	cmd := &UsageBillingCommand{
-		RequestID:          requestID,
-		APIKeyID:           p.APIKey.ID,
-		UserID:             p.User.ID,
-		AccountID:          p.Account.ID,
-		AccountType:        p.Account.Type,
-		RequestPayloadHash: strings.TrimSpace(p.RequestPayloadHash),
+	if p.BillingUser == nil {
+		p.BillingUser = p.APIKey.BillingUser()
+	}
+	if p.WorkspaceID == 0 || p.ProjectID == 0 || p.BillingPrincipalUserID == 0 {
+		workspaceID, projectID, principalID, reservationID := tenantBillingSnapshot(p.APIKey)
+		if p.WorkspaceID == 0 {
+			p.WorkspaceID = workspaceID
+		}
+		if p.ProjectID == 0 {
+			p.ProjectID = projectID
+		}
+		if p.BillingPrincipalUserID == 0 {
+			p.BillingPrincipalUserID = principalID
+		}
+		if p.BudgetReservationID == "" {
+			p.BudgetReservationID = reservationID
+		}
+	}
+	if p.ResolvedPlatform == "" {
+		p.ResolvedPlatform = strings.TrimSpace(p.Platform)
 	}
 	if usageLog != nil {
+		if p.WorkspaceID == 0 && usageLog.WorkspaceID != nil {
+			p.WorkspaceID = *usageLog.WorkspaceID
+		}
+		if p.ProjectID == 0 && usageLog.ProjectID != nil {
+			p.ProjectID = *usageLog.ProjectID
+		}
+		if p.BillingPrincipalUserID == 0 && usageLog.BillingPrincipalUserID != nil {
+			p.BillingPrincipalUserID = *usageLog.BillingPrincipalUserID
+		}
+		if p.BudgetReservationID == "" && usageLog.BudgetReservationID != nil {
+			p.BudgetReservationID = *usageLog.BudgetReservationID
+		}
+		if p.ResolvedPlatform == "" && usageLog.ResolvedPlatform != nil {
+			p.ResolvedPlatform = *usageLog.ResolvedPlatform
+		}
+	}
+
+	cmd := &UsageBillingCommand{
+		RequestID:                 requestID,
+		APIKeyID:                  p.APIKey.ID,
+		UserID:                    p.User.ID,
+		AccountID:                 p.Account.ID,
+		AccountType:               p.Account.Type,
+		RequestPayloadHash:        strings.TrimSpace(p.RequestPayloadHash),
+		BillingPrincipalUserID:    p.BillingPrincipalUserID,
+		WorkspaceID:               p.WorkspaceID,
+		ProjectID:                 p.ProjectID,
+		BudgetReservationID:       strings.TrimSpace(p.BudgetReservationID),
+		ResolvedPlatform:          strings.TrimSpace(p.ResolvedPlatform),
+		BudgetActualCost:          p.Cost.ActualCost,
+		UsageLogCostTelemetryOnly: p.UsageLogCostTelemetryOnly || p.SimpleModeKeyRateLimitOnly,
+	}
+	if usageLog != nil {
+		if cmd.BillingPrincipalUserID == 0 && usageLog.BillingPrincipalUserID != nil {
+			cmd.BillingPrincipalUserID = *usageLog.BillingPrincipalUserID
+		}
+		if cmd.WorkspaceID == 0 && usageLog.WorkspaceID != nil {
+			cmd.WorkspaceID = *usageLog.WorkspaceID
+		}
+		if cmd.ProjectID == 0 && usageLog.ProjectID != nil {
+			cmd.ProjectID = *usageLog.ProjectID
+		}
+		if cmd.BudgetReservationID == "" && usageLog.BudgetReservationID != nil {
+			cmd.BudgetReservationID = *usageLog.BudgetReservationID
+		}
+		if cmd.ResolvedPlatform == "" && usageLog.ResolvedPlatform != nil {
+			cmd.ResolvedPlatform = *usageLog.ResolvedPlatform
+		}
 		cmd.Model = usageLog.Model
 		cmd.BillingType = usageLog.BillingType
 		cmd.InputTokens = usageLog.InputTokens
@@ -319,6 +477,7 @@ func buildUsageBillingCommand(requestID string, usageLog *UsageLog, p *postUsage
 	}
 
 	if p.SimpleModeKeyRateLimitOnly {
+		cmd.BudgetActualCost = 0
 		if p.Cost.ActualCost > 0 && p.APIKey.HasRateLimits() {
 			cmd.APIKeyRateLimitCost = p.Cost.ActualCost
 		}
@@ -352,6 +511,12 @@ func buildUsageBillingCommand(requestID string, usageLog *UsageLog, p *postUsage
 }
 
 func applyUsageBilling(ctx context.Context, requestID string, usageLog *UsageLog, p *postUsageBillingParams, deps *billingDeps, repo UsageBillingRepository) (bool, error) {
+	if p != nil && p.BudgetReservationID == "" {
+		p.BudgetReservationID = BudgetReservationIDFromContext(ctx)
+	}
+	if p != nil && usageLog != nil && p.APIKey != nil && p.APIKey.Tenant != nil {
+		p.TenantUsageLog = usageLog
+	}
 	result, err := applyPreparedUsageBilling(ctx, buildUsageBillingCommand(requestID, usageLog, p), p, deps, repo)
 	return result != nil && result.Applied, err
 }
@@ -364,6 +529,11 @@ func applyPreparedUsageBilling(ctx context.Context, cmd *UsageBillingCommand, p 
 	}
 
 	if cmd == nil || cmd.RequestID == "" || repo == nil {
+		if (cmd != nil && cmd.WorkspaceID > 0 && cmd.ProjectID > 0) ||
+			(p != nil && p.WorkspaceID > 0 && p.ProjectID > 0) ||
+			(p != nil && p.APIKey != nil && p.APIKey.Tenant != nil && p.APIKey.Tenant.WorkspaceID > 0 && p.APIKey.Tenant.ProjectID > 0) {
+			return nil, ErrTenantBillingRepositoryRequired
+		}
 		if p.SimpleModeKeyRateLimitOnly {
 			return nil, ErrSimpleModeKeyRateLimitBillingUnavailable
 		}
@@ -380,28 +550,40 @@ func applyPreparedUsageBilling(ctx context.Context, cmd *UsageBillingCommand, p 
 	var err error
 	if videoRepo, ok := repo.(VideoUsageBillingRepository); ok && p.VideoUsageLog != nil {
 		result, err = videoRepo.ApplyVideoUsage(billingCtx, cmd, p.VideoUsageLog)
+	} else if cmd.WorkspaceID > 0 && p.TenantUsageLog != nil {
+		if tenantRepo, ok := repo.(TenantUsageBillingRepository); ok {
+			result, err = tenantRepo.ApplyTenantUsage(billingCtx, cmd, p.TenantUsageLog)
+		} else {
+			err = ErrTenantBillingRepositoryRequired
+		}
 	} else {
 		result, err = repo.Apply(billingCtx, cmd)
 	}
 	if err != nil {
-		if errors.Is(err, ErrInsufficientBalance) && deps.billingCacheService != nil && p.User != nil {
-			if invalidateErr := deps.billingCacheService.InvalidateUserBalance(billingCtx, p.User.ID); invalidateErr != nil {
+		BudgetReservationFromContext(ctx).Preserve()
+		payer := billingUserForParams(p)
+		if errors.Is(err, ErrInsufficientBalance) && deps.billingCacheService != nil && payer != nil {
+			if invalidateErr := deps.billingCacheService.InvalidateUserBalance(billingCtx, payer.ID); invalidateErr != nil {
 				slog.Warn("invalidate balance cache after insufficient billing balance failed",
-					"user_id", p.User.ID,
+					"user_id", payer.ID,
 					"error", invalidateErr,
 				)
 			}
 		}
 		return nil, err
 	}
+	if result != nil {
+		BudgetReservationFromContext(ctx).MarkSettled()
+	}
 
 	if result == nil || !result.Applied {
-		if result != nil && p.VideoUsageLog != nil && p.User != nil && p.APIKey != nil {
+		payer := billingUserForParams(p)
+		if result != nil && p.VideoUsageLog != nil && payer != nil && p.APIKey != nil {
 			groupID := int64(0)
 			if p.VideoUsageLog.GroupID != nil {
 				groupID = *p.VideoUsageLog.GroupID
 			}
-			if err := invalidateVideoUsageCaches(billingCtx, deps.billingCacheService, p.APIKeyService, p.User.ID, p.APIKey.ID, groupID, p.APIKey.Key); err != nil {
+			if err := invalidateVideoUsageCaches(billingCtx, deps.billingCacheService, p.APIKeyService, payer.ID, p.APIKey.ID, groupID, p.APIKey.Key); err != nil {
 				return result, err
 			}
 		}
@@ -426,14 +608,15 @@ func finalizePostUsageBilling(ctx context.Context, p *postUsageBillingParams, de
 		return nil
 	}
 	var videoCacheErr error
-	if p.VideoUsageLog != nil && p.User != nil && p.APIKey != nil {
+	payer := billingUserForParams(p)
+	if p.VideoUsageLog != nil && payer != nil && p.APIKey != nil {
 		groupID := int64(0)
 		if p.VideoUsageLog.GroupID != nil {
 			groupID = *p.VideoUsageLog.GroupID
 		}
 		// Videos are DB-authoritative. A queued delta could run after another
 		// worker reloads the committed amount and count that same charge twice.
-		videoCacheErr = invalidateVideoUsageCaches(ctx, deps.billingCacheService, p.APIKeyService, p.User.ID, p.APIKey.ID, groupID, p.APIKey.Key)
+		videoCacheErr = invalidateVideoUsageCaches(ctx, deps.billingCacheService, p.APIKeyService, payer.ID, p.APIKey.ID, groupID, p.APIKey.Key)
 	}
 
 	if p.SimpleModeKeyRateLimitOnly {
@@ -452,10 +635,10 @@ func finalizePostUsageBilling(ctx context.Context, p *postUsageBillingParams, de
 
 	if p.VideoUsageLog == nil {
 		if p.IsSubscriptionBill {
-			if p.Cost.ActualCost > 0 && p.User != nil && p.APIKey != nil && p.APIKey.GroupID != nil {
-				deps.billingCacheService.QueueUpdateSubscriptionUsage(p.User.ID, *p.APIKey.GroupID, p.Cost.ActualCost)
+			if p.Cost.ActualCost > 0 && payer != nil && p.APIKey != nil && p.APIKey.GroupID != nil {
+				deps.billingCacheService.QueueUpdateSubscriptionUsage(payer.ID, *p.APIKey.GroupID, p.Cost.ActualCost)
 			}
-		} else if p.Cost.ActualCost > 0 && p.User != nil {
+		} else if p.Cost.ActualCost > 0 && payer != nil {
 			syncBalanceCacheAfterDeduction(ctx, p, deps, result)
 		}
 
@@ -473,13 +656,13 @@ func finalizePostUsageBilling(ctx context.Context, p *postUsageBillingParams, de
 	//     限制在并发 in-flight 请求数量内（旧实现的异步入队会让超支无限累积直到 worker 处理）
 	//   - DB 异步(flusher_enabled=false):在独立 goroutine 中走 detached context,失败用 ALERT log 触发 oncall 对账
 	//   - flusher_enabled=true:不直写 DB,由 flusher 异步批量刷（markDirty 已在 IncrementUserPlatformQuotaUsage 内部完成）
-	if !p.IsSubscriptionBill && p.Platform != "" && p.Cost.ActualCost > 0 && p.User != nil && deps.userPlatformQuotaRepo != nil && deps.billingCacheService != nil {
-		if deps.billingCacheService.HasUserPlatformQuotaLimit(ctx, p.User.ID, p.Platform) {
-			deps.billingCacheService.IncrementUserPlatformQuotaUsage(p.User.ID, p.Platform, p.Cost.ActualCost)
+	if !p.IsSubscriptionBill && p.Platform != "" && p.Cost.ActualCost > 0 && payer != nil && deps.userPlatformQuotaRepo != nil && deps.billingCacheService != nil {
+		if deps.billingCacheService.HasUserPlatformQuotaLimit(ctx, payer.ID, p.Platform) {
+			deps.billingCacheService.IncrementUserPlatformQuotaUsage(payer.ID, p.Platform, p.Cost.ActualCost)
 			if deps.cfg == nil || !deps.cfg.Database.UserPlatformQuotaFlusherEnabled {
 				// 降级路径:flusher 未启用时保留原有异步直写 DB
 				dbCtx, dbCancel := detachUpstreamContext(ctx)
-				userID, platform, cost := p.User.ID, p.Platform, p.Cost.ActualCost
+				userID, platform, cost := payer.ID, p.Platform, p.Cost.ActualCost
 				go func() {
 					defer func() {
 						if r := recover(); r != nil {
@@ -508,13 +691,14 @@ func finalizePostUsageBilling(ctx context.Context, p *postUsageBillingParams, de
 }
 
 func syncBalanceCacheAfterDeduction(ctx context.Context, p *postUsageBillingParams, deps *billingDeps, result *UsageBillingApplyResult) {
-	if p == nil || p.Cost == nil || p.User == nil || deps == nil || deps.billingCacheService == nil {
+	payer := billingUserForParams(p)
+	if p == nil || p.Cost == nil || payer == nil || deps == nil || deps.billingCacheService == nil {
 		return
 	}
 	if result != nil && result.NewBalance != nil && deps.billingCacheService.balanceBelowEligibilityThreshold(*result.NewBalance) {
-		if err := deps.billingCacheService.InvalidateUserBalance(ctx, p.User.ID); err != nil {
+		if err := deps.billingCacheService.InvalidateUserBalance(ctx, payer.ID); err != nil {
 			slog.Warn("invalidate balance cache after exhausted deduction failed",
-				"user_id", p.User.ID,
+				"user_id", payer.ID,
 				"new_balance", *result.NewBalance,
 				"balance_overdrafted", result.BalanceOverdrafted,
 				"error", err,
@@ -526,13 +710,13 @@ func syncBalanceCacheAfterDeduction(ctx context.Context, p *postUsageBillingPara
 		// 在途预留开启时同步扣减余额缓存：计费任务结束后才会释放预留，
 		// 必须保证此时准入读取的缓存余额已反映本次扣费，否则释放与扣减之间
 		// 仍存在「在途=0 且余额未扣」的窗口。本函数运行在计费 worker 中，不在请求热路径。
-		err := deps.billingCacheService.DeductBalanceCache(ctx, p.User.ID, p.Cost.ActualCost)
+		err := deps.billingCacheService.DeductBalanceCache(ctx, payer.ID, p.Cost.ActualCost)
 		if err == nil {
 			return
 		}
-		logger.LegacyPrintf("service.gateway", "Warning: sync deduct balance cache failed for user %d, falling back to queue: %v", p.User.ID, err)
+		logger.LegacyPrintf("service.gateway", "Warning: sync deduct balance cache failed for user %d, falling back to queue: %v", payer.ID, err)
 	}
-	deps.billingCacheService.QueueDeductBalance(p.User.ID, p.Cost.ActualCost)
+	deps.billingCacheService.QueueDeductBalance(payer.ID, p.Cost.ActualCost)
 }
 
 // notifyBalanceLow sends balance low notification after deduction.
@@ -544,11 +728,12 @@ func notifyBalanceLow(p *postUsageBillingParams, deps *billingDeps, result *Usag
 			slog.Error("panic in notifyBalanceLow", "recover", r)
 		}
 	}()
-	if p.IsSubscriptionBill || p.Cost.ActualCost <= 0 || p.User == nil || deps.balanceNotifyService == nil {
+	payer := billingUserForParams(p)
+	if p.IsSubscriptionBill || p.Cost.ActualCost <= 0 || payer == nil || deps.balanceNotifyService == nil {
 		slog.Debug("notifyBalanceLow: skipped",
 			"is_subscription", p.IsSubscriptionBill,
 			"actual_cost", p.Cost.ActualCost,
-			"user_nil", p.User == nil,
+			"user_nil", payer == nil,
 			"service_nil", deps.balanceNotifyService == nil,
 		)
 		return
@@ -556,14 +741,14 @@ func notifyBalanceLow(p *postUsageBillingParams, deps *billingDeps, result *Usag
 
 	oldBalance := resolveOldBalance(p, result)
 	slog.Debug("notifyBalanceLow: calling CheckBalanceAfterDeduction",
-		"user_id", p.User.ID,
+		"user_id", payer.ID,
 		"old_balance", oldBalance,
 		"cost", p.Cost.ActualCost,
-		"notify_enabled", p.User.BalanceNotifyEnabled,
-		"threshold", p.User.BalanceNotifyThreshold,
+		"notify_enabled", payer.BalanceNotifyEnabled,
+		"threshold", payer.BalanceNotifyThreshold,
 		"result_has_new_balance", result != nil && result.NewBalance != nil,
 	)
-	deps.balanceNotifyService.CheckBalanceAfterDeduction(context.Background(), p.User, oldBalance, p.Cost.ActualCost)
+	deps.balanceNotifyService.CheckBalanceAfterDeduction(context.Background(), payer, oldBalance, p.Cost.ActualCost)
 }
 
 // resolveOldBalance returns the pre-deduction balance.
@@ -573,7 +758,10 @@ func resolveOldBalance(p *postUsageBillingParams, result *UsageBillingApplyResul
 		return *result.NewBalance + p.Cost.ActualCost
 	}
 	// Legacy fallback: snapshot balance from request context
-	return p.User.Balance
+	if payer := billingUserForParams(p); payer != nil {
+		return payer.Balance
+	}
+	return 0
 }
 
 // notifyAccountQuota sends account quota threshold notification after increment.
@@ -848,7 +1036,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	}
 	if apiKey.GroupID != nil && apiKey.Group != nil {
 		groupDefault := apiKey.Group.RateMultiplier
-		multiplier = s.ResolveUserGroupRateMultiplier(ctx, user.ID, *apiKey.GroupID, groupDefault)
+		multiplier = s.ResolveUserGroupRateMultiplier(ctx, usageBillingUserID(apiKey, user), *apiKey.GroupID, groupDefault)
 	}
 	// token 倍率叠加高峰因子（token 计费含图片 token，图片按次倍率不受影响）。高峰因子按请求时刻现算，
 	// 不并入上面的 getUserGroupRateMultiplier，以免污染 user:group 倍率缓存。
@@ -940,6 +1128,11 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 
 	simpleModeKeyRateLimitOnly := simpleModeKeyRateLimitBillingEnabled(s.cfg, apiKey)
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple && !simpleModeKeyRateLimitOnly {
+		if apiKey.Tenant != nil {
+			if _, err := applyUsageBilling(ctx, usageLog.RequestID, usageLog, &postUsageBillingParams{Cost: &CostBreakdown{}, User: user, BillingUser: apiKey.BillingUser(), APIKey: apiKey, Account: account, UsageLogCostTelemetryOnly: true}, s.billingDeps(), s.usageBillingRepo); err != nil {
+				return err
+			}
+		}
 		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
 		logger.LegacyPrintf("service.gateway", "[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())
 		s.deferredService.ScheduleLastUsedUpdate(account.ID)
@@ -960,6 +1153,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	_, billingErr := applyUsageBilling(ctx, requestID, usageLog, &postUsageBillingParams{
 		Cost:                       cost,
 		User:                       user,
+		BillingUser:                apiKey.BillingUser(),
 		APIKey:                     apiKey,
 		Account:                    account,
 		Subscription:               subscription,
@@ -968,9 +1162,9 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		AccountRateMultiplier:      accountRateMultiplier,
 		APIKeyService:              input.APIKeyService,
 		Platform:                   quotaPlatform,
+		ResolvedPlatform:           quotaPlatform,
 		SimpleModeKeyRateLimitOnly: simpleModeKeyRateLimitOnly,
 	}, s.billingDeps(), s.usageBillingRepo)
-
 	if billingErr != nil {
 		usageLog.ActualCost = 0
 		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
@@ -1306,6 +1500,7 @@ func (s *GatewayService) buildRecordUsageLog(
 		usageLog.ActualCost = cost.ActualCost
 		usageLog.LongContextBillingApplied = cost.LongContextBillingApplied
 	}
+	applyTenantUsageSnapshot(ctx, usageLog, apiKey, input.QuotaPlatform, "")
 
 	return usageLog
 }

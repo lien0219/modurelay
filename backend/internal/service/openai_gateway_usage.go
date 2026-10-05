@@ -210,7 +210,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		multiplier = s.cfg.Default.RateMultiplier
 	}
 	if apiKey.GroupID != nil && apiKey.Group != nil {
-		multiplier = s.ResolveUserGroupRateMultiplier(ctx, user.ID, *apiKey.GroupID, apiKey.Group.RateMultiplier)
+		multiplier = s.ResolveUserGroupRateMultiplier(ctx, usageBillingUserID(apiKey, user), *apiKey.GroupID, apiKey.Group.RateMultiplier)
 	}
 	// token 倍率叠加高峰因子（token 计费含图片 token，图片按次倍率不受影响）。
 	// 高峰因子按请求级 PricingAt 现算（与利润门 D 同源同刻，跨峰谷请求不中途
@@ -415,6 +415,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		ImageSizeBreakdown:       imageSizeBreakdown,
 		NativeCompactionV2:       input.NativeCompactionV2,
 	}
+	applyTenantUsageSnapshot(ctx, usageLog, apiKey, input.QuotaPlatform, "")
 	isVideoUsage := isGrokVideoUsageResult(result, billingModels)
 	if result.VideoCount > 0 {
 		usageLog.VideoCount = result.VideoCount
@@ -513,11 +514,12 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	simpleModeKeyRateLimitOnly := simpleModeKeyRateLimitBillingEnabled(s.cfg, apiKey)
 	if result.VideoCount > 0 {
 		p := &postUsageBillingParams{
-			Cost: cost, User: user, APIKey: apiKey, Account: account, Subscription: subscription,
+			Cost: cost, User: user, BillingUser: apiKey.BillingUser(), APIKey: apiKey, Account: account, Subscription: subscription,
 			RequestPayloadHash:    resolveUsageBillingPayloadFingerprint(ctx, input.RequestPayloadHash),
 			IsSubscriptionBill:    isSubscriptionBilling && !simpleModeKeyRateLimitOnly,
 			AccountRateMultiplier: accountRateMultiplier, APIKeyService: input.APIKeyService,
 			Platform:                   firstNonEmpty(input.QuotaPlatform, PlatformFromAPIKey(apiKey)),
+			ResolvedPlatform:           firstNonEmpty(input.QuotaPlatform, PlatformFromAPIKey(apiKey)),
 			SimpleModeKeyRateLimitOnly: simpleModeKeyRateLimitOnly,
 		}
 		logOnly := s.cfg != nil && s.cfg.RunMode == config.RunModeSimple && !simpleModeKeyRateLimitOnly
@@ -528,6 +530,11 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		return s.recordVideoUsageSettlement(ctx, input, settlement)
 	}
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple && !simpleModeKeyRateLimitOnly {
+		if apiKey.Tenant != nil {
+			if _, err := applyUsageBilling(ctx, requestID, usageLog, &postUsageBillingParams{Cost: &CostBreakdown{}, User: user, BillingUser: apiKey.BillingUser(), APIKey: apiKey, Account: account, UsageLogCostTelemetryOnly: true}, s.billingDeps(), s.usageBillingRepo); err != nil {
+				return err
+			}
+		}
 		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
 		s.deferredService.ScheduleLastUsedUpdate(account.ID)
 		logger.LegacyPrintf("service.openai_gateway", "[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())
@@ -544,6 +551,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	_, billingErr := applyUsageBilling(ctx, requestID, usageLog, &postUsageBillingParams{
 		Cost:                       cost,
 		User:                       user,
+		BillingUser:                apiKey.BillingUser(),
 		APIKey:                     apiKey,
 		Account:                    account,
 		Subscription:               subscription,
@@ -552,9 +560,9 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		AccountRateMultiplier:      accountRateMultiplier,
 		APIKeyService:              input.APIKeyService,
 		Platform:                   quotaPlatform,
+		ResolvedPlatform:           quotaPlatform,
 		SimpleModeKeyRateLimitOnly: simpleModeKeyRateLimitOnly,
 	}, s.billingDeps(), s.usageBillingRepo)
-
 	if billingErr != nil {
 		usageLog.ActualCost = 0
 		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")

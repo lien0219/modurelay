@@ -122,10 +122,12 @@ func (p *GeminiAPIBatchImageProvider) Submit(ctx context.Context, job *BatchImag
 
 	batch, err := p.client.CreateBatch(ctx, apiKey, input.Model, uploaded.Name, displayName)
 	if err != nil {
-		return nil, mapGeminiClientError(err)
+		var apiErr *GeminiAPIError
+		definiteRejection := errors.As(err, &apiErr) && apiErr.StatusCode >= 400 && apiErr.StatusCode < 500
+		return nil, batchImageSubmitStageError(mapGeminiClientError(err), !definiteRejection)
 	}
 	if batch == nil || strings.TrimSpace(batch.Name) == "" {
-		return nil, geminiProviderError("GEMINI_INVALID_RESPONSE", "Gemini batch response is missing job name", nil)
+		return nil, batchImageSubmitStageError(geminiProviderError("GEMINI_INVALID_RESPONSE", "Gemini batch response is missing job name", nil), true)
 	}
 
 	return &BatchProviderJob{

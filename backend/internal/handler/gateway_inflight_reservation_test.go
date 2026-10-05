@@ -25,6 +25,97 @@ func TestRequestMaxOutputTokens(t *testing.T) {
 	require.Equal(t, 0, requestMaxOutputTokens([]byte(`{}`)))
 }
 
+type handlerTenantBudgetRepo struct {
+	mu                 sync.Mutex
+	reserved, released int
+	attribution        service.BudgetAttribution
+	err                error
+	rejectAfter        int
+	ids                []string
+}
+
+func (r *handlerTenantBudgetRepo) Reserve(_ context.Context, a service.BudgetAttribution, id string, cost float64) (*service.BudgetReservation, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.reserved++
+	r.attribution = a
+	r.ids = append(r.ids, id)
+	if r.rejectAfter > 0 && r.reserved > r.rejectAfter {
+		return nil, service.ErrProjectBudgetExceeded
+	}
+	if r.err != nil {
+		return nil, r.err
+	}
+	return &service.BudgetReservation{ID: id, RequestID: id, WorkspaceID: a.WorkspaceID, ProjectID: a.ProjectID, BillingPrincipalUserID: a.BillingPrincipalUserID, ActorUserID: a.ActorUserID, APIKeyID: a.APIKeyID, Estimate: cost, Status: "pending"}, nil
+}
+func (r *handlerTenantBudgetRepo) Finalize(context.Context, string, float64) error { return nil }
+func (r *handlerTenantBudgetRepo) Release(context.Context, string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.released++
+	return nil
+}
+func tenantBudgetTestKey() *service.APIKey {
+	return &service.APIKey{ID: 5, UserID: 4, User: &service.User{ID: 4}, Tenant: &service.TenantContext{WorkspaceID: 1, ProjectID: 2, BillingPrincipalUserID: 3}}
+}
+
+func TestTenantBudgetAdmissionIndependentOfWallet(t *testing.T) {
+	for _, subscription := range []*service.UserSubscription{nil, {ID: 7}} {
+		r := &handlerTenantBudgetRepo{}
+		ctx := service.WithBudgetService(context.Background(), service.NewBudgetService(r))
+		key := tenantBudgetTestKey()
+		key.Group = &service.Group{SubscriptionType: service.SubscriptionTypeSubscription}
+		ctx, done, err := reserveInflightBalanceCtx(ctx, nil, &countingEstimator{cost: 0.5, priced: true}, key, subscription, tokenInflightEstimate("m", nil))
+		require.NoError(t, err)
+		require.Equal(t, 1, r.reserved)
+		require.Equal(t, int64(3), r.attribution.BillingPrincipalUserID)
+		require.Empty(t, key.Tenant.BudgetReservationID, "admission must not mutate the shared API-key tenant snapshot")
+		require.NotNil(t, service.BudgetReservationFromContext(ctx))
+		require.NotEmpty(t, service.BudgetReservationIDFromContext(ctx))
+		done()
+		done()
+		require.Equal(t, 1, r.released)
+	}
+}
+
+func TestTenantBudgetAdmissionFailsClosed(t *testing.T) {
+	_, _, err := reserveInflightBalanceCtx(context.Background(), nil, &countingEstimator{cost: 1, priced: true}, tenantBudgetTestKey(), nil, tokenInflightEstimate("m", nil))
+	require.ErrorIs(t, err, service.ErrBudgetUnavailable)
+	r := &handlerTenantBudgetRepo{err: service.ErrProjectBudgetExceeded}
+	ctx := service.WithBudgetService(context.Background(), service.NewBudgetService(r))
+	_, _, err = reserveInflightBalanceCtx(ctx, nil, &countingEstimator{cost: 1, priced: true}, tenantBudgetTestKey(), nil, tokenInflightEstimate("m", nil))
+	require.ErrorIs(t, err, service.ErrProjectBudgetExceeded)
+	_, _, err = reserveInflightBalanceCtx(ctx, nil, &countingEstimator{priced: false}, tenantBudgetTestKey(), nil, tokenInflightEstimate("m", nil))
+	require.ErrorIs(t, err, service.ErrBudgetUnpriced)
+	require.Equal(t, 1, r.reserved, "unknown prices must not reach storage")
+}
+
+func TestTenantBudgetWorkerKeepsReservationAndContext(t *testing.T) {
+	r := &handlerTenantBudgetRepo{}
+	ctx := service.WithBudgetService(context.Background(), service.NewBudgetService(r))
+	ctx, done, err := reserveInflightBalanceCtx(ctx, nil, &countingEstimator{cost: 1, priced: true}, tenantBudgetTestKey(), nil, tokenInflightEstimate("m", nil))
+	require.NoError(t, err)
+	task, abandon := wrapUsageRecordTaskContext(ctx, func(worker context.Context) {
+		h := service.BudgetReservationFromContext(worker)
+		require.NotNil(t, h)
+		require.NotNil(t, service.BudgetServiceFromContext(worker))
+		h.MarkSettled()
+	})
+	done()
+	require.Zero(t, r.released, "worker owns the reservation after HTTP handler returns")
+	task(context.Background())
+	abandon()
+	require.Zero(t, r.released, "a committed reservation cannot be refunded by cleanup")
+}
+
+func TestTenantBudgetErrorsHaveLocalCodes(t *testing.T) {
+	for _, err := range []error{service.ErrProjectBudgetExceeded, service.ErrWorkspaceBudgetExceeded} {
+		status, code, _, _ := billingErrorDetails(err)
+		require.Equal(t, http.StatusTooManyRequests, status)
+		require.Equal(t, err.Error(), code)
+	}
+}
+
 type countingEstimator struct {
 	calls  int
 	cost   float64

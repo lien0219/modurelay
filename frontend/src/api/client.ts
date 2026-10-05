@@ -51,12 +51,12 @@ apiClient.interceptors.request.use(
       config.headers['Accept-Language'] = getLocale()
     }
 
-    // Attach timezone for all GET requests (backend may use it for default date ranges)
+    // Default to the browser timezone; FinOps may specify a budget timezone.
     if (config.method === 'get') {
       if (!config.params) {
         config.params = {}
       }
-      config.params.timezone = getUserTimezone()
+      config.params.timezone ??= getUserTimezone()
     }
 
     if (config.headers) {

@@ -73,6 +73,20 @@ func (_c *APIKeyCreate) SetUserID(v int64) *APIKeyCreate {
 	return _c
 }
 
+// SetProjectID sets the "project_id" field.
+func (_c *APIKeyCreate) SetProjectID(v int64) *APIKeyCreate {
+	_c.mutation.SetProjectID(v)
+	return _c
+}
+
+// SetNillableProjectID sets the "project_id" field if the given value is not nil.
+func (_c *APIKeyCreate) SetNillableProjectID(v *int64) *APIKeyCreate {
+	if v != nil {
+		_c.SetProjectID(*v)
+	}
+	return _c
+}
+
 // SetKey sets the "key" field.
 func (_c *APIKeyCreate) SetKey(v string) *APIKeyCreate {
 	_c.mutation.SetKey(v)
@@ -523,6 +537,10 @@ func (_c *APIKeyCreate) createSpec() (*APIKey, *sqlgraph.CreateSpec) {
 		_spec.SetField(apikey.FieldDeletedAt, field.TypeTime, value)
 		_node.DeletedAt = &value
 	}
+	if value, ok := _c.mutation.ProjectID(); ok {
+		_spec.SetField(apikey.FieldProjectID, field.TypeInt64, value)
+		_node.ProjectID = &value
+	}
 	if value, ok := _c.mutation.Key(); ok {
 		_spec.SetField(apikey.FieldKey, field.TypeString, value)
 		_node.Key = value
@@ -736,6 +754,30 @@ func (u *APIKeyUpsert) SetUserID(v int64) *APIKeyUpsert {
 // UpdateUserID sets the "user_id" field to the value that was provided on create.
 func (u *APIKeyUpsert) UpdateUserID() *APIKeyUpsert {
 	u.SetExcluded(apikey.FieldUserID)
+	return u
+}
+
+// SetProjectID sets the "project_id" field.
+func (u *APIKeyUpsert) SetProjectID(v int64) *APIKeyUpsert {
+	u.Set(apikey.FieldProjectID, v)
+	return u
+}
+
+// UpdateProjectID sets the "project_id" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdateProjectID() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldProjectID)
+	return u
+}
+
+// AddProjectID adds v to the "project_id" field.
+func (u *APIKeyUpsert) AddProjectID(v int64) *APIKeyUpsert {
+	u.Add(apikey.FieldProjectID, v)
+	return u
+}
+
+// ClearProjectID clears the value of the "project_id" field.
+func (u *APIKeyUpsert) ClearProjectID() *APIKeyUpsert {
+	u.SetNull(apikey.FieldProjectID)
 	return u
 }
 
@@ -1154,6 +1196,34 @@ func (u *APIKeyUpsertOne) SetUserID(v int64) *APIKeyUpsertOne {
 func (u *APIKeyUpsertOne) UpdateUserID() *APIKeyUpsertOne {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.UpdateUserID()
+	})
+}
+
+// SetProjectID sets the "project_id" field.
+func (u *APIKeyUpsertOne) SetProjectID(v int64) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetProjectID(v)
+	})
+}
+
+// AddProjectID adds v to the "project_id" field.
+func (u *APIKeyUpsertOne) AddProjectID(v int64) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.AddProjectID(v)
+	})
+}
+
+// UpdateProjectID sets the "project_id" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdateProjectID() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateProjectID()
+	})
+}
+
+// ClearProjectID clears the value of the "project_id" field.
+func (u *APIKeyUpsertOne) ClearProjectID() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.ClearProjectID()
 	})
 }
 
@@ -1792,6 +1862,34 @@ func (u *APIKeyUpsertBulk) SetUserID(v int64) *APIKeyUpsertBulk {
 func (u *APIKeyUpsertBulk) UpdateUserID() *APIKeyUpsertBulk {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.UpdateUserID()
+	})
+}
+
+// SetProjectID sets the "project_id" field.
+func (u *APIKeyUpsertBulk) SetProjectID(v int64) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetProjectID(v)
+	})
+}
+
+// AddProjectID adds v to the "project_id" field.
+func (u *APIKeyUpsertBulk) AddProjectID(v int64) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.AddProjectID(v)
+	})
+}
+
+// UpdateProjectID sets the "project_id" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdateProjectID() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateProjectID()
+	})
+}
+
+// ClearProjectID clears the value of the "project_id" field.
+func (u *APIKeyUpsertBulk) ClearProjectID() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.ClearProjectID()
 	})
 }
 

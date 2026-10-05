@@ -43,8 +43,12 @@ func (r *apiKeyRepository) activeQuery() *dbent.APIKeyQuery {
 }
 
 func (r *apiKeyRepository) Create(ctx context.Context, key *service.APIKey) error {
-	builder := r.client.APIKey.Create().
+	if err := r.checkProjectKeyBinding(ctx, key); err != nil {
+		return err
+	}
+	builder := clientFromContext(ctx, r.client).APIKey.Create().
 		SetUserID(key.UserID).
+		SetNillableProjectID(key.ProjectID).
 		SetKey(key.Key).
 		SetName(key.Name).
 		SetStatus(key.Status).
@@ -146,6 +150,7 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 		Select(
 			apikey.FieldID,
 			apikey.FieldUserID,
+			apikey.FieldProjectID,
 			apikey.FieldGroupID,
 			apikey.FieldName,
 			apikey.FieldStatus,
@@ -256,6 +261,11 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 }
 
 func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey, fields service.APIKeyUpdateFields) error {
+	if fields.GroupID {
+		if err := r.checkProjectKeyBinding(ctx, key); err != nil {
+			return err
+		}
+	}
 	// 空掩码代表调用方不改任何列，直接返回，避免产生一次无意义的整行写。
 	if fields.IsEmpty() {
 		return nil
@@ -271,6 +281,9 @@ func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey, fiel
 	builder := client.APIKey.Update().
 		Where(apikey.IDEQ(key.ID), apikey.DeletedAtIsNil()).
 		SetUpdatedAt(now)
+	if _, _, project, _, scoped := service.ProjectKeyScopeFromContext(ctx); scoped {
+		builder.Where(apikey.ProjectIDEQ(project))
+	}
 	if fields.Name {
 		builder.SetName(key.Name)
 	}
@@ -418,10 +431,13 @@ func (r *apiKeyRepository) DeleteWithAudit(ctx context.Context, id int64) error 
 }
 
 func (r *apiKeyRepository) deleteWithTombstone(ctx context.Context, exec *dbent.Client, id int64, tombstoneKey string) error {
-	res, err := exec.ExecContext(ctx, `
-		UPDATE api_keys
-		SET key = $1, deleted_at = NOW(), updated_at = NOW()
-		WHERE id = $2 AND deleted_at IS NULL`, tombstoneKey, id)
+	query := `UPDATE api_keys SET key=$1,deleted_at=NOW(),updated_at=NOW() WHERE id=$2 AND deleted_at IS NULL`
+	args := []any{tombstoneKey, id}
+	if _, _, project, _, scoped := service.ProjectKeyScopeFromContext(ctx); scoped {
+		query += ` AND project_id=$3`
+		args = append(args, project)
+	}
+	res, err := exec.ExecContext(ctx, query, args...)
 	if err != nil {
 		return err
 	}
@@ -445,8 +461,11 @@ func (r *apiKeyRepository) deleteWithTombstone(ctx context.Context, exec *dbent.
 	return nil
 }
 
-func (r *apiKeyRepository) apiKeyListByUserIDQuery(userID int64, filters service.APIKeyListFilters) *dbent.APIKeyQuery {
+func (r *apiKeyRepository) apiKeyListByUserIDQuery(ctx context.Context, userID int64, filters service.APIKeyListFilters) *dbent.APIKeyQuery {
 	q := r.activeQuery().Where(apikey.UserIDEQ(userID))
+	if service.TenantKeyReadsEnabled(ctx) {
+		q = q.Where(legacyTenantReadPredicate(userID))
+	}
 
 	if filters.Search != "" {
 		q = q.Where(apikey.Or(
@@ -469,7 +488,7 @@ func (r *apiKeyRepository) apiKeyListByUserIDQuery(userID int64, filters service
 }
 
 func (r *apiKeyRepository) ListByUserID(ctx context.Context, userID int64, params pagination.PaginationParams, filters service.APIKeyListFilters) ([]service.APIKey, *pagination.PaginationResult, error) {
-	q := r.apiKeyListByUserIDQuery(userID, filters)
+	q := r.apiKeyListByUserIDQuery(ctx, userID, filters)
 
 	total, err := q.Count(ctx)
 	if err != nil {
@@ -497,11 +516,16 @@ func (r *apiKeyRepository) ListByUserID(ctx context.Context, userID int64, param
 		return nil, nil, err
 	}
 
+	if service.TenantKeyReadsEnabled(ctx) {
+		if err := r.maskLegacyOrganizationKeys(ctx, userID, outKeys); err != nil {
+			return nil, nil, err
+		}
+	}
 	return outKeys, paginationResultFromTotal(int64(total), params), nil
 }
 
 func (r *apiKeyRepository) ListAllByUserID(ctx context.Context, userID int64, filters service.APIKeyListFilters) ([]service.APIKey, error) {
-	keys, err := r.apiKeyListByUserIDQuery(userID, filters).
+	keys, err := r.apiKeyListByUserIDQuery(ctx, userID, filters).
 		WithGroup().
 		Order(dbent.Asc(apikey.FieldID)).
 		All(ctx)
@@ -515,6 +539,11 @@ func (r *apiKeyRepository) ListAllByUserID(ctx context.Context, userID int64, fi
 	}
 	if err := r.attachLastUsedIPs(ctx, outKeys); err != nil {
 		return nil, err
+	}
+	if service.TenantKeyReadsEnabled(ctx) {
+		if err := r.maskLegacyOrganizationKeys(ctx, userID, outKeys); err != nil {
+			return nil, err
+		}
 	}
 	return outKeys, nil
 }
@@ -700,6 +729,9 @@ func apiKeyListOrder(params pagination.PaginationParams) []func(*entsql.Selector
 // SearchAPIKeys searches API keys by user ID and/or keyword (name)
 func (r *apiKeyRepository) SearchAPIKeys(ctx context.Context, userID int64, keyword string, limit int) ([]service.APIKey, error) {
 	q := r.activeQuery()
+	if service.TenantKeyReadsEnabled(ctx) {
+		q = q.Where(legacyTenantReadPredicate(userID))
+	}
 	if userID > 0 {
 		q = q.Where(apikey.UserIDEQ(userID))
 	}
@@ -716,6 +748,11 @@ func (r *apiKeyRepository) SearchAPIKeys(ctx context.Context, userID int64, keyw
 	outKeys := make([]service.APIKey, 0, len(keys))
 	for i := range keys {
 		outKeys = append(outKeys, *apiKeyEntityToService(keys[i]))
+	}
+	if service.TenantKeyReadsEnabled(ctx) {
+		if err := r.maskLegacyOrganizationKeys(ctx, userID, outKeys); err != nil {
+			return nil, err
+		}
 	}
 	return outKeys, nil
 }
@@ -888,6 +925,7 @@ func apiKeyEntityToService(m *dbent.APIKey) *service.APIKey {
 	out := &service.APIKey{
 		ID:            m.ID,
 		UserID:        m.UserID,
+		ProjectID:     m.ProjectID,
 		Key:           m.Key,
 		Name:          m.Name,
 		Status:        m.Status,

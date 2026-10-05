@@ -17,6 +17,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
+	"github.com/google/uuid"
 )
 
 // UsageLogUpdate is the builder for updating UsageLog entities.
@@ -71,6 +72,127 @@ func (_u *UsageLogUpdate) SetNillableAccountID(v *int64) *UsageLogUpdate {
 	if v != nil {
 		_u.SetAccountID(*v)
 	}
+	return _u
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (_u *UsageLogUpdate) SetWorkspaceID(v int64) *UsageLogUpdate {
+	_u.mutation.ResetWorkspaceID()
+	_u.mutation.SetWorkspaceID(v)
+	return _u
+}
+
+// SetNillableWorkspaceID sets the "workspace_id" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableWorkspaceID(v *int64) *UsageLogUpdate {
+	if v != nil {
+		_u.SetWorkspaceID(*v)
+	}
+	return _u
+}
+
+// AddWorkspaceID adds value to the "workspace_id" field.
+func (_u *UsageLogUpdate) AddWorkspaceID(v int64) *UsageLogUpdate {
+	_u.mutation.AddWorkspaceID(v)
+	return _u
+}
+
+// ClearWorkspaceID clears the value of the "workspace_id" field.
+func (_u *UsageLogUpdate) ClearWorkspaceID() *UsageLogUpdate {
+	_u.mutation.ClearWorkspaceID()
+	return _u
+}
+
+// SetProjectID sets the "project_id" field.
+func (_u *UsageLogUpdate) SetProjectID(v int64) *UsageLogUpdate {
+	_u.mutation.ResetProjectID()
+	_u.mutation.SetProjectID(v)
+	return _u
+}
+
+// SetNillableProjectID sets the "project_id" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableProjectID(v *int64) *UsageLogUpdate {
+	if v != nil {
+		_u.SetProjectID(*v)
+	}
+	return _u
+}
+
+// AddProjectID adds value to the "project_id" field.
+func (_u *UsageLogUpdate) AddProjectID(v int64) *UsageLogUpdate {
+	_u.mutation.AddProjectID(v)
+	return _u
+}
+
+// ClearProjectID clears the value of the "project_id" field.
+func (_u *UsageLogUpdate) ClearProjectID() *UsageLogUpdate {
+	_u.mutation.ClearProjectID()
+	return _u
+}
+
+// SetBillingPrincipalUserID sets the "billing_principal_user_id" field.
+func (_u *UsageLogUpdate) SetBillingPrincipalUserID(v int64) *UsageLogUpdate {
+	_u.mutation.ResetBillingPrincipalUserID()
+	_u.mutation.SetBillingPrincipalUserID(v)
+	return _u
+}
+
+// SetNillableBillingPrincipalUserID sets the "billing_principal_user_id" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableBillingPrincipalUserID(v *int64) *UsageLogUpdate {
+	if v != nil {
+		_u.SetBillingPrincipalUserID(*v)
+	}
+	return _u
+}
+
+// AddBillingPrincipalUserID adds value to the "billing_principal_user_id" field.
+func (_u *UsageLogUpdate) AddBillingPrincipalUserID(v int64) *UsageLogUpdate {
+	_u.mutation.AddBillingPrincipalUserID(v)
+	return _u
+}
+
+// ClearBillingPrincipalUserID clears the value of the "billing_principal_user_id" field.
+func (_u *UsageLogUpdate) ClearBillingPrincipalUserID() *UsageLogUpdate {
+	_u.mutation.ClearBillingPrincipalUserID()
+	return _u
+}
+
+// SetResolvedPlatform sets the "resolved_platform" field.
+func (_u *UsageLogUpdate) SetResolvedPlatform(v string) *UsageLogUpdate {
+	_u.mutation.SetResolvedPlatform(v)
+	return _u
+}
+
+// SetNillableResolvedPlatform sets the "resolved_platform" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableResolvedPlatform(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetResolvedPlatform(*v)
+	}
+	return _u
+}
+
+// ClearResolvedPlatform clears the value of the "resolved_platform" field.
+func (_u *UsageLogUpdate) ClearResolvedPlatform() *UsageLogUpdate {
+	_u.mutation.ClearResolvedPlatform()
+	return _u
+}
+
+// SetBudgetReservationID sets the "budget_reservation_id" field.
+func (_u *UsageLogUpdate) SetBudgetReservationID(v uuid.UUID) *UsageLogUpdate {
+	_u.mutation.SetBudgetReservationID(v)
+	return _u
+}
+
+// SetNillableBudgetReservationID sets the "budget_reservation_id" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableBudgetReservationID(v *uuid.UUID) *UsageLogUpdate {
+	if v != nil {
+		_u.SetBudgetReservationID(*v)
+	}
+	return _u
+}
+
+// ClearBudgetReservationID clears the value of the "budget_reservation_id" field.
+func (_u *UsageLogUpdate) ClearBudgetReservationID() *UsageLogUpdate {
+	_u.mutation.ClearBudgetReservationID()
 	return _u
 }
 
@@ -1036,6 +1158,11 @@ func (_u *UsageLogUpdate) ExecX(ctx context.Context) {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *UsageLogUpdate) check() error {
+	if v, ok := _u.mutation.ResolvedPlatform(); ok {
+		if err := usagelog.ResolvedPlatformValidator(v); err != nil {
+			return &ValidationError{Name: "resolved_platform", err: fmt.Errorf(`ent: validator failed for field "UsageLog.resolved_platform": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.RequestID(); ok {
 		if err := usagelog.RequestIDValidator(v); err != nil {
 			return &ValidationError{Name: "request_id", err: fmt.Errorf(`ent: validator failed for field "UsageLog.request_id": %w`, err)}
@@ -1134,6 +1261,45 @@ func (_u *UsageLogUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := _u.mutation.WorkspaceID(); ok {
+		_spec.SetField(usagelog.FieldWorkspaceID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedWorkspaceID(); ok {
+		_spec.AddField(usagelog.FieldWorkspaceID, field.TypeInt64, value)
+	}
+	if _u.mutation.WorkspaceIDCleared() {
+		_spec.ClearField(usagelog.FieldWorkspaceID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.ProjectID(); ok {
+		_spec.SetField(usagelog.FieldProjectID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedProjectID(); ok {
+		_spec.AddField(usagelog.FieldProjectID, field.TypeInt64, value)
+	}
+	if _u.mutation.ProjectIDCleared() {
+		_spec.ClearField(usagelog.FieldProjectID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.BillingPrincipalUserID(); ok {
+		_spec.SetField(usagelog.FieldBillingPrincipalUserID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedBillingPrincipalUserID(); ok {
+		_spec.AddField(usagelog.FieldBillingPrincipalUserID, field.TypeInt64, value)
+	}
+	if _u.mutation.BillingPrincipalUserIDCleared() {
+		_spec.ClearField(usagelog.FieldBillingPrincipalUserID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.ResolvedPlatform(); ok {
+		_spec.SetField(usagelog.FieldResolvedPlatform, field.TypeString, value)
+	}
+	if _u.mutation.ResolvedPlatformCleared() {
+		_spec.ClearField(usagelog.FieldResolvedPlatform, field.TypeString)
+	}
+	if value, ok := _u.mutation.BudgetReservationID(); ok {
+		_spec.SetField(usagelog.FieldBudgetReservationID, field.TypeUUID, value)
+	}
+	if _u.mutation.BudgetReservationIDCleared() {
+		_spec.ClearField(usagelog.FieldBudgetReservationID, field.TypeUUID)
 	}
 	if value, ok := _u.mutation.RequestID(); ok {
 		_spec.SetField(usagelog.FieldRequestID, field.TypeString, value)
@@ -1585,6 +1751,127 @@ func (_u *UsageLogUpdateOne) SetNillableAccountID(v *int64) *UsageLogUpdateOne {
 	if v != nil {
 		_u.SetAccountID(*v)
 	}
+	return _u
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (_u *UsageLogUpdateOne) SetWorkspaceID(v int64) *UsageLogUpdateOne {
+	_u.mutation.ResetWorkspaceID()
+	_u.mutation.SetWorkspaceID(v)
+	return _u
+}
+
+// SetNillableWorkspaceID sets the "workspace_id" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableWorkspaceID(v *int64) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetWorkspaceID(*v)
+	}
+	return _u
+}
+
+// AddWorkspaceID adds value to the "workspace_id" field.
+func (_u *UsageLogUpdateOne) AddWorkspaceID(v int64) *UsageLogUpdateOne {
+	_u.mutation.AddWorkspaceID(v)
+	return _u
+}
+
+// ClearWorkspaceID clears the value of the "workspace_id" field.
+func (_u *UsageLogUpdateOne) ClearWorkspaceID() *UsageLogUpdateOne {
+	_u.mutation.ClearWorkspaceID()
+	return _u
+}
+
+// SetProjectID sets the "project_id" field.
+func (_u *UsageLogUpdateOne) SetProjectID(v int64) *UsageLogUpdateOne {
+	_u.mutation.ResetProjectID()
+	_u.mutation.SetProjectID(v)
+	return _u
+}
+
+// SetNillableProjectID sets the "project_id" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableProjectID(v *int64) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetProjectID(*v)
+	}
+	return _u
+}
+
+// AddProjectID adds value to the "project_id" field.
+func (_u *UsageLogUpdateOne) AddProjectID(v int64) *UsageLogUpdateOne {
+	_u.mutation.AddProjectID(v)
+	return _u
+}
+
+// ClearProjectID clears the value of the "project_id" field.
+func (_u *UsageLogUpdateOne) ClearProjectID() *UsageLogUpdateOne {
+	_u.mutation.ClearProjectID()
+	return _u
+}
+
+// SetBillingPrincipalUserID sets the "billing_principal_user_id" field.
+func (_u *UsageLogUpdateOne) SetBillingPrincipalUserID(v int64) *UsageLogUpdateOne {
+	_u.mutation.ResetBillingPrincipalUserID()
+	_u.mutation.SetBillingPrincipalUserID(v)
+	return _u
+}
+
+// SetNillableBillingPrincipalUserID sets the "billing_principal_user_id" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableBillingPrincipalUserID(v *int64) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetBillingPrincipalUserID(*v)
+	}
+	return _u
+}
+
+// AddBillingPrincipalUserID adds value to the "billing_principal_user_id" field.
+func (_u *UsageLogUpdateOne) AddBillingPrincipalUserID(v int64) *UsageLogUpdateOne {
+	_u.mutation.AddBillingPrincipalUserID(v)
+	return _u
+}
+
+// ClearBillingPrincipalUserID clears the value of the "billing_principal_user_id" field.
+func (_u *UsageLogUpdateOne) ClearBillingPrincipalUserID() *UsageLogUpdateOne {
+	_u.mutation.ClearBillingPrincipalUserID()
+	return _u
+}
+
+// SetResolvedPlatform sets the "resolved_platform" field.
+func (_u *UsageLogUpdateOne) SetResolvedPlatform(v string) *UsageLogUpdateOne {
+	_u.mutation.SetResolvedPlatform(v)
+	return _u
+}
+
+// SetNillableResolvedPlatform sets the "resolved_platform" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableResolvedPlatform(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetResolvedPlatform(*v)
+	}
+	return _u
+}
+
+// ClearResolvedPlatform clears the value of the "resolved_platform" field.
+func (_u *UsageLogUpdateOne) ClearResolvedPlatform() *UsageLogUpdateOne {
+	_u.mutation.ClearResolvedPlatform()
+	return _u
+}
+
+// SetBudgetReservationID sets the "budget_reservation_id" field.
+func (_u *UsageLogUpdateOne) SetBudgetReservationID(v uuid.UUID) *UsageLogUpdateOne {
+	_u.mutation.SetBudgetReservationID(v)
+	return _u
+}
+
+// SetNillableBudgetReservationID sets the "budget_reservation_id" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableBudgetReservationID(v *uuid.UUID) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetBudgetReservationID(*v)
+	}
+	return _u
+}
+
+// ClearBudgetReservationID clears the value of the "budget_reservation_id" field.
+func (_u *UsageLogUpdateOne) ClearBudgetReservationID() *UsageLogUpdateOne {
+	_u.mutation.ClearBudgetReservationID()
 	return _u
 }
 
@@ -2563,6 +2850,11 @@ func (_u *UsageLogUpdateOne) ExecX(ctx context.Context) {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *UsageLogUpdateOne) check() error {
+	if v, ok := _u.mutation.ResolvedPlatform(); ok {
+		if err := usagelog.ResolvedPlatformValidator(v); err != nil {
+			return &ValidationError{Name: "resolved_platform", err: fmt.Errorf(`ent: validator failed for field "UsageLog.resolved_platform": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.RequestID(); ok {
 		if err := usagelog.RequestIDValidator(v); err != nil {
 			return &ValidationError{Name: "request_id", err: fmt.Errorf(`ent: validator failed for field "UsageLog.request_id": %w`, err)}
@@ -2678,6 +2970,45 @@ func (_u *UsageLogUpdateOne) sqlSave(ctx context.Context) (_node *UsageLog, err 
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := _u.mutation.WorkspaceID(); ok {
+		_spec.SetField(usagelog.FieldWorkspaceID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedWorkspaceID(); ok {
+		_spec.AddField(usagelog.FieldWorkspaceID, field.TypeInt64, value)
+	}
+	if _u.mutation.WorkspaceIDCleared() {
+		_spec.ClearField(usagelog.FieldWorkspaceID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.ProjectID(); ok {
+		_spec.SetField(usagelog.FieldProjectID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedProjectID(); ok {
+		_spec.AddField(usagelog.FieldProjectID, field.TypeInt64, value)
+	}
+	if _u.mutation.ProjectIDCleared() {
+		_spec.ClearField(usagelog.FieldProjectID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.BillingPrincipalUserID(); ok {
+		_spec.SetField(usagelog.FieldBillingPrincipalUserID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedBillingPrincipalUserID(); ok {
+		_spec.AddField(usagelog.FieldBillingPrincipalUserID, field.TypeInt64, value)
+	}
+	if _u.mutation.BillingPrincipalUserIDCleared() {
+		_spec.ClearField(usagelog.FieldBillingPrincipalUserID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.ResolvedPlatform(); ok {
+		_spec.SetField(usagelog.FieldResolvedPlatform, field.TypeString, value)
+	}
+	if _u.mutation.ResolvedPlatformCleared() {
+		_spec.ClearField(usagelog.FieldResolvedPlatform, field.TypeString)
+	}
+	if value, ok := _u.mutation.BudgetReservationID(); ok {
+		_spec.SetField(usagelog.FieldBudgetReservationID, field.TypeUUID, value)
+	}
+	if _u.mutation.BudgetReservationIDCleared() {
+		_spec.ClearField(usagelog.FieldBudgetReservationID, field.TypeUUID)
 	}
 	if value, ok := _u.mutation.RequestID(); ok {
 		_spec.SetField(usagelog.FieldRequestID, field.TypeString, value)

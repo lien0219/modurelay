@@ -3,10 +3,12 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"testing"
 	"testing/fstest"
 
 	sqlmock "github.com/DATA-DOG/go-sqlmock"
+	"github.com/Wei-Shaw/sub2api/migrations"
 	"github.com/stretchr/testify/require"
 )
 
@@ -77,6 +79,63 @@ func TestApplyMigrationsFS_NonTransactionalMigration(t *testing.T) {
 
 	err = applyMigrationsFS(context.Background(), db, fsys)
 	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestApplyMigrationsFS_TenantIndexesRetryRepairsOnlyInvalidIndexes(t *testing.T) {
+	const name = "279_usage_tenant_indexes_notx.sql"
+	indexes := []string{"api_keys_project_active_id", "usage_logs_workspace_created", "usage_logs_project_created", "usage_logs_principal_created"}
+	content, err := migrations.FS.ReadFile(name)
+	require.NoError(t, err)
+	for _, invalidIndex := range append([]string{"none"}, indexes...) {
+		t.Run(invalidIndex, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			require.NoError(t, err)
+			defer func() { _ = db.Close() }()
+			prepareMigrationsBootstrapExpectations(mock)
+			mock.ExpectQuery("SELECT checksum FROM schema_migrations WHERE filename = \\$1").
+				WithArgs(name).WillReturnError(sql.ErrNoRows)
+			for _, indexName := range indexes {
+				mock.ExpectQuery("SELECT EXISTS \\(").WithArgs(indexName).
+					WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(indexName == invalidIndex))
+				if indexName == invalidIndex {
+					mock.ExpectExec("DROP INDEX CONCURRENTLY IF EXISTS " + indexName).
+						WillReturnResult(sqlmock.NewResult(0, 0))
+				}
+			}
+			for _, indexName := range indexes {
+				mock.ExpectExec("CREATE INDEX CONCURRENTLY IF NOT EXISTS " + indexName).
+					WillReturnResult(sqlmock.NewResult(0, 0))
+			}
+			mock.ExpectExec("INSERT INTO schema_migrations").WithArgs(name, sqlmock.AnyArg()).
+				WillReturnResult(sqlmock.NewResult(1, 1))
+			mock.ExpectExec("SELECT pg_advisory_unlock\\(\\$1\\)").WithArgs(migrationsAdvisoryLockID).
+				WillReturnResult(sqlmock.NewResult(0, 1))
+			err = applyMigrationsFS(context.Background(), db, fstest.MapFS{name: &fstest.MapFile{Data: content}})
+			require.NoError(t, err, "an interrupted concurrent index build must be repaired before recording the migration")
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}
+
+func TestApplyMigrationsFS_TenantIndexesRepairFailureDoesNotRecordMigration(t *testing.T) {
+	const name = "279_usage_tenant_indexes_notx.sql"
+	content, err := migrations.FS.ReadFile(name)
+	require.NoError(t, err)
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+	prepareMigrationsBootstrapExpectations(mock)
+	mock.ExpectQuery("SELECT checksum FROM schema_migrations WHERE filename = \\$1").
+		WithArgs(name).WillReturnError(sql.ErrNoRows)
+	mock.ExpectQuery("SELECT EXISTS \\(").WithArgs("api_keys_project_active_id").
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+	repairErr := errors.New("index repair unavailable")
+	mock.ExpectExec("DROP INDEX CONCURRENTLY IF EXISTS api_keys_project_active_id").WillReturnError(repairErr)
+	mock.ExpectExec("SELECT pg_advisory_unlock\\(\\$1\\)").WithArgs(migrationsAdvisoryLockID).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	err = applyMigrationsFS(context.Background(), db, fstest.MapFS{name: &fstest.MapFile{Data: content}})
+	require.ErrorIs(t, err, repairErr)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

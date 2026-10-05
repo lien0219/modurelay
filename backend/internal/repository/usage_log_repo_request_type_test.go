@@ -101,6 +101,11 @@ func TestUsageLogRepositoryCreateSyncRequestTypeAndLegacyFields(t *testing.T) {
 			sqlmock.AnyArg(), // account_stats_cost
 			sqlmock.AnyArg(), // upstream_request_id
 			sqlmock.AnyArg(), // session_id
+			sqlmock.AnyArg(), // workspace_id
+			sqlmock.AnyArg(), // project_id
+			sqlmock.AnyArg(), // billing_principal_user_id
+			sqlmock.AnyArg(), // resolved_platform
+			sqlmock.AnyArg(), // budget_reservation_id
 			log.NativeCompactionV2,
 			createdAt,
 		).
@@ -196,6 +201,11 @@ func TestUsageLogRepositoryCreate_PersistsServiceTier(t *testing.T) {
 			sqlmock.AnyArg(), // account_stats_cost
 			sqlmock.AnyArg(), // upstream_request_id
 			sqlmock.AnyArg(), // session_id
+			sqlmock.AnyArg(), // workspace_id
+			sqlmock.AnyArg(), // project_id
+			sqlmock.AnyArg(), // billing_principal_user_id
+			sqlmock.AnyArg(), // resolved_platform
+			sqlmock.AnyArg(), // budget_reservation_id
 			log.NativeCompactionV2,
 			createdAt,
 		).
@@ -959,7 +969,12 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullFloat64{},
 			sql.NullString{}, // upstream_request_id
 			sql.NullString{},
-			false, // native_compaction_v2
+			sql.NullInt64{},  // workspace_id
+			sql.NullInt64{},  // project_id
+			sql.NullInt64{},  // billing_principal_user_id
+			sql.NullString{}, // resolved_platform
+			sql.NullString{}, // budget_reservation_id
+			false,            // native_compaction_v2
 			now,
 		}})
 		require.NoError(t, err)
@@ -1039,6 +1054,11 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullFloat64{}, // account_stats_cost
 			sql.NullString{},  // upstream_request_id
 			sql.NullString{},  // session_id
+			sql.NullInt64{},   // workspace_id
+			sql.NullInt64{},   // project_id
+			sql.NullInt64{},   // billing_principal_user_id
+			sql.NullString{},  // resolved_platform
+			sql.NullString{},  // budget_reservation_id
 			false,             // native_compaction_v2
 			now,
 		}})
@@ -1102,6 +1122,11 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullFloat64{}, // account_stats_cost
 			sql.NullString{},  // upstream_request_id
 			sql.NullString{},  // session_id
+			sql.NullInt64{},   // workspace_id
+			sql.NullInt64{},   // project_id
+			sql.NullInt64{},   // billing_principal_user_id
+			sql.NullString{},  // resolved_platform
+			sql.NullString{},  // budget_reservation_id
 			true,              // native_compaction_v2
 			now,
 		}})
@@ -1166,6 +1191,11 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullFloat64{}, // account_stats_cost
 			sql.NullString{},  // upstream_request_id
 			sql.NullString{},  // session_id
+			sql.NullInt64{},   // workspace_id
+			sql.NullInt64{},   // project_id
+			sql.NullInt64{},   // billing_principal_user_id
+			sql.NullString{},  // resolved_platform
+			sql.NullString{},  // budget_reservation_id
 			false,             // native_compaction_v2
 			now,
 		}})

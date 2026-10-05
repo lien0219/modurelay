@@ -162,7 +162,7 @@ func (h *APIKeyHandler) GetByID(c *gin.Context) {
 		return
 	}
 
-	key, err := h.apiKeyService.GetByID(c.Request.Context(), keyID)
+	key, err := h.apiKeyService.GetForUser(c.Request.Context(), subject.UserID, keyID)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

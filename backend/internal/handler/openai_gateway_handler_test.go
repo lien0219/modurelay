@@ -1930,6 +1930,9 @@ func newOpenAIWSHandlerTestServer(t *testing.T, h *OpenAIGatewayHandler, subject
 }
 
 type openAIResponsesWSUsageLogCase struct {
+	budgetRepo             *handlerTenantBudgetRepo
+	tenant                 *service.TenantContext
+	tenantResolver         service.TenantKeyResolver
 	simpleModeRejectAtRead int64
 	compositeResolver      *service.CompositeRouteResolver
 	accountPlatform        string
@@ -2981,6 +2984,10 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 
 	accountRepo := &openAIWSUsageHandlerAccountRepoStub{account: account}
 	usageRepo := &openAIWSUsageHandlerUsageLogRepoStub{created: make(chan *service.UsageLog, turnCount)}
+	var tenantBillingRepo service.UsageBillingRepository
+	if tc.tenant != nil {
+		tenantBillingRepo = workspaceWSBillingRepo{}
+	}
 
 	if len(tc.channelMapping) > 0 {
 		channelSvc = service.NewChannelService(&openAIWSUsageHandlerChannelRepoStub{
@@ -3006,7 +3013,7 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 	gatewaySvc := service.NewOpenAIGatewayService(
 		accountRepo,
 		usageRepo,
-		nil,
+		tenantBillingRepo,
 		nil,
 		nil,
 		nil,
@@ -3047,6 +3054,7 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 
 	apiKey := &service.APIKey{
 		ID:      1801,
+		UserID:  1701,
 		GroupID: &groupID,
 		User:    &service.User{ID: 1701, Status: service.StatusActive},
 	}
@@ -3056,8 +3064,22 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 	if tc.group != nil {
 		apiKey.Group = tc.group
 	}
+	apiKey.Tenant = tc.tenant
+	if tc.tenantResolver != nil {
+		h.apiKeyService = service.NewAPIKeyService(nil, nil, nil, nil, nil, nil, cfg)
+		h.apiKeyService.SetTenantResolver(tc.tenantResolver)
+	}
+	if tc.tenant != nil {
+		if tc.budgetRepo == nil {
+			tc.budgetRepo = &handlerTenantBudgetRepo{}
+		}
+		h.apiKeyService.SetBudgetService(service.NewBudgetService(tc.budgetRepo))
+	}
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
+		if tc.tenant != nil {
+			c.Request = c.Request.WithContext(service.WithBudgetService(c.Request.Context(), h.apiKeyService.BudgetService()))
+		}
 		c.Set(string(middleware.ContextKeyAPIKey), apiKey)
 		c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: apiKey.User.ID, Concurrency: 1})
 		c.Next()

@@ -28,6 +28,7 @@ func TestBuildUsageBillingCommandSimpleModeOnlyChargesAPIKeyWindows(t *testing.T
 	require.Zero(t, cmd.SubscriptionCost)
 	require.Zero(t, cmd.APIKeyQuotaCost)
 	require.Zero(t, cmd.AccountQuotaCost)
+	require.Zero(t, cmd.BudgetActualCost, "simple mode does not charge a payer, so financial spend is zero")
 	require.Equal(t, 3.25, cmd.APIKeyRateLimitCost)
 }
 

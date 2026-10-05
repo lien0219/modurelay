@@ -50,6 +50,7 @@ func TestAuthCacheInvalidationTrigger_ProfitControlColumns(t *testing.T) {
 	t.Cleanup(func() {
 		_, err := integrationDB.ExecContext(ctx, "DELETE FROM api_keys WHERE id = $1", key.ID)
 		require.NoError(t, err)
+		deletePersonalWorkspaceFixture(t, user.ID)
 		_, err = integrationDB.ExecContext(ctx, "DELETE FROM users WHERE id = $1", user.ID)
 		require.NoError(t, err)
 		_, err = integrationDB.ExecContext(ctx, "DELETE FROM groups WHERE id = $1", group.ID)

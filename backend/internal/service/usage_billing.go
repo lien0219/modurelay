@@ -22,20 +22,30 @@ type UsageBillingCommand struct {
 	RequestFingerprint string
 	RequestPayloadHash string
 
-	UserID              int64
-	AccountID           int64
-	SubscriptionID      *int64
-	AccountType         string
-	Model               string
-	ServiceTier         string
-	ReasoningEffort     string
-	BillingType         int8
-	InputTokens         int
-	OutputTokens        int
-	CacheCreationTokens int
-	CacheReadTokens     int
-	ImageCount          int
-	MediaType           string
+	UserID                 int64
+	BillingPrincipalUserID int64
+	WorkspaceID            int64
+	ProjectID              int64
+	BudgetReservationID    string
+	ResolvedPlatform       string
+	BudgetActualCost       float64
+	// UsageLogCostTelemetryOnly marks simple-mode receipts where ActualCost is
+	// retained for usage/FinOps observability but no money or budget spend is
+	// settled. It is part of the immutable billing fingerprint.
+	UsageLogCostTelemetryOnly bool
+	AccountID                 int64
+	SubscriptionID            *int64
+	AccountType               string
+	Model                     string
+	ServiceTier               string
+	ReasoningEffort           string
+	BillingType               int8
+	InputTokens               int
+	OutputTokens              int
+	CacheCreationTokens       int
+	CacheReadTokens           int
+	ImageCount                int
+	MediaType                 string
 
 	BalanceCost         float64
 	SubscriptionCost    float64
@@ -132,6 +142,12 @@ func buildUsageBillingFingerprint(c *UsageBillingCommand) string {
 	if payloadHash := strings.TrimSpace(c.RequestPayloadHash); payloadHash != "" {
 		raw += "|" + payloadHash
 	}
+	if c.WorkspaceID > 0 || c.ProjectID > 0 || c.BillingPrincipalUserID > 0 || strings.TrimSpace(c.BudgetReservationID) != "" {
+		raw += fmt.Sprintf("|tenant:%d|%d|%d|%s|%s|%0.10f", c.WorkspaceID, c.ProjectID, c.BillingPrincipalUserID, strings.TrimSpace(c.BudgetReservationID), strings.TrimSpace(c.ResolvedPlatform), c.BudgetActualCost)
+		if c.UsageLogCostTelemetryOnly {
+			raw += "|usage-log-cost-telemetry-only"
+		}
+	}
 	sum := sha256.Sum256([]byte(raw))
 	return hex.EncodeToString(sum[:])
 }
@@ -163,24 +179,29 @@ type AccountQuotaState struct {
 }
 
 type UsageBillingApplyResult struct {
-	Applied                bool
-	VideoUsageLogPersisted bool // video billing and its usage row committed together
-	APIKeyQuotaExhausted   bool
-	NewBalance             *float64           // post-deduction balance (nil = no balance deduction)
-	BalanceOverdrafted     bool               // true when the sufficient-balance guard missed and debt was still recorded
-	QuotaState             *AccountQuotaState // post-increment quota state (nil = no quota increment)
+	Applied                 bool
+	VideoUsageLogPersisted  bool // video billing and its usage row committed together
+	TenantUsageLogPersisted bool
+	APIKeyQuotaExhausted    bool
+	NewBalance              *float64           // post-deduction balance (nil = no balance deduction)
+	BalanceOverdrafted      bool               // true when the sufficient-balance guard missed and debt was still recorded
+	QuotaState              *AccountQuotaState // post-increment quota state (nil = no quota increment)
 }
 
 // BatchImageBalanceHoldCommand describes an idempotent balance hold operation.
 type BatchImageBalanceHoldCommand struct {
-	RequestID          string
-	APIKeyID           int64
-	RequestFingerprint string
-	RequestPayloadHash string
-	UserID             int64
-	BatchID            string
-	HoldAmount         float64
-	ActualAmount       float64
+	RequestID              string
+	APIKeyID               int64
+	RequestFingerprint     string
+	RequestPayloadHash     string
+	UserID                 int64
+	BillingPrincipalUserID int64
+	WorkspaceID            int64
+	ProjectID              int64
+	BudgetReservationID    string
+	BatchID                string
+	HoldAmount             float64
+	ActualAmount           float64
 }
 
 func (c *BatchImageBalanceHoldCommand) Normalize() {
@@ -192,6 +213,8 @@ func (c *BatchImageBalanceHoldCommand) Normalize() {
 	if strings.TrimSpace(c.RequestFingerprint) == "" {
 		c.RequestFingerprint = buildBatchImageBalanceHoldFingerprint(c)
 	}
+	c.HoldAmount = QuantizeUsageBillingAmount(c.HoldAmount)
+	c.ActualAmount = QuantizeUsageBillingAmount(c.ActualAmount)
 }
 
 func buildBatchImageBalanceHoldFingerprint(c *BatchImageBalanceHoldCommand) string {
@@ -209,14 +232,18 @@ func buildBatchImageBalanceHoldFingerprint(c *BatchImageBalanceHoldCommand) stri
 	if payloadHash := strings.TrimSpace(c.RequestPayloadHash); payloadHash != "" {
 		raw += "|" + payloadHash
 	}
+	if c.WorkspaceID > 0 || c.ProjectID > 0 || c.BillingPrincipalUserID > 0 || strings.TrimSpace(c.BudgetReservationID) != "" {
+		raw += fmt.Sprintf("|tenant:%d|%d|%d|%s", c.WorkspaceID, c.ProjectID, c.BillingPrincipalUserID, strings.TrimSpace(c.BudgetReservationID))
+	}
 	sum := sha256.Sum256([]byte(raw))
 	return hex.EncodeToString(sum[:])
 }
 
 type BatchImageBalanceHoldResult struct {
-	Applied       bool
-	NewBalance    *float64
-	FrozenBalance *float64
+	Applied           bool
+	UsageLogPersisted bool
+	NewBalance        *float64
+	FrozenBalance     *float64
 }
 
 type UsageBillingRepository interface {

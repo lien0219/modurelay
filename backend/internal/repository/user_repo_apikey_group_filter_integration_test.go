@@ -27,6 +27,7 @@ func (s *UserRepoAPIKeyGroupFilterSuite) SetupTest() {
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM api_keys")
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM user_allowed_groups")
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM user_subscriptions")
+	deleteAllPersonalWorkspaceFixtures(s.T())
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM users")
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM groups")
 }

@@ -225,6 +225,54 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/workspaces',
+    name: 'WorkspaceRoot',
+    component: () => import('@/views/workspace/WorkspaceOverviewView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: false, title: 'Workspace', titleKey: 'workspace.title', descriptionKey: 'workspace.description' }
+  },
+  {
+    path: '/workspaces/:workspaceId/overview',
+    name: 'WorkspaceOverview',
+    component: () => import('@/views/workspace/WorkspaceOverviewView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: false, title: 'Workspace', titleKey: 'workspace.title', descriptionKey: 'workspace.description' }
+  },
+  {
+    path: '/workspaces/:workspaceId/projects',
+    name: 'WorkspaceProjects',
+    component: () => import('@/views/workspace/WorkspaceProjectsView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: false, title: 'Workspace Projects', titleKey: 'workspace.projects', descriptionKey: 'workspace.projectsDescription' }
+  },
+  {
+    path: '/workspaces/:workspaceId/projects/:projectId',
+    name: 'WorkspaceProjectDetail',
+    component: () => import('@/views/workspace/WorkspaceProjectDetailView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: false, title: 'Project Keys', titleKey: 'workspace.keys', descriptionKey: 'workspace.keyDescription' }
+  },
+  {
+    path: '/workspaces/:workspaceId/members',
+    name: 'WorkspaceMembers',
+    component: () => import('@/views/workspace/WorkspaceMembersView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: false, title: 'Workspace Members', titleKey: 'workspace.members', descriptionKey: 'workspace.membersDescription' }
+  },
+  {
+    path: '/workspaces/:workspaceId/invitations',
+    name: 'WorkspaceInvitations',
+    component: () => import('@/views/workspace/WorkspaceInvitationsView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: false, title: 'Workspace Invitations', titleKey: 'workspace.invitations', descriptionKey: 'workspace.invitationDescription' }
+  },
+  {
+    path: '/workspaces/:workspaceId/finops',
+    name: 'WorkspaceFinops',
+    component: () => import('@/views/workspace/WorkspaceFinopsView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: false, title: 'Workspace FinOps', titleKey: 'workspace.finops', descriptionKey: 'workspace.budgetDescription' }
+  },
+  {
+    path: '/workspaces/:workspaceId/audit',
+    name: 'WorkspaceAudit',
+    component: () => import('@/views/workspace/WorkspaceAuditView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: false, title: 'Workspace Audit', titleKey: 'workspace.audit', descriptionKey: 'workspace.auditDescription' }
+  },
+  {
     path: '/canvas',
     name: 'CanvasHome',
     component: () => import('@/views/user/CanvasAppRedirectView.vue'),
@@ -609,6 +657,12 @@ const routes: RouteRecordRaw[] = [
       titleKey: 'admin.dashboard.title',
       descriptionKey: 'admin.dashboard.description'
     }
+  },
+  {
+    path: '/admin/workspaces',
+    name: 'AdminWorkspaces',
+    component: () => import('@/views/admin/WorkspaceAdminView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true, title: 'Workspace administration', titleKey: 'workspace.adminTitle', descriptionKey: 'workspace.adminDescription' }
   },
   {
     path: '/admin/ops',

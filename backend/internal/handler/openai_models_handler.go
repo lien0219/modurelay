@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 )
@@ -20,6 +21,9 @@ func (h *GatewayHandler) pinnedOpenAIModels(c *gin.Context, group *service.Group
 		return
 	}
 	etag := c.GetHeader("If-None-Match")
+	if key, ok := middleware.GetAPIKeyFromContext(c); ok && key.Tenant != nil && key.Tenant.AllowedModels != nil {
+		etag = ""
+	}
 	if c.Param("model") != "" {
 		etag = "" // A collection ETag cannot validate a single-model representation.
 	}
@@ -46,6 +50,19 @@ func writeOpenAIModelsError(c *gin.Context, status int, errorType, message strin
 }
 
 func writeOpenAIModelsResponse(c *gin.Context, manifest *service.OpenAIModelsResponse) {
+	if key, ok := middleware.GetAPIKeyFromContext(c); ok && key.Tenant != nil && key.Tenant.AllowedModels != nil {
+		body, e := filterTenantModelCatalog(manifest.Body, key)
+		if e != nil {
+			writeOpenAIModelsError(c, http.StatusBadGateway, "upstream_error", "Invalid model catalogue")
+			return
+		}
+		copyManifest := *manifest
+		copyManifest.Body = body
+		copyManifest.ETag = service.CodexModelsManifestETag(body)
+		copyManifest.NotModified = service.CodexModelsManifestETagMatches(c.GetHeader("If-None-Match"), copyManifest.ETag)
+		manifest = &copyManifest
+	}
+
 	if c.Param("model") != "" {
 		writeRetrievedModel(c, manifest.Body)
 		return
@@ -65,6 +82,23 @@ func writeOpenAIModelsResponse(c *gin.Context, manifest *service.OpenAIModelsRes
 // selection and allowlist filtering. Preserve every field on the selected entry.
 func writeModelsListResponse(c *gin.Context, models any) {
 	response := gin.H{"object": "list", "data": models}
+	if key, ok := middleware.GetAPIKeyFromContext(c); ok && key.Tenant != nil && key.Tenant.AllowedModels != nil {
+		body, e := json.Marshal(response)
+		if e == nil {
+			body, e = filterTenantModelCatalog(body, key)
+		}
+		if e != nil {
+			writeOpenAIModelsError(c, 500, "api_error", "Failed to encode model catalogue")
+			return
+		}
+		if c.Param("model") != "" {
+			writeRetrievedModel(c, body)
+		} else {
+			c.Data(200, "application/json", body)
+		}
+		return
+	}
+
 	if c.Param("model") == "" {
 		c.JSON(http.StatusOK, response)
 		return

@@ -66,6 +66,10 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 				abortWithGoogleError(c, 401, "Invalid API key")
 				return
 			}
+			if errors.Is(err, service.ErrWorkspaceForbidden) || errors.Is(err, service.ErrWorkspaceConflict) || errors.Is(err, service.ErrGroupNotAllowed) {
+				abortWithGoogleError(c, 403, "Tenant access denied")
+				return
+			}
 			if errors.Is(err, service.ErrAPIKeyAuthOverloaded) {
 				MarkIngressRejected(c, IngressRejectAPIKeyAuthOverloaded)
 				abortWithGoogleError(c, 503, "API key authentication is temporarily unavailable")
@@ -131,6 +135,7 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 			return
 		}
 
+		c.Request = c.Request.WithContext(service.WithBudgetService(c.Request.Context(), apiKeyService.BudgetService()))
 		// 简易模式：跳过余额和订阅检查
 		if cfg.RunMode == config.RunModeSimple {
 			c.Set(string(ContextKeyAPIKey), apiKey)
@@ -169,7 +174,7 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 		if isSubscriptionType && subscriptionService != nil {
 			subscription, err := subscriptionService.GetActiveSubscription(
 				c.Request.Context(),
-				apiKey.User.ID,
+				apiKey.BillingUserID(),
 				apiKey.Group.ID,
 			)
 			if err != nil {
@@ -200,7 +205,7 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 
 			c.Set(string(ContextKeySubscription), subscription)
 		} else {
-			if apiKeyBalanceBelowAuthThreshold(apiKey.User.Balance, cfg) {
+			if apiKeyBalanceBelowAuthThreshold(apiKey.BillingUser().Balance, cfg) {
 				abortWithGoogleError(c, 403, "Insufficient account balance")
 				return
 			}

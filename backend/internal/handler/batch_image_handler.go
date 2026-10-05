@@ -143,6 +143,15 @@ func (h *BatchImageHandler) Models(c *gin.Context) {
 	if apiKey, ok := middleware.GetAPIKeyFromContext(c); ok && apiKey != nil && apiKey.Group != nil {
 		got.Data = filterBatchImageModelsByAllowlist(got.Data, apiKey.Group.ModelAllowlist)
 	}
+	if key, ok := middleware.GetAPIKeyFromContext(c); ok && key.HasModelRestrictions() {
+		models := make([]service.BatchImagePublicModel, 0, len(got.Data))
+		for _, m := range got.Data {
+			if key.AllowsModel(m.ID) {
+				models = append(models, m)
+			}
+		}
+		got.Data = models
+	}
 	c.JSON(http.StatusOK, got)
 }
 
@@ -299,11 +308,22 @@ func batchImageOwnerFromContext(c *gin.Context) (service.BatchImageOwner, bool) 
 	if !ok || apiKey == nil || apiKey.ID <= 0 || apiKey.UserID <= 0 {
 		return service.BatchImageOwner{}, false
 	}
-	return service.BatchImageOwner{
+	owner := service.BatchImageOwner{
 		UserID:   apiKey.UserID,
 		APIKeyID: apiKey.ID,
 		GroupID:  apiKey.GroupID,
-	}, true
+	}
+	if apiKey.Tenant != nil {
+		if apiKey.Tenant.WorkspaceID <= 0 || apiKey.Tenant.ProjectID <= 0 || apiKey.Tenant.BillingPrincipalUserID <= 0 {
+			return service.BatchImageOwner{}, false
+		}
+		owner.WorkspaceID = apiKey.Tenant.WorkspaceID
+		owner.ProjectID = apiKey.Tenant.ProjectID
+		owner.BillingPrincipalUserID = apiKey.Tenant.BillingPrincipalUserID
+	} else if apiKey.ProjectID != nil {
+		return service.BatchImageOwner{}, false
+	}
+	return owner, true
 }
 
 func batchImageError(c *gin.Context, err error) {

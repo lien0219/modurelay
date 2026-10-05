@@ -46,6 +46,7 @@ func newReductionLockFixture(t *testing.T, name string) (*service.RedeemService,
 		require.NoError(t, err)
 		_, err = integrationDB.ExecContext(context.Background(), `DELETE FROM groups WHERE id=$1`, group.ID)
 		require.NoError(t, err)
+		deletePersonalWorkspaceFixture(t, user.ID)
 		_, err = integrationDB.ExecContext(context.Background(), `DELETE FROM users WHERE id=$1`, user.ID)
 		require.NoError(t, err)
 	})

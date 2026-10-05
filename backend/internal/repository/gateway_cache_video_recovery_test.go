@@ -141,3 +141,29 @@ func TestVideoCancellationKeepsAlreadyObservedSettlement(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, due, key)
 }
+
+func TestVideoCancellationTombstoneBlocksLateSettlement(t *testing.T) {
+	server := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+	cache := NewGatewayCache(rdb).(*gatewayCache)
+	ctx := context.Background()
+	key := "10:20:seedance:cancel-race"
+	require.NoError(t, cache.SetGrokVideoPendingBilling(ctx, key, []byte(`{"request_id":"seedance:cancel-race","account_id":1}`), 24*time.Hour))
+	require.NoError(t, cache.DeleteGrokVideoPendingBilling(ctx, key))
+
+	cancelled, err := cache.GetGrokVideoPendingBilling(ctx, key)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"request_id":"seedance:cancel-race","account_id":1,"cancelled":true}`, string(cancelled))
+
+	lateSettlement := []byte(`{"request_id":"seedance:cancel-race","settlement":{"command":{"BalanceCost":9.5}}}`)
+	stored, err := cache.PrepareGrokVideoSettlement(ctx, key, lateSettlement)
+	require.NoError(t, err)
+	require.Equal(t, cancelled, stored, "a cancelled task must not be revived by a late completion observer")
+	unchanged, err := cache.GetGrokVideoPendingBilling(ctx, key)
+	require.NoError(t, err)
+	require.Equal(t, cancelled, unchanged)
+	due, err := cache.ListDueGrokVideoRecovery(ctx, time.Now().Add(time.Minute), 50)
+	require.NoError(t, err)
+	require.Contains(t, due, key, "the tombstone stays recoverable until reservation release succeeds")
+}

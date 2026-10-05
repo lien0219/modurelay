@@ -27,6 +27,7 @@ export { canvasAPI } from './canvas'
 export { smsAPI } from './sms'
 export { emailAPI } from './email'
 export { verificationRecordsAPI } from './verificationRecords'
+export { workspaceAPI } from './workspace'
 
 // Admin APIs
 export { adminAPI } from './admin'

@@ -482,6 +482,39 @@ func (r *userRepository) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
+// GuardWorkspaceUserDeletion protects the costly legacy admin path by checking
+// tenant obligations before it enumerates and tombstones every creator key.
+// Delete/Update have matching database-trigger guards inside their own write tx.
+func (r *userRepository) GuardWorkspaceUserDeletion(ctx context.Context, id int64) error {
+	var blocked bool
+	rows, err := r.sql.QueryContext(ctx, `SELECT EXISTS (
+		SELECT 1 FROM workspaces w WHERE w.status <> 'archived' AND w.type='organization' AND
+		(w.billing_owner_user_id=$1 OR
+		 EXISTS(SELECT 1 FROM workspace_members m WHERE m.workspace_id=w.id AND m.user_id=$1 AND m.role='owner' AND m.status='active'
+		 AND NOT EXISTS(SELECT 1 FROM workspace_members other JOIN users u ON u.id=other.user_id WHERE other.workspace_id=w.id AND other.user_id<>$1 AND other.role='owner' AND other.status='active' AND u.status='active' AND u.deleted_at IS NULL)))
+	) OR EXISTS (
+		SELECT 1 FROM api_keys k JOIN projects p ON p.id=k.project_id JOIN workspaces w ON w.id=p.workspace_id
+		WHERE k.user_id=$1 AND w.type='organization' AND w.status<>'archived'
+	) OR EXISTS (
+		SELECT 1 FROM budget_reservations WHERE status='pending' AND (actor_user_id=$1 OR billing_principal_user_id=$1)
+	)`, id)
+	if err == nil {
+		defer func() { _ = rows.Close() }()
+		if rows.Next() {
+			err = rows.Scan(&blocked)
+		} else {
+			err = rows.Err()
+		}
+	}
+	if err != nil {
+		return err
+	}
+	if blocked {
+		return service.ErrWorkspaceConflict
+	}
+	return nil
+}
+
 // deleteUser 在给定 client（可能是外部事务 client）上删除用户及其身份关联记录，自身不开启/提交事务。
 func (r *userRepository) deleteUser(ctx context.Context, exec *dbent.Client, id int64) error {
 	identityIDs, err := exec.AuthIdentity.Query().

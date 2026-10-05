@@ -851,6 +851,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     items.push({ path: '/dashboard', label: t('nav.dashboard'), icon: DashboardIcon })
   }
   items.push(
+    { path: '/workspaces', label: t('workspace.title'), icon: FolderIcon },
     { path: '/canvas', label: t('nav.canvas'), icon: CanvasIcon, featureFlag: flagCanvas },
     { path: '/token-market', label: t('nav.tokenMarket'), icon: TokenMarketIcon, featureFlag: flagTokenMarketNav },
     { path: '/batch-image', label: t('nav.batchImage'), icon: BatchImageIcon, hideInSimpleMode: true, featureFlag: flagBatchImageAccess },
@@ -917,6 +918,7 @@ const customMenuItemsForAdmin = computed(() => {
 const adminNavItems = computed((): NavItem[] => {
   const baseItems: NavItem[] = [
     { path: '/admin/dashboard', label: t('nav.dashboard'), icon: DashboardIcon },
+    { path: '/admin/workspaces', label: t('workspace.adminTitle'), icon: FolderIcon },
     { path: '/admin/ops', label: t('nav.ops'), icon: ChartIcon, featureFlag: flagOpsMonitoring },
     { path: '/admin/detection-center', label: t('nav.detectionCenter'), icon: SignalIcon },
     { path: '/admin/users', label: t('nav.users'), icon: UsersIcon, hideInSimpleMode: true },

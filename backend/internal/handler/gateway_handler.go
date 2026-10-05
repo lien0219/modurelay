@@ -1233,7 +1233,7 @@ func (h *GatewayHandler) CodexModels(c *gin.Context) {
 		forcedPlatform = strings.TrimSpace(value)
 	}
 	modelIDs := h.codexModelIDsForGroup(c.Request.Context(), apiKey.Group, forcedPlatform)
-	modelIDs = service.FilterCodexModelIDsForGroup(modelIDs, apiKey.Group)
+	modelIDs = apiKey.FilterModels(service.FilterCodexModelIDsForGroup(modelIDs, apiKey.Group))
 	body, err := h.gatewayService.BuildCodexModelsManifestForGroup(
 		c.Request.Context(),
 		apiKey.Group,
@@ -2464,6 +2464,15 @@ func extractQuotaResetSeconds(err error) int {
 }
 
 func billingErrorDetails(err error) (status int, code, message string, retryAfter int) {
+	if errors.Is(err, service.ErrWorkspaceBudgetExceeded) || errors.Is(err, service.ErrProjectBudgetExceeded) {
+		return http.StatusTooManyRequests, err.Error(), "Workspace or project budget limit exceeded", 0
+	}
+	if errors.Is(err, service.ErrBudgetUnpriced) {
+		return http.StatusForbidden, "BUDGET_UNPRICED", "Request pricing is unavailable for budget admission", 0
+	}
+	if errors.Is(err, service.ErrBudgetUnavailable) {
+		return http.StatusServiceUnavailable, "BUDGET_UNAVAILABLE", "Budget service temporarily unavailable", 0
+	}
 	if errors.Is(err, service.ErrBillingServiceUnavailable) {
 		msg := pkgerrors.Message(err)
 		if msg == "" {
@@ -2535,6 +2544,10 @@ func (h *GatewayHandler) maybeLogCompatibilityFallbackMetrics(reqLog *zap.Logger
 
 func (h *GatewayHandler) submitUsageRecordTask(parent context.Context, task service.UsageRecordTask) {
 	if task == nil {
+		return
+	}
+	if service.BudgetReservationFromContext(parent) != nil {
+		h.submitMandatoryUsageRecordTask(parent, task)
 		return
 	}
 	task, abandon := wrapUsageRecordTaskContext(parent, task)

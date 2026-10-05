@@ -106,6 +106,28 @@ func TestAsyncImageHandlerSubmitAndPoll(t *testing.T) {
 	require.Contains(t, pollWriter.Body.String(), "https://example.test/image.png")
 }
 
+func TestAsyncImageTenantRequiresBudgetBeforeAcceptance(t *testing.T) {
+	store := &asyncImageMemoryStore{tasks: make(map[string]*service.ImageTaskRecord)}
+	h := &AsyncImageHandler{tasks: service.NewImageTaskServiceWithUploader(store, nil, time.Hour, time.Minute), execute: func(_ string, c *gin.Context) { c.JSON(http.StatusOK, gin.H{"data": []any{}}) }}
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		key := tenantBudgetTestKey()
+		key.Group = &service.Group{Platform: service.PlatformOpenAI, AllowImageGeneration: true}
+		c.Set(string(middleware2.ContextKeyAPIKey), key)
+		c.Next()
+	})
+	router.POST("/v1/images/generations/async", h.Submit)
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations/async", strings.NewReader(`{"model":"gpt-image-1","prompt":"cat"}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusServiceUnavailable, w.Code)
+	require.Contains(t, w.Body.String(), "BUDGET_UNAVAILABLE")
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+	require.Empty(t, store.tasks, "a 202 must not be issued before durable budget admission")
+}
+
 // When object storage is not configured the feature is fully disabled: the
 // endpoints must return 404 without creating a task or writing to Redis.
 func TestAsyncImageHandlerDisabledReturns404(t *testing.T) {

@@ -99,10 +99,50 @@ func (h *AsyncImageHandler) Submit(c *gin.Context) {
 	if !h.checkSecurityAuditBeforeSubmit(c, apiKey, platform, body) {
 		return
 	}
+	owner := service.ImageTaskOwner{UserID: apiKey.UserID, APIKeyID: apiKey.ID}
+	workerDone := func() {}
+	if apiKey.Tenant != nil {
+		keyCopy := *apiKey
+		apiKey = &keyCopy
+		c.Set(string(middleware2.ContextKeyAPIKey), apiKey)
+		info := service.ParseGrokMediaRequest(c.GetHeader("Content-Type"), body)
+		req := service.InflightEstimateRequest{Model: info.Model, Kind: service.InflightEstimateImage, Units: info.N, BodyBytes: len(body)}
+		var estimator inflightReservationEstimator
+		if h.openAI != nil && h.openAI.gatewayService != nil {
+			estimator = h.openAI.gatewayService
+			if platform == service.PlatformOpenAI {
+				parsed, parseErr := h.openAI.gatewayService.ParseOpenAIImagesRequest(c, body)
+				if parseErr != nil {
+					imageTaskJSONError(c, http.StatusBadRequest, "invalid_request_error", parseErr.Error())
+					return
+				}
+				req.Model, req.Units = parsed.Model, parsed.N
+			}
+		}
+		if !apiKey.AllowsModel(req.Model) {
+			imageTaskJSONError(c, http.StatusForbidden, "permission_error", "Model is not available for this project")
+			return
+		}
+		done, admissionErr := reserveInflightBalance(c, nil, estimator, apiKey, nil, req)
+		if admissionErr != nil {
+			status, code, message, _ := billingErrorDetails(admissionErr)
+			imageTaskJSONError(c, status, code, message)
+			return
+		}
+		defer done()
+		handle := service.BudgetReservationFromContext(c.Request.Context())
+		if handle == nil {
+			imageTaskJSONError(c, http.StatusServiceUnavailable, "BUDGET_UNAVAILABLE", "Budget admission is unavailable")
+			return
+		}
+		workerDone = handle.Acquire()
+		owner.WorkspaceID, owner.ProjectID, owner.BillingPrincipalUserID, owner.BudgetReservationID = apiKey.Tenant.WorkspaceID, apiKey.Tenant.ProjectID, apiKey.Tenant.BillingPrincipalUserID, handle.ID()
+	}
 
 	taskCtx, recorder, cancel := newAsyncImageContext(c, body, h.tasks.ExecutionTimeout())
-	task, err := h.tasks.Create(c.Request.Context(), service.ImageTaskOwner{UserID: apiKey.UserID, APIKeyID: apiKey.ID})
+	task, err := h.tasks.Create(c.Request.Context(), owner)
 	if err != nil {
+		workerDone()
 		cancel()
 		imageTaskError(c, err)
 		return
@@ -122,7 +162,7 @@ func (h *AsyncImageHandler) Submit(c *gin.Context) {
 		"poll_url":   pollURL,
 	})
 
-	go h.run(task.ID, platform, taskCtx, recorder, cancel)
+	go func() { defer workerDone(); h.run(task.ID, platform, taskCtx, recorder, cancel) }()
 }
 
 func (h *AsyncImageHandler) checkSecurityAuditBeforeSubmit(c *gin.Context, apiKey *service.APIKey, platform string, body []byte) bool {
@@ -224,6 +264,7 @@ func (h *AsyncImageHandler) run(taskID, platform string, taskCtx *gin.Context, r
 	defer cancel()
 	defer func() {
 		if recovered := recover(); recovered != nil {
+			service.BudgetReservationFromContext(taskCtx.Request.Context()).PreserveIfProviderStarted()
 			logger.L().Error("image_task.execution_panicked", zap.String("task_id", taskID), zap.Any("panic", recovered))
 			h.failTask(taskID, http.StatusInternalServerError, imageTaskErrorPayload("api_error", "image generation task panicked"))
 		}
@@ -232,10 +273,14 @@ func (h *AsyncImageHandler) run(taskID, platform string, taskCtx *gin.Context, r
 	h.execute(platform, taskCtx)
 	body := bytes.TrimSpace(recorder.Body.Bytes())
 	if err := taskCtx.Request.Context().Err(); err != nil && len(body) == 0 {
+		service.BudgetReservationFromContext(taskCtx.Request.Context()).PreserveIfProviderStarted()
 		h.failTask(taskID, http.StatusGatewayTimeout, imageTaskErrorPayload("timeout_error", "image generation task timed out"))
 		return
 	}
 	statusCode := recorder.Code
+	if statusCode >= http.StatusInternalServerError {
+		service.BudgetReservationFromContext(taskCtx.Request.Context()).PreserveIfProviderStarted()
+	}
 	if statusCode == 0 {
 		statusCode = http.StatusOK
 	}

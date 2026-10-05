@@ -184,7 +184,7 @@ func aiStarsLabOpenAIStatus(status int) string {
 	}
 }
 
-func (s *OpenAIGatewayService) doAIStarsLabOpenAPI(ctx context.Context, c *gin.Context, account *Account, method, target string, body []byte) ([]byte, http.Header, error) {
+func (s *OpenAIGatewayService) doAIStarsLabOpenAPI(ctx context.Context, c *gin.Context, account *Account, endpoint GrokMediaEndpoint, method, target string, body []byte) ([]byte, http.Header, error) {
 	token := strings.TrimSpace(account.GetCredential("api_key"))
 	if token == "" {
 		return nil, nil, fmt.Errorf("AIStarsLab account missing api_key")
@@ -207,6 +207,7 @@ func (s *OpenAIGatewayService) doAIStarsLabOpenAPI(ctx context.Context, c *gin.C
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxy = account.Proxy.URL()
 	}
+	markVideoProviderStarted(ctx, endpoint)
 	started := time.Now()
 	resp, err := s.httpUpstream.Do(req, proxy, account.ID, account.Concurrency)
 	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(started).Milliseconds())
@@ -217,6 +218,7 @@ func (s *OpenAIGatewayService) doAIStarsLabOpenAPI(ctx context.Context, c *gin.C
 		return nil, nil, fmt.Errorf("AIStarsLab upstream transport failed: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
+	markVideoProviderRejected(ctx, endpoint, resp.StatusCode)
 	responseBody, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
 		return nil, resp.Header.Clone(), err
@@ -260,7 +262,7 @@ func (s *OpenAIGatewayService) ForwardAIStarsLabOpenAPIVideo(
 		if err != nil {
 			return nil, err
 		}
-		data, headers, err := s.doAIStarsLabOpenAPI(ctx, c, account, http.MethodPost, base+"/generation/create/video", createBody)
+		data, headers, err := s.doAIStarsLabOpenAPI(ctx, c, account, endpoint, http.MethodPost, base+"/generation/create/video", createBody)
 		if err != nil {
 			return nil, err
 		}
@@ -290,7 +292,7 @@ func (s *OpenAIGatewayService) ForwardAIStarsLabOpenAPIVideo(
 			return nil, fmt.Errorf("AIStarsLab task id is required")
 		}
 		target := base + "/generation/status?taskId=" + url.QueryEscape(taskID)
-		data, headers, err := s.doAIStarsLabOpenAPI(ctx, c, account, http.MethodGet, target, nil)
+		data, headers, err := s.doAIStarsLabOpenAPI(ctx, c, account, endpoint, http.MethodGet, target, nil)
 		if err != nil {
 			return nil, err
 		}

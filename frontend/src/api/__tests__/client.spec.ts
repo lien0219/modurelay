@@ -91,6 +91,19 @@ describe('API Client', () => {
       expect(config.params).toHaveProperty('timezone')
     })
 
+    it('保留 FinOps 明确指定的预算时区', async () => {
+      const adapter = vi.fn().mockResolvedValue({
+        status: 200,
+        data: { code: 0, data: {} },
+        headers: {},
+        config: {},
+        statusText: 'OK',
+      })
+      apiClient.defaults.adapter = adapter
+      await apiClient.get('/workspaces/1/overview', { params: { timezone: 'Pacific/Honolulu' } })
+      expect(adapter.mock.calls[0][0].params.timezone).toBe('Pacific/Honolulu')
+    })
+
     it('POST 请求不附加 timezone 参数', async () => {
       const adapter = vi.fn().mockResolvedValue({
         status: 200,

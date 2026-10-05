@@ -31,6 +31,9 @@ func RegisterAdminRoutes(
 	// 审计中间件挂在认证之后：所有管理面变更类操作 + 敏感读取入审计日志
 	admin.Use(gin.HandlerFunc(auditLog))
 	admin.Use(middleware.AdminComplianceGuard(settingService))
+	if h.Workspace != nil {
+		h.Workspace.RegisterAdminRoutes(admin)
+	}
 	{
 		// 部署与运营合规确认
 		registerAdminComplianceRoutes(admin, h)

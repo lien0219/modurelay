@@ -6,6 +6,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed, readonly } from 'vue'
 import { authAPI, isTotp2FARequired, passkeyAPI, type LoginResponse } from '@/api'
+import { useWorkspaceStore } from './workspace'
 import type {
   User,
   LoginRequest,
@@ -484,6 +485,9 @@ export const useAuthStore = defineStore('auth', () => {
 
     pendingAuthSession.value = null
     clearPendingAuthSessionStorage()
+    // Tenant selections and permissions must not survive a user switch. The
+    // store owns request-generation invalidation for late tenant responses.
+    useWorkspaceStore().reset()
   }
 
   // ==================== Return Store API ====================

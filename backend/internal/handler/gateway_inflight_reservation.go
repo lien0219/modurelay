@@ -2,9 +2,11 @@ package handler
 
 import (
 	"context"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
 )
 
@@ -71,27 +73,56 @@ func reserveInflightBalanceCtx(
 	subscription *service.UserSubscription,
 	req service.InflightEstimateRequest,
 ) (context.Context, func(), error) {
+	budgetDone := inflightNoop
+	estimate, priced := 0.0, false
+	estimated := false
+	// Tenant budgets are durable and independent of the optional wallet cache.
+	// Media lookups/custom-voice management are not new billable operations.
+	if apiKey != nil && apiKey.Tenant != nil && req.Model != "" && !(req.Kind == service.InflightEstimateAudio && req.AudioUnits <= 0) && service.BudgetReservationFromContext(ctx) == nil {
+		budget := service.BudgetServiceFromContext(ctx)
+		if budget == nil {
+			return ctx, inflightNoop, service.ErrBudgetUnavailable
+		}
+		if estimator != nil {
+			estimate, priced = estimator.EstimateInflightReservation(ctx, apiKey, req)
+			estimated = true
+		}
+		h, err := budget.Admit(ctx, apiKey, uuid.NewString(), estimate, priced)
+		if err != nil {
+			return ctx, inflightNoop, err
+		}
+		ctx = service.WithBudgetReservation(ctx, h)
+		budgetDone = func() {
+			cleanup, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			_ = h.Release(cleanup)
+		}
+	}
 	if billing == nil || estimator == nil || apiKey == nil || apiKey.User == nil || !billing.InflightReservationEnabled() {
-		return ctx, inflightNoop, nil
+		return ctx, budgetDone, nil
 	}
 	if apiKey.Group != nil && apiKey.Group.IsSubscriptionType() && subscription != nil {
-		return ctx, inflightNoop, nil
+		return ctx, budgetDone, nil
 	}
-	estimate, priced := estimator.EstimateInflightReservation(ctx, apiKey, req)
+	if !estimated {
+		estimate, priced = estimator.EstimateInflightReservation(ctx, apiKey, req)
+	}
 	if !priced && billing.InflightReservationFailClosedOnUnpriced() {
+		budgetDone()
 		return ctx, inflightNoop, service.ErrInsufficientBalance
 	}
 	if estimate <= 0 {
-		return ctx, inflightNoop, nil
+		return ctx, budgetDone, nil
 	}
-	res, err := billing.ReserveInflight(ctx, apiKey.User, apiKey.Group, subscription, estimate)
+	res, err := billing.ReserveInflight(ctx, apiKey.BillingUser(), apiKey.Group, subscription, estimate)
 	if err != nil {
+		budgetDone()
 		return ctx, inflightNoop, err
 	}
 	if res == nil {
-		return ctx, inflightNoop, nil
+		return ctx, budgetDone, nil
 	}
-	return service.WithInflightReservation(ctx, res), res.HandlerDone, nil
+	return service.WithInflightReservation(ctx, res), func() { res.HandlerDone(); budgetDone() }, nil
 }
 
 // grokMediaInflightEstimate 媒体生成请求的估算输入；状态/内容查询返回空模型（不预留：

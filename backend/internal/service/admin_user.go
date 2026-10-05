@@ -365,6 +365,14 @@ func (s *adminServiceImpl) DeleteUser(ctx context.Context, id int64) error {
 	if user.Role == "admin" {
 		return errors.New("cannot delete admin user")
 	}
+	// Tenant lifecycle is checked before key enumeration/tombstoning. The concrete
+	// repository performs the same check under its transaction trigger, so a
+	// concurrent owner/billing change cannot turn this preflight into authorization.
+	if guard, ok := s.userRepo.(WorkspaceAdminLifecycleGuard); ok {
+		if err := guard.GuardWorkspaceUserDeletion(ctx, id); err != nil {
+			return err
+		}
+	}
 
 	apiKeys, err := s.listUserAPIKeysForDeletion(ctx, id)
 	if err != nil {

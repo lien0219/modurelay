@@ -105,6 +105,10 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 				AbortWithError(c, 401, "INVALID_API_KEY", "Invalid API key")
 				return
 			}
+			if errors.Is(err, service.ErrWorkspaceForbidden) || errors.Is(err, service.ErrWorkspaceConflict) || errors.Is(err, service.ErrGroupNotAllowed) {
+				AbortWithError(c, 403, "TENANT_ACCESS_DENIED", "Tenant access denied")
+				return
+			}
 			if errors.Is(err, service.ErrAPIKeyAuthOverloaded) {
 				MarkIngressRejected(c, IngressRejectAPIKeyAuthOverloaded)
 				AbortWithError(c, http.StatusServiceUnavailable, "API_KEY_AUTH_OVERLOADED", "API key authentication is temporarily unavailable")
@@ -164,6 +168,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 			return
 		}
 		ctx := context.WithValue(c.Request.Context(), ctxkey.UserID, apiKey.User.ID)
+		ctx = service.WithBudgetService(ctx, apiKeyService.BudgetService())
 		c.Request = c.Request.WithContext(ctx)
 		billingInfoRequest := c.Request.URL.Path == "/v1/sub2api/billing"
 		// Async image task polling only reads data that already belongs to the
@@ -197,7 +202,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		if isSubscriptionType && subscriptionService != nil && !billingInfoRequest {
 			sub, subErr := subscriptionService.GetActiveSubscription(
 				c.Request.Context(),
-				apiKey.User.ID,
+				apiKey.BillingUserID(),
 				apiKey.Group.ID,
 			)
 			if subErr != nil {
@@ -260,7 +265,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 				}
 			} else {
 				// 非订阅模式 或 订阅模式但 subscriptionService 未注入：回退到余额检查
-				if apiKeyBalanceBelowAuthThreshold(apiKey.User.Balance, cfg) {
+				if apiKeyBalanceBelowAuthThreshold(apiKey.BillingUser().Balance, cfg) {
 					AbortWithError(c, 403, "INSUFFICIENT_BALANCE", "Insufficient account balance")
 					return
 				}
@@ -431,7 +436,7 @@ func validateAPIKeyGroupAllowed(apiKey *service.APIKey) bool {
 	if group.IsSubscriptionType() {
 		return true
 	}
-	return apiKey.User.CanBindGroup(group.ID, group.IsExclusive)
+	return apiKey.BillingUser().CanBindGroup(group.ID, group.IsExclusive)
 }
 
 func validateAPIKeyGroupAvailable(apiKey *service.APIKey) (string, string, bool) {

@@ -187,6 +187,9 @@ var prepareGrokVideoSettlementScript = redis.NewScript(`
 local payload = redis.call('GET', KEYS[1])
 if payload then
     local pending = cjson.decode(payload)
+    if pending.cancelled then
+        return payload
+    end
     if not pending.settlement then
         payload = ARGV[1]
         redis.call('SET', KEYS[1], payload)
@@ -247,12 +250,19 @@ local payload = redis.call('GET', KEYS[1])
 if payload then
     local pending = cjson.decode(payload)
     if pending.settlement then
-        return 0
+        return payload
     end
+    pending.cancelled = true
+    payload = cjson.encode(pending)
+else
+    payload = '{"cancelled":true}'
 end
-redis.call('DEL', KEYS[1])
-redis.call('ZREM', KEYS[2], ARGV[1])
-return 1
+-- Keep a short-lived tombstone on the same key. The settlement script is
+-- atomic with this script, so a late completion cannot recreate a payable
+-- snapshot after the reservation is released.
+redis.call('SET', KEYS[1], payload, 'PX', ARGV[2])
+redis.call('ZADD', KEYS[2], ARGV[1], ARGV[3])
+return payload
 `)
 
 func (c *gatewayCache) DeleteGrokVideoPendingBilling(ctx context.Context, key string) error {
@@ -266,7 +276,8 @@ func (c *gatewayCache) DeleteGrokVideoPendingBilling(ctx context.Context, key st
 	// A successful upstream DELETE may remove an already generated asset. It
 	// cannot erase an observed completion that is still waiting for payment.
 	return deleteGrokVideoPendingBillingScript.Run(ctx, c.rdb,
-		[]string{grokVideoPendingBillingPrefix + key, grokVideoRecoveryIndexKey}, key).Err()
+		[]string{grokVideoPendingBillingPrefix + key, grokVideoRecoveryIndexKey},
+		time.Now().UnixMilli(), (24 * time.Hour).Milliseconds(), key).Err()
 }
 
 func (c *gatewayCache) ScheduleGrokVideoRecovery(ctx context.Context, key string, dueAt time.Time, ttl time.Duration) error {

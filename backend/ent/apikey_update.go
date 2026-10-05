@@ -72,6 +72,33 @@ func (_u *APIKeyUpdate) SetNillableUserID(v *int64) *APIKeyUpdate {
 	return _u
 }
 
+// SetProjectID sets the "project_id" field.
+func (_u *APIKeyUpdate) SetProjectID(v int64) *APIKeyUpdate {
+	_u.mutation.ResetProjectID()
+	_u.mutation.SetProjectID(v)
+	return _u
+}
+
+// SetNillableProjectID sets the "project_id" field if the given value is not nil.
+func (_u *APIKeyUpdate) SetNillableProjectID(v *int64) *APIKeyUpdate {
+	if v != nil {
+		_u.SetProjectID(*v)
+	}
+	return _u
+}
+
+// AddProjectID adds value to the "project_id" field.
+func (_u *APIKeyUpdate) AddProjectID(v int64) *APIKeyUpdate {
+	_u.mutation.AddProjectID(v)
+	return _u
+}
+
+// ClearProjectID clears the value of the "project_id" field.
+func (_u *APIKeyUpdate) ClearProjectID() *APIKeyUpdate {
+	_u.mutation.ClearProjectID()
+	return _u
+}
+
 // SetKey sets the "key" field.
 func (_u *APIKeyUpdate) SetKey(v string) *APIKeyUpdate {
 	_u.mutation.SetKey(v)
@@ -587,6 +614,15 @@ func (_u *APIKeyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if _u.mutation.DeletedAtCleared() {
 		_spec.ClearField(apikey.FieldDeletedAt, field.TypeTime)
 	}
+	if value, ok := _u.mutation.ProjectID(); ok {
+		_spec.SetField(apikey.FieldProjectID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedProjectID(); ok {
+		_spec.AddField(apikey.FieldProjectID, field.TypeInt64, value)
+	}
+	if _u.mutation.ProjectIDCleared() {
+		_spec.ClearField(apikey.FieldProjectID, field.TypeInt64)
+	}
 	if value, ok := _u.mutation.Key(); ok {
 		_spec.SetField(apikey.FieldKey, field.TypeString, value)
 	}
@@ -856,6 +892,33 @@ func (_u *APIKeyUpdateOne) SetNillableUserID(v *int64) *APIKeyUpdateOne {
 	if v != nil {
 		_u.SetUserID(*v)
 	}
+	return _u
+}
+
+// SetProjectID sets the "project_id" field.
+func (_u *APIKeyUpdateOne) SetProjectID(v int64) *APIKeyUpdateOne {
+	_u.mutation.ResetProjectID()
+	_u.mutation.SetProjectID(v)
+	return _u
+}
+
+// SetNillableProjectID sets the "project_id" field if the given value is not nil.
+func (_u *APIKeyUpdateOne) SetNillableProjectID(v *int64) *APIKeyUpdateOne {
+	if v != nil {
+		_u.SetProjectID(*v)
+	}
+	return _u
+}
+
+// AddProjectID adds value to the "project_id" field.
+func (_u *APIKeyUpdateOne) AddProjectID(v int64) *APIKeyUpdateOne {
+	_u.mutation.AddProjectID(v)
+	return _u
+}
+
+// ClearProjectID clears the value of the "project_id" field.
+func (_u *APIKeyUpdateOne) ClearProjectID() *APIKeyUpdateOne {
+	_u.mutation.ClearProjectID()
 	return _u
 }
 
@@ -1403,6 +1466,15 @@ func (_u *APIKeyUpdateOne) sqlSave(ctx context.Context) (_node *APIKey, err erro
 	}
 	if _u.mutation.DeletedAtCleared() {
 		_spec.ClearField(apikey.FieldDeletedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.ProjectID(); ok {
+		_spec.SetField(apikey.FieldProjectID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedProjectID(); ok {
+		_spec.AddField(apikey.FieldProjectID, field.TypeInt64, value)
+	}
+	if _u.mutation.ProjectIDCleared() {
+		_spec.ClearField(apikey.FieldProjectID, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.Key(); ok {
 		_spec.SetField(apikey.FieldKey, field.TypeString, value)

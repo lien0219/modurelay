@@ -156,6 +156,12 @@ func (s *OpenAIGatewayService) recoverVideoBillingKey(ctx context.Context, key s
 	if err := json.Unmarshal(payload, &pending); err != nil {
 		return true, fmt.Errorf("decode pending video billing: %w", err)
 	}
+	if pending.Cancelled {
+		if err := s.releaseGrokVideoBudgetReservation(ctx, &pending); err != nil {
+			return false, fmt.Errorf("release cancelled video budget reservation: %w", err)
+		}
+		return true, nil
+	}
 	if pending.RequestID == "" || pending.UserID <= 0 || pending.APIKeyID <= 0 || pending.AccountID <= 0 {
 		return true, fmt.Errorf("pending video recovery metadata is incomplete")
 	}
@@ -188,6 +194,9 @@ func (s *OpenAIGatewayService) recoverVideoBillingKey(ctx context.Context, key s
 			return false, err
 		}
 		if terminalStatus && (result == nil || !videoRecoveryResultBillable(&pending, result)) {
+			if err := s.releaseGrokVideoBudgetReservation(ctx, &pending); err != nil {
+				return false, fmt.Errorf("release terminal video budget reservation: %w", err)
+			}
 			return true, nil
 		}
 		if result == nil || !videoRecoveryResultBillable(&pending, result) {
@@ -297,6 +306,15 @@ func (s *OpenAIGatewayService) recordRecoveredVideoUsage(
 	}
 	if apiKey.User == nil || apiKey.UserID != pending.UserID {
 		return errors.New("video recovery api key ownership mismatch")
+	}
+	// Recover against the create-time tenant/payer snapshot. A live resolver here
+	// would charge a later billing-owner assignment for an older task.
+	if keys := s.videoRecoveryAPIKeyService.Load(); keys != nil && pending.WorkspaceID > 0 && pending.ProjectID > 0 && pending.BillingPrincipalUserID > 0 {
+		frozen, freezeErr := keys.VideoPendingTenantSnapshot(ctx, pending, apiKey)
+		if freezeErr != nil {
+			return fmt.Errorf("restore video recovery tenant snapshot: %w", freezeErr)
+		}
+		apiKey = frozen
 	}
 	if pending.GroupID > 0 && (apiKey.GroupID == nil || *apiKey.GroupID != pending.GroupID) {
 		if s.channelService == nil || s.channelService.groupRepo == nil {

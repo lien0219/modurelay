@@ -34,6 +34,7 @@ func (APIKey) Mixin() []ent.Mixin {
 func (APIKey) Fields() []ent.Field {
 	return []ent.Field{
 		field.Int64("user_id"),
+		field.Int64("project_id").Optional().Nillable(),
 		field.String("key").
 			MaxLen(128).
 			NotEmpty().

@@ -97,6 +97,41 @@ func TestApplyUsageBillingEffects_ReturnsInsufficientBalance(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestValidateTenantUsageSnapshotAllowsSimpleModeTelemetryCost(t *testing.T) {
+	reservationID := "00000000-0000-0000-0000-000000000001"
+	platform := service.PlatformOpenAI
+	workspaceID, projectID, principalID := int64(1), int64(2), int64(3)
+	cmd := &service.UsageBillingCommand{
+		RequestID:                 "simple-tenant-usage",
+		UserID:                    10,
+		APIKeyID:                  20,
+		AccountID:                 30,
+		WorkspaceID:               1,
+		ProjectID:                 2,
+		BillingPrincipalUserID:    3,
+		BudgetReservationID:       reservationID,
+		ResolvedPlatform:          platform,
+		BudgetActualCost:          0,
+		APIKeyRateLimitCost:       3,
+		UsageLogCostTelemetryOnly: true,
+	}
+	log := &service.UsageLog{
+		RequestID:              cmd.RequestID,
+		UserID:                 cmd.UserID,
+		APIKeyID:               cmd.APIKeyID,
+		AccountID:              cmd.AccountID,
+		WorkspaceID:            &workspaceID,
+		ProjectID:              &projectID,
+		BillingPrincipalUserID: &principalID,
+		BudgetReservationID:    &reservationID,
+		ResolvedPlatform:       &platform,
+		TotalCost:              3,
+		ActualCost:             3,
+	}
+
+	require.NoError(t, validateTenantUsageSnapshot(cmd, log))
+}
+
 func TestDeductUsageBillingBalance_ReturnsUserNotFoundWhenNoUserUpdated(t *testing.T) {
 	ctx := context.Background()
 	db, mock, err := sqlmock.New()

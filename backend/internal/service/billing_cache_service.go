@@ -747,21 +747,25 @@ func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user 
 	}
 
 	// 判断计费模式
+	payer := user
+	if apiKey != nil && apiKey.BillingUser() != nil {
+		payer = apiKey.BillingUser()
+	}
 	isSubscriptionMode := group != nil && group.IsSubscriptionType() && subscription != nil
 
 	if isSubscriptionMode {
-		if err := s.checkSubscriptionEligibility(ctx, user.ID, group, subscription); err != nil {
+		if err := s.checkSubscriptionEligibility(ctx, payer.ID, group, subscription); err != nil {
 			return err
 		}
 	} else {
-		if err := s.checkBalanceEligibility(ctx, user.ID); err != nil {
+		if err := s.checkBalanceEligibility(ctx, payer.ID); err != nil {
 			return err
 		}
 	}
 
 	// user × platform quota 仅在 standard（余额）模式生效；订阅模式豁免
 	if !isSubscriptionMode {
-		if err := s.checkUserPlatformQuotaEligibility(ctx, user.ID, platform); err != nil {
+		if err := s.checkUserPlatformQuotaEligibility(ctx, payer.ID, platform); err != nil {
 			return err
 		}
 	}

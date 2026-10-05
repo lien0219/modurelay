@@ -9,6 +9,7 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/google/uuid"
 )
 
 type usageBillingRepository struct {
@@ -28,7 +29,156 @@ func (r *usageBillingRepository) ApplyVideoUsage(ctx context.Context, cmd *servi
 		cmd.RequestID != log.RequestID || cmd.UserID != log.UserID || cmd.APIKeyID != log.APIKeyID || cmd.AccountID != log.AccountID {
 		return nil, errors.New("video billing usage identity mismatch")
 	}
+	if cmd.WorkspaceID > 0 || cmd.ProjectID > 0 || cmd.BillingPrincipalUserID > 0 || strings.TrimSpace(cmd.BudgetReservationID) != "" ||
+		log.WorkspaceID != nil || log.ProjectID != nil || log.BillingPrincipalUserID != nil || log.BudgetReservationID != nil {
+		if err := validateTenantUsageSnapshot(cmd, log); err != nil {
+			return nil, err
+		}
+	}
 	return r.apply(ctx, cmd, log)
+}
+
+// ApplyTenantUsage commits the balance/quota effects, budget settlement, and
+// immutable FinOps usage row in one transaction. A usage row without its money
+// effects would make tenant reports permanently diverge from the wallet.
+func (r *usageBillingRepository) ApplyTenantUsage(ctx context.Context, cmd *service.UsageBillingCommand, log *service.UsageLog) (*service.UsageBillingApplyResult, error) {
+	if cmd == nil || log == nil {
+		return nil, service.ErrBudgetReservationInvalid
+	}
+	if r == nil || r.db == nil {
+		return nil, errors.New("usage billing repository db is nil")
+	}
+	cmd.Normalize()
+	if cmd.RequestID == "" {
+		return nil, service.ErrUsageBillingRequestIDRequired
+	}
+	if err := validateTenantUsageSnapshot(cmd, log); err != nil {
+		return nil, err
+	}
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if tx != nil {
+			_ = tx.Rollback()
+		}
+	}()
+	applied, err := r.claimUsageBillingKey(ctx, tx, cmd)
+	if err != nil {
+		return nil, err
+	}
+	if !applied {
+		matched, verifyErr := verifyTenantUsageLog(ctx, tx, cmd)
+		if verifyErr != nil {
+			return nil, verifyErr
+		}
+		if !matched {
+			return nil, service.ErrUsageBillingRequestConflict
+		}
+		if err = tx.Commit(); err != nil {
+			return nil, err
+		}
+		tx = nil
+		return &service.UsageBillingApplyResult{Applied: false, TenantUsageLogPersisted: true}, nil
+	}
+	// A legacy crash can leave the usage row committed while the dedup claim was
+	// archived or absent. Detect that durable row before applying money again.
+	if existing, verifyErr := verifyTenantUsageLog(ctx, tx, cmd); verifyErr != nil {
+		return nil, verifyErr
+	} else if existing {
+		if err = tx.Commit(); err != nil {
+			return nil, err
+		}
+		tx = nil
+		return &service.UsageBillingApplyResult{Applied: false, TenantUsageLogPersisted: true}, nil
+	}
+
+	result := &service.UsageBillingApplyResult{Applied: true}
+	// Deleted keys remain valid for settlement of an already admitted tenant
+	// request; the reservation carries the immutable actor/key attribution.
+	if err = r.applyUsageBillingEffects(ctx, tx, cmd, result, true); err != nil {
+		return nil, err
+	}
+	query, args := buildUsageLogInsertQuery([]usageLogInsertPrepared{prepareUsageLogInsert(log)}, tenantUsageLogConflictClause)
+	if _, err = tx.ExecContext(ctx, query, args...); err != nil {
+		return nil, err
+	}
+	matched, err := verifyTenantUsageLog(ctx, tx, cmd)
+	if err != nil {
+		return nil, err
+	}
+	if !matched {
+		return nil, service.ErrUsageBillingRequestConflict
+	}
+	result.TenantUsageLogPersisted = true
+	if err = tx.Commit(); err != nil {
+		return nil, err
+	}
+	tx = nil
+	return result, nil
+}
+
+func validateTenantUsageSnapshot(cmd *service.UsageBillingCommand, log *service.UsageLog) error {
+	if cmd == nil || log == nil || cmd.UserID <= 0 || cmd.APIKeyID <= 0 || cmd.AccountID <= 0 ||
+		cmd.WorkspaceID <= 0 || cmd.ProjectID <= 0 || cmd.BillingPrincipalUserID <= 0 || strings.TrimSpace(cmd.BudgetReservationID) == "" ||
+		log.UserID != cmd.UserID || log.APIKeyID != cmd.APIKeyID || log.AccountID != cmd.AccountID || strings.TrimSpace(log.RequestID) != strings.TrimSpace(cmd.RequestID) {
+		return service.ErrBudgetReservationConflict
+	}
+	if log.WorkspaceID == nil || *log.WorkspaceID != cmd.WorkspaceID || log.ProjectID == nil || *log.ProjectID != cmd.ProjectID ||
+		log.BillingPrincipalUserID == nil || *log.BillingPrincipalUserID != cmd.BillingPrincipalUserID ||
+		log.BudgetReservationID == nil || strings.TrimSpace(*log.BudgetReservationID) != strings.TrimSpace(cmd.BudgetReservationID) {
+		return service.ErrBudgetReservationConflict
+	}
+	if log.ResolvedPlatform != nil && strings.TrimSpace(*log.ResolvedPlatform) != strings.TrimSpace(cmd.ResolvedPlatform) {
+		return service.ErrBudgetReservationConflict
+	}
+	if !validBudgetAmount(log.ActualCost) || !validBudgetAmount(cmd.BudgetActualCost) {
+		return service.ErrBudgetReservationConflict
+	}
+	if cmd.UsageLogCostTelemetryOnly {
+		if cmd.BudgetActualCost != 0 || cmd.BalanceCost != 0 || cmd.SubscriptionCost != 0 || cmd.APIKeyQuotaCost != 0 || cmd.AccountQuotaCost != 0 {
+			return service.ErrBudgetReservationConflict
+		}
+	} else if service.QuantizeUsageBillingAmount(log.ActualCost) != service.QuantizeUsageBillingAmount(cmd.BudgetActualCost) {
+		return service.ErrBudgetReservationConflict
+	}
+	if _, err := uuid.Parse(strings.TrimSpace(cmd.BudgetReservationID)); err != nil {
+		return service.ErrBudgetReservationConflict
+	}
+	return nil
+}
+
+const tenantUsageLogConflictClause = `
+	ON CONFLICT (request_id, api_key_id) DO NOTHING
+`
+
+func verifyTenantUsageLog(ctx context.Context, tx *sql.Tx, cmd *service.UsageBillingCommand) (bool, error) {
+	var (
+		userID, keyID, accountID, workspaceID, projectID, principalID int64
+		actual, total                                                 float64
+		model, platform, reservation                                  sql.NullString
+	)
+	err := tx.QueryRowContext(ctx, `SELECT user_id,api_key_id,account_id,workspace_id,project_id,billing_principal_user_id,
+		budget_reservation_id::text,resolved_platform,model,actual_cost,total_cost
+		FROM usage_logs WHERE request_id=$1 AND api_key_id=$2`, cmd.RequestID, cmd.APIKeyID).Scan(
+		&userID, &keyID, &accountID, &workspaceID, &projectID, &principalID, &reservation, &platform, &model, &actual, &total)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	amountMatches := service.QuantizeUsageBillingAmount(actual) == service.QuantizeUsageBillingAmount(cmd.BudgetActualCost)
+	if cmd.UsageLogCostTelemetryOnly {
+		amountMatches = cmd.BudgetActualCost == 0 && cmd.BalanceCost == 0 && cmd.SubscriptionCost == 0 && cmd.APIKeyQuotaCost == 0 && cmd.AccountQuotaCost == 0
+	}
+	return userID == cmd.UserID && keyID == cmd.APIKeyID && accountID == cmd.AccountID && workspaceID == cmd.WorkspaceID &&
+		projectID == cmd.ProjectID && principalID == cmd.BillingPrincipalUserID && reservation.Valid && strings.TrimSpace(reservation.String) == strings.TrimSpace(cmd.BudgetReservationID) &&
+		(!platform.Valid || strings.TrimSpace(platform.String) == strings.TrimSpace(cmd.ResolvedPlatform)) &&
+		(strings.TrimSpace(cmd.Model) == "" || strings.TrimSpace(model.String) == strings.TrimSpace(cmd.Model)) &&
+		amountMatches && total >= actual, nil
 }
 
 func (r *usageBillingRepository) IsVideoUsageSettled(ctx context.Context, requestID string, userID, apiKeyID, accountID int64, logOnly bool) (bool, error) {
@@ -104,6 +254,15 @@ func (r *usageBillingRepository) apply(ctx context.Context, cmd *service.UsageBi
 		if !owned {
 			return nil, errors.New("video usage log ownership mismatch")
 		}
+		if cmd.WorkspaceID > 0 || cmd.ProjectID > 0 || cmd.BillingPrincipalUserID > 0 || strings.TrimSpace(cmd.BudgetReservationID) != "" {
+			matched, verifyErr := verifyTenantUsageLog(ctx, tx, cmd)
+			if verifyErr != nil {
+				return nil, verifyErr
+			}
+			if !matched {
+				return nil, service.ErrUsageBillingRequestConflict
+			}
+		}
 		result.VideoUsageLogPersisted = true
 	}
 
@@ -142,10 +301,18 @@ const videoUsageLogConflictClause = `
 		model_mapping_chain = EXCLUDED.model_mapping_chain,
 		billing_tier = EXCLUDED.billing_tier,
 		billing_mode = EXCLUDED.billing_mode,
-		account_stats_cost = EXCLUDED.account_stats_cost
+		account_stats_cost = EXCLUDED.account_stats_cost,
+		workspace_id = EXCLUDED.workspace_id,
+		project_id = EXCLUDED.project_id,
+		billing_principal_user_id = EXCLUDED.billing_principal_user_id,
+		resolved_platform = EXCLUDED.resolved_platform,
+		budget_reservation_id = EXCLUDED.budget_reservation_id
 	WHERE usage_logs.user_id = EXCLUDED.user_id AND usage_logs.account_id = EXCLUDED.account_id
 		AND usage_logs.video_count > 0 AND usage_logs.actual_cost = 0
 		AND usage_logs.total_cost > 0 AND usage_logs.rate_multiplier > 0
+		AND usage_logs.workspace_id IS NULL AND usage_logs.project_id IS NULL
+		AND usage_logs.billing_principal_user_id IS NULL AND usage_logs.budget_reservation_id IS NULL
+		AND usage_logs.resolved_platform IS NULL
 		AND EXCLUDED.actual_cost >= 0
 `
 
@@ -197,20 +364,21 @@ func (r *usageBillingRepository) claimUsageBillingRequest(ctx context.Context, t
 }
 
 func (r *usageBillingRepository) ReserveBatchImageBalance(ctx context.Context, cmd *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error) {
-	return r.applyBatchImageBalanceHold(ctx, cmd, reserveUsageBillingBatchImageBalance)
+	return r.applyBatchImageBalanceHold(ctx, cmd, "reserve", reserveUsageBillingBatchImageBalance)
 }
 
 func (r *usageBillingRepository) CaptureBatchImageBalance(ctx context.Context, cmd *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error) {
-	return r.applyBatchImageBalanceHold(ctx, cmd, captureUsageBillingBatchImageBalance)
+	return r.applyBatchImageBalanceHold(ctx, cmd, "capture", captureUsageBillingBatchImageBalance)
 }
 
 func (r *usageBillingRepository) ReleaseBatchImageBalance(ctx context.Context, cmd *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error) {
-	return r.applyBatchImageBalanceHold(ctx, cmd, releaseUsageBillingBatchImageBalance)
+	return r.applyBatchImageBalanceHold(ctx, cmd, "release", releaseUsageBillingBatchImageBalance)
 }
 
 func (r *usageBillingRepository) applyBatchImageBalanceHold(
 	ctx context.Context,
 	cmd *service.BatchImageBalanceHoldCommand,
+	operation string,
 	apply func(context.Context, *sql.Tx, *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error),
 ) (_ *service.BatchImageBalanceHoldResult, err error) {
 	if cmd == nil {
@@ -219,8 +387,7 @@ func (r *usageBillingRepository) applyBatchImageBalanceHold(
 	if r == nil || r.db == nil {
 		return nil, errors.New("usage billing repository db is nil")
 	}
-	cmd.Normalize()
-	if cmd.RequestID == "" {
+	if strings.TrimSpace(cmd.RequestID) == "" {
 		return nil, service.ErrUsageBillingRequestIDRequired
 	}
 
@@ -233,13 +400,39 @@ func (r *usageBillingRepository) applyBatchImageBalanceHold(
 			_ = tx.Rollback()
 		}
 	}()
+	job, budgetCmd, err := validateBatchImageHoldSnapshotTx(ctx, tx, cmd, operation)
+	if err != nil {
+		return nil, err
+	}
+	if operation == "release" && cmd.WorkspaceID > 0 && budgetCmd == nil {
+		if err := validateBatchImageHoldOperationTx(ctx, tx, cmd, budgetCmd, operation); err != nil {
+			return nil, err
+		}
+		// A budget reservation may still be committing. Leave the release
+		// request ID unclaimed so recovery can reclaim a late reservation.
+		return &service.BatchImageBalanceHoldResult{Applied: false}, nil
+	}
+	cmd.Normalize()
 
 	applied, err := r.claimUsageBillingRequest(ctx, tx, cmd.RequestID, cmd.APIKeyID, cmd.RequestFingerprint)
 	if err != nil {
 		return nil, err
 	}
 	if !applied {
+		if operation == "capture" && budgetCmd != nil {
+			if err := persistBatchImageSummaryTx(ctx, tx, job, cmd); err != nil {
+				return nil, err
+			}
+			if err := tx.Commit(); err != nil {
+				return nil, err
+			}
+			tx = nil
+			return &service.BatchImageBalanceHoldResult{Applied: false, UsageLogPersisted: true}, nil
+		}
 		return &service.BatchImageBalanceHoldResult{Applied: false}, nil
+	}
+	if err := validateBatchImageHoldOperationTx(ctx, tx, cmd, budgetCmd, operation); err != nil {
+		return nil, err
 	}
 
 	result, err := apply(ctx, tx, cmd)
@@ -250,6 +443,22 @@ func (r *usageBillingRepository) applyBatchImageBalanceHold(
 		result = &service.BatchImageBalanceHoldResult{}
 	}
 	result.Applied = true
+	if budgetCmd != nil {
+		switch operation {
+		case "capture":
+			if err := finalizeTenantBudgetTx(ctx, tx, budgetCmd); err != nil {
+				return nil, err
+			}
+			if err := persistBatchImageSummaryTx(ctx, tx, job, cmd); err != nil {
+				return nil, err
+			}
+			result.UsageLogPersisted = true
+		case "release":
+			if err := releaseTenantBudgetTx(ctx, tx, budgetCmd); err != nil {
+				return nil, err
+			}
+		}
+	}
 
 	if err := tx.Commit(); err != nil {
 		return nil, err
@@ -260,13 +469,21 @@ func (r *usageBillingRepository) applyBatchImageBalanceHold(
 
 func (r *usageBillingRepository) applyUsageBillingEffects(ctx context.Context, tx *sql.Tx, cmd *service.UsageBillingCommand, result *service.UsageBillingApplyResult, allowDeletedAPIKey ...bool) error {
 	if cmd.SubscriptionCost > 0 && cmd.SubscriptionID != nil {
-		if err := incrementUsageBillingSubscription(ctx, tx, *cmd.SubscriptionID, cmd.SubscriptionCost); err != nil {
+		payerID := cmd.BillingPrincipalUserID
+		if payerID <= 0 {
+			payerID = cmd.UserID
+		}
+		if err := incrementUsageBillingSubscription(ctx, tx, *cmd.SubscriptionID, payerID, cmd.SubscriptionCost); err != nil {
 			return err
 		}
 	}
 
 	if cmd.BalanceCost > 0 {
-		newBalance, sufficient, err := deductUsageBillingBalance(ctx, tx, cmd.UserID, cmd.BalanceCost)
+		payerID := cmd.BillingPrincipalUserID
+		if payerID <= 0 {
+			payerID = cmd.UserID
+		}
+		newBalance, sufficient, err := deductUsageBillingBalance(ctx, tx, payerID, cmd.BalanceCost)
 		if err != nil {
 			return err
 		}
@@ -296,10 +513,34 @@ func (r *usageBillingRepository) applyUsageBillingEffects(ctx context.Context, t
 		result.QuotaState = quotaState
 	}
 
+	if err := finalizeTenantBudgetTx(ctx, tx, cmd); err != nil {
+		return err
+	}
+
 	return nil
 }
 
-func incrementUsageBillingSubscription(ctx context.Context, tx *sql.Tx, subscriptionID int64, costUSD float64) error {
+// finalizeTenantBudgetTx moves a durable reservation from reserved to spent on
+// the same transaction as the wallet/quota effects and billing dedup claim.
+// The reservation is an immutable admission snapshot; current key/workspace
+// state is deliberately never consulted during settlement.
+func finalizeTenantBudgetTx(ctx context.Context, tx *sql.Tx, cmd *service.UsageBillingCommand) error {
+	if cmd == nil || (cmd.WorkspaceID == 0 && cmd.ProjectID == 0 && cmd.BillingPrincipalUserID == 0 && strings.TrimSpace(cmd.BudgetReservationID) == "") {
+		return nil
+	}
+	if !validBudgetAmount(cmd.BudgetActualCost) {
+		return service.ErrBudgetReservationInvalid
+	}
+	res, err := tenantBudgetReservationTx(ctx, tx, cmd)
+	if err != nil {
+		return err
+	}
+	// Billing dedup already handles retries of the original command. A fresh
+	// billing claim must never reuse a finalized reservation to debit again.
+	return settleBudgetReservationTx(ctx, tx, res, service.QuantizeUsageBillingAmount(cmd.BudgetActualCost), "finalized", false)
+}
+
+func incrementUsageBillingSubscription(ctx context.Context, tx *sql.Tx, subscriptionID, payerID int64, costUSD float64) error {
 	const updateSQL = `
 		UPDATE user_subscriptions us
 		SET
@@ -309,11 +550,12 @@ func incrementUsageBillingSubscription(ctx context.Context, tx *sql.Tx, subscrip
 			updated_at = NOW()
 		FROM groups g
 		WHERE us.id = $2
+			AND us.user_id = $3
 			AND us.deleted_at IS NULL
 			AND us.group_id = g.id
 			AND g.deleted_at IS NULL
 	`
-	res, err := tx.ExecContext(ctx, updateSQL, costUSD, subscriptionID)
+	res, err := tx.ExecContext(ctx, updateSQL, costUSD, subscriptionID, payerID)
 	if err != nil {
 		return err
 	}
@@ -365,14 +607,14 @@ func reserveUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *
 			updated_at = NOW()
 		WHERE id = $2 AND deleted_at IS NULL AND balance >= $1
 		RETURNING balance, frozen_balance
-	`, cmd.HoldAmount, cmd.UserID).Scan(&balance, &frozen)
+	`, cmd.HoldAmount, batchImageHoldPayerID(cmd)).Scan(&balance, &frozen)
 	if err == nil {
 		return &service.BatchImageBalanceHoldResult{NewBalance: &balance, FrozenBalance: &frozen}, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}
-	if exists, existsErr := userExistsForBilling(ctx, tx, cmd.UserID); existsErr != nil {
+	if exists, existsErr := userExistsForBilling(ctx, tx, batchImageHoldPayerID(cmd)); existsErr != nil {
 		return nil, existsErr
 	} else if !exists {
 		return nil, service.ErrUserNotFound
@@ -397,14 +639,14 @@ func captureUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *
 			updated_at = NOW()
 		WHERE id = $3 AND deleted_at IS NULL AND COALESCE(frozen_balance, 0) >= $1
 		RETURNING balance, frozen_balance
-	`, cmd.HoldAmount, cmd.ActualAmount, cmd.UserID).Scan(&balance, &frozen)
+	`, cmd.HoldAmount, cmd.ActualAmount, batchImageHoldPayerID(cmd)).Scan(&balance, &frozen)
 	if err == nil {
 		return &service.BatchImageBalanceHoldResult{NewBalance: &balance, FrozenBalance: &frozen}, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}
-	if exists, existsErr := userExistsForBilling(ctx, tx, cmd.UserID); existsErr != nil {
+	if exists, existsErr := userExistsForBilling(ctx, tx, batchImageHoldPayerID(cmd)); existsErr != nil {
 		return nil, existsErr
 	} else if !exists {
 		return nil, service.ErrUserNotFound
@@ -434,14 +676,14 @@ func releaseUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *
 			updated_at = NOW()
 		WHERE id = $2 AND deleted_at IS NULL AND COALESCE(frozen_balance, 0) >= $1
 		RETURNING balance, frozen_balance
-	`, cmd.HoldAmount, cmd.UserID).Scan(&balance, &frozen)
+	`, cmd.HoldAmount, batchImageHoldPayerID(cmd)).Scan(&balance, &frozen)
 	if err == nil {
 		return &service.BatchImageBalanceHoldResult{NewBalance: &balance, FrozenBalance: &frozen}, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}
-	if exists, existsErr := userExistsForBilling(ctx, tx, cmd.UserID); existsErr != nil {
+	if exists, existsErr := userExistsForBilling(ctx, tx, batchImageHoldPayerID(cmd)); existsErr != nil {
 		return nil, existsErr
 	} else if !exists {
 		return nil, service.ErrUserNotFound

@@ -619,6 +619,14 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 			}
 			return h.gatewayService.ForwardGrokMedia(requestCtx, c, account, endpoint, requestID, body, contentType)
 		}()
+		// Async video reservations become durable as soon as the provider request
+		// was sent. A transport/5xx/invalid-success outcome is ambiguous and must
+		// survive request cleanup for recovery; a definitive 4xx is marked by the
+		// adapter and remains releasable.
+		videoBudget := service.BudgetReservationFromContext(requestCtx)
+		if err != nil {
+			videoBudget.PreserveIfProviderStarted()
+		}
 
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()
 		upstreamLatencyMs, _ := getContextInt64(c, service.OpsUpstreamLatencyMsKey)
@@ -629,6 +637,16 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 		service.SetOpsLatencyMs(c, service.OpsResponseLatencyMsKey, responseLatencyMs)
 
 		if err != nil {
+			var videoCreateFailoverErr *service.UpstreamFailoverError
+			if isGrokVideoCreateEndpoint(endpoint) && videoBudget != nil && videoBudget.ProviderStarted() && !videoBudget.ProviderRejected() {
+				videoBudget.PreserveIfProviderStarted()
+				if errors.As(err, &videoCreateFailoverErr) {
+					h.handleFailoverExhausted(c, videoCreateFailoverErr, false)
+				} else if !service.IsResponseCommitted(c) && c.Writer.Size() == writerSizeBeforeForward {
+					h.errorResponse(c, http.StatusBadGateway, "upstream_error", "Upstream request failed")
+				}
+				return
+			}
 			if isGrokVideoCancelEndpoint(endpoint) && (account.Platform == service.PlatformGrok || service.IsAIStarsLabOpenAPIAccount(account)) {
 				h.errorResponse(c, http.StatusNotImplemented, "unsupported_capability", err.Error())
 				return
@@ -719,6 +737,10 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 			return
 		}
 		if isGrokVideoCreateEndpoint(endpoint) && strings.TrimSpace(result.ResponseID) != "" {
+			if videoBudget != nil {
+				videoBudget.MarkProviderStarted()
+				videoBudget.Preserve()
+			}
 			var seedanceStateErr error
 			if err := h.gatewayService.BindGrokMediaVideoRequestAccount(
 				requestCtx, apiKey.GroupID, result.ResponseID, subject.UserID, apiKey.ID, account.ID,
@@ -783,6 +805,12 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 				// Wall-clock start for usage duration_ms: create accepted → first done discovery.
 				CreatedAt: videoCreateStartedAt,
 			}
+			if apiKey.Tenant != nil {
+				pending.WorkspaceID = tenantWorkspaceID(apiKey)
+				pending.ProjectID = tenantProjectID(apiKey)
+				pending.BillingPrincipalUserID = apiKey.BillingUserID()
+				pending.BudgetReservationID = service.BudgetReservationIDFromContext(requestCtx)
+			}
 			if err := h.gatewayService.StoreGrokVideoPendingBilling(requestCtx, result.ResponseID, subject.UserID, apiKey.ID, pending); err != nil {
 				reqLog.Warn("grok_media.store_video_pending_billing_failed_retrying",
 					zap.Int64("account_id", account.ID),
@@ -809,6 +837,11 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 				}
 				h.gatewayService.CommitDeferredMediaResponse(c, result)
 			}
+		} else if isGrokVideoCreateEndpoint(endpoint) {
+			// A successful HTTP response without a task ID is still an uncertain
+			// provider outcome. Keep the reservation for recovery rather than
+			// treating the malformed response as a safe local failure.
+			videoBudget.PreserveIfProviderStarted()
 		}
 		// Status poll OR content download can observe official done+video.url.
 		// Both paths share the same claim key so the customer is charged once.
@@ -904,6 +937,20 @@ func restoreCompositeVideoLookupPlatform(c *gin.Context, apiKey *service.APIKey,
 	c.Request = c.Request.WithContext(service.WithResolvedTargetPlatform(c.Request.Context(), platform))
 }
 
+func tenantWorkspaceID(apiKey *service.APIKey) int64 {
+	if apiKey != nil && apiKey.Tenant != nil {
+		return apiKey.Tenant.WorkspaceID
+	}
+	return 0
+}
+
+func tenantProjectID(apiKey *service.APIKey) int64 {
+	if apiKey != nil && apiKey.Tenant != nil {
+		return apiKey.Tenant.ProjectID
+	}
+	return 0
+}
+
 func grokMediaScheduleModel(account *service.Account, routingModel string, result *service.OpenAIForwardResult) string {
 	if result != nil && strings.TrimSpace(result.UpstreamModel) != "" {
 		return result.UpstreamModel
@@ -973,6 +1020,15 @@ func prepareGrokVideoCompletionBilling(
 		reqLog.Warn("grok_media.video_pending_billing_load_failed", zap.String("request_id", taskRequestID), zap.Error(loadErr))
 	}
 	if pending == nil {
+		// Tenant-bound async tasks must have a durable create-time snapshot. A
+		// status response is not sufficient evidence to reassign billing after a
+		// project or billing-owner change.
+		if apiKey.Tenant != nil || apiKey.ProjectID != nil {
+			reqLog.Error("grok_media.video_billing_skipped_missing_tenant_snapshot",
+				zap.String("request_id", taskRequestID),
+			)
+			return nil
+		}
 		if reason := videoCompletionFallbackEvidenceMissing(statusResult); reason != "" {
 			reqLog.Error("grok_media.video_billing_skipped_missing_pending",
 				zap.String("request_id", taskRequestID),
@@ -987,6 +1043,12 @@ func prepareGrokVideoCompletionBilling(
 			zap.Int("status_duration_seconds", statusResult.VideoDurationSeconds),
 			zap.String("note", "billing from status evidence because create-time snapshot is unavailable"),
 		)
+	}
+	if pending != nil && pending.Cancelled {
+		reqLog.Debug("grok_media.video_billing_skipped_cancelled_task",
+			zap.String("request_id", taskRequestID),
+		)
+		return nil
 	}
 	claimed, err := h.gatewayService.ClaimGrokVideoBilling(ctx, taskRequestID, subject.UserID, apiKey.ID)
 	if err != nil {
@@ -1127,10 +1189,38 @@ func recordGrokMediaUsage(
 		}
 	}
 	h.submitOpenAIUsageRecordTask(c.Request.Context(), result, func(ctx context.Context) {
+		settlementKey := apiKey
+		if videoTaskID != "" && h.apiKeyService != nil {
+			pending, loadErr := h.gatewayService.LoadGrokVideoPendingBilling(ctx, videoTaskID, subject.UserID, apiKey.ID)
+			if loadErr != nil && apiKey.Tenant != nil {
+				reqLog.Warn("grok_media.video_tenant_snapshot_load_failed", zap.String("request_id", videoTaskID), zap.Error(loadErr))
+				return
+			}
+			if loadErr == nil && pending == nil && apiKey.Tenant != nil {
+				reqLog.Warn("grok_media.video_tenant_snapshot_missing", zap.String("request_id", videoTaskID))
+				return
+			}
+			if loadErr == nil && pending != nil {
+				if pending.GroupID > 0 && (settlementKey.GroupID == nil || *settlementKey.GroupID != pending.GroupID) {
+					reqLog.Warn("grok_media.video_group_snapshot_changed", zap.String("request_id", videoTaskID), zap.Int64("expected_group_id", pending.GroupID))
+					return
+				}
+				if pending.SubscriptionID > 0 && (subscription == nil || subscription.ID != pending.SubscriptionID) {
+					reqLog.Warn("grok_media.video_subscription_snapshot_changed", zap.String("request_id", videoTaskID), zap.Int64("expected_subscription_id", pending.SubscriptionID))
+					return
+				}
+				if frozen, freezeErr := h.apiKeyService.VideoPendingTenantSnapshot(ctx, pending, apiKey); freezeErr != nil {
+					reqLog.Warn("grok_media.video_tenant_snapshot_unavailable", zap.String("request_id", videoTaskID), zap.Error(freezeErr))
+					return
+				} else {
+					settlementKey = frozen
+				}
+			}
+		}
 		if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
 			Result:             result,
-			APIKey:             apiKey,
-			User:               apiKey.User,
+			APIKey:             settlementKey,
+			User:               settlementKey.User,
 			Account:            account,
 			Subscription:       subscription,
 			InboundEndpoint:    inboundEndpoint,

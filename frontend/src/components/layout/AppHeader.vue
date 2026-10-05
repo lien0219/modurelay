@@ -19,6 +19,21 @@
             {{ pageDescription }}
           </p>
         </div>
+
+        <div v-if="user && workspaceStore.workspaces.length" class="app-header-workspace-context">
+          <label>
+            <span class="sr-only">{{ t('workspace.workspace') }}</span>
+            <select :value="workspaceStore.selectedWorkspaceId || ''" :aria-label="t('workspace.workspace')" @change="switchWorkspace">
+              <option v-for="item in workspaceStore.workspaces" :key="item.id" :value="item.id">{{ item.name }}</option>
+            </select>
+          </label>
+          <label>
+            <span class="sr-only">{{ t('workspace.project') }}</span>
+            <select :value="workspaceStore.selectedProjectId || ''" :aria-label="t('workspace.project')" :disabled="workspaceStore.projectsLoading" @change="switchProject">
+              <option v-for="item in workspaceStore.projects" :key="item.id" :value="item.id">{{ item.name }}</option>
+            </select>
+          </label>
+        </div>
       </div>
 
       <!-- Right: Announcements + Docs + Language + Subscriptions + Balance + User Dropdown -->
@@ -267,6 +282,7 @@ import { useI18n } from 'vue-i18n'
 import { AnimatePresence, motion } from 'motion-v'
 import { brand } from '@/config/brand'
 import { useAppStore, useAuthStore, useOnboardingStore } from '@/stores'
+import { useWorkspaceStore } from '@/stores/workspace'
 import { useAdminSettingsStore } from '@/stores/adminSettings'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import SubscriptionProgressMini from '@/components/common/SubscriptionProgressMini.vue'
@@ -286,6 +302,7 @@ const appStore = useAppStore()
 const authStore = useAuthStore()
 const adminSettingsStore = useAdminSettingsStore()
 const onboardingStore = useOnboardingStore()
+const workspaceStore = useWorkspaceStore()
 
 const user = computed(() => authStore.user)
 const dropdownOpen = ref(false)
@@ -378,6 +395,20 @@ function toggleMobileSidebar() {
   appStore.toggleMobileSidebar()
 }
 
+async function switchWorkspace(event: Event) {
+  const id = Number((event.target as HTMLSelectElement).value)
+  if (!id) return
+  await workspaceStore.selectWorkspace(id)
+  if (route.path.startsWith('/workspaces/')) await router.push(`/workspaces/${id}/overview`)
+}
+
+async function switchProject(event: Event) {
+  const id = Number((event.target as HTMLSelectElement).value)
+  if (!id) return
+  await workspaceStore.selectProject(id)
+  if (route.params.projectId && workspaceStore.selectedWorkspaceId) await router.push(`/workspaces/${workspaceStore.selectedWorkspaceId}/projects/${id}`)
+}
+
 function toggleDropdown() {
   dropdownOpen.value = !dropdownOpen.value
 }
@@ -420,6 +451,7 @@ function handleEscape(event: KeyboardEvent) {
 }
 
 onMounted(() => {
+  if (user.value && !workspaceStore.workspaces.length) void workspaceStore.loadWorkspaces()
   document.addEventListener('click', handleClickOutside)
   document.addEventListener('keydown', handleEscape)
 })
@@ -429,3 +461,11 @@ onBeforeUnmount(() => {
   document.removeEventListener('keydown', handleEscape)
 })
 </script>
+
+<style scoped>
+.app-header-workspace-context { display: flex; flex: 0 1 240px; min-width: 0; align-items: center; gap: 6px; }
+.app-header-workspace-context label { flex: 1 1 0; min-width: 0; }
+.app-header-workspace-context select { width: 100%; max-width: 120px; min-width: 0; height: 34px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-surface); color: var(--color-text-primary); padding: 0 24px 0 8px; font-size: 12px; text-overflow: ellipsis; }
+@media (max-width: 900px) { .app-header-workspace-context, .app-header-balance { display: none; } }
+@media (max-width: 640px) { .app-header-workspace-context { display: none; } }
+</style>

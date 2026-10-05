@@ -8,6 +8,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
+	"github.com/google/uuid"
 )
 
 // ID filters vertices based on their ID field.
@@ -68,6 +69,31 @@ func APIKeyID(v int64) predicate.UsageLog {
 // AccountID applies equality check predicate on the "account_id" field. It's identical to AccountIDEQ.
 func AccountID(v int64) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldAccountID, v))
+}
+
+// WorkspaceID applies equality check predicate on the "workspace_id" field. It's identical to WorkspaceIDEQ.
+func WorkspaceID(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldWorkspaceID, v))
+}
+
+// ProjectID applies equality check predicate on the "project_id" field. It's identical to ProjectIDEQ.
+func ProjectID(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldProjectID, v))
+}
+
+// BillingPrincipalUserID applies equality check predicate on the "billing_principal_user_id" field. It's identical to BillingPrincipalUserIDEQ.
+func BillingPrincipalUserID(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldBillingPrincipalUserID, v))
+}
+
+// ResolvedPlatform applies equality check predicate on the "resolved_platform" field. It's identical to ResolvedPlatformEQ.
+func ResolvedPlatform(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldResolvedPlatform, v))
+}
+
+// BudgetReservationID applies equality check predicate on the "budget_reservation_id" field. It's identical to BudgetReservationIDEQ.
+func BudgetReservationID(v uuid.UUID) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldBudgetReservationID, v))
 }
 
 // RequestID applies equality check predicate on the "request_id" field. It's identical to RequestIDEQ.
@@ -343,6 +369,281 @@ func AccountIDIn(vs ...int64) predicate.UsageLog {
 // AccountIDNotIn applies the NotIn predicate on the "account_id" field.
 func AccountIDNotIn(vs ...int64) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldNotIn(FieldAccountID, vs...))
+}
+
+// WorkspaceIDEQ applies the EQ predicate on the "workspace_id" field.
+func WorkspaceIDEQ(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDNEQ applies the NEQ predicate on the "workspace_id" field.
+func WorkspaceIDNEQ(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDIn applies the In predicate on the "workspace_id" field.
+func WorkspaceIDIn(vs ...int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldWorkspaceID, vs...))
+}
+
+// WorkspaceIDNotIn applies the NotIn predicate on the "workspace_id" field.
+func WorkspaceIDNotIn(vs ...int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldWorkspaceID, vs...))
+}
+
+// WorkspaceIDGT applies the GT predicate on the "workspace_id" field.
+func WorkspaceIDGT(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDGTE applies the GTE predicate on the "workspace_id" field.
+func WorkspaceIDGTE(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDLT applies the LT predicate on the "workspace_id" field.
+func WorkspaceIDLT(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDLTE applies the LTE predicate on the "workspace_id" field.
+func WorkspaceIDLTE(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDIsNil applies the IsNil predicate on the "workspace_id" field.
+func WorkspaceIDIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldWorkspaceID))
+}
+
+// WorkspaceIDNotNil applies the NotNil predicate on the "workspace_id" field.
+func WorkspaceIDNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldWorkspaceID))
+}
+
+// ProjectIDEQ applies the EQ predicate on the "project_id" field.
+func ProjectIDEQ(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldProjectID, v))
+}
+
+// ProjectIDNEQ applies the NEQ predicate on the "project_id" field.
+func ProjectIDNEQ(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldProjectID, v))
+}
+
+// ProjectIDIn applies the In predicate on the "project_id" field.
+func ProjectIDIn(vs ...int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldProjectID, vs...))
+}
+
+// ProjectIDNotIn applies the NotIn predicate on the "project_id" field.
+func ProjectIDNotIn(vs ...int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldProjectID, vs...))
+}
+
+// ProjectIDGT applies the GT predicate on the "project_id" field.
+func ProjectIDGT(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldProjectID, v))
+}
+
+// ProjectIDGTE applies the GTE predicate on the "project_id" field.
+func ProjectIDGTE(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldProjectID, v))
+}
+
+// ProjectIDLT applies the LT predicate on the "project_id" field.
+func ProjectIDLT(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldProjectID, v))
+}
+
+// ProjectIDLTE applies the LTE predicate on the "project_id" field.
+func ProjectIDLTE(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldProjectID, v))
+}
+
+// ProjectIDIsNil applies the IsNil predicate on the "project_id" field.
+func ProjectIDIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldProjectID))
+}
+
+// ProjectIDNotNil applies the NotNil predicate on the "project_id" field.
+func ProjectIDNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldProjectID))
+}
+
+// BillingPrincipalUserIDEQ applies the EQ predicate on the "billing_principal_user_id" field.
+func BillingPrincipalUserIDEQ(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldBillingPrincipalUserID, v))
+}
+
+// BillingPrincipalUserIDNEQ applies the NEQ predicate on the "billing_principal_user_id" field.
+func BillingPrincipalUserIDNEQ(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldBillingPrincipalUserID, v))
+}
+
+// BillingPrincipalUserIDIn applies the In predicate on the "billing_principal_user_id" field.
+func BillingPrincipalUserIDIn(vs ...int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldBillingPrincipalUserID, vs...))
+}
+
+// BillingPrincipalUserIDNotIn applies the NotIn predicate on the "billing_principal_user_id" field.
+func BillingPrincipalUserIDNotIn(vs ...int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldBillingPrincipalUserID, vs...))
+}
+
+// BillingPrincipalUserIDGT applies the GT predicate on the "billing_principal_user_id" field.
+func BillingPrincipalUserIDGT(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldBillingPrincipalUserID, v))
+}
+
+// BillingPrincipalUserIDGTE applies the GTE predicate on the "billing_principal_user_id" field.
+func BillingPrincipalUserIDGTE(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldBillingPrincipalUserID, v))
+}
+
+// BillingPrincipalUserIDLT applies the LT predicate on the "billing_principal_user_id" field.
+func BillingPrincipalUserIDLT(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldBillingPrincipalUserID, v))
+}
+
+// BillingPrincipalUserIDLTE applies the LTE predicate on the "billing_principal_user_id" field.
+func BillingPrincipalUserIDLTE(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldBillingPrincipalUserID, v))
+}
+
+// BillingPrincipalUserIDIsNil applies the IsNil predicate on the "billing_principal_user_id" field.
+func BillingPrincipalUserIDIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldBillingPrincipalUserID))
+}
+
+// BillingPrincipalUserIDNotNil applies the NotNil predicate on the "billing_principal_user_id" field.
+func BillingPrincipalUserIDNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldBillingPrincipalUserID))
+}
+
+// ResolvedPlatformEQ applies the EQ predicate on the "resolved_platform" field.
+func ResolvedPlatformEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldResolvedPlatform, v))
+}
+
+// ResolvedPlatformNEQ applies the NEQ predicate on the "resolved_platform" field.
+func ResolvedPlatformNEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldResolvedPlatform, v))
+}
+
+// ResolvedPlatformIn applies the In predicate on the "resolved_platform" field.
+func ResolvedPlatformIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldResolvedPlatform, vs...))
+}
+
+// ResolvedPlatformNotIn applies the NotIn predicate on the "resolved_platform" field.
+func ResolvedPlatformNotIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldResolvedPlatform, vs...))
+}
+
+// ResolvedPlatformGT applies the GT predicate on the "resolved_platform" field.
+func ResolvedPlatformGT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldResolvedPlatform, v))
+}
+
+// ResolvedPlatformGTE applies the GTE predicate on the "resolved_platform" field.
+func ResolvedPlatformGTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldResolvedPlatform, v))
+}
+
+// ResolvedPlatformLT applies the LT predicate on the "resolved_platform" field.
+func ResolvedPlatformLT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldResolvedPlatform, v))
+}
+
+// ResolvedPlatformLTE applies the LTE predicate on the "resolved_platform" field.
+func ResolvedPlatformLTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldResolvedPlatform, v))
+}
+
+// ResolvedPlatformContains applies the Contains predicate on the "resolved_platform" field.
+func ResolvedPlatformContains(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContains(FieldResolvedPlatform, v))
+}
+
+// ResolvedPlatformHasPrefix applies the HasPrefix predicate on the "resolved_platform" field.
+func ResolvedPlatformHasPrefix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasPrefix(FieldResolvedPlatform, v))
+}
+
+// ResolvedPlatformHasSuffix applies the HasSuffix predicate on the "resolved_platform" field.
+func ResolvedPlatformHasSuffix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasSuffix(FieldResolvedPlatform, v))
+}
+
+// ResolvedPlatformIsNil applies the IsNil predicate on the "resolved_platform" field.
+func ResolvedPlatformIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldResolvedPlatform))
+}
+
+// ResolvedPlatformNotNil applies the NotNil predicate on the "resolved_platform" field.
+func ResolvedPlatformNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldResolvedPlatform))
+}
+
+// ResolvedPlatformEqualFold applies the EqualFold predicate on the "resolved_platform" field.
+func ResolvedPlatformEqualFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEqualFold(FieldResolvedPlatform, v))
+}
+
+// ResolvedPlatformContainsFold applies the ContainsFold predicate on the "resolved_platform" field.
+func ResolvedPlatformContainsFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContainsFold(FieldResolvedPlatform, v))
+}
+
+// BudgetReservationIDEQ applies the EQ predicate on the "budget_reservation_id" field.
+func BudgetReservationIDEQ(v uuid.UUID) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldBudgetReservationID, v))
+}
+
+// BudgetReservationIDNEQ applies the NEQ predicate on the "budget_reservation_id" field.
+func BudgetReservationIDNEQ(v uuid.UUID) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldBudgetReservationID, v))
+}
+
+// BudgetReservationIDIn applies the In predicate on the "budget_reservation_id" field.
+func BudgetReservationIDIn(vs ...uuid.UUID) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldBudgetReservationID, vs...))
+}
+
+// BudgetReservationIDNotIn applies the NotIn predicate on the "budget_reservation_id" field.
+func BudgetReservationIDNotIn(vs ...uuid.UUID) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldBudgetReservationID, vs...))
+}
+
+// BudgetReservationIDGT applies the GT predicate on the "budget_reservation_id" field.
+func BudgetReservationIDGT(v uuid.UUID) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldBudgetReservationID, v))
+}
+
+// BudgetReservationIDGTE applies the GTE predicate on the "budget_reservation_id" field.
+func BudgetReservationIDGTE(v uuid.UUID) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldBudgetReservationID, v))
+}
+
+// BudgetReservationIDLT applies the LT predicate on the "budget_reservation_id" field.
+func BudgetReservationIDLT(v uuid.UUID) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldBudgetReservationID, v))
+}
+
+// BudgetReservationIDLTE applies the LTE predicate on the "budget_reservation_id" field.
+func BudgetReservationIDLTE(v uuid.UUID) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldBudgetReservationID, v))
+}
+
+// BudgetReservationIDIsNil applies the IsNil predicate on the "budget_reservation_id" field.
+func BudgetReservationIDIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldBudgetReservationID))
+}
+
+// BudgetReservationIDNotNil applies the NotNil predicate on the "budget_reservation_id" field.
+func BudgetReservationIDNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldBudgetReservationID))
 }
 
 // RequestIDEQ applies the EQ predicate on the "request_id" field.
