@@ -41,7 +41,7 @@ func TestModerationPersistenceKeepsExecutionPrincipal(t *testing.T) {
 func TestModerationReadKeepsMachineSnapshot(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	id := int64(31)
 	mock.ExpectQuery("SELECT COUNT.*l.service_account_id").WithArgs(id).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
@@ -62,7 +62,7 @@ func TestModerationReadKeepsMachineSnapshot(t *testing.T) {
 func TestOpsErrorPersistenceKeepsMachineSnapshot(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	id := int64(31)
 	args := make([]driver.Value, 39)
 	for i := range args {
@@ -83,7 +83,7 @@ func TestOpsErrorPersistenceKeepsMachineSnapshot(t *testing.T) {
 func TestOpsSystemLogReadAndCleanupKeepMachineScope(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	id := int64(31)
 	mock.ExpectQuery("SELECT COUNT.*l.service_account_id").WithArgs(id).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))

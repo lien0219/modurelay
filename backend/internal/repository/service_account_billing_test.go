@@ -13,7 +13,7 @@ import (
 func TestMachineBudgetReservationScansNullActor(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	now := time.Now().UTC()
 	mock.ExpectQuery("SELECT").WillReturnRows(sqlmock.NewRows([]string{"id", "request_id", "actor_user_id", "service_account_id", "api_key_id", "workspace_id", "project_id", "billing_principal_user_id", "period_start", "period_end", "project_period_start", "project_period_end", "estimate", "actual", "status"}).AddRow("r", "req", nil, 9, 5, 1, 2, 3, now, now, now, now, 1, 0, "pending"))
 	res, err := scanBudgetReservation(db.QueryRow("SELECT"))
@@ -44,7 +44,7 @@ func TestMachineTenantUsageSnapshotRejectsDifferentMachine(t *testing.T) {
 func TestMachineAdmissionLocksOnlyPayerUser(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	mock.ExpectBegin()
 	tx, err := db.Begin()
 	require.NoError(t, err)

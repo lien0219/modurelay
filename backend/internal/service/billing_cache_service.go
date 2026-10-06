@@ -790,7 +790,11 @@ func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user 
 	if apiKey != nil && apiKey.ServiceAccountID == nil && apiKey.User != nil {
 		rpmUser = apiKey.User
 	}
-	if err := s.checkRPMForAPIKey(ctx, rpmUser, group, apiKey); err != nil {
+	if apiKey == nil {
+		if err := s.checkRPM(ctx, rpmUser, group); err != nil {
+			return err
+		}
+	} else if err := s.checkRPMForAPIKey(ctx, rpmUser, group, apiKey); err != nil {
 		return err
 	}
 

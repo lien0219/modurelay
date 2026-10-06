@@ -71,22 +71,22 @@ func (h *PolicyHandler) handle(action string) gin.HandlerFunc {
 		ctx := c.Request.Context()
 		var ref domain.PolicyRef
 		var authorizeErr error
-		switch {
-		case action == "workspace.get" || action == "workspace.update":
+		switch action {
+		case "workspace.get", "workspace.update":
 			permission := "policy.read"
 			if action == "workspace.update" {
 				permission = "workspace_policy.update"
 			}
 			authorizeErr = h.workspaces.RequirePolicyWorkspace(ctx, subject.UserID, workspaceID, permission)
 			ref = domain.PolicyRef{Scope: domain.PolicyScopeWorkspace, ScopeID: workspaceID}
-		case action == "project.get" || action == "project.update" || action == "project.effective":
+		case "project.get", "project.update", "project.effective":
 			permission := "policy.read"
 			if action == "project.update" {
 				permission = "project_policy.update"
 			}
 			authorizeErr = h.workspaces.RequirePolicyProject(ctx, subject.UserID, workspaceID, projectID, permission)
 			ref = domain.PolicyRef{Scope: domain.PolicyScopeProject, ScopeID: projectID}
-		case action == "service_account.get" || action == "service_account.update" || action == "service_account.effective":
+		case "service_account.get", "service_account.update", "service_account.effective":
 			permission := "policy.read"
 			if action == "service_account.update" {
 				permission = "service_account_policy.update"

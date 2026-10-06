@@ -28,7 +28,7 @@ func TestPromptAuditSnapshotCarriesMachineIdentity(t *testing.T) {
 func TestPromptAuditPersistenceKeepsMachineIdentityAcrossJobsAndEvents(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	now := time.Now().UTC()
 	snapshot := PromptSnapshot{RequestID: "machine", ServiceAccountID: 31, APIKeyID: 9, Protocol: "openai_responses"}
 	jobArgs := make([]driver.Value, 22)

@@ -3,8 +3,6 @@ package service
 import (
 	"context"
 	"errors"
-	"fmt"
-	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -571,28 +569,4 @@ func PolicyQuotaPeriodStarts(now time.Time) (day, month time.Time) {
 	day = time.Date(utc.Year(), utc.Month(), utc.Day(), 0, 0, 0, 0, time.UTC)
 	month = time.Date(utc.Year(), utc.Month(), 1, 0, 0, 0, 0, time.UTC)
 	return day, month
-}
-
-func policyQuotaScopeSort(scopes []PolicyQuotaScope) {
-	sort.Slice(scopes, func(i, j int) bool {
-		if scopes[i].Scope != scopes[j].Scope {
-			return scopes[i].Scope < scopes[j].Scope
-		}
-		if scopes[i].ID != scopes[j].ID {
-			return scopes[i].ID < scopes[j].ID
-		}
-		return scopes[i].Revision < scopes[j].Revision
-	})
-}
-
-func validatePolicyQuotaScope(scope PolicyQuotaScope) error {
-	if scope.Scope == "" || scope.ID <= 0 || scope.Revision <= 0 {
-		return fmt.Errorf("%w: invalid scope snapshot", ErrPolicyQuotaReservationInvalid)
-	}
-	for _, limit := range []*int64{scope.DailyRequestLimit, scope.MonthlyRequestLimit, scope.DailyTokenLimit, scope.MonthlyTokenLimit} {
-		if limit != nil && *limit <= 0 {
-			return fmt.Errorf("%w: quota limits must be positive", ErrPolicyQuotaReservationInvalid)
-		}
-	}
-	return nil
 }

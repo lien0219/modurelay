@@ -15,7 +15,7 @@ import (
 func TestPolicyRepositoryGetPreservesNullAndEmptyAllowlists(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	rev := int64(3)
 	modelLimit := int64(25)
 	mock.ExpectQuery("SELECT .* FROM project_policies WHERE project_id=\\$1").
@@ -37,7 +37,7 @@ func TestPolicyRepositoryGetPreservesNullAndEmptyAllowlists(t *testing.T) {
 func TestPolicyRepositoryGetMissingReturnsNilWithoutError(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	mock.ExpectQuery("SELECT .* FROM workspace_policies WHERE workspace_id=\\$1").
 		WithArgs(int64(7)).WillReturnError(sql.ErrNoRows)
 	repo := NewPolicyRepository(db)
@@ -50,7 +50,7 @@ func TestPolicyRepositoryGetMissingReturnsNilWithoutError(t *testing.T) {
 func TestPolicyRepositoryTreatsLegacyGroupAndCredentialScopesAsInherited(t *testing.T) {
 	db, _, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := NewPolicyRepository(db)
 	for _, scope := range []domain.PolicyScope{domain.PolicyScopeGroup, domain.PolicyScopeCredential} {
 		got, err := repo.GetPolicy(context.Background(), domain.PolicyRef{Scope: scope, ScopeID: 7})
@@ -62,7 +62,7 @@ func TestPolicyRepositoryTreatsLegacyGroupAndCredentialScopesAsInherited(t *test
 func TestPolicyRepositoryUpdateUsesRevisionCompareAndSwap(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	rpm := int64(10)
 	ctx := service.WithPolicyActor(context.Background(), 7)
 	mock.ExpectBegin()
@@ -94,7 +94,7 @@ func TestPolicyRepositoryUpdateUsesRevisionCompareAndSwap(t *testing.T) {
 func TestPolicyRepositoryUpdateReturnsRevisionConflictWhenCASMisses(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	ctx := service.WithPolicyActor(context.Background(), 7)
 	mock.ExpectBegin()
 	mock.ExpectQuery("SELECT id FROM workspaces WHERE id=\\$1").
@@ -114,7 +114,7 @@ func TestPolicyRepositoryUpdateReturnsRevisionConflictWhenCASMisses(t *testing.T
 func TestPolicyRepositoryRejectsInvalidReferenceBeforeQuery(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := NewPolicyRepository(db)
 	_, err = repo.GetPolicy(context.Background(), domain.PolicyRef{Scope: domain.PolicyScopeProject, ScopeID: 0})
 	require.ErrorIs(t, err, domain.ErrInvalidPolicy)
@@ -124,7 +124,7 @@ func TestPolicyRepositoryRejectsInvalidReferenceBeforeQuery(t *testing.T) {
 func TestPolicyRepositoryUpdateCreateConflictDoesNotOverwriteExisting(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	ctx := service.WithPolicyActor(context.Background(), 7)
 	mock.ExpectBegin()
 	mock.ExpectQuery("SELECT workspace_id,project_id FROM service_accounts WHERE id=\\$1").
@@ -141,7 +141,7 @@ func TestPolicyRepositoryUpdateCreateConflictDoesNotOverwriteExisting(t *testing
 func TestPolicyRepositoryMapsUnexpectedDBError(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	dbErr := errors.New("db down")
 	mock.ExpectQuery("SELECT .* FROM project_policies WHERE project_id=\\$1").WithArgs(int64(42)).WillReturnError(dbErr)
 	repo := NewPolicyRepository(db)

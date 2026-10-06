@@ -29,7 +29,7 @@ func (m jsonFieldMatcher) Match(v driver.Value) bool {
 func TestPolicyRepositoryCreateAtomicallyAttributesAuditAndOutbox(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	ctx := service.WithPolicyActor(context.Background(), 7)
 	mock.ExpectBegin()
 	mock.ExpectQuery("SELECT workspace_id FROM projects WHERE id=\\$1").WithArgs(int64(42)).
@@ -54,7 +54,7 @@ func TestPolicyRepositoryCreateAtomicallyAttributesAuditAndOutbox(t *testing.T) 
 func TestPolicyRepositoryRevisionMissRollsBackWithoutAudit(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	ctx := service.WithPolicyActor(context.Background(), 7)
 	mock.ExpectBegin()
 	mock.ExpectQuery("SELECT workspace_id FROM projects WHERE id=\\$1").WithArgs(int64(42)).
@@ -73,7 +73,7 @@ func TestPolicyRepositoryRevisionMissRollsBackWithoutAudit(t *testing.T) {
 func TestPolicyRepositoryUpdateRequiresActorAttribution(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := NewPolicyRepository(db)
 	_, err = repo.UpdatePolicy(context.Background(), domain.PolicyRef{Scope: domain.PolicyScopeWorkspace, ScopeID: 1}, 0, domain.Policy{})
 	require.ErrorIs(t, err, domain.ErrInvalidPolicy)

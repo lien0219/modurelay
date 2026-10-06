@@ -64,7 +64,7 @@ func serviceInt64Ptr(value int64) *int64 { return &value }
 func TestPolicyQuotaFinalizeRecordsTokenOverageAndExhaustionAlert(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := &policyQuotaRepository{db: db}
 	reservationID := "reservation-overage"
 	periodStart := time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC)
@@ -110,7 +110,7 @@ func expectPolicyQuotaAlertWrites(mock sqlmock.Sqlmock, periodStart time.Time, t
 func TestPolicyQuotaReleaseKeepsReservationPendingWhenCounterIsMissing(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := &policyQuotaRepository{db: db}
 	reservationID := "reservation-missing-counter"
 	periodStart := time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC)
