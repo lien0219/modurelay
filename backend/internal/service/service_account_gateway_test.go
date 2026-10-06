@@ -53,6 +53,46 @@ func TestMachineBudgetAdmissionAcceptsExclusiveMachinePrincipal(t *testing.T) {
 	require.Equal(t, id, repo.attribution.ServiceAccountID)
 }
 
+func TestDirectKeyBudgetAdmissionUsesUserExecutionPrincipal(t *testing.T) {
+	key := &APIKey{ID: 5, UserID: 7, Tenant: &TenantContext{WorkspaceID: 1, ProjectID: 2, BillingPrincipalUserID: 7}}
+	repo := &machineBudgetRepo{}
+	_, err := NewBudgetService(repo).Admit(context.Background(), key, "direct-request", 1, true)
+	require.NoError(t, err)
+	require.Equal(t, int64(7), repo.attribution.ActorUserID)
+	require.Zero(t, repo.attribution.ServiceAccountID)
+	require.Equal(t, int64(7), repo.attribution.BillingPrincipalUserID)
+	require.Equal(t, int64(5), repo.attribution.APIKeyID)
+}
+
+func TestDirectKeyUsageSnapshotKeepsUserActorAndNoServiceAccount(t *testing.T) {
+	key := &APIKey{ID: 5, UserID: 7, Tenant: &TenantContext{WorkspaceID: 1, ProjectID: 2, BillingPrincipalUserID: 7}}
+	usage := &UsageLog{}
+	applyTenantUsageSnapshot(context.Background(), usage, key, PlatformOpenAI, "direct-reservation")
+	require.Equal(t, int64(7), usage.UserID)
+	require.Nil(t, usage.ServiceAccountID)
+	require.Equal(t, int64(1), *usage.WorkspaceID)
+	require.Equal(t, int64(2), *usage.ProjectID)
+	require.Equal(t, int64(7), *usage.BillingPrincipalUserID)
+	require.Equal(t, "direct-reservation", *usage.BudgetReservationID)
+}
+
+func TestDirectKeyBillingCommandKeepsUserActorAndTenantAttribution(t *testing.T) {
+	key := &APIKey{ID: 5, UserID: 7, User: &User{ID: 7}, Tenant: &TenantContext{WorkspaceID: 1, ProjectID: 2, BillingPrincipalUserID: 7}}
+	cmd := buildUsageBillingCommand("direct-billing", nil, &postUsageBillingParams{
+		Cost:        &CostBreakdown{ActualCost: 1},
+		User:        key.User,
+		BillingUser: key.User,
+		APIKey:      key,
+		Account:     &Account{ID: 6},
+	})
+	require.NotNil(t, cmd)
+	require.Equal(t, int64(7), cmd.UserID)
+	require.Zero(t, cmd.ServiceAccountID)
+	require.Equal(t, int64(1), cmd.WorkspaceID)
+	require.Equal(t, int64(2), cmd.ProjectID)
+	require.Equal(t, int64(7), cmd.BillingPrincipalUserID)
+}
+
 type machineAuthRPMRepo struct {
 	UserGroupRateRepository
 	queriedUser int64

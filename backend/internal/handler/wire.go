@@ -2,6 +2,7 @@ package handler
 
 import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/handler/admin"
 	"github.com/Wei-Shaw/sub2api/internal/securityaudit"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -253,10 +254,11 @@ func ProvideHandlers(
 	}
 }
 
-func ProvideWorkspaceHandler(workspaceService *service.WorkspaceService, apiKeyService *service.APIKeyService, webhookService *service.WorkspaceWebhookService, serviceAccountService *service.ServiceAccountService) *WorkspaceHandler {
+func ProvideWorkspaceHandler(workspaceService *service.WorkspaceService, apiKeyService *service.APIKeyService, webhookService *service.WorkspaceWebhookService, serviceAccountService *service.ServiceAccountService, policyRepository domain.PolicyRepository, policyResolver *domain.EffectivePolicyResolver) *WorkspaceHandler {
 	h := NewWorkspaceHandler(workspaceService, apiKeyService)
 	h.SetWebhookService(webhookService)
 	h.SetServiceAccountService(serviceAccountService)
+	h.SetPolicyHandler(NewPolicyHandler(workspaceService, serviceAccountService, policyRepository, policyResolver))
 	return h
 }
 

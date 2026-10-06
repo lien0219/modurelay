@@ -14,6 +14,13 @@ func TestWorkspacePermissions(t *testing.T) {
 		"billing":   {"service_account.read", "workspace.read", "project.read", "usage.read", "billing.read", "budget.read", "budget.update", "webhook.read"},
 		"viewer":    {"service_account.read", "workspace.read", "project.read", "usage.read", "budget.read"},
 	}
+	for role := range roles {
+		roles[role] = append(roles[role], "policy.read")
+	}
+	for _, role := range []string{"owner", "admin"} {
+		roles[role] = append(roles[role], "workspace_policy.update", "project_policy.update", "service_account_policy.update")
+	}
+	roles["developer"] = append(roles["developer"], "service_account_policy.update")
 	for role, expected := range roles {
 		t.Run(role, func(t *testing.T) {
 			require.ElementsMatch(t, expected, WorkspacePermissions(role))

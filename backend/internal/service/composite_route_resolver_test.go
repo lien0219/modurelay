@@ -70,6 +70,40 @@ func TestCompositeRouteResolverExplicitExactRouteRewritesModel(t *testing.T) {
 	require.Equal(t, int64(10), decision.Route.ID)
 }
 
+func TestCompositeRouteResolverFiltersDeniedPlatformsBeforePriority(t *testing.T) {
+	resolver := NewCompositeRouteResolver(compositeRouteRepoStub{routes: []CompositeModelRoute{
+		{ID: 10, GroupID: 7, PublicModel: "shared-alias", MatchType: CompositeRouteMatchExact, TargetPlatform: PlatformAnthropic, UpstreamModel: "claude-sonnet-4-6", Priority: 100, Enabled: true},
+		{ID: 11, GroupID: 7, PublicModel: "shared-alias", MatchType: CompositeRouteMatchExact, TargetPlatform: PlatformOpenAI, UpstreamModel: "gpt-6", Priority: 10, Enabled: true},
+	}})
+
+	decision, err := resolver.ResolveAllowed(context.Background(), 7, "shared-alias", CompositeRouteEndpointResponses, func(platform string) bool {
+		return platform == PlatformOpenAI
+	})
+
+	require.NoError(t, err)
+	require.True(t, decision.Matched)
+	require.False(t, decision.PolicyDenied)
+	require.Equal(t, PlatformOpenAI, decision.TargetPlatform)
+	require.Equal(t, "gpt-6", decision.UpstreamModel)
+	require.NotNil(t, decision.Route)
+	require.Equal(t, int64(11), decision.Route.ID)
+}
+
+func TestCompositeRouteResolverMarksWhenEveryMatchingPlatformIsDenied(t *testing.T) {
+	resolver := NewCompositeRouteResolver(compositeRouteRepoStub{routes: []CompositeModelRoute{
+		{ID: 10, GroupID: 7, PublicModel: "shared-alias", MatchType: CompositeRouteMatchExact, TargetPlatform: PlatformAnthropic, Enabled: true},
+	}})
+
+	decision, err := resolver.ResolveAllowed(context.Background(), 7, "shared-alias", CompositeRouteEndpointResponses, func(platform string) bool {
+		return platform == PlatformOpenAI
+	})
+
+	require.NoError(t, err)
+	require.False(t, decision.Matched)
+	require.True(t, decision.PolicyDenied)
+	require.Equal(t, PlatformAnthropic, decision.TargetPlatform)
+}
+
 // Scenario: 唯一平台的精确别名可路由
 func TestCompositeRouteResolverUsesAccountModelOwnershipForUnprefixedAlias(t *testing.T) {
 	resolver := NewCompositeRouteResolver(nil)
@@ -142,6 +176,27 @@ func TestCompositeRouteResolverDoesNotGuessAmbiguousAccountOwnership(t *testing.
 	require.False(t, decision.Matched)
 	require.Empty(t, decision.TargetPlatform)
 	require.Equal(t, "model is exposed by multiple provider platforms", decision.Reason)
+}
+
+func TestCompositeRouteResolverSelectsUniqueAllowedAmbiguousOwnership(t *testing.T) {
+	resolver := NewCompositeRouteResolver(nil)
+	resolver.SetModelOwnershipResolver(func(context.Context, int64, string) (CompositeModelOwnership, error) {
+		return CompositeModelOwnership{
+			Ambiguous: true,
+			Platforms: []string{PlatformAnthropic, PlatformOpenAI},
+		}, nil
+	})
+
+	decision, err := resolver.ResolveAllowed(context.Background(), 7, "shared-alias", CompositeRouteEndpointChatCompletions, func(platform string) bool {
+		return platform == PlatformOpenAI
+	})
+
+	require.NoError(t, err)
+	require.True(t, decision.Matched)
+	require.False(t, decision.PolicyDenied)
+	require.Equal(t, CompositeRouteSourceAccount, decision.Source)
+	require.Equal(t, PlatformOpenAI, decision.TargetPlatform)
+	require.Equal(t, "shared-alias", decision.UpstreamModel)
 }
 
 func TestCompositeRouteResolverOwnershipLookupErrorFallsBackOnlyForDetectableModels(t *testing.T) {

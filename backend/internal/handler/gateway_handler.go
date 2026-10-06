@@ -2494,7 +2494,7 @@ func billingErrorDetails(err error) (status int, code, message string, retryAfte
 	}
 	// 用户/分组 RPM 超限统一映射为 HTTP 429；保留与其它 rate_limit 一致的错误码便于客户端分类。
 	// 返回 Retry-After 秒数（当前分钟剩余秒数），让 SDK 自动退避。
-	if errors.Is(err, service.ErrGroupRPMExceeded) || errors.Is(err, service.ErrUserRPMExceeded) {
+	if errors.Is(err, service.ErrGroupRPMExceeded) || errors.Is(err, service.ErrUserRPMExceeded) || errors.Is(err, service.ErrPolicyRPMExceeded) {
 		msg := pkgerrors.Message(err)
 		retrySeconds := 60 - int(time.Now().Unix()%60)
 		return http.StatusTooManyRequests, "rate_limit_exceeded", msg, retrySeconds
@@ -2546,7 +2546,8 @@ func (h *GatewayHandler) submitUsageRecordTask(parent context.Context, task serv
 	if task == nil {
 		return
 	}
-	if service.BudgetReservationFromContext(parent) != nil {
+	service.MarkPolicyQuotaProviderStarted(parent)
+	if service.BudgetReservationFromContext(parent) != nil || service.PolicyQuotaReservationFromContext(parent) != nil {
 		h.submitMandatoryUsageRecordTask(parent, task)
 		return
 	}
@@ -2583,6 +2584,7 @@ func (h *GatewayHandler) submitMandatoryUsageRecordTask(parent context.Context, 
 	if task == nil {
 		return
 	}
+	service.MarkPolicyQuotaProviderStarted(parent)
 	task, _ = wrapUsageRecordTaskContext(parent, task)
 	if h.usageRecordWorkerPool != nil {
 		if mode := h.usageRecordWorkerPool.Submit(task); !mode.Dropped() {

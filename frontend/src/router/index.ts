@@ -237,6 +237,12 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, requiresAdmin: false, title: 'Workspace', titleKey: 'workspace.title', descriptionKey: 'workspace.description' }
   },
   {
+    path: '/workspaces/:workspaceId/policy',
+    name: 'WorkspacePolicy',
+    component: () => import('@/views/workspace/WorkspacePolicyView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: false, title: 'Workspace Policy', titleKey: 'workspace.workspacePolicy', descriptionKey: 'workspace.policyDescription' }
+  },
+  {
     path: '/workspaces/:workspaceId/projects',
     name: 'WorkspaceProjects',
     component: () => import('@/views/workspace/WorkspaceProjectsView.vue'),
@@ -249,10 +255,22 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, requiresAdmin: false, title: 'Project Keys', titleKey: 'workspace.keys', descriptionKey: 'workspace.keyDescription' }
   },
   {
+    path: '/workspaces/:workspaceId/projects/:projectId/policy',
+    name: 'ProjectPolicy',
+    component: () => import('@/views/workspace/WorkspacePolicyView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: false, title: 'Project Policy', titleKey: 'workspace.projectPolicy', descriptionKey: 'workspace.policyDescription' }
+  },
+  {
     path: '/workspaces/:workspaceId/projects/:projectId/service-accounts/:serviceAccountId?',
     name: 'WorkspaceServiceAccounts',
     component: () => import('@/views/workspace/WorkspaceServiceAccountsView.vue'),
     meta: { requiresAuth: true, requiresAdmin: false, title: 'Service Accounts', titleKey: 'serviceAccounts.title', descriptionKey: 'serviceAccounts.description' }
+  },
+  {
+    path: '/workspaces/:workspaceId/projects/:projectId/service-accounts/:serviceAccountId/policy',
+    name: 'ServiceAccountPolicy',
+    component: () => import('@/views/workspace/WorkspacePolicyView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: false, title: 'Service Account Policy', titleKey: 'workspace.serviceAccountPolicy', descriptionKey: 'workspace.policyDescription' }
   },
   {
     path: '/workspaces/:workspaceId/members',

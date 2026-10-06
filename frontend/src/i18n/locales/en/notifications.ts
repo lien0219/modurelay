@@ -27,6 +27,7 @@ export default {
       budget: { threshold_reached: 'Budget threshold reached', soft_limit_exceeded: 'Soft budget limit exceeded', hard_limit_reached: 'Hard budget limit reached', updated: 'Budget updated' },
       billing: { settlement_pending: 'Settlement pending', settlement_recovered: 'Settlement recovered' },
       quota: { threshold_reached: 'Quota threshold reached', exhausted: 'Quota exhausted' },
+      policy: { updated: 'Policy updated' },
       webhook: { test: 'Webhook test' },
       service_account: { created: 'Service account created', updated: 'Service account updated', disabled: 'Service account disabled', enabled: 'Service account enabled', credential: { created: 'Service account credential created', updated: 'Service account credential updated', revoked: 'Service account credential revoked', rotated: 'Service account credential rotated', expiring: 'Service account credential expiring', expired: 'Service account credential expired' } },
     },
@@ -38,7 +39,7 @@ export default {
       settled: 'Settlement completed',
     },
     categories: {
-      system: 'System', workspace: 'Workspace', project: 'Project', api_key: 'API key', service_account: 'Service account', budget: 'Budget', billing: 'Billing', quota: 'Quota', security: 'Security', resources: 'Forum',
+      system: 'System', workspace: 'Workspace', project: 'Project', api_key: 'API key', service_account: 'Service account', policy: 'Policy', budget: 'Budget', billing: 'Billing', quota: 'Quota', security: 'Security', resources: 'Forum',
     },
     workspace: { title: 'Workspace update', body: 'A workspace event needs your attention.' },
     member: { title: 'Member update', body: 'A workspace member changed.' },
@@ -48,5 +49,6 @@ export default {
     billing: { title: 'Billing update', body: 'A billing event needs your attention.' },
     webhook_test: { title: 'Webhook test', body: 'A webhook test delivery was queued.' },
     service_account: { title: 'Service account update', body: 'A service account changed.' },
+    policy: { title: 'Policy updated', body: 'A workspace, project, or service account policy changed.' },
   },
 }

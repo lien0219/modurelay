@@ -676,6 +676,11 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 					return fmt.Errorf("resolve Grok websocket cache identity: %w", err)
 				}
 			}
+			// The bridge call starts the provider attempt. Policy quota
+			// reservations are marked only after all turn admission hooks pass.
+			if hooks != nil && hooks.ProviderRequestStarted != nil {
+				hooks.ProviderRequestStarted()
+			}
 			result, bridgeErr := s.proxyOpenAIWSHTTPBridgeTurn(
 				ctx,
 				c,
@@ -963,6 +968,9 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		}
 		turnStart := time.Now()
 		wroteDownstream := false
+		if hooks != nil && hooks.ProviderRequestStarted != nil {
+			hooks.ProviderRequestStarted()
+		}
 		if err := lease.WriteJSONWithContextTimeout(ctx, json.RawMessage(payload), s.openAIWSWriteTimeout()); err != nil {
 			return nil, wrapOpenAIWSIngressTurnError(
 				"write_upstream",

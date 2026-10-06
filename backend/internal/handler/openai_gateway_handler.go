@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -259,6 +260,10 @@ func usageRecordContext(parent context.Context, base context.Context) context.Co
 	if budget := service.BudgetServiceFromContext(parent); budget != nil {
 		base = service.WithBudgetService(base, budget)
 	}
+	base = service.WithPolicyQuotaReservation(base, service.PolicyQuotaReservationFromContext(parent))
+	if policyQuota := service.PolicyQuotaServiceFromContext(parent); policyQuota != nil {
+		base = service.WithPolicyQuotaService(base, policyQuota)
+	}
 	return base
 }
 
@@ -293,6 +298,156 @@ func openAICompatibleRequestPlatform(ctx context.Context, apiKey *service.APIKey
 		return service.NormalizeOpenAICompatiblePlatform(apiKey.Group.Platform)
 	}
 	return service.PlatformOpenAI
+}
+
+func checkOpenAIWSPolicy(policy domain.EffectivePolicy, model, platform string) error {
+	if model = strings.TrimSpace(model); model != "" && !policy.AllowsModel(model) {
+		return fmt.Errorf("POLICY_MODEL_DENIED: model %q is not allowed by the effective policy", model)
+	}
+	if platform = strings.TrimSpace(platform); platform != "" && !policy.AllowsPlatform(platform) {
+		return fmt.Errorf("POLICY_PLATFORM_DENIED: platform %q is not allowed by the effective policy", platform)
+	}
+	return nil
+}
+
+type openAIWSPolicyTurnSnapshot struct {
+	ctx    context.Context
+	handle *service.PolicyQuotaReservationHandle
+}
+
+// reuseOpenAIWSPolicyTurnSnapshot is intentionally a map lookup helper rather
+// than a fresh admission. A provider failover retries the same logical turn;
+// charging that retry as another request would double count the turn.
+func reuseOpenAIWSPolicyTurnSnapshot(turns map[int]openAIWSPolicyTurnSnapshot, logicalTurn int) (openAIWSPolicyTurnSnapshot, bool) {
+	if logicalTurn <= 0 || turns == nil {
+		return openAIWSPolicyTurnSnapshot{}, false
+	}
+	snapshot, ok := turns[logicalTurn]
+	return snapshot, ok && (snapshot.ctx != nil || snapshot.handle != nil)
+}
+
+func admitOpenAIWSPolicyTurn(parent context.Context, key *service.APIKey, policy domain.EffectivePolicy, requestID string, payload []byte) (openAIWSPolicyTurnSnapshot, error) {
+	if parent == nil {
+		parent = context.Background()
+	}
+	turnCtx := service.WithEffectivePolicy(parent, policy)
+	snapshot := openAIWSPolicyTurnSnapshot{ctx: turnCtx}
+	quota := service.PolicyQuotaServiceFromContext(parent)
+	if quota == nil || len(service.PolicyQuotaScopes(policy)) == 0 {
+		return snapshot, nil
+	}
+	if key == nil || key.ID <= 0 || key.Tenant == nil || key.Tenant.WorkspaceID <= 0 || key.Tenant.ProjectID <= 0 {
+		return openAIWSPolicyTurnSnapshot{}, fmt.Errorf("%w: websocket policy attribution is incomplete", service.ErrPolicyQuotaReservationInvalid)
+	}
+	serviceAccountID := int64(0)
+	if key.ServiceAccountID != nil {
+		serviceAccountID = *key.ServiceAccountID
+	}
+	handle, err := quota.Admit(turnCtx, policy, service.PolicyQuotaAttribution{
+		PolicyContext: domain.PolicyContext{
+			WorkspaceID:      key.Tenant.WorkspaceID,
+			ProjectID:        key.Tenant.ProjectID,
+			ServiceAccountID: serviceAccountID,
+		},
+		APIKeyID:     key.ID,
+		RequestUnits: 1,
+	}, requestID, policyQuotaTokenEstimatePayload(payload))
+	if err != nil {
+		return openAIWSPolicyTurnSnapshot{}, err
+	}
+	if handle == nil {
+		return snapshot, nil
+	}
+	turnCtx = service.WithPolicyQuotaService(turnCtx, quota)
+	turnCtx = service.WithPolicyQuotaReservation(turnCtx, handle)
+	snapshot.ctx = turnCtx
+	snapshot.handle = handle
+	return snapshot, nil
+}
+
+func openAIWSPolicyRequestSeed(ctx context.Context) string {
+	seed := ""
+	if ctx != nil {
+		if value, _ := ctx.Value(ctxkey.ClientRequestID).(string); strings.TrimSpace(value) != "" {
+			seed = strings.TrimSpace(value)
+		}
+		if seed == "" {
+			if value, _ := ctx.Value(ctxkey.RequestID).(string); strings.TrimSpace(value) != "" {
+				seed = strings.TrimSpace(value)
+			}
+		}
+	}
+	if seed == "" {
+		seed = uuid.NewString()
+	}
+	return seed
+}
+
+func openAIWSPolicyRequestID(ctx context.Context, seed string, logicalTurn int) string {
+	seed = strings.TrimSpace(seed)
+	if seed == "" {
+		seed = openAIWSPolicyRequestSeed(ctx)
+	}
+	if logicalTurn <= 0 {
+		logicalTurn = 1
+	}
+	return fmt.Sprintf("%s:ws-turn:%d", seed, logicalTurn)
+}
+
+func cleanupOpenAIWSPolicyTurnSnapshot(snapshot openAIWSPolicyTurnSnapshot) {
+	handle := snapshot.handle
+	if handle == nil || handle.Finalized() {
+		return
+	}
+	cleanupCtx := context.Background()
+	if snapshot.ctx != nil {
+		cleanupCtx = context.WithoutCancel(snapshot.ctx)
+	}
+	if handle.ProviderStarted() {
+		if handle.ProviderRejected() {
+			_ = handle.FinalizeRequestOnly(cleanupCtx)
+			return
+		}
+		handle.Preserve()
+		return
+	}
+	_ = handle.Release(cleanupCtx)
+}
+
+func resolveOpenAIWSPolicy(ctx context.Context, key *service.APIKey) (domain.EffectivePolicy, bool, error) {
+	if resolver, ok := service.EffectivePolicyResolverFromContext(ctx); ok {
+		policy, err := middleware2.ResolvePolicyForAPIKey(ctx, resolver, key)
+		return policy, true, err
+	}
+	policy, ok := service.EffectivePolicyFromContext(ctx)
+	return policy, ok, nil
+}
+
+func openAIWSPolicyPlatform(ctx context.Context, key *service.APIKey) string {
+	if platform, ok := service.ResolvedTargetPlatformFromContext(ctx); ok {
+		return platform
+	}
+	if key != nil && key.Group != nil && key.Group.Platform != service.PlatformComposite {
+		return key.Group.Platform
+	}
+	return ""
+}
+
+func policyQuotaTokenEstimatePayload(payload []byte) int64 {
+	estimate := int64((len(payload) + 3) / 4)
+	var body map[string]any
+	if len(payload) > 0 && json.Unmarshal(payload, &body) == nil {
+		for _, field := range []string{"max_tokens", "max_completion_tokens", "max_output_tokens"} {
+			if value, ok := body[field].(float64); ok && value > 0 && value < 1e9 {
+				estimate += int64(value)
+				break
+			}
+		}
+	}
+	if estimate <= 0 {
+		return 1
+	}
+	return estimate
 }
 
 func openAIResponsesRequiredCapability(imageIntent bool, platform string) service.OpenAIEndpointCapability {
@@ -2451,6 +2606,20 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		return
 	}
 	apiKey = admittedKey
+	initialPolicy, initialPolicyAvailable, policyErr := resolveOpenAIWSPolicy(ctx, apiKey)
+	if policyErr != nil {
+		reqLog.Warn("openai.websocket_policy_resolve_failed", zap.Error(policyErr))
+		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "policy admission unavailable")
+		return
+	}
+	if initialPolicyAvailable {
+		if err := checkOpenAIWSPolicy(initialPolicy, reqModel, ""); err != nil {
+			closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "model denied by policy")
+			return
+		}
+		ctx = service.WithEffectivePolicy(ctx, initialPolicy)
+		c.Request = c.Request.WithContext(ctx)
+	}
 	if blocked := blockedModelAllowlistCandidate(apiKey.Group, requestmodel.FromBodyCandidates("", "application/json", firstMessage)); blocked != "" {
 		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalModelConfiguration)
 		middleware2.MarkIngressRejected(c, middleware2.IngressRejectModelNotAllowed)
@@ -2461,10 +2630,18 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	// Apply the resolved upstream model through MapRequestModel on every turn.
 	wsRouteModel := reqModel
 	if apiKey.Group != nil && apiKey.Group.Platform == service.PlatformComposite {
-		decision, resolveErr := h.compositeResolver.Resolve(c.Request.Context(), apiKey.Group.ID, reqModel, service.CompositeRouteEndpointResponses)
+		var allowPlatform func(string) bool
+		if initialPolicyAvailable {
+			allowPlatform = initialPolicy.AllowsPlatform
+		}
+		decision, resolveErr := h.compositeResolver.ResolveAllowed(c.Request.Context(), apiKey.Group.ID, reqModel, service.CompositeRouteEndpointResponses, allowPlatform)
 		if resolveErr != nil {
 			reqLog.Error("openai.websocket_composite_route_failed", zap.Error(resolveErr))
 			closeOpenAIClientWS(wsConn, coderws.StatusInternalError, "Failed to resolve composite model route")
+			return
+		}
+		if decision.PolicyDenied {
+			closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "platform denied by policy")
 			return
 		}
 		if decision.Matched {
@@ -2473,6 +2650,12 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		}
 	}
 	ctx = c.Request.Context()
+	if initialPolicyAvailable {
+		if err := checkOpenAIWSPolicy(initialPolicy, wsRouteModel, openAIWSPolicyPlatform(ctx, apiKey)); err != nil {
+			closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "model or platform denied by policy")
+			return
+		}
+	}
 	if apiKey.Group != nil && apiKey.Group.Platform == service.PlatformComposite {
 		platform, ok := service.ResolvedTargetPlatformFromContext(ctx)
 		if !ok || !isResponsesWebSocketCompositePlatform(platform) {
@@ -2537,6 +2720,12 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	// 解析渠道级模型映射
 	channelMappingWS, _ := h.gatewayService.ResolveChannelMappingAndRestrict(ctx, apiKey.GroupID, wsRouteModel)
 	wsForwardModel := openAIChannelForwardModel(channelMappingWS, wsRouteModel)
+	if initialPolicyAvailable {
+		if err := checkOpenAIWSPolicy(initialPolicy, wsForwardModel, openAIWSPolicyPlatform(ctx, apiKey)); err != nil {
+			closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "mapped model denied by policy")
+			return
+		}
+	}
 
 	var currentUserRelease func()
 	var currentAccountRelease func()
@@ -2714,10 +2903,48 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	wsPricingCtx, _ := h.gatewayService.WithOpenAIRequestPricingContext(ctx, apiKey.GroupID)
 	ctx = wsPricingCtx
 
+	// Policy quota state belongs to the logical client turn, not to a selected
+	// provider account. A failover may invoke the ingress proxy again for the
+	// same turn and must reuse this immutable snapshot.
+	var policyTurnsMu sync.Mutex
+	policyTurns := make(map[int]openAIWSPolicyTurnSnapshot, 4)
+	policyRequestSeed := openAIWSPolicyRequestSeed(ctx)
+	policyRetryBase := 0
+	var activePolicyTurn atomic.Int64
+	activePolicyTurn.Store(1)
+	defer func() {
+		policyTurnsMu.Lock()
+		pending := make([]openAIWSPolicyTurnSnapshot, 0, len(policyTurns))
+		for logicalTurn, snapshot := range policyTurns {
+			pending = append(pending, snapshot)
+			delete(policyTurns, logicalTurn)
+		}
+		policyTurnsMu.Unlock()
+		for _, snapshot := range pending {
+			cleanupOpenAIWSPolicyTurnSnapshot(snapshot)
+		}
+	}()
+	getPolicyTurn := func(logicalTurn int) (openAIWSPolicyTurnSnapshot, bool) {
+		policyTurnsMu.Lock()
+		defer policyTurnsMu.Unlock()
+		return reuseOpenAIWSPolicyTurnSnapshot(policyTurns, logicalTurn)
+	}
+	storePolicyTurn := func(logicalTurn int, snapshot openAIWSPolicyTurnSnapshot) {
+		policyTurnsMu.Lock()
+		policyTurns[logicalTurn] = snapshot
+		policyTurnsMu.Unlock()
+	}
+	deletePolicyTurn := func(logicalTurn int) {
+		policyTurnsMu.Lock()
+		delete(policyTurns, logicalTurn)
+		policyTurnsMu.Unlock()
+	}
+
 	for {
 		if ctx.Err() != nil {
 			return
 		}
+		policyTurnBase := policyRetryBase
 		reqLog.Debug("openai.websocket_account_selecting", zap.Int("excluded_account_count", len(failedAccountIDs)))
 		selection, scheduleDecision, err := h.gatewayService.SelectAccountWithSchedulerForCapability(
 			ctx,
@@ -2890,6 +3117,26 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		})
 		var turnChannelMapping atomic.Pointer[openAIWSTurnChannelMappingSnapshot]
 		turnChannelMapping.Store(&openAIWSTurnChannelMappingSnapshot{turn: 1, mapping: channelMappingWS})
+		initialLogicalTurn := policyTurnBase + 1
+		if _, exists := getPolicyTurn(initialLogicalTurn); !exists {
+			snapshot, admissionErr := admitOpenAIWSPolicyTurn(
+				ctx,
+				apiKey,
+				initialPolicy,
+				openAIWSPolicyRequestID(ctx, policyRequestSeed, initialLogicalTurn),
+				wsAttemptMessage,
+			)
+			if admissionErr != nil {
+				if errors.Is(admissionErr, service.ErrPolicyQuotaExceeded) {
+					closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "policy quota exhausted")
+				} else {
+					closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "policy admission unavailable")
+				}
+				return
+			}
+			storePolicyTurn(initialLogicalTurn, snapshot)
+		}
+		activePolicyTurn.Store(int64(initialLogicalTurn))
 		// turn 级定价：首轮回退到 TurnStarted 的所属 turn 时刻；后续 turn 由
 		// BeforeTurn 重新冻结 pricingAt 并按最新门复核当前账号。
 		var turnPricing openAIWSTurnPricing
@@ -2907,6 +3154,8 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			ReasoningEffortMappings:     reasoningEffortMappings,
 			TurnStarted:                 recordTurnStart,
 			BeforeRequest: func(turn int, payload []byte, originalModel string) error {
+				logicalTurn := policyTurnBase + turn
+				activePolicyTurn.Store(int64(logicalTurn))
 				liveModel := strings.TrimSpace(originalModel)
 				if liveModel == "" {
 					liveModel = reqModel
@@ -2915,12 +3164,42 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				if tenantErr != nil {
 					return tenantErr
 				}
+				policySnapshot, policySnapshotExists := getPolicyTurn(logicalTurn)
+				newPolicySnapshot := false
+				if turn > 1 || !policySnapshotExists {
+					livePolicy, policyAvailable, policyResolveErr := resolveOpenAIWSPolicy(ctx, latestAdmission)
+					if policyResolveErr != nil {
+						return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "policy admission unavailable", policyResolveErr)
+					}
+					if policyAvailable {
+						candidates := append([]string{liveModel}, requestmodel.FromBodyCandidates("", "application/json", payload)...)
+						for _, candidate := range candidates {
+							if err := checkOpenAIWSPolicy(livePolicy, candidate, openAIWSPolicyPlatform(ctx, latestAdmission)); err != nil {
+								return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "model or platform denied by policy", err)
+							}
+						}
+					}
+					policySnapshot, policyResolveErr = admitOpenAIWSPolicyTurn(ctx, latestAdmission, livePolicy, openAIWSPolicyRequestID(ctx, policyRequestSeed, logicalTurn), payload)
+					if policyResolveErr != nil {
+						if errors.Is(policyResolveErr, service.ErrPolicyQuotaExceeded) {
+							return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "policy quota exhausted", policyResolveErr)
+						}
+						return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "policy admission unavailable", policyResolveErr)
+					}
+					newPolicySnapshot = true
+				}
 				if h.billingCacheService != nil {
-					if e := h.billingCacheService.CheckBillingEligibility(ctx, apiKey.BillingUser(), latestAdmission, latestAdmission.Group, subscription, service.QuotaPlatform(ctx, latestAdmission)); e != nil {
+					if e := h.billingCacheService.CheckBillingEligibility(ctx, latestAdmission.BillingUser(), latestAdmission, latestAdmission.Group, subscription, service.QuotaPlatform(ctx, latestAdmission)); e != nil {
+						if newPolicySnapshot {
+							cleanupOpenAIWSPolicyTurnSnapshot(policySnapshot)
+						}
 						return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "billing check failed", e)
 					}
 				}
-				turnCtx, turnDone := ctx, inflightNoop
+				turnCtx, turnDone := policySnapshot.ctx, inflightNoop
+				if turnCtx == nil {
+					turnCtx = ctx
+				}
 				if turn == 1 {
 					if latestAdmission.Tenant != nil && service.BudgetReservationFromContext(ctx) != nil {
 						tenantCopy := *latestAdmission.Tenant
@@ -2929,11 +3208,16 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 					}
 				} else {
 					var budgetErr error
-					turnCtx, turnDone, budgetErr = reserveInflightBalanceCtx(service.WithoutBudgetReservation(ctx), nil, h.gatewayService, latestAdmission, subscription, tokenInflightEstimate(liveModel, payload))
+					turnCtx, turnDone, budgetErr = reserveInflightBalanceCtx(service.WithoutBudgetReservation(turnCtx), nil, h.gatewayService, latestAdmission, subscription, tokenInflightEstimate(liveModel, payload))
 					if budgetErr != nil {
+						if newPolicySnapshot {
+							cleanupOpenAIWSPolicyTurnSnapshot(policySnapshot)
+						}
 						return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, budgetErr.Error(), budgetErr)
 					}
 				}
+				policySnapshot.ctx = turnCtx
+				storePolicyTurn(logicalTurn, policySnapshot)
 				turnTenantSnapshots.Store(turn, latestAdmission)
 				turnBudgetSnapshots.Store(turn, budgetTurn{ctx: turnCtx, done: turnDone})
 				c.Request = c.Request.WithContext(turnCtx)
@@ -2976,7 +3260,15 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				}
 				return nil
 			},
+			ProviderRequestStarted: func() {
+				logicalTurn := int(activePolicyTurn.Load())
+				if snapshot, ok := getPolicyTurn(logicalTurn); ok && snapshot.handle != nil {
+					snapshot.handle.MarkProviderStarted()
+				}
+			},
 			MapRequestModel: func(turn int, originalModel string) (string, error) {
+				logicalTurn := policyTurnBase + turn
+				activePolicyTurn.Store(int64(logicalTurn))
 				model := strings.TrimSpace(originalModel)
 				if model == "" {
 					model = reqModel
@@ -2998,6 +3290,28 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				}
 				if turn > 1 && !mappedModelUnchanged && !account.IsModelSupported(model) && !account.IsModelSupported(mapping.MappedModel) {
 					return "", newOpenAIWSUnsupportedModelSwitchError(mapping.MappedModel)
+				}
+				if snapshot, ok := getPolicyTurn(logicalTurn); ok {
+					if policy, policyOK := service.EffectivePolicyFromContext(snapshot.ctx); policyOK {
+						platform := openAIWSPolicyPlatform(snapshot.ctx, apiKey)
+						if platform == "" {
+							platform = account.Platform
+						}
+						mappedModel := strings.TrimSpace(mapping.MappedModel)
+						if mappedModel == "" {
+							mappedModel = model
+						}
+						finalModel := strings.TrimSpace(account.GetMappedModel(mappedModel))
+						if finalModel == "" {
+							finalModel = mappedModel
+						}
+						if err := checkOpenAIWSPolicy(policy, model, platform); err != nil {
+							return "", service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "model or platform denied by policy", err)
+						}
+						if err := checkOpenAIWSPolicy(policy, finalModel, platform); err != nil {
+							return "", service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "mapped model denied by policy", err)
+						}
+					}
 				}
 				turnChannelMapping.Store(&openAIWSTurnChannelMappingSnapshot{turn: turn, mapping: mapping})
 				return mapping.MappedModel, nil
@@ -3050,11 +3364,48 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				return checkSimpleModeTurnBilling()
 			},
 			AfterTurn: func(turn int, result *service.OpenAIForwardResult, turnErr error) {
+				logicalTurn := policyTurnBase + turn
+				activePolicyTurn.Store(int64(logicalTurn))
+				policySnapshot, policySnapshotExists := getPolicyTurn(logicalTurn)
+				policyTurnForUsage := func(base context.Context) context.Context {
+					if base == nil {
+						base = context.Background()
+					}
+					if policySnapshot.ctx != nil {
+						base = policySnapshot.ctx
+					}
+					if policySnapshot.handle != nil {
+						base = service.WithPolicyQuotaService(base, service.PolicyQuotaServiceFromContext(policySnapshot.ctx))
+						base = service.WithPolicyQuotaReservation(base, policySnapshot.handle)
+					}
+					return base
+				}
+				finishPolicyWithoutUsage := func(keepForRetry bool) {
+					if !policySnapshotExists || policySnapshot.handle == nil {
+						return
+					}
+					if keepForRetry && policySnapshot.handle.ProviderStarted() && !policySnapshot.handle.Finalized() {
+						return
+					}
+					cleanupOpenAIWSPolicyTurnSnapshot(policySnapshot)
+					deletePolicyTurn(logicalTurn)
+				}
 				usageCtx := ctx
+				var budgetCtx context.Context
 				if saved, ok := turnBudgetSnapshots.LoadAndDelete(turn); ok {
 					if b, valid := saved.(budgetTurn); valid {
+						budgetCtx = b.ctx
 						usageCtx = b.ctx
 						defer b.done()
+					}
+				}
+				if policySnapshotExists {
+					usageCtx = policyTurnForUsage(usageCtx)
+					if budgetCtx != nil && service.BudgetReservationFromContext(budgetCtx) != nil {
+						usageCtx = service.WithBudgetReservation(usageCtx, service.BudgetReservationFromContext(budgetCtx))
+					}
+					if budgetService := service.BudgetServiceFromContext(budgetCtx); budgetService != nil {
+						usageCtx = service.WithBudgetService(usageCtx, budgetService)
 					}
 				}
 				usageAPIKey := apiKey
@@ -3102,11 +3453,14 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				)
 				if turnErr != nil {
 					if result == nil || result.ImageCount <= 0 {
+						var failoverErr *service.UpstreamFailoverError
+						finishPolicyWithoutUsage(errors.As(turnErr, &failoverErr))
 						return
 					}
 					// cyber 命中时该 turn 的用量已由 recordCyberPolicyIfMarked(forwardErrored=true)
 					// 按真实 token 记录，这里不再走下方 RecordUsage，避免对同一 turn 双写/双扣费。
 					if service.GetOpsCyberPolicy(c) != nil {
+						finishPolicyWithoutUsage(false)
 						return
 					}
 					reqLog.Warn("openai.websocket_partial_error_with_image_result",
@@ -3116,6 +3470,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 					)
 				}
 				if result == nil {
+					finishPolicyWithoutUsage(false)
 					return
 				}
 				result.BillingModel = openAIWSTurnBillingModel(result, turnMapping, turnRequestedModel, turnUpstreamModel)
@@ -3166,6 +3521,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 						)
 					}
 				})
+				if policySnapshotExists {
+					deletePolicyTurn(logicalTurn)
+				}
 			},
 		}
 
@@ -3210,12 +3568,21 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				}
 				wsAttemptMessage = nextAttemptMessage
 				if retryCurrentTurn {
+					logicalTurn := int(activePolicyTurn.Load())
+					if logicalTurn <= 0 {
+						logicalTurn = 1
+					}
+					policyTurnBase = logicalTurn - 1
+					policyRetryBase = policyTurnBase
 					previousResponseID = ""
 					reqLog.Warn("openai.websocket_current_turn_failover_retry",
 						zap.Int64("account_id", account.ID),
 						zap.Int("upstream_status", failoverErr.StatusCode),
 						zap.Int("retry_payload_bytes", len(retryPayload)),
 					)
+				} else {
+					policyTurnBase = 0
+					policyRetryBase = 0
 				}
 				if waitForWSSameAccountRetry(account, failoverErr) {
 					if failoverErr.ShouldReportAccountScheduleFailure() {
@@ -3414,7 +3781,8 @@ func (h *OpenAIGatewayHandler) submitUsageRecordTask(parent context.Context, tas
 	if task == nil {
 		return
 	}
-	if service.BudgetReservationFromContext(parent) != nil {
+	service.MarkPolicyQuotaProviderStarted(parent)
+	if service.BudgetReservationFromContext(parent) != nil || service.PolicyQuotaReservationFromContext(parent) != nil {
 		h.submitMandatoryUsageRecordTask(parent, task)
 		return
 	}
@@ -3447,6 +3815,7 @@ func (h *OpenAIGatewayHandler) submitUsageRecordTask(parent context.Context, tas
 }
 
 func (h *OpenAIGatewayHandler) submitOpenAIUsageRecordTask(parent context.Context, result *service.OpenAIForwardResult, task service.UsageRecordTask) {
+	service.MarkPolicyQuotaProviderStarted(parent)
 	// Money-critical bills never drop on pool overflow: media, search surcharge, voice.
 	if result != nil && (result.ImageCount > 0 || result.VideoCount > 0 ||
 		result.SearchCount > 0 || result.WebSearchCalls > 0 || result.AudioUsage != nil) {
@@ -3460,6 +3829,7 @@ func (h *OpenAIGatewayHandler) submitMandatoryUsageRecordTask(parent context.Con
 	if task == nil {
 		return
 	}
+	service.MarkPolicyQuotaProviderStarted(parent)
 	task, _ = wrapUsageRecordTaskContext(parent, task)
 	if h.usageRecordWorkerPool != nil {
 		if mode := h.usageRecordWorkerPool.Submit(task); !mode.Dropped() {

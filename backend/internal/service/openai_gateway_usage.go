@@ -168,6 +168,15 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	if result == nil {
 		return errors.New("openai usage result is nil")
 	}
+	if handle := PolicyQuotaReservationFromContext(ctx); handle != nil {
+		handle.MarkProviderStarted()
+		defer func() {
+			tokens := int64(result.Usage.InputTokens + result.Usage.OutputTokens + result.Usage.CacheCreationInputTokens + result.Usage.CacheReadInputTokens)
+			if err := handle.Finalize(context.WithoutCancel(ctx), tokens); err != nil {
+				logger.LegacyPrintf("service.openai_gateway", "policy quota finalize failed reservation=%s: %v", handle.ID(), err)
+			}
+		}()
+	}
 	if result.VideoCount > 0 {
 		settlement, settled, err := s.loadVideoUsageSettlement(ctx, input)
 		if err != nil || settled {

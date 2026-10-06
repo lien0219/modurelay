@@ -20,6 +20,10 @@ var (
 	ErrLiveCallNotFound      = errors.New("live call not found")
 	ErrLiveIdentityMismatch  = errors.New("live call identity mismatch")
 	ErrLiveControllerChanged = errors.New("live controller changed")
+	// ErrLiveUpstreamOutcomeUnknown means the provider accepted the HTTP
+	// request or the transport failed after the request may have been sent, but
+	// the gateway cannot safely associate a call id with the session.
+	ErrLiveUpstreamOutcomeUnknown = errors.New("live upstream outcome unknown")
 )
 
 type LiveAttestationUnavailableError struct {
@@ -55,7 +59,13 @@ type LiveCallIdentity struct {
 }
 
 type LiveCallRecord struct {
-	BudgetReservationID    string
+	BudgetReservationID        string
+	PolicyQuotaReservationID   string
+	PolicyQuotaEstimatedTokens int64
+	// RecoveryOnly records an accepted/uncertain provider request for which no
+	// client-addressable call id exists. It is finalized after the lease window
+	// instead of being handed to the sideband observer.
+	RecoveryOnly           bool
 	ServiceAccountID       int64
 	WorkspaceID            int64
 	ProjectID              int64

@@ -24,6 +24,47 @@ func newUsageRecordTestPool(t *testing.T) *service.UsageRecordWorkerPool {
 	return pool
 }
 
+func TestUsageRecordTaskWithPolicyReservationUsesMandatoryFallback(t *testing.T) {
+	pool := service.NewUsageRecordWorkerPoolWithOptions(service.UsageRecordWorkerPoolOptions{
+		WorkerCount:           1,
+		QueueSize:             1,
+		TaskTimeout:           time.Second,
+		OverflowPolicy:        "drop",
+		OverflowSamplePercent: 0,
+		AutoScaleEnabled:      false,
+	})
+	t.Cleanup(pool.Stop)
+
+	block := make(chan struct{})
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	pool.Submit(func(ctx context.Context) {
+		close(block)
+		<-release
+	})
+	<-block
+	pool.Submit(func(ctx context.Context) {})
+
+	quota := service.NewPolicyQuotaService(&wsPolicyQuotaRepo{})
+	reservation := service.NewPolicyQuotaReservationHandle(quota, "usage-policy-reservation", 1)
+	parent := service.WithPolicyQuotaReservation(context.Background(), reservation)
+
+	var gatewayCalled atomic.Bool
+	gateway := &GatewayHandler{usageRecordWorkerPool: pool}
+	gateway.submitUsageRecordTask(parent, func(ctx context.Context) {
+		gatewayCalled.Store(true)
+	})
+	require.True(t, gatewayCalled.Load(), "policy quota usage must synchronously fall back when the worker pool drops it")
+
+	var openAICalled atomic.Bool
+	openAI := &OpenAIGatewayHandler{usageRecordWorkerPool: pool}
+	openAI.submitUsageRecordTask(parent, func(ctx context.Context) {
+		openAICalled.Store(true)
+	})
+	require.True(t, openAICalled.Load(), "OpenAI policy quota usage must synchronously fall back when the worker pool drops it")
+
+}
+
 func TestGatewayHandlerSubmitUsageRecordTask_WithPool(t *testing.T) {
 	pool := newUsageRecordTestPool(t)
 	h := &GatewayHandler{usageRecordWorkerPool: pool}

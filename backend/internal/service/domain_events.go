@@ -61,6 +61,7 @@ const (
 	EventBillingRecovered   = "billing.settlement_recovered"
 	EventQuotaThreshold     = "quota.threshold_reached"
 	EventQuotaExhausted     = "quota.exhausted"
+	EventPolicyUpdated      = "policy.updated"
 	EventWebhookTest        = "webhook.test"
 )
 
@@ -84,7 +85,7 @@ var allowedDomainEventTypes = map[string]struct{}{
 	EventAPIKeyUpdated: {}, EventAPIKeyRevoked: {}, EventBudgetThreshold: {},
 	EventBudgetSoftLimit: {}, EventBudgetHardLimit: {}, EventBudgetUpdated: {},
 	EventBillingPending: {}, EventBillingRecovered: {}, EventQuotaThreshold: {},
-	EventQuotaExhausted: {}, EventWebhookTest: {},
+	EventQuotaExhausted: {}, EventPolicyUpdated: {}, EventWebhookTest: {},
 }
 
 type EventSubject struct {
@@ -106,6 +107,7 @@ var allowedDomainEventDataKeys = map[string]struct{}{
 	"spent": {}, "reserved": {}, "estimated_amount": {}, "actual_amount": {},
 	"reason_code": {}, "request_id": {}, "task_id": {}, "model": {},
 	"platform": {}, "previous_status": {}, "delivery_id": {}, "category": {},
+	"quota_type": {}, "period_end": {}, "used": {}, "limit": {},
 }
 
 type DomainEvent struct {
@@ -221,8 +223,9 @@ func IsWorkspaceVisibleEvent(eventType string) bool {
 		EventWorkspaceCreated, EventWorkspaceUpdated, EventWorkspaceSuspended, EventWorkspaceResumed, EventWorkspaceArchived,
 		EventMemberInvited, EventMemberJoined, EventMemberRoleChanged, EventMemberSuspended, EventMemberRemoved,
 		EventProjectCreated, EventProjectUpdated, EventProjectArchived, EventProjectRestored,
-		EventAPIKeyCreated, EventAPIKeyUpdated, EventAPIKeyRevoked, EventBudgetThreshold, EventBudgetSoftLimit,
-		EventBudgetHardLimit, EventBudgetUpdated, EventBillingPending, EventBillingRecovered, EventWebhookTest:
+		EventAPIKeyCreated, EventAPIKeyUpdated, EventAPIKeyRevoked, EventPolicyUpdated, EventBudgetThreshold, EventBudgetSoftLimit,
+		EventBudgetHardLimit, EventBudgetUpdated, EventBillingPending, EventBillingRecovered, EventQuotaThreshold, EventQuotaExhausted,
+		EventWebhookTest:
 		return true
 	default:
 		return false
@@ -600,6 +603,10 @@ func notificationPresentation(eventType string) (category, titleKey, bodyKey str
 		return "workspace", "notifications.member.title", "notifications.member.body"
 	case EventProjectCreated, EventProjectUpdated, EventProjectArchived, EventProjectRestored:
 		return "project", "notifications.project.title", "notifications.project.body"
+	case EventPolicyUpdated:
+		return "policy", "notifications.policy.title", "notifications.policy.body"
+	case EventQuotaThreshold, EventQuotaExhausted:
+		return "quota", "notifications.quota.title", "notifications.quota.body"
 	case EventWebhookTest:
 		return "system", "notifications.webhook_test.title", "notifications.webhook_test.body"
 	default:

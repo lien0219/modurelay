@@ -263,6 +263,10 @@ type OpenAIWSIngressHooks struct {
 	TurnStarted             func(turn int, startedAt time.Time)
 	BeforeTurn              func(turn int) error
 	BeforeRequest           func(turn int, payload []byte, originalModel string) error
+	// ProviderRequestStarted fires once a logical response.create is about to
+	// be written to the upstream provider. Admission reservations use this
+	// boundary to distinguish pre-provider rejection from uncertain outcomes.
+	ProviderRequestStarted func()
 	// MapRequestModel resolves the current turn's client model to the model
 	// that must be written into the upstream response.create frame.
 	MapRequestModel func(turn int, originalModel string) (string, error)

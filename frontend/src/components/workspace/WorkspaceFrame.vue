@@ -64,6 +64,7 @@ const tabs = computed(() => {
   const id = selectedWorkspaceId.value || route.params.workspaceId || ''
   return [
     { to: `/workspaces/${id}/overview`, label: t('workspace.overview') },
+    ...(store.can('policy.read') ? [{ to: `/workspaces/${id}/policy`, label: t('workspace.policySettings') }] : []),
     { to: `/workspaces/${id}/projects`, label: t('workspace.projects') },
     { to: `/workspaces/${id}/members`, label: t('workspace.members') },
     { to: `/workspaces/${id}/invitations`, label: t('workspace.invitations') },

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
@@ -26,8 +27,9 @@ var (
 	ErrSubscriptionInvalid       = infraerrors.Forbidden("SUBSCRIPTION_INVALID", "subscription is invalid or expired")
 	ErrBillingServiceUnavailable = infraerrors.ServiceUnavailable("BILLING_SERVICE_ERROR", "Billing service temporarily unavailable. Please retry later.")
 	// RPM 超限错误。gateway_handler 负责映射为 HTTP 429。
-	ErrGroupRPMExceeded = infraerrors.TooManyRequests("GROUP_RPM_EXCEEDED", "group requests-per-minute limit exceeded")
-	ErrUserRPMExceeded  = infraerrors.TooManyRequests("USER_RPM_EXCEEDED", "user requests-per-minute limit exceeded")
+	ErrGroupRPMExceeded  = infraerrors.TooManyRequests("GROUP_RPM_EXCEEDED", "group requests-per-minute limit exceeded")
+	ErrUserRPMExceeded   = infraerrors.TooManyRequests("USER_RPM_EXCEEDED", "user requests-per-minute limit exceeded")
+	ErrPolicyRPMExceeded = infraerrors.TooManyRequests("POLICY_RPM_EXCEEDED", "tenant policy requests-per-minute limit exceeded")
 
 	// user × platform quota（HTTP 429 Too Many Requests + Retry-After header）。
 	// 选用 429 而非 403：限额耗尽属于"暂时性资源用尽，重试可恢复"的场景（RFC 6585），
@@ -737,6 +739,9 @@ func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user 
 	// balance/subscription/platform checks bypassed while enforcing the three
 	// API-key monetary windows from the database source of truth.
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
+		if err := s.checkPolicyRPM(ctx, apiKey); err != nil {
+			return err
+		}
 		if s.cfg.SimpleModeKeyRateLimitEnabled {
 			return s.checkSimpleModeAPIKeyRateLimits(ctx, apiKey)
 		}
@@ -785,7 +790,7 @@ func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user 
 	if apiKey != nil && apiKey.ServiceAccountID == nil && apiKey.User != nil {
 		rpmUser = apiKey.User
 	}
-	if err := s.checkRPM(ctx, rpmUser, group); err != nil {
+	if err := s.checkRPMForAPIKey(ctx, rpmUser, group, apiKey); err != nil {
 		return err
 	}
 
@@ -830,6 +835,138 @@ func (s *BillingCacheService) checkSimpleModeAPIKeyRateLimits(ctx context.Contex
 // 与旧版"级联互斥"设计不同，新版确保 user.rpm_limit 作为全局天花板不会被 group 或 override 覆盖。
 // Redis 故障一律 fail-open（打 warning，不阻塞业务）。
 func (s *BillingCacheService) checkRPM(ctx context.Context, user *User, group *Group) error {
+	return s.checkRPMForAPIKey(ctx, user, group, nil)
+}
+
+func (s *BillingCacheService) checkRPMForAPIKey(ctx context.Context, user *User, group *Group, apiKey *APIKey) error {
+	policyCounters := effectivePolicyRPMCounters(ctx, apiKey)
+	if len(policyCounters) == 0 {
+		return s.checkLegacyRPM(ctx, user, group)
+	}
+	if s == nil || s.userRPMCache == nil {
+		return ErrBillingServiceUnavailable
+	}
+	counters := append([]RPMCounter(nil), policyCounters...)
+	if user != nil && group != nil {
+		var override *int
+		if user.UserGroupRPMOverride != nil {
+			override = user.UserGroupRPMOverride
+		} else if s.userGroupRateRepo != nil {
+			dbOverride, err := s.userGroupRateRepo.GetRPMOverrideByUserAndGroup(ctx, user.ID, group.ID)
+			if err != nil {
+				logger.LegacyPrintf("service.billing_cache", "Warning: rpm override lookup failed for user=%d group=%d: %v", user.ID, group.ID, err)
+			} else {
+				override = dbOverride
+			}
+		}
+		if override != nil && *override > 0 {
+			counters = append(counters, RPMCounter{Key: fmt.Sprintf("ug:%d:%d", user.ID, group.ID), Scope: "group", Limit: int64(*override)})
+		} else if override == nil && group.RPMLimit > 0 {
+			counters = append(counters, RPMCounter{Key: fmt.Sprintf("ug:%d:%d", user.ID, group.ID), Scope: "group", Limit: int64(group.RPMLimit)})
+		}
+	}
+	if user != nil && user.RPMLimit > 0 {
+		counters = append(counters, RPMCounter{Key: fmt.Sprintf("u:%d", user.ID), Scope: "user", Limit: int64(user.RPMLimit)})
+	}
+	multi, ok := s.userRPMCache.(MultiScopeRPMCache)
+	if !ok {
+		return ErrBillingServiceUnavailable
+	}
+	result, err := multi.AdmitMultiScopeRPM(ctx, counters)
+	if err != nil {
+		return ErrBillingServiceUnavailable
+	}
+	if result.Allowed {
+		return nil
+	}
+	switch result.Scope {
+	case "group":
+		return ErrGroupRPMExceeded
+	case "user":
+		return ErrUserRPMExceeded
+	default:
+		return fmt.Errorf("%w: scope=%s count=%d limit=%d", ErrPolicyRPMExceeded, result.Scope, result.Count, result.Limit)
+	}
+}
+
+func (s *BillingCacheService) checkPolicyRPM(ctx context.Context, apiKey *APIKey) error {
+	counters := effectivePolicyRPMCounters(ctx, apiKey)
+	if len(counters) == 0 {
+		return nil
+	}
+	if s == nil || s.userRPMCache == nil {
+		return ErrBillingServiceUnavailable
+	}
+	multi, ok := s.userRPMCache.(MultiScopeRPMCache)
+	if !ok {
+		return ErrBillingServiceUnavailable
+	}
+	result, err := multi.AdmitMultiScopeRPM(ctx, counters)
+	if err != nil {
+		return ErrBillingServiceUnavailable
+	}
+	if result.Allowed {
+		return nil
+	}
+	return fmt.Errorf("%w: scope=%s count=%d limit=%d", ErrPolicyRPMExceeded, result.Scope, result.Count, result.Limit)
+}
+
+func effectivePolicyRPMCounters(ctx context.Context, apiKey *APIKey) []RPMCounter {
+	policy, ok := EffectivePolicyFromContext(ctx)
+	if !ok {
+		return nil
+	}
+	workspaceID, projectID, serviceAccountID, credentialID, groupID := int64(0), int64(0), int64(0), int64(0), int64(0)
+	if apiKey != nil {
+		if apiKey.Tenant != nil {
+			workspaceID, projectID = apiKey.Tenant.WorkspaceID, apiKey.Tenant.ProjectID
+		}
+		if apiKey.ServiceAccountID != nil {
+			serviceAccountID = *apiKey.ServiceAccountID
+		}
+		credentialID = apiKey.ID
+		if apiKey.Group != nil {
+			groupID = apiKey.Group.ID
+		}
+	}
+	entries := []struct {
+		scope  domain.PolicyScope
+		policy *domain.Policy
+		id     int64
+	}{
+		{domain.PolicyScopeGroup, policy.Layers.Group, groupID},
+		{domain.PolicyScopeWorkspace, policy.Layers.Workspace, workspaceID},
+		{domain.PolicyScopeProject, policy.Layers.Project, projectID},
+		{domain.PolicyScopeServiceAccount, policy.Layers.ServiceAccount, serviceAccountID},
+		{domain.PolicyScopeCredential, policy.Layers.Credential, credentialID},
+	}
+	counters := make([]RPMCounter, 0, len(entries))
+	seen := make(map[string]int, len(entries))
+	for _, entry := range entries {
+		if entry.policy == nil || entry.policy.RPMLimit == nil {
+			continue
+		}
+		id := entry.policy.ScopeID
+		if id <= 0 {
+			id = entry.id
+		}
+		if id <= 0 || *entry.policy.RPMLimit <= 0 {
+			continue
+		}
+		key := fmt.Sprintf("policy:%s:%d", entry.scope, id)
+		if index, exists := seen[key]; exists {
+			if *entry.policy.RPMLimit < counters[index].Limit {
+				counters[index].Limit = *entry.policy.RPMLimit
+			}
+			continue
+		}
+		seen[key] = len(counters)
+		counters = append(counters, RPMCounter{Key: key, Scope: string(entry.scope), Limit: *entry.policy.RPMLimit})
+	}
+	return counters
+}
+
+func (s *BillingCacheService) checkLegacyRPM(ctx context.Context, user *User, group *Group) error {
 	if s == nil || s.userRPMCache == nil || user == nil {
 		return nil
 	}

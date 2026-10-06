@@ -79,6 +79,7 @@ func markVideoProviderStarted(ctx context.Context, endpoint GrokMediaEndpoint) {
 	if handle := BudgetReservationFromContext(ctx); handle != nil {
 		handle.MarkProviderStarted()
 	}
+	MarkPolicyQuotaProviderStarted(ctx)
 }
 
 func markVideoProviderRejected(ctx context.Context, endpoint GrokMediaEndpoint, statusCode int) {
@@ -87,6 +88,23 @@ func markVideoProviderRejected(ctx context.Context, endpoint GrokMediaEndpoint, 
 	}
 	if handle := BudgetReservationFromContext(ctx); handle != nil {
 		handle.MarkProviderRejected()
+	}
+	MarkPolicyQuotaProviderRejected(ctx)
+}
+
+// markGrokMediaPolicyProviderStarted covers generation endpoints that are
+// executed through an asynchronous task wrapper as well as native video
+// creation. Policy quota ownership must survive a transport/5xx response once
+// the provider request has crossed this boundary.
+func markGrokMediaPolicyProviderStarted(ctx context.Context, endpoint GrokMediaEndpoint) {
+	if endpoint.IsGenerationRequest() {
+		MarkPolicyQuotaProviderStarted(ctx)
+	}
+}
+
+func markGrokMediaPolicyProviderRejected(ctx context.Context, endpoint GrokMediaEndpoint, statusCode int) {
+	if endpoint.IsGenerationRequest() && statusCode >= 400 && statusCode < 500 {
+		MarkPolicyQuotaProviderRejected(ctx)
 	}
 }
 
@@ -470,17 +488,22 @@ type GrokVideoPendingBilling struct {
 	ProjectID              int64  `json:"project_id,omitempty"`
 	BillingPrincipalUserID int64  `json:"billing_principal_user_id,omitempty"`
 	BudgetReservationID    string `json:"budget_reservation_id,omitempty"`
-	AccountID              int64  `json:"account_id,omitempty"`
-	GroupID                int64  `json:"group_id,omitempty"`
-	SubscriptionID         int64  `json:"subscription_id,omitempty"`
-	QuotaPlatform          string `json:"quota_platform,omitempty"`
-	Model                  string `json:"model"`
-	BillingModel           string `json:"billing_model,omitempty"`
-	UpstreamModel          string `json:"upstream_model,omitempty"`
-	VideoResolution        string `json:"video_resolution,omitempty"`
-	VideoDurationSeconds   int    `json:"video_duration_seconds,omitempty"`
-	NativeProtocol         bool   `json:"native_protocol,omitempty"`
-	OriginalModel          string `json:"original_model,omitempty"`
+	// Policy quota is reserved at async create and settled when completion is
+	// observed (or released on cancellation). Keep the reservation identity and
+	// estimate with the task so polling/recovery never depends on live policy.
+	PolicyQuotaReservationID   string `json:"policy_quota_reservation_id,omitempty"`
+	PolicyQuotaEstimatedTokens int64  `json:"policy_quota_estimated_tokens,omitempty"`
+	AccountID                  int64  `json:"account_id,omitempty"`
+	GroupID                    int64  `json:"group_id,omitempty"`
+	SubscriptionID             int64  `json:"subscription_id,omitempty"`
+	QuotaPlatform              string `json:"quota_platform,omitempty"`
+	Model                      string `json:"model"`
+	BillingModel               string `json:"billing_model,omitempty"`
+	UpstreamModel              string `json:"upstream_model,omitempty"`
+	VideoResolution            string `json:"video_resolution,omitempty"`
+	VideoDurationSeconds       int    `json:"video_duration_seconds,omitempty"`
+	NativeProtocol             bool   `json:"native_protocol,omitempty"`
+	OriginalModel              string `json:"original_model,omitempty"`
 	// CreatedAt is when the gateway accepted the async create (RFC3339Nano UTC).
 	// duration_ms for deferred billing is measured from this instant until the
 	// first official done+video.url observation (status poll or content download),
@@ -488,6 +511,48 @@ type GrokVideoPendingBilling struct {
 	CreatedAt  string                `json:"created_at,omitempty"`
 	Cancelled  bool                  `json:"cancelled,omitempty"`
 	Settlement *VideoUsageSettlement `json:"settlement,omitempty"`
+}
+
+// FinalizeGrokVideoPolicyQuota settles the create-time request/token
+// reservation using the completion usage snapshot. A provider that does not
+// return measurable tokens keeps the conservative create estimate instead of
+// silently recording zero.
+func (s *OpenAIGatewayService) FinalizeGrokVideoPolicyQuota(ctx context.Context, pending *GrokVideoPendingBilling, result *OpenAIForwardResult) error {
+	return s.finalizeGrokVideoPolicyQuotaUsage(ctx, pending, result, nil)
+}
+
+func (s *OpenAIGatewayService) finalizeGrokVideoPolicyQuotaUsage(ctx context.Context, pending *GrokVideoPendingBilling, result *OpenAIForwardResult, usageLog *UsageLog) error {
+	if pending == nil || strings.TrimSpace(pending.PolicyQuotaReservationID) == "" {
+		return nil
+	}
+	if s == nil || s.policyQuotaService == nil {
+		return ErrPolicyQuotaUnavailable
+	}
+	actual := int64(0)
+	if usageLog != nil {
+		actual = int64(usageLog.TotalTokens())
+	}
+	if result != nil {
+		if actual == 0 {
+			actual = int64(result.Usage.InputTokens + result.Usage.OutputTokens + result.Usage.CacheCreationInputTokens + result.Usage.CacheReadInputTokens)
+		}
+	}
+	if actual == 0 {
+		actual = pending.PolicyQuotaEstimatedTokens
+	}
+	return s.policyQuotaService.Finalize(context.WithoutCancel(ctx), pending.PolicyQuotaReservationID, actual)
+}
+
+// ReleaseGrokVideoPolicyQuota releases an async reservation when the provider
+// task is cancelled or definitively rejected before completion.
+func (s *OpenAIGatewayService) ReleaseGrokVideoPolicyQuota(ctx context.Context, pending *GrokVideoPendingBilling) error {
+	if pending == nil || strings.TrimSpace(pending.PolicyQuotaReservationID) == "" {
+		return nil
+	}
+	if s == nil || s.policyQuotaService == nil {
+		return ErrPolicyQuotaUnavailable
+	}
+	return s.policyQuotaService.Release(context.WithoutCancel(ctx), pending.PolicyQuotaReservationID)
 }
 
 // ErrGrokVideoBillingCancelled prevents a late completion observer from
@@ -521,14 +586,24 @@ func (s *OpenAIGatewayService) releaseGrokVideoBudgetReservation(ctx context.Con
 	if err := validateGrokVideoPendingBillingTenant(pending); err != nil {
 		return err
 	}
-	if pending == nil || strings.TrimSpace(pending.BudgetReservationID) == "" {
+	if pending == nil {
 		return nil
 	}
-	keys := s.videoRecoveryAPIKeyService.Load()
-	if keys == nil || keys.BudgetService() == nil {
-		return ErrBudgetUnavailable
+	var releaseErrs []error
+	if strings.TrimSpace(pending.BudgetReservationID) != "" {
+		keys := s.videoRecoveryAPIKeyService.Load()
+		if keys == nil || keys.BudgetService() == nil {
+			releaseErrs = append(releaseErrs, ErrBudgetUnavailable)
+		} else if err := keys.BudgetService().Release(ctx, strings.TrimSpace(pending.BudgetReservationID)); err != nil {
+			releaseErrs = append(releaseErrs, err)
+		}
 	}
-	return keys.BudgetService().Release(ctx, strings.TrimSpace(pending.BudgetReservationID))
+	if strings.TrimSpace(pending.PolicyQuotaReservationID) != "" {
+		if err := s.ReleaseGrokVideoPolicyQuota(ctx, pending); err != nil {
+			releaseErrs = append(releaseErrs, err)
+		}
+	}
+	return errors.Join(releaseErrs...)
 }
 
 // ApplyTenantSnapshot copies the create-time tenant attribution onto an API key
@@ -1043,6 +1118,7 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 		proxyURL = account.Proxy.URL()
 	}
 	markVideoProviderStarted(ctx, endpoint)
+	markGrokMediaPolicyProviderStarted(ctx, endpoint)
 	upstreamStart := time.Now()
 	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
@@ -1053,6 +1129,7 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 
 	requestIDHeader := firstNonEmpty(resp.Header.Get("x-request-id"), resp.Header.Get("xai-request-id"))
 	markVideoProviderRejected(ctx, endpoint, resp.StatusCode)
+	markGrokMediaPolicyProviderRejected(ctx, endpoint, resp.StatusCode)
 	requestModel := requestInfo.Model
 	if resp.StatusCode >= 400 {
 		return s.handleGrokMediaErrorResponse(ctx, resp, c, account, requestIDHeader, requestModel)

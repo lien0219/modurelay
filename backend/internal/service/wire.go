@@ -897,6 +897,7 @@ var ProviderSet = wire.NewSet(
 	NewNotificationCenterService,
 	ProvideDomainEventDispatcher,
 	NewBudgetService,
+	NewPolicyQuotaService,
 	wire.Bind(new(BalanceRedeemActivityQualifier), new(*ActivityService)),
 	// Core services
 	ProvideAuthService,

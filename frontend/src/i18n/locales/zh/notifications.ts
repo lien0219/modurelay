@@ -29,6 +29,7 @@ export default {
       budget: { threshold_reached: '预算达到阈值', soft_limit_exceeded: '预算超过软上限', hard_limit_reached: '预算达到硬上限', updated: '预算已更新' },
       billing: { settlement_pending: '结算待处理', settlement_recovered: '结算已恢复' },
       quota: { threshold_reached: '配额达到阈值', exhausted: '配额已用尽' },
+      policy: { updated: '策略已更新' },
       webhook: { test: 'Webhook 测试' },
     },
     reasons: {
@@ -40,7 +41,7 @@ export default {
     },
     categories: {
       service_account: '服务账号',
-      system: '系统', workspace: '工作区', project: '项目', api_key: 'API 密钥', budget: '预算', billing: '账单', quota: '配额', security: '安全', resources: '论坛',
+      system: '系统', workspace: '工作区', project: '项目', api_key: 'API 密钥', policy: '策略', budget: '预算', billing: '账单', quota: '配额', security: '安全', resources: '论坛',
     },
     workspace: { title: '工作区更新', body: '有一项工作区事件需要处理。' },
     member: { title: '成员更新', body: '工作区成员信息已变更。' },
@@ -49,5 +50,6 @@ export default {
     budget: { title: '预算更新', body: '有一项预算事件需要处理。' },
     billing: { title: '账单更新', body: '有一项账单事件需要处理。' },
     webhook_test: { title: 'Webhook 测试', body: 'Webhook 测试投递已加入队列。' },
+    policy: { title: '策略已更新', body: '工作区、项目或服务账号策略发生了变更。' },
   },
 }

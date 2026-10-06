@@ -1,12 +1,63 @@
 package service
 
 import (
+	"context"
 	"mime/multipart"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 )
+
+func TestMarkVideoProviderStateUpdatesPolicyQuotaReservation(t *testing.T) {
+	repo := &policyQuotaRepositoryFake{reservation: &PolicyQuotaReservation{ID: "policy-video", Status: PolicyQuotaReservationPending}}
+	quota := NewPolicyQuotaService(repo)
+	handle := NewPolicyQuotaReservationHandle(quota, "policy-video", 10)
+	ctx := WithPolicyQuotaReservation(context.Background(), handle)
+
+	markVideoProviderStarted(ctx, GrokMediaEndpointVideosGenerations)
+	require.True(t, handle.ProviderStarted())
+	handle.PreserveIfProviderStarted()
+	require.True(t, handle.Durable())
+	markVideoProviderRejected(ctx, GrokMediaEndpointVideosGenerations, 400)
+	require.True(t, handle.ProviderRejected())
+}
+
+func TestMarkGrokMediaProviderStateUpdatesPolicyQuotaForImages(t *testing.T) {
+	repo := &policyQuotaRepositoryFake{reservation: &PolicyQuotaReservation{ID: "policy-image", Status: PolicyQuotaReservationPending}}
+	quota := NewPolicyQuotaService(repo)
+	handle := NewPolicyQuotaReservationHandle(quota, "policy-image", 10)
+	ctx := WithPolicyQuotaReservation(context.Background(), handle)
+
+	markGrokMediaPolicyProviderStarted(ctx, GrokMediaEndpointImagesGenerations)
+	require.True(t, handle.ProviderStarted())
+	markGrokMediaPolicyProviderRejected(ctx, GrokMediaEndpointImagesGenerations, 400)
+	require.True(t, handle.ProviderRejected())
+}
+
+func TestReleaseGrokVideoReservationsReleasesPolicyQuota(t *testing.T) {
+	repo := &policyQuotaRepositoryFake{reservation: &PolicyQuotaReservation{ID: "policy-video", Status: PolicyQuotaReservationPending}}
+	quota := NewPolicyQuotaService(repo)
+	gateway := &OpenAIGatewayService{policyQuotaService: quota}
+	pending := &GrokVideoPendingBilling{PolicyQuotaReservationID: "policy-video"}
+
+	require.NoError(t, gateway.releaseGrokVideoBudgetReservation(context.Background(), pending))
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	require.Equal(t, 1, repo.releases)
+}
+
+func TestFinalizeGrokVideoPolicyQuotaUsesPersistedUsageTotals(t *testing.T) {
+	repo := &policyQuotaRepositoryFake{reservation: &PolicyQuotaReservation{ID: "policy-video", Status: PolicyQuotaReservationPending}}
+	gateway := &OpenAIGatewayService{policyQuotaService: NewPolicyQuotaService(repo)}
+	pending := &GrokVideoPendingBilling{PolicyQuotaReservationID: "policy-video", PolicyQuotaEstimatedTokens: 99}
+	usageLog := &UsageLog{InputTokens: 4, OutputTokens: 5, CacheCreationTokens: 1, CacheReadTokens: 2}
+
+	require.NoError(t, gateway.finalizeGrokVideoPolicyQuotaUsage(context.Background(), pending, nil, usageLog))
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	require.Equal(t, []int64{12}, repo.finalize)
+}
 
 func TestGrokVideoE2EDurationFromCreatedAt(t *testing.T) {
 	t.Parallel()

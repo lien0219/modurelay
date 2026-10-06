@@ -18,6 +18,7 @@ type WorkspaceHandler struct {
 	keys            *service.APIKeyService
 	webhooks        *service.WorkspaceWebhookService
 	serviceAccounts *ServiceAccountHandler
+	policies        *PolicyHandler
 }
 
 func finopsRange(c *gin.Context) (time.Time, time.Time, string, error) {
@@ -55,9 +56,15 @@ func NewWorkspaceHandler(w *service.WorkspaceService, k *service.APIKeyService) 
 func (h *WorkspaceHandler) SetWebhookService(webhooks *service.WorkspaceWebhookService) {
 	h.webhooks = webhooks
 }
+func (h *WorkspaceHandler) SetPolicyHandler(policies *PolicyHandler) {
+	h.policies = policies
+}
 func (h *WorkspaceHandler) RegisterTenantRoutes(v1 *gin.RouterGroup) {
 	if h.serviceAccounts != nil {
 		h.serviceAccounts.RegisterTenantRoutes(v1)
+	}
+	if h.policies != nil {
+		h.policies.RegisterTenantRoutes(v1)
 	}
 	routes := []struct{ method, path, action string }{
 		{"GET", "/workspaces", "workspace.list"}, {"POST", "/workspaces", "workspace.create"}, {"GET", "/workspaces/:id", "workspace.get"}, {"PATCH", "/workspaces/:id", "workspace.update"}, {"DELETE", "/workspaces/:id", "workspace.archive"},

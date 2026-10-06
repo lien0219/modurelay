@@ -23,3 +23,23 @@ type UserRPMCache interface {
 	// GetUserRPM 获取用户当前分钟已用 RPM（只读，不递增）。
 	GetUserRPM(ctx context.Context, userID int64) (count int, err error)
 }
+
+type RPMCounter struct {
+	Key   string
+	Scope string
+	Limit int64
+}
+
+type RPMAdmissionResult struct {
+	Allowed bool
+	Scope   string
+	Count   int64
+	Limit   int64
+}
+
+// MultiScopeRPMCache checks and increments every applicable request counter in
+// one atomic operation. Existing adapters may continue implementing only the
+// legacy methods until policy RPM is enabled for their runtime.
+type MultiScopeRPMCache interface {
+	AdmitMultiScopeRPM(context.Context, []RPMCounter) (RPMAdmissionResult, error)
+}

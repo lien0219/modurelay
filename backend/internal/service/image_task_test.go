@@ -70,7 +70,7 @@ func TestImageTaskServiceLifecycleAndOwnership(t *testing.T) {
 
 func TestImageTaskPersistsPrivateTenantSnapshot(t *testing.T) {
 	var owner ImageTaskOwner
-	require.NoError(t, json.Unmarshal([]byte(`{"UserID":7,"APIKeyID":9,"workspace_id":1,"project_id":2,"billing_principal_user_id":3,"budget_reservation_id":"private-reservation"}`), &owner))
+	require.NoError(t, json.Unmarshal([]byte(`{"UserID":7,"APIKeyID":9,"workspace_id":1,"project_id":2,"billing_principal_user_id":3,"budget_reservation_id":"private-reservation","policy_quota_reservation_id":"policy-reservation","policy_quota_estimated_tokens":17}`), &owner))
 	store := &imageTaskMemoryStore{}
 	svc := NewImageTaskServiceWithOptions(store, time.Hour, time.Minute)
 	public, err := svc.Create(context.Background(), owner)
@@ -81,6 +81,8 @@ func TestImageTaskPersistsPrivateTenantSnapshot(t *testing.T) {
 	require.Contains(t, string(privateJSON), `"project_id":2`)
 	require.Contains(t, string(privateJSON), `"billing_principal_user_id":3`)
 	require.Contains(t, string(privateJSON), `"budget_reservation_id":"private-reservation"`)
+	require.Contains(t, string(privateJSON), `"policy_quota_reservation_id":"policy-reservation"`)
+	require.Contains(t, string(privateJSON), `"policy_quota_estimated_tokens":17`)
 	publicJSON, err := json.Marshal(public)
 	require.NoError(t, err)
 	require.NotContains(t, string(publicJSON), "private-reservation")

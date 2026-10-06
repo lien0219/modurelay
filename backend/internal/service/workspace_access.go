@@ -14,6 +14,22 @@ var workspaceRolePermissions = map[string][]string{
 	"viewer":    {"service_account.read", "workspace.read", "project.read", "usage.read", "budget.read"},
 }
 
+func init() {
+	// Policy permissions live in the same central role map as every other
+	// tenant capability. Read access is available to all tenant roles; policy
+	// mutation is intentionally narrower because it affects all credentials in
+	// a scope.
+	for _, role := range []string{"owner", "admin", "developer", "billing", "viewer"} {
+		workspaceRolePermissions[role] = append(workspaceRolePermissions[role], "policy.read")
+	}
+	for _, role := range []string{"owner", "admin"} {
+		workspaceRolePermissions[role] = append(workspaceRolePermissions[role], "workspace_policy.update", "project_policy.update")
+	}
+	workspaceRolePermissions["owner"] = append(workspaceRolePermissions["owner"], "service_account_policy.update")
+	workspaceRolePermissions["admin"] = append(workspaceRolePermissions["admin"], "service_account_policy.update")
+	workspaceRolePermissions["developer"] = append(workspaceRolePermissions["developer"], "service_account_policy.update")
+}
+
 func ValidWorkspaceRole(role string) bool { _, ok := workspaceRolePermissions[role]; return ok }
 func WorkspacePermissions(role string) []string {
 	return append([]string{}, workspaceRolePermissions[role]...)

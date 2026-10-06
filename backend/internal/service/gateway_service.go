@@ -1533,6 +1533,11 @@ func (s *GatewayService) resolveCompositeModelOwnership(ctx context.Context, gro
 		ownership.Matched = true
 	} else if len(platforms) > 1 {
 		ownership.Ambiguous = true
+		ownership.Platforms = make([]string, 0, len(platforms))
+		for platform := range platforms {
+			ownership.Platforms = append(ownership.Platforms, platform)
+		}
+		sort.Strings(ownership.Platforms)
 	}
 
 	if s.modelsListCache != nil {

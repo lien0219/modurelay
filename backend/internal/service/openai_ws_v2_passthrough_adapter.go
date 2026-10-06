@@ -360,6 +360,7 @@ func (l *openAIWSPassthroughTurnLifecycle) finishTerminalWrite(succeeded bool, o
 type openAIWSPassthroughFirstOutputFrameConn struct {
 	inner             openaiwsv2.FrameConn
 	resolveDeadline   func(payload []byte) openAIWSPassthroughFirstOutputDeadline
+	providerStarted   func()
 	activeReadTimeout time.Duration
 
 	mu              sync.Mutex
@@ -463,6 +464,9 @@ func (c *openAIWSPassthroughFirstOutputFrameConn) WriteFrame(ctx context.Context
 	generation := uint64(0)
 	if msgType == coderws.MessageText && strings.TrimSpace(gjson.GetBytes(payload, "type").String()) == "response.create" {
 		generation = c.armDeadline(payload)
+		if c.providerStarted != nil {
+			c.providerStarted()
+		}
 	}
 	if err := c.inner.WriteFrame(ctx, msgType, payload); err != nil {
 		c.disarmDeadline(generation)
@@ -925,6 +929,11 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		inner:             upstreamFrameConn,
 		activeReadTimeout: s.openAIWSPassthroughIdleTimeout(),
 		deadlineChanged:   make(chan struct{}, 1),
+		providerStarted: func() {
+			if hooks != nil && hooks.ProviderRequestStarted != nil {
+				hooks.ProviderRequestStarted()
+			}
+		},
 		resolveDeadline: func(payload []byte) openAIWSPassthroughFirstOutputDeadline {
 			reasoningEffort := ""
 			if current := usageMeta.reasoningEffort.Load(); current != nil {

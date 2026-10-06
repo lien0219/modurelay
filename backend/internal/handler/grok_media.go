@@ -626,6 +626,9 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 		videoBudget := service.BudgetReservationFromContext(requestCtx)
 		if err != nil {
 			videoBudget.PreserveIfProviderStarted()
+			if policyQuota := service.PolicyQuotaReservationFromContext(requestCtx); policyQuota != nil {
+				policyQuota.PreserveIfProviderStarted()
+			}
 		}
 
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()
@@ -741,6 +744,10 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 				videoBudget.MarkProviderStarted()
 				videoBudget.Preserve()
 			}
+			if policyQuota := service.PolicyQuotaReservationFromContext(requestCtx); policyQuota != nil {
+				policyQuota.MarkProviderStarted()
+				policyQuota.Preserve()
+			}
 			var seedanceStateErr error
 			if err := h.gatewayService.BindGrokMediaVideoRequestAccount(
 				requestCtx, apiKey.GroupID, result.ResponseID, subject.OwnershipID(), apiKey.ID, account.ID,
@@ -805,6 +812,10 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 				// Wall-clock start for usage duration_ms: create accepted → first done discovery.
 				CreatedAt: videoCreateStartedAt,
 			}
+			if quotaHandle := service.PolicyQuotaReservationFromContext(requestCtx); quotaHandle != nil {
+				pending.PolicyQuotaReservationID = quotaHandle.ID()
+				pending.PolicyQuotaEstimatedTokens = quotaHandle.EstimatedTokens()
+			}
 			if apiKey.Tenant != nil {
 				pending.ServiceAccountID = apiKey.ExecutionPrincipal().ServiceAccountID
 				pending.WorkspaceID = tenantWorkspaceID(apiKey)
@@ -843,6 +854,9 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 			// provider outcome. Keep the reservation for recovery rather than
 			// treating the malformed response as a safe local failure.
 			videoBudget.PreserveIfProviderStarted()
+			if policyQuota := service.PolicyQuotaReservationFromContext(requestCtx); policyQuota != nil {
+				policyQuota.PreserveIfProviderStarted()
+			}
 		}
 		// Status poll OR content download can observe official done+video.url.
 		// Both paths share the same claim key so the customer is charged once.

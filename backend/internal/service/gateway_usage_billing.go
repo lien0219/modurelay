@@ -913,6 +913,18 @@ func writeUsageLog(ctx context.Context, repo UsageLogRepository, usageLog *Usage
 
 // RecordUsage 记录使用量并扣费（或更新订阅用量）
 func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInput) error {
+	if handle := PolicyQuotaReservationFromContext(ctx); handle != nil {
+		handle.MarkProviderStarted()
+		defer func() {
+			var tokens int64
+			if input != nil && input.Result != nil {
+				tokens = int64(input.Result.Usage.InputTokens + input.Result.Usage.OutputTokens + input.Result.Usage.CacheCreationInputTokens + input.Result.Usage.CacheReadInputTokens)
+			}
+			if err := handle.Finalize(context.WithoutCancel(ctx), tokens); err != nil {
+				logger.LegacyPrintf("service.gateway", "policy quota finalize failed reservation=%s: %v", handle.ID(), err)
+			}
+		}()
+	}
 	return s.recordUsageCore(ctx, &recordUsageCoreInput{
 		Result:             input.Result,
 		APIKey:             input.APIKey,

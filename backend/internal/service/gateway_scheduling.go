@@ -2732,6 +2732,9 @@ func summarizeSelectionFailureStats(stats selectionFailureStats) string {
 // isModelSupportedByAccountWithContext 根据账户平台检查模型支持（带 context）
 // 对于 Antigravity 平台，会先获取映射后的最终模型名（包括 thinking 后缀）再检查支持
 func (s *GatewayService) isModelSupportedByAccountWithContext(ctx context.Context, account *Account, requestedModel string) bool {
+	if account == nil {
+		return false
+	}
 	if source, ok := CompositeRouteSourceFromContext(ctx); ok && source == CompositeRouteSourceAccount {
 		if publicModel, modelOK := RequestedPublicModelFromContext(ctx); modelOK && !explicitModelMappingClaims(*account, publicModel) {
 			return false
@@ -2750,13 +2753,45 @@ func (s *GatewayService) isModelSupportedByAccountWithContext(ctx context.Contex
 		if enabled, ok := ThinkingEnabledFromContext(ctx); ok {
 			finalModel := applyThinkingModelSuffix(mapped, enabled)
 			if finalModel == mapped {
-				return true // thinking 后缀未改变模型名，映射已通过
+				return policyAllowsResolvedAccountModel(ctx, account, requestedModel, mapped)
 			}
-			return account.IsModelSupported(finalModel)
+			return account.IsModelSupported(finalModel) && policyAllowsResolvedAccountModel(ctx, account, requestedModel, finalModel)
 		}
+		return policyAllowsResolvedAccountModel(ctx, account, requestedModel, mapped)
+	}
+	if !s.isModelSupportedByAccount(account, requestedModel) {
+		return false
+	}
+	finalModel := requestedModel
+	if account.IsBedrock() {
+		if resolved, ok := ResolveBedrockModelID(account, requestedModel); ok {
+			finalModel = resolved
+		}
+	} else if mapped, matched := account.ResolveMappedModel(requestedModel); matched {
+		finalModel = mapped
+	} else if account.Platform == PlatformAnthropic && account.Type != AccountTypeAPIKey {
+		finalModel = claude.NormalizeModelID(requestedModel)
+	}
+	return policyAllowsResolvedAccountModel(ctx, account, requestedModel, finalModel)
+}
+
+// policyAllowsResolvedAccountModel performs the post-resolution policy check
+// required for account aliases. The public request model is checked by gateway
+// middleware; this check ensures an account mapping cannot turn an allowed alias
+// into a model denied by the same effective policy.
+func policyAllowsResolvedAccountModel(ctx context.Context, account *Account, requestedModel, resolvedModel string) bool {
+	policy, ok := EffectivePolicyFromContext(ctx)
+	if !ok || account == nil {
 		return true
 	}
-	return s.isModelSupportedByAccount(account, requestedModel)
+	if upstream, exists := ResolvedUpstreamModelFromContext(ctx); exists {
+		resolvedModel = upstream
+	}
+	resolvedModel = strings.TrimSpace(resolvedModel)
+	if resolvedModel == "" || strings.TrimSpace(requestedModel) == "" {
+		return true
+	}
+	return policy.AllowsModel(resolvedModel)
 }
 
 // isModelSupportedByAccount 根据账户平台检查模型支持（无 context，用于非 Antigravity 平台）

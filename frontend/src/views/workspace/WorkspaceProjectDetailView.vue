@@ -8,9 +8,10 @@
             <h2>{{ project?.name || t('workspace.project') }}</h2>
             <p>{{ project?.description || '-' }}</p>
           </div>
-          <button v-if="store.can('key.create')" type="button" class="btn btn-primary btn-sm" @click="openCreateForm">
-            {{ t('workspace.createKey') }}
-          </button>
+          <div class="workspace-actions">
+            <RouterLink v-if="store.can('policy.read')" class="btn btn-secondary btn-sm" :to="`/workspaces/${workspaceId}/projects/${projectId}/policy`">{{ t('workspace.policySettings') }}</RouterLink>
+            <button v-if="store.can('key.create')" type="button" class="btn btn-primary btn-sm" @click="openCreateForm">{{ t('workspace.createKey') }}</button>
+          </div>
         </div>
         <dl class="workspace-details">
           <div><dt>{{ t('workspace.slug') }}</dt><dd><code>{{ project?.slug || '-' }}</code></dd></div>

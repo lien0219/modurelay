@@ -392,6 +392,7 @@ func (s *BatchImagePublicService) Submit(ctx context.Context, owner BatchImageOw
 	hbCtx, hbCancel := context.WithCancel(ctx)
 	hbDone := make(chan struct{})
 	go s.runSubmitHeartbeat(hbCtx, job.BatchID, hbDone)
+	MarkPolicyQuotaProviderStarted(ctx)
 	providerJob, err := provider.Submit(ctx, job, account, input)
 	hbCancel()
 	<-hbDone
@@ -400,6 +401,7 @@ func (s *BatchImagePublicService) Submit(ctx context.Context, owner BatchImageOw
 			_ = s.Repo.RecordBatchImageJobSubmitFailure(context.WithoutCancel(ctx), job.BatchID, "SUBMIT_OUTCOME_UNKNOWN", "upstream submission outcome is unknown", false)
 			return nil, ErrBatchImageProviderSubmitUncertain
 		}
+		MarkPolicyQuotaProviderRejected(ctx)
 		publicErr := batchImageProviderSubmitPublicError(err)
 		reason := batchImageProviderSubmitRecordCode(publicErr)
 		if recordErr := s.Repo.RecordBatchImageJobSubmitFailure(context.WithoutCancel(ctx), job.BatchID, reason, sanitizeBatchImagePublicMessage(err.Error()), true); recordErr != nil {
@@ -414,6 +416,14 @@ func (s *BatchImagePublicService) Submit(ctx context.Context, owner BatchImageOw
 	if providerJob == nil || strings.TrimSpace(providerJob.ProviderJobName) == "" {
 		_ = s.Repo.RecordBatchImageJobSubmitFailure(context.WithoutCancel(ctx), job.BatchID, "SUBMIT_OUTCOME_UNKNOWN", "provider job name missing", false)
 		return nil, ErrBatchImageProviderSubmitUncertain
+	}
+	if quota := PolicyQuotaReservationFromContext(ctx); quota != nil {
+		quotaCtx, quotaCancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
+		if err := quota.FinalizeRequestOnly(quotaCtx); err != nil {
+			quota.Preserve()
+			logger.L().Warn("batch_image.policy_quota_finalize_failed", zap.String("reservation_id", quota.ID()), zap.Error(err))
+		}
+		quotaCancel()
 	}
 
 	if err := s.Repo.UpdateBatchImageJobProviderSubmit(ctx, UpdateBatchImageJobProviderSubmitParams{

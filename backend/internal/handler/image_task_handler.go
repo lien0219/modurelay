@@ -138,6 +138,10 @@ func (h *AsyncImageHandler) Submit(c *gin.Context) {
 		}
 		workerDone = handle.Acquire()
 		owner.WorkspaceID, owner.ProjectID, owner.BillingPrincipalUserID, owner.BudgetReservationID = apiKey.Tenant.WorkspaceID, apiKey.Tenant.ProjectID, apiKey.Tenant.BillingPrincipalUserID, handle.ID()
+		if policyQuota := service.PolicyQuotaReservationFromContext(c.Request.Context()); policyQuota != nil {
+			owner.PolicyQuotaReservationID = policyQuota.ID()
+			owner.PolicyQuotaEstimatedTokens = policyQuota.EstimatedTokens()
+		}
 	}
 
 	taskCtx, recorder, cancel := newAsyncImageContext(c, body, h.tasks.ExecutionTimeout())
@@ -147,6 +151,12 @@ func (h *AsyncImageHandler) Submit(c *gin.Context) {
 		cancel()
 		imageTaskError(c, err)
 		return
+	}
+	// The request middleware returns as soon as the task is accepted. Transfer
+	// policy quota ownership to the detached execution before that defer runs;
+	// run() will release, finalize, or preserve it at the provider boundary.
+	if policyQuota := service.PolicyQuotaReservationFromContext(c.Request.Context()); policyQuota != nil {
+		policyQuota.Preserve()
 	}
 
 	pollURL := imageTaskPollURL(c.Request.URL.Path, task.ID)
@@ -264,6 +274,10 @@ func (h *AsyncImageHandler) executeWithGateway(platform string, c *gin.Context) 
 
 func (h *AsyncImageHandler) run(taskID, platform string, taskCtx *gin.Context, recorder *httptest.ResponseRecorder, cancel context.CancelFunc) {
 	defer cancel()
+	policyQuota := service.PolicyQuotaReservationFromContext(taskCtx.Request.Context())
+	defer func() {
+		cleanupAsyncImagePolicyQuota(taskCtx.Request.Context(), policyQuota, recorder.Code)
+	}()
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			service.BudgetReservationFromContext(taskCtx.Request.Context()).PreserveIfProviderStarted()
@@ -297,6 +311,36 @@ func (h *AsyncImageHandler) run(taskID, platform string, taskCtx *gin.Context, r
 		return
 	}
 	h.failTask(taskID, statusCode, extractImageTaskError(body))
+}
+
+// cleanupAsyncImagePolicyQuota closes the request-side policy reservation only
+// when the detached image execution has a definitive outcome. A provider-side
+// transport/5xx result remains durable for recovery because the upstream may
+// have accepted work even when the HTTP response was lost.
+func cleanupAsyncImagePolicyQuota(ctx context.Context, handle *service.PolicyQuotaReservationHandle, statusCode int) {
+	if handle == nil || handle.Finalized() {
+		return
+	}
+	cleanupCtx := context.Background()
+	if ctx != nil {
+		cleanupCtx = context.WithoutCancel(ctx)
+	}
+	if !handle.ProviderStarted() {
+		if err := handle.Release(cleanupCtx); err != nil {
+			logger.L().Warn("image_task.policy_quota_release_failed", zap.String("reservation_id", handle.ID()), zap.Error(err))
+		}
+		return
+	}
+	if statusCode >= http.StatusBadRequest && statusCode < http.StatusInternalServerError {
+		handle.MarkProviderRejected()
+	}
+	if handle.ProviderRejected() {
+		if err := handle.FinalizeRequestOnly(cleanupCtx); err != nil {
+			logger.L().Warn("image_task.policy_quota_finalize_rejection_failed", zap.String("reservation_id", handle.ID()), zap.Error(err))
+		}
+		return
+	}
+	handle.Preserve()
 }
 
 func (h *AsyncImageHandler) failTask(taskID string, statusCode int, taskErr json.RawMessage) {

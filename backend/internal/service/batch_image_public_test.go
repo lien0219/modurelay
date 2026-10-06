@@ -95,6 +95,21 @@ func TestBatchImagePublicService_Submit(t *testing.T) {
 		require.Equal(t, "batch-session-123", batchImageDerefString(job.SessionID))
 	})
 
+	t.Run("finalizes policy request quota after provider accepts the batch", func(t *testing.T) {
+		svc, _, _, _, _ := newTestBatchImagePublicService(true)
+		quotaRepo := &batchImagePolicyQuotaTestRepo{}
+		handle := NewPolicyQuotaReservationHandleWithUnits(NewPolicyQuotaService(quotaRepo), "batch-policy-quota", 0, 2)
+		quotaCtx := WithPolicyQuotaReservation(ctx, handle)
+
+		_, err := svc.Submit(quotaCtx, testBatchImageOwner(), validBatchImageSubmitRequest(), "")
+
+		require.NoError(t, err)
+		require.True(t, handle.ProviderStarted())
+		require.True(t, handle.Finalized())
+		require.Equal(t, []int64{0}, quotaRepo.finalizedTokens)
+		require.Zero(t, quotaRepo.released)
+	})
+
 	t.Run("combines user group image rate account rate discount and hold margin", func(t *testing.T) {
 		svc, repo, _, _, _ := newTestBatchImagePublicService(true)
 		groupID := int64(7)
@@ -459,6 +474,25 @@ func TestBatchImagePublicService_Submit(t *testing.T) {
 		require.NoError(t, err)
 		requireBatchImagePublicJSONHasNoInternals(t, string(body))
 	})
+}
+
+type batchImagePolicyQuotaTestRepo struct {
+	finalizedTokens []int64
+	released        int
+}
+
+func (r *batchImagePolicyQuotaTestRepo) Reserve(_ context.Context, request PolicyQuotaReservationRequest) (*PolicyQuotaReservation, error) {
+	return &PolicyQuotaReservation{ID: "batch-policy-quota", APIKeyID: request.APIKeyID, EstimatedTokens: request.EstimatedTokens, RequestUnits: request.RequestUnits, Status: PolicyQuotaReservationPending}, nil
+}
+
+func (r *batchImagePolicyQuotaTestRepo) Finalize(_ context.Context, _ string, tokens int64) error {
+	r.finalizedTokens = append(r.finalizedTokens, tokens)
+	return nil
+}
+
+func (r *batchImagePolicyQuotaTestRepo) Release(context.Context, string) error {
+	r.released++
+	return nil
 }
 
 func TestBatchImagePublicService_List(t *testing.T) {

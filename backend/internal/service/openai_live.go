@@ -201,6 +201,20 @@ func (s *OpenAIGatewayService) CreateLiveCall(
 		created, createErr := s.createUpstreamLiveCall(ctx, account, request, attestation)
 		selection.ReleaseFunc()
 		if createErr != nil {
+			if errors.Is(createErr, ErrLiveUpstreamOutcomeUnknown) {
+				// The provider may have created a session even though no usable
+				// call id came back. Keep the lease and policy reservation attached
+				// to a durable recovery record; retrying another account could
+				// create a second live session for the same client request.
+				recovery := s.newLiveCallRecord(ctx, account, request, identity, leaseID, attestationCiphertext, "", true, time.Now())
+				if recoveryErr := s.persistLiveRecoveryRecord(ctx, recovery); recoveryErr != nil {
+					s.releaseLiveLease(account.ID, identity.FundingUserID(), identity.APIKeyID, leaseID)
+					s.finalizeLivePolicyRequestOnly(ctx, recoveryErr)
+				} else {
+					go s.finalizeLiveCallAfterExpiry(recovery)
+				}
+				return nil, createErr
+			}
 			s.releaseLiveLease(account.ID, identity.FundingUserID(), identity.APIKeyID, leaseID)
 			if !s.shouldFailoverLiveCreateError(account, createErr) {
 				return nil, createErr
@@ -209,38 +223,22 @@ func (s *OpenAIGatewayService) CreateLiveCall(
 			lastErr = createErr
 			continue
 		}
-
-		now := time.Now()
-		model := strings.TrimSpace(gjson.GetBytes(request.Session, "model").String())
-		if model == "" {
-			model = "gpt-live"
-		}
-		record := &LiveCallRecord{
-			BudgetReservationID:    identity.BudgetReservationID,
-			CallID:                 created.CallID,
-			CallHash:               hashLiveCallID(created.CallID),
-			AccountID:              account.ID,
-			APIKeyID:               identity.APIKeyID,
-			UserID:                 identity.UserID,
-			ServiceAccountID:       identity.ServiceAccountID,
-			WorkspaceID:            identity.WorkspaceID,
-			ProjectID:              identity.ProjectID,
-			BillingPrincipalUserID: identity.BillingPrincipalUserID,
-			GroupID:                liveGroupID(identity.GroupID),
-			SubscriptionID:         liveGroupID(identity.SubscriptionID),
-			LeaseID:                leaseID,
-			Model:                  model,
-			CreatedAt:              now,
-			ExpiresAt:              now.Add(s.liveMaxSessionDuration()),
-			Controller:             LiveControllerPending,
-			UserAgent:              identity.UserAgent,
-			IPAddress:              identity.IPAddress,
-			InboundEndpoint:        identity.InboundEndpoint,
-			AttestationCiphertext:  attestationCiphertext,
-		}
+		record := s.newLiveCallRecord(ctx, account, request, identity, leaseID, attestationCiphertext, created.CallID, false, time.Now())
 		mappingTTL := s.liveMaxSessionDuration() + 5*time.Minute
 		if saveErr := store.SaveLiveCall(ctx, record, mappingTTL); saveErr != nil {
+			// A successful upstream response followed by a Redis write failure
+			// is also uncertain. Retry once with a detached timeout and, if the
+			// mapping remains unavailable, settle the request-only reservation
+			// rather than leaving an unrecoverable pending hold.
+			recoveryCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), liveRedisOperationTimeout)
+			recoveryErr := store.SaveLiveCall(recoveryCtx, record, mappingTTL)
+			cancel()
+			if recoveryErr == nil {
+				go s.observeLiveCall(record)
+				return nil, fmt.Errorf("save live call mapping: %w", saveErr)
+			}
 			s.releaseLiveLease(account.ID, identity.FundingUserID(), identity.APIKeyID, leaseID)
+			s.finalizeLivePolicyRequestOnly(ctx, recoveryErr)
 			return nil, fmt.Errorf("save live call mapping: %w", saveErr)
 		}
 		created.Account = account
@@ -254,6 +252,9 @@ func (s *OpenAIGatewayService) CreateLiveCall(
 }
 
 func (s *OpenAIGatewayService) shouldFailoverLiveCreateError(account *Account, err error) bool {
+	if errors.Is(err, ErrLiveUpstreamOutcomeUnknown) {
+		return false
+	}
 	var upstreamErr *UpstreamFailoverError
 	if !errors.As(err, &upstreamErr) {
 		// 凭证读取和网络传输错误都可能只影响当前账号或代理。
@@ -312,21 +313,43 @@ func (s *OpenAIGatewayService) createUpstreamLiveCall(
 	upstreamReq.Header.Set(liveAttestationHeader, attestation)
 	applyLiveUpstreamIdentityHeaders(upstreamReq.Header)
 
+	// From this boundary onward the request may already have reached the
+	// provider. Any transport or response-shape failure must therefore retain
+	// the reservation until it is recovered or explicitly settled.
+	MarkPolicyQuotaProviderStarted(ctx)
 	resp, err := s.doOpenAIUpstream(upstreamReq, resolveAccountProxyURL(account), account)
 	if err != nil {
 		logLiveCreateStageFailure(ctx, account.ID, "upstream_transport", err)
-		return nil, err
+		return nil, fmt.Errorf("%w: %v", ErrLiveUpstreamOutcomeUnknown, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode >= http.StatusBadRequest && resp.StatusCode < http.StatusInternalServerError {
+		MarkPolicyQuotaProviderRejected(ctx)
+	}
 	responseBody, readErr := io.ReadAll(io.LimitReader(resp.Body, liveUpstreamBodyLimit+1))
 	if readErr != nil {
-		return nil, readErr
+		if resp.StatusCode >= http.StatusBadRequest && resp.StatusCode < http.StatusInternalServerError {
+			return nil, &UpstreamFailoverError{
+				StatusCode:      resp.StatusCode,
+				ResponseHeaders: resp.Header.Clone(),
+			}
+		}
+		return nil, fmt.Errorf("%w: read response body: %v", ErrLiveUpstreamOutcomeUnknown, readErr)
 	}
 	if len(responseBody) > liveUpstreamBodyLimit {
-		return nil, errors.New("live upstream response is too large")
+		if resp.StatusCode >= http.StatusBadRequest && resp.StatusCode < http.StatusInternalServerError {
+			return nil, &UpstreamFailoverError{
+				StatusCode:      resp.StatusCode,
+				ResponseHeaders: resp.Header.Clone(),
+			}
+		}
+		return nil, fmt.Errorf("%w: live upstream response is too large", ErrLiveUpstreamOutcomeUnknown)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		logLiveUpstreamFailure(ctx, account.ID, resp.StatusCode, resp.Header, responseBody)
+		if resp.StatusCode < http.StatusBadRequest || resp.StatusCode >= http.StatusInternalServerError {
+			return nil, fmt.Errorf("%w: upstream status %d", ErrLiveUpstreamOutcomeUnknown, resp.StatusCode)
+		}
 		return nil, &UpstreamFailoverError{
 			StatusCode:      resp.StatusCode,
 			ResponseBody:    responseBody,
@@ -335,13 +358,88 @@ func (s *OpenAIGatewayService) createUpstreamLiveCall(
 	}
 	callID, err := liveCallIDFromLocation(resp.Header.Get("Location"))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %v", ErrLiveUpstreamOutcomeUnknown, err)
 	}
 	return &LiveCallCreated{
 		SDP:      responseBody,
 		CallID:   callID,
 		Location: resp.Header.Get("Location"),
 	}, nil
+}
+
+func (s *OpenAIGatewayService) newLiveCallRecord(
+	ctx context.Context,
+	account *Account,
+	request *LiveCallRequest,
+	identity LiveCallIdentity,
+	leaseID string,
+	attestationCiphertext string,
+	callID string,
+	recoveryOnly bool,
+	now time.Time,
+) *LiveCallRecord {
+	callID = strings.TrimSpace(callID)
+	if callID == "" {
+		callID = "recovery-" + uuid.NewString()
+	}
+	model := strings.TrimSpace(gjson.GetBytes(request.Session, "model").String())
+	if model == "" {
+		model = "gpt-live"
+	}
+	record := &LiveCallRecord{
+		BudgetReservationID:      identity.BudgetReservationID,
+		PolicyQuotaReservationID: PolicyQuotaReservationIDFromContext(ctx),
+		RecoveryOnly:             recoveryOnly,
+		CallID:                   callID,
+		CallHash:                 hashLiveCallID(callID),
+		AccountID:                account.ID,
+		APIKeyID:                 identity.APIKeyID,
+		UserID:                   identity.UserID,
+		ServiceAccountID:         identity.ServiceAccountID,
+		WorkspaceID:              identity.WorkspaceID,
+		ProjectID:                identity.ProjectID,
+		BillingPrincipalUserID:   identity.BillingPrincipalUserID,
+		GroupID:                  liveGroupID(identity.GroupID),
+		SubscriptionID:           liveGroupID(identity.SubscriptionID),
+		LeaseID:                  leaseID,
+		Model:                    model,
+		CreatedAt:                now,
+		ExpiresAt:                now.Add(s.liveMaxSessionDuration()),
+		Controller:               LiveControllerPending,
+		UserAgent:                identity.UserAgent,
+		IPAddress:                identity.IPAddress,
+		InboundEndpoint:          identity.InboundEndpoint,
+		AttestationCiphertext:    attestationCiphertext,
+	}
+	if policyQuota := PolicyQuotaReservationFromContext(ctx); policyQuota != nil {
+		record.PolicyQuotaEstimatedTokens = policyQuota.EstimatedTokens()
+	}
+	return record
+}
+
+func (s *OpenAIGatewayService) persistLiveRecoveryRecord(ctx context.Context, record *LiveCallRecord) error {
+	if record == nil {
+		return ErrLiveUnavailable
+	}
+	store, err := s.liveStore()
+	if err != nil {
+		return err
+	}
+	storeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), liveRedisOperationTimeout)
+	defer cancel()
+	return store.SaveLiveCall(storeCtx, record, s.liveMaxSessionDuration()+5*time.Minute)
+}
+
+func (s *OpenAIGatewayService) finalizeLivePolicyRequestOnly(ctx context.Context, cause error) {
+	handle := PolicyQuotaReservationFromContext(ctx)
+	if handle == nil || handle.Finalized() {
+		return
+	}
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), liveRedisOperationTimeout)
+	defer cancel()
+	if err := handle.FinalizeRequestOnly(cleanupCtx); err != nil {
+		logger.FromContext(ctx).Error("live policy quota recovery settlement failed", zap.String("reservation_id", handle.ID()), zap.Error(err), zap.Error(cause))
+	}
 }
 
 func logLiveCreateStageFailure(ctx context.Context, accountID int64, stage string, err error) {
@@ -622,6 +720,10 @@ func (s *OpenAIGatewayService) observeLiveCall(record *LiveCallRecord) {
 	if record == nil {
 		return
 	}
+	if record.RecoveryOnly {
+		s.finalizeLiveCallAfterExpiry(record)
+		return
+	}
 	store, err := s.liveStore()
 	if err != nil {
 		return
@@ -811,6 +913,32 @@ func (s *OpenAIGatewayService) finalizeLiveCall(record *LiveCallRecord) {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), liveRedisOperationTimeout)
+	controller, err := store.GetLiveController(ctx, record.CallHash)
+	cancel()
+	if err != nil || controller == LiveControllerClosed {
+		return
+	}
+	if reservationID := strings.TrimSpace(record.PolicyQuotaReservationID); reservationID != "" {
+		if s.policyQuotaService == nil {
+			logger.FromContext(context.Background()).Error(
+				"live policy quota finalize unavailable",
+				zap.String("reservation_id", reservationID),
+			)
+			return
+		}
+		if err := s.policyQuotaService.Finalize(context.Background(), reservationID, record.PolicyQuotaEstimatedTokens); err != nil {
+			// Keep the Redis record pending until quota settlement succeeds. The
+			// quota mutation is idempotent, so a later observer/recovery attempt can
+			// retry safely without releasing the lease or duplicating usage.
+			logger.FromContext(context.Background()).Error(
+				"live policy quota finalize failed",
+				zap.String("reservation_id", reservationID),
+				zap.Error(err),
+			)
+			return
+		}
+	}
+	ctx, cancel = context.WithTimeout(context.Background(), liveRedisOperationTimeout)
 	first, err := store.MarkLiveCallClosed(ctx, record.CallHash, liveClosedRecordTTL)
 	cancel()
 	if err != nil || !first {

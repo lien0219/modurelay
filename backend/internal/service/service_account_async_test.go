@@ -38,3 +38,17 @@ func TestHumanVideoOwnershipKeyUnchanged(t *testing.T) {
 	require.NotEqual(t, GrokMediaVideoRequestSessionHash("task", 31, 9), GrokMediaVideoRequestSessionHash("task", -31, 9))
 	require.NotEmpty(t, GrokMediaVideoRequestSessionHash("task", -31, 9))
 }
+
+func TestGrokVideoPendingBillingPreservesPolicyQuotaReservationSnapshot(t *testing.T) {
+	pending := GrokVideoPendingBilling{
+		RequestID:                  "seedance:task-1",
+		PolicyQuotaReservationID:   "quota-reservation-1",
+		PolicyQuotaEstimatedTokens: 321,
+	}
+	payload, err := json.Marshal(pending)
+	require.NoError(t, err)
+	var decoded GrokVideoPendingBilling
+	require.NoError(t, json.Unmarshal(payload, &decoded))
+	require.Equal(t, pending.PolicyQuotaReservationID, decoded.PolicyQuotaReservationID)
+	require.Equal(t, pending.PolicyQuotaEstimatedTokens, decoded.PolicyQuotaEstimatedTokens)
+}

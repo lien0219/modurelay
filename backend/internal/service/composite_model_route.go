@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
@@ -33,13 +34,19 @@ type CompositeModelOwnership struct {
 	TargetPlatform string
 	Matched        bool
 	Ambiguous      bool
+	// Platforms preserves the concrete platform candidates when the same
+	// public model is explicitly mapped by more than one platform. It lets a
+	// policy filter select a unique allowed candidate without guessing when
+	// multiple candidates remain.
+	Platforms []string
 }
 
 type CompositeModelOwnershipResolver func(context.Context, int64, string) (CompositeModelOwnership, error)
 
 var (
-	ErrCompositeRouteNotFound = infraerrors.NotFound("COMPOSITE_ROUTE_NOT_FOUND", "composite route not found")
-	ErrCompositeRouteExists   = infraerrors.Conflict("COMPOSITE_ROUTE_EXISTS", "composite route already exists")
+	ErrCompositeRouteNotFound     = infraerrors.NotFound("COMPOSITE_ROUTE_NOT_FOUND", "composite route not found")
+	ErrCompositeRouteExists       = infraerrors.Conflict("COMPOSITE_ROUTE_EXISTS", "composite route already exists")
+	ErrCompositeRoutePolicyDenied = errors.New("composite route denied by effective policy")
 )
 
 // CompositeModelRoute maps one public model identifier in a composite group to
@@ -66,6 +73,7 @@ type CompositeRoutePreviewRequest struct {
 
 type CompositeRouteDecision struct {
 	Matched        bool                 `json:"matched"`
+	PolicyDenied   bool                 `json:"-"`
 	Source         string               `json:"source"`
 	GroupID        int64                `json:"group_id"`
 	PublicModel    string               `json:"public_model"`

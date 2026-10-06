@@ -23,6 +23,12 @@ func (r *CompositeRouteResolver) SetModelOwnershipResolver(resolver CompositeMod
 }
 
 func (r *CompositeRouteResolver) Resolve(ctx context.Context, groupID int64, model, endpoint string) (CompositeRouteDecision, error) {
+	return r.ResolveAllowed(ctx, groupID, model, endpoint, nil)
+}
+
+// ResolveAllowed filters concrete route candidates before priority selection.
+// A nil predicate preserves the legacy unrestricted behavior.
+func (r *CompositeRouteResolver) ResolveAllowed(ctx context.Context, groupID int64, model, endpoint string, allowPlatform func(string) bool) (CompositeRouteDecision, error) {
 	model = strings.TrimSpace(model)
 	endpoint = normalizeCompositeRouteEndpoint(endpoint)
 	decision := CompositeRouteDecision{
@@ -40,6 +46,16 @@ func (r *CompositeRouteResolver) Resolve(ctx context.Context, groupID int64, mod
 		if err != nil {
 			return decision, fmt.Errorf("list composite routes: %w", err)
 		}
+		matchedRoute, hadMatch := matchCompositeRoute(routes, model, endpoint)
+		if allowPlatform != nil {
+			allowedRoutes := make([]CompositeModelRoute, 0, len(routes))
+			for _, route := range routes {
+				if allowPlatform(strings.TrimSpace(route.TargetPlatform)) {
+					allowedRoutes = append(allowedRoutes, route)
+				}
+			}
+			routes = allowedRoutes
+		}
 		if route, ok := matchCompositeRoute(routes, model, endpoint); ok {
 			upstreamModel := strings.TrimSpace(route.UpstreamModel)
 			if upstreamModel == "" {
@@ -56,6 +72,12 @@ func (r *CompositeRouteResolver) Resolve(ctx context.Context, groupID int64, mod
 				Route:          &route,
 			}, nil
 		}
+		if hadMatch && allowPlatform != nil {
+			decision.PolicyDenied = true
+			decision.TargetPlatform = strings.TrimSpace(matchedRoute.TargetPlatform)
+			decision.Reason = "all matching composite routes are denied by platform policy"
+			return decision, nil
+		}
 	}
 
 	if r != nil && r.modelOwnershipResolver != nil && groupID > 0 {
@@ -67,12 +89,45 @@ func (r *CompositeRouteResolver) Resolve(ctx context.Context, groupID int64, mod
 				return decision, fmt.Errorf("resolve account model ownership: %w", err)
 			}
 		} else if ownership.Ambiguous {
+			if allowPlatform != nil {
+				allowedPlatforms := make([]string, 0, len(ownership.Platforms))
+				for _, platform := range ownership.Platforms {
+					if allowPlatform(strings.TrimSpace(platform)) {
+						allowedPlatforms = append(allowedPlatforms, strings.TrimSpace(platform))
+					}
+				}
+				if len(allowedPlatforms) == 1 {
+					return CompositeRouteDecision{
+						Matched:        true,
+						Source:         CompositeRouteSourceAccount,
+						GroupID:        groupID,
+						PublicModel:    model,
+						TargetPlatform: allowedPlatforms[0],
+						UpstreamModel:  model,
+						Endpoint:       endpoint,
+					}, nil
+				}
+				if len(allowedPlatforms) == 0 {
+					decision.PolicyDenied = true
+					if len(ownership.Platforms) > 0 {
+						decision.TargetPlatform = ownership.Platforms[0]
+					}
+					decision.Reason = "all ambiguous model ownership platforms are denied by policy"
+					return decision, nil
+				}
+			}
 			decision.Reason = "model is exposed by multiple provider platforms"
 			return decision, nil
 		} else if ownership.Matched {
 			platform := strings.TrimSpace(ownership.TargetPlatform)
 			if !isConcreteRequestPlatform(platform) {
 				decision.Reason = "account model ownership has no concrete target platform"
+				return decision, nil
+			}
+			if allowPlatform != nil && !allowPlatform(platform) {
+				decision.PolicyDenied = true
+				decision.TargetPlatform = platform
+				decision.Reason = "account model platform is denied by policy"
 				return decision, nil
 			}
 			return CompositeRouteDecision{
@@ -88,6 +143,12 @@ func (r *CompositeRouteResolver) Resolve(ctx context.Context, groupID int64, mod
 	}
 
 	if platform, ok := DetectModelPlatform(model); ok {
+		if allowPlatform != nil && !allowPlatform(platform) {
+			decision.PolicyDenied = true
+			decision.TargetPlatform = platform
+			decision.Reason = "detected model platform is denied by policy"
+			return decision, nil
+		}
 		return CompositeRouteDecision{
 			Matched:        true,
 			Source:         CompositeRouteSourceDetector,

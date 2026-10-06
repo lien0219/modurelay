@@ -87,6 +87,22 @@ func TestDomainEventCopiesScalarInputAndPreservesV1Scope(t *testing.T) {
 	require.NotEqual(t, event.ID, other.ID)
 }
 
+func TestQuotaEventsAreVisibleAndUseQuotaPresentation(t *testing.T) {
+	for _, eventType := range []string{EventQuotaThreshold, EventQuotaExhausted} {
+		event, err := NewDomainEvent(eventType, 11, 13, 0, "policy_quota", "workspace:11", DomainEventData{
+			"scope_type": "workspace", "scope_id": int64(11), "policy_revision": int64(3),
+			"period_start": "2026-10-06", "period_end": "2026-10-07", "quota_type": "tokens",
+			"threshold": int64(80), "used": int64(80), "limit": int64(100),
+		})
+		require.NoError(t, err)
+		require.True(t, IsWorkspaceVisibleEvent(event.Type))
+		category, title, body := notificationPresentation(event.Type)
+		require.Equal(t, "quota", category)
+		require.Equal(t, "notifications.quota.title", title)
+		require.Equal(t, "notifications.quota.body", body)
+	}
+}
+
 func dataWithoutCredentials() DomainEventData { return DomainEventData{"key_id": int64(17)} }
 
 type eventDispatcherOutboxStub struct {

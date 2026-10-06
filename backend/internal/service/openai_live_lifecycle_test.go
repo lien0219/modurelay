@@ -310,6 +310,135 @@ func TestFinalizeLiveCallIsIdempotentAndWritesZeroUsage(t *testing.T) {
 	require.Zero(t, log.ActualCost)
 }
 
+func TestFinalizeLiveCallSettlesPolicyQuotaReservationOnce(t *testing.T) {
+	record := &LiveCallRecord{
+		CallID:                     "call_policy_quota",
+		CallHash:                   hashLiveCallID("call_policy_quota"),
+		AccountID:                  11,
+		APIKeyID:                   22,
+		UserID:                     33,
+		LeaseID:                    "lease-policy",
+		PolicyQuotaReservationID:   "live-policy-reservation",
+		PolicyQuotaEstimatedTokens: 37,
+		Controller:                 LiveControllerPending,
+	}
+	store := &liveTestStore{}
+	require.NoError(t, store.SaveLiveCall(context.Background(), record, time.Hour))
+	quotaRepo := &policyQuotaRepositoryFake{}
+	quotaService := NewPolicyQuotaService(quotaRepo)
+	service := &OpenAIGatewayService{
+		cache:              store,
+		concurrencyService: NewConcurrencyService(&liveTestConcurrencyCache{}),
+		policyQuotaService: quotaService,
+	}
+
+	service.finalizeLiveCall(record)
+	service.finalizeLiveCall(record)
+
+	quotaRepo.mu.Lock()
+	defer quotaRepo.mu.Unlock()
+	require.Equal(t, []int64{37}, quotaRepo.finalize)
+}
+
+func TestFinalizeLiveCallKeepsRecordRetryableWhenPolicyQuotaSettlementFails(t *testing.T) {
+	record := &LiveCallRecord{
+		CallID:                     "call_policy_quota_retry",
+		CallHash:                   hashLiveCallID("call_policy_quota_retry"),
+		AccountID:                  11,
+		APIKeyID:                   22,
+		UserID:                     33,
+		LeaseID:                    "lease-policy-retry",
+		PolicyQuotaReservationID:   "live-policy-retry",
+		PolicyQuotaEstimatedTokens: 37,
+		Controller:                 LiveControllerPending,
+	}
+	store := &liveTestStore{}
+	require.NoError(t, store.SaveLiveCall(context.Background(), record, time.Hour))
+	quotaRepo := &policyQuotaRepositoryFake{finalizeErrs: []error{
+		errors.New("temporary database failure"),
+		errors.New("temporary database failure"),
+		errors.New("temporary database failure"),
+		nil,
+	}}
+	quotaService := NewPolicyQuotaService(quotaRepo)
+	concurrencyCache := &liveTestConcurrencyCache{}
+	usageRepo := &liveTestUsageRepo{}
+	service := &OpenAIGatewayService{
+		cache:              store,
+		concurrencyService: NewConcurrencyService(concurrencyCache),
+		policyQuotaService: quotaService,
+		usageLogRepo:       usageRepo,
+	}
+
+	service.finalizeLiveCall(record)
+
+	loaded, err := store.GetLiveCall(context.Background(), record.CallHash)
+	require.NoError(t, err)
+	require.Equal(t, LiveControllerPending, loaded.Controller, "failed quota settlement must leave the Live record retryable")
+	concurrencyCache.mu.Lock()
+	require.Zero(t, concurrencyCache.releases, "failed quota settlement must retain the lease for retry")
+	concurrencyCache.mu.Unlock()
+	usageRepo.mu.Lock()
+	require.Empty(t, usageRepo.logs, "failed quota settlement must not emit usage")
+	usageRepo.mu.Unlock()
+
+	service.finalizeLiveCall(record)
+
+	loaded, err = store.GetLiveCall(context.Background(), record.CallHash)
+	require.NoError(t, err)
+	require.Equal(t, LiveControllerClosed, loaded.Controller)
+	concurrencyCache.mu.Lock()
+	require.Equal(t, 1, concurrencyCache.releases)
+	concurrencyCache.mu.Unlock()
+	quotaRepo.mu.Lock()
+	require.Equal(t, []int64{37}, quotaRepo.finalize)
+	quotaRepo.mu.Unlock()
+	usageRepo.mu.Lock()
+	require.Len(t, usageRepo.logs, 1)
+	usageRepo.mu.Unlock()
+}
+
+func TestLiveRecoveryRecordFinalizesPolicyQuotaAfterLeaseWindow(t *testing.T) {
+	store := &liveTestStore{}
+	quotaRepo := &policyQuotaRepositoryFake{}
+	quotaService := NewPolicyQuotaService(quotaRepo)
+	handle := NewPolicyQuotaReservationHandle(quotaService, "live-recovery", 41)
+	ctx := WithPolicyQuotaReservation(context.Background(), handle)
+	service := &OpenAIGatewayService{
+		cache:              store,
+		concurrencyService: NewConcurrencyService(&liveTestConcurrencyCache{}),
+		policyQuotaService: quotaService,
+	}
+	account := &Account{ID: 11}
+	record := service.newLiveCallRecord(ctx, account, &LiveCallRequest{Session: json.RawMessage(`{"model":"gpt-live"}`)}, LiveCallIdentity{APIKeyID: 22, UserID: 33}, "lease-recovery", "", "", true, time.Now().Add(-time.Second))
+	record.ExpiresAt = time.Now().Add(-time.Second)
+	require.True(t, record.RecoveryOnly)
+	require.NoError(t, service.persistLiveRecoveryRecord(ctx, record))
+
+	service.finalizeLiveCallAfterExpiry(record)
+
+	quotaRepo.mu.Lock()
+	defer quotaRepo.mu.Unlock()
+	require.Equal(t, []int64{41}, quotaRepo.finalize)
+	require.False(t, handle.Finalized(), "recovery finalization uses the persisted reservation id")
+}
+
+func TestLiveRecoveryPersistenceFailureSettlesRequestOnly(t *testing.T) {
+	quotaRepo := &policyQuotaRepositoryFake{}
+	quotaService := NewPolicyQuotaService(quotaRepo)
+	handle := NewPolicyQuotaReservationHandle(quotaService, "live-recovery-fallback", 41)
+	handle.MarkProviderStarted()
+	ctx := WithPolicyQuotaReservation(context.Background(), handle)
+
+	service := &OpenAIGatewayService{}
+	service.finalizeLivePolicyRequestOnly(ctx, errors.New("redis unavailable"))
+
+	quotaRepo.mu.Lock()
+	defer quotaRepo.mu.Unlock()
+	require.Equal(t, []int64{0}, quotaRepo.finalize)
+	require.Empty(t, quotaRepo.releases)
+}
+
 func TestGetLiveCallForIdentityRejectsMismatchedCaller(t *testing.T) {
 	groupID := int64(44)
 	record := &LiveCallRecord{

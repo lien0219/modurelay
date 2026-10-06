@@ -205,9 +205,12 @@ func (s *GatewayService) resolveCompositeRouteDecision(ctx context.Context, grou
 			Endpoint:       normalizeCompositeRouteEndpoint(endpoint),
 		}, true, nil
 	}
-	decision, err := s.compositeResolver.Resolve(ctx, group.ID, requestedModel, endpoint)
+	decision, err := s.compositeResolver.ResolveAllowed(ctx, group.ID, requestedModel, endpoint, EffectivePolicyPlatformFilter(ctx))
 	if err != nil {
 		return decision, false, err
+	}
+	if decision.PolicyDenied {
+		return decision, false, ErrCompositeRoutePolicyDenied
 	}
 	return decision, decision.Matched, nil
 }

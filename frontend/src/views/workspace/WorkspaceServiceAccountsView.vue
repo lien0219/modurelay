@@ -9,6 +9,7 @@
         <header class="sa-heading">
           <div><h2>{{ account?.name || t('serviceAccounts.title') }}</h2><p>{{ account?.description || t('serviceAccounts.description') }}</p></div>
           <div class="sa-actions">
+            <RouterLink v-if="account && store.can('policy.read')" class="btn btn-secondary btn-sm" :to="`${serviceAccountPath}/policy`">{{ t('workspace.policySettings') }}</RouterLink>
             <button v-if="!accountId && canMutate('service_account.create')" class="btn btn-primary btn-sm" data-testid="sa-create" @click="openAccountForm()">{{ t('serviceAccounts.create') }}</button>
             <button v-if="account && canMutate('service_account.update')" class="btn btn-secondary btn-sm" data-testid="sa-edit" @click="openAccountForm(account)">{{ t('common.edit') }}</button>
             <button v-if="account && canMutate('service_account.disable')" class="btn btn-secondary btn-sm" @click="ask(account.status === 'active' ? 'disable' : 'enable')">{{ t(account.status === 'active' ? 'serviceAccounts.disable' : 'serviceAccounts.enable') }}</button>
@@ -99,7 +100,7 @@ import { useAppStore } from '@/stores/app'
 const { t, te, locale } = useI18n()
 const route = useRoute(), router = useRouter(), store = useWorkspaceStore(), app = useAppStore()
 const workspaceId = computed(() => Number(route.params.workspaceId)), projectId = computed(() => Number(route.params.projectId)), accountId = computed(() => Number(route.params.serviceAccountId) || 0)
-const projectPath = computed(() => `/workspaces/${workspaceId.value}/projects/${projectId.value}`), basePath = computed(() => `${projectPath.value}/service-accounts`)
+const projectPath = computed(() => `/workspaces/${workspaceId.value}/projects/${projectId.value}`), basePath = computed(() => `${projectPath.value}/service-accounts`), serviceAccountPath = computed(() => `${basePath.value}/${accountId.value}`)
 const canRead = computed(() => store.selectedWorkspaceId === workspaceId.value && store.can('service_account.read'))
 const project = ref<Project | null>(null), account = ref<ServiceAccount | null>(null), accounts = ref<ServiceAccount[]>([]), credentials = ref<ServiceAccountCredential[]>([]), overview = ref<WorkspaceOverview | null>(null), groups = ref<WorkspaceAvailableGroup[]>([])
 const loading = ref(false), saving = ref(false), loadError = ref(false), credentialError = ref(false), usageError = ref(false), groupError = ref(false), page = ref(1), pages = ref(1)

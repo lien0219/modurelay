@@ -17,8 +17,12 @@ import (
 )
 
 type liveHTTPUpstreamStub struct {
-	request *http.Request
-	body    []byte
+	request       *http.Request
+	body          []byte
+	statusCode    int
+	headers       http.Header
+	responseBody  string
+	responseError error
 }
 
 type liveAttestationStub struct {
@@ -46,12 +50,27 @@ func (s *liveHTTPUpstreamStub) Do(
 		return nil, err
 	}
 	s.body = body
+	if s.responseError != nil {
+		return nil, s.responseError
+	}
+	statusCode := s.statusCode
+	if statusCode == 0 {
+		statusCode = http.StatusOK
+	}
+	headers := s.headers
+	if headers == nil {
+		headers = http.Header{"Location": {"/backend-api/codex/call_test"}}
+	} else {
+		headers = headers.Clone()
+	}
+	responseBody := s.responseBody
+	if responseBody == "" {
+		responseBody = "v=0\r\n"
+	}
 	return &http.Response{
-		StatusCode: http.StatusOK,
-		Header: http.Header{
-			"Location": {"/backend-api/codex/call_test"},
-		},
-		Body: io.NopCloser(strings.NewReader("v=0\r\n")),
+		StatusCode: statusCode,
+		Header:     headers,
+		Body:       io.NopCloser(strings.NewReader(responseBody)),
 	}, nil
 }
 
@@ -140,6 +159,85 @@ func TestCreateUpstreamLiveCallPreservesSession(t *testing.T) {
 	require.Empty(t, upstream.request.Header.Get("OpenAI-Beta"))
 	require.Equal(t, HTTPUpstreamProfileOpenAI, HTTPUpstreamProfileFromContext(upstream.request.Context()))
 	require.True(t, HTTPUpstreamRedirectsDisabled(upstream.request.Context()))
+}
+
+func TestCreateUpstreamLiveCallMarksPolicyProviderAfterSuccess(t *testing.T) {
+	upstream := &liveHTTPUpstreamStub{}
+	quota := NewPolicyQuotaService(&policyQuotaRepositoryFake{})
+	handle := NewPolicyQuotaReservationHandle(quota, "live-provider", 19)
+	ctx := WithPolicyQuotaReservation(context.Background(), handle)
+	service := &OpenAIGatewayService{
+		cfg:          &config.Config{},
+		httpUpstream: upstream,
+	}
+	account := &Account{
+		ID:          7,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Concurrency: 2,
+		Credentials: map[string]any{"access_token": "test-access-token", "chatgpt_account_id": "acct_test"},
+	}
+
+	_, err := service.createUpstreamLiveCall(ctx, account, &LiveCallRequest{
+		SDP:     "v=offer\r\n",
+		Session: json.RawMessage(`{"model":"gpt-live-test"}`),
+	}, `{"v":1,"s":0,"t":"v1.test"}`)
+	require.NoError(t, err)
+	require.True(t, handle.ProviderStarted())
+}
+
+func TestCreateUpstreamLiveCallTreatsMissingLocationAsUnknown(t *testing.T) {
+	upstream := &liveHTTPUpstreamStub{headers: http.Header{}}
+	quota := NewPolicyQuotaService(&policyQuotaRepositoryFake{})
+	handle := NewPolicyQuotaReservationHandle(quota, "live-provider-unknown", 19)
+	ctx := WithPolicyQuotaReservation(context.Background(), handle)
+	service := &OpenAIGatewayService{
+		cfg:          &config.Config{},
+		httpUpstream: upstream,
+	}
+	account := &Account{
+		ID:          7,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Concurrency: 2,
+		Credentials: map[string]any{"access_token": "test-access-token", "chatgpt_account_id": "acct_test"},
+	}
+
+	created, err := service.createUpstreamLiveCall(ctx, account, &LiveCallRequest{
+		SDP:     "v=offer\r\n",
+		Session: json.RawMessage(`{"model":"gpt-live-test"}`),
+	}, `{"v":1,"s":0,"t":"v1.test"}`)
+	require.Nil(t, created)
+	require.ErrorIs(t, err, ErrLiveUpstreamOutcomeUnknown)
+	require.True(t, handle.ProviderStarted(), "a 2xx response without a call id is not a safe pre-provider failure")
+}
+
+func TestCreateUpstreamLiveCallMarksDefinitive4xxAsRejected(t *testing.T) {
+	upstream := &liveHTTPUpstreamStub{statusCode: http.StatusBadRequest, responseBody: `{"error":"invalid session"}`}
+	quota := NewPolicyQuotaService(&policyQuotaRepositoryFake{})
+	handle := NewPolicyQuotaReservationHandle(quota, "live-provider-rejected", 19)
+	ctx := WithPolicyQuotaReservation(context.Background(), handle)
+	service := &OpenAIGatewayService{
+		cfg:          &config.Config{},
+		httpUpstream: upstream,
+	}
+	account := &Account{
+		ID:          7,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Concurrency: 2,
+		Credentials: map[string]any{"access_token": "test-access-token", "chatgpt_account_id": "acct_test"},
+	}
+
+	_, err := service.createUpstreamLiveCall(ctx, account, &LiveCallRequest{
+		SDP:     "v=offer\r\n",
+		Session: json.RawMessage(`{"model":"gpt-live-test"}`),
+	}, `{"v":1,"s":0,"t":"v1.test"}`)
+	var upstreamErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &upstreamErr)
+	require.Equal(t, http.StatusBadRequest, upstreamErr.StatusCode)
+	require.True(t, handle.ProviderStarted())
+	require.True(t, handle.ProviderRejected())
 }
 
 func TestLiveAttestationCipherRoundTripAndRejectsOtherInstanceKey(t *testing.T) {

@@ -45,6 +45,8 @@ func insertWorkspaceMutationEvent(ctx context.Context, q workspaceSQL, workspace
 		eventType = service.EventMemberRemoved
 	case "budget_updated":
 		eventType = service.EventBudgetUpdated
+	case "policy_updated":
+		eventType = service.EventPolicyUpdated
 	default:
 		return nil
 	}

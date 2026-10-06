@@ -27,6 +27,8 @@ type VideoUsageSettlement struct {
 	QuotaPlatform              string               `json:"quota_platform,omitempty"`
 	LogOnly                    bool                 `json:"log_only,omitempty"`
 	SimpleModeKeyRateLimitOnly bool                 `json:"simple_mode_key_rate_limit_only,omitempty"`
+	PolicyQuotaReservationID   string               `json:"policy_quota_reservation_id,omitempty"`
+	PolicyQuotaEstimatedTokens int64                `json:"policy_quota_estimated_tokens,omitempty"`
 }
 
 type GrokVideoSettlementPreparer interface {
@@ -89,6 +91,22 @@ func (s *OpenAIGatewayService) invalidateSettledVideoCaches(ctx context.Context,
 }
 
 func (s *OpenAIGatewayService) finalizeSettledVideoUsage(ctx context.Context, input *OpenAIRecordUsageInput, groupID int64) error {
+	taskID := videoUsageTaskID(ctx, input)
+	if taskID != "" {
+		pending, err := s.LoadGrokVideoPendingBilling(ctx, taskID, videoSettlementOwnershipID(input), input.APIKey.ID)
+		if err != nil {
+			return err
+		}
+		if pending != nil && pending.Settlement != nil {
+			if err := s.finalizeGrokVideoPolicyQuotaUsage(ctx, pending, nil, pending.Settlement.UsageLog); err != nil {
+				return err
+			}
+		} else if pending != nil {
+			if err := s.finalizeGrokVideoPolicyQuotaUsage(ctx, pending, nil, nil); err != nil {
+				return err
+			}
+		}
+	}
 	if groupID == 0 && input.APIKey.GroupID != nil {
 		groupID = *input.APIKey.GroupID
 	}
@@ -209,6 +227,8 @@ func (s *OpenAIGatewayService) prepareVideoUsageSettlement(ctx context.Context, 
 		return nil, errors.New("video settlement ownership mismatch")
 	}
 	pending.Settlement = settlement
+	settlement.PolicyQuotaReservationID = pending.PolicyQuotaReservationID
+	settlement.PolicyQuotaEstimatedTokens = pending.PolicyQuotaEstimatedTokens
 	payload, err := json.Marshal(pending)
 	if err != nil {
 		return nil, err
@@ -297,6 +317,15 @@ func (s *OpenAIGatewayService) recordVideoUsageSettlement(ctx context.Context, i
 				return err
 			}
 			s.deferredService.ScheduleLastUsedUpdate(input.Account.ID)
+		}
+	}
+	if settlement.PolicyQuotaReservationID != "" {
+		pending := &GrokVideoPendingBilling{
+			PolicyQuotaReservationID:   settlement.PolicyQuotaReservationID,
+			PolicyQuotaEstimatedTokens: settlement.PolicyQuotaEstimatedTokens,
+		}
+		if err := s.finalizeGrokVideoPolicyQuotaUsage(ctx, pending, input.Result, settlement.UsageLog); err != nil {
+			return err
 		}
 	}
 	return s.completeVideoRecovery(ctx, grokVideoPendingBillingKey(videoUsageTaskID(ctx, input), videoSettlementOwnershipID(input), input.APIKey.ID))

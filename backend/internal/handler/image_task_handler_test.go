@@ -21,6 +21,45 @@ type asyncImageMemoryStore struct {
 	tasks map[string]*service.ImageTaskRecord
 }
 
+type asyncImagePolicyQuotaRepo struct {
+	mu        sync.Mutex
+	finalized []int64
+	released  int
+}
+
+func (r *asyncImagePolicyQuotaRepo) Reserve(_ context.Context, req service.PolicyQuotaReservationRequest) (*service.PolicyQuotaReservation, error) {
+	return &service.PolicyQuotaReservation{
+		ID:              "async-image-policy",
+		RequestID:       req.RequestID,
+		APIKeyID:        req.APIKeyID,
+		WorkspaceID:     req.WorkspaceID,
+		ProjectID:       req.ProjectID,
+		EstimatedTokens: req.EstimatedTokens,
+		RequestUnits:    req.RequestUnits,
+		Status:          service.PolicyQuotaReservationPending,
+	}, nil
+}
+
+func (r *asyncImagePolicyQuotaRepo) Finalize(_ context.Context, _ string, tokens int64) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.finalized = append(r.finalized, tokens)
+	return nil
+}
+
+func (r *asyncImagePolicyQuotaRepo) Release(_ context.Context, _ string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.released++
+	return nil
+}
+
+func (r *asyncImagePolicyQuotaRepo) snapshot() ([]int64, int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]int64(nil), r.finalized...), r.released
+}
+
 func (s *asyncImageMemoryStore) Save(_ context.Context, task *service.ImageTaskRecord, _ time.Duration) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -126,6 +165,45 @@ func TestAsyncImageTenantRequiresBudgetBeforeAcceptance(t *testing.T) {
 	store.mu.RLock()
 	defer store.mu.RUnlock()
 	require.Empty(t, store.tasks, "a 202 must not be issued before durable budget admission")
+}
+
+func TestAsyncImagePolicyQuotaCleanupReleasesBeforeProviderStarts(t *testing.T) {
+	repo := &asyncImagePolicyQuotaRepo{}
+	quota := service.NewPolicyQuotaService(repo)
+	handle := service.NewPolicyQuotaReservationHandle(quota, "async-image-policy", 17)
+
+	cleanupAsyncImagePolicyQuota(context.Background(), handle, http.StatusBadRequest)
+
+	finalized, released := repo.snapshot()
+	require.Empty(t, finalized)
+	require.Equal(t, 1, released)
+}
+
+func TestAsyncImagePolicyQuotaCleanupFinalizesProviderRejection(t *testing.T) {
+	repo := &asyncImagePolicyQuotaRepo{}
+	quota := service.NewPolicyQuotaService(repo)
+	handle := service.NewPolicyQuotaReservationHandle(quota, "async-image-policy", 17)
+	handle.MarkProviderStarted()
+
+	cleanupAsyncImagePolicyQuota(context.Background(), handle, http.StatusBadRequest)
+
+	finalized, released := repo.snapshot()
+	require.Equal(t, []int64{0}, finalized)
+	require.Zero(t, released)
+}
+
+func TestAsyncImagePolicyQuotaCleanupPreservesUncertainProviderOutcome(t *testing.T) {
+	repo := &asyncImagePolicyQuotaRepo{}
+	quota := service.NewPolicyQuotaService(repo)
+	handle := service.NewPolicyQuotaReservationHandle(quota, "async-image-policy", 17)
+	handle.MarkProviderStarted()
+
+	cleanupAsyncImagePolicyQuota(context.Background(), handle, http.StatusBadGateway)
+
+	finalized, released := repo.snapshot()
+	require.Empty(t, finalized)
+	require.Zero(t, released)
+	require.True(t, handle.Durable())
 }
 
 // When object storage is not configured the feature is fully disabled: the
