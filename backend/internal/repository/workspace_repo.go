@@ -22,14 +22,14 @@ type workspaceSQL interface {
 }
 type workspaceScanner interface{ Scan(...any) error }
 
-const workspaceColumns = `id,name,slug,type,status,owner_user_id,billing_owner_user_id,created_at,updated_at`
+const workspaceColumns = `id,name,slug,type,status,project_access_mode,owner_user_id,billing_owner_user_id,created_at,updated_at`
 const projectColumns = `id,workspace_id,name,slug,description,status,is_default,created_by_user_id,allowed_group_ids,allowed_models,created_at,updated_at`
 const memberColumns = `id,workspace_id,user_id,role,status,invited_by_user_id,joined_at,created_at,updated_at`
 const invitationColumns = `id,workspace_id,email,role,invited_by_user_id,expires_at,accepted_at,revoked_at,created_at`
 
 func scanWorkspace(s workspaceScanner) (*service.Workspace, error) {
 	w := &service.Workspace{}
-	e := s.Scan(&w.ID, &w.Name, &w.Slug, &w.Type, &w.Status, &w.OwnerUserID, &w.BillingOwnerUserID, &w.CreatedAt, &w.UpdatedAt)
+	e := s.Scan(&w.ID, &w.Name, &w.Slug, &w.Type, &w.Status, &w.ProjectAccessMode, &w.OwnerUserID, &w.BillingOwnerUserID, &w.CreatedAt, &w.UpdatedAt)
 	return w, workspaceError(e)
 }
 func scanProject(s workspaceScanner) (*service.Project, error) {
@@ -84,6 +84,36 @@ func workspaceAccess(ctx context.Context, q workspaceSQL, a, w, p int64) (*servi
 		ac.Project, e = scanProject(q.QueryRowContext(ctx, `SELECT `+projectColumns+` FROM projects WHERE workspace_id=$1 AND id=$2`, w, p))
 		if e != nil {
 			return nil, e
+		}
+		// Project access is derived from the member's immutable workspace-member
+		// row and active team memberships in this same tenant-locked snapshot.
+		// A direct grant is an explicit override; otherwise the strongest active
+		// team grant applies. Owners/admins and billing retain the documented
+		// all-project compatibility semantics.
+		if m.Role == "owner" || m.Role == "admin" {
+			ac.ProjectRole = service.ProjectAccessRoleAdmin
+		} else if m.Role == "billing" {
+			ac.ProjectRole = service.ProjectAccessRoleViewer
+		} else if ws.ProjectAccessMode == service.ProjectAccessModeAssigned {
+			var direct sql.NullString
+			if e = q.QueryRowContext(ctx, `SELECT role FROM project_access_grants WHERE workspace_id=$1 AND project_id=$2 AND subject_type='member' AND subject_id=$3`, w, p, m.ID).Scan(&direct); e != nil && !errors.Is(e, sql.ErrNoRows) {
+				return nil, workspaceError(e)
+			}
+			if direct.Valid {
+				ac.ProjectRole = direct.String
+			} else {
+				var teamRole sql.NullString
+				e = q.QueryRowContext(ctx, `SELECT g.role FROM project_access_grants g JOIN workspace_team_members tm ON tm.workspace_id=g.workspace_id AND tm.team_id=g.subject_id AND tm.workspace_member_id=$3 JOIN workspace_teams t ON t.workspace_id=g.workspace_id AND t.id=g.subject_id AND t.status='active' WHERE g.workspace_id=$1 AND g.project_id=$2 AND g.subject_type='team' ORDER BY CASE g.role WHEN 'admin' THEN 3 WHEN 'developer' THEN 2 ELSE 1 END DESC, g.id DESC LIMIT 1`, w, p, m.ID).Scan(&teamRole)
+				if e != nil && !errors.Is(e, sql.ErrNoRows) {
+					return nil, workspaceError(e)
+				}
+				if teamRole.Valid {
+					ac.ProjectRole = teamRole.String
+				}
+			}
+		}
+		if ac.ProjectRole != "" {
+			ac.ProjectPermissions = service.ProjectRolePermissions(ac.ProjectRole)
 		}
 	}
 	ac.Permissions = service.WorkspaceEffectivePermissions(ac)

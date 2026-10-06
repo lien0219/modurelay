@@ -17,7 +17,7 @@ import (
 func legacyTenantReadPredicate(actor int64) predicate.APIKey {
 	return func(s *entsql.Selector) {
 		s.Where(entsql.Or(entsql.IsNull(s.C(apikey.FieldProjectID)), entsql.P(func(b *entsql.Builder) {
-			b.WriteString(`EXISTS(SELECT 1 FROM projects p JOIN workspaces w ON w.id=p.workspace_id JOIN workspace_members m ON m.workspace_id=w.id JOIN users u ON u.id=m.user_id WHERE p.id=api_keys.project_id AND m.user_id=`).Arg(actor).WriteString(` AND m.status='active' AND m.role IN ('owner','admin','developer') AND u.status='active' AND u.deleted_at IS NULL)`)
+			b.WriteString(`EXISTS(SELECT 1 FROM projects p JOIN workspaces w ON w.id=p.workspace_id JOIN workspace_members m ON m.workspace_id=w.id JOIN users u ON u.id=m.user_id WHERE p.id=api_keys.project_id AND m.user_id=`).Arg(actor).WriteString(` AND m.status='active' AND m.role IN ('owner','admin','developer') AND u.status='active' AND u.deleted_at IS NULL AND ` + projectAccessVisibilitySQL + `)`)
 		})))
 	}
 }
@@ -178,7 +178,9 @@ func (r *apiKeyRepository) ResolveTenant(ctx context.Context, k *service.APIKey)
 
 // Reads constrain membership, workspace, project and key in SQL, even if an
 // earlier service permission check saw a different membership state.
-const projectKeyReadWhere = ` FROM api_keys k JOIN projects p ON p.id=k.project_id JOIN workspaces w ON w.id=p.workspace_id JOIN workspace_members m ON m.workspace_id=w.id JOIN users u ON u.id=m.user_id WHERE m.user_id=$1 AND m.status='active' AND m.role IN ('owner','admin','developer') AND u.status='active' AND u.deleted_at IS NULL AND w.id=$2 AND p.id=$3 AND k.deleted_at IS NULL AND k.service_account_id IS NULL`
+const projectAccessVisibilitySQL = `(w.project_access_mode <> 'assigned_projects' OR m.role IN ('owner','admin','billing') OR EXISTS (SELECT 1 FROM project_access_grants g WHERE g.workspace_id=w.id AND g.project_id=p.id AND g.subject_type='member' AND g.subject_id=m.id) OR EXISTS (SELECT 1 FROM project_access_grants g JOIN workspace_team_members tm ON tm.workspace_id=g.workspace_id AND tm.team_id=g.subject_id AND tm.workspace_member_id=m.id JOIN workspace_teams t ON t.workspace_id=g.workspace_id AND t.id=g.subject_id AND t.status='active' WHERE g.workspace_id=w.id AND g.project_id=p.id AND g.subject_type='team'))`
+
+const projectKeyReadWhere = ` FROM api_keys k JOIN projects p ON p.id=k.project_id JOIN workspaces w ON w.id=p.workspace_id JOIN workspace_members m ON m.workspace_id=w.id JOIN users u ON u.id=m.user_id WHERE m.user_id=$1 AND m.status='active' AND u.status='active' AND u.deleted_at IS NULL AND w.id=$2 AND p.id=$3 AND ` + projectAccessVisibilitySQL + ` AND k.deleted_at IS NULL AND k.service_account_id IS NULL`
 
 const projectKeyColumns = `k.id,k.user_id,k.project_id,k.key,k.name,k.group_id,k.status,k.ip_whitelist,k.ip_blacklist,k.quota,k.quota_used,k.expires_at,k.rate_limit_5h,k.rate_limit_1d,k.rate_limit_7d,k.usage_5h,k.usage_1d,k.usage_7d,k.window_5h_start,k.window_1d_start,k.window_7d_start,k.last_used_at,k.created_at,k.updated_at`
 
@@ -264,7 +266,7 @@ func (r *apiKeyRepository) WithProjectKeyMutation(ctx context.Context, a, w, p i
 	if !active {
 		return service.ErrWorkspaceNotFound
 	}
-	rows, e = client.QueryContext(ctx, `SELECT w.status,p.status,m.role,m.status FROM workspaces w JOIN projects p ON p.workspace_id=w.id JOIN workspace_members m ON m.workspace_id=w.id WHERE w.id=$1 AND p.id=$2 AND m.user_id=$3 FOR UPDATE OF w`, w, p, a)
+	rows, e = client.QueryContext(ctx, `SELECT w.status,p.status,w.project_access_mode,m.id,m.role,m.status,COALESCE((SELECT g.role FROM project_access_grants g WHERE g.workspace_id=w.id AND g.project_id=p.id AND g.subject_type='member' AND g.subject_id=m.id),(SELECT g.role FROM project_access_grants g JOIN workspace_team_members tm ON tm.workspace_id=g.workspace_id AND tm.team_id=g.subject_id AND tm.workspace_member_id=m.id JOIN workspace_teams t ON t.workspace_id=g.workspace_id AND t.id=g.subject_id AND t.status='active' WHERE g.workspace_id=w.id AND g.project_id=p.id AND g.subject_type='team' ORDER BY CASE g.role WHEN 'admin' THEN 3 WHEN 'developer' THEN 2 ELSE 1 END DESC,g.id DESC LIMIT 1),'') FROM workspaces w JOIN projects p ON p.workspace_id=w.id JOIN workspace_members m ON m.workspace_id=w.id WHERE w.id=$1 AND p.id=$2 AND m.user_id=$3 FOR UPDATE OF w`, w, p, a)
 	if e != nil {
 		return e
 	}
@@ -272,12 +274,13 @@ func (r *apiKeyRepository) WithProjectKeyMutation(ctx context.Context, a, w, p i
 	if !rows.Next() {
 		return service.ErrWorkspaceNotFound
 	}
-	var ws, ps, role, ms string
-	if e = rows.Scan(&ws, &ps, &role, &ms); e != nil {
+	var ws, ps, mode, role, ms, grantRole string
+	var memberID int64
+	if e = rows.Scan(&ws, &ps, &mode, &memberID, &role, &ms, &grantRole); e != nil {
 		return e
 	}
 	_ = rows.Close()
-	ac := &service.WorkspaceAccess{Workspace: &service.Workspace{Status: ws}, Project: &service.Project{Status: ps}, Member: &service.WorkspaceMember{Role: role, Status: ms}}
+	ac := &service.WorkspaceAccess{Workspace: &service.Workspace{Status: ws, ProjectAccessMode: mode}, Project: &service.Project{Status: ps}, Member: &service.WorkspaceMember{ID: memberID, Role: role, Status: ms}, ProjectRole: grantRole, ProjectPermissions: service.ProjectRolePermissions(grantRole)}
 	if e = service.CheckWorkspacePermission(ac, permission); e != nil {
 		return e
 	}

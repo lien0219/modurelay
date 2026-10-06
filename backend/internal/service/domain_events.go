@@ -36,33 +36,42 @@ const (
 	EventServiceAccountCredentialExpiring = "service_account.credential.expiring"
 	EventServiceAccountCredentialExpired  = "service_account.credential.expired"
 
-	EventWorkspaceCreated   = "workspace.created"
-	EventWorkspaceUpdated   = "workspace.updated"
-	EventWorkspaceSuspended = "workspace.suspended"
-	EventWorkspaceResumed   = "workspace.resumed"
-	EventWorkspaceArchived  = "workspace.archived"
-	EventMemberInvited      = "member.invited"
-	EventMemberJoined       = "member.joined"
-	EventMemberRoleChanged  = "member.role_changed"
-	EventMemberSuspended    = "member.suspended"
-	EventMemberRemoved      = "member.removed"
-	EventProjectCreated     = "project.created"
-	EventProjectUpdated     = "project.updated"
-	EventProjectArchived    = "project.archived"
-	EventProjectRestored    = "project.restored"
-	EventAPIKeyCreated      = "api_key.created"
-	EventAPIKeyUpdated      = "api_key.updated"
-	EventAPIKeyRevoked      = "api_key.revoked"
-	EventBudgetThreshold    = "budget.threshold_reached"
-	EventBudgetSoftLimit    = "budget.soft_limit_exceeded"
-	EventBudgetHardLimit    = "budget.hard_limit_reached"
-	EventBudgetUpdated      = "budget.updated"
-	EventBillingPending     = "billing.settlement_pending"
-	EventBillingRecovered   = "billing.settlement_recovered"
-	EventQuotaThreshold     = "quota.threshold_reached"
-	EventQuotaExhausted     = "quota.exhausted"
-	EventPolicyUpdated      = "policy.updated"
-	EventWebhookTest        = "webhook.test"
+	EventWorkspaceCreated              = "workspace.created"
+	EventWorkspaceUpdated              = "workspace.updated"
+	EventWorkspaceSuspended            = "workspace.suspended"
+	EventWorkspaceResumed              = "workspace.resumed"
+	EventWorkspaceArchived             = "workspace.archived"
+	EventMemberInvited                 = "member.invited"
+	EventMemberJoined                  = "member.joined"
+	EventMemberRoleChanged             = "member.role_changed"
+	EventMemberSuspended               = "member.suspended"
+	EventMemberRemoved                 = "member.removed"
+	EventProjectCreated                = "project.created"
+	EventProjectUpdated                = "project.updated"
+	EventProjectArchived               = "project.archived"
+	EventProjectRestored               = "project.restored"
+	EventAPIKeyCreated                 = "api_key.created"
+	EventAPIKeyUpdated                 = "api_key.updated"
+	EventAPIKeyRevoked                 = "api_key.revoked"
+	EventBudgetThreshold               = "budget.threshold_reached"
+	EventBudgetSoftLimit               = "budget.soft_limit_exceeded"
+	EventBudgetHardLimit               = "budget.hard_limit_reached"
+	EventBudgetUpdated                 = "budget.updated"
+	EventBillingPending                = "billing.settlement_pending"
+	EventBillingRecovered              = "billing.settlement_recovered"
+	EventQuotaThreshold                = "quota.threshold_reached"
+	EventQuotaExhausted                = "quota.exhausted"
+	EventPolicyUpdated                 = "policy.updated"
+	EventWebhookTest                   = "webhook.test"
+	EventWorkspaceTeamCreated          = "workspace.team.created"
+	EventWorkspaceTeamUpdated          = "workspace.team.updated"
+	EventWorkspaceTeamArchived         = "workspace.team.archived"
+	EventWorkspaceTeamMemberAdded      = "workspace.team.member_added"
+	EventWorkspaceTeamMemberRemoved    = "workspace.team.member_removed"
+	EventWorkspaceProjectAccessCreated = "workspace.project_access.grant_created"
+	EventWorkspaceProjectAccessUpdated = "workspace.project_access.grant_updated"
+	EventWorkspaceProjectAccessDeleted = "workspace.project_access.grant_deleted"
+	EventWorkspaceProjectAccessMode    = "workspace.project_access_mode.updated"
 )
 
 var allowedDomainEventTypes = map[string]struct{}{
@@ -86,6 +95,10 @@ var allowedDomainEventTypes = map[string]struct{}{
 	EventBudgetSoftLimit: {}, EventBudgetHardLimit: {}, EventBudgetUpdated: {},
 	EventBillingPending: {}, EventBillingRecovered: {}, EventQuotaThreshold: {},
 	EventQuotaExhausted: {}, EventPolicyUpdated: {}, EventWebhookTest: {},
+	EventWorkspaceTeamCreated: {}, EventWorkspaceTeamUpdated: {}, EventWorkspaceTeamArchived: {},
+	EventWorkspaceTeamMemberAdded: {}, EventWorkspaceTeamMemberRemoved: {},
+	EventWorkspaceProjectAccessCreated: {}, EventWorkspaceProjectAccessUpdated: {}, EventWorkspaceProjectAccessDeleted: {},
+	EventWorkspaceProjectAccessMode: {},
 }
 
 type EventSubject struct {
@@ -108,6 +121,7 @@ var allowedDomainEventDataKeys = map[string]struct{}{
 	"reason_code": {}, "request_id": {}, "task_id": {}, "model": {},
 	"platform": {}, "previous_status": {}, "delivery_id": {}, "category": {},
 	"quota_type": {}, "period_end": {}, "used": {}, "limit": {},
+	"team_id": {}, "grant_id": {}, "subject_type": {}, "project_access_mode": {},
 }
 
 type DomainEvent struct {
@@ -225,7 +239,9 @@ func IsWorkspaceVisibleEvent(eventType string) bool {
 		EventProjectCreated, EventProjectUpdated, EventProjectArchived, EventProjectRestored,
 		EventAPIKeyCreated, EventAPIKeyUpdated, EventAPIKeyRevoked, EventPolicyUpdated, EventBudgetThreshold, EventBudgetSoftLimit,
 		EventBudgetHardLimit, EventBudgetUpdated, EventBillingPending, EventBillingRecovered, EventQuotaThreshold, EventQuotaExhausted,
-		EventWebhookTest:
+		EventWebhookTest,
+		EventWorkspaceTeamCreated, EventWorkspaceTeamUpdated, EventWorkspaceTeamArchived, EventWorkspaceTeamMemberAdded, EventWorkspaceTeamMemberRemoved,
+		EventWorkspaceProjectAccessCreated, EventWorkspaceProjectAccessUpdated, EventWorkspaceProjectAccessDeleted, EventWorkspaceProjectAccessMode:
 		return true
 	default:
 		return false
@@ -602,6 +618,10 @@ func notificationPresentation(eventType string) (category, titleKey, bodyKey str
 	case EventMemberInvited, EventMemberJoined, EventMemberRoleChanged, EventMemberSuspended, EventMemberRemoved:
 		return "workspace", "notifications.member.title", "notifications.member.body"
 	case EventProjectCreated, EventProjectUpdated, EventProjectArchived, EventProjectRestored:
+		return "project", "notifications.project.title", "notifications.project.body"
+	case EventWorkspaceTeamCreated, EventWorkspaceTeamUpdated, EventWorkspaceTeamArchived, EventWorkspaceTeamMemberAdded, EventWorkspaceTeamMemberRemoved:
+		return "workspace", "notifications.workspace.title", "notifications.workspace.body"
+	case EventWorkspaceProjectAccessCreated, EventWorkspaceProjectAccessUpdated, EventWorkspaceProjectAccessDeleted, EventWorkspaceProjectAccessMode:
 		return "project", "notifications.project.title", "notifications.project.body"
 	case EventPolicyUpdated:
 		return "policy", "notifications.policy.title", "notifications.policy.body"

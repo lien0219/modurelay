@@ -7,11 +7,61 @@ export interface Workspace {
   slug: string
   type: string
   status: string
+  project_access_mode?: 'all_projects' | 'assigned_projects' | string
   owner_user_id: number
   billing_owner_user_id: number
   created_at?: string
   updated_at?: string
   permissions: string[]
+}
+
+export type ProjectAccessMode = 'all_projects' | 'assigned_projects'
+export type ProjectAccessSubjectType = 'member' | 'team'
+export type ProjectAccessRole = 'viewer' | 'developer' | 'admin'
+
+export interface WorkspaceTeam {
+  id: number
+  workspace_id: number
+  name: string
+  slug: string
+  description: string
+  status: string
+  created_at?: string
+  updated_at?: string
+}
+
+export interface WorkspaceTeamMember {
+  team_id: number
+  workspace_member_id: number
+  user_id: number
+  role: string
+  status: string
+  email?: string
+  created_at?: string
+}
+
+export interface ProjectAccessGrant {
+  id: number
+  workspace_id: number
+  project_id: number
+  subject_type: ProjectAccessSubjectType
+  subject_id: number
+  role: ProjectAccessRole
+  created_by_user_id: number
+  created_at?: string
+  updated_at?: string
+}
+
+export interface WorkspaceTeamInput {
+  name: string
+  slug: string
+  description?: string
+}
+
+export interface ProjectAccessGrantInput {
+  subject_type: ProjectAccessSubjectType
+  subject_id: number
+  role: ProjectAccessRole
 }
 
 export interface Project {
@@ -199,6 +249,20 @@ export const workspaceAPI = {
   getWorkspace: async (workspaceId: number, signal?: AbortSignal) => (await apiClient.get<Workspace>(`/workspaces/${workspaceId}`, { signal })).data,
   updateWorkspace: async (workspaceId: number, payload: { name?: string; slug?: string; billing_owner_user_id?: number }) => (await apiClient.patch<Workspace>(`/workspaces/${workspaceId}`, payload)).data,
   archiveWorkspace: async (workspaceId: number) => (await apiClient.delete(`/workspaces/${workspaceId}`)).data,
+  updateProjectAccessMode: async (workspaceId: number, project_access_mode: ProjectAccessMode) => (await apiClient.patch<Workspace>(`/workspaces/${workspaceId}/project-access-mode`, { project_access_mode })).data,
+
+  listTeams: async (workspaceId: number, params?: PageParams) => (await apiClient.get<BasePaginationResponse<WorkspaceTeam>>(`/workspaces/${workspaceId}/teams`, pageConfig(params))).data,
+  createTeam: async (workspaceId: number, payload: WorkspaceTeamInput) => (await apiClient.post<WorkspaceTeam>(`/workspaces/${workspaceId}/teams`, payload)).data,
+  updateTeam: async (workspaceId: number, teamId: number, payload: WorkspaceTeamInput) => (await apiClient.patch<WorkspaceTeam>(`/workspaces/${workspaceId}/teams/${teamId}`, payload)).data,
+  archiveTeam: async (workspaceId: number, teamId: number) => (await apiClient.delete(`/workspaces/${workspaceId}/teams/${teamId}`)).data,
+  listTeamMembers: async (workspaceId: number, teamId: number, params?: PageParams) => (await apiClient.get<BasePaginationResponse<WorkspaceTeamMember>>(`/workspaces/${workspaceId}/teams/${teamId}/members`, pageConfig(params))).data,
+  addTeamMember: async (workspaceId: number, teamId: number, workspaceMemberId: number) => (await apiClient.post(`/workspaces/${workspaceId}/teams/${teamId}/members`, { workspace_member_id: workspaceMemberId })).data,
+  removeTeamMember: async (workspaceId: number, teamId: number, workspaceMemberId: number) => (await apiClient.delete(`/workspaces/${workspaceId}/teams/${teamId}/members/${workspaceMemberId}`)).data,
+
+  listProjectAccessGrants: async (workspaceId: number, projectId: number, params?: PageParams) => (await apiClient.get<BasePaginationResponse<ProjectAccessGrant>>(`/workspaces/${workspaceId}/projects/${projectId}/access-grants`, pageConfig(params))).data,
+  createProjectAccessGrant: async (workspaceId: number, projectId: number, payload: ProjectAccessGrantInput) => (await apiClient.post<ProjectAccessGrant>(`/workspaces/${workspaceId}/projects/${projectId}/access-grants`, payload)).data,
+  updateProjectAccessGrant: async (workspaceId: number, projectId: number, grantId: number, payload: ProjectAccessGrantInput) => (await apiClient.patch<ProjectAccessGrant>(`/workspaces/${workspaceId}/projects/${projectId}/access-grants/${grantId}`, payload)).data,
+  deleteProjectAccessGrant: async (workspaceId: number, projectId: number, grantId: number) => (await apiClient.delete(`/workspaces/${workspaceId}/projects/${projectId}/access-grants/${grantId}`)).data,
 
   listProjects: async (workspaceId: number, params?: PageParams) => (await apiClient.get<BasePaginationResponse<Project>>(`/workspaces/${workspaceId}/projects`, pageConfig(params))).data,
   createProject: async (workspaceId: number, payload: Partial<Project>) => (await apiClient.post<Project>(`/workspaces/${workspaceId}/projects`, payload)).data,

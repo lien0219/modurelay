@@ -255,6 +255,12 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, requiresAdmin: false, title: 'Project Keys', titleKey: 'workspace.keys', descriptionKey: 'workspace.keyDescription' }
   },
   {
+    path: '/workspaces/:workspaceId/projects/:projectId/access',
+    name: 'WorkspaceProjectAccess',
+    component: () => import('@/views/workspace/WorkspaceProjectAccessView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: false, title: 'Project access', titleKey: 'workspace.projectAccess', descriptionKey: 'workspace.projectAccessDescription' }
+  },
+  {
     path: '/workspaces/:workspaceId/projects/:projectId/policy',
     name: 'ProjectPolicy',
     component: () => import('@/views/workspace/WorkspacePolicyView.vue'),
@@ -277,6 +283,12 @@ const routes: RouteRecordRaw[] = [
     name: 'WorkspaceMembers',
     component: () => import('@/views/workspace/WorkspaceMembersView.vue'),
     meta: { requiresAuth: true, requiresAdmin: false, title: 'Workspace Members', titleKey: 'workspace.members', descriptionKey: 'workspace.membersDescription' }
+  },
+  {
+    path: '/workspaces/:workspaceId/teams',
+    name: 'WorkspaceTeams',
+    component: () => import('@/views/workspace/WorkspaceTeamsView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: false, title: 'Workspace Teams', titleKey: 'workspace.teamsTitle', descriptionKey: 'workspace.teamsDescription' }
   },
   {
     path: '/workspaces/:workspaceId/invitations',

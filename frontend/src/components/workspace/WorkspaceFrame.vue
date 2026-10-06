@@ -67,6 +67,7 @@ const tabs = computed(() => {
     ...(store.can('policy.read') ? [{ to: `/workspaces/${id}/policy`, label: t('workspace.policySettings') }] : []),
     { to: `/workspaces/${id}/projects`, label: t('workspace.projects') },
     { to: `/workspaces/${id}/members`, label: t('workspace.members') },
+    ...(store.can('team.read') ? [{ to: `/workspaces/${id}/teams`, label: t('workspace.teams') }] : []),
     { to: `/workspaces/${id}/invitations`, label: t('workspace.invitations') },
     { to: `/workspaces/${id}/finops`, label: t('workspace.finops') },
     { to: `/workspaces/${id}/audit`, label: t('workspace.audit') },

@@ -10,6 +10,7 @@
           </div>
           <div class="workspace-actions">
             <RouterLink v-if="store.can('policy.read')" class="btn btn-secondary btn-sm" :to="`/workspaces/${workspaceId}/projects/${projectId}/policy`">{{ t('workspace.policySettings') }}</RouterLink>
+            <RouterLink v-if="store.can('project_access.read')" class="btn btn-secondary btn-sm" :to="`/workspaces/${workspaceId}/projects/${projectId}/access`">{{ t('workspace.projectAccess') }}</RouterLink>
             <button v-if="store.can('key.create')" type="button" class="btn btn-primary btn-sm" @click="openCreateForm">{{ t('workspace.createKey') }}</button>
           </div>
         </div>

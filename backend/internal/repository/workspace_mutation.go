@@ -17,11 +17,15 @@ func (r *workspaceRepository) Mutate(ctx context.Context, a, w int64, m service.
 	if e = lockWorkspace(ctx, tx, w, true); e != nil {
 		return nil, e
 	}
-	ac, e := workspaceAccess(ctx, tx, a, w, 0)
+	projectScope := int64(0)
+	if m.Action == "project.update" || m.Action == "project.archive" {
+		projectScope = m.TargetID
+	}
+	ac, e := workspaceAccess(ctx, tx, a, w, projectScope)
 	if e != nil {
 		return nil, e
 	}
-	if e = service.CheckWorkspacePermission(ac, m.Action); e != nil {
+	if e = service.CheckWorkspacePermission(ac, service.WorkspaceMutationPermission(m)); e != nil {
 		return nil, e
 	}
 	out := &service.WorkspaceMutationResult{}
@@ -29,6 +33,13 @@ func (r *workspaceRepository) Mutate(ctx context.Context, a, w int64, m service.
 	var project *int64
 	meta := map[string]any{}
 	switch m.Action {
+	case "workspace.project_access_mode.update":
+		if ac.Workspace.Type == "personal" || !service.ValidProjectAccessMode(m.ProjectAccessMode) {
+			return nil, service.ErrWorkspaceInvalid
+		}
+		out.Workspace, e = scanWorkspace(tx.QueryRowContext(ctx, `UPDATE workspaces SET project_access_mode=$2,updated_at=now() WHERE id=$1 RETURNING `+workspaceColumns, w, m.ProjectAccessMode))
+		action = "workspace_project_access_mode_updated"
+		meta["project_access_mode"] = m.ProjectAccessMode
 	case "workspace.update":
 		if e = service.ValidateWorkspaceNameSlug(m.Name, m.Slug); e != nil {
 			return nil, e
@@ -98,6 +109,119 @@ func (r *workspaceRepository) Mutate(ctx context.Context, a, w int64, m service.
 		_, e = tx.ExecContext(ctx, `UPDATE projects SET status='archived',updated_at=now() WHERE workspace_id=$1 AND id=$2`, w, m.TargetID)
 		action, target, id = "project_archived", "project", m.TargetID
 		project = &m.TargetID
+	case "team.create":
+		if ac.Workspace.Type == "personal" || service.ValidateWorkspaceTeamInput(m.Team) != nil {
+			return nil, service.ErrWorkspaceInvalid
+		}
+		out.Team, e = scanTeam(tx.QueryRowContext(ctx, `INSERT INTO workspace_teams(workspace_id,name,slug,description) VALUES($1,$2,$3,$4) RETURNING `+teamColumns, w, m.Team.Name, m.Team.Slug, m.Team.Description))
+		action, target, id = "team_created", "team", out.Team.ID
+		meta["team_id"] = out.Team.ID
+	case "team.update":
+		if ac.Workspace.Type == "personal" || service.ValidateWorkspaceTeamInput(m.Team) != nil {
+			return nil, service.ErrWorkspaceInvalid
+		}
+		team, err := scanTeam(tx.QueryRowContext(ctx, `SELECT `+teamColumns+` FROM workspace_teams WHERE workspace_id=$1 AND id=$2`, w, m.TargetID))
+		if err != nil {
+			return nil, err
+		}
+		if team.Status != "active" {
+			return nil, service.ErrWorkspaceConflict
+		}
+		out.Team, e = scanTeam(tx.QueryRowContext(ctx, `UPDATE workspace_teams SET name=$3,slug=$4,description=$5,updated_at=now() WHERE workspace_id=$1 AND id=$2 RETURNING `+teamColumns, w, m.TargetID, m.Team.Name, m.Team.Slug, m.Team.Description))
+		action, target, id = "team_updated", "team", m.TargetID
+		meta["team_id"] = m.TargetID
+	case "team.archive":
+		if ac.Workspace.Type == "personal" {
+			return nil, service.ErrWorkspaceConflict
+		}
+		team, err := scanTeam(tx.QueryRowContext(ctx, `SELECT `+teamColumns+` FROM workspace_teams WHERE workspace_id=$1 AND id=$2`, w, m.TargetID))
+		if err != nil {
+			return nil, err
+		}
+		if team.Status != "active" {
+			return nil, service.ErrWorkspaceConflict
+		}
+		_, e = tx.ExecContext(ctx, `UPDATE workspace_teams SET status='archived',updated_at=now() WHERE workspace_id=$1 AND id=$2`, w, m.TargetID)
+		action, target, id = "team_archived", "team", m.TargetID
+		meta["team_id"] = m.TargetID
+	case "team.member.add", "team.member.remove":
+		if ac.Workspace.Type == "personal" || m.TargetID <= 0 || m.SubjectID <= 0 {
+			return nil, service.ErrWorkspaceInvalid
+		}
+		var teamStatus string
+		if e = tx.QueryRowContext(ctx, `SELECT status FROM workspace_teams WHERE workspace_id=$1 AND id=$2`, w, m.TargetID).Scan(&teamStatus); e != nil {
+			return nil, workspaceError(e)
+		}
+		if teamStatus != "active" {
+			return nil, service.ErrWorkspaceConflict
+		}
+		var memberStatus string
+		if e = tx.QueryRowContext(ctx, `SELECT status FROM workspace_members WHERE workspace_id=$1 AND id=$2`, w, m.SubjectID).Scan(&memberStatus); e != nil {
+			return nil, workspaceError(e)
+		}
+		if memberStatus != "active" {
+			return nil, service.ErrWorkspaceConflict
+		}
+		if m.Action == "team.member.add" {
+			_, e = tx.ExecContext(ctx, `INSERT INTO workspace_team_members(workspace_id,team_id,workspace_member_id) VALUES($1,$2,$3)`, w, m.TargetID, m.SubjectID)
+			action = "team_member_added"
+		} else {
+			_, e = tx.ExecContext(ctx, `DELETE FROM workspace_team_members WHERE workspace_id=$1 AND team_id=$2 AND workspace_member_id=$3`, w, m.TargetID, m.SubjectID)
+			action = "team_member_removed"
+		}
+		target, id, meta["team_id"], meta["member_id"] = "team", m.TargetID, m.TargetID, m.SubjectID
+	case "project_access.grant.create", "project_access.grant.update", "project_access.grant.delete":
+		if ac.Workspace.Type == "personal" || m.ProjectID <= 0 {
+			return nil, service.ErrWorkspaceInvalid
+		}
+		var projectStatus string
+		if e = tx.QueryRowContext(ctx, `SELECT status FROM projects WHERE workspace_id=$1 AND id=$2`, w, m.ProjectID).Scan(&projectStatus); e != nil {
+			return nil, workspaceError(e)
+		}
+		if projectStatus != "active" {
+			return nil, service.ErrWorkspaceConflict
+		}
+		if m.Action == "project_access.grant.delete" {
+			if _, e = scanProjectAccessGrant(tx.QueryRowContext(ctx, `SELECT `+grantColumns+` FROM project_access_grants WHERE workspace_id=$1 AND project_id=$2 AND id=$3 FOR UPDATE`, w, m.ProjectID, m.TargetID)); e != nil {
+				return nil, e
+			}
+			_, e = tx.ExecContext(ctx, `DELETE FROM project_access_grants WHERE workspace_id=$1 AND project_id=$2 AND id=$3`, w, m.ProjectID, m.TargetID)
+			action, target, id = "project_access_grant_deleted", "project_access_grant", m.TargetID
+			meta["grant_id"], meta["project_id"] = m.TargetID, m.ProjectID
+		} else {
+			if service.ValidateProjectAccessGrantInput(m.Grant) != nil {
+				return nil, service.ErrWorkspaceInvalid
+			}
+			if m.Grant.SubjectType == service.ProjectAccessSubjectMember {
+				var status string
+				if e = tx.QueryRowContext(ctx, `SELECT status FROM workspace_members WHERE workspace_id=$1 AND id=$2`, w, m.Grant.SubjectID).Scan(&status); e != nil {
+					return nil, workspaceError(e)
+				}
+				if status != "active" {
+					return nil, service.ErrWorkspaceConflict
+				}
+			} else {
+				var status string
+				if e = tx.QueryRowContext(ctx, `SELECT status FROM workspace_teams WHERE workspace_id=$1 AND id=$2`, w, m.Grant.SubjectID).Scan(&status); e != nil {
+					return nil, workspaceError(e)
+				}
+				if status != "active" {
+					return nil, service.ErrWorkspaceConflict
+				}
+			}
+			if m.Action == "project_access.grant.create" {
+				out.Grant, e = scanProjectAccessGrant(tx.QueryRowContext(ctx, `INSERT INTO project_access_grants(workspace_id,project_id,subject_type,subject_id,role,created_by_user_id) VALUES($1,$2,$3,$4,$5,$6) RETURNING `+grantColumns, w, m.ProjectID, m.Grant.SubjectType, m.Grant.SubjectID, m.Grant.Role, a))
+				action, target, id = "project_access_grant_created", "project_access_grant", out.Grant.ID
+			} else {
+				if _, err := scanProjectAccessGrant(tx.QueryRowContext(ctx, `SELECT `+grantColumns+` FROM project_access_grants WHERE workspace_id=$1 AND project_id=$2 AND id=$3 FOR UPDATE`, w, m.ProjectID, m.TargetID)); err != nil {
+					return nil, err
+				}
+				out.Grant, e = scanProjectAccessGrant(tx.QueryRowContext(ctx, `UPDATE project_access_grants SET subject_type=$4,subject_id=$5,role=$6,updated_at=now() WHERE workspace_id=$1 AND project_id=$2 AND id=$3 RETURNING `+grantColumns, w, m.ProjectID, m.TargetID, m.Grant.SubjectType, m.Grant.SubjectID, m.Grant.Role))
+				action, target, id = "project_access_grant_updated", "project_access_grant", m.TargetID
+			}
+			meta["grant_id"], meta["project_id"], meta["subject_type"] = id, m.ProjectID, m.Grant.SubjectType
+		}
+		project = &m.ProjectID
 	case "member.update", "member.remove":
 		if ac.Workspace.Type == "personal" {
 			return nil, service.ErrWorkspaceConflict
@@ -244,7 +368,7 @@ func mutationEventData(out *service.WorkspaceMutationResult, meta map[string]any
 	data := service.DomainEventData{}
 	for k, v := range meta {
 		switch k {
-		case "name", "slug", "status", "role", "user_id", "member_id", "invitation_id", "key_id", "key_name", "project_id", "workspace_id", "scope_type", "scope_id", "period_start", "policy_revision", "threshold", "amount", "spent", "reserved", "estimated_amount", "actual_amount", "reason_code", "request_id", "task_id", "model", "platform", "previous_status", "category":
+		case "name", "slug", "status", "role", "user_id", "member_id", "invitation_id", "key_id", "key_name", "project_id", "workspace_id", "scope_type", "scope_id", "period_start", "policy_revision", "threshold", "amount", "spent", "reserved", "estimated_amount", "actual_amount", "reason_code", "request_id", "task_id", "model", "platform", "previous_status", "category", "team_id", "grant_id", "subject_type", "project_access_mode":
 			data[k] = v
 		case "previous_user_id":
 			data["user_id"] = v

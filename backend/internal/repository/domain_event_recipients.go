@@ -45,6 +45,9 @@ func (r *notificationRecipientResolver) Resolve(ctx context.Context, event *serv
 		allowed = func(role string) bool { return role == "owner" || role == "admin" || role == "developer" }
 	case service.EventMemberInvited, service.EventMemberJoined, service.EventMemberRoleChanged, service.EventMemberSuspended, service.EventMemberRemoved:
 		allowed = func(role string) bool { return role == "owner" || role == "admin" }
+	case service.EventWorkspaceTeamCreated, service.EventWorkspaceTeamUpdated, service.EventWorkspaceTeamArchived, service.EventWorkspaceTeamMemberAdded, service.EventWorkspaceTeamMemberRemoved,
+		service.EventWorkspaceProjectAccessCreated, service.EventWorkspaceProjectAccessUpdated, service.EventWorkspaceProjectAccessDeleted, service.EventWorkspaceProjectAccessMode:
+		allowed = func(role string) bool { return role == "owner" || role == "admin" }
 	case service.EventWebhookTest:
 		if event.ActorUserID != nil && *event.ActorUserID > 0 {
 			return []int64{*event.ActorUserID}, nil

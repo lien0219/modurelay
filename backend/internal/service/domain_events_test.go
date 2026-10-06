@@ -103,6 +103,24 @@ func TestQuotaEventsAreVisibleAndUseQuotaPresentation(t *testing.T) {
 	}
 }
 
+func TestGovernanceEventsAreVisibleToWorkspaceWebhooks(t *testing.T) {
+	for _, eventType := range []string{
+		EventWorkspaceTeamCreated,
+		EventWorkspaceTeamUpdated,
+		EventWorkspaceTeamArchived,
+		EventWorkspaceTeamMemberAdded,
+		EventWorkspaceTeamMemberRemoved,
+		EventWorkspaceProjectAccessCreated,
+		EventWorkspaceProjectAccessUpdated,
+		EventWorkspaceProjectAccessDeleted,
+		EventWorkspaceProjectAccessMode,
+	} {
+		if !IsWorkspaceVisibleEvent(eventType) {
+			t.Errorf("governance event %q must be available to workspace webhooks", eventType)
+		}
+	}
+}
+
 func dataWithoutCredentials() DomainEventData { return DomainEventData{"key_id": int64(17)} }
 
 type eventDispatcherOutboxStub struct {

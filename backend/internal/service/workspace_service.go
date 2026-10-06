@@ -99,7 +99,14 @@ func (s *WorkspaceService) CreateOrganization(ctx context.Context, actorID int64
 	return s.repo.CreateOrganization(ctx, actorID, name, slug)
 }
 func (s *WorkspaceService) mutate(ctx context.Context, actorID, workspaceID int64, m WorkspaceMutation) (*WorkspaceMutationResult, error) {
-	if _, e := s.access.RequireWorkspace(ctx, actorID, workspaceID, m.Action); e != nil {
+	permission := WorkspaceMutationPermission(m)
+	var e error
+	if (m.Action == "project.update" || m.Action == "project.archive") && m.TargetID > 0 {
+		_, e = s.access.RequireProject(ctx, actorID, workspaceID, m.TargetID, permission)
+	} else if _, e = s.access.RequireWorkspace(ctx, actorID, workspaceID, permission); e != nil {
+		return nil, e
+	}
+	if e != nil {
 		return nil, e
 	}
 	r, e := s.repo.Mutate(ctx, actorID, workspaceID, m)
@@ -151,6 +158,116 @@ func (s *WorkspaceService) GetProject(ctx context.Context, actorID, workspaceID,
 }
 func (s *WorkspaceService) ArchiveProject(ctx context.Context, actorID, workspaceID, projectID int64) error {
 	_, e := s.mutate(ctx, actorID, workspaceID, WorkspaceMutation{Action: "project.archive", TargetID: projectID})
+	return e
+}
+
+func (s *WorkspaceService) SetProjectAccessMode(ctx context.Context, actorID, workspaceID int64, mode string) (*Workspace, error) {
+	if !ValidProjectAccessMode(mode) {
+		return nil, ErrWorkspaceInvalid
+	}
+	r, e := s.mutate(ctx, actorID, workspaceID, WorkspaceMutation{Action: "workspace.project_access_mode.update", ProjectAccessMode: mode})
+	if e != nil {
+		return nil, e
+	}
+	return r.Workspace, nil
+}
+
+func (s *WorkspaceService) governanceRepo() (WorkspaceGovernanceRepository, error) {
+	r, ok := s.repo.(WorkspaceGovernanceRepository)
+	if !ok {
+		return nil, ErrWorkspaceNotFound
+	}
+	return r, nil
+}
+
+func (s *WorkspaceService) ListTeams(ctx context.Context, actorID, workspaceID int64, p pagination.PaginationParams) ([]WorkspaceTeam, int64, error) {
+	r, e := s.governanceRepo()
+	if e != nil {
+		return nil, 0, e
+	}
+	return r.ListTeams(ctx, actorID, workspaceID, p)
+}
+
+func (s *WorkspaceService) CreateTeam(ctx context.Context, actorID, workspaceID int64, input WorkspaceTeamInput) (*WorkspaceTeam, error) {
+	if e := ValidateWorkspaceTeamInput(input); e != nil {
+		return nil, e
+	}
+	r, e := s.mutate(ctx, actorID, workspaceID, WorkspaceMutation{Action: "team.create", Team: input})
+	if e != nil {
+		return nil, e
+	}
+	return r.Team, nil
+}
+
+func (s *WorkspaceService) UpdateTeam(ctx context.Context, actorID, workspaceID, teamID int64, input WorkspaceTeamInput) (*WorkspaceTeam, error) {
+	if e := ValidateWorkspaceTeamInput(input); e != nil {
+		return nil, e
+	}
+	r, e := s.mutate(ctx, actorID, workspaceID, WorkspaceMutation{Action: "team.update", TargetID: teamID, Team: input})
+	if e != nil {
+		return nil, e
+	}
+	return r.Team, nil
+}
+
+func (s *WorkspaceService) ArchiveTeam(ctx context.Context, actorID, workspaceID, teamID int64) error {
+	_, e := s.mutate(ctx, actorID, workspaceID, WorkspaceMutation{Action: "team.archive", TargetID: teamID})
+	return e
+}
+
+func (s *WorkspaceService) ListTeamMembers(ctx context.Context, actorID, workspaceID, teamID int64, p pagination.PaginationParams) ([]WorkspaceTeamMember, int64, error) {
+	r, e := s.governanceRepo()
+	if e != nil {
+		return nil, 0, e
+	}
+	return r.ListTeamMembers(ctx, actorID, workspaceID, teamID, p)
+}
+
+func (s *WorkspaceService) AddTeamMember(ctx context.Context, actorID, workspaceID, teamID, memberID int64) error {
+	_, e := s.mutate(ctx, actorID, workspaceID, WorkspaceMutation{Action: "team.member.add", TargetID: teamID, SubjectID: memberID})
+	return e
+}
+
+func (s *WorkspaceService) RemoveTeamMember(ctx context.Context, actorID, workspaceID, teamID, memberID int64) error {
+	_, e := s.mutate(ctx, actorID, workspaceID, WorkspaceMutation{Action: "team.member.remove", TargetID: teamID, SubjectID: memberID})
+	return e
+}
+
+func (s *WorkspaceService) ListProjectAccessGrants(ctx context.Context, actorID, workspaceID, projectID int64, p pagination.PaginationParams) ([]ProjectAccessGrant, int64, error) {
+	r, e := s.governanceRepo()
+	if e != nil {
+		return nil, 0, e
+	}
+	return r.ListProjectAccessGrants(ctx, actorID, workspaceID, projectID, p)
+}
+
+func (s *WorkspaceService) CreateProjectAccessGrant(ctx context.Context, actorID, workspaceID, projectID int64, input ProjectAccessGrantInput) (*ProjectAccessGrant, error) {
+	if projectID <= 0 || ValidateProjectAccessGrantInput(input) != nil {
+		return nil, ErrWorkspaceInvalid
+	}
+	r, e := s.mutate(ctx, actorID, workspaceID, WorkspaceMutation{Action: "project_access.grant.create", ProjectID: projectID, Grant: input})
+	if e != nil {
+		return nil, e
+	}
+	return r.Grant, nil
+}
+
+func (s *WorkspaceService) UpdateProjectAccessGrant(ctx context.Context, actorID, workspaceID, projectID, grantID int64, input ProjectAccessGrantInput) (*ProjectAccessGrant, error) {
+	if projectID <= 0 || grantID <= 0 || ValidateProjectAccessGrantInput(input) != nil {
+		return nil, ErrWorkspaceInvalid
+	}
+	r, e := s.mutate(ctx, actorID, workspaceID, WorkspaceMutation{Action: "project_access.grant.update", TargetID: grantID, ProjectID: projectID, Grant: input})
+	if e != nil {
+		return nil, e
+	}
+	return r.Grant, nil
+}
+
+func (s *WorkspaceService) DeleteProjectAccessGrant(ctx context.Context, actorID, workspaceID, projectID, grantID int64) error {
+	if projectID <= 0 || grantID <= 0 {
+		return ErrWorkspaceInvalid
+	}
+	_, e := s.mutate(ctx, actorID, workspaceID, WorkspaceMutation{Action: "project_access.grant.delete", TargetID: grantID, ProjectID: projectID})
 	return e
 }
 func (s *WorkspaceService) UpdateMember(ctx context.Context, actorID, workspaceID, userID int64, role, status string) error {

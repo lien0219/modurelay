@@ -71,6 +71,10 @@ func (h *WorkspaceHandler) RegisterTenantRoutes(v1 *gin.RouterGroup) {
 		{"GET", "/workspaces/:id/members", "member.list"}, {"PATCH", "/workspaces/:id/members/:member_id", "member.update"}, {"DELETE", "/workspaces/:id/members/:member_id", "member.remove"},
 		{"GET", "/workspaces/:id/invitations", "invitation.list"}, {"POST", "/workspaces/:id/invitations", "invitation.create"}, {"DELETE", "/workspaces/:id/invitations/:invitation_id", "invitation.revoke"}, {"POST", "/workspace-invitations/accept", "invitation.accept"},
 		{"GET", "/workspaces/:id/projects", "project.list"}, {"POST", "/workspaces/:id/projects", "project.create"}, {"GET", "/workspaces/:id/projects/:project_id", "project.get"}, {"PATCH", "/workspaces/:id/projects/:project_id", "project.update"}, {"DELETE", "/workspaces/:id/projects/:project_id", "project.archive"},
+		{"PATCH", "/workspaces/:id/project-access-mode", "project_access_mode.update"},
+		{"GET", "/workspaces/:id/teams", "team.list"}, {"POST", "/workspaces/:id/teams", "team.create"}, {"PATCH", "/workspaces/:id/teams/:team_id", "team.update"}, {"DELETE", "/workspaces/:id/teams/:team_id", "team.archive"},
+		{"GET", "/workspaces/:id/teams/:team_id/members", "team.member.list"}, {"POST", "/workspaces/:id/teams/:team_id/members", "team.member.add"}, {"DELETE", "/workspaces/:id/teams/:team_id/members/:member_id", "team.member.remove"},
+		{"GET", "/workspaces/:id/projects/:project_id/access-grants", "project_access.list"}, {"POST", "/workspaces/:id/projects/:project_id/access-grants", "project_access.create"}, {"PATCH", "/workspaces/:id/projects/:project_id/access-grants/:grant_id", "project_access.update"}, {"DELETE", "/workspaces/:id/projects/:project_id/access-grants/:grant_id", "project_access.delete"},
 		{"GET", "/workspaces/:id/projects/:project_id/keys", "key.list"}, {"POST", "/workspaces/:id/projects/:project_id/keys", "key.create"}, {"GET", "/workspaces/:id/projects/:project_id/keys/:key_id", "key.get"}, {"PATCH", "/workspaces/:id/projects/:project_id/keys/:key_id", "key.update"}, {"DELETE", "/workspaces/:id/projects/:project_id/keys/:key_id", "key.revoke"}, {"GET", "/workspaces/:id/projects/:project_id/groups/available", "group.available"}, {"GET", "/workspaces/:id/audit", "audit.list"},
 		{"GET", "/workspaces/:id/webhooks", "webhook.list"}, {"POST", "/workspaces/:id/webhooks", "webhook.create"}, {"PATCH", "/workspaces/:id/webhooks/:webhook_id", "webhook.update"}, {"DELETE", "/workspaces/:id/webhooks/:webhook_id", "webhook.delete"}, {"POST", "/workspaces/:id/webhooks/:webhook_id/rotate", "webhook.rotate"}, {"POST", "/workspaces/:id/webhooks/:webhook_id/test", "webhook.test"}, {"GET", "/workspaces/:id/webhooks/:webhook_id/deliveries", "webhook.deliveries"}, {"POST", "/workspaces/:id/webhooks/:webhook_id/deliveries/:delivery_id/retry", "webhook.retry"},
 		{"GET", "/workspaces/:id/usage", "finops.workspace.usage"}, {"GET", "/workspaces/:id/overview", "finops.workspace.overview"}, {"GET", "/workspaces/:id/budget", "finops.workspace.budget.get"}, {"PUT", "/workspaces/:id/budget", "finops.workspace.budget.put"},
@@ -128,7 +132,7 @@ func (h *WorkspaceHandler) handle(action string) gin.HandlerFunc {
 			return
 		}
 		ids := map[string]int64{}
-		for _, name := range []string{"id", "project_id", "member_id", "invitation_id", "key_id", "webhook_id", "delivery_id"} {
+		for _, name := range []string{"id", "project_id", "member_id", "team_id", "grant_id", "invitation_id", "key_id", "webhook_id", "delivery_id"} {
 			if raw := c.Param(name); raw != "" {
 				id, e := strconv.ParseInt(raw, 10, 64)
 				if e != nil || id <= 0 {
@@ -295,6 +299,61 @@ func (h *WorkspaceHandler) handle(action string) gin.HandlerFunc {
 			out, err = h.workspaces.UpdateProject(ctx, a, w, p, input)
 		case "project.archive":
 			err = h.workspaces.ArchiveProject(ctx, a, w, p)
+		case "project_access_mode.update":
+			var req struct {
+				Mode string `json:"project_access_mode"`
+			}
+			if !workspaceBind(c, &req) {
+				return
+			}
+			out, err = h.workspaces.SetProjectAccessMode(ctx, a, w, req.Mode)
+		case "team.list":
+			out, total, err = h.workspaces.ListTeams(ctx, a, w, params)
+			list = true
+		case "team.create":
+			var req service.WorkspaceTeamInput
+			if !workspaceBind(c, &req) {
+				return
+			}
+			out, err = h.workspaces.CreateTeam(ctx, a, w, req)
+		case "team.update":
+			var req service.WorkspaceTeamInput
+			if !workspaceBind(c, &req) {
+				return
+			}
+			out, err = h.workspaces.UpdateTeam(ctx, a, w, ids["team_id"], req)
+		case "team.archive":
+			err = h.workspaces.ArchiveTeam(ctx, a, w, ids["team_id"])
+		case "team.member.list":
+			out, total, err = h.workspaces.ListTeamMembers(ctx, a, w, ids["team_id"], params)
+			list = true
+		case "team.member.add":
+			var req struct {
+				MemberID int64 `json:"workspace_member_id"`
+			}
+			if !workspaceBind(c, &req) {
+				return
+			}
+			err = h.workspaces.AddTeamMember(ctx, a, w, ids["team_id"], req.MemberID)
+		case "team.member.remove":
+			err = h.workspaces.RemoveTeamMember(ctx, a, w, ids["team_id"], ids["member_id"])
+		case "project_access.list":
+			out, total, err = h.workspaces.ListProjectAccessGrants(ctx, a, w, p, params)
+			list = true
+		case "project_access.create":
+			var req service.ProjectAccessGrantInput
+			if !workspaceBind(c, &req) {
+				return
+			}
+			out, err = h.workspaces.CreateProjectAccessGrant(ctx, a, w, p, req)
+		case "project_access.update":
+			var req service.ProjectAccessGrantInput
+			if !workspaceBind(c, &req) {
+				return
+			}
+			out, err = h.workspaces.UpdateProjectAccessGrant(ctx, a, w, p, ids["grant_id"], req)
+		case "project_access.delete":
+			err = h.workspaces.DeleteProjectAccessGrant(ctx, a, w, p, ids["grant_id"])
 		case "key.list":
 			var keys []service.APIKey
 			keys, total, err = h.keys.ListForProject(ctx, a, w, p, params)

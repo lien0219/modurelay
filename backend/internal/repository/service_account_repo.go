@@ -17,7 +17,7 @@ func NewServiceAccountRepository(db *sql.DB) service.ServiceAccountRepository {
 }
 
 const serviceAccountColumns = `s.id,s.workspace_id,s.project_id,s.name,s.slug,s.description,s.status,s.created_by_user_id,s.disabled_at,s.created_at,s.updated_at`
-const serviceAccountReadScope = ` FROM service_accounts s JOIN projects p ON p.id=s.project_id AND p.workspace_id=s.workspace_id JOIN workspaces w ON w.id=s.workspace_id JOIN workspace_members m ON m.workspace_id=w.id JOIN users u ON u.id=m.user_id WHERE m.user_id=$1 AND m.status='active' AND m.role IN ('owner','admin','developer','billing','viewer') AND u.status='active' AND u.deleted_at IS NULL AND s.workspace_id=$2 AND s.project_id=$3`
+const serviceAccountReadScope = ` FROM service_accounts s JOIN projects p ON p.id=s.project_id AND p.workspace_id=s.workspace_id JOIN workspaces w ON w.id=s.workspace_id JOIN workspace_members m ON m.workspace_id=w.id JOIN users u ON u.id=m.user_id WHERE m.user_id=$1 AND m.status='active' AND m.role IN ('owner','admin','developer','billing','viewer') AND u.status='active' AND u.deleted_at IS NULL AND s.workspace_id=$2 AND s.project_id=$3 AND ` + projectAccessVisibilitySQL
 
 func scanServiceAccount(row workspaceScanner) (*service.ServiceAccount, error) {
 	s := &service.ServiceAccount{}

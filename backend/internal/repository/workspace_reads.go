@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"strconv"
+	"strings"
 )
 
 func (r *workspaceRepository) ListWorkspaces(ctx context.Context, a int64, p pagination.PaginationParams) ([]service.Workspace, int64, error) {
@@ -14,7 +16,7 @@ func (r *workspaceRepository) ListWorkspaces(ctx context.Context, a int64, p pag
 	if e := r.db.QueryRowContext(ctx, `SELECT count(*)`+where, a).Scan(&total); e != nil {
 		return nil, 0, e
 	}
-	rows, e := r.db.QueryContext(ctx, `SELECT w.id,w.name,w.slug,w.type,w.status,w.owner_user_id,w.billing_owner_user_id,w.created_at,w.updated_at,m.role`+where+` ORDER BY w.id LIMIT $2 OFFSET $3`, a, p.Limit(), p.Offset())
+	rows, e := r.db.QueryContext(ctx, `SELECT w.id,w.name,w.slug,w.type,w.status,w.project_access_mode,w.owner_user_id,w.billing_owner_user_id,w.created_at,w.updated_at,m.role`+where+` ORDER BY w.id LIMIT $2 OFFSET $3`, a, p.Limit(), p.Offset())
 	if e != nil {
 		return nil, 0, e
 	}
@@ -23,7 +25,7 @@ func (r *workspaceRepository) ListWorkspaces(ctx context.Context, a int64, p pag
 	for rows.Next() {
 		var w service.Workspace
 		var role string
-		if e = rows.Scan(&w.ID, &w.Name, &w.Slug, &w.Type, &w.Status, &w.OwnerUserID, &w.BillingOwnerUserID, &w.CreatedAt, &w.UpdatedAt, &role); e != nil {
+		if e = rows.Scan(&w.ID, &w.Name, &w.Slug, &w.Type, &w.Status, &w.ProjectAccessMode, &w.OwnerUserID, &w.BillingOwnerUserID, &w.CreatedAt, &w.UpdatedAt, &role); e != nil {
 			return nil, 0, e
 		}
 		w.Permissions = service.WorkspaceEffectivePermissions(&service.WorkspaceAccess{Workspace: &w, Member: &service.WorkspaceMember{Role: role, Status: "active"}})
@@ -72,7 +74,50 @@ func workspaceList[T any](ctx context.Context, r *workspaceRepository, a, w int6
 	return items, total, tx.Commit()
 }
 func (r *workspaceRepository) ListProjects(ctx context.Context, a, w int64, p pagination.PaginationParams) ([]service.Project, int64, error) {
-	return workspaceList(ctx, r, a, w, p, "project.read", "projects", projectColumns, scanProject)
+	tx, e := r.db.BeginTx(ctx, nil)
+	if e != nil {
+		return nil, 0, e
+	}
+	defer func() { _ = tx.Rollback() }()
+	if e = lockWorkspace(ctx, tx, w, false); e != nil {
+		return nil, 0, e
+	}
+	ac, e := workspaceAccess(ctx, tx, a, w, 0)
+	if e != nil {
+		return nil, 0, e
+	}
+	if e = service.CheckWorkspacePermission(ac, "project.read"); e != nil {
+		return nil, 0, e
+	}
+	where := `workspace_id=$1`
+	args := []any{w}
+	if ac.Workspace.ProjectAccessMode == service.ProjectAccessModeAssigned && ac.Member.Role != "owner" && ac.Member.Role != "admin" && ac.Member.Role != "billing" {
+		where += ` AND EXISTS (SELECT 1 FROM project_access_grants g WHERE g.workspace_id=projects.workspace_id AND g.project_id=projects.id AND ((g.subject_type='member' AND g.subject_id=$2) OR (g.subject_type='team' AND EXISTS (SELECT 1 FROM workspace_team_members tm JOIN workspace_teams t ON t.workspace_id=tm.workspace_id AND t.id=tm.team_id AND t.status='active' WHERE tm.workspace_id=g.workspace_id AND tm.team_id=g.subject_id AND tm.workspace_member_id=$2))))`
+		args = append(args, ac.Member.ID)
+	}
+	var total int64
+	if e = tx.QueryRowContext(ctx, `SELECT count(*) FROM projects WHERE `+where, args...).Scan(&total); e != nil {
+		return nil, 0, e
+	}
+	queryArgs := append([]any{}, args...)
+	queryArgs = append(queryArgs, p.Limit(), p.Offset())
+	rows, e := tx.QueryContext(ctx, `SELECT `+projectColumns+` FROM projects WHERE `+where+` ORDER BY id DESC LIMIT $`+strconv.Itoa(len(args)+1)+` OFFSET $`+strconv.Itoa(len(args)+2), queryArgs...)
+	if e != nil {
+		return nil, 0, e
+	}
+	defer func() { _ = rows.Close() }()
+	items := []service.Project{}
+	for rows.Next() {
+		project, scanErr := scanProject(rows)
+		if scanErr != nil {
+			return nil, 0, scanErr
+		}
+		items = append(items, *project)
+	}
+	if e = rows.Err(); e != nil {
+		return nil, 0, e
+	}
+	return items, total, tx.Commit()
 }
 func (r *workspaceRepository) ListMembers(ctx context.Context, a, w int64, p pagination.PaginationParams) ([]service.WorkspaceMember, int64, error) {
 	return workspaceList(ctx, r, a, w, p, "member.read", "workspace_members", memberColumns, scanMember)
@@ -93,6 +138,103 @@ func (r *workspaceRepository) ListAudit(ctx context.Context, a, w int64, p pagin
 		}
 		return v, nil
 	})
+}
+
+const teamColumns = `id,workspace_id,name,slug,description,status,created_at,updated_at`
+const grantColumns = `id,workspace_id,project_id,subject_type,subject_id,role,created_by_user_id,created_at,updated_at`
+
+func scanTeam(s workspaceScanner) (*service.WorkspaceTeam, error) {
+	t := &service.WorkspaceTeam{}
+	e := s.Scan(&t.ID, &t.WorkspaceID, &t.Name, &t.Slug, &t.Description, &t.Status, &t.CreatedAt, &t.UpdatedAt)
+	return t, workspaceError(e)
+}
+
+func scanProjectAccessGrant(s workspaceScanner) (*service.ProjectAccessGrant, error) {
+	g := &service.ProjectAccessGrant{}
+	e := s.Scan(&g.ID, &g.WorkspaceID, &g.ProjectID, &g.SubjectType, &g.SubjectID, &g.Role, &g.CreatedByUserID, &g.CreatedAt, &g.UpdatedAt)
+	return g, workspaceError(e)
+}
+
+func (r *workspaceRepository) ListTeams(ctx context.Context, a, w int64, p pagination.PaginationParams) ([]service.WorkspaceTeam, int64, error) {
+	return workspaceList(ctx, r, a, w, p, "team.read", "workspace_teams", teamColumns, scanTeam)
+}
+
+func (r *workspaceRepository) ListTeamMembers(ctx context.Context, a, w, teamID int64, p pagination.PaginationParams) ([]service.WorkspaceTeamMember, int64, error) {
+	tx, e := r.db.BeginTx(ctx, nil)
+	if e != nil {
+		return nil, 0, e
+	}
+	defer func() { _ = tx.Rollback() }()
+	if e = lockWorkspace(ctx, tx, w, false); e != nil {
+		return nil, 0, e
+	}
+	ac, e := workspaceAccess(ctx, tx, a, w, 0)
+	if e != nil {
+		return nil, 0, e
+	}
+	if e = service.CheckWorkspacePermission(ac, "team.read"); e != nil {
+		return nil, 0, e
+	}
+	var total int64
+	if e = tx.QueryRowContext(ctx, `SELECT count(*) FROM workspace_team_members WHERE workspace_id=$1 AND team_id=$2`, w, teamID).Scan(&total); e != nil {
+		return nil, 0, workspaceError(e)
+	}
+	rows, e := tx.QueryContext(ctx, `SELECT tm.team_id,tm.workspace_member_id,m.user_id,m.role,m.status,u.email,tm.created_at FROM workspace_team_members tm JOIN workspace_members m ON m.workspace_id=tm.workspace_id AND m.id=tm.workspace_member_id JOIN users u ON u.id=m.user_id WHERE tm.workspace_id=$1 AND tm.team_id=$2 ORDER BY tm.workspace_member_id LIMIT $3 OFFSET $4`, w, teamID, p.Limit(), p.Offset())
+	if e != nil {
+		return nil, 0, e
+	}
+	defer func() { _ = rows.Close() }()
+	items := []service.WorkspaceTeamMember{}
+	for rows.Next() {
+		var item service.WorkspaceTeamMember
+		if e = rows.Scan(&item.TeamID, &item.WorkspaceMemberID, &item.UserID, &item.Role, &item.Status, &item.Email, &item.CreatedAt); e != nil {
+			return nil, 0, e
+		}
+		items = append(items, item)
+	}
+	if e = rows.Err(); e != nil {
+		return nil, 0, e
+	}
+	return items, total, tx.Commit()
+}
+
+func (r *workspaceRepository) ListProjectAccessGrants(ctx context.Context, a, w, projectID int64, p pagination.PaginationParams) ([]service.ProjectAccessGrant, int64, error) {
+	tx, e := r.db.BeginTx(ctx, nil)
+	if e != nil {
+		return nil, 0, e
+	}
+	defer func() { _ = tx.Rollback() }()
+	if e = lockWorkspace(ctx, tx, w, false); e != nil {
+		return nil, 0, e
+	}
+	ac, e := workspaceAccess(ctx, tx, a, w, 0)
+	if e != nil {
+		return nil, 0, e
+	}
+	if e = service.CheckWorkspacePermission(ac, "project_access.read"); e != nil {
+		return nil, 0, e
+	}
+	var total int64
+	if e = tx.QueryRowContext(ctx, `SELECT count(*) FROM project_access_grants WHERE workspace_id=$1 AND project_id=$2`, w, projectID).Scan(&total); e != nil {
+		return nil, 0, workspaceError(e)
+	}
+	rows, e := tx.QueryContext(ctx, `SELECT `+strings.TrimSpace(grantColumns)+` FROM project_access_grants WHERE workspace_id=$1 AND project_id=$2 ORDER BY id DESC LIMIT $3 OFFSET $4`, w, projectID, p.Limit(), p.Offset())
+	if e != nil {
+		return nil, 0, e
+	}
+	defer func() { _ = rows.Close() }()
+	items := []service.ProjectAccessGrant{}
+	for rows.Next() {
+		grant, scanErr := scanProjectAccessGrant(rows)
+		if scanErr != nil {
+			return nil, 0, scanErr
+		}
+		items = append(items, *grant)
+	}
+	if e = rows.Err(); e != nil {
+		return nil, 0, e
+	}
+	return items, total, tx.Commit()
 }
 func requireWorkspaceGlobalAdmin(ctx context.Context, q workspaceSQL, a int64) error {
 	var ok bool

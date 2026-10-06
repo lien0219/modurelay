@@ -134,5 +134,5 @@ func expectWebhookScope(t *testing.T, mock sqlmock.Sqlmock, write bool) {
 	mock.ExpectBegin()
 	mock.ExpectQuery("SELECT id FROM workspaces WHERE id=\\$1 FOR " + lock).WithArgs(int64(11)).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(11))
 	mock.ExpectQuery("SELECT m.id,m.workspace_id").WithArgs(int64(11), int64(7)).WillReturnRows(sqlmock.NewRows([]string{"id", "workspace_id", "user_id", "role", "status", "invited_by_user_id", "joined_at", "created_at", "updated_at"}).AddRow(1, 11, 7, "owner", "active", nil, now, now, now))
-	mock.ExpectQuery("SELECT id,name,slug,type,status,owner_user_id").WithArgs(int64(11), int64(7)).WillReturnRows(sqlmock.NewRows([]string{"id", "name", "slug", "type", "status", "owner_user_id", "billing_owner_user_id", "created_at", "updated_at"}).AddRow(11, "Test", "test", "organization", "active", 7, 7, now, now))
+	mock.ExpectQuery("SELECT id,name,slug,type,status,project_access_mode,owner_user_id").WithArgs(int64(11), int64(7)).WillReturnRows(sqlmock.NewRows([]string{"id", "name", "slug", "type", "status", "project_access_mode", "owner_user_id", "billing_owner_user_id", "created_at", "updated_at"}).AddRow(11, "Test", "test", "organization", "active", "all_projects", 7, 7, now, now))
 }

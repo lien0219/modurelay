@@ -47,6 +47,24 @@ func insertWorkspaceMutationEvent(ctx context.Context, q workspaceSQL, workspace
 		eventType = service.EventBudgetUpdated
 	case "policy_updated":
 		eventType = service.EventPolicyUpdated
+	case "workspace_project_access_mode_updated":
+		eventType = service.EventWorkspaceProjectAccessMode
+	case "team_created":
+		eventType = service.EventWorkspaceTeamCreated
+	case "team_updated":
+		eventType = service.EventWorkspaceTeamUpdated
+	case "team_archived":
+		eventType = service.EventWorkspaceTeamArchived
+	case "team_member_added":
+		eventType = service.EventWorkspaceTeamMemberAdded
+	case "team_member_removed":
+		eventType = service.EventWorkspaceTeamMemberRemoved
+	case "project_access_grant_created":
+		eventType = service.EventWorkspaceProjectAccessCreated
+	case "project_access_grant_updated":
+		eventType = service.EventWorkspaceProjectAccessUpdated
+	case "project_access_grant_deleted":
+		eventType = service.EventWorkspaceProjectAccessDeleted
 	default:
 		return nil
 	}

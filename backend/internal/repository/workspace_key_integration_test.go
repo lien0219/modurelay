@@ -92,6 +92,49 @@ func TestWorkspaceDeveloperKeysUsePayerAndLegacyReadsStayScoped(t *testing.T) {
 	require.Error(t, e)
 }
 
+func TestWorkspaceRestrictedModeHidesLegacyOrganizationKeysWithoutProjectGrant(t *testing.T) {
+	isolateWorkspaceTestFixtures(t)
+	ctx := context.Background()
+	client := testEntClient(t)
+	owner := mustCreateUser(t, client, &service.User{Balance: 100})
+	developer := mustCreateUser(t, client, &service.User{Email: fmt.Sprintf("restricted-key-dev-%d@example.com", time.Now().UnixNano())})
+	wr := NewWorkspaceRepository(integrationDB)
+	ws := service.NewWorkspaceService(wr)
+	w, err := ws.CreateOrganization(ctx, owner.ID, "Restricted", fmt.Sprintf("restricted-%d", owner.ID))
+	require.NoError(t, err)
+	_, token, err := ws.CreateInvitation(ctx, owner.ID, w.ID, developer.Email, "developer", time.Hour)
+	require.NoError(t, err)
+	_, err = ws.AcceptInvitation(ctx, developer.ID, token)
+	require.NoError(t, err)
+	p, err := ws.CreateProject(ctx, owner.ID, w.ID, service.ProjectInput{Name: "Restricted API", Slug: "restricted-api"})
+	require.NoError(t, err)
+
+	kr := NewAPIKeyRepository(client, integrationDB)
+	ks := service.NewAPIKeyService(kr, NewUserRepository(client, integrationDB), NewGroupRepository(client, integrationDB), NewUserSubscriptionRepository(client), nil, nil, &config.Config{})
+	ks.ConfigureWorkspaces(wr)
+	k, err := ks.CreateForProject(ctx, developer.ID, w.ID, p.ID, service.CreateAPIKeyRequest{Name: "Developer key"})
+	require.NoError(t, err)
+
+	_, err = ws.SetProjectAccessMode(ctx, owner.ID, w.ID, service.ProjectAccessModeAssigned)
+	require.NoError(t, err)
+	legacy, page, err := ks.List(ctx, developer.ID, pagination.PaginationParams{Page: 1, PageSize: 20}, service.APIKeyListFilters{})
+	require.NoError(t, err)
+	require.Zero(t, page.Total)
+	require.Empty(t, legacy)
+	_, err = ks.GetForUser(ctx, developer.ID, k.ID)
+	require.ErrorIs(t, err, service.ErrWorkspaceForbidden)
+
+	var memberID int64
+	require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT id FROM workspace_members WHERE workspace_id=$1 AND user_id=$2`, w.ID, developer.ID).Scan(&memberID))
+	_, err = ws.CreateProjectAccessGrant(ctx, owner.ID, w.ID, p.ID, service.ProjectAccessGrantInput{SubjectType: service.ProjectAccessSubjectMember, SubjectID: memberID, Role: service.ProjectAccessRoleViewer})
+	require.NoError(t, err)
+	legacy, page, err = ks.List(ctx, developer.ID, pagination.PaginationParams{Page: 1, PageSize: 20}, service.APIKeyListFilters{})
+	require.NoError(t, err)
+	require.EqualValues(t, 1, page.Total)
+	require.Len(t, legacy, 1)
+	require.Equal(t, k.ID, legacy[0].ID)
+}
+
 type countTenantAuthRepo struct {
 	service.APIKeyRepository
 	service.ProjectKeyRepository

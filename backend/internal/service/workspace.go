@@ -23,6 +23,7 @@ type Workspace struct {
 	Slug               string    `json:"slug"`
 	Type               string    `json:"type"`
 	Status             string    `json:"status"`
+	ProjectAccessMode  string    `json:"project_access_mode"`
 	OwnerUserID        int64     `json:"owner_user_id"`
 	BillingOwnerUserID int64     `json:"billing_owner_user_id"`
 	CreatedAt          time.Time `json:"created_at"`
@@ -78,7 +79,67 @@ type WorkspaceAccess struct {
 	Workspace   *Workspace       `json:"workspace"`
 	Member      *WorkspaceMember `json:"member"`
 	Project     *Project         `json:"project,omitempty"`
-	Permissions []string         `json:"permissions"`
+	ProjectRole string           `json:"project_role,omitempty"`
+	// ProjectPermissions is derived from the member's direct or team grant in
+	// the same tenant-locked access snapshot. It is never accepted from a
+	// caller and is intentionally omitted for workspace-only access.
+	ProjectPermissions []string `json:"project_permissions,omitempty"`
+	Permissions        []string `json:"permissions"`
+}
+
+const (
+	ProjectAccessModeAllProjects = "all_projects"
+	ProjectAccessModeAssigned    = "assigned_projects"
+	ProjectAccessRoleViewer      = "viewer"
+	ProjectAccessRoleDeveloper   = "developer"
+	ProjectAccessRoleAdmin       = "admin"
+	ProjectAccessSubjectMember   = "member"
+	ProjectAccessSubjectTeam     = "team"
+)
+
+type WorkspaceTeam struct {
+	ID          int64     `json:"id"`
+	WorkspaceID int64     `json:"workspace_id"`
+	Name        string    `json:"name"`
+	Slug        string    `json:"slug"`
+	Description string    `json:"description"`
+	Status      string    `json:"status"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type WorkspaceTeamMember struct {
+	TeamID            int64     `json:"team_id"`
+	WorkspaceMemberID int64     `json:"workspace_member_id"`
+	UserID            int64     `json:"user_id"`
+	Role              string    `json:"role"`
+	Status            string    `json:"status"`
+	Email             string    `json:"email,omitempty"`
+	CreatedAt         time.Time `json:"created_at"`
+}
+
+type ProjectAccessGrant struct {
+	ID              int64     `json:"id"`
+	WorkspaceID     int64     `json:"workspace_id"`
+	ProjectID       int64     `json:"project_id"`
+	SubjectType     string    `json:"subject_type"`
+	SubjectID       int64     `json:"subject_id"`
+	Role            string    `json:"role"`
+	CreatedByUserID int64     `json:"created_by_user_id"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
+}
+
+type WorkspaceTeamInput struct {
+	Name        string `json:"name"`
+	Slug        string `json:"slug"`
+	Description string `json:"description"`
+}
+
+type ProjectAccessGrantInput struct {
+	SubjectType string `json:"subject_type"`
+	SubjectID   int64  `json:"subject_id"`
+	Role        string `json:"role"`
 }
 type WorkspaceAudit struct {
 	ID          int64          `json:"id"`
@@ -106,7 +167,13 @@ type WorkspaceMutation struct {
 	Action                          string
 	TargetID                        int64
 	Name, Slug, Role, Status, Email string
+	ProjectAccessMode               string
+	SubjectType                     string
+	SubjectID                       int64
+	ProjectID                       int64
 	Project                         ProjectInput
+	Team                            WorkspaceTeamInput
+	Grant                           ProjectAccessGrantInput
 	TokenHash                       []byte
 	ExpiresAt                       time.Time
 }
@@ -114,6 +181,8 @@ type WorkspaceMutationResult struct {
 	Workspace  *Workspace
 	Project    *Project
 	Invitation *WorkspaceInvitation
+	Team       *WorkspaceTeam
+	Grant      *ProjectAccessGrant
 }
 type WorkspaceRepository interface {
 	EnsurePersonalWorkspace(context.Context, int64) (*Workspace, error)
@@ -130,6 +199,15 @@ type WorkspaceRepository interface {
 	AdminList(context.Context, int64, pagination.PaginationParams) ([]Workspace, int64, error)
 	AdminInspect(context.Context, int64, int64) (*Workspace, error)
 	AdminSetStatus(context.Context, int64, int64, string) error
+}
+
+// WorkspaceGovernanceRepository is optional so existing focused test doubles
+// and legacy integrations remain source-compatible while the production
+// repository exposes Phase A control-plane reads.
+type WorkspaceGovernanceRepository interface {
+	ListTeams(context.Context, int64, int64, pagination.PaginationParams) ([]WorkspaceTeam, int64, error)
+	ListTeamMembers(context.Context, int64, int64, int64, pagination.PaginationParams) ([]WorkspaceTeamMember, int64, error)
+	ListProjectAccessGrants(context.Context, int64, int64, int64, pagination.PaginationParams) ([]ProjectAccessGrant, int64, error)
 }
 
 // WorkspaceAdminLifecycleGuard is optionally implemented by UserRepository so
@@ -169,6 +247,23 @@ func ValidateProjectInput(p ProjectInput) error {
 		if strings.TrimSpace(m) == "" || len(m) > 255 {
 			return ErrWorkspaceInvalid
 		}
+	}
+	return nil
+}
+
+func ValidateWorkspaceTeamInput(t WorkspaceTeamInput) error {
+	if err := ValidateWorkspaceNameSlug(t.Name, t.Slug); err != nil {
+		return err
+	}
+	if utf8.RuneCountInString(t.Description) > 2000 {
+		return ErrWorkspaceInvalid
+	}
+	return nil
+}
+
+func ValidateProjectAccessGrantInput(g ProjectAccessGrantInput) error {
+	if !ValidProjectAccessRole(g.Role) || (g.SubjectType != ProjectAccessSubjectMember && g.SubjectType != ProjectAccessSubjectTeam) || g.SubjectID <= 0 {
+		return ErrWorkspaceInvalid
 	}
 	return nil
 }
