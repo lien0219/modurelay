@@ -106,7 +106,7 @@ func (h *AuthHandler) EnterpriseSSOExchange(c *gin.Context) {
 		return
 	}
 	ctx := service.WithAuthenticationAssurance(c.Request.Context(), result.Assurance)
-	ctx = service.WithSessionAuthentication(ctx, service.SessionAuthentication{AuthMethod: "oidc", AuthenticatedAt: result.Assurance.AuthenticatedAt, MFASatisfied: mfaSatisfied})
+	ctx = service.WithSessionAuthentication(ctx, service.SessionAuthentication{AuthMethod: result.Assurance.AuthMethod, AuthenticatedAt: result.Assurance.AuthenticatedAt, MFASatisfied: mfaSatisfied})
 	pair, err := h.authService.GenerateTokenPair(ctx, result.User, "")
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -174,7 +174,7 @@ func (h *AuthHandler) RequireEnterpriseRecentAuthentication(c *gin.Context) bool
 		response.ErrorFrom(c, infraerrors.Forbidden("STEP_UP_REQUIRED", "recent two-factor authentication is required"))
 		return false
 	}
-	if !recent || (auth.AuthMethod != "password" && auth.AuthMethod != "oidc" && auth.AuthMethod != "passkey") {
+	if !recent || (auth.AuthMethod != "password" && auth.AuthMethod != "oidc" && auth.AuthMethod != "saml" && auth.AuthMethod != "passkey") {
 		response.ErrorFrom(c, infraerrors.Forbidden("RECENT_AUTH_REQUIRED", "sign in again before changing enterprise identity settings"))
 		return false
 	}

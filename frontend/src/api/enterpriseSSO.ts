@@ -4,6 +4,8 @@ import type { User } from '@/types'
 export interface EnterpriseSSOProvider {
   workspace_id: number
   provider_id: number
+  type?: 'oidc' | 'saml'
+  saml_public_id?: string
   name: string
   is_default: boolean
 }

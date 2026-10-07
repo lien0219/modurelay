@@ -200,6 +200,8 @@ func RegisterAuthRoutes(
 			FailureMode: middleware.RateLimitFailClose,
 		}), h.Auth.EnterpriseSSOStart)
 		auth.GET("/sso/callback", rateLimiter.LimitWithOptions("enterprise-sso-callback", 30, time.Minute, middleware.RateLimitOptions{FailureMode: middleware.RateLimitFailClose}), h.Auth.EnterpriseSSOCallback)
+		auth.GET("/sso/saml/metadata/:public_id", rateLimiter.LimitWithOptions("enterprise-saml-metadata", 60, time.Minute, middleware.RateLimitOptions{FailureMode: middleware.RateLimitFailClose}), h.Auth.EnterpriseSAMLMetadata)
+		auth.POST("/sso/saml/acs", rateLimiter.LimitWithOptions("enterprise-saml-acs", 30, time.Minute, middleware.RateLimitOptions{FailureMode: middleware.RateLimitFailClose}), h.Auth.EnterpriseSAMLACS)
 		auth.POST("/sso/discover", rateLimiter.LimitWithOptions("enterprise-sso-discover", 10, time.Minute, middleware.RateLimitOptions{FailureMode: middleware.RateLimitFailClose}), h.Auth.EnterpriseSSODiscover)
 		auth.POST("/sso/exchange", rateLimiter.LimitWithOptions("enterprise-sso-exchange", 20, time.Minute, middleware.RateLimitOptions{FailureMode: middleware.RateLimitFailClose}), h.Auth.EnterpriseSSOExchange)
 		auth.POST("/oauth/oidc/complete-registration",

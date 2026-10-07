@@ -12,6 +12,13 @@ describe('workspace identity API', () => {
     }
   })
 
+  it('reads SAML SP registration and rotates keys with revision in the tenant', async () => {
+    await workspaceAPI.getSAMLServiceProvider(7, 9)
+    await workspaceAPI.rotateSAMLKeys(7, 9, { revision: 4, action: 'stage' })
+    expect(apiClient.get).toHaveBeenCalledWith('/workspaces/7/identity-providers/9/saml-sp', { signal: undefined })
+    expect(apiClient.post).toHaveBeenCalledWith('/workspaces/7/identity-providers/9/saml-keys/rotate', { revision: 4, action: 'stage' })
+  })
+
   it('keeps domain and provider operations tenant scoped', async () => {
     await workspaceAPI.listDomains(7, { page: 2 })
     await workspaceAPI.createDomain(7, 'example.com')

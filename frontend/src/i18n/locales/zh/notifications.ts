@@ -53,6 +53,7 @@ export default {
     policy: { title: '策略已更新', body: '工作区、项目或服务账号策略发生了变更。' },
 	identity_domain: { title: '组织域名已验证', body: '工作区域名已完成 DNS 验证。' },
 	identity_provider: { title: 'SSO 身份提供商已停用', body: '组织身份提供商已停用，由其签发的工作区 SSO 身份保证现已失效。' },
+	saml_certificate: { title: 'SAML 证书已变更', body: '工作区 SAML 服务提供方已暂存或启用新证书，请检查 IdP 的证书配置。' },
 	sso_enforcement: { title: 'SSO 要求已变更', body: '工作区 SSO 强制策略发生了变更。' },
 	sso_recovery: { title: '已使用工作区 SSO 恢复', body: 'Owner 使用应急恢复关闭了工作区 SSO 强制要求，请检查工作区审计日志。' },
   },

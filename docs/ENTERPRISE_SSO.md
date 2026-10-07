@@ -1,11 +1,22 @@
-# Enterprise SSO — Phase B
+# Enterprise SSO — OIDC and SAML
 
 Enterprise SSO authenticates humans entering an Organization Workspace. Users
-remain global identities with Personal and other Workspace memberships. SAML
-and SCIM are deferred to Phase C. IdP access is absent from the Gateway API-key
+remain global identities with Personal and other Workspace memberships. Phase C1
+adds SAML using the same identity binding, JIT/linking, mappings, completion and
+Workspace assurance as OIDC. SCIM provisioning is Phase C2. IdP access is absent from the Gateway API-key
 and Service Account credential request path.
 
 ## Architecture findings and gate
+
+The Phase B OIDC contract below remains compatible. SAML protocol/configuration,
+encrypted SP-key lifecycle, public metadata and bounded POST ACS are documented in
+[ENTERPRISE_SAML.md](ENTERPRISE_SAML.md), with local evidence in
+[ENTERPRISE_SAML_ACCEPTANCE.md](ENTERPRISE_SAML_ACCEPTANCE.md).
+OIDC and SAML may coexist, with a single active default across both types.
+Require SSO uses the same Workspace/provider/type/revision/original-time checks.
+Public SAML metadata is `/api/v1/auth/sso/saml/metadata/:public_id`; POST ACS is
+`/api/v1/auth/sso/saml/acs`. Browser login requires an HTTPS enterprise callback.
+SP registration and stage/promote rotation use human tenant RBAC, SSO and recent authentication.
 
 Existing authentication uses JWT access tokens, atomic Redis refresh rotation,
 token families, password fingerprints, optional session binding, password,

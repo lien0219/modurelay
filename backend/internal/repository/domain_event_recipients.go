@@ -25,6 +25,7 @@ func (r *notificationRecipientResolver) Resolve(ctx context.Context, event *serv
 	switch event.Type {
 	case service.EventWorkspaceDomainCreated, service.EventWorkspaceDomainRegenerated, service.EventWorkspaceDomainRevoked,
 		service.EventIdentityProviderCreated, service.EventIdentityProviderUpdated, service.EventOIDCMappingsUpdated,
+		service.EventSAMLMetadataUpdated,
 		service.EventOIDCJITProvisioned, service.EventOIDCIdentityLinked, service.EventOIDCRoleReconciled, service.EventOIDCTeamsReconciled:
 		return nil, nil
 	}
@@ -40,7 +41,7 @@ func (r *notificationRecipientResolver) Resolve(ctx context.Context, event *serv
 	}
 	allowed := func(role string) bool { return true }
 	switch event.Type {
-	case service.EventWorkspaceDomainVerified, service.EventIdentityProviderDisabled,
+	case service.EventWorkspaceDomainVerified, service.EventIdentityProviderDisabled, service.EventSAMLCertificateRotated,
 		service.EventSSOEnforcementEnabled, service.EventSSOEnforcementDisabled, service.EventSSOBreakGlassUsed:
 		allowed = func(role string) bool { return role == "owner" || role == "admin" }
 	case service.EventBudgetThreshold, service.EventBudgetSoftLimit, service.EventBudgetHardLimit,

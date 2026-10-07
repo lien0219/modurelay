@@ -31,6 +31,7 @@ const (
 	WorkspaceRoleViewer       = "viewer"
 	MembershipSourceManual    = "manual"
 	MembershipSourceOIDC      = "oidc"
+	MembershipSourceSAML      = "saml"
 	MembershipSourceSCIM      = "scim"
 	PrincipalHuman            = "human"
 	PrincipalAPIKey           = "api_key"
@@ -134,6 +135,8 @@ func EnterpriseTokenMatchesHash(token string, expected []byte) bool {
 }
 
 type OIDCState struct {
+	Protocol           string
+	RequestID          string
 	Hash               string
 	WorkspaceID        int64
 	ProviderID         int64
@@ -176,6 +179,7 @@ func NewOIDCState(now time.Time, ttl time.Duration, workspaceID, providerID int6
 	// opaque state token through the caller's response, never the stored hash.
 	return &OIDCState{
 		Hash:               hex.EncodeToString(stateHash),
+		Protocol:           "oidc",
 		WorkspaceID:        workspaceID,
 		ProviderID:         providerID,
 		BrowserSessionHash: browserHash,

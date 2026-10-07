@@ -10,7 +10,7 @@ import Pagination from '@/components/common/Pagination.vue'
 
 const api = vi.hoisted(() => ({
   listWorkspaces: vi.fn(), listProjects: vi.fn(), listDomains: vi.fn(), createDomain: vi.fn(), verifyDomain: vi.fn(), regenerateDomainToken: vi.fn(), revokeDomain: vi.fn(),
-  listIdentityProviders: vi.fn(), createIdentityProvider: vi.fn(), updateIdentityProvider: vi.fn(), disableIdentityProvider: vi.fn(), getIdentityPolicy: vi.fn(), updateIdentityPolicy: vi.fn(), startSSO: vi.fn(),
+  getSAMLServiceProvider: vi.fn(), rotateSAMLKeys: vi.fn(), listIdentityProviders: vi.fn(), createIdentityProvider: vi.fn(), updateIdentityProvider: vi.fn(), disableIdentityProvider: vi.fn(), getIdentityPolicy: vi.fn(), updateIdentityPolicy: vi.fn(), startSSO: vi.fn(),
 }))
 
 vi.mock('@/api/workspace', () => ({ workspaceAPI: api }))
@@ -60,6 +60,105 @@ describe('WorkspaceIdentityView', () => {
   })
 
   afterEach(() => { wrapper?.unmount(); wrapper = undefined; vi.restoreAllMocks() })
+
+  it('creates SAML without OIDC fields and safely splits PEM certificates', async () => {
+    const view = await render()
+    await view.find('[data-testid="identity-add-provider"]').trigger('click')
+    const form = view.find('[data-testid="identity-provider-form"]')
+    await form.find('select[name="type"]').setValue('saml')
+    expect(form.find('input[name="client_id"]').exists()).toBe(false)
+    await form.find('input[name="name"]').setValue('SAML IdP')
+    await form.find('input[name="provider_key"]').setValue('saml-idp')
+    await form.find('input[name="idp_entity_id"]').setValue('urn:example:idp')
+    await form.find('input[name="sso_url"]').setValue('https://id.example.com/sso')
+    const cert = '-----BEGIN CERTIFICATE-----\nYWJj\n-----END CERTIFICATE-----'
+    await form.find('textarea[name="signing_certificates"]').setValue(cert + '\n' + cert)
+    await form.trigger('submit')
+    await flushPromises()
+    const payload = api.createIdentityProvider.mock.calls[0][1]
+    expect(payload).toMatchObject({ type: 'saml', saml: { idp_entity_id: 'urn:example:idp', signing_certificates: [cert, cert], authn_requests_signed: true, subject_attribute: '', allow_unspecified_name_id: false } })
+    for (const key of ['issuer_url', 'client_id', 'client_secret', 'secret_action', 'scopes', 'claim_mapping', 'token_auth_method']) expect(payload).not.toHaveProperty(key)
+  })
+
+  it('preserves SAML configuration on edit and keeps provider type immutable', async () => {
+    const cert = '-----BEGIN CERTIFICATE-----\nYWJj\n-----END CERTIFICATE-----'
+    api.listIdentityProviders.mockResolvedValue({ items: [{ ...provider, type: 'saml', saml_public_id: 'public-id', saml: { idp_entity_id: 'urn:idp', sso_url: 'https://id.example.com/sso', signing_certificates: [cert], metadata_source: 'url', metadata_url: 'https://id.example.com/metadata', subject_attribute: 'immutable_id', allow_unspecified_name_id: false, email_attribute: 'mail', name_attribute: 'displayName', groups_attribute: 'roles', authn_requests_signed: true } }] })
+    const view = await render()
+    expect(view.text()).toContain('urn:idp')
+    await view.find('[data-testid="identity-edit-provider-9"]').trigger('click')
+    const form = view.find('[data-testid="identity-provider-form"]')
+    expect(form.find('select[name="type"]').attributes()).toHaveProperty('disabled')
+    await form.trigger('submit')
+    await flushPromises()
+    expect(api.updateIdentityProvider).toHaveBeenCalledWith(1, 9, expect.objectContaining({ revision: 3, saml: expect.objectContaining({ metadata_url: 'https://id.example.com/metadata', signing_certificates: [cert], subject_attribute: 'immutable_id' }) }))
+    expect(api.getSAMLServiceProvider).not.toHaveBeenCalled()
+  })
+
+  it('shows SAML registration and requires confirmation before promotion', async () => {
+    const samlProvider = { ...provider, type: 'saml', saml_public_id: 'public-id' }
+    const registration = { entity_id: 'urn:sp', acs_url: 'https://relay.example.com/acs', metadata_url: 'https://relay.example.com/metadata', signing_certificate: 'current-cert', next_signing_certificate: 'next-cert', idp_initiated_supported: false, slo_supported: false }
+    api.listIdentityProviders.mockResolvedValue({ items: [samlProvider] })
+    api.getSAMLServiceProvider.mockResolvedValue(registration)
+    api.rotateSAMLKeys.mockResolvedValue({ ...samlProvider, revision: 4 })
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const view = await render()
+    await view.find('[data-testid="identity-saml-sp-9"]').trigger('click')
+    await flushPromises()
+    expect(view.text()).toContain('https://relay.example.com/acs')
+    await view.find('[data-testid="saml-promote"]').trigger('click')
+    expect(api.rotateSAMLKeys).not.toHaveBeenCalled()
+    confirm.mockReturnValue(true)
+    await view.find('[data-testid="saml-promote"]').trigger('click')
+    await flushPromises()
+    expect(api.rotateSAMLKeys).toHaveBeenCalledWith(1, 9, { revision: 3, action: 'promote' })
+  })
+
+  it('lets read-only users view SAML registration without key rotation controls', async () => {
+    api.listIdentityProviders.mockResolvedValue({ items: [{ ...provider, type: 'saml' }] })
+    api.getSAMLServiceProvider.mockResolvedValue({ entity_id: 'urn:sp', acs_url: 'https://relay.example.com/acs', metadata_url: 'https://relay.example.com/metadata', signing_certificate: 'cert' })
+    const view = await render([{ ...workspace, permissions: ['workspace.read', 'identity.read'] }])
+    await view.find('[data-testid="identity-saml-sp-9"]').trigger('click')
+    await flushPromises()
+    expect(view.text()).toContain('urn:sp')
+    expect(view.find('[data-testid="saml-stage"]').exists()).toBe(false)
+    expect(view.find('[data-testid="saml-promote"]').exists()).toBe(false)
+  })
+
+  it('preserves explicitly empty optional SAML attributes during ordinary edits', async () => {
+    const cert = '-----BEGIN CERTIFICATE-----\nYWJj\n-----END CERTIFICATE-----'
+    api.listIdentityProviders.mockResolvedValue({ items: [{ ...provider, type: 'saml', saml: { idp_entity_id: 'urn:idp', sso_url: 'https://id.example.com/sso', signing_certificates: [cert], metadata_source: 'manual', email_attribute: 'mail', name_attribute: '', groups_attribute: '' } }] })
+    const view = await render()
+    await view.find('[data-testid="identity-edit-provider-9"]').trigger('click')
+    await view.find('[data-testid="identity-provider-form"]').trigger('submit')
+    await flushPromises()
+    expect(api.updateIdentityProvider).toHaveBeenCalledWith(1, 9, expect.objectContaining({ saml: expect.objectContaining({ name_attribute: '', groups_attribute: '' }) }))
+  })
+
+  it('imports pasted metadata on save without requiring fabricated manual or OIDC fields', async () => {
+    const view = await render()
+    await view.find('[data-testid="identity-add-provider"]').trigger('click')
+    const form = view.find('[data-testid="identity-provider-form"]')
+    await form.find('select[name="type"]').setValue('saml')
+    await form.find('input[name="name"]').setValue('XML IdP')
+    await form.find('input[name="provider_key"]').setValue('xml-idp')
+    await form.find('select[name="metadata_source"]').setValue('xml')
+    await form.find('textarea[name="metadata_xml"]').setValue('<EntityDescriptor entityID="urn:idp"/>')
+    expect(api.createIdentityProvider).not.toHaveBeenCalled()
+    await form.trigger('submit')
+    await flushPromises()
+    expect(api.createIdentityProvider).toHaveBeenCalledWith(1, expect.objectContaining({ saml: expect.objectContaining({ metadata_source: 'xml', metadata_xml: '<EntityDescriptor entityID="urn:idp"/>', idp_entity_id: '', signing_certificates: [] }) }))
+  })
+
+  it('blocks malformed certificate fragments rather than silently discarding them', async () => {
+    api.listIdentityProviders.mockResolvedValue({ items: [{ ...provider, type: 'saml', saml: { idp_entity_id: 'urn:idp', sso_url: 'https://id.example.com/sso', signing_certificates: ['-----BEGIN CERTIFICATE-----\nYWJj\n-----END CERTIFICATE-----'], metadata_source: 'manual' } }] })
+    const view = await render()
+    await view.find('[data-testid="identity-edit-provider-9"]').trigger('click')
+    const form = view.find('[data-testid="identity-provider-form"]')
+    await form.find('textarea[name="signing_certificates"]').setValue('-----BEGIN CERTIFICATE-----broken')
+    await form.trigger('submit')
+    await flushPromises()
+    expect(api.updateIdentityProvider).not.toHaveBeenCalled()
+  })
 
   it('renders provider state and saves a new verified domain request', async () => {
     const view = await render()

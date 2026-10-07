@@ -60,9 +60,9 @@
           <div v-if="providers.length" class="identity-list">
             <article v-for="provider in providers" :key="provider.id" class="identity-row identity-row--provider">
               <div class="identity-row__main">
-                <div class="identity-provider-title"><strong>{{ provider.name }}</strong><span v-if="provider.is_default" class="identity-default">{{ t('workspace.identityDefault') }}</span><span class="identity-status" :class="`is-${provider.status}`">{{ providerStatusLabel(provider.status) }}</span></div>
-                <small>{{ provider.provider_key }} · {{ provider.client_id }}</small>
-                <code class="identity-issuer">{{ provider.issuer_url }}</code>
+                <div class="identity-provider-title"><strong>{{ provider.name }}</strong><span class="identity-status">{{ provider.type === 'saml' ? 'SAML' : 'OIDC' }}</span><span v-if="provider.is_default" class="identity-default">{{ t('workspace.identityDefault') }}</span><span class="identity-status" :class="`is-${provider.status}`">{{ providerStatusLabel(provider.status) }}</span></div>
+                <small>{{ provider.provider_key }} · {{ provider.type === 'saml' ? 'SAML' : provider.client_id }}</small>
+                <code class="identity-issuer">{{ provider.type === 'saml' ? provider.saml?.idp_entity_id : provider.issuer_url }}</code>
                 <small :data-testid="`identity-validation-${provider.id}`" class="identity-provider-validation">
                   <span>{{ t('workspace.identityLastValidation') }}: {{ validationLabel(provider.last_validation_code) }}</span>
                   <time v-if="provider.last_validated_at" :datetime="provider.last_validated_at">{{ formatDateTime(provider.last_validated_at) }}</time>
@@ -72,7 +72,7 @@
                 <button v-if="provider.status === 'active'" type="button" class="btn btn-secondary btn-sm" :disabled="providerActionId === provider.id" @click="testSSO(provider)">{{ providerActionId === provider.id ? t('common.processing') : t('workspace.identityTestSignIn') }}</button>
                 <RouterLink v-if="provider.status === 'active'" class="btn btn-secondary btn-sm" :data-testid="`identity-link-provider-${provider.id}`" :to="linkProviderPath(provider)">{{ t('workspace.identityLinkAccount') }}</RouterLink>
                 <button v-if="store.can('identity.manage')" type="button" class="btn btn-ghost btn-sm" :data-testid="`identity-edit-provider-${provider.id}`" :disabled="providerSaving" @click="editProvider(provider)">{{ t('common.edit') }}</button>
-                <button type="button" class="btn btn-ghost btn-sm" @click="selectedMappingProvider = provider">{{ t('workspace.identityMappings') }}</button>
+                <button v-if="provider.type === 'saml'" type="button" class="btn btn-secondary btn-sm" :data-testid="`identity-saml-sp-${provider.id}`" @click="selectedSAMLProvider = provider">{{ t('workspace.identitySamlRegistration') }}</button><button type="button" class="btn btn-ghost btn-sm" @click="selectedMappingProvider = provider">{{ t('workspace.identityMappings') }}</button>
                 <button v-if="store.can('identity.manage') && provider.status === 'active'" type="button" class="btn btn-ghost btn-sm identity-danger" :disabled="providerActionId === provider.id" @click="disableProvider(provider)">{{ t('workspace.identityDisableProvider') }}</button>
               </div>
             </article>
@@ -81,11 +81,13 @@
           <Pagination v-if="providerTotal > 50" :total="providerTotal" :page="providerPage" :page-size="50" :show-page-size-selector="false" @update:page="changePage('providers', $event)" />
 
           <form v-if="providerFormOpen" class="identity-provider-form" data-testid="identity-provider-form" @submit.prevent="saveProvider">
-            <div class="identity-heading"><div><h3>{{ editingProvider ? t('workspace.identityEditProvider') : t('workspace.identityAddProvider') }}</h3><p>{{ t('workspace.identityProviderFormDescription') }}</p></div><button type="button" class="btn btn-ghost btn-sm" :disabled="providerSaving" @click="closeProviderForm">{{ t('common.cancel') }}</button></div>
+            <div class="identity-heading"><div><h3>{{ editingProvider ? t('workspace.identityEditProvider') : t('workspace.identityAddProvider') }}</h3><p>{{ t(providerType === 'saml' ? 'workspace.identitySamlDeploymentHint' : 'workspace.identityProviderFormDescription') }}</p></div><button type="button" class="btn btn-ghost btn-sm" :disabled="providerSaving" @click="closeProviderForm">{{ t('common.cancel') }}</button></div>
             <div class="identity-fields">
-              <label class="identity-field--wide"><span>{{ t('workspace.identityPreset') }}</span><select v-model="providerPreset" class="input" name="preset" @change="applyPreset"><option value="generic">{{ t('workspace.identityPresets.generic') }}</option><option value="entra">{{ t('workspace.identityPresets.entra') }}</option><option value="google">{{ t('workspace.identityPresets.google') }}</option><option value="okta">{{ t('workspace.identityPresets.okta') }}</option></select><small>{{ t('workspace.identityPresetHint') }}</small></label>
+              <label class="identity-field--wide"><span>{{ t('workspace.identityProviderType') }}</span><select v-model="providerType" name="type" class="input" :disabled="Boolean(editingProvider)"><option value="oidc">OpenID Connect</option><option value="saml">SAML 2.0</option></select></label>
+              <label v-if="providerType === 'oidc'" class="identity-field--wide"><span>{{ t('workspace.identityPreset') }}</span><select v-model="providerPreset" class="input" name="preset" @change="applyPreset"><option value="generic">{{ t('workspace.identityPresets.generic') }}</option><option value="entra">{{ t('workspace.identityPresets.entra') }}</option><option value="google">{{ t('workspace.identityPresets.google') }}</option><option value="okta">{{ t('workspace.identityPresets.okta') }}</option></select><small>{{ t('workspace.identityPresetHint') }}</small></label>
               <label><span>{{ t('workspace.identityProviderName') }}</span><input v-model="providerForm.name" class="input" name="name" required maxlength="120"></label>
               <label><span>{{ t('workspace.identityProviderKey') }}</span><input v-model="providerForm.provider_key" class="input" name="provider_key" required maxlength="80" pattern="[a-z0-9][a-z0-9_-]*"></label>
+              <template v-if="providerType === 'oidc'">
               <label class="identity-field--wide"><span>{{ t('workspace.identityIssuerUrl') }}</span><input v-model="providerForm.issuer_url" class="input" name="issuer_url" type="url" autocomplete="url" required maxlength="2048" placeholder="https://id.example.com"></label>
               <label><span>{{ t('workspace.identityClientId') }}</span><input v-model="providerForm.client_id" class="input" name="client_id" required maxlength="512" autocomplete="off"></label>
               <label><span>{{ t('workspace.identityTokenAuthMethod') }}</span><select v-model="providerForm.token_auth_method" class="input" name="token_auth_method" :disabled="providerForm.secret_action === 'remove'" :aria-invalid="Boolean(providerSecretError)" :aria-describedby="providerSecretError ? 'identity-secret-consistency' : undefined"><option value="client_secret_basic">{{ t('workspace.identityTokenAuthMethods.basic') }}</option><option value="client_secret_post">{{ t('workspace.identityTokenAuthMethods.post') }}</option><option value="none">{{ t('workspace.identityTokenAuthMethods.none') }}</option></select></label>
@@ -96,6 +98,8 @@
               <label><span>{{ t('workspace.identityEmailClaim') }}</span><input v-model="providerForm.email_claim" class="input" name="email_claim" required maxlength="200"></label>
               <label><span>{{ t('workspace.identityNameClaim') }}</span><input v-model="providerForm.name_claim" class="input" name="name_claim" maxlength="200"></label>
               <label><span>{{ t('workspace.identityGroupsClaim') }}</span><input v-model="providerForm.groups_claim" class="input" name="groups_claim" maxlength="200"></label>
+              </template>
+              <WorkspaceSAMLFields v-else v-model="samlForm" />
             </div>
             <fieldset class="identity-options">
               <legend>{{ t('workspace.identityProvisioning') }}</legend>
@@ -106,9 +110,9 @@
             </fieldset>
             <div class="identity-options identity-options--checks">
               <label class="identity-check"><input v-model="providerForm.is_default" type="checkbox"><span>{{ t('workspace.identityMakeDefault') }}</span></label>
-              <label class="identity-check"><input v-model="providerForm.discovery_enabled" name="discovery_enabled" type="checkbox"><span>{{ t('workspace.identityDiscoveryEnabled') }}</span></label>
+              <label v-if="providerType === 'oidc'" class="identity-check"><input v-model="providerForm.discovery_enabled" name="discovery_enabled" type="checkbox"><span>{{ t('workspace.identityDiscoveryEnabled') }}</span></label>
             </div>
-            <fieldset v-if="!providerForm.discovery_enabled" class="identity-options">
+            <fieldset v-if="providerType === 'oidc' && !providerForm.discovery_enabled" class="identity-options">
               <legend>{{ t('workspace.identityManualEndpoints') }}</legend>
               <label class="identity-field--wide"><span>{{ t('workspace.identityAuthorizationEndpoint') }}</span><input v-model="providerForm.authorization_endpoint" class="input" name="authorization_endpoint" type="url" required maxlength="2048"></label>
               <label class="identity-field--wide"><span>{{ t('workspace.identityTokenEndpoint') }}</span><input v-model="providerForm.token_endpoint" class="input" name="token_endpoint" type="url" required maxlength="2048"></label>
@@ -119,6 +123,7 @@
           </form>
         </section>
 
+        <WorkspaceSAMLRegistration v-if="selectedSAMLProvider" :workspace-id="workspaceId" :provider="selectedSAMLProvider" :can-manage="store.can('identity.manage')" @close="selectedSAMLProvider = null" @updated="selectedSAMLProvider = $event; load()" />
         <WorkspaceIdentityMappings v-if="selectedMappingProvider" :workspace-id="workspaceId" :provider="selectedMappingProvider" @close="selectedMappingProvider = null" />
 
         <section class="identity-panel">
@@ -144,6 +149,8 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import WorkspaceFrame from '@/components/workspace/WorkspaceFrame.vue'
 import WorkspaceIdentityMappings from '@/components/workspace/WorkspaceIdentityMappings.vue'
+import WorkspaceSAMLFields, { createSAMLForm, samlPayload } from '@/components/workspace/WorkspaceSAMLFields.vue'
+import WorkspaceSAMLRegistration from '@/components/workspace/WorkspaceSAMLRegistration.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import { workspaceAPI, type EnterpriseDomain, type EnterpriseDomainCreateResult, type WorkspaceIdentityPolicy, type WorkspaceIdentityProvider, type WorkspaceIdentityProviderInput } from '@/api/workspace'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -177,13 +184,16 @@ const verificationResult = ref<EnterpriseDomainCreateResult | null>(null)
 const providerFormOpen = ref(false)
 const editingProvider = ref<WorkspaceIdentityProvider | null>(null)
 const selectedMappingProvider = ref<WorkspaceIdentityProvider | null>(null)
+const selectedSAMLProvider = ref<WorkspaceIdentityProvider | null>(null)
+const providerType = ref<'oidc' | 'saml'>('oidc')
+const samlForm = ref(createSAMLForm())
 const providerPreset = ref('generic')
 const policyForm = reactive<{ require_sso: boolean; sso_grace_until: string }>({ require_sso: false, sso_grace_until: '' })
 const providerForm = reactive({ name: '', provider_key: '', issuer_url: '', client_id: '', client_secret: '', secret_action: 'preserve' as 'preserve' | 'replace' | 'remove', token_auth_method: 'client_secret_basic' as 'client_secret_basic' | 'client_secret_post' | 'none', authorization_endpoint: '', token_endpoint: '', jwks_uri: '', userinfo_endpoint: '', scopes: 'openid profile email', email_claim: 'email', name_claim: 'name', groups_claim: 'groups', jit_enabled: false, default_role: 'viewer', allowed_domains: '', is_default: false, discovery_enabled: true })
 const providerSecretError = computed(() => {
-  if (!editingProvider.value || providerForm.secret_action === 'remove') return ''
+  if (providerType.value === 'saml' || !editingProvider.value || providerForm.secret_action === 'remove') return ''
   if (providerForm.token_auth_method === 'none' && (editingProvider.value.has_client_secret || providerForm.secret_action === 'replace')) return t('workspace.identityPublicClientSecretConflict')
-  if (providerForm.token_auth_method !== 'none' && providerForm.secret_action === 'preserve' && !editingProvider.value.has_client_secret) return t('workspace.identityConfidentialClientSecretRequired')
+  if (providerType.value === 'oidc' && providerForm.token_auth_method !== 'none' && providerForm.secret_action === 'preserve' && !editingProvider.value.has_client_secret) return t('workspace.identityConfidentialClientSecretRequired')
   return ''
 })
 const verificationHost = computed(() => verificationResult.value?.domain.dns_host || (verificationResult.value ? `_modurelay-verification.${verificationResult.value.domain.normalized_domain}` : ''))
@@ -208,12 +218,16 @@ function validationLabel(code: unknown): string {
   return typeof code === 'string' && knownCodes.includes(code) ? t(`workspace.identityValidationResults.${code}`) : t('workspace.identityValidationNotRecorded')
 }
 function resetProviderForm(): void {
+  providerType.value = 'oidc'
+  samlForm.value = createSAMLForm()
   providerPreset.value = 'generic'
   Object.assign(providerForm, { name: '', provider_key: '', issuer_url: '', client_id: '', client_secret: '', secret_action: 'preserve', token_auth_method: 'client_secret_basic', authorization_endpoint: '', token_endpoint: '', jwks_uri: '', userinfo_endpoint: '', scopes: 'openid profile email', email_claim: 'email', name_claim: 'name', groups_claim: 'groups', jit_enabled: false, default_role: 'viewer', allowed_domains: '', is_default: false, discovery_enabled: true })
 }
 function openCreateProvider(): void { editingProvider.value = null; resetProviderForm(); providerFormOpen.value = true }
 function editProvider(provider: WorkspaceIdentityProvider): void {
   editingProvider.value = provider
+  providerType.value = provider.type === 'saml' ? 'saml' : 'oidc'
+  samlForm.value = createSAMLForm(provider.saml)
   Object.assign(providerForm, {
     name: provider.name,
     provider_key: provider.provider_key,
@@ -362,9 +376,9 @@ async function saveProvider(): Promise<void> {
   const requestContext = contextGeneration
   if (!id || providerSaving.value || !store.can('identity.manage')) return
   if (providerSecretError.value) { app.showError(providerSecretError.value); return }
-  if (providerForm.token_auth_method !== 'none' && (!editingProvider.value || providerForm.secret_action === 'replace') && !providerForm.client_secret.trim()) { app.showError(t('workspace.identitySecretRequired')); return }
-  if (editingProvider.value && providerForm.secret_action === 'remove' && !window.confirm(t('workspace.identityRemoveSecretConfirm'))) return
-  const payload: WorkspaceIdentityProviderInput = {
+  if (providerType.value === 'oidc' && providerForm.token_auth_method !== 'none' && (!editingProvider.value || providerForm.secret_action === 'replace') && !providerForm.client_secret.trim()) { app.showError(t('workspace.identitySecretRequired')); return }
+  if (providerType.value === 'oidc' && editingProvider.value && providerForm.secret_action === 'remove' && !window.confirm(t('workspace.identityRemoveSecretConfirm'))) return
+  let payload: WorkspaceIdentityProviderInput = {
     provider_key: providerForm.provider_key.trim(),
     name: providerForm.name.trim(),
     issuer_url: providerForm.issuer_url.trim(),
@@ -384,8 +398,13 @@ async function saveProvider(): Promise<void> {
       require_verified_email: true,
     },
   }
-  if (!providerForm.name_claim.trim()) delete payload.claim_mapping.name
-  if (!providerForm.groups_claim.trim()) delete payload.claim_mapping.groups
+  if (!providerForm.name_claim.trim()) delete payload.claim_mapping!.name
+  if (!providerForm.groups_claim.trim()) delete payload.claim_mapping!.groups
+  if (providerType.value === 'saml') {
+    try {
+      payload = { type: 'saml', name: payload.name, provider_key: payload.provider_key, revision: payload.revision, is_default: payload.is_default, discovery_enabled: true, jit_config: payload.jit_config, saml: samlPayload(samlForm.value) }
+    } catch { app.showError(t('workspace.identitySamlInvalid')); return }
+  }
   providerSaving.value = true
   try {
     if (editingProvider.value) await workspaceAPI.updateIdentityProvider(id, editingProvider.value.id, payload)
@@ -459,6 +478,7 @@ watch([workspaceId, () => store.permissions], () => {
   domainActionId.value = null
   providerActionId.value = null
   selectedMappingProvider.value = null
+  selectedSAMLProvider.value = null
   closeProviderForm()
   void load()
 })

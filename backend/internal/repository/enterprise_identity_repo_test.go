@@ -40,8 +40,8 @@ func TestEnterpriseOIDCStateReturnsNonceAndRevision(t *testing.T) {
 	hash := make([]byte, 32)
 	now := time.Now().UTC()
 	mock.ExpectQuery("UPDATE workspace_identity_auth_states.*nonce_ciphertext").WithArgs(hash, now, make([]byte, 32)).WillReturnRows(
-		sqlmock.NewRows([]string{"workspace_id", "provider_id", "provider_revision", "browser_session_hash", "nonce_hash", "pkce_verifier_ciphertext", "nonce_ciphertext", "return_to", "intent", "link_user_id", "expires_at", "created_at"}).
-			AddRow(8, 9, 3, make([]byte, 32), make([]byte, 32), "cipher:pkce", "cipher:nonce", "/workspace", "login", nil, now.Add(time.Minute), now))
+		sqlmock.NewRows([]string{"workspace_id", "provider_id", "provider_revision", "browser_session_hash", "nonce_hash", "pkce_verifier_ciphertext", "nonce_ciphertext", "return_to", "intent", "link_user_id", "expires_at", "created_at", "protocol", "request_id"}).
+			AddRow(8, 9, 3, make([]byte, 32), make([]byte, 32), "cipher:pkce", "cipher:nonce", "/workspace", "login", nil, now.Add(time.Minute), now, "oidc", nil))
 	item, err := (&enterpriseIdentityRepository{db: db, encryptor: enterpriseTestEncryptor{}}).ConsumeOIDCState(context.Background(), hex.EncodeToString(hash), make([]byte, 32), now)
 	require.NoError(t, err)
 	require.Equal(t, "pkce", item.PKCEVerifier)

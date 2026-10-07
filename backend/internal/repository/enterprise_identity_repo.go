@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/mail"
+	"slices"
 	"strings"
 	"time"
 
@@ -217,22 +218,28 @@ func (r *enterpriseIdentityRepository) RevokeDomain(ctx context.Context, workspa
 	return item, enterpriseIdentityError(tx.Commit())
 }
 
-const enterpriseProviderColumns = `id,workspace_id,type,provider_key,name,status,is_default,issuer_url,client_id,(NULLIF(encrypted_client_secret,'') IS NOT NULL),scopes,authorization_endpoint,token_endpoint,jwks_uri,userinfo_endpoint,discovery_enabled,claim_mapping,jit_config,created_by_user_id,created_at,updated_at,disabled_at,revision,token_auth_method,last_validated_at,last_validation_code`
+const enterpriseProviderColumns = `id,workspace_id,type,provider_key,name,status,is_default,COALESCE(issuer_url,''),COALESCE(client_id,''),(NULLIF(encrypted_client_secret,'') IS NOT NULL),COALESCE(scopes,'{}'::text[]),authorization_endpoint,token_endpoint,jwks_uri,userinfo_endpoint,COALESCE(discovery_enabled,false),claim_mapping,jit_config,created_by_user_id,created_at,updated_at,disabled_at,revision,COALESCE(token_auth_method,''),last_validated_at,last_validation_code,saml_config,COALESCE(saml_public_id,'')`
 
 func scanEnterpriseProvider(scanner interface{ Scan(...any) error }, secret ...*sql.NullString) (*service.EnterpriseIdentityProvider, string, error) {
 	p := &service.EnterpriseIdentityProvider{}
 	var scopes pq.StringArray
 	var authEndpoint, tokenEndpoint, jwksURI, userinfoEndpoint sql.NullString
 	var lastValidationCode sql.NullString
-	var claimJSON, jitJSON []byte
+	var claimJSON, jitJSON, samlJSON []byte
 	var hasSecret bool
-	args := []any{&p.ID, &p.WorkspaceID, &p.Type, &p.ProviderKey, &p.Name, &p.Status, &p.IsDefault, &p.IssuerURL, &p.ClientID, &hasSecret, &scopes, &authEndpoint, &tokenEndpoint, &jwksURI, &userinfoEndpoint, &p.DiscoveryEnabled, &claimJSON, &jitJSON, &p.CreatedByUserID, &p.CreatedAt, &p.UpdatedAt, &p.DisabledAt, &p.Revision, &p.TokenAuthMethod, &p.LastValidatedAt, &lastValidationCode}
+	args := []any{&p.ID, &p.WorkspaceID, &p.Type, &p.ProviderKey, &p.Name, &p.Status, &p.IsDefault, &p.IssuerURL, &p.ClientID, &hasSecret, &scopes, &authEndpoint, &tokenEndpoint, &jwksURI, &userinfoEndpoint, &p.DiscoveryEnabled, &claimJSON, &jitJSON, &p.CreatedByUserID, &p.CreatedAt, &p.UpdatedAt, &p.DisabledAt, &p.Revision, &p.TokenAuthMethod, &p.LastValidatedAt, &lastValidationCode, &samlJSON, &p.PublicID}
 	for _, s := range secret {
 		args = append(args, s)
 	}
 	err := scanner.Scan(args...)
 	if err != nil {
 		return nil, "", enterpriseIdentityError(err)
+	}
+	if len(samlJSON) > 0 {
+		if err := json.Unmarshal(samlJSON, &p.SAML); err != nil {
+			return nil, "", err
+		}
+		p.SAML.MetadataXML = ""
 	}
 	p.HasClientSecret = hasSecret
 	if lastValidationCode.Valid {
@@ -307,11 +314,30 @@ func (r *enterpriseIdentityRepository) ListProviders(ctx context.Context, worksp
 }
 
 func (r *enterpriseIdentityRepository) CreateProvider(ctx context.Context, workspaceID, actorID int64, input service.EnterpriseIdentityProviderInput, ciphertext string, scopes []string) (*service.EnterpriseIdentityProvider, error) {
+	protocol := enterpriseProtocol(input.Type)
+	if protocol != "oidc" && protocol != "saml" {
+		return nil, service.ErrEnterpriseIdentityInvalid
+	}
 	method := input.TokenAuthMethod
 	if method == "" {
 		method = "client_secret_basic"
 	}
-	if !validEnterpriseClientAuthentication(method, ciphertext != "") {
+	var samlConfig []byte
+	var publicID string
+	var err error
+	if protocol == "saml" {
+		if !validSAMLRepositoryInput(input) || ciphertext == "" {
+			return nil, service.ErrEnterpriseIdentityInvalid
+		}
+		samlConfig, err = sanitizedSAMLConfig(input.SAML)
+		if err != nil {
+			return nil, err
+		}
+		publicID, _, err = service.NewSecureToken(32)
+		if err != nil {
+			return nil, err
+		}
+	} else if input.SAML != nil || !validEnterpriseClientAuthentication(method, ciphertext != "") {
 		return nil, service.ErrEnterpriseIdentityInvalid
 	}
 	claimJSON, jitJSON, err := providerJSON(input)
@@ -329,11 +355,16 @@ func (r *enterpriseIdentityRepository) CreateProvider(ctx context.Context, works
 		}
 	}
 	discovery := input.DiscoveryEnabled == nil || *input.DiscoveryEnabled
-	item, _, err := scanEnterpriseProvider(tx.QueryRowContext(ctx, `INSERT INTO workspace_identity_providers(workspace_id,provider_key,name,issuer_url,client_id,encrypted_client_secret,scopes,is_default,discovery_enabled,claim_mapping,jit_config,created_by_user_id,token_auth_method,authorization_endpoint,token_endpoint,jwks_uri,userinfo_endpoint) VALUES($1,$2,$3,$4,$5,NULLIF($6,''),$7,$8,$9,$10,$11,$12,$13,NULLIF($14,''),NULLIF($15,''),NULLIF($16,''),NULLIF($17,'')) RETURNING `+enterpriseProviderColumns, workspaceID, input.ProviderKey, input.Name, input.IssuerURL, input.ClientID, ciphertext, pq.Array(scopes), input.IsDefault, discovery, claimJSON, jitJSON, actorID, method, input.AuthorizationEndpoint, input.TokenEndpoint, input.JWKSURI, input.UserinfoEndpoint))
+	var item *service.EnterpriseIdentityProvider
+	if protocol == "saml" {
+		item, _, err = scanEnterpriseProvider(tx.QueryRowContext(ctx, `INSERT INTO workspace_identity_providers(workspace_id,type,provider_key,name,issuer_url,client_id,encrypted_client_secret,token_auth_method,scopes,discovery_enabled,is_default,claim_mapping,jit_config,created_by_user_id,saml_config,encrypted_saml_sp_keys,saml_public_id) VALUES($1,'saml',$2,$3,NULL,NULL,NULL,NULL,NULL,NULL,$4,$5,$6,$7,$8,$9,$10) RETURNING `+enterpriseProviderColumns, workspaceID, input.ProviderKey, input.Name, input.IsDefault, claimJSON, jitJSON, actorID, samlConfig, ciphertext, publicID))
+	} else {
+		item, _, err = scanEnterpriseProvider(tx.QueryRowContext(ctx, `INSERT INTO workspace_identity_providers(workspace_id,provider_key,name,issuer_url,client_id,encrypted_client_secret,scopes,is_default,discovery_enabled,claim_mapping,jit_config,created_by_user_id,token_auth_method,authorization_endpoint,token_endpoint,jwks_uri,userinfo_endpoint) VALUES($1,$2,$3,$4,$5,NULLIF($6,''),$7,$8,$9,$10,$11,$12,$13,NULLIF($14,''),NULLIF($15,''),NULLIF($16,''),NULLIF($17,'')) RETURNING `+enterpriseProviderColumns, workspaceID, input.ProviderKey, input.Name, input.IssuerURL, input.ClientID, ciphertext, pq.Array(scopes), input.IsDefault, discovery, claimJSON, jitJSON, actorID, method, input.AuthorizationEndpoint, input.TokenEndpoint, input.JWKSURI, input.UserinfoEndpoint))
+	}
 	if err != nil {
 		return nil, err
 	}
-	if err = appendIdentityMutation(ctx, tx, workspaceID, actorID, "identity.provider_created", service.EventIdentityProviderCreated, "identity_provider", item.ID, service.DomainEventData{"status": item.Status, "provider_id": item.ID, "provider_revision": item.Revision}); err != nil {
+	if err = appendIdentityMutation(ctx, tx, workspaceID, actorID, "identity.provider_created", service.EventIdentityProviderCreated, "identity_provider", item.ID, service.DomainEventData{"status": item.Status, "provider_id": item.ID, "provider_revision": item.Revision, "category": protocol}); err != nil {
 		return nil, err
 	}
 	return item, enterpriseIdentityError(tx.Commit())
@@ -345,7 +376,7 @@ func getEnterpriseProvider(ctx context.Context, q workspaceSQL, workspaceID, pro
 	if lock {
 		suffix = " FOR UPDATE"
 	}
-	p, _, err := scanEnterpriseProvider(q.QueryRowContext(ctx, `SELECT `+enterpriseProviderColumns+`,encrypted_client_secret FROM workspace_identity_providers WHERE workspace_id=$1 AND id=$2`+suffix, workspaceID, providerID), &secret)
+	p, _, err := scanEnterpriseProvider(q.QueryRowContext(ctx, `SELECT `+enterpriseProviderColumns+`,CASE WHEN type='saml' THEN encrypted_saml_sp_keys ELSE encrypted_client_secret END FROM workspace_identity_providers WHERE workspace_id=$1 AND id=$2`+suffix, workspaceID, providerID), &secret)
 	return p, secret.String, err
 }
 
@@ -379,12 +410,22 @@ func (r *enterpriseIdentityRepository) UpdateProvider(ctx context.Context, works
 	if err != nil {
 		return nil, err
 	}
+	if enterpriseProtocol(input.Type) != current.Type {
+		return nil, service.ErrWorkspaceConflict
+	}
 	if input.Revision != current.Revision {
 		return nil, service.ErrWorkspaceConflict
 	}
 	// Subjects are scoped to the issuer/client namespace. Reusing a provider
 	// ID with another namespace must never adopt its existing global users.
-	if input.IssuerURL != current.IssuerURL || input.ClientID != current.ClientID {
+	namespaceChanged := input.IssuerURL != current.IssuerURL || input.ClientID != current.ClientID
+	if current.Type == "saml" {
+		if !validSAMLRepositoryInput(input) || current.SAML == nil || ciphertext != nil {
+			return nil, service.ErrEnterpriseIdentityInvalid
+		}
+		namespaceChanged = input.SAML.IDPEntityID != current.SAML.IDPEntityID || input.SAML.SubjectAttribute != current.SAML.SubjectAttribute || input.SAML.AllowUnspecifiedNameID != current.SAML.AllowUnspecifiedNameID
+	}
+	if namespaceChanged {
 		var bound bool
 		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM workspace_user_identities WHERE workspace_id=$1 AND provider_id=$2)`, workspaceID, providerID).Scan(&bound); err != nil {
 			return nil, err
@@ -395,6 +436,32 @@ func (r *enterpriseIdentityRepository) UpdateProvider(ctx context.Context, works
 	}
 	if input.IsDefault && current.Status != "active" {
 		return nil, service.ErrOIDCProviderDisabled
+	}
+	if current.Type == "saml" {
+		config := *input.SAML
+		config.SPCertificate, config.NextSPCertificate = current.SAML.SPCertificate, current.SAML.NextSPCertificate
+		configJSON, err := sanitizedSAMLConfig(&config)
+		if err != nil {
+			return nil, err
+		}
+		if input.IsDefault {
+			if _, err = tx.ExecContext(ctx, `UPDATE workspace_identity_providers SET is_default=false,revision=revision+1,last_validated_at=NULL,last_validation_code=NULL,updated_at=now() WHERE workspace_id=$1 AND id<>$2 AND is_default`, workspaceID, providerID); err != nil {
+				return nil, enterpriseIdentityError(err)
+			}
+		}
+		item, _, err := scanEnterpriseProvider(tx.QueryRowContext(ctx, `UPDATE workspace_identity_providers SET provider_key=$3,name=$4,is_default=$5,claim_mapping=$6,jit_config=$7,saml_config=$8,revision=revision+1,last_validated_at=NULL,last_validation_code=NULL,updated_at=now() WHERE workspace_id=$1 AND id=$2 RETURNING `+enterpriseProviderColumns, workspaceID, providerID, input.ProviderKey, input.Name, input.IsDefault, claimJSON, jitJSON, configJSON))
+		if err != nil {
+			return nil, err
+		}
+		if err = appendIdentityMutation(ctx, tx, workspaceID, actorID, "identity.provider_updated", service.EventIdentityProviderUpdated, "identity_provider", providerID, service.DomainEventData{"status": item.Status, "provider_id": item.ID, "provider_revision": item.Revision, "category": "saml"}); err != nil {
+			return nil, err
+		}
+		if input.SAML.IDPEntityID != current.SAML.IDPEntityID || input.SAML.SSOURL != current.SAML.SSOURL || input.SAML.MetadataURL != current.SAML.MetadataURL || !slices.Equal(input.SAML.SigningCertificates, current.SAML.SigningCertificates) {
+			if err = appendIdentityMutation(ctx, tx, workspaceID, actorID, "identity.saml_metadata_updated", service.EventSAMLMetadataUpdated, "identity_provider", providerID, service.DomainEventData{"provider_id": item.ID, "provider_revision": item.Revision, "category": "saml"}); err != nil {
+				return nil, err
+			}
+		}
+		return item, enterpriseIdentityError(tx.Commit())
 	}
 	var secret any
 	replaceSecret := ciphertext != nil
@@ -562,11 +629,11 @@ func (r *enterpriseIdentityRepository) UpdatePolicy(ctx context.Context, workspa
 		// requesting Owner's exact assurance after acquiring the same workspace
 		// lock used by provider edits, so a revision change cannot race enabling.
 		assurance, ok := service.AuthenticationAssuranceFromContext(ctx)
-		if !ok || assurance.WorkspaceID != workspaceID || assurance.AuthMethod != "oidc" || !assurance.Valid(time.Now()) {
+		if !ok || assurance.WorkspaceID != workspaceID || (assurance.AuthMethod != "oidc" && assurance.AuthMethod != "saml") || !assurance.Valid(time.Now()) {
 			return nil, service.ErrSSORequired
 		}
 		var ready bool
-		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM workspace_domains WHERE workspace_id=$1 AND status='verified') AND EXISTS(SELECT 1 FROM workspace_user_identities i JOIN workspace_identity_providers p ON p.workspace_id=i.workspace_id AND p.id=i.provider_id AND p.status='active' JOIN workspace_members m ON m.workspace_id=i.workspace_id AND m.user_id=i.user_id AND m.role='owner' AND m.status='active' JOIN users u ON u.id=m.user_id AND u.status='active' AND u.deleted_at IS NULL WHERE i.workspace_id=$1 AND i.provider_id=$2 AND p.revision=$3 AND i.user_id=$4)`, workspaceID, assurance.ProviderID, assurance.ProviderRevision, actorID).Scan(&ready); err != nil {
+		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM workspace_domains WHERE workspace_id=$1 AND status='verified') AND EXISTS(SELECT 1 FROM workspace_user_identities i JOIN workspace_identity_providers p ON p.workspace_id=i.workspace_id AND p.id=i.provider_id AND p.status='active' JOIN workspace_members m ON m.workspace_id=i.workspace_id AND m.user_id=i.user_id AND m.role='owner' AND m.status='active' JOIN users u ON u.id=m.user_id AND u.status='active' AND u.deleted_at IS NULL WHERE i.workspace_id=$1 AND i.provider_id=$2 AND p.revision=$3 AND i.user_id=$4 AND p.type=$5)`, workspaceID, assurance.ProviderID, assurance.ProviderRevision, actorID, assurance.AuthMethod).Scan(&ready); err != nil {
 			return nil, err
 		}
 		if !ready {
@@ -592,20 +659,36 @@ func writeIdentityPolicy(ctx context.Context, tx *sql.Tx, workspaceID, actorID i
 }
 
 func (r *enterpriseIdentityRepository) CreateOIDCState(ctx context.Context, state *service.OIDCState) error {
-	if state == nil || r.encryptor == nil || state.ProviderRevision <= 0 || len(state.BrowserSessionHash) != 32 || len(state.NonceHash) != 32 || service.ValidateEnterpriseReturnTo(state.ReturnTo) != nil || (state.Intent != "login" && state.Intent != "link") || (state.Intent == "link" && (state.LinkUserID == nil || *state.LinkUserID <= 0)) || (state.Intent == "login" && state.LinkUserID != nil) {
+	if state == nil || state.ProviderRevision <= 0 || len(state.BrowserSessionHash) != 32 || service.ValidateEnterpriseReturnTo(state.ReturnTo) != nil || (state.Intent != "login" && state.Intent != "link") || (state.Intent == "link" && (state.LinkUserID == nil || *state.LinkUserID <= 0)) || (state.Intent == "login" && state.LinkUserID != nil) {
+		return service.ErrEnterpriseIdentityInvalid
+	}
+	protocol := enterpriseProtocol(state.Protocol)
+	if protocol != "oidc" && protocol != "saml" {
+		return service.ErrEnterpriseIdentityInvalid
+	}
+	if protocol == "saml" && (strings.TrimSpace(state.RequestID) == "" || len(state.RequestID) > 256) {
+		return service.ErrEnterpriseIdentityInvalid
+	}
+	if protocol == "oidc" && (r.encryptor == nil || len(state.NonceHash) != 32 || state.PKCEVerifier == "" || state.Nonce == "" || state.RequestID != "") {
 		return service.ErrEnterpriseIdentityInvalid
 	}
 	hash, err := hex.DecodeString(state.Hash)
 	if err != nil || len(hash) != 32 {
 		return service.ErrEnterpriseIdentityInvalid
 	}
-	ciphertext, err := r.encryptor.Encrypt(state.PKCEVerifier)
-	if err != nil {
-		return err
-	}
-	nonceCiphertext, err := r.encryptor.Encrypt(state.Nonce)
-	if err != nil {
-		return err
+	var nonceHash, ciphertext, nonceCiphertext, requestID any
+	if protocol == "oidc" {
+		nonceHash = state.NonceHash
+		ciphertext, err = r.encryptor.Encrypt(state.PKCEVerifier)
+		if err != nil {
+			return err
+		}
+		nonceCiphertext, err = r.encryptor.Encrypt(state.Nonce)
+		if err != nil {
+			return err
+		}
+	} else {
+		requestID = state.RequestID
 	}
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -618,7 +701,7 @@ func (r *enterpriseIdentityRepository) CreateOIDCState(ctx context.Context, stat
 	if err = cleanupExpiredIdentityAuthentication(ctx, tx); err != nil {
 		return err
 	}
-	result, err := tx.ExecContext(ctx, `INSERT INTO workspace_identity_auth_states(state_hash,workspace_id,provider_id,provider_revision,browser_session_hash,nonce_hash,pkce_verifier_ciphertext,nonce_ciphertext,return_to,intent,link_user_id,expires_at) SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9,$10::varchar,$11,$12 FROM workspace_identity_providers p JOIN workspaces w ON w.id=p.workspace_id WHERE p.workspace_id=$2 AND p.id=$3 AND p.revision=$4 AND p.status='active' AND w.status='active' AND w.type='organization' AND ($10::varchar='login' OR EXISTS(SELECT 1 FROM workspace_members m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=$2 AND m.user_id=$11 AND m.status='active' AND u.status='active' AND u.deleted_at IS NULL))`, hash, state.WorkspaceID, state.ProviderID, state.ProviderRevision, state.BrowserSessionHash, state.NonceHash, ciphertext, nonceCiphertext, state.ReturnTo, state.Intent, state.LinkUserID, state.ExpiresAt)
+	result, err := tx.ExecContext(ctx, `INSERT INTO workspace_identity_auth_states(state_hash,workspace_id,provider_id,provider_revision,browser_session_hash,nonce_hash,pkce_verifier_ciphertext,nonce_ciphertext,return_to,intent,link_user_id,expires_at,protocol,request_id) SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9,$10::varchar,$11,$12,$13::varchar,$14 FROM workspace_identity_providers p JOIN workspaces w ON w.id=p.workspace_id WHERE p.workspace_id=$2 AND p.id=$3 AND p.revision=$4 AND p.status='active' AND p.type=$13::varchar AND w.status='active' AND w.type='organization' AND ($10::varchar='login' OR EXISTS(SELECT 1 FROM workspace_members m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=$2 AND m.user_id=$11 AND m.status='active' AND u.status='active' AND u.deleted_at IS NULL))`, hash, state.WorkspaceID, state.ProviderID, state.ProviderRevision, state.BrowserSessionHash, nonceHash, ciphertext, nonceCiphertext, state.ReturnTo, state.Intent, state.LinkUserID, state.ExpiresAt, protocol, requestID)
 	if err == nil {
 		var count int64
 		count, err = result.RowsAffected()
@@ -647,24 +730,31 @@ func (r *enterpriseIdentityRepository) ConsumeOIDCState(ctx context.Context, sta
 	if err != nil || len(hash) != 32 || len(browserHash) != 32 {
 		return nil, service.ErrOIDCStateNotFound
 	}
-	row := r.db.QueryRowContext(ctx, `UPDATE workspace_identity_auth_states s SET consumed_at=$2 WHERE state_hash=$1 AND browser_session_hash=$3 AND consumed_at IS NULL AND expires_at>$2 AND EXISTS(SELECT 1 FROM workspace_identity_providers p JOIN workspaces w ON w.id=p.workspace_id WHERE p.workspace_id=s.workspace_id AND p.id=s.provider_id AND p.revision=s.provider_revision AND p.status='active' AND w.status='active' AND w.type='organization') RETURNING workspace_id,provider_id,provider_revision,browser_session_hash,nonce_hash,pkce_verifier_ciphertext,nonce_ciphertext,return_to,intent,link_user_id,expires_at,created_at`, hash, now, browserHash)
+	row := r.db.QueryRowContext(ctx, `UPDATE workspace_identity_auth_states s SET consumed_at=$2 WHERE state_hash=$1 AND browser_session_hash=$3 AND consumed_at IS NULL AND expires_at>$2 AND EXISTS(SELECT 1 FROM workspace_identity_providers p JOIN workspaces w ON w.id=p.workspace_id WHERE p.workspace_id=s.workspace_id AND p.id=s.provider_id AND p.revision=s.provider_revision AND p.status='active' AND p.type=s.protocol AND w.status='active' AND w.type='organization') RETURNING workspace_id,provider_id,provider_revision,browser_session_hash,nonce_hash,pkce_verifier_ciphertext,nonce_ciphertext,return_to,intent,link_user_id,expires_at,created_at,protocol,request_id`, hash, now, browserHash)
 	var state service.OIDCState
-	var ciphertext, nonceCiphertext string
-	if err := row.Scan(&state.WorkspaceID, &state.ProviderID, &state.ProviderRevision, &state.BrowserSessionHash, &state.NonceHash, &ciphertext, &nonceCiphertext, &state.ReturnTo, &state.Intent, &state.LinkUserID, &state.ExpiresAt, &state.CreatedAt); err != nil {
+	var ciphertext, nonceCiphertext, requestID sql.NullString
+	if err := row.Scan(&state.WorkspaceID, &state.ProviderID, &state.ProviderRevision, &state.BrowserSessionHash, &state.NonceHash, &ciphertext, &nonceCiphertext, &state.ReturnTo, &state.Intent, &state.LinkUserID, &state.ExpiresAt, &state.CreatedAt, &state.Protocol, &requestID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, service.ErrOIDCStateNotFound
 		}
 		return nil, enterpriseIdentityError(err)
 	}
 	state.Hash = stateHash
+	state.RequestID = requestID.String
+	if state.Protocol == "saml" {
+		return &state, nil
+	}
+	if state.Protocol != "oidc" {
+		return nil, service.ErrEnterpriseIdentityInvalid
+	}
 	if r.encryptor == nil {
 		return nil, service.ErrEnterpriseIdentityInvalid
 	}
-	state.PKCEVerifier, err = r.encryptor.Decrypt(ciphertext)
+	state.PKCEVerifier, err = r.encryptor.Decrypt(ciphertext.String)
 	if err != nil {
 		return nil, service.ErrEnterpriseIdentityInvalid
 	}
-	state.Nonce, err = r.encryptor.Decrypt(nonceCiphertext)
+	state.Nonce, err = r.encryptor.Decrypt(nonceCiphertext.String)
 	if err != nil {
 		return nil, service.ErrEnterpriseIdentityInvalid
 	}
@@ -799,7 +889,8 @@ func (r *enterpriseIdentityRepository) ReplaceMappings(ctx context.Context, work
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, _, err = getEnterpriseProvider(ctx, tx, workspaceID, providerID, true); err != nil {
+	provider, _, err := getEnterpriseProvider(ctx, tx, workspaceID, providerID, true)
+	if err != nil {
 		return err
 	}
 	seenRoles, seenTeams := map[string]bool{}, map[string]bool{}
@@ -840,7 +931,7 @@ func (r *enterpriseIdentityRepository) ReplaceMappings(ctx context.Context, work
 	if _, err = tx.ExecContext(ctx, `UPDATE workspace_identity_providers SET revision=revision+1,last_validated_at=NULL,last_validation_code=NULL,updated_at=now() WHERE workspace_id=$1 AND id=$2`, workspaceID, providerID); err != nil {
 		return err
 	}
-	if err = appendIdentityMutation(ctx, tx, workspaceID, actorID, "identity.mappings_updated", service.EventOIDCMappingsUpdated, "identity_provider", providerID, service.DomainEventData{"category": "oidc", "provider_id": providerID, "role_count": len(input.Roles), "team_count": len(input.Teams)}); err != nil {
+	if err = appendIdentityMutation(ctx, tx, workspaceID, actorID, "identity.mappings_updated", service.EventOIDCMappingsUpdated, "identity_provider", providerID, service.DomainEventData{"category": provider.Type, "provider_id": providerID, "role_count": len(input.Roles), "team_count": len(input.Teams)}); err != nil {
 		return err
 	}
 	return enterpriseIdentityError(tx.Commit())
@@ -849,7 +940,7 @@ func (r *enterpriseIdentityRepository) ReplaceMappings(ctx context.Context, work
 func (r *enterpriseIdentityRepository) DiscoverSSO(ctx context.Context, domain string) ([]service.SSODiscoveryProvider, error) {
 	// This lookup is based only on a public verified domain. It never searches
 	// users or exposes membership, policies, client IDs or provider endpoints.
-	rows, err := r.db.QueryContext(ctx, `SELECT p.workspace_id,p.id,p.name,p.is_default FROM workspace_domains d JOIN workspaces w ON w.id=d.workspace_id AND w.type='organization' AND w.status='active' JOIN workspace_identity_providers p ON p.workspace_id=w.id AND p.status='active' WHERE d.normalized_domain=$1 AND d.status='verified' ORDER BY p.is_default DESC,p.id LIMIT 20`, domain)
+	rows, err := r.db.QueryContext(ctx, `SELECT p.workspace_id,p.id,p.name,p.is_default,p.type,COALESCE(p.saml_public_id,'') FROM workspace_domains d JOIN workspaces w ON w.id=d.workspace_id AND w.type='organization' AND w.status='active' JOIN workspace_identity_providers p ON p.workspace_id=w.id AND p.status='active' WHERE d.normalized_domain=$1 AND d.status='verified' ORDER BY p.is_default DESC,p.id LIMIT 20`, domain)
 	if err != nil {
 		return nil, err
 	}
@@ -857,7 +948,7 @@ func (r *enterpriseIdentityRepository) DiscoverSSO(ctx context.Context, domain s
 	items := []service.SSODiscoveryProvider{}
 	for rows.Next() {
 		var item service.SSODiscoveryProvider
-		if err = rows.Scan(&item.WorkspaceID, &item.ProviderID, &item.Name, &item.IsDefault); err != nil {
+		if err = rows.Scan(&item.WorkspaceID, &item.ProviderID, &item.Name, &item.IsDefault, &item.Type, &item.SAMLPublicID); err != nil {
 			return nil, err
 		}
 		items = append(items, item)
@@ -919,6 +1010,10 @@ func oidcEmailAlreadyExists(ctx context.Context, tx *sql.Tx, email string) (bool
 
 func (r *enterpriseIdentityRepository) CompleteIdentityLogin(ctx context.Context, input service.OIDCProvisionInput) (int64, error) {
 	claims := input.Claims
+	protocol := enterpriseProtocol(input.Protocol)
+	if protocol != "oidc" && protocol != "saml" {
+		return 0, service.ErrEnterpriseIdentityInvalid
+	}
 	if input.WorkspaceID <= 0 || input.ProviderID <= 0 || input.ProviderRevision <= 0 || claims == nil || strings.TrimSpace(claims.Subject) == "" || len(claims.Subject) > 1024 || len(claims.Email) > 320 || (input.LinkUserID != nil && *input.LinkUserID <= 0) {
 		return 0, service.ErrEnterpriseIdentityInvalid
 	}
@@ -944,7 +1039,7 @@ func (r *enterpriseIdentityRepository) CompleteIdentityLogin(ctx context.Context
 	if provider.Status != "active" {
 		return 0, service.ErrOIDCProviderDisabled
 	}
-	if provider.Revision != input.ProviderRevision {
+	if provider.Revision != input.ProviderRevision || provider.Type != protocol {
 		return 0, service.ErrOIDCStateSessionMismatch
 	}
 	var userID, identityID int64
@@ -994,7 +1089,7 @@ func (r *enterpriseIdentityRepository) CompleteIdentityLogin(ctx context.Context
 			}
 			// The users insert trigger creates the personal workspace/default
 			// project on this transaction, with no registration grants or keys.
-			if err = tx.QueryRowContext(ctx, `INSERT INTO users(email,password_hash,role,status,signup_source) VALUES($1,$2,'user','active','oidc') RETURNING id`, email, input.PasswordHash).Scan(&userID); err != nil {
+			if err = tx.QueryRowContext(ctx, `INSERT INTO users(email,password_hash,role,status,signup_source) VALUES($1,$2,'user','active',$3) RETURNING id`, email, input.PasswordHash, protocol).Scan(&userID); err != nil {
 				return 0, enterpriseIdentityError(err)
 			}
 			newUser = true
@@ -1016,7 +1111,7 @@ func (r *enterpriseIdentityRepository) CompleteIdentityLogin(ctx context.Context
 		defaultRole = service.WorkspaceRoleViewer
 	}
 	if newUser {
-		if _, err = tx.ExecContext(ctx, `INSERT INTO workspace_members(workspace_id,user_id,role,status,membership_source,membership_provider_id) VALUES($1,$2,$3,'active','oidc',$4)`, input.WorkspaceID, userID, defaultRole, input.ProviderID); err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO workspace_members(workspace_id,user_id,role,status,membership_source,membership_provider_id) VALUES($1,$2,$3,'active',$5,$4)`, input.WorkspaceID, userID, defaultRole, input.ProviderID, protocol); err != nil {
 			return 0, enterpriseIdentityError(err)
 		}
 	}
@@ -1037,7 +1132,7 @@ func (r *enterpriseIdentityRepository) CompleteIdentityLogin(ctx context.Context
 		if newUser {
 			action, event = "identity.jit_provisioned", service.EventOIDCJITProvisioned
 		}
-		if err = appendIdentityMutation(ctx, tx, input.WorkspaceID, userID, action, event, "identity", identityID, service.DomainEventData{"user_id": userID, "member_id": memberID, "role": role}); err != nil {
+		if err = appendIdentityMutation(ctx, tx, input.WorkspaceID, userID, action, event, "identity", identityID, service.DomainEventData{"user_id": userID, "member_id": memberID, "role": role, "category": protocol}); err != nil {
 			return 0, err
 		}
 	} else {
@@ -1056,10 +1151,10 @@ func (r *enterpriseIdentityRepository) CompleteIdentityLogin(ctx context.Context
 			return 0, mappingErr
 		}
 		changed := false
-		if source == service.MembershipSourceOIDC && sourceProvider.Valid && sourceProvider.Int64 == input.ProviderID && role != service.WorkspaceRoleOwner {
+		if source == protocol && sourceProvider.Valid && sourceProvider.Int64 == input.ProviderID && role != service.WorkspaceRoleOwner {
 			nextRole, _ := service.MapOIDCRole(claims.Groups, mappings.Roles, defaultRole, false)
 			if nextRole != role {
-				if _, err = tx.ExecContext(ctx, `UPDATE workspace_members SET role=$3,updated_at=now() WHERE workspace_id=$1 AND id=$2 AND membership_source='oidc' AND membership_provider_id=$4 AND role<>'owner'`, input.WorkspaceID, memberID, nextRole, input.ProviderID); err != nil {
+				if _, err = tx.ExecContext(ctx, `UPDATE workspace_members SET role=$3,updated_at=now() WHERE workspace_id=$1 AND id=$2 AND membership_source=$5 AND membership_provider_id=$4 AND role<>'owner'`, input.WorkspaceID, memberID, nextRole, input.ProviderID, protocol); err != nil {
 					return 0, err
 				}
 				role, changed = nextRole, true
@@ -1069,7 +1164,7 @@ func (r *enterpriseIdentityRepository) CompleteIdentityLogin(ctx context.Context
 		if teamErr != nil {
 			return 0, teamErr
 		}
-		data := service.DomainEventData{"user_id": userID, "member_id": memberID, "role": role, "provider_id": input.ProviderID, "source_provider_id": input.ProviderID}
+		data := service.DomainEventData{"user_id": userID, "member_id": memberID, "role": role, "provider_id": input.ProviderID, "source_provider_id": input.ProviderID, "category": protocol}
 		if changed {
 			if err = appendIdentityMutation(ctx, tx, input.WorkspaceID, userID, "identity.role_reconciled", service.EventOIDCRoleReconciled, "identity", identityID, data); err != nil {
 				return 0, err
@@ -1138,16 +1233,17 @@ func reconcileOIDCTeams(ctx context.Context, tx *sql.Tx, workspaceID, providerID
 			return false, err
 		}
 		changed = changed || count > 0
-		if _, err = tx.ExecContext(ctx, `INSERT INTO workspace_team_members(workspace_id,team_id,workspace_member_id,membership_source,membership_provider_id) VALUES($1,$2,$3,'oidc',$4) ON CONFLICT DO NOTHING`, workspaceID, id, memberID, providerID); err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO workspace_team_members(workspace_id,team_id,workspace_member_id,membership_source,membership_provider_id) SELECT $1,$2,$3,p.type,$4 FROM workspace_identity_providers p WHERE p.workspace_id=$1 AND p.id=$4 ON CONFLICT DO NOTHING`, workspaceID, id, memberID, providerID); err != nil {
 			return false, err
 		}
 	}
-	if _, err = tx.ExecContext(ctx, `DELETE FROM workspace_team_members tm WHERE tm.workspace_id=$1 AND tm.workspace_member_id=$2 AND tm.membership_source='oidc' AND tm.membership_provider_id=$3 AND NOT EXISTS(SELECT 1 FROM workspace_identity_team_grants g WHERE g.workspace_id=tm.workspace_id AND g.team_id=tm.team_id AND g.workspace_member_id=tm.workspace_member_id)`, workspaceID, memberID, providerID); err != nil {
+	if _, err = tx.ExecContext(ctx, `DELETE FROM workspace_team_members tm WHERE tm.workspace_id=$1 AND tm.workspace_member_id=$2 AND tm.membership_source IN ('oidc','saml') AND tm.membership_provider_id=$3 AND NOT EXISTS(SELECT 1 FROM workspace_identity_team_grants g WHERE g.workspace_id=tm.workspace_id AND g.team_id=tm.team_id AND g.workspace_member_id=tm.workspace_member_id)`, workspaceID, memberID, providerID); err != nil {
 		return false, err
 	}
-	if _, err = tx.ExecContext(ctx, `UPDATE workspace_team_members tm SET membership_provider_id=(SELECT min(g.provider_id) FROM workspace_identity_team_grants g WHERE g.workspace_id=tm.workspace_id AND g.team_id=tm.team_id AND g.workspace_member_id=tm.workspace_member_id) WHERE tm.workspace_id=$1 AND tm.workspace_member_id=$2 AND tm.membership_source='oidc' AND EXISTS(SELECT 1 FROM workspace_identity_team_grants g WHERE g.workspace_id=tm.workspace_id AND g.team_id=tm.team_id AND g.workspace_member_id=tm.workspace_member_id)`, workspaceID, memberID); err != nil {
+	if _, err = tx.ExecContext(ctx, `UPDATE workspace_team_members tm SET membership_provider_id=chosen.provider_id,membership_source=chosen.type FROM (SELECT DISTINCT ON(g.workspace_id,g.team_id,g.workspace_member_id) g.workspace_id,g.team_id,g.workspace_member_id,g.provider_id,p.type FROM workspace_identity_team_grants g JOIN workspace_identity_providers p ON p.workspace_id=g.workspace_id AND p.id=g.provider_id ORDER BY g.workspace_id,g.team_id,g.workspace_member_id,g.provider_id) chosen WHERE tm.workspace_id=$1 AND tm.workspace_member_id=$2 AND tm.membership_source IN ('oidc','saml') AND chosen.workspace_id=tm.workspace_id AND chosen.team_id=tm.team_id AND chosen.workspace_member_id=tm.workspace_member_id`, workspaceID, memberID); err != nil {
 		return false, err
 	}
+
 	return changed, nil
 }
 
@@ -1196,7 +1292,7 @@ func (r *enterpriseIdentityRepository) BreakGlass(ctx context.Context, workspace
 }
 
 func (r *enterpriseIdentityRepository) CreateLoginCompletion(ctx context.Context, login *service.OIDCLoginResult, tokenHash, browserHash []byte, expiresAt time.Time) error {
-	if login == nil || login.User == nil || login.User.ID <= 0 || len(tokenHash) != 32 || len(browserHash) != 32 || service.ValidateEnterpriseReturnTo(login.ReturnTo) != nil || login.Assurance.AuthenticatedAt.IsZero() || login.Assurance.WorkspaceID != login.Workspace || login.Assurance.ProviderID != login.ProviderID || login.Assurance.ProviderRevision <= 0 || login.Assurance.AuthMethod != "oidc" {
+	if login == nil || login.User == nil || login.User.ID <= 0 || len(tokenHash) != 32 || len(browserHash) != 32 || service.ValidateEnterpriseReturnTo(login.ReturnTo) != nil || login.Assurance.AuthenticatedAt.IsZero() || login.Assurance.WorkspaceID != login.Workspace || login.Assurance.ProviderID != login.ProviderID || login.Assurance.ProviderRevision <= 0 || (login.Assurance.AuthMethod != "oidc" && login.Assurance.AuthMethod != "saml") {
 		return service.ErrEnterpriseIdentityInvalid
 	}
 	tx, err := r.db.BeginTx(ctx, nil)
@@ -1214,7 +1310,7 @@ func (r *enterpriseIdentityRepository) CreateLoginCompletion(ctx context.Context
 	if provider.Status != "active" {
 		return service.ErrOIDCProviderDisabled
 	}
-	if provider.Revision != login.Assurance.ProviderRevision {
+	if provider.Revision != login.Assurance.ProviderRevision || provider.Type != login.Assurance.AuthMethod {
 		return service.ErrOIDCStateSessionMismatch
 	}
 	if err = cleanupExpiredIdentityAuthentication(ctx, tx); err != nil {
@@ -1222,7 +1318,7 @@ func (r *enterpriseIdentityRepository) CreateLoginCompletion(ctx context.Context
 	}
 	// Binding the current revision prevents config edits or disable/enable from
 	// turning an old completion into fresh assurance.
-	result, err := tx.ExecContext(ctx, `INSERT INTO workspace_identity_login_completions(token_hash,browser_session_hash,workspace_id,provider_id,provider_revision,user_id,return_to,authenticated_at,expires_at) SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9 FROM workspaces w JOIN workspace_members m ON m.workspace_id=w.id AND m.user_id=$6 AND m.status='active' JOIN users u ON u.id=m.user_id AND u.status='active' AND u.deleted_at IS NULL WHERE w.id=$3 AND w.type='organization' AND w.status='active'`, tokenHash, browserHash, login.Workspace, login.ProviderID, provider.Revision, login.User.ID, login.ReturnTo, login.Assurance.AuthenticatedAt, expiresAt)
+	result, err := tx.ExecContext(ctx, `INSERT INTO workspace_identity_login_completions(token_hash,browser_session_hash,workspace_id,provider_id,provider_revision,user_id,return_to,authenticated_at,expires_at,auth_method) SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9,$10 FROM workspaces w JOIN workspace_members m ON m.workspace_id=w.id AND m.user_id=$6 AND m.status='active' JOIN users u ON u.id=m.user_id AND u.status='active' AND u.deleted_at IS NULL WHERE w.id=$3 AND w.type='organization' AND w.status='active'`, tokenHash, browserHash, login.Workspace, login.ProviderID, provider.Revision, login.User.ID, login.ReturnTo, login.Assurance.AuthenticatedAt, expiresAt, provider.Type)
 	if err != nil {
 		return enterpriseIdentityError(err)
 	}
@@ -1243,8 +1339,8 @@ func (r *enterpriseIdentityRepository) ConsumeLoginCompletion(ctx context.Contex
 	return scanIdentityLoginCompletion(r.db.QueryRowContext(ctx, `UPDATE workspace_identity_login_completions c SET consumed_at=$3 WHERE `+enterpriseCompletionIsLive+` RETURNING `+enterpriseCompletionProjection, tokenHash, browserHash, now))
 }
 
-const enterpriseCompletionIsLive = `c.token_hash=$1 AND c.browser_session_hash=$2 AND c.consumed_at IS NULL AND c.expires_at>$3 AND EXISTS(SELECT 1 FROM workspace_identity_providers p JOIN workspaces w ON w.id=p.workspace_id AND w.type='organization' AND w.status='active' JOIN workspace_members m ON m.workspace_id=w.id AND m.user_id=c.user_id AND m.status='active' JOIN users u ON u.id=m.user_id AND u.status='active' AND u.deleted_at IS NULL WHERE p.workspace_id=c.workspace_id AND p.id=c.provider_id AND p.revision=c.provider_revision AND p.status='active')`
-const enterpriseCompletionProjection = `c.workspace_id,c.provider_id,c.provider_revision,c.user_id,c.return_to,c.authenticated_at`
+const enterpriseCompletionIsLive = `c.token_hash=$1 AND c.browser_session_hash=$2 AND c.consumed_at IS NULL AND c.expires_at>$3 AND EXISTS(SELECT 1 FROM workspace_identity_providers p JOIN workspaces w ON w.id=p.workspace_id AND w.type='organization' AND w.status='active' JOIN workspace_members m ON m.workspace_id=w.id AND m.user_id=c.user_id AND m.status='active' JOIN users u ON u.id=m.user_id AND u.status='active' AND u.deleted_at IS NULL WHERE p.workspace_id=c.workspace_id AND p.id=c.provider_id AND p.revision=c.provider_revision AND p.type=c.auth_method AND p.status='active')`
+const enterpriseCompletionProjection = `c.workspace_id,c.provider_id,c.provider_revision,c.user_id,c.return_to,c.authenticated_at,c.auth_method`
 
 func (r *enterpriseIdentityRepository) PreviewLoginCompletion(ctx context.Context, tokenHash, browserHash []byte, now time.Time) (*service.OIDCLoginResult, int64, error) {
 	if len(tokenHash) != 32 || len(browserHash) != 32 {
@@ -1256,13 +1352,13 @@ func (r *enterpriseIdentityRepository) PreviewLoginCompletion(ctx context.Contex
 func scanIdentityLoginCompletion(scanner workspaceScanner) (*service.OIDCLoginResult, int64, error) {
 	login := &service.OIDCLoginResult{}
 	var userID, revision int64
-	err := scanner.Scan(&login.Workspace, &login.ProviderID, &revision, &userID, &login.ReturnTo, &login.Assurance.AuthenticatedAt)
+	err := scanner.Scan(&login.Workspace, &login.ProviderID, &revision, &userID, &login.ReturnTo, &login.Assurance.AuthenticatedAt, &login.Assurance.AuthMethod)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, 0, service.ErrOIDCStateSessionMismatch
 	}
 	if err != nil {
 		return nil, 0, err
 	}
-	login.Assurance.WorkspaceID, login.Assurance.ProviderID, login.Assurance.ProviderRevision, login.Assurance.AuthMethod = login.Workspace, login.ProviderID, revision, "oidc"
+	login.Assurance.WorkspaceID, login.Assurance.ProviderID, login.Assurance.ProviderRevision = login.Workspace, login.ProviderID, revision
 	return login, userID, nil
 }

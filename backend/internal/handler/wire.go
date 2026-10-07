@@ -266,6 +266,9 @@ func ProvideEnterpriseWorkspaceHandler(workspaceService *service.WorkspaceServic
 	h := ProvideWorkspaceHandler(workspaceService, apiKeyService, webhookService, serviceAccountService, policyRepository, policyResolver)
 	h.SetEnterpriseIdentityService(identity)
 	h.SetIdentityRecentAuthentication(auth.RequireEnterpriseRecentAuthentication)
+	if auth.cfg != nil {
+		h.SetIdentitySSORedirectURL(auth.cfg.EnterpriseSSO.RedirectURL)
+	}
 	return h
 }
 

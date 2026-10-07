@@ -345,3 +345,14 @@ func TestDomainEventDispatcherObservesRetentionErrorWithoutSecrets(t *testing.T)
 	require.NoError(t, err)
 	require.NotContains(t, string(encoded), "sk-private-provider-secret")
 }
+
+func TestSAMLLifecycleEventsAreVisibleAndRejectPrivatePayloads(t *testing.T) {
+	for _, eventType := range []string{"workspace.saml.metadata.updated", "workspace.saml.certificate.rotated"} {
+		event, err := NewDomainEvent(eventType, 7, 0, 42, "identity_provider", "9", DomainEventData{"provider_id": int64(9), "provider_revision": int64(3), "category": "saml"})
+		require.NoError(t, err)
+		require.True(t, IsWorkspaceVisibleEvent(eventType))
+		event.Data["private_key"] = "generated-only-test-private-key"
+		_, err = event.MarshalPayload()
+		require.Error(t, err)
+	}
+}

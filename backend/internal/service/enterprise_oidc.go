@@ -53,6 +53,8 @@ type OIDCTokenResponse struct {
 }
 
 type OIDCClaims struct {
+	RawProtocol     string
+	EmailTrusted    bool
 	Issuer          string
 	Subject         string
 	Audience        []string

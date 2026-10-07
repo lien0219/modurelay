@@ -79,6 +79,8 @@ const (
 	EventIdentityProviderCreated       = "workspace.identity_provider.created"
 	EventIdentityProviderUpdated       = "workspace.identity_provider.updated"
 	EventIdentityProviderDisabled      = "workspace.identity_provider.disabled"
+	EventSAMLMetadataUpdated           = "workspace.saml.metadata.updated"
+	EventSAMLCertificateRotated        = "workspace.saml.certificate.rotated"
 	EventSSOEnforcementEnabled         = "workspace.sso.enforcement_enabled"
 	EventSSOEnforcementDisabled        = "workspace.sso.enforcement_disabled"
 	EventSSOBreakGlassUsed             = "workspace.sso.break_glass_used"
@@ -116,6 +118,7 @@ var allowedDomainEventTypes = map[string]struct{}{
 	EventWorkspaceProjectAccessMode: {},
 	EventWorkspaceDomainCreated:     {}, EventWorkspaceDomainRegenerated: {}, EventWorkspaceDomainVerified: {}, EventWorkspaceDomainRevoked: {},
 	EventIdentityProviderCreated: {}, EventIdentityProviderUpdated: {}, EventIdentityProviderDisabled: {},
+	EventSAMLMetadataUpdated: {}, EventSAMLCertificateRotated: {},
 	EventSSOEnforcementEnabled: {}, EventSSOEnforcementDisabled: {}, EventSSOBreakGlassUsed: {},
 	EventOIDCJITProvisioned: {}, EventOIDCIdentityLinked: {}, EventOIDCMappingsUpdated: {}, EventOIDCRoleReconciled: {}, EventOIDCTeamsReconciled: {},
 }
@@ -265,6 +268,7 @@ func IsWorkspaceVisibleEvent(eventType string) bool {
 		EventWorkspaceProjectAccessCreated, EventWorkspaceProjectAccessUpdated, EventWorkspaceProjectAccessDeleted, EventWorkspaceProjectAccessMode,
 		EventWorkspaceDomainCreated, EventWorkspaceDomainRegenerated, EventWorkspaceDomainVerified, EventWorkspaceDomainRevoked,
 		EventIdentityProviderCreated, EventIdentityProviderUpdated, EventIdentityProviderDisabled, EventOIDCMappingsUpdated,
+		EventSAMLMetadataUpdated, EventSAMLCertificateRotated,
 		EventSSOEnforcementEnabled, EventSSOEnforcementDisabled, EventSSOBreakGlassUsed, EventOIDCJITProvisioned,
 		EventOIDCIdentityLinked, EventOIDCRoleReconciled, EventOIDCTeamsReconciled:
 		return true
@@ -638,6 +642,8 @@ func notificationPresentation(eventType string) (category, titleKey, bodyKey str
 		return "security", "notifications.identity_domain.title", "notifications.identity_domain.body"
 	case EventIdentityProviderDisabled:
 		return "security", "notifications.identity_provider.title", "notifications.identity_provider.body"
+	case EventSAMLCertificateRotated:
+		return "security", "notifications.saml_certificate.title", "notifications.saml_certificate.body"
 	case EventSSOEnforcementEnabled, EventSSOEnforcementDisabled:
 		return "security", "notifications.sso_enforcement.title", "notifications.sso_enforcement.body"
 	case EventSSOBreakGlassUsed:

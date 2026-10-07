@@ -59,7 +59,7 @@ func (h *AuthHandler) enterpriseSSOStart(c *gin.Context, link bool) {
 	if req.ReturnTo == "" {
 		req.ReturnTo = "/workspaces/" + strconv.FormatInt(req.WorkspaceID, 10) + "/overview"
 	}
-	var result *service.OIDCStartResult
+	var result *service.EnterpriseSSOStartResult
 	var err error
 	if link {
 		if req.Password != "" {
@@ -70,21 +70,25 @@ func (h *AuthHandler) enterpriseSSOStart(c *gin.Context, link bool) {
 			return
 		}
 		subject, _ := middleware.GetAuthSubjectFromContext(c)
-		result, err = h.enterpriseIdentity.StartOIDCLink(c.Request.Context(), subject.UserID, req.WorkspaceID, req.ProviderID, req.ReturnTo, h.enterpriseSSORedirectURI(c))
+		result, err = h.enterpriseIdentity.StartEnterpriseSSO(c.Request.Context(), req.WorkspaceID, req.ProviderID, req.ReturnTo, h.enterpriseSSORedirectURI(c), &subject.UserID)
 	} else {
-		result, err = h.enterpriseIdentity.StartOIDC(c.Request.Context(), req.WorkspaceID, req.ProviderID, req.ReturnTo, h.enterpriseSSORedirectURI(c))
+		result, err = h.enterpriseIdentity.StartEnterpriseSSO(c.Request.Context(), req.WorkspaceID, req.ProviderID, req.ReturnTo, h.enterpriseSSORedirectURI(c), nil)
 	}
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
 	h.enterpriseCookie(c, enterpriseSSOCompletionCookie, "", -1)
-	h.enterpriseCookie(c, enterpriseSSOCookieName, result.BrowserCookie, int(time.Until(result.ExpiresAt).Seconds()))
+	if result.Protocol == "saml" {
+		h.enterpriseSAMLBrowserCookie(c, result.BrowserCookie, int(time.Until(result.ExpiresAt).Seconds()))
+	} else {
+		h.enterpriseCookie(c, enterpriseSSOCookieName, result.BrowserCookie, int(time.Until(result.ExpiresAt).Seconds()))
+	}
 	if c.Request.Method == http.MethodGet {
 		c.Redirect(http.StatusFound, result.AuthorizationURL)
 		return
 	}
-	response.Success(c, gin.H{"authorization_url": result.AuthorizationURL, "expires_at": result.ExpiresAt})
+	response.Success(c, gin.H{"authorization_url": result.AuthorizationURL, "redirect_url": result.AuthorizationURL, "method": "GET", "protocol": result.Protocol, "expires_at": result.ExpiresAt})
 }
 
 func (h *AuthHandler) EnterpriseSSOCallback(c *gin.Context) {

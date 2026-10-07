@@ -3,6 +3,8 @@ package middleware
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -237,4 +239,59 @@ func TestAccountUpdateAuditRedactsTopLevelNewAPIUserAccessToken(t *testing.T) {
 	require.NotContains(t, logs[0].RequestBody, "audit-canary-new-api-pat")
 	require.Contains(t, logs[0].RequestBody, `"upstream_billing_new_api_user_access_token":"***"`)
 	require.Contains(t, logs[0].RequestBody, "https://new-api.example.com")
+}
+
+func TestEnterpriseSAMLHTTPAuditOmitsConfigAndRejectedACSJSONBodies(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	const canaryXML = "<EntityDescriptor>audit-canary-metadata-xml</EntityDescriptor>"
+	const canaryAssertion = "audit-canary-signed-assertion"
+	const canaryRelay = "audit-canary-relay-state"
+	for _, tc := range []struct {
+		name, method, route, path, contentType, body string
+		status                                       int
+	}{
+		{"create provider", http.MethodPost, "/api/v1/workspaces/:id/identity-providers", "/api/v1/workspaces/7/identity-providers", "application/json", `{"type":"saml","saml":{"metadata_xml":"` + canaryXML + `"}}`, http.StatusCreated},
+		{"update provider", http.MethodPatch, "/api/v1/workspaces/:id/identity-providers/:provider_id", "/api/v1/workspaces/7/identity-providers/9", "application/json", `{"revision":3,"saml":{"metadata_xml":"` + canaryXML + `"}}`, http.StatusOK},
+		{"JSON media rejected at ACS", http.MethodPost, "/api/v1/auth/sso/saml/acs", "/api/v1/auth/sso/saml/acs", "application/json", `{"SAMLResponse":"` + canaryAssertion + `","RelayState":"` + canaryRelay + `"}`, http.StatusSeeOther},
+		{"form ACS", http.MethodPost, "/api/v1/auth/sso/saml/acs", "/api/v1/auth/sso/saml/acs", "application/x-www-form-urlencoded", "SAMLResponse=" + canaryAssertion + "&RelayState=" + canaryRelay, http.StatusSeeOther},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repository := &auditCaptureRepository{}
+			auditService := service.NewAuditLogService(repository, nil)
+			auditService.Start()
+			t.Cleanup(auditService.Stop)
+			router := gin.New()
+			router.Use(gin.HandlerFunc(NewAuditLogMiddleware(auditService)))
+			router.Handle(tc.method, tc.route, func(c *gin.Context) {
+				raw, err := io.ReadAll(c.Request.Body)
+				require.NoError(t, err)
+				require.Equal(t, tc.body, string(raw), "audit omission must leave the request untouched for the handler")
+				SetAuditExtra(c, map[string]any{"result": "processed", "http_status": tc.status})
+				if tc.status == http.StatusSeeOther {
+					c.Redirect(tc.status, "/auth/sso/callback?error=SAML_RESPONSE_INVALID")
+					return
+				}
+				c.JSON(tc.status, gin.H{"ok": true})
+			})
+			request := httptest.NewRequest(tc.method, tc.path, bytes.NewBufferString(tc.body))
+			request.Header.Set("Content-Type", tc.contentType)
+			recorder := httptest.NewRecorder()
+			router.ServeHTTP(recorder, request)
+			require.Equal(t, tc.status, recorder.Code)
+			auditService.Stop()
+			repository.mu.Lock()
+			logs := append([]*service.AuditLog(nil), repository.logs...)
+			repository.mu.Unlock()
+			require.Len(t, logs, 1, "HTTP operation audit must still be recorded")
+			require.Equal(t, "<credential-bearing body omitted>", logs[0].RequestBody)
+			require.Equal(t, tc.route, logs[0].Path)
+			require.Equal(t, tc.status, logs[0].StatusCode)
+			require.Equal(t, "processed", logs[0].Extra["result"])
+			serialized, err := json.Marshal(logs[0])
+			require.NoError(t, err)
+			for _, canary := range []string{canaryXML, canaryAssertion, canaryRelay, "audit-canary"} {
+				require.NotContains(t, string(serialized), canary)
+			}
+		})
+	}
 }

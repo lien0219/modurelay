@@ -8,19 +8,21 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
 )
 
 type WorkspaceHandler struct {
-	workspaces         *service.WorkspaceService
-	keys               *service.APIKeyService
-	webhooks           *service.WorkspaceWebhookService
-	serviceAccounts    *ServiceAccountHandler
-	policies           *PolicyHandler
-	identity           *service.EnterpriseIdentityService
-	identityRecentAuth func(*gin.Context) bool
+	workspaces          *service.WorkspaceService
+	keys                *service.APIKeyService
+	webhooks            *service.WorkspaceWebhookService
+	serviceAccounts     *ServiceAccountHandler
+	policies            *PolicyHandler
+	identity            *service.EnterpriseIdentityService
+	identityRecentAuth  func(*gin.Context) bool
+	identityRedirectURL string
 }
 
 func finopsRange(c *gin.Context) (time.Time, time.Time, string, error) {
@@ -74,6 +76,9 @@ func (h *WorkspaceHandler) SetEnterpriseIdentityService(identity *service.Enterp
 func (h *WorkspaceHandler) SetIdentityRecentAuthentication(guard func(*gin.Context) bool) {
 	h.identityRecentAuth = guard
 }
+func (h *WorkspaceHandler) SetIdentitySSORedirectURL(redirectURL string) {
+	h.identityRedirectURL = strings.TrimSpace(redirectURL)
+}
 func (h *WorkspaceHandler) RegisterTenantRoutes(v1 *gin.RouterGroup) {
 	if h.serviceAccounts != nil {
 		h.serviceAccounts.RegisterTenantRoutes(v1)
@@ -111,6 +116,8 @@ func (h *WorkspaceHandler) RegisterTenantRoutes(v1 *gin.RouterGroup) {
 		v1.PATCH("/workspaces/:id/identity-providers/:provider_id", h.handle("identity.provider.update"))
 		v1.POST("/workspaces/:id/identity-providers/:provider_id/disable", h.handle("identity.provider.disable"))
 		v1.POST("/workspaces/:id/identity-providers/:provider_id/test", h.handle("identity.provider.test"))
+		v1.GET("/workspaces/:id/identity-providers/:provider_id/saml-sp", h.handle("identity.saml.sp"))
+		v1.POST("/workspaces/:id/identity-providers/:provider_id/saml-keys/rotate", h.handle("identity.saml.rotate"))
 		v1.GET("/workspaces/:id/identity-providers/:provider_id/mappings", h.handle("identity.mapping.get"))
 		v1.PUT("/workspaces/:id/identity-providers/:provider_id/mappings", h.handle("identity.mapping.put"))
 		v1.GET("/workspaces/:id/security-policy", h.handle("identity.policy.get"))
@@ -180,7 +187,7 @@ func (h *WorkspaceHandler) handle(action string) gin.HandlerFunc {
 		if !strings.HasPrefix(action, "admin.") && !checkEnterpriseWorkspaceAccess(c, h.workspaces, h.identity, subject, w) {
 			return
 		}
-		if action == "identity.provider.create" || action == "identity.provider.update" || action == "identity.provider.disable" || action == "identity.policy.update" {
+		if action == "identity.provider.create" || action == "identity.provider.update" || action == "identity.provider.disable" || action == "identity.policy.update" || action == "identity.saml.rotate" {
 			if h.identityRecentAuth == nil {
 				response.ErrorFrom(c, service.ErrWorkspaceForbidden)
 				return
@@ -188,6 +195,9 @@ func (h *WorkspaceHandler) handle(action string) gin.HandlerFunc {
 			if !h.identityRecentAuth(c) {
 				return
 			}
+		}
+		if strings.HasPrefix(action, "identity.") {
+			c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 512<<10)
 		}
 		page, size := response.ParsePagination(c)
 		params := pagination.PaginationParams{Page: page, PageSize: size}
@@ -255,6 +265,17 @@ func (h *WorkspaceHandler) handle(action string) gin.HandlerFunc {
 				break
 			}
 			out, err = h.identity.GetProvider(ctx, a, w, ids["provider_id"])
+		case "identity.saml.sp":
+			out, err = h.identity.SAMLSPInformation(ctx, a, w, ids["provider_id"], h.identityRedirectURL)
+		case "identity.saml.rotate":
+			var req struct {
+				Revision int64  `json:"revision"`
+				Action   string `json:"action"`
+			}
+			if !workspaceBind(c, &req) {
+				return
+			}
+			out, err = h.identity.RotateSAMLSPKey(ctx, a, w, ids["provider_id"], req.Revision, req.Action)
 		case "identity.provider.create":
 			if h.identity == nil {
 				err = service.ErrWorkspaceNotFound

@@ -69,7 +69,9 @@ This document is the durable progress source for the Enterprise Workspace progra
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | A | Teams, Project Access Grants, restricted project mode | Fixed built-in roles; direct/team grants; default all-project compatibility; owner/admin/billing compatibility retained; no custom roles | 293 | `828ccb8419807d2af89fc2adbb654909686634b0` | Backend unit/service/handler/repository/migration tests; PostgreSQL governance and key isolation integration; full frontend Vitest, lint, typecheck, build; diff review | COMPLETE | Cross-tenant subject IDs are checked in repository transactions and database trigger; project-key, service-account, legacy key list/search, policy, budget, and usage paths recheck project access | Custom roles; browser/manual acceptance; real providers |
 | B | Verified domains, OIDC/presets, linking/JIT/mappings, discovery, assurance/enforcement/recovery | Global User; provider/subject binding; no email adoption or Owner/Billing Owner escalation; SSRF-safe protocol; source-aware reconciliation; control-plane/Gateway separation | 294 | `feat(sso): add verified domains and OIDC enterprise SSO`; resolve SHA below | Mock/protocol/PostgreSQL/concurrency/race PASS; full frontend 421 files/3103 tests plus lint/typecheck/build PASS; Go full suites have identical parent-baseline failures; source/security/diff review PASS | COMPLETE | Retained encryption key; provider claim differences; real-provider/load/manual gates not run | SAML/SCIM; Graph overage fetching; periodic DNS health; full Phase D security policy |
-| C | SAML 2.0 and SCIM 2.0 | Mature protocol library; idempotent SCIM resources mapped to teams | 295+ | Not started | Not run | NEXT | XML wrapping, lifecycle races | Advanced identity federation |
+| C | SAML 2.0 and SCIM 2.0 | Shared SSO/provider binding and typed provisioning sources; see Phase C plan | 295–296 | C1 local boundary below | C1 complete; C2 in progress | IN PROGRESS | Lifecycle races, admin suspension | IdP-initiated SSO, SLO; real IdPs in Phase L |
+| C1 | SAML 2.0 Enterprise SSO | Nullable protocol fields with DB integrity; gosaml2 v0.12.0; shared JIT/link/mapping/completion/assurance | 295 | `feat(saml): add enterprise SAML single sign-on` | Complete | COMPLETE | Certificate/key retention and IdP interoperability | IdP-initiated SSO, SLO |
+| C2 | SCIM 2.0 Enterprise Provisioning | Independent hash-token connector; attributed Membership/Team sources; explicit Group binding | 296 | Not committed | Not started | IN PROGRESS | Cross-source removal and Owner/Billing safety | Real Entra/Okta provisioning in Phase L |
 | D | Workspace security policy | Control-plane middleware with explicit assurance context | 296+ | Not started | Not run | NOT RUN | Break-glass and API-key separation | Arbitrary ABAC |
 | E | Advanced FinOps anomalies | Immutable usage snapshots plus bounded detector jobs | 297+ | Not started | Not run | NOT RUN | False positives, cardinality | AI remediation |
 | F | Cost centers, tags, environment allocation | New-write dimensions and explicit legacy NULLs | 298+ | Not started | Not run | NOT RUN | Historical attribution drift | ERP tree |
@@ -188,3 +190,38 @@ STS, AWS-style temporary credentials, workload identity federation, PrivateLink,
 ## Verification policy
 
 Every phase records targeted tests, full relevant tests, security/diff review, and explicit `PASS`, `FAIL`, `PRE-EXISTING`, or `NOT RUN` classification. A failure is compared with the clean parent baseline before it is classified. No push or PR is part of this workstream.
+
+## Phase C1 completion record (2026-10-07)
+
+C1 is COMPLETE at the verified local commit `feat(saml): add enterprise SAML single sign-on`.
+The immutable C1 SHA will be recorded by C2; resolve the current boundary with
+`git log --all --format='%H %s' --grep='^feat(saml): add enterprise SAML single sign-on$'`.
+C2 is IN PROGRESS; D/E/F have not started.
+
+Migration 295 extends the provider parent with genuine nullable protocol fields,
+strong SQL checks, separate encrypted SP keys, opaque public identity and request/replay correlation.
+OIDC/SAML reuse stable binding, JIT/linking, role/Team mappings, completion/MFA,
+original-time assurance, Require SSO and Owner recovery. Per-provider RSA3072 keys
+support stage/promote and bounded previous-key decryption overlap. gosaml2 v0.12.0
+and goxmldsig v1.6.1 own crypto. Metadata and ACS are bounded; HTTPS/DNS pinning,
+XML wrapping/unsigned/replay and configured-origin/browser proofs are tested.
+
+PASS: relevant backend and real PostgreSQL identity/governance (43.498s), race,
+full frontend 422 files / 3112 tests, lint/typecheck/i18n/build (26.71s final build),
+Go vet/build, pinned golangci-lint v2.13.0 (0 issues), current dependency audit,
+secret/diff review and independent C1 spec/quality APPROVAL against v4.
+Review findings F0-F3 (optional-attribute serialization, HTTP audit body omission,
+rotation async state, unspecified NameID request policy) are fixed and independently rechecked.
+
+PRE-EXISTING: exact archived 81e688 baseline and final default/unit/integration
+commands reproduce three PgDumper Windows missing-sh failures. Unit also reproduces
+Ollama stale-callback CAS. The full parallel integration run had a Phase B grace-boundary
+failure that passed targeted and final serial full reruns; it is not labeled PRE-EXISTING.
+Final serial integration has only the identical baseline failures.
+
+govulncheck: 0 reachable/import-package vulnerabilities; 11 required-module advisories
+in uncalled code. Production pnpm audit exception checker passed.
+NOT RUN: external Entra/Okta/Google SAML, rendered browser/operator/load/deployment.
+Deferred: IdP-initiated SSO, SLO, POST-only AuthnRequest; real-provider acceptance Phase L.
+No historical Usage/Billing/Key/Service Account rewrite or acceptance runtime change.
+Operational details: ENTERPRISE_SAML.md; evidence/boundaries: ENTERPRISE_SAML_ACCEPTANCE.md.

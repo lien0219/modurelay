@@ -38,10 +38,39 @@ export interface EnterpriseDomainCreateResult {
 
 export type WorkspaceIdentityValidationCode = 'SUCCESS' | 'DISCOVERY_FAILED' | 'ISSUER_MISMATCH' | 'ENDPOINT_INVALID' | 'CONFIGURATION_INVALID' | 'VALIDATION_FAILED' | 'PROVIDER_DISABLED'
 
+export interface WorkspaceSAMLConfig {
+  idp_entity_id: string
+  sso_url: string
+  signing_certificates: string[]
+  metadata_xml?: string
+  metadata_url?: string
+  metadata_source: 'manual' | 'xml' | 'url'
+  subject_attribute: string
+  allow_unspecified_name_id: boolean
+  email_attribute: string
+  name_attribute: string
+  groups_attribute: string
+  authn_requests_signed: true
+  sp_certificate?: string
+  next_sp_certificate?: string
+}
+
+export interface WorkspaceSAMLServiceProvider {
+  entity_id: string
+  acs_url: string
+  metadata_url: string
+  signing_certificate: string
+  next_signing_certificate?: string
+  idp_initiated_supported: false
+  slo_supported: false
+}
+
 export interface WorkspaceIdentityProvider {
   id: number
   workspace_id: number
-  type: string
+  type: 'oidc' | 'saml'
+  saml_public_id?: string
+  saml?: WorkspaceSAMLConfig
   provider_key: string
   name: string
   status: string
@@ -72,10 +101,12 @@ export interface WorkspaceIdentityProvider {
 }
 
 export interface WorkspaceIdentityProviderInput {
+  type?: 'oidc' | 'saml'
+  saml?: WorkspaceSAMLConfig
   provider_key: string
   name: string
-  issuer_url: string
-  client_id: string
+  issuer_url?: string
+  client_id?: string
   client_secret?: string
   secret_action?: 'preserve' | 'replace' | 'remove'
   revision?: number
@@ -84,10 +115,10 @@ export interface WorkspaceIdentityProviderInput {
   token_endpoint?: string
   jwks_uri?: string
   userinfo_endpoint?: string
-  scopes: string[]
+  scopes?: string[]
   is_default: boolean
   discovery_enabled: boolean
-  claim_mapping: Record<string, unknown>
+  claim_mapping?: Record<string, unknown>
   jit_config: {
     enabled: boolean
     default_role: string
@@ -356,6 +387,8 @@ export const workspaceAPI = {
   createIdentityProvider: async (workspaceId: number, payload: WorkspaceIdentityProviderInput) => (await apiClient.post<WorkspaceIdentityProvider>(`/workspaces/${workspaceId}/identity-providers`, payload)).data,
   updateIdentityProvider: async (workspaceId: number, providerId: number, payload: WorkspaceIdentityProviderInput) => (await apiClient.patch<WorkspaceIdentityProvider>(`/workspaces/${workspaceId}/identity-providers/${providerId}`, payload)).data,
   disableIdentityProvider: async (workspaceId: number, providerId: number) => (await apiClient.post(`/workspaces/${workspaceId}/identity-providers/${providerId}/disable`)).data,
+  getSAMLServiceProvider: async (workspaceId: number, providerId: number, signal?: AbortSignal) => (await apiClient.get<WorkspaceSAMLServiceProvider>(`/workspaces/${workspaceId}/identity-providers/${providerId}/saml-sp`, { signal })).data,
+  rotateSAMLKeys: async (workspaceId: number, providerId: number, payload: { revision: number; action: 'stage' | 'promote' }) => (await apiClient.post<WorkspaceIdentityProvider>(`/workspaces/${workspaceId}/identity-providers/${providerId}/saml-keys/rotate`, payload)).data,
   getIdentityProviderMappings: async (workspaceId: number, providerId: number, signal?: AbortSignal) => (await apiClient.get<WorkspaceIdentityMappings>(`/workspaces/${workspaceId}/identity-providers/${providerId}/mappings`, { signal })).data,
   updateIdentityProviderMappings: async (workspaceId: number, providerId: number, payload: WorkspaceIdentityMappings) => (await apiClient.put(`/workspaces/${workspaceId}/identity-providers/${providerId}/mappings`, payload)).data,
   getIdentityPolicy: async (workspaceId: number, signal?: AbortSignal) => (await apiClient.get<WorkspaceIdentityPolicy>(`/workspaces/${workspaceId}/security-policy`, { signal })).data,

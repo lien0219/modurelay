@@ -38,52 +38,56 @@ type EnterpriseDomainCreateResult struct {
 }
 
 type EnterpriseIdentityProvider struct {
-	ID                    int64          `json:"id"`
-	Revision              int64          `json:"revision"`
-	TokenAuthMethod       string         `json:"token_auth_method"`
-	WorkspaceID           int64          `json:"workspace_id"`
-	Type                  string         `json:"type"`
-	ProviderKey           string         `json:"provider_key"`
-	Name                  string         `json:"name"`
-	Status                string         `json:"status"`
-	IsDefault             bool           `json:"is_default"`
-	IssuerURL             string         `json:"issuer_url"`
-	ClientID              string         `json:"client_id"`
-	HasClientSecret       bool           `json:"has_client_secret"`
-	Scopes                []string       `json:"scopes"`
-	AuthorizationEndpoint string         `json:"authorization_endpoint,omitempty"`
-	TokenEndpoint         string         `json:"token_endpoint,omitempty"`
-	JWKSURI               string         `json:"jwks_uri,omitempty"`
-	UserinfoEndpoint      string         `json:"userinfo_endpoint,omitempty"`
-	DiscoveryEnabled      bool           `json:"discovery_enabled"`
-	ClaimMapping          map[string]any `json:"claim_mapping"`
-	JITConfig             JITConfig      `json:"jit_config"`
-	CreatedByUserID       int64          `json:"created_by_user_id"`
-	CreatedAt             time.Time      `json:"created_at"`
-	UpdatedAt             time.Time      `json:"updated_at"`
-	DisabledAt            *time.Time     `json:"disabled_at,omitempty"`
-	LastValidatedAt       *time.Time     `json:"last_validated_at,omitempty"`
-	LastValidationCode    string         `json:"last_validation_code,omitempty"`
+	SAML                  *SAMLProviderConfig `json:"saml,omitempty"`
+	PublicID              string              `json:"saml_public_id,omitempty"`
+	ID                    int64               `json:"id"`
+	Revision              int64               `json:"revision"`
+	TokenAuthMethod       string              `json:"token_auth_method"`
+	WorkspaceID           int64               `json:"workspace_id"`
+	Type                  string              `json:"type"`
+	ProviderKey           string              `json:"provider_key"`
+	Name                  string              `json:"name"`
+	Status                string              `json:"status"`
+	IsDefault             bool                `json:"is_default"`
+	IssuerURL             string              `json:"issuer_url"`
+	ClientID              string              `json:"client_id"`
+	HasClientSecret       bool                `json:"has_client_secret"`
+	Scopes                []string            `json:"scopes"`
+	AuthorizationEndpoint string              `json:"authorization_endpoint,omitempty"`
+	TokenEndpoint         string              `json:"token_endpoint,omitempty"`
+	JWKSURI               string              `json:"jwks_uri,omitempty"`
+	UserinfoEndpoint      string              `json:"userinfo_endpoint,omitempty"`
+	DiscoveryEnabled      bool                `json:"discovery_enabled"`
+	ClaimMapping          map[string]any      `json:"claim_mapping"`
+	JITConfig             JITConfig           `json:"jit_config"`
+	CreatedByUserID       int64               `json:"created_by_user_id"`
+	CreatedAt             time.Time           `json:"created_at"`
+	UpdatedAt             time.Time           `json:"updated_at"`
+	DisabledAt            *time.Time          `json:"disabled_at,omitempty"`
+	LastValidatedAt       *time.Time          `json:"last_validated_at,omitempty"`
+	LastValidationCode    string              `json:"last_validation_code,omitempty"`
 }
 
 type EnterpriseIdentityProviderInput struct {
-	ProviderKey           string         `json:"provider_key"`
-	Name                  string         `json:"name"`
-	IssuerURL             string         `json:"issuer_url"`
-	ClientID              string         `json:"client_id"`
-	ClientSecret          *string        `json:"client_secret,omitempty"`
-	SecretAction          string         `json:"secret_action,omitempty"`
-	TokenAuthMethod       string         `json:"token_auth_method,omitempty"`
-	AuthorizationEndpoint string         `json:"authorization_endpoint,omitempty"`
-	TokenEndpoint         string         `json:"token_endpoint,omitempty"`
-	JWKSURI               string         `json:"jwks_uri,omitempty"`
-	UserinfoEndpoint      string         `json:"userinfo_endpoint,omitempty"`
-	Scopes                []string       `json:"scopes"`
-	IsDefault             bool           `json:"is_default"`
-	DiscoveryEnabled      *bool          `json:"discovery_enabled,omitempty"`
-	ClaimMapping          map[string]any `json:"claim_mapping"`
-	JITConfig             JITConfig      `json:"jit_config"`
-	Revision              int64          `json:"revision,omitempty"`
+	Type                  string              `json:"type,omitempty"`
+	SAML                  *SAMLProviderConfig `json:"saml,omitempty"`
+	ProviderKey           string              `json:"provider_key"`
+	Name                  string              `json:"name"`
+	IssuerURL             string              `json:"issuer_url"`
+	ClientID              string              `json:"client_id"`
+	ClientSecret          *string             `json:"client_secret,omitempty"`
+	SecretAction          string              `json:"secret_action,omitempty"`
+	TokenAuthMethod       string              `json:"token_auth_method,omitempty"`
+	AuthorizationEndpoint string              `json:"authorization_endpoint,omitempty"`
+	TokenEndpoint         string              `json:"token_endpoint,omitempty"`
+	JWKSURI               string              `json:"jwks_uri,omitempty"`
+	UserinfoEndpoint      string              `json:"userinfo_endpoint,omitempty"`
+	Scopes                []string            `json:"scopes"`
+	IsDefault             bool                `json:"is_default"`
+	DiscoveryEnabled      *bool               `json:"discovery_enabled,omitempty"`
+	ClaimMapping          map[string]any      `json:"claim_mapping"`
+	JITConfig             JITConfig           `json:"jit_config"`
+	Revision              int64               `json:"revision,omitempty"`
 }
 
 type WorkspaceIdentityPolicy struct {
@@ -142,16 +146,19 @@ type OIDCMappings struct {
 }
 
 type SSODiscoveryProvider struct {
-	WorkspaceID int64  `json:"workspace_id"`
-	ProviderID  int64  `json:"provider_id"`
-	Name        string `json:"name"`
-	IsDefault   bool   `json:"is_default"`
+	Type         string `json:"type,omitempty"`
+	SAMLPublicID string `json:"saml_public_id,omitempty"`
+	WorkspaceID  int64  `json:"workspace_id"`
+	ProviderID   int64  `json:"provider_id"`
+	Name         string `json:"name"`
+	IsDefault    bool   `json:"is_default"`
 }
 
 // OIDCProvisionInput contains only validated claims and server-bound link intent.
 // The repository commits user creation, stable subject binding, membership and
 // claim reconciliation together under the workspace lock.
 type OIDCProvisionInput struct {
+	Protocol                string
 	WorkspaceID, ProviderID int64
 	ProviderRevision        int64
 	Claims                  *OIDCClaims
@@ -328,6 +335,13 @@ func (s *EnterpriseIdentityService) CreateProvider(ctx context.Context, actorID,
 	if err != nil {
 		return nil, err
 	}
+	if input.Type == "saml" {
+		prepared, keys, err := s.prepareSAMLProvider(ctx, input, true)
+		if err != nil {
+			return nil, err
+		}
+		return s.repo.CreateProvider(ctx, workspaceID, actorID, prepared, keys, nil)
+	}
 	if _, err := validateEnterpriseProviderConfiguration(ctx, enterpriseProviderFromInput(input)); err != nil {
 		return nil, err
 	}
@@ -356,6 +370,13 @@ func (s *EnterpriseIdentityService) UpdateProvider(ctx context.Context, actorID,
 	}
 	if input.Revision <= 0 {
 		return nil, ErrEnterpriseIdentityInvalid
+	}
+	if input.Type == "saml" {
+		prepared, _, err := s.prepareSAMLProvider(ctx, input, false)
+		if err != nil {
+			return nil, err
+		}
+		return s.repo.UpdateProvider(ctx, workspaceID, actorID, providerID, prepared, nil, nil)
 	}
 	if _, err := validateEnterpriseProviderConfiguration(ctx, enterpriseProviderFromInput(input)); err != nil {
 		return nil, err
@@ -429,6 +450,9 @@ func (s *EnterpriseIdentityService) startOIDC(ctx context.Context, workspaceID, 
 	if err != nil {
 		return nil, err
 	}
+	if identityProtocol(provider.Type) != "oidc" {
+		return nil, ErrEnterpriseIdentityInvalid
+	}
 	if provider.Status != "active" {
 		return nil, ErrOIDCProviderDisabled
 	}
@@ -483,12 +507,18 @@ func (s *EnterpriseIdentityService) CompleteOIDC(ctx context.Context, stateOpaqu
 	if err != nil {
 		return nil, err
 	}
+	if identityProtocol(state.Protocol) != "oidc" {
+		return nil, ErrOIDCStateSessionMismatch
+	}
 	if !OIDCNonceMatchesHash(browserCookie, state.BrowserSessionHash) {
 		return nil, ErrOIDCStateSessionMismatch
 	}
 	provider, secret, err := s.repo.GetProvider(ctx, state.WorkspaceID, 0, state.ProviderID)
 	if err != nil {
 		return nil, err
+	}
+	if identityProtocol(provider.Type) != "oidc" {
+		return nil, ErrEnterpriseIdentityInvalid
 	}
 	if provider.Status != "active" {
 		return nil, ErrOIDCProviderDisabled
@@ -625,11 +655,11 @@ func (s *EnterpriseIdentityService) CheckWorkspaceAccess(ctx context.Context, wo
 	if principal == "" {
 		principal = PrincipalHuman
 	}
-	if principal != PrincipalHuman || !assurance.Valid(s.now()) || assurance.WorkspaceID != workspaceID || assurance.AuthMethod != "oidc" {
+	if principal != PrincipalHuman || !assurance.Valid(s.now()) || assurance.WorkspaceID != workspaceID || !validEnterpriseProtocol(assurance.AuthMethod) {
 		return ErrSSORequired
 	}
 	provider, _, providerErr := s.repo.GetProvider(ctx, workspaceID, 0, assurance.ProviderID)
-	if providerErr != nil || provider == nil || provider.Status != "active" || provider.Revision != assurance.ProviderRevision {
+	if providerErr != nil || provider == nil || provider.Status != "active" || provider.Revision != assurance.ProviderRevision || identityProtocol(provider.Type) != assurance.AuthMethod {
 		return ErrSSORequired
 	}
 	return nil
@@ -652,11 +682,11 @@ func (s *EnterpriseIdentityService) UpdatePolicy(ctx context.Context, actorID, w
 			return nil, ErrOIDCAccountLinkRequired
 		}
 		assurance, ok := AuthenticationAssuranceFromContext(ctx)
-		if !ok || assurance.WorkspaceID != workspaceID || assurance.AuthMethod != "oidc" || !assurance.Valid(s.now()) {
+		if !ok || assurance.WorkspaceID != workspaceID || !validEnterpriseProtocol(assurance.AuthMethod) || !assurance.Valid(s.now()) {
 			return nil, ErrSSORequired
 		}
 		provider, _, err := s.repo.GetProvider(ctx, workspaceID, actorID, assurance.ProviderID)
-		if err != nil || provider == nil || provider.Status != "active" || provider.Revision != assurance.ProviderRevision {
+		if err != nil || provider == nil || provider.Status != "active" || provider.Revision != assurance.ProviderRevision || identityProtocol(provider.Type) != assurance.AuthMethod {
 			return nil, ErrWorkspaceConflict
 		}
 		if _, err := validateEnterpriseProviderConfiguration(ctx, provider); err != nil {
@@ -724,6 +754,16 @@ func (s *EnterpriseIdentityService) BreakGlass(ctx context.Context, actorID, wor
 }
 
 func validateIdentityProviderInput(input EnterpriseIdentityProviderInput) (EnterpriseIdentityProviderInput, error) {
+	input.Type = identityProtocol(strings.ToLower(strings.TrimSpace(input.Type)))
+	if !validEnterpriseProtocol(input.Type) {
+		return input, ErrEnterpriseIdentityInvalid
+	}
+	if input.Type == "saml" {
+		return validateSAMLInput(input)
+	}
+	if input.SAML != nil {
+		return input, ErrEnterpriseIdentityInvalid
+	}
 	input.ProviderKey = strings.ToLower(strings.TrimSpace(input.ProviderKey))
 	input.Name = strings.TrimSpace(input.Name)
 	if !regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,79}$`).MatchString(input.ProviderKey) || input.Name == "" || len(input.Name) > 120 {
@@ -810,7 +850,7 @@ func validateIdentityProviderInput(input EnterpriseIdentityProviderInput) (Enter
 }
 
 func enterpriseProviderDocument(ctx context.Context, provider *EnterpriseIdentityProvider) (*OIDCDiscoveryDocument, error) {
-	if provider == nil {
+	if provider == nil || identityProtocol(provider.Type) != "oidc" {
 		return nil, ErrEnterpriseIdentityInvalid
 	}
 	if provider.DiscoveryEnabled {
@@ -849,12 +889,18 @@ func (s *EnterpriseIdentityService) TestProvider(ctx context.Context, actorID, w
 }
 
 func enterpriseProviderFromInput(input EnterpriseIdentityProviderInput) *EnterpriseIdentityProvider {
-	return &EnterpriseIdentityProvider{IssuerURL: input.IssuerURL, DiscoveryEnabled: input.DiscoveryEnabled == nil || *input.DiscoveryEnabled, AuthorizationEndpoint: input.AuthorizationEndpoint, TokenEndpoint: input.TokenEndpoint, JWKSURI: input.JWKSURI, UserinfoEndpoint: input.UserinfoEndpoint}
+	return &EnterpriseIdentityProvider{Type: input.Type, SAML: input.SAML, IssuerURL: input.IssuerURL, DiscoveryEnabled: input.DiscoveryEnabled == nil || *input.DiscoveryEnabled, AuthorizationEndpoint: input.AuthorizationEndpoint, TokenEndpoint: input.TokenEndpoint, JWKSURI: input.JWKSURI, UserinfoEndpoint: input.UserinfoEndpoint}
 }
 
 // Connection tests never contact the token endpoint or disclose upstream
 // response bodies. Save/enable also require a reachable supported signing key.
 func validateEnterpriseProviderConfiguration(ctx context.Context, provider *EnterpriseIdentityProvider) (string, error) {
+	if provider != nil && provider.Type == "saml" {
+		if err := validateSAMLConfiguration(provider); err != nil {
+			return "CONFIGURATION_INVALID", err
+		}
+		return "SUCCESS", nil
+	}
 	document, err := enterpriseProviderDocument(ctx, provider)
 	if err != nil {
 		return "DISCOVERY_FAILED", ErrEnterpriseIdentityInvalid
