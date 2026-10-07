@@ -56,6 +56,17 @@ describe('workspace views keep their tenant context', () => {
   })
   afterEach(() => { wrapper?.unmount(); wrapper = undefined })
 
+  it.each([
+    { access: ['provisioning.read'], type: 'organization', visible: true },
+    { access: ['identity.read'], type: 'organization', visible: true },
+    { access: ['provisioning.manage'], type: 'organization', visible: false },
+    { access: ['provisioning.read'], type: 'personal', visible: false },
+  ])('keeps the identity navigation reachable only for organization identity or provisioning readers: $access/$type', async ({ access, type, visible }) => {
+    api.listWorkspaces.mockResolvedValue({ items: [{ ...workspace(1), type, permissions: access }] })
+    const { wrapper } = await render(WorkspaceOverviewView, 'overview')
+    expect(wrapper.find('a[href="/workspaces/1/identity"]').exists()).toBe(visible)
+  })
+
   const cases = [
     { section: 'members', component: WorkspaceMembersView, request: 'listMembers' as const, oldResponse: { items: [member('Old member')] }, current: 'New member', stale: 'Old member' },
     { section: 'invitations', component: WorkspaceInvitationsView, request: 'listInvitations' as const, oldResponse: { items: [{ id: 5, workspace_id: 1, email: 'old@example.com', role: 'viewer', invited_by_user_id: 7, expires_at: '2027-01-01T00:00:00Z' }] }, current: 'new@example.com', stale: 'old@example.com' },

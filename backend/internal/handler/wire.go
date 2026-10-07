@@ -262,9 +262,10 @@ func ProvideWorkspaceHandler(workspaceService *service.WorkspaceService, apiKeyS
 	return h
 }
 
-func ProvideEnterpriseWorkspaceHandler(workspaceService *service.WorkspaceService, apiKeyService *service.APIKeyService, webhookService *service.WorkspaceWebhookService, serviceAccountService *service.ServiceAccountService, policyRepository domain.PolicyRepository, policyResolver *domain.EffectivePolicyResolver, identity *service.EnterpriseIdentityService, auth *AuthHandler) *WorkspaceHandler {
+func ProvideEnterpriseWorkspaceHandler(workspaceService *service.WorkspaceService, apiKeyService *service.APIKeyService, webhookService *service.WorkspaceWebhookService, serviceAccountService *service.ServiceAccountService, policyRepository domain.PolicyRepository, policyResolver *domain.EffectivePolicyResolver, identity *service.EnterpriseIdentityService, auth *AuthHandler, scim *service.EnterpriseSCIMService) *WorkspaceHandler {
 	h := ProvideWorkspaceHandler(workspaceService, apiKeyService, webhookService, serviceAccountService, policyRepository, policyResolver)
 	h.SetEnterpriseIdentityService(identity)
+	h.SetEnterpriseSCIMService(scim)
 	h.SetIdentityRecentAuthentication(auth.RequireEnterpriseRecentAuthentication)
 	if auth.cfg != nil {
 		h.SetIdentitySSORedirectURL(auth.cfg.EnterpriseSSO.RedirectURL)

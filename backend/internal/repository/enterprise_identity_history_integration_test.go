@@ -56,7 +56,8 @@ func TestEnterpriseIdentityMigrationsPreservePhaseAAndGatewayRows(t *testing.T) 
 	require.NoError(t, err)
 	var memberID int64
 	require.NoError(t, db.QueryRow(`SELECT id FROM workspace_members WHERE workspace_id=$1 AND user_id=$2`, workspace.ID, member).Scan(&memberID))
-	require.NoError(t, workspaces.AddTeamMember(ctx, owner, workspace.ID, team.ID, memberID))
+	_, err = db.Exec(`INSERT INTO workspace_team_members(workspace_id,team_id,workspace_member_id) VALUES($1,$2,$3)`, workspace.ID, team.ID, memberID)
+	require.NoError(t, err)
 	_, err = workspaces.CreateProjectAccessGrant(ctx, owner, workspace.ID, project.ID, service.ProjectAccessGrantInput{SubjectType: service.ProjectAccessSubjectTeam, SubjectID: team.ID, Role: service.ProjectAccessRoleDeveloper})
 	require.NoError(t, err)
 	var directKey, machine, account int64
@@ -103,6 +104,9 @@ func enterpriseHistorySnapshot(t *testing.T, db *sql.DB, table string, upgraded 
 	expression := "to_jsonb(row)"
 	if upgraded && (table == "workspace_members" || table == "workspace_team_members") {
 		expression += "-'membership_source'-'membership_provider_id'"
+		if table == "workspace_members" {
+			expression += "-'administratively_suspended'-'effective_membership_source_id'-'administratively_removed'"
+		}
 	}
 	// The table names come exclusively from the fixed test allowlist above.
 	query := `SELECT COALESCE(jsonb_agg(value ORDER BY value::text),'[]'::jsonb)::text FROM (SELECT ` + expression + ` AS value FROM ` + table + ` AS row) snapshot`

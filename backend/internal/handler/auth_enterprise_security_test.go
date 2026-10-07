@@ -95,6 +95,7 @@ func TestEnterpriseSSOEnforcesEveryRegisteredTenantRoute(t *testing.T) {
 	handler.SetServiceAccountService(nil)
 	handler.SetPolicyHandler(NewPolicyHandler(workspaces, nil, enterpriseHandlerPolicyRepo{}, nil))
 	handler.SetEnterpriseIdentityService(identity)
+	handler.SetEnterpriseSCIMService(service.NewEnterpriseSCIMService(&scimHTTPRepo{}))
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
 		c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 42, PrincipalType: service.PrincipalHuman})
@@ -108,7 +109,7 @@ func TestEnterpriseSSOEnforcesEveryRegisteredTenantRoute(t *testing.T) {
 		}
 		t.Run(route.Method+" "+route.Path, func(t *testing.T) {
 			path := route.Path
-			for _, name := range []string{"id", "project_id", "member_id", "team_id", "grant_id", "invitation_id", "key_id", "webhook_id", "delivery_id", "domain_id", "provider_id", "service_account_id", "credential_id"} {
+			for _, name := range []string{"id", "project_id", "member_id", "team_id", "grant_id", "invitation_id", "key_id", "webhook_id", "delivery_id", "domain_id", "provider_id", "service_account_id", "credential_id", "connector_id", "token_id", "group_id"} {
 				path = strings.ReplaceAll(path, ":"+name, "7")
 			}
 			recorder := httptest.NewRecorder()

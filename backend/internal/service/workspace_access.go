@@ -49,7 +49,7 @@ func init() {
 		workspaceRolePermissions[role] = append(workspaceRolePermissions[role], "policy.read")
 	}
 	for _, role := range []string{"owner", "admin"} {
-		workspaceRolePermissions[role] = append(workspaceRolePermissions[role], "workspace_policy.update", "project_policy.update")
+		workspaceRolePermissions[role] = append(workspaceRolePermissions[role], "workspace_policy.update", "project_policy.update", "provisioning.read", "provisioning.manage", "provisioning.token.rotate")
 	}
 	workspaceRolePermissions["owner"] = append(workspaceRolePermissions["owner"], "service_account_policy.update")
 	workspaceRolePermissions["admin"] = append(workspaceRolePermissions["admin"], "service_account_policy.update")

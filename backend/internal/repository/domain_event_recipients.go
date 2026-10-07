@@ -22,7 +22,18 @@ func (r *notificationRecipientResolver) Resolve(ctx context.Context, event *serv
 	}
 	// Routine identity updates and login reconciliation are durable audit/webhook
 	// events, without an inbox notification on every login or failed DNS check.
+	if event.Data["category"] == "scim" {
+		// Provisioning changes remain in audit/webhooks without filling inboxes
+		// during a directory sync. Operational failures use separate events.
+		switch event.Type {
+		case service.EventSCIMConnectorDisabled, service.EventSCIMSyncFailed, service.EventSCIMTokenExpiring, service.EventSCIMSecurityConflict:
+		default:
+			return nil, nil
+		}
+	}
 	switch event.Type {
+	case service.EventSCIMConnectorCreated, service.EventSCIMTokenCreated, service.EventSCIMTokenRevoked:
+		return nil, nil
 	case service.EventWorkspaceDomainCreated, service.EventWorkspaceDomainRegenerated, service.EventWorkspaceDomainRevoked,
 		service.EventIdentityProviderCreated, service.EventIdentityProviderUpdated, service.EventOIDCMappingsUpdated,
 		service.EventSAMLMetadataUpdated,
@@ -42,7 +53,8 @@ func (r *notificationRecipientResolver) Resolve(ctx context.Context, event *serv
 	allowed := func(role string) bool { return true }
 	switch event.Type {
 	case service.EventWorkspaceDomainVerified, service.EventIdentityProviderDisabled, service.EventSAMLCertificateRotated,
-		service.EventSSOEnforcementEnabled, service.EventSSOEnforcementDisabled, service.EventSSOBreakGlassUsed:
+		service.EventSSOEnforcementEnabled, service.EventSSOEnforcementDisabled, service.EventSSOBreakGlassUsed,
+		service.EventSCIMConnectorDisabled, service.EventSCIMSyncFailed, service.EventSCIMTokenExpiring, service.EventSCIMSecurityConflict:
 		allowed = func(role string) bool { return role == "owner" || role == "admin" }
 	case service.EventBudgetThreshold, service.EventBudgetSoftLimit, service.EventBudgetHardLimit,
 		service.EventBudgetUpdated, service.EventBillingPending, service.EventBillingRecovered:

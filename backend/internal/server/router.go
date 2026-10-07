@@ -9,6 +9,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
+	rate "github.com/Wei-Shaw/sub2api/internal/middleware"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/server/routes"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -143,6 +144,13 @@ func registerRoutes(
 ) {
 	// 通用路由（健康检查、状态等）
 	routes.RegisterCommonRoutes(r)
+	if h.Workspace != nil {
+		var scimLimiter *rate.RateLimiter
+		if redisClient != nil {
+			scimLimiter = rate.NewRateLimiter(redisClient)
+		}
+		h.Workspace.RegisterPublicSCIMRoutes(r, scimLimiter)
+	}
 
 	// API v1
 	v1 := r.Group("/api/v1")

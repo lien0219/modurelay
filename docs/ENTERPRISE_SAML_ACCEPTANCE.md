@@ -2,7 +2,8 @@
 
 Baseline: `81e68865463755f3fb684199b3de5a31e8572713`, branch `feature/new-feature`.
 Migration: `295_enterprise_identity_saml.sql`. Local phase commit:
-`feat(saml): add enterprise SAML single sign-on` (resolve its SHA from Git history).
+`41b0b31dfd59ca2ddc337b78d2c1bc609bba0a77`,
+`feat(saml): add enterprise SAML single sign-on`.
 
 | Gate | Result | Evidence / boundary |
 | --- | --- | --- |
@@ -14,7 +15,7 @@ Migration: `295_enterprise_identity_saml.sql`. Local phase commit:
 | Browser/completion/assurance | PASS | Bounded ACS and Secure/HttpOnly/SameSite=None binding; same-origin completion/TOTP; original authentication time and protocol; revision/disable enforcement. |
 | Optional attribute settings | PASS | Explicitly empty name/groups attributes remain disabled; SAML/service suite 2.277s after RED/GREEN correction. |
 | Relevant backend race | PASS | Service 8.427s; handler 1.280s; repository 1.153s. |
-| Frontend | PASS | i18n, lint, typecheck; 421 files / 3111 tests; production build 52.90s. Existing chunk-size warnings remain. |
+| Frontend | PASS | Final reviewed i18n, lint, typecheck; 422 files / 3112 tests; production build 26.71s. Existing chunk-size warnings remain. |
 | Go vet/build/pinned lint | PASS | `go vet ./...`, `go build ./...`; golangci-lint v2.13.0 reports 0 issues. |
 | Dependency audit | PASS | govulncheck: 0 reachable and 0 imported-package vulnerabilities; 11 advisories in required modules not called by this application. Production pnpm audit exception checker validated. |
 | Independent code/security review | PASS | Immutable v4 review snapshot; F0-F3 resolved, spec and code-quality approval. |

@@ -1,5 +1,6 @@
 export default {
   notifications: {
+    scim: { title: '目录自动配置提醒', body: '目录自动配置事件需要关注。请检查工作区连接器状态和审计日志。' },
     service_account: { title: '服务账号更新', body: '服务账号发生了变化。' },
     title: '通知',
     unreadCount: '{count} 条未读通知',

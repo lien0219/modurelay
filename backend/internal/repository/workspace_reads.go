@@ -126,7 +126,7 @@ func (r *workspaceRepository) ListInvitations(ctx context.Context, a, w int64, p
 	return workspaceList(ctx, r, a, w, p, "invitation.read", "workspace_invitations", invitationColumns, scanInvitation)
 }
 func (r *workspaceRepository) ListAudit(ctx context.Context, a, w int64, p pagination.PaginationParams) ([]service.WorkspaceAudit, int64, error) {
-	return workspaceList(ctx, r, a, w, p, "audit.read", "workspace_audit_logs", `id,workspace_id,project_id,actor_user_id,action,target_type,target_id,metadata,created_at`, func(s workspaceScanner) (*service.WorkspaceAudit, error) {
+	return workspaceList(ctx, r, a, w, p, "audit.read", "workspace_audit_logs", `id,workspace_id,project_id,COALESCE(actor_user_id,0),action,target_type,target_id,metadata,created_at`, func(s workspaceScanner) (*service.WorkspaceAudit, error) {
 		v := &service.WorkspaceAudit{}
 		var b []byte
 		e := s.Scan(&v.ID, &v.WorkspaceID, &v.ProjectID, &v.ActorUserID, &v.Action, &v.TargetType, &v.TargetID, &b, &v.CreatedAt)

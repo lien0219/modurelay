@@ -338,3 +338,18 @@ Gateway, policy, project grants and immutable billing retain their boundaries.
 See [ENTERPRISE_SSO.md](ENTERPRISE_SSO.md) for configuration/security/API details
 and [ENTERPRISE_SSO_ACCEPTANCE.md](ENTERPRISE_SSO_ACCEPTANCE.md) for deferred
 manual validation. Real IdPs and final browser acceptance are NOT RUN.
+
+## Phase C enterprise identity advanced
+
+SAML extends the shared identity-provider and SSO enforcement model with bounded
+metadata/ACS, mature-library signatures/encryption, replay protection and encrypted
+per-provider key rotation. SCIM adds independent connector-scoped provisioning
+with show-once/hash-only bearer credentials and opaque resources.
+
+Membership/Team sources coexist across manual,OIDC,SAML and SCIM. Exact source
+removal preserves others; administrator suspension/removal wins. Groups require
+explicit existing-Team binding and use existing Project Access Grants. Owner and
+Billing Owner remain manually managed. No historical Usage/Billing/Key/Service
+Account rewrite or new Gateway protocol dependency occurs. Operational details
+and local/deferred acceptance are in [ENTERPRISE_SAML.md](ENTERPRISE_SAML.md),
+[ENTERPRISE_SCIM.md](ENTERPRISE_SCIM.md) and their acceptance documents.

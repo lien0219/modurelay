@@ -521,6 +521,9 @@ func TestFrontendServer_Middleware(t *testing.T) {
 		require.NoError(t, err)
 
 		apiPaths := []string{
+			"/scim/v2/opaque-connector/Users",
+			"/scim/v2/opaque-connector/Groups",
+			"/scim/v2/opaque-connector/ServiceProviderConfig",
 			"/api/v1/users",
 			"/models",
 			"/v1/models",
@@ -982,6 +985,8 @@ func TestServeEmbeddedFrontend(t *testing.T) {
 
 		apiPaths := []string{
 			"/api/users",
+			"/scim/v2/opaque-connector/Users",
+			"/scim/v2/opaque-connector/Groups",
 			"/models",
 			"/v1/models",
 			"/v1beta/chat",

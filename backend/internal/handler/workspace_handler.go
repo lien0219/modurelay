@@ -21,6 +21,7 @@ type WorkspaceHandler struct {
 	serviceAccounts     *ServiceAccountHandler
 	policies            *PolicyHandler
 	identity            *service.EnterpriseIdentityService
+	scim                *service.EnterpriseSCIMService
 	identityRecentAuth  func(*gin.Context) bool
 	identityRedirectURL string
 }
@@ -80,6 +81,7 @@ func (h *WorkspaceHandler) SetIdentitySSORedirectURL(redirectURL string) {
 	h.identityRedirectURL = strings.TrimSpace(redirectURL)
 }
 func (h *WorkspaceHandler) RegisterTenantRoutes(v1 *gin.RouterGroup) {
+	h.registerSCIMControlRoutes(v1)
 	if h.serviceAccounts != nil {
 		h.serviceAccounts.RegisterTenantRoutes(v1)
 	}

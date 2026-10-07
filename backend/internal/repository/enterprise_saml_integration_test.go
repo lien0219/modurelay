@@ -19,6 +19,12 @@ func samlRepositoryInput(key string) service.EnterpriseIdentityProviderInput {
 }
 
 func TestEnterpriseSAMLRepositoryProtocolPersistenceAndRevision(t *testing.T) {
+	t.Cleanup(func() {
+		body, e := migrations.FS.ReadFile("296_enterprise_identity_scim.sql")
+		require.NoError(t, e)
+		_, e = integrationDB.Exec(string(body))
+		require.NoError(t, e)
+	})
 	ctx, repo, owner, workspace, oidc, _ := enterpriseIdentityFixture(t)
 	before := enterpriseHistorySnapshot(t, integrationDB, "workspace_identity_providers", false)
 	body, err := migrations.FS.ReadFile("295_enterprise_identity_saml.sql")

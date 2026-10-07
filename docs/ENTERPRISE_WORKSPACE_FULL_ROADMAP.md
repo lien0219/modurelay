@@ -5,10 +5,10 @@ This document is the durable progress source for the Enterprise Workspace progra
 ## Current baseline
 
 - Branch: `feature/new-feature`
-- HEAD at Phase B audit: `828ccb8419807d2af89fc2adbb654909686634b0 feat(governance): add workspace teams and project access controls`
-- Recent enterprise baseline: Phase A governance on top of `fcdf84bba` and the policy/Service Account/notification foundations.
-- Phase B worktree: implementation changes on the audited baseline; the final continuation inherited those changes without staged/committed Phase B files, kept the existing branch and did not reset, clean or discard unrelated changes.
-- Migration ceiling: 293 at the Phase B audit; Phase B adds `294_enterprise_identity_oidc.sql`.
+- Phase C baseline: `81e68865463755f3fb684199b3de5a31e8572713`.
+- C1 local commit: `41b0b31dfd59ca2ddc337b78d2c1bc609bba0a77`, `feat(saml): add enterprise SAML single sign-on`.
+- C2 boundary: `feat(scim): add enterprise identity provisioning`; exact SHA is resolved from Git and recorded at delivery.
+- Migration ceiling after C2: 296. Historical Phase A/Phase B audits and verification records are retained below.
 
 ## Current Enterprise Capability Matrix
 
@@ -32,8 +32,8 @@ This document is the durable progress source for the Enterprise Workspace progra
 | Generic OIDC and provider presets | Implemented | Unified Authorization Code/PKCE, browser state/completion, JWT/JWKS, HTTPS/DNS pinning, redacted encrypted secrets | Phase B |
 | Linking/JIT and role/Team mappings | Implemented | Global User/subject binding, explicit link, verified-email/domain JIT, source-aware reconciliation and live Phase A grants | Phase B |
 | Discovery, assurance, SSO enforcement/recovery | Implemented | Tenant route and legacy key management gates, revision/age invalidation, locked Owner enable gate, password/TOTP recovery | Phase B |
-| SAML 2.0 | Missing | No SAML SP model or protocol flow | Phase C |
-| SCIM 2.0 | Missing | No SCIM resource/token lifecycle | Phase C |
+| SAML 2.0 | Implemented | Migration295, maintained gosaml2/xmldsig, signed/encrypted SP flow, shared binding/JIT/mappings/assurance; local C1 commit | Phase C1 |
+| SCIM 2.0 | Implemented | Migration296, independent connector/hash-only tokens, Users/Groups, typed multi-source reconciliation, explicit Team bindings; local source/test/review gates complete | Phase C2 |
 | Workspace security policy | Foundation implemented; broader controls deferred | Phase B `workspace_security_policies` has SSO/grace; Phase D adds MFA, session/domain/invitation controls | Phase B / D |
 | FinOps anomaly detection | Missing | No anomaly finding model/worker | Phase E |
 | Cost centers/tags/environment allocation | Missing | Usage snapshots do not expose these dimensions | Phase F |
@@ -46,8 +46,6 @@ This document is the durable progress source for the Enterprise Workspace progra
 
 | Missing capability | Contract | Planned phase | Blocking risk |
 | --- | --- | --- | --- |
-| SAML | Mature library, signature/audience/destination/clock validation | C | XML signature wrapping |
-| SCIM | Idempotent provisioning/deprovisioning and owner/billing safety | C | Lifecycle invariant breakage |
 | Security policy | MFA/SSO/session/domain/invitation controls | D | Human control-plane bypass |
 | Anomaly/cost allocation | Immutable snapshots and bounded aggregation | E–F | Historical billing drift |
 | Lifecycle/export/admin | Retention floors, tenant-owned exports, controlled emergency actions | G–H | Data loss and operator overreach |
@@ -69,10 +67,10 @@ This document is the durable progress source for the Enterprise Workspace progra
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | A | Teams, Project Access Grants, restricted project mode | Fixed built-in roles; direct/team grants; default all-project compatibility; owner/admin/billing compatibility retained; no custom roles | 293 | `828ccb8419807d2af89fc2adbb654909686634b0` | Backend unit/service/handler/repository/migration tests; PostgreSQL governance and key isolation integration; full frontend Vitest, lint, typecheck, build; diff review | COMPLETE | Cross-tenant subject IDs are checked in repository transactions and database trigger; project-key, service-account, legacy key list/search, policy, budget, and usage paths recheck project access | Custom roles; browser/manual acceptance; real providers |
 | B | Verified domains, OIDC/presets, linking/JIT/mappings, discovery, assurance/enforcement/recovery | Global User; provider/subject binding; no email adoption or Owner/Billing Owner escalation; SSRF-safe protocol; source-aware reconciliation; control-plane/Gateway separation | 294 | `feat(sso): add verified domains and OIDC enterprise SSO`; resolve SHA below | Mock/protocol/PostgreSQL/concurrency/race PASS; full frontend 421 files/3103 tests plus lint/typecheck/build PASS; Go full suites have identical parent-baseline failures; source/security/diff review PASS | COMPLETE | Retained encryption key; provider claim differences; real-provider/load/manual gates not run | SAML/SCIM; Graph overage fetching; periodic DNS health; full Phase D security policy |
-| C | SAML 2.0 and SCIM 2.0 | Shared SSO/provider binding and typed provisioning sources; see Phase C plan | 295–296 | C1 local boundary below | C1 complete; C2 in progress | IN PROGRESS | Lifecycle races, admin suspension | IdP-initiated SSO, SLO; real IdPs in Phase L |
-| C1 | SAML 2.0 Enterprise SSO | Nullable protocol fields with DB integrity; gosaml2 v0.12.0; shared JIT/link/mapping/completion/assurance | 295 | `feat(saml): add enterprise SAML single sign-on` | Complete | COMPLETE | Certificate/key retention and IdP interoperability | IdP-initiated SSO, SLO |
-| C2 | SCIM 2.0 Enterprise Provisioning | Independent hash-token connector; attributed Membership/Team sources; explicit Group binding | 296 | Not committed | Not started | IN PROGRESS | Cross-source removal and Owner/Billing safety | Real Entra/Okta provisioning in Phase L |
-| D | Workspace security policy | Control-plane middleware with explicit assurance context | 296+ | Not started | Not run | NOT RUN | Break-glass and API-key separation | Arbitrary ABAC |
+| C | SAML 2.0 and SCIM 2.0 | Shared SSO/provider binding and typed provisioning sources; see Phase C report | 295–296 | Two local phase boundaries below | Final relevant/PostgreSQL/race/frontend/Canvas/audit/review gates PASS; final full backend failures match81e688 baseline; initial external TLS failure separately disclosed | COMPLETE | Workspace-lock contention, migration suspension review, initial explicit SSO linking | IdP-initiated SSO, SLO; real providers/browser/load/deployment in Phase L |
+| C1 | SAML 2.0 Enterprise SSO | Nullable protocol fields with DB integrity; gosaml2 v0.12.0; shared JIT/link/mapping/completion/assurance | 295 | `41b0b31dfd59ca2ddc337b78d2c1bc609bba0a77` | Complete; detailed C1 record below | COMPLETE | Certificate/key retention and IdP interoperability | IdP-initiated SSO, SLO |
+| C2 | SCIM 2.0 Enterprise Provisioning | Independent hash-token connector; attributed Membership/Team sources; explicit Group binding | 296 | `feat(scim): add enterprise identity provisioning`; resolve SHA at delivery | Post-R1 relevant/realPG/allidentityrace/vet/build/default lint PASS; frontend424files3149tests and Canvas7 PASS; final full suites and supplemental tagged lint PRE-EXISTING | COMPLETE | Cross-source removal, Owner/Billing safety and email retries independently rechecked | Real Entra/Okta provisioning in Phase L |
+| D | Workspace security policy | Control-plane middleware with explicit assurance context | 296+ | Not started | Not run | NEXT | Break-glass and API-key separation | Arbitrary ABAC |
 | E | Advanced FinOps anomalies | Immutable usage snapshots plus bounded detector jobs | 297+ | Not started | Not run | NOT RUN | False positives, cardinality | AI remediation |
 | F | Cost centers, tags, environment allocation | New-write dimensions and explicit legacy NULLs | 298+ | Not started | Not run | NOT RUN | Historical attribution drift | ERP tree |
 | G | Retention, export, archive/restore, deletion lifecycle | Tenant-owned jobs, retention floors, resumable purge | 299+ | Not started | Not run | NOT RUN | Data loss, legal retention | Complex legal hold |
@@ -100,8 +98,9 @@ The local Phase A commit is created only after this verification record and the 
 
 ## Phase B execution boundary
 
-Phase B is **COMPLETE** at the local phase-boundary commit. Phase C (SAML/SCIM)
-is **NEXT**. Final release/manual acceptance remains Phase L; this phase does
+Phase B is **COMPLETE** at its local phase-boundary commit. Its historical handoff
+was Phase C (SAML/SCIM); current Phase C status is in the phase table above.
+Final release/manual acceptance remains Phase L; this phase does
 not establish real-provider or production acceptance.
 
 ### Architecture decisions and migration
@@ -194,9 +193,9 @@ Every phase records targeted tests, full relevant tests, security/diff review, a
 ## Phase C1 completion record (2026-10-07)
 
 C1 is COMPLETE at the verified local commit `feat(saml): add enterprise SAML single sign-on`.
-The immutable C1 SHA will be recorded by C2; resolve the current boundary with
-`git log --all --format='%H %s' --grep='^feat(saml): add enterprise SAML single sign-on$'`.
-C2 is IN PROGRESS; D/E/F have not started.
+The immutable C1 SHA is `41b0b31dfd59ca2ddc337b78d2c1bc609bba0a77`.
+Current Phase C/C2 status is recorded in the phase table and completion record.
+D/E/F functionality has not started.
 
 Migration 295 extends the provider parent with genuine nullable protocol fields,
 strong SQL checks, separate encrypted SP keys, opaque public identity and request/replay correlation.
@@ -225,3 +224,75 @@ NOT RUN: external Entra/Okta/Google SAML, rendered browser/operator/load/deploym
 Deferred: IdP-initiated SSO, SLO, POST-only AuthnRequest; real-provider acceptance Phase L.
 No historical Usage/Billing/Key/Service Account rewrite or acceptance runtime change.
 Operational details: ENTERPRISE_SAML.md; evidence/boundaries: ENTERPRISE_SAML_ACCEPTANCE.md.
+
+## Phase C2 completion record (2026-10-08)
+
+C2 completes SCIM provisioning after the local C1 boundary
+`41b0b31dfd59ca2ddc337b78d2c1bc609bba0a77`. The C2 commit message is
+`feat(scim): add enterprise identity provisioning`; obtain its actual SHA using
+`git log -1 --format='%H' --grep='^feat(scim): add enterprise identity provisioning$'`.
+A commit cannot embed its own SHA. The final delivery response records both SHAs,
+the clean-tree result and exactly two commits after the original81e688 baseline.
+Phase C/C1/C2 are COMPLETE, Phase D is NEXT; D/E/F are not implemented.
+
+Architecture: independent Workspace SCIM connector and hash-only/show-once
+credentials, up to8 active tokens, connector-derived tenant and token/expiry
+rechecks under Workspace locks. Migration296 adds typed Membership/Team sources,
+control-plane backfill, administrative suspension/removal and exact selected-role
+source. Manual/OIDC/SAML/SCIM removals affect only their own attribution. Groups
+bind explicitly to active same-Workspace Teams and reuse Project Access Grants;
+no display-name takeover or parallel ACL. Owner/Billing Owner remain protected.
+No Global User deletion, human SCIM session or historical Usage/Billing/Key/
+Service Account rewrite occurs. Human Require SSO and Bearer provisioning remain
+separate, outside the Gateway hot path.
+
+PASS: post-R1 relevant backend service6.215s/handler0.081s/repository0.053s/
+middleware0.044s/migrations0.009s; real PostgreSQL identity/SAML/SCIM/Workspace/
+governance43.515s; relevant race9.370s/1.290s/1.116s/1.084s; all SCIM/OIDC/SAML
+PostgreSQL race51.510s; gofmt/vet/build/default pinnedgolangci-lint2.13.0 with0issues.
+Frontend i18n/lint/typecheck and424files3149tests, production build24.69s,
+Canvas critical7tests, Bun bundle16.62s and embed0.077s pass. Current dependency
+gate retains11 module-only advisories,0 imported-package/0 reachable-function
+findings, validated pnpm production exceptions and no C2 dependency change.
+
+Independent review: F1 lock-time expiry, F2 deleted Group references, F3 early
+outcome monitoring and B1 exact-member deletion are approved. Whole-C2 review
+found R1 duplicate User email-add retries. Test-first protocol/actual HTTP-
+PostgreSQL RED/GREEN and350 successful no-op retry requests now preserve
+resource/ETag/time/mutation audit/events/outbox; limits, distinct supported
+attributes and protected primary inbox remain intact. Independent R1 Spec/
+CodeQuality APPROVE closes the only whole-review blocker. All56 source hashes
+remain equal to the approved v2 manifest; completion documentation is separately
+reviewed before staging the explicit64-path allowlist.
+
+PRE-EXISTING: final complete default/unit/integration commands match actual
+archived81e688 failure tests/packages/missing-sh/CAS characteristics. Default and
+integration retain3 PgDumper failures; unit also retains the Ollama stale callback.
+Supplemental integration-tag lint returns13 identical path/line/diagnostic
+findings in10 unchanged integration-test files on actual baseline and current
+source. Required default lint passes. No unrelated assertion is weakened.
+
+Initial post-R1 integration additionally failed TestAllProfiles because
+tls.peet.ws reset/refused TCP connections. Original FAIL/mismatch evidence is
+retained. Identical complete baseline/current integration reruns took167.885s/
+171.047s and have only the same3 PgDumper failures. TLS package sources match
+baseline Git/archive; no source/skip/timeout change was made. This transient
+network failure is separately disclosed, not labeled a proven PRE-EXISTING bug;
+existing external-network skips do not prove live fingerprint validation.
+Final comparison: `c2-post-r1-delivery-baseline-comparison.json` under local
+ignored `.cache/phase-c/`.
+
+NOT RUN: real Entra/Okta/Google SAML, Entra/Okta SCIM, rendered browser/light-dark/
+mobile/keyboard/operator, production load/deployment and formal Codex Security
+plugin scan. Source/security reviews are the actual recorded security method.
+Provider/manual/production acceptance remains Phase L. Retain SAML encryption
+keys and HTTPS config; inspect conservative suspension/legacy backfill. Connector
+disable retains sourced access; deprovision first if access removal is intended.
+SCIM does not create SSO subject bindings; initial employee login may need normal
+mailbox recovery followed by authenticated explicit linking. Workspace-lock
+contention, bounded payloads and vendor mapping differences remain disclosed.
+
+Operational detail: [ENTERPRISE_SCIM.md](ENTERPRISE_SCIM.md); acceptance/security
+Q1-Q16: [ENTERPRISE_SCIM_ACCEPTANCE.md](ENTERPRISE_SCIM_ACCEPTANCE.md); complete
+architecture/gates/report: [ENTERPRISE_IDENTITY_PHASE_C_REPORT.md](ENTERPRISE_IDENTITY_PHASE_C_REPORT.md).
+No push, PR, branch switch or acceptance18081 runtime mutation occurs.

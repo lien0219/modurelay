@@ -1,5 +1,6 @@
 export default {
   notifications: {
+    scim: { title: 'Directory provisioning alert', body: 'A directory provisioning event needs your attention. Review the workspace connector status and audit log.' },
     title: 'Notifications',
     unreadCount: '{count} unread',
     markAllRead: 'Mark all read',

@@ -209,6 +209,12 @@ func TestEnterpriseIdentityBreakGlassIsOwnerOnlyAtomicAndRateLimited(t *testing.
 }
 
 func TestEnterpriseIdentityMigrationIsIdempotentAndTenantBounded(t *testing.T) {
+	t.Cleanup(func() {
+		body, e := os.ReadFile("../../migrations/296_enterprise_identity_scim.sql")
+		require.NoError(t, e)
+		_, e = integrationDB.Exec(string(body))
+		require.NoError(t, e)
+	})
 	ctx, repo, owner, workspace, provider, _ := enterpriseIdentityFixture(t)
 	migration, err := os.ReadFile("../../migrations/294_enterprise_identity_oidc.sql")
 	require.NoError(t, err)
@@ -625,15 +631,23 @@ func TestEnterpriseIdentityJITRequiresVerifiedDomainAndActiveScopes(t *testing.T
 func TestEnterpriseIdentitySCIMRoleAndTeamSurviveOIDCReconciliation(t *testing.T) {
 	ctx, repo, owner, workspace, provider, _ := enterpriseIdentityFixture(t)
 	ws := service.NewWorkspaceService(NewWorkspaceRepository(integrationDB))
-	member := workspaceJoin(t, ctx, ws, owner.ID, workspace.ID, "developer")
-	_, err := integrationDB.Exec(`UPDATE workspace_members SET membership_source='scim' WHERE workspace_id=$1 AND user_id=$2`, workspace.ID, member.ID)
+	r := &enterpriseSCIMRepository{db: integrationDB}
+	svc := service.NewEnterpriseSCIMService(r)
+	c, err := svc.CreateConnector(ctx, workspace.ID, owner.ID, service.SCIMConnectorInput{Name: "SCIM", DefaultRole: "developer"})
 	require.NoError(t, err)
+	token, err := svc.CreateToken(ctx, workspace.ID, owner.ID, c.ID, service.SCIMTokenInput{})
+	require.NoError(t, err)
+	principal, err := svc.Authenticate(ctx, c.PublicID, token.Secret)
+	require.NoError(t, err)
+	provisioned, err := r.MutateUser(ctx, principal, "", service.SCIMUserMutation{Action: "create", User: scimUserInput(workspace.ID, "scim")})
+	require.NoError(t, err)
+	member := &service.User{ID: provisioned.UserID, Email: provisioned.Emails[0].Value}
+	memberID := provisioned.MemberID
 	team, err := ws.CreateTeam(ctx, owner.ID, workspace.ID, service.WorkspaceTeamInput{Name: "SCIM", Slug: "scim"})
 	require.NoError(t, err)
-	var memberID int64
-	require.NoError(t, integrationDB.QueryRow(`SELECT id FROM workspace_members WHERE workspace_id=$1 AND user_id=$2`, workspace.ID, member.ID).Scan(&memberID))
-	_, err = integrationDB.Exec(`INSERT INTO workspace_team_members(workspace_id,team_id,workspace_member_id,membership_source) VALUES($1,$2,$3,'scim')`, workspace.ID, team.ID, memberID)
+	group, err := r.MutateGroup(ctx, principal, "", service.SCIMGroupMutation{Action: "create", Group: &service.SCIMGroupInput{Schemas: []string{service.SCIMGroupSchema}, DisplayName: "SCIM", Members: []service.SCIMMember{{Value: provisioned.ID}}}})
 	require.NoError(t, err)
+	require.NoError(t, r.BindGroup(ctx, workspace.ID, owner.ID, c.ID, group.ID, service.SCIMGroupBindingInput{Revision: group.Revision, TeamID: &team.ID}))
 	require.NoError(t, repo.ReplaceMappings(ctx, workspace.ID, owner.ID, provider.ID, service.OIDCMappings{Roles: []service.OIDCRoleMapping{{ClaimValue: "elevated", Role: "admin", Priority: 100}}, Teams: []service.OIDCTeamMapping{{ClaimValue: "elevated", TeamID: team.ID}}}))
 	provider, _, err = repo.GetProvider(ctx, workspace.ID, 0, provider.ID)
 	require.NoError(t, err)

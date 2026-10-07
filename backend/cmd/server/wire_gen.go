@@ -114,7 +114,9 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	serviceAccountService := service.NewServiceAccountService(serviceAccountRepository, workspaceAccessService, apiKeyService, settingRepository)
 	policyRepository := repository.NewPolicyRepository(db)
 	effectivePolicyResolver := domain.NewEffectivePolicyResolver(policyRepository)
-	workspaceHandler := handler.ProvideEnterpriseWorkspaceHandler(workspaceService, apiKeyService, workspaceWebhookService, serviceAccountService, policyRepository, effectivePolicyResolver, enterpriseIdentityService, authHandler)
+	scimRepository := repository.NewEnterpriseSCIMRepository(db)
+	enterpriseSCIMService := service.NewEnterpriseSCIMService(scimRepository)
+	workspaceHandler := handler.ProvideEnterpriseWorkspaceHandler(workspaceService, apiKeyService, workspaceWebhookService, serviceAccountService, policyRepository, effectivePolicyResolver, enterpriseIdentityService, authHandler, enterpriseSCIMService)
 	usageLogRepository := repository.NewUsageLogRepository(client, db)
 	usageService := service.NewUsageService(usageLogRepository, userRepository, client, apiKeyAuthCacheInvalidator)
 	opsRepository := repository.NewOpsRepository(db)
@@ -397,7 +399,8 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	channelMonitorRunner := service.ProvideChannelMonitorRunner(channelMonitorService, settingService, channelMonitorQuotaFetcher)
 	channelMonitorV2Aggregator := service.ProvideChannelMonitorV2Aggregator(channelMonitorV2Repository, db, settingService)
 	userPlatformQuotaUsageFlusher := service.ProvideUserPlatformQuotaUsageFlusher(configConfig, billingCache, serviceUserPlatformQuotaRepository, timingWheelService)
-	v2 := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, opsService, opsIngressRejectAggregator, apiKeyService, workspaceService, domainEventDispatcher, workspaceWebhookWorker, authCacheInvalidationWorker, schedulerSnapshotService, tokenRefreshService, accountExpiryService, cnProviderBalanceCheckService, openAICodexVersionSyncService, claudeCodeVersionSyncService, proxyExpiryService, subscriptionExpiryService, usageCleanupService, idempotencyCleanupService, batchImageCleanupService, canvasService, batchImageWorkerRuntime, pricingService, emailQueueService, emailVerificationWorker, billingCacheService, usageRecordWorkerPool, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, grokOAuthService, openAIGatewayService, scheduledTestRunnerService, backupService, paymentOrderExpiryService, channelMonitorRunner, channelMonitorV2Aggregator, userPlatformQuotaUsageFlusher, upstreamBillingProbeService, ollamaCloudUsageService, openCodeGoUsageService, auditLogService, openAIQuotaAutoResetService, promptService, pluginManager)
+	scimTokenExpiryMonitor := service.ProvideSCIMTokenExpiryMonitor(scimRepository)
+	v2 := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, opsService, opsIngressRejectAggregator, apiKeyService, workspaceService, domainEventDispatcher, workspaceWebhookWorker, authCacheInvalidationWorker, schedulerSnapshotService, tokenRefreshService, accountExpiryService, cnProviderBalanceCheckService, openAICodexVersionSyncService, claudeCodeVersionSyncService, proxyExpiryService, subscriptionExpiryService, usageCleanupService, idempotencyCleanupService, batchImageCleanupService, canvasService, batchImageWorkerRuntime, pricingService, emailQueueService, emailVerificationWorker, billingCacheService, usageRecordWorkerPool, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, grokOAuthService, openAIGatewayService, scheduledTestRunnerService, backupService, paymentOrderExpiryService, channelMonitorRunner, channelMonitorV2Aggregator, userPlatformQuotaUsageFlusher, upstreamBillingProbeService, ollamaCloudUsageService, openCodeGoUsageService, auditLogService, openAIQuotaAutoResetService, promptService, pluginManager, scimTokenExpiryMonitor)
 	application := &Application{
 		Server:        httpServer,
 		PromptAudit:   promptService,
@@ -489,6 +492,7 @@ func provideCleanup(
 	openAIAutoReset *service.OpenAIQuotaAutoResetService,
 	promptAudit *securityaudit.PromptService,
 	pluginManager *service.PluginManager,
+	scimExpiry *service.SCIMTokenExpiryMonitor,
 ) func() {
 	return func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -500,6 +504,12 @@ func provideCleanup(
 		}
 
 		parallelSteps := []cleanupStep{
+			{"SCIMTokenExpiryMonitor", func() error {
+				if scimExpiry != nil {
+					scimExpiry.Stop()
+				}
+				return nil
+			}},
 			{"DomainEventDispatcher", func() error {
 				if domainEventDispatcher != nil {
 					domainEventDispatcher.Stop()

@@ -73,35 +73,44 @@ Files: workspace API/types, enterpriseSSO API, WorkspaceIdentityView.vue, SAML p
 
 Files: migration 296, workspace source repositories, enterprise SCIM repository/service files, workspace_mutation.go and shared identity reconciliation.
 
-- [ ] Add failing manual+SSO+SCIM and administrator-suspension regression tests.
-- [ ] Create scoped connector/token/user/group and typed membership/Team-source tables with composite tenant FKs and bounded control-plane backfill.
-- [ ] Reconcile effective Member/Team state from live sources, preserving manual role and explicit administrator suspension.
-- [ ] Upgrade OIDC/SAML reconciliation so complete-empty groups cannot delete another protocol or SCIM source.
-- [ ] Implement locked, atomic SCIM resource mutations, normalized verified-email adoption/creation, opaque IDs, source-only deprovision and Owner/Billing Owner 409 protection.
-- [ ] Verify eight-way duplicate POST, state races, Group PATCH and token rotation/revoke on real PostgreSQL.
+- [x] Add failing manual+SSO+SCIM and administrator-suspension regression tests.
+- [x] Create scoped connector/token/user/group and typed membership/Team-source tables with composite tenant FKs and bounded control-plane backfill.
+- [x] Reconcile effective Member/Team state from live sources, preserving manual role and explicit administrator suspension.
+- [x] Upgrade OIDC/SAML reconciliation so complete-empty groups cannot delete another protocol or SCIM source.
+- [x] Implement locked, atomic SCIM resource mutations, normalized verified-email adoption/creation, opaque IDs, source-only deprovision and Owner/Billing Owner 409 protection.
+- [x] Verify eight-way duplicate POST, state races, Group PATCH and token rotation/revoke on real PostgreSQL.
 
 ## Task 5: C2 SCIM protocol and control plane
 
 Files: SCIM service/parser/handler/router files, central provisioning permissions, app wiring and event/notification/webhook integration.
 
-- [ ] Implement authenticated connector-specific Users/Groups/config/schema/type endpoints and SCIM error/media contracts.
-- [ ] Implement bounded allowlisted eq filters, 1-based pagination, replacement PUT, idempotent add/replace/remove PATCH and safe repeated DELETE.
-- [ ] Support If-Match and revision versions; serialize resource mutations under the Workspace lock.
-- [ ] Add connector/token rate limits with explicit fail-closed Redis behavior, bounded payload/operation/member limits and debounced last-used tracking.
-- [ ] Add human RBAC and Require SSO control-plane gates, one-time tokens, coexistence rotation, expiry/revoke and safe event summaries/important notifications.
-- [ ] Verify tenant IDOR, injection, giant payload, secret leakage and no global-user/session/credential mutation.
+- [x] Implement authenticated connector-specific Users/Groups/config/schema/type endpoints and SCIM error/media contracts.
+- [x] Implement bounded allowlisted eq filters, 1-based pagination, replacement PUT, idempotent add/replace/remove PATCH and safe repeated DELETE.
+- [x] Support If-Match and revision versions; serialize resource mutations under the Workspace lock.
+- [x] Add connector/token rate limits with explicit fail-closed Redis behavior, bounded payload/operation/member limits and debounced last-used tracking.
+- [x] Add human RBAC and Require SSO control-plane gates, one-time tokens, coexistence rotation, expiry/revoke and safe event summaries/important notifications.
+- [x] Verify tenant IDOR, injection, giant payload, secret leakage and no global-user/session/credential mutation.
 
 ## Task 6: C2 frontend, full verification and delivery
 
 Files: SCIM API/component, WorkspaceIdentityView.vue, bilingual locales, frontend tests, ENTERPRISE_SCIM.md, ENTERPRISE_SCIM_ACCEPTANCE.md, ENTERPRISE_WORKSPACES.md and roadmap.
 
-- [ ] Add connector/default-role/group binding, Base URL, create/rotate/revoke token and last-sync/error UI. Token is displayed only in immediate create result and cleared on dismissal/unmount.
-- [ ] Run C2 protocol/PostgreSQL/concurrency/race and source regression tests; perform independent security/code review.
-- [ ] Run gofmt, default/unit/integration full backend suites, vet/build/pinned golangci-lint, dependency audit and full frontend i18n/lint/typecheck/Vitest/build plus Canvas critical regression.
-- [ ] Compare exact failures against archived 81e688 baseline; only reproduced matches are PRE-EXISTING. Correct regressions.
-- [ ] Review final diff/secrets; record all PASS/FAIL/PRE-EXISTING/NOT RUN evidence and security Q1-Q16.
-- [ ] Mark Phase C COMPLETE, Phase D NEXT and commit feat(scim): add enterprise identity provisioning; verify clean tree and two local commits.
+- [x] Add connector/default-role/group binding, Base URL, create/rotate/revoke token and last-sync/error UI. Token is displayed only in immediate create result and cleared on dismissal/unmount.
+- [x] Run C2 protocol/PostgreSQL/concurrency/race and source regression tests; perform independent security/code review.
+- [x] Run gofmt, default/unit/integration full backend suites, vet/build/pinned golangci-lint, dependency audit and full frontend i18n/lint/typecheck/Vitest/build plus Canvas critical regression.
+- [x] Compare exact failures against archived 81e688 baseline; only reproduced matches are PRE-EXISTING. Correct regressions.
+- [x] Review final diff/secrets; record all PASS/FAIL/PRE-EXISTING/NOT RUN evidence and security Q1-Q16.
+- [x] Mark Phase C COMPLETE, Phase D NEXT and commit feat(scim): add enterprise identity provisioning; verify clean tree and two local commits at this delivery boundary.
 
 ## Execution record
 
 Local evidence and active task ledger live under .cache/phase-c/. They are not release artifacts and are not committed. Exact phase SHAs are resolved from Git commit messages and reported at delivery; C2 roadmap records the immutable C1 SHA.
+
+Final C2 source is the independently reviewed v2 source after R1. Whole-phase
+review plus scoped R1 approval closes all Critical/Important findings. Latest
+post-R1 relevant/PostgreSQL/race/vet/build/default lint pass; final full-suite
+failure sets match the actual archived baseline. The initial external TLS
+reset/refusal and its mismatch are preserved separately, with full matched
+baseline/current reruns. Supplemental integration-tag lint has13 findings
+reproduced exactly on baseline. The report and acceptance docs retain these
+boundaries; real providers/browser/operator/load/deployment remain Phase L.

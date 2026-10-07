@@ -898,6 +898,8 @@ var ProviderSet = wire.NewSet(
 	ProvideWorkspaceService,
 	NewWorkspaceAccessService,
 	NewEnterpriseIdentityService,
+	NewEnterpriseSCIMService,
+	ProvideSCIMTokenExpiryMonitor,
 	NewServiceAccountService,
 	ProvideWorkspaceWebhookService,
 	ProvideWorkspaceWebhookWorker,

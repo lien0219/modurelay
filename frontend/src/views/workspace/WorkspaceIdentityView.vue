@@ -17,6 +17,11 @@
         </div>
       </section>
 
+      <section v-if="canProvisioningRead" class="identity-panel">
+        <div class="identity-heading"><div><h2>{{ t('workspace.scimTitle') }}</h2><p>{{ t('workspace.scimDescription') }}</p></div><button v-if="!scimOpen" type="button" class="btn btn-secondary" data-testid="scim-open" @click="scimOpen = true">{{ t('workspace.scimOpen') }}</button><button v-else type="button" class="btn btn-secondary" data-testid="scim-close" @click="scimOpen = false">{{ t('common.close') }}</button></div>
+        <WorkspaceSCIM v-if="scimOpen" :workspace-id="workspaceId" />
+      </section>
+
       <template v-if="canRead && !loading && !loadError">
         <section class="identity-panel">
           <div class="identity-heading">
@@ -147,6 +152,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import WorkspaceSCIM from '@/components/workspace/WorkspaceSCIM.vue'
 import WorkspaceFrame from '@/components/workspace/WorkspaceFrame.vue'
 import WorkspaceIdentityMappings from '@/components/workspace/WorkspaceIdentityMappings.vue'
 import WorkspaceSAMLFields, { createSAMLForm, samlPayload } from '@/components/workspace/WorkspaceSAMLFields.vue'
@@ -164,6 +170,8 @@ const app = useAppStore()
 const workspaceId = computed(() => store.selectedWorkspaceId || 0)
 const isOrganization = computed(() => store.selectedWorkspace?.type === 'organization')
 const canRead = computed(() => isOrganization.value && store.can('identity.read'))
+const canProvisioningRead = computed(() => isOrganization.value && store.can('provisioning.read'))
+const scimOpen = ref(false)
 const domains = ref<EnterpriseDomain[]>([])
 const providers = ref<WorkspaceIdentityProvider[]>([])
 const domainPage = ref(1)
@@ -466,6 +474,7 @@ watch(() => providerForm.secret_action, action => {
 })
 watch([workspaceId, () => store.permissions], () => {
   ++contextGeneration
+  scimOpen.value = false
   verificationResult.value = null
   domainInput.value = ''
   domainPage.value = 1

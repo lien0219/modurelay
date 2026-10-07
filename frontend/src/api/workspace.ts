@@ -127,6 +127,45 @@ export interface WorkspaceIdentityProviderInput {
   }
 }
 
+export type SCIMDefaultRole = 'viewer' | 'developer' | 'admin' | 'billing'
+
+export interface SCIMConnector {
+  id: number
+  workspace_id: number
+  revision: number
+  public_endpoint_id: string
+  name: string
+  status: 'active' | 'disabled'
+  default_role: SCIMDefaultRole
+  group_mode: 'explicit'
+  created_at: string
+  updated_at: string
+  disabled_at?: string | null
+  last_sync_at?: string | null
+  last_error_code?: string
+  failure_count: number
+  base_url: string
+}
+
+export interface SCIMToken {
+  id: number
+  connector_id: number
+  token_prefix: string
+  status: 'active' | 'revoked'
+  created_at: string
+  expires_at?: string | null
+  revoked_at?: string | null
+  last_used_at?: string | null
+}
+
+export interface SCIMGroupBinding {
+  id: string
+  display_name: string
+  external_id?: string
+  revision: number
+  team_id: number | null
+}
+
 export interface WorkspaceIdentityMappings {
   roles: Array<{ claim_value: string; role: 'viewer' | 'developer' | 'billing' | 'admin'; priority: number }>
   teams: Array<{ claim_value: string; team_id: number }>
@@ -382,6 +421,15 @@ export const workspaceAPI = {
   verifyDomain: async (workspaceId: number, domainId: number) => (await apiClient.post<EnterpriseDomain>(`/workspaces/${workspaceId}/domains/${domainId}/verify`)).data,
   regenerateDomainToken: async (workspaceId: number, domainId: number) => (await apiClient.post<EnterpriseDomainCreateResult>(`/workspaces/${workspaceId}/domains/${domainId}/regenerate`)).data,
   revokeDomain: async (workspaceId: number, domainId: number) => (await apiClient.delete<EnterpriseDomain>(`/workspaces/${workspaceId}/domains/${domainId}`)).data,
+  listSCIMConnectors: async (workspaceId: number, signal?: AbortSignal) => (await apiClient.get<SCIMConnector[]>(`/workspaces/${workspaceId}/scim-connectors`, { signal })).data,
+  createSCIMConnector: async (workspaceId: number, payload: { name: string; default_role: SCIMDefaultRole }) => (await apiClient.post<SCIMConnector>(`/workspaces/${workspaceId}/scim-connectors`, payload)).data,
+  updateSCIMConnector: async (workspaceId: number, connectorId: number, payload: { name: string; default_role: SCIMDefaultRole; revision: number }) => (await apiClient.patch<SCIMConnector>(`/workspaces/${workspaceId}/scim-connectors/${connectorId}`, payload)).data,
+  disableSCIMConnector: async (workspaceId: number, connectorId: number, revision: number) => (await apiClient.post(`/workspaces/${workspaceId}/scim-connectors/${connectorId}/disable`, { revision })).data,
+  listSCIMTokens: async (workspaceId: number, connectorId: number, signal?: AbortSignal) => (await apiClient.get<SCIMToken[]>(`/workspaces/${workspaceId}/scim-connectors/${connectorId}/tokens`, { signal })).data,
+  createSCIMToken: async (workspaceId: number, connectorId: number, payload: { expires_at?: string }) => (await apiClient.post<{ token: SCIMToken; secret: string }>(`/workspaces/${workspaceId}/scim-connectors/${connectorId}/tokens`, payload)).data,
+  revokeSCIMToken: async (workspaceId: number, connectorId: number, tokenId: number) => (await apiClient.delete(`/workspaces/${workspaceId}/scim-connectors/${connectorId}/tokens/${tokenId}`)).data,
+  listSCIMGroups: async (workspaceId: number, connectorId: number, signal?: AbortSignal) => (await apiClient.get<SCIMGroupBinding[]>(`/workspaces/${workspaceId}/scim-connectors/${connectorId}/groups`, { signal })).data,
+  bindSCIMGroup: async (workspaceId: number, connectorId: number, groupId: string, payload: { revision: number; team_id: number | null }) => (await apiClient.put(`/workspaces/${workspaceId}/scim-connectors/${connectorId}/groups/${encodeURIComponent(groupId)}/team`, payload)).data,
   listIdentityProviders: async (workspaceId: number, params?: PageParams) => (await apiClient.get<BasePaginationResponse<WorkspaceIdentityProvider>>(`/workspaces/${workspaceId}/identity-providers`, pageConfig(params))).data,
   getIdentityProvider: async (workspaceId: number, providerId: number, signal?: AbortSignal) => (await apiClient.get<WorkspaceIdentityProvider>(`/workspaces/${workspaceId}/identity-providers/${providerId}`, { signal })).data,
   createIdentityProvider: async (workspaceId: number, payload: WorkspaceIdentityProviderInput) => (await apiClient.post<WorkspaceIdentityProvider>(`/workspaces/${workspaceId}/identity-providers`, payload)).data,

@@ -817,8 +817,11 @@ func (r *enterpriseIdentityRepository) EnsureOIDCMembership(ctx context.Context,
 	}
 	// Existing manual/SCIM/other-provider assignments and Owner survive. This
 	// compatibility helper never recreates a removed or suspended membership.
-	if _, err = tx.ExecContext(ctx, `UPDATE workspace_members SET role=$4,updated_at=now() WHERE workspace_id=$1 AND user_id=$2 AND membership_source='oidc' AND membership_provider_id=$3 AND role<>'owner' AND status='active'`, workspaceID, userID, providerID, role); err != nil {
+	if err = upsertProviderMemberSource(ctx, tx, workspaceID, access.Member.ID, providerID, provider.Type, role); err != nil {
 		return enterpriseIdentityError(err)
+	}
+	if err = reconcileWorkspaceMemberSources(ctx, tx, workspaceID, access.Member.ID); err != nil {
+		return err
 	}
 	return enterpriseIdentityError(tx.Commit())
 }
@@ -1118,11 +1121,31 @@ func (r *enterpriseIdentityRepository) CompleteIdentityLogin(ctx context.Context
 	var memberID int64
 	var role, memberStatus, source string
 	var sourceProvider sql.NullInt64
-	if err = tx.QueryRowContext(ctx, `SELECT id,role,status,membership_source,membership_provider_id FROM workspace_members WHERE workspace_id=$1 AND user_id=$2 FOR UPDATE`, input.WorkspaceID, userID).Scan(&memberID, &role, &memberStatus, &source, &sourceProvider); err != nil {
+	var administrativelySuspended bool
+	if err = tx.QueryRowContext(ctx, `SELECT id,role,status,membership_source,membership_provider_id,administratively_suspended FROM workspace_members WHERE workspace_id=$1 AND user_id=$2 FOR UPDATE`, input.WorkspaceID, userID).Scan(&memberID, &role, &memberStatus, &source, &sourceProvider, &administrativelySuspended); err != nil {
 		return 0, enterpriseIdentityError(err)
 	}
+	var existingActiveSource bool
 	if memberStatus != "active" {
+		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM workspace_membership_sources WHERE workspace_id=$1 AND member_id=$2 AND active)`, input.WorkspaceID, memberID).Scan(&existingActiveSource); err != nil {
+			return 0, err
+		}
+	}
+	if administrativelySuspended || existingActiveSource || (newIdentity || input.LinkUserID != nil) && memberStatus != "active" {
 		return 0, service.ErrWorkspaceForbidden
+	}
+	var currentSourceRole string
+	sourceErr := tx.QueryRowContext(ctx, `SELECT role FROM workspace_membership_sources WHERE workspace_id=$1 AND member_id=$2 AND provider_id=$3 AND source_type=$4`, input.WorkspaceID, memberID, input.ProviderID, protocol).Scan(&currentSourceRole)
+	if sourceErr == sql.ErrNoRows {
+		currentSourceRole = defaultRole
+	} else if sourceErr != nil {
+		return 0, sourceErr
+	}
+	if err = upsertProviderMemberSource(ctx, tx, input.WorkspaceID, memberID, input.ProviderID, protocol, currentSourceRole); err != nil {
+		return 0, err
+	}
+	if err = reconcileWorkspaceMemberSources(ctx, tx, input.WorkspaceID, memberID); err != nil {
+		return 0, err
 	}
 	if newIdentity {
 		if err = tx.QueryRowContext(ctx, `INSERT INTO workspace_user_identities(workspace_id,provider_id,user_id,subject,email_at_link,email_verified,display_name,last_seen_at) VALUES($1,$2,$3,$4,NULLIF($5,''),$6,NULLIF($7,''),now()) RETURNING id`, input.WorkspaceID, input.ProviderID, userID, claims.Subject, claims.Email, claims.EmailVerified, boundedOIDCName(claims.Name)).Scan(&identityID); err != nil {
@@ -1151,15 +1174,19 @@ func (r *enterpriseIdentityRepository) CompleteIdentityLogin(ctx context.Context
 			return 0, mappingErr
 		}
 		changed := false
-		if source == protocol && sourceProvider.Valid && sourceProvider.Int64 == input.ProviderID && role != service.WorkspaceRoleOwner {
-			nextRole, _ := service.MapOIDCRole(claims.Groups, mappings.Roles, defaultRole, false)
-			if nextRole != role {
-				if _, err = tx.ExecContext(ctx, `UPDATE workspace_members SET role=$3,updated_at=now() WHERE workspace_id=$1 AND id=$2 AND membership_source=$5 AND membership_provider_id=$4 AND role<>'owner'`, input.WorkspaceID, memberID, nextRole, input.ProviderID, protocol); err != nil {
-					return 0, err
-				}
-				role, changed = nextRole, true
-			}
+		nextRole, _ := service.MapOIDCRole(claims.Groups, mappings.Roles, defaultRole, false)
+		if err = upsertProviderMemberSource(ctx, tx, input.WorkspaceID, memberID, input.ProviderID, protocol, nextRole); err != nil {
+			return 0, err
 		}
+		if err = reconcileWorkspaceMemberSources(ctx, tx, input.WorkspaceID, memberID); err != nil {
+			return 0, err
+		}
+		var effectiveRole string
+		if err = tx.QueryRowContext(ctx, `SELECT role FROM workspace_members WHERE workspace_id=$1 AND id=$2`, input.WorkspaceID, memberID).Scan(&effectiveRole); err != nil {
+			return 0, err
+		}
+		changed = role != effectiveRole
+		role = effectiveRole
 		teamChanged, teamErr := reconcileOIDCTeams(ctx, tx, input.WorkspaceID, input.ProviderID, memberID, claims.Groups)
 		if teamErr != nil {
 			return 0, teamErr
@@ -1233,14 +1260,14 @@ func reconcileOIDCTeams(ctx context.Context, tx *sql.Tx, workspaceID, providerID
 			return false, err
 		}
 		changed = changed || count > 0
-		if _, err = tx.ExecContext(ctx, `INSERT INTO workspace_team_members(workspace_id,team_id,workspace_member_id,membership_source,membership_provider_id) SELECT $1,$2,$3,p.type,$4 FROM workspace_identity_providers p WHERE p.workspace_id=$1 AND p.id=$4 ON CONFLICT DO NOTHING`, workspaceID, id, memberID, providerID); err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO workspace_team_membership_sources(workspace_id,member_id,team_id,source_type,provider_id) SELECT $1,$3,$2,type,$4 FROM workspace_identity_providers WHERE workspace_id=$1 AND id=$4 ON CONFLICT(workspace_id,member_id,team_id,provider_id) DO UPDATE SET active=true`, workspaceID, id, memberID, providerID); err != nil {
 			return false, err
 		}
 	}
-	if _, err = tx.ExecContext(ctx, `DELETE FROM workspace_team_members tm WHERE tm.workspace_id=$1 AND tm.workspace_member_id=$2 AND tm.membership_source IN ('oidc','saml') AND tm.membership_provider_id=$3 AND NOT EXISTS(SELECT 1 FROM workspace_identity_team_grants g WHERE g.workspace_id=tm.workspace_id AND g.team_id=tm.team_id AND g.workspace_member_id=tm.workspace_member_id)`, workspaceID, memberID, providerID); err != nil {
+	if _, err = tx.ExecContext(ctx, `DELETE FROM workspace_team_membership_sources WHERE workspace_id=$1 AND member_id=$2 AND provider_id=$3 AND source_type IN('oidc','saml') AND NOT(team_id=ANY($4))`, workspaceID, memberID, providerID, pq.Array(ids)); err != nil {
 		return false, err
 	}
-	if _, err = tx.ExecContext(ctx, `UPDATE workspace_team_members tm SET membership_provider_id=chosen.provider_id,membership_source=chosen.type FROM (SELECT DISTINCT ON(g.workspace_id,g.team_id,g.workspace_member_id) g.workspace_id,g.team_id,g.workspace_member_id,g.provider_id,p.type FROM workspace_identity_team_grants g JOIN workspace_identity_providers p ON p.workspace_id=g.workspace_id AND p.id=g.provider_id ORDER BY g.workspace_id,g.team_id,g.workspace_member_id,g.provider_id) chosen WHERE tm.workspace_id=$1 AND tm.workspace_member_id=$2 AND tm.membership_source IN ('oidc','saml') AND chosen.workspace_id=tm.workspace_id AND chosen.team_id=tm.team_id AND chosen.workspace_member_id=tm.workspace_member_id`, workspaceID, memberID); err != nil {
+	if err = reconcileWorkspaceTeamSources(ctx, tx, workspaceID, memberID); err != nil {
 		return false, err
 	}
 

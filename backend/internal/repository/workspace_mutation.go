@@ -163,11 +163,14 @@ func (r *workspaceRepository) Mutate(ctx context.Context, a, w int64, m service.
 			return nil, service.ErrWorkspaceConflict
 		}
 		if m.Action == "team.member.add" {
-			_, e = tx.ExecContext(ctx, `INSERT INTO workspace_team_members(workspace_id,team_id,workspace_member_id) VALUES($1,$2,$3)`, w, m.TargetID, m.SubjectID)
+			_, e = tx.ExecContext(ctx, `INSERT INTO workspace_team_membership_sources(workspace_id,team_id,member_id,source_type) VALUES($1,$2,$3,'manual') ON CONFLICT(workspace_id,member_id,team_id) WHERE source_type='manual' DO NOTHING`, w, m.TargetID, m.SubjectID)
 			action = "team_member_added"
 		} else {
-			_, e = tx.ExecContext(ctx, `DELETE FROM workspace_team_members WHERE workspace_id=$1 AND team_id=$2 AND workspace_member_id=$3`, w, m.TargetID, m.SubjectID)
+			_, e = tx.ExecContext(ctx, `DELETE FROM workspace_team_membership_sources WHERE workspace_id=$1 AND team_id=$2 AND member_id=$3 AND source_type='manual'`, w, m.TargetID, m.SubjectID)
 			action = "team_member_removed"
+		}
+		if e == nil {
+			e = reconcileWorkspaceTeamSources(ctx, tx, w, m.SubjectID)
 		}
 		target, id, meta["team_id"], meta["member_id"] = "team", m.TargetID, m.TargetID, m.SubjectID
 	case "project_access.grant.create", "project_access.grant.update", "project_access.grant.delete":
@@ -256,7 +259,10 @@ func (r *workspaceRepository) Mutate(ctx context.Context, a, w int64, m service.
 			}
 		}
 		if m.Action == "member.remove" {
-			_, e = tx.ExecContext(ctx, `DELETE FROM workspace_members WHERE workspace_id=$1 AND user_id=$2`, w, m.TargetID)
+			_, e = tx.ExecContext(ctx, `DELETE FROM workspace_membership_sources WHERE workspace_id=$1 AND member_id=$2 AND source_type='manual'`, w, member.ID)
+			if e == nil {
+				_, e = tx.ExecContext(ctx, `UPDATE workspace_members SET administratively_suspended=true,administratively_removed=true,status='suspended',effective_membership_source_id=NULL,updated_at=now() WHERE workspace_id=$1 AND id=$2`, w, member.ID)
+			}
 			action = "member_removed"
 		} else {
 			if m.Status == "active" {
@@ -269,7 +275,13 @@ func (r *workspaceRepository) Mutate(ctx context.Context, a, w int64, m service.
 					return nil, service.ErrWorkspaceConflict
 				}
 			}
-			_, e = tx.ExecContext(ctx, `UPDATE workspace_members SET role=$3,status=$4,membership_source='manual',membership_provider_id=NULL,updated_at=now() WHERE workspace_id=$1 AND user_id=$2`, w, m.TargetID, m.Role, m.Status)
+			e = upsertManualMemberSource(ctx, tx, w, member.ID, m.Role, true)
+			if e == nil {
+				_, e = tx.ExecContext(ctx, `UPDATE workspace_members SET administratively_suspended=$3,administratively_removed=CASE WHEN $3 THEN administratively_removed ELSE false END WHERE workspace_id=$1 AND id=$2`, w, member.ID, m.Status != "active")
+			}
+			if e == nil {
+				e = reconcileWorkspaceMemberSources(ctx, tx, w, member.ID)
+			}
 			action = "member_role_changed"
 			meta["role"] = m.Role
 			meta["status"] = m.Status

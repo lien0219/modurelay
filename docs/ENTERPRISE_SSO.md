@@ -264,3 +264,20 @@ budget reservations, attributed/legacy usage, rollups, audit/events/outbox, then
 applies 294 twice. Historical JSON snapshots remain unchanged apart from added
 manual membership-attribution fields. Existing Workspace policies default to
 `require_sso=false`; migration 294 never scans or rewrites historical usage.
+
+## Phase C SAML and provisioning
+
+SAML shares the provider parent, stable identity binding, JIT/linking, mappings,
+completion/TOTP, original-time assurance and Require SSO with OIDC. Real
+protocol fields have PostgreSQL integrity checks; no dummy OAuth configuration.
+See [ENTERPRISE_SAML.md](ENTERPRISE_SAML.md) and its acceptance record.
+
+SCIM is an independent hash-token provisioning connector. Human connector
+management uses this same SSO engine; Bearer protocol endpoints create no session.
+Migration 296 upgrades Membership/Team attribution to typed manual/OIDC/SAML/SCIM
+sources. Exact-provider complete-empty claims cannot remove another source.
+Administrator suspension/removal remains authoritative. SCIM-created global
+accounts also retain the explicit existing-account SSO linking boundary; users
+can establish email ownership through normal recovery before linking.
+See [ENTERPRISE_SCIM.md](ENTERPRISE_SCIM.md) and
+[ENTERPRISE_SCIM_ACCEPTANCE.md](ENTERPRISE_SCIM_ACCEPTANCE.md).

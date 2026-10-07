@@ -68,7 +68,7 @@ func workspaceError(e error) error {
 func workspaceAccess(ctx context.Context, q workspaceSQL, a, w, p int64) (*service.WorkspaceAccess, error) {
 	// Both membership and the global user must still be usable. A suspended member
 	// remains distinguishable from an unrelated user for the 403 contract.
-	m, e := scanMember(q.QueryRowContext(ctx, `SELECT m.id,m.workspace_id,m.user_id,m.role,m.status,m.invited_by_user_id,m.joined_at,m.created_at,m.updated_at FROM workspace_members m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=$1 AND m.user_id=$2 AND u.deleted_at IS NULL AND u.status='active'`, w, a))
+	m, e := scanMember(q.QueryRowContext(ctx, `SELECT m.id,m.workspace_id,m.user_id,m.role,m.status,m.invited_by_user_id,m.joined_at,m.created_at,m.updated_at FROM workspace_members m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=$1 AND m.user_id=$2 AND u.deleted_at IS NULL AND u.status='active' AND COALESCE((to_jsonb(m)->>'administratively_removed')::boolean,false)=false`, w, a))
 	if e != nil {
 		return nil, e
 	}

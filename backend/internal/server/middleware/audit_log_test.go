@@ -254,6 +254,9 @@ func TestEnterpriseSAMLHTTPAuditOmitsConfigAndRejectedACSJSONBodies(t *testing.T
 		{"update provider", http.MethodPatch, "/api/v1/workspaces/:id/identity-providers/:provider_id", "/api/v1/workspaces/7/identity-providers/9", "application/json", `{"revision":3,"saml":{"metadata_xml":"` + canaryXML + `"}}`, http.StatusOK},
 		{"JSON media rejected at ACS", http.MethodPost, "/api/v1/auth/sso/saml/acs", "/api/v1/auth/sso/saml/acs", "application/json", `{"SAMLResponse":"` + canaryAssertion + `","RelayState":"` + canaryRelay + `"}`, http.StatusSeeOther},
 		{"form ACS", http.MethodPost, "/api/v1/auth/sso/saml/acs", "/api/v1/auth/sso/saml/acs", "application/x-www-form-urlencoded", "SAMLResponse=" + canaryAssertion + "&RelayState=" + canaryRelay, http.StatusSeeOther},
+		{"SCIM connector name", http.MethodPost, "/api/v1/workspaces/:id/scim-connectors", "/api/v1/workspaces/7/scim-connectors", "application/json", `{"name":"audit-canary-directory"}`, http.StatusCreated},
+		{"SCIM token unexpected credential", http.MethodPost, "/api/v1/workspaces/:id/scim-connectors/:connector_id/tokens", "/api/v1/workspaces/7/scim-connectors/9/tokens", "application/json", `{"secret":"audit-canary-provisioning-token"}`, http.StatusBadRequest},
+		{"SCIM group rejected PII", http.MethodPut, "/api/v1/workspaces/:id/scim-connectors/:connector_id/groups/:group_id/team", "/api/v1/workspaces/7/scim-connectors/9/groups/opaque/team", "application/json", `{"team_id":2,"displayName":"audit-canary-directory-group"}`, http.StatusBadRequest},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			repository := &auditCaptureRepository{}

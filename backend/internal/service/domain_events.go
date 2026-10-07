@@ -89,6 +89,13 @@ const (
 	EventOIDCMappingsUpdated           = "workspace.identity_provider.mappings_updated"
 	EventOIDCRoleReconciled            = "workspace.identity.role_reconciled"
 	EventOIDCTeamsReconciled           = "workspace.identity.teams_reconciled"
+	EventSCIMConnectorCreated          = "workspace.scim.connector.created"
+	EventSCIMConnectorDisabled         = "workspace.scim.connector.disabled"
+	EventSCIMTokenCreated              = "workspace.scim.token.created"
+	EventSCIMTokenRevoked              = "workspace.scim.token.revoked"
+	EventSCIMSyncFailed                = "workspace.scim.sync.failed"
+	EventSCIMTokenExpiring             = "workspace.scim.token.expiring"
+	EventSCIMSecurityConflict          = "workspace.scim.security.conflict"
 )
 
 var allowedDomainEventTypes = map[string]struct{}{
@@ -121,6 +128,8 @@ var allowedDomainEventTypes = map[string]struct{}{
 	EventSAMLMetadataUpdated: {}, EventSAMLCertificateRotated: {},
 	EventSSOEnforcementEnabled: {}, EventSSOEnforcementDisabled: {}, EventSSOBreakGlassUsed: {},
 	EventOIDCJITProvisioned: {}, EventOIDCIdentityLinked: {}, EventOIDCMappingsUpdated: {}, EventOIDCRoleReconciled: {}, EventOIDCTeamsReconciled: {},
+	EventSCIMConnectorCreated: {}, EventSCIMConnectorDisabled: {}, EventSCIMTokenCreated: {}, EventSCIMTokenRevoked: {},
+	EventSCIMSyncFailed: {}, EventSCIMTokenExpiring: {}, EventSCIMSecurityConflict: {},
 }
 
 type EventSubject struct {
@@ -146,6 +155,7 @@ var allowedDomainEventDataKeys = map[string]struct{}{
 	"team_id": {}, "grant_id": {}, "subject_type": {}, "project_access_mode": {},
 	"domain_id": {}, "domain": {}, "normalized_domain": {}, "provider_id": {}, "provider_revision": {},
 	"require_sso": {}, "role_source": {}, "source_provider_id": {}, "role_count": {}, "team_count": {}, "mapping_revision": {},
+	"connector_id": {}, "token_id": {}, "resource_id": {}, "operation": {}, "added_count": {}, "removed_count": {}, "failure_count": {},
 }
 
 type DomainEvent struct {
@@ -270,7 +280,9 @@ func IsWorkspaceVisibleEvent(eventType string) bool {
 		EventIdentityProviderCreated, EventIdentityProviderUpdated, EventIdentityProviderDisabled, EventOIDCMappingsUpdated,
 		EventSAMLMetadataUpdated, EventSAMLCertificateRotated,
 		EventSSOEnforcementEnabled, EventSSOEnforcementDisabled, EventSSOBreakGlassUsed, EventOIDCJITProvisioned,
-		EventOIDCIdentityLinked, EventOIDCRoleReconciled, EventOIDCTeamsReconciled:
+		EventOIDCIdentityLinked, EventOIDCRoleReconciled, EventOIDCTeamsReconciled,
+		EventSCIMConnectorCreated, EventSCIMConnectorDisabled, EventSCIMTokenCreated, EventSCIMTokenRevoked,
+		EventSCIMSyncFailed, EventSCIMTokenExpiring, EventSCIMSecurityConflict:
 		return true
 	default:
 		return false
@@ -638,6 +650,8 @@ func safeDomainEventID(id string) bool {
 
 func notificationPresentation(eventType string) (category, titleKey, bodyKey string) {
 	switch eventType {
+	case EventSCIMConnectorDisabled, EventSCIMSyncFailed, EventSCIMTokenExpiring, EventSCIMSecurityConflict:
+		return "security", "notifications.scim.title", "notifications.scim.body"
 	case EventWorkspaceDomainVerified:
 		return "security", "notifications.identity_domain.title", "notifications.identity_domain.body"
 	case EventIdentityProviderDisabled:
