@@ -20,6 +20,14 @@ func (r *notificationRecipientResolver) Resolve(ctx context.Context, event *serv
 	if r == nil || r.db == nil || event == nil || event.WorkspaceID == nil || *event.WorkspaceID <= 0 {
 		return nil, service.ErrWorkspaceNotFound
 	}
+	// Routine identity updates and login reconciliation are durable audit/webhook
+	// events, without an inbox notification on every login or failed DNS check.
+	switch event.Type {
+	case service.EventWorkspaceDomainCreated, service.EventWorkspaceDomainRegenerated, service.EventWorkspaceDomainRevoked,
+		service.EventIdentityProviderCreated, service.EventIdentityProviderUpdated, service.EventOIDCMappingsUpdated,
+		service.EventOIDCJITProvisioned, service.EventOIDCIdentityLinked, service.EventOIDCRoleReconciled, service.EventOIDCTeamsReconciled:
+		return nil, nil
+	}
 	rows, err := r.db.QueryContext(ctx, `SELECT m.user_id,m.role FROM workspace_members m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=$1 AND m.status='active' AND u.status='active' AND u.deleted_at IS NULL`, *event.WorkspaceID)
 	if err != nil {
 		return nil, err
@@ -32,6 +40,9 @@ func (r *notificationRecipientResolver) Resolve(ctx context.Context, event *serv
 	}
 	allowed := func(role string) bool { return true }
 	switch event.Type {
+	case service.EventWorkspaceDomainVerified, service.EventIdentityProviderDisabled,
+		service.EventSSOEnforcementEnabled, service.EventSSOEnforcementDisabled, service.EventSSOBreakGlassUsed:
+		allowed = func(role string) bool { return role == "owner" || role == "admin" }
 	case service.EventBudgetThreshold, service.EventBudgetSoftLimit, service.EventBudgetHardLimit,
 		service.EventBudgetUpdated, service.EventBillingPending, service.EventBillingRecovered:
 		allowed = func(role string) bool { return role == "owner" || role == "admin" || role == "billing" }

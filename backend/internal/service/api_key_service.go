@@ -301,6 +301,7 @@ type APIKeyService struct {
 	budgetService             *BudgetService
 	workspaceRepo             WorkspaceRepository
 	workspaceAccess           *WorkspaceAccessService
+	enterpriseIdentity        *EnterpriseIdentityService
 	userRepo                  UserRepository
 	groupRepo                 GroupRepository
 	userSubRepo               UserSubscriptionRepository

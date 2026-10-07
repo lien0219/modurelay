@@ -72,6 +72,7 @@ const tabs = computed(() => {
     { to: `/workspaces/${id}/finops`, label: t('workspace.finops') },
     { to: `/workspaces/${id}/audit`, label: t('workspace.audit') },
     ...(store.can('webhook.read') ? [{ to: `/workspaces/${id}/webhooks`, label: t('workspace.webhooks') }] : []),
+    ...(store.can('identity.read') && store.selectedWorkspace?.type === 'organization' ? [{ to: `/workspaces/${id}/identity`, label: t('workspace.identity') }] : []),
     ...(store.can('service_account.read') && route.params.projectId ? [{ to: `/workspaces/${id}/projects/${route.params.projectId}/service-accounts`, label: t('serviceAccounts.title') }] : []),
   ]
 })

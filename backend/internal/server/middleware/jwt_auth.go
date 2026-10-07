@@ -98,12 +98,22 @@ func jwtAuth(
 		}
 
 		c.Set(string(ContextKeyUser), AuthSubject{
-			UserID:      user.ID,
-			Concurrency: user.Concurrency,
+			PrincipalType:        service.PrincipalHuman,
+			UserID:               user.ID,
+			Concurrency:          user.Concurrency,
+			AuthMethod:           claims.AuthMethod,
+			AuthenticatedAt:      claims.AuthenticatedAt,
+			MFASatisfied:         claims.MFASatisfied,
+			OIDCProviderID:       claims.OIDCProviderID,
+			OIDCProviderRevision: claims.OIDCProviderRevision,
+			OIDCWorkspaceID:      claims.OIDCWorkspaceID,
+			OIDCAuthenticatedAt:  claims.OIDCAuthenticatedAt,
 		})
 		c.Set(string(ContextKeyUserRole), user.Role)
 		c.Set(ContextKeyAuthEmail, user.Email)
 		c.Set(ContextKeySessionID, claims.SessionID)
+		ctx := service.WithAuthenticationAssurance(c.Request.Context(), service.WorkspaceAssurance{WorkspaceID: claims.OIDCWorkspaceID, ProviderID: claims.OIDCProviderID, ProviderRevision: claims.OIDCProviderRevision, AuthenticatedAt: claims.OIDCAuthenticatedAt, AuthMethod: claims.AuthMethod})
+		c.Request = c.Request.WithContext(ctx)
 		if activityToucher != nil {
 			activityToucher.TouchLastActiveForUser(c.Request.Context(), user)
 		}

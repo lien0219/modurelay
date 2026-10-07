@@ -324,6 +324,21 @@ describe('API Client', () => {
   // --- 401 Token 刷新 ---
 
   describe('401 Token 刷新', () => {
+    it.each(['/auth/sso/exchange', '/auth/sso/link/start', '/auth/sso/recover'])('SSO 凭据或完成错误保留全局会话：%s', async url => {
+      localStorage.setItem('auth_token', 'valid-global-token')
+      localStorage.setItem('refresh_token', 'valid-global-refresh')
+      localStorage.setItem('auth_user', JSON.stringify({ id: 7 }))
+      const adapter = vi.fn().mockRejectedValue({ response: { status: 401, data: { code: 'SSO_PROOF_INVALID', message: 'Invalid proof' } }, config: { url, headers: { Authorization: 'Bearer valid-global-token' } } })
+      apiClient.defaults.adapter = adapter
+      const refresh = await import('@/api/tokenRefresh')
+      const refreshSpy = vi.spyOn(refresh, 'refreshAuthTokens')
+      await expect(apiClient.post(url)).rejects.toMatchObject({ status: 401, code: 'SSO_PROOF_INVALID' })
+      expect(localStorage.getItem('auth_token')).toBe('valid-global-token')
+      expect(localStorage.getItem('refresh_token')).toBe('valid-global-refresh')
+      expect(sessionStorage.getItem('auth_expired')).toBeNull()
+      expect(refreshSpy).not.toHaveBeenCalled()
+    })
+
     it('无 refresh_token 时 401 清除 localStorage', async () => {
       localStorage.setItem('auth_token', 'expired-token')
       // 不设置 refresh_token

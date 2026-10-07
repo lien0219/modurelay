@@ -12,12 +12,18 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/lib/pq"
 	"strconv"
+	"time"
 )
 
-func legacyTenantReadPredicate(actor int64) predicate.APIKey {
+func legacyTenantReadPredicate(ctx context.Context, actor int64) predicate.APIKey {
+	assurance, _ := service.AuthenticationAssuranceFromContext(ctx)
+	validAssurance := assurance.AuthMethod == "oidc" && assurance.Valid(time.Now())
 	return func(s *entsql.Selector) {
 		s.Where(entsql.Or(entsql.IsNull(s.C(apikey.FieldProjectID)), entsql.P(func(b *entsql.Builder) {
-			b.WriteString(`EXISTS(SELECT 1 FROM projects p JOIN workspaces w ON w.id=p.workspace_id JOIN workspace_members m ON m.workspace_id=w.id JOIN users u ON u.id=m.user_id WHERE p.id=api_keys.project_id AND m.user_id=`).Arg(actor).WriteString(` AND m.status='active' AND m.role IN ('owner','admin','developer') AND u.status='active' AND u.deleted_at IS NULL AND ` + projectAccessVisibilitySQL + `)`)
+			b.WriteString(`EXISTS(SELECT 1 FROM projects p JOIN workspaces w ON w.id=p.workspace_id JOIN workspace_members m ON m.workspace_id=w.id JOIN users u ON u.id=m.user_id WHERE p.id=api_keys.project_id AND m.user_id=`).Arg(actor).WriteString(` AND m.status='active' AND m.role IN ('owner','admin','developer') AND u.status='active' AND u.deleted_at IS NULL AND ` + projectAccessVisibilitySQL + ` AND (w.type='personal' OR NOT EXISTS(SELECT 1 FROM workspace_security_policies sp WHERE sp.workspace_id=w.id AND sp.require_sso AND (sp.sso_grace_until IS NULL OR sp.sso_grace_until<=now())) OR (`).
+				Arg(validAssurance).WriteString(` AND w.id=`).Arg(assurance.WorkspaceID).
+				WriteString(` AND EXISTS(SELECT 1 FROM workspace_identity_providers ip WHERE ip.workspace_id=w.id AND ip.id=`).Arg(assurance.ProviderID).
+				WriteString(` AND ip.revision=`).Arg(assurance.ProviderRevision).WriteString(` AND ip.status='active'))))`)
 		})))
 	}
 }

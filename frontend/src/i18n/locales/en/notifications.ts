@@ -50,5 +50,9 @@ export default {
     webhook_test: { title: 'Webhook test', body: 'A webhook test delivery was queued.' },
     service_account: { title: 'Service account update', body: 'A service account changed.' },
     policy: { title: 'Policy updated', body: 'A workspace, project, or service account policy changed.' },
+	identity_domain: { title: 'Organization domain verified', body: 'A workspace domain has completed DNS verification.' },
+	identity_provider: { title: 'SSO provider disabled', body: 'An organization identity provider was disabled. Its workspace SSO assurance is no longer valid.' },
+	sso_enforcement: { title: 'SSO requirement changed', body: 'The workspace SSO enforcement policy changed.' },
+	sso_recovery: { title: 'Workspace SSO recovery used', body: 'An Owner used break-glass recovery to disable the workspace SSO requirement. Review the workspace audit log.' },
   },
 }

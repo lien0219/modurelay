@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
@@ -28,9 +29,14 @@ type AuthHandler struct {
 	totpService          *service.TotpService
 	userAttributeService *service.UserAttributeService
 	loginAbuse           *service.LoginAbuseProtector
+	enterpriseIdentity   *service.EnterpriseIdentityService
 
 	dingTalkClientInstance *DingTalkClient
 	dingTalkClientMu       sync.Mutex
+}
+
+func (h *AuthHandler) SetEnterpriseIdentityService(identity *service.EnterpriseIdentityService) {
+	h.enterpriseIdentity = identity
 }
 
 // NewAuthHandler creates a new AuthHandler
@@ -301,6 +307,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 	h.authService.RecordSuccessfulLogin(c.Request.Context(), user.ID)
 
+	c.Request = c.Request.WithContext(service.WithSessionAuthentication(c.Request.Context(), service.SessionAuthentication{AuthMethod: "password", AuthenticatedAt: time.Now()}))
 	h.respondWithTokenPair(c, user)
 }
 
@@ -437,6 +444,7 @@ func (h *AuthHandler) Login2FA(c *gin.Context) {
 		h.authService.RecordSuccessfulLogin(c.Request.Context(), user.ID)
 	}
 
+	c.Request = c.Request.WithContext(service.WithSessionAuthentication(c.Request.Context(), service.SessionAuthentication{AuthMethod: "password", AuthenticatedAt: time.Now(), MFASatisfied: true}))
 	h.respondWithTokenPair(c, user)
 }
 

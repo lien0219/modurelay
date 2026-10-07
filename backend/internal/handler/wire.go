@@ -262,13 +262,26 @@ func ProvideWorkspaceHandler(workspaceService *service.WorkspaceService, apiKeyS
 	return h
 }
 
+func ProvideEnterpriseWorkspaceHandler(workspaceService *service.WorkspaceService, apiKeyService *service.APIKeyService, webhookService *service.WorkspaceWebhookService, serviceAccountService *service.ServiceAccountService, policyRepository domain.PolicyRepository, policyResolver *domain.EffectivePolicyResolver, identity *service.EnterpriseIdentityService, auth *AuthHandler) *WorkspaceHandler {
+	h := ProvideWorkspaceHandler(workspaceService, apiKeyService, webhookService, serviceAccountService, policyRepository, policyResolver)
+	h.SetEnterpriseIdentityService(identity)
+	h.SetIdentityRecentAuthentication(auth.RequireEnterpriseRecentAuthentication)
+	return h
+}
+
+func ProvideEnterpriseAuthHandler(cfg *config.Config, authService *service.AuthService, userService *service.UserService, settingService *service.SettingService, promoService *service.PromoService, redeemService *service.RedeemService, totpService *service.TotpService, userAttributeService *service.UserAttributeService, identity *service.EnterpriseIdentityService) *AuthHandler {
+	h := NewAuthHandler(cfg, authService, userService, settingService, promoService, redeemService, totpService, userAttributeService)
+	h.SetEnterpriseIdentityService(identity)
+	return h
+}
+
 // ProviderSet is the Wire provider set for all handlers
 var ProviderSet = wire.NewSet(
 	// Top-level handlers
-	NewAuthHandler,
+	ProvideEnterpriseAuthHandler,
 	NewUserHandler,
 	NewAPIKeyHandler,
-	ProvideWorkspaceHandler,
+	ProvideEnterpriseWorkspaceHandler,
 	NewUsageHandler,
 	NewRedeemHandler,
 	NewSubscriptionHandler,

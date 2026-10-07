@@ -15,11 +15,13 @@ import (
 )
 
 type ServiceAccountHandler struct {
-	service *service.ServiceAccountService
+	service    *service.ServiceAccountService
+	workspaces *service.WorkspaceService
+	identity   *service.EnterpriseIdentityService
 }
 
 func NewServiceAccountHandler(s *service.ServiceAccountService) *ServiceAccountHandler {
-	return &ServiceAccountHandler{s}
+	return &ServiceAccountHandler{service: s}
 }
 func (h *WorkspaceHandler) SetServiceAccountService(s *service.ServiceAccountService) {
 	h.serviceAccounts = NewServiceAccountHandler(s)
@@ -62,6 +64,9 @@ func (h *ServiceAccountHandler) handle(action string, admin bool) gin.HandlerFun
 		}
 		a, w, p, id, k := subject.UserID, ids["id"], ids["project_id"], ids["service_account_id"], ids["credential_id"]
 		ctx := c.Request.Context()
+		if !admin && !checkEnterpriseWorkspaceAccess(c, h.workspaces, h.identity, subject, w) {
+			return
+		}
 		page, size := response.ParsePagination(c)
 		params := pagination.PaginationParams{Page: page, PageSize: size}
 		var out any

@@ -72,6 +72,21 @@ const (
 	EventWorkspaceProjectAccessUpdated = "workspace.project_access.grant_updated"
 	EventWorkspaceProjectAccessDeleted = "workspace.project_access.grant_deleted"
 	EventWorkspaceProjectAccessMode    = "workspace.project_access_mode.updated"
+	EventWorkspaceDomainCreated        = "workspace.domain.created"
+	EventWorkspaceDomainRegenerated    = "workspace.domain.regenerated"
+	EventWorkspaceDomainVerified       = "workspace.domain.verified"
+	EventWorkspaceDomainRevoked        = "workspace.domain.revoked"
+	EventIdentityProviderCreated       = "workspace.identity_provider.created"
+	EventIdentityProviderUpdated       = "workspace.identity_provider.updated"
+	EventIdentityProviderDisabled      = "workspace.identity_provider.disabled"
+	EventSSOEnforcementEnabled         = "workspace.sso.enforcement_enabled"
+	EventSSOEnforcementDisabled        = "workspace.sso.enforcement_disabled"
+	EventSSOBreakGlassUsed             = "workspace.sso.break_glass_used"
+	EventOIDCJITProvisioned            = "workspace.member.jit_provisioned"
+	EventOIDCIdentityLinked            = "workspace.identity.linked"
+	EventOIDCMappingsUpdated           = "workspace.identity_provider.mappings_updated"
+	EventOIDCRoleReconciled            = "workspace.identity.role_reconciled"
+	EventOIDCTeamsReconciled           = "workspace.identity.teams_reconciled"
 )
 
 var allowedDomainEventTypes = map[string]struct{}{
@@ -99,6 +114,10 @@ var allowedDomainEventTypes = map[string]struct{}{
 	EventWorkspaceTeamMemberAdded: {}, EventWorkspaceTeamMemberRemoved: {},
 	EventWorkspaceProjectAccessCreated: {}, EventWorkspaceProjectAccessUpdated: {}, EventWorkspaceProjectAccessDeleted: {},
 	EventWorkspaceProjectAccessMode: {},
+	EventWorkspaceDomainCreated:     {}, EventWorkspaceDomainRegenerated: {}, EventWorkspaceDomainVerified: {}, EventWorkspaceDomainRevoked: {},
+	EventIdentityProviderCreated: {}, EventIdentityProviderUpdated: {}, EventIdentityProviderDisabled: {},
+	EventSSOEnforcementEnabled: {}, EventSSOEnforcementDisabled: {}, EventSSOBreakGlassUsed: {},
+	EventOIDCJITProvisioned: {}, EventOIDCIdentityLinked: {}, EventOIDCMappingsUpdated: {}, EventOIDCRoleReconciled: {}, EventOIDCTeamsReconciled: {},
 }
 
 type EventSubject struct {
@@ -122,6 +141,8 @@ var allowedDomainEventDataKeys = map[string]struct{}{
 	"platform": {}, "previous_status": {}, "delivery_id": {}, "category": {},
 	"quota_type": {}, "period_end": {}, "used": {}, "limit": {},
 	"team_id": {}, "grant_id": {}, "subject_type": {}, "project_access_mode": {},
+	"domain_id": {}, "domain": {}, "normalized_domain": {}, "provider_id": {}, "provider_revision": {},
+	"require_sso": {}, "role_source": {}, "source_provider_id": {}, "role_count": {}, "team_count": {}, "mapping_revision": {},
 }
 
 type DomainEvent struct {
@@ -241,7 +262,11 @@ func IsWorkspaceVisibleEvent(eventType string) bool {
 		EventBudgetHardLimit, EventBudgetUpdated, EventBillingPending, EventBillingRecovered, EventQuotaThreshold, EventQuotaExhausted,
 		EventWebhookTest,
 		EventWorkspaceTeamCreated, EventWorkspaceTeamUpdated, EventWorkspaceTeamArchived, EventWorkspaceTeamMemberAdded, EventWorkspaceTeamMemberRemoved,
-		EventWorkspaceProjectAccessCreated, EventWorkspaceProjectAccessUpdated, EventWorkspaceProjectAccessDeleted, EventWorkspaceProjectAccessMode:
+		EventWorkspaceProjectAccessCreated, EventWorkspaceProjectAccessUpdated, EventWorkspaceProjectAccessDeleted, EventWorkspaceProjectAccessMode,
+		EventWorkspaceDomainCreated, EventWorkspaceDomainRegenerated, EventWorkspaceDomainVerified, EventWorkspaceDomainRevoked,
+		EventIdentityProviderCreated, EventIdentityProviderUpdated, EventIdentityProviderDisabled, EventOIDCMappingsUpdated,
+		EventSSOEnforcementEnabled, EventSSOEnforcementDisabled, EventSSOBreakGlassUsed, EventOIDCJITProvisioned,
+		EventOIDCIdentityLinked, EventOIDCRoleReconciled, EventOIDCTeamsReconciled:
 		return true
 	default:
 		return false
@@ -609,6 +634,14 @@ func safeDomainEventID(id string) bool {
 
 func notificationPresentation(eventType string) (category, titleKey, bodyKey string) {
 	switch eventType {
+	case EventWorkspaceDomainVerified:
+		return "security", "notifications.identity_domain.title", "notifications.identity_domain.body"
+	case EventIdentityProviderDisabled:
+		return "security", "notifications.identity_provider.title", "notifications.identity_provider.body"
+	case EventSSOEnforcementEnabled, EventSSOEnforcementDisabled:
+		return "security", "notifications.sso_enforcement.title", "notifications.sso_enforcement.body"
+	case EventSSOBreakGlassUsed:
+		return "security", "notifications.sso_recovery.title", "notifications.sso_recovery.body"
 	case EventBudgetThreshold, EventBudgetSoftLimit, EventBudgetHardLimit, EventBudgetUpdated:
 		return "budget", "notifications.budget.title", "notifications.budget.body"
 	case EventBillingPending, EventBillingRecovered:

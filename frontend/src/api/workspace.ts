@@ -15,6 +15,101 @@ export interface Workspace {
   permissions: string[]
 }
 
+export interface EnterpriseDomain {
+  id: number
+  workspace_id: number
+  domain: string
+  normalized_domain: string
+  status: string
+  verification_method: string
+  dns_host?: string
+  verified_at?: string | null
+  last_checked_at?: string | null
+  last_error_code?: string
+  created_at?: string
+  updated_at?: string
+}
+
+export interface EnterpriseDomainCreateResult {
+  domain: EnterpriseDomain
+  verification_token: string
+  verification_txt: string
+}
+
+export type WorkspaceIdentityValidationCode = 'SUCCESS' | 'DISCOVERY_FAILED' | 'ISSUER_MISMATCH' | 'ENDPOINT_INVALID' | 'CONFIGURATION_INVALID' | 'VALIDATION_FAILED' | 'PROVIDER_DISABLED'
+
+export interface WorkspaceIdentityProvider {
+  id: number
+  workspace_id: number
+  type: string
+  provider_key: string
+  name: string
+  status: string
+  is_default: boolean
+  issuer_url: string
+  client_id: string
+  has_client_secret: boolean
+  token_auth_method?: 'client_secret_basic' | 'client_secret_post' | 'none'
+  revision?: number
+  scopes: string[]
+  authorization_endpoint?: string
+  token_endpoint?: string
+  jwks_uri?: string
+  userinfo_endpoint?: string
+  discovery_enabled: boolean
+  claim_mapping: Record<string, unknown>
+  jit_config: {
+    enabled: boolean
+    default_role: string
+    allowed_domains: string[]
+    require_verified_email: boolean
+  }
+  created_at?: string
+  updated_at?: string
+  disabled_at?: string | null
+  last_validated_at?: string | null
+  last_validation_code?: WorkspaceIdentityValidationCode | null
+}
+
+export interface WorkspaceIdentityProviderInput {
+  provider_key: string
+  name: string
+  issuer_url: string
+  client_id: string
+  client_secret?: string
+  secret_action?: 'preserve' | 'replace' | 'remove'
+  revision?: number
+  token_auth_method?: 'client_secret_basic' | 'client_secret_post' | 'none'
+  authorization_endpoint?: string
+  token_endpoint?: string
+  jwks_uri?: string
+  userinfo_endpoint?: string
+  scopes: string[]
+  is_default: boolean
+  discovery_enabled: boolean
+  claim_mapping: Record<string, unknown>
+  jit_config: {
+    enabled: boolean
+    default_role: string
+    allowed_domains: string[]
+    require_verified_email: boolean
+  }
+}
+
+export interface WorkspaceIdentityMappings {
+  roles: Array<{ claim_value: string; role: 'viewer' | 'developer' | 'billing' | 'admin'; priority: number }>
+  teams: Array<{ claim_value: string; team_id: number }>
+}
+
+export interface WorkspaceIdentityPolicy {
+  workspace_id: number
+  require_sso: boolean
+  sso_grace_until?: string | null
+  revision: number
+  updated_by_user_id?: number
+  updated_at?: string
+}
+
 export type ProjectAccessMode = 'all_projects' | 'assigned_projects'
 export type ProjectAccessSubjectType = 'member' | 'team'
 export type ProjectAccessRole = 'viewer' | 'developer' | 'admin'
@@ -250,6 +345,22 @@ export const workspaceAPI = {
   updateWorkspace: async (workspaceId: number, payload: { name?: string; slug?: string; billing_owner_user_id?: number }) => (await apiClient.patch<Workspace>(`/workspaces/${workspaceId}`, payload)).data,
   archiveWorkspace: async (workspaceId: number) => (await apiClient.delete(`/workspaces/${workspaceId}`)).data,
   updateProjectAccessMode: async (workspaceId: number, project_access_mode: ProjectAccessMode) => (await apiClient.patch<Workspace>(`/workspaces/${workspaceId}/project-access-mode`, { project_access_mode })).data,
+
+  listDomains: async (workspaceId: number, params?: PageParams) => (await apiClient.get<BasePaginationResponse<EnterpriseDomain>>(`/workspaces/${workspaceId}/domains`, pageConfig(params))).data,
+  createDomain: async (workspaceId: number, domain: string) => (await apiClient.post<EnterpriseDomainCreateResult>(`/workspaces/${workspaceId}/domains`, { domain })).data,
+  verifyDomain: async (workspaceId: number, domainId: number) => (await apiClient.post<EnterpriseDomain>(`/workspaces/${workspaceId}/domains/${domainId}/verify`)).data,
+  regenerateDomainToken: async (workspaceId: number, domainId: number) => (await apiClient.post<EnterpriseDomainCreateResult>(`/workspaces/${workspaceId}/domains/${domainId}/regenerate`)).data,
+  revokeDomain: async (workspaceId: number, domainId: number) => (await apiClient.delete<EnterpriseDomain>(`/workspaces/${workspaceId}/domains/${domainId}`)).data,
+  listIdentityProviders: async (workspaceId: number, params?: PageParams) => (await apiClient.get<BasePaginationResponse<WorkspaceIdentityProvider>>(`/workspaces/${workspaceId}/identity-providers`, pageConfig(params))).data,
+  getIdentityProvider: async (workspaceId: number, providerId: number, signal?: AbortSignal) => (await apiClient.get<WorkspaceIdentityProvider>(`/workspaces/${workspaceId}/identity-providers/${providerId}`, { signal })).data,
+  createIdentityProvider: async (workspaceId: number, payload: WorkspaceIdentityProviderInput) => (await apiClient.post<WorkspaceIdentityProvider>(`/workspaces/${workspaceId}/identity-providers`, payload)).data,
+  updateIdentityProvider: async (workspaceId: number, providerId: number, payload: WorkspaceIdentityProviderInput) => (await apiClient.patch<WorkspaceIdentityProvider>(`/workspaces/${workspaceId}/identity-providers/${providerId}`, payload)).data,
+  disableIdentityProvider: async (workspaceId: number, providerId: number) => (await apiClient.post(`/workspaces/${workspaceId}/identity-providers/${providerId}/disable`)).data,
+  getIdentityProviderMappings: async (workspaceId: number, providerId: number, signal?: AbortSignal) => (await apiClient.get<WorkspaceIdentityMappings>(`/workspaces/${workspaceId}/identity-providers/${providerId}/mappings`, { signal })).data,
+  updateIdentityProviderMappings: async (workspaceId: number, providerId: number, payload: WorkspaceIdentityMappings) => (await apiClient.put(`/workspaces/${workspaceId}/identity-providers/${providerId}/mappings`, payload)).data,
+  getIdentityPolicy: async (workspaceId: number, signal?: AbortSignal) => (await apiClient.get<WorkspaceIdentityPolicy>(`/workspaces/${workspaceId}/security-policy`, { signal })).data,
+  updateIdentityPolicy: async (workspaceId: number, payload: Pick<WorkspaceIdentityPolicy, 'require_sso' | 'sso_grace_until'>) => (await apiClient.patch<WorkspaceIdentityPolicy>(`/workspaces/${workspaceId}/security-policy`, payload)).data,
+  startSSO: async (workspaceId: number, providerId: number, returnTo = `/workspaces/${workspaceId}/overview`) => (await apiClient.post<{ authorization_url: string; expires_at: string }>('/auth/sso/start', { workspace_id: workspaceId, provider_id: providerId, return_to: returnTo })).data,
 
   listTeams: async (workspaceId: number, params?: PageParams) => (await apiClient.get<BasePaginationResponse<WorkspaceTeam>>(`/workspaces/${workspaceId}/teams`, pageConfig(params))).data,
   createTeam: async (workspaceId: number, payload: WorkspaceTeamInput) => (await apiClient.post<WorkspaceTeam>(`/workspaces/${workspaceId}/teams`, payload)).data,

@@ -472,7 +472,7 @@ func (r *apiKeyRepository) deleteWithTombstone(ctx context.Context, exec *dbent.
 func (r *apiKeyRepository) apiKeyListByUserIDQuery(ctx context.Context, userID int64, filters service.APIKeyListFilters) *dbent.APIKeyQuery {
 	q := r.activeQuery().Where(apikey.UserIDEQ(userID), apikey.ServiceAccountIDIsNil())
 	if service.TenantKeyReadsEnabled(ctx) {
-		q = q.Where(legacyTenantReadPredicate(userID))
+		q = q.Where(legacyTenantReadPredicate(ctx, userID))
 	}
 
 	if filters.Search != "" {
@@ -738,7 +738,7 @@ func apiKeyListOrder(params pagination.PaginationParams) []func(*entsql.Selector
 func (r *apiKeyRepository) SearchAPIKeys(ctx context.Context, userID int64, keyword string, limit int) ([]service.APIKey, error) {
 	q := r.activeQuery()
 	if service.TenantKeyReadsEnabled(ctx) {
-		q = q.Where(legacyTenantReadPredicate(userID))
+		q = q.Where(legacyTenantReadPredicate(ctx, userID))
 	}
 	if userID > 0 {
 		q = q.Where(apikey.UserIDEQ(userID), apikey.ServiceAccountIDIsNil())

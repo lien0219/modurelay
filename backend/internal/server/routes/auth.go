@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler"
@@ -194,6 +195,13 @@ func RegisterAuthRoutes(
 			h.Auth.OIDCOAuthStart(c)
 		})
 		auth.GET("/oauth/oidc/callback", h.Auth.OIDCOAuthCallback)
+		auth.GET("/sso/start", rateLimiter.LimitWithOptions("enterprise-sso-start", 20, time.Minute, middleware.RateLimitOptions{FailureMode: middleware.RateLimitFailClose}), h.Auth.EnterpriseSSOStart)
+		auth.POST("/sso/start", rateLimiter.LimitWithOptions("enterprise-sso-start", 20, time.Minute, middleware.RateLimitOptions{
+			FailureMode: middleware.RateLimitFailClose,
+		}), h.Auth.EnterpriseSSOStart)
+		auth.GET("/sso/callback", rateLimiter.LimitWithOptions("enterprise-sso-callback", 30, time.Minute, middleware.RateLimitOptions{FailureMode: middleware.RateLimitFailClose}), h.Auth.EnterpriseSSOCallback)
+		auth.POST("/sso/discover", rateLimiter.LimitWithOptions("enterprise-sso-discover", 10, time.Minute, middleware.RateLimitOptions{FailureMode: middleware.RateLimitFailClose}), h.Auth.EnterpriseSSODiscover)
+		auth.POST("/sso/exchange", rateLimiter.LimitWithOptions("enterprise-sso-exchange", 20, time.Minute, middleware.RateLimitOptions{FailureMode: middleware.RateLimitFailClose}), h.Auth.EnterpriseSSOExchange)
 		auth.POST("/oauth/oidc/complete-registration",
 			rateLimiter.LimitWithOptions("oauth-oidc-complete", 10, time.Minute, middleware.RateLimitOptions{
 				FailureMode: middleware.RateLimitFailClose,
@@ -263,5 +271,20 @@ func RegisterAuthRoutes(
 		// 撤销所有会话（需要认证）
 		authenticated.POST("/auth/revoke-all-sessions", h.Auth.RevokeAllSessions)
 		authenticated.POST("/auth/oauth/bind-token", h.Auth.PrepareOAuthBindAccessTokenCookie)
+		authenticated.POST("/auth/sso/link/start", rateLimiter.LimitWithOptions("enterprise-sso-link", 10, time.Minute, middleware.RateLimitOptions{FailureMode: middleware.RateLimitFailClose}), h.Auth.EnterpriseSSOLinkStart)
+		// Recovery is JWT authenticated, outside workspace SSO enforcement.
+		authenticated.POST("/auth/sso/recover", rateLimiter.LimitWithOptions("enterprise-sso-recover", 3, time.Minute, middleware.RateLimitOptions{FailureMode: middleware.RateLimitFailClose}), func(c *gin.Context) {
+			subject, ok := servermiddleware.GetAuthSubjectFromContext(c)
+			if !ok || subject.UserID <= 0 {
+				c.AbortWithStatus(401)
+				return
+			}
+			result, err := rateLimiter.Allow(c.Request.Context(), fmt.Sprintf("enterprise-sso-recover-user:%d", subject.UserID), 5, time.Hour)
+			if err != nil || !result.Allowed {
+				servermiddleware.AbortWithError(c, 429, "RATE_LIMITED", "Recovery attempt limit reached")
+				return
+			}
+			c.Next()
+		}, gin.HandlerFunc(auditLog), h.Auth.EnterpriseSSORecover)
 	}
 }

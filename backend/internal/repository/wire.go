@@ -72,6 +72,7 @@ var ProviderSet = wire.NewSet(
 	NewWorkspaceRepository,
 	NewServiceAccountRepository,
 	NewWorkspaceWebhookRepository,
+	NewEnterpriseIdentityRepository,
 	NewDomainEventOutboxRepository,
 	NewNotificationRepository,
 	NewNotificationRecipientResolver,

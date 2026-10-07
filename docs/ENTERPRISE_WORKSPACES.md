@@ -326,3 +326,15 @@ reservations preventing user deletion until recovery finishes. Production-scale
 load/retention and existing partitioned Usage DDL compatibility remain unverified.
 The security review is a source/tenant review supported by regression tests; no
 formal Codex Security plugin scan or external penetration test was executed.
+
+
+## Phase B enterprise identity
+
+Migration 294 adds verified domains, generic OIDC with Entra/Google/Okta presets,
+explicit account linking, atomic JIT, provider-attributed role/Team mapping,
+Workspace-bound session assurance, human control-plane SSO enforcement and
+Owner recovery. Global User, Personal Workspace, Direct Key, Service Account,
+Gateway, policy, project grants and immutable billing retain their boundaries.
+See [ENTERPRISE_SSO.md](ENTERPRISE_SSO.md) for configuration/security/API details
+and [ENTERPRISE_SSO_ACCEPTANCE.md](ENTERPRISE_SSO_ACCEPTANCE.md) for deferred
+manual validation. Real IdPs and final browser acceptance are NOT RUN.

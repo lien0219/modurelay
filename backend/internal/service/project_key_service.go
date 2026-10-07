@@ -39,8 +39,11 @@ func ProjectKeyScopeFromContext(ctx context.Context) (actor, workspace, project 
 	return s.ActorID, s.WorkspaceID, s.ProjectID, s.Permission, true
 }
 func (s *APIKeyService) SetTenantResolver(r TenantKeyResolver) { s.tenantResolver = r }
-func (s *APIKeyService) SetBudgetService(b *BudgetService)     { s.budgetService = b }
-func (s *APIKeyService) BudgetService() *BudgetService         { return s.budgetService }
+func (s *APIKeyService) SetEnterpriseIdentityService(identity *EnterpriseIdentityService) {
+	s.enterpriseIdentity = identity
+}
+func (s *APIKeyService) SetBudgetService(b *BudgetService) { s.budgetService = b }
+func (s *APIKeyService) BudgetService() *BudgetService     { return s.budgetService }
 func (s *APIKeyService) ConfigureWorkspaces(r WorkspaceRepository) {
 	s.workspaceRepo = r
 	s.workspaceAccess = NewWorkspaceAccessService(r)
@@ -223,6 +226,14 @@ func (s *APIKeyService) projectScope(ctx context.Context, a, w, p int64, permiss
 	ac, e := s.workspaceAccess.RequireProject(ctx, a, w, p, permission)
 	if e != nil {
 		return ctx, nil, e
+	}
+	// This is a human management scope, including the legacy /keys routes.
+	// Gateway key authentication uses RevalidateTenant and never enters it.
+	if s.enterpriseIdentity != nil {
+		assurance, _ := AuthenticationAssuranceFromContext(ctx)
+		if e = s.enterpriseIdentity.CheckWorkspaceAccess(ctx, w, ac.Workspace.Type, PrincipalHuman, assurance); e != nil {
+			return ctx, nil, e
+		}
 	}
 	return context.WithValue(ctx, projectKeyScopeContextKey{}, &projectKeyScope{ActorID: a, WorkspaceID: w, ProjectID: p, PayerID: ac.Workspace.BillingOwnerUserID, Permission: permission}), ac, nil
 }

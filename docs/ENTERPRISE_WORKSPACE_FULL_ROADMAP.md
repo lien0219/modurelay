@@ -5,10 +5,10 @@ This document is the durable progress source for the Enterprise Workspace progra
 ## Current baseline
 
 - Branch: `feature/new-feature`
-- HEAD at audit: `fcdf84bba fix(ci): resolve frontend audit and golangci-lint failures`
-- Recent enterprise baseline: `9ed858729 feat(policies): add hierarchical gateway policy engine`
-- Working tree at audit: Phase A changes present on top of `fcdf84bba`; no unrelated files were reset or cleaned.
-- Migration ceiling at audit: `293_workspace_governance_teams_project_access.sql`
+- HEAD at Phase B audit: `828ccb8419807d2af89fc2adbb654909686634b0 feat(governance): add workspace teams and project access controls`
+- Recent enterprise baseline: Phase A governance on top of `fcdf84bba` and the policy/Service Account/notification foundations.
+- Phase B worktree: implementation changes on the audited baseline; the final continuation inherited those changes without staged/committed Phase B files, kept the existing branch and did not reset, clean or discard unrelated changes.
+- Migration ceiling: 293 at the Phase B audit; Phase B adds `294_enterprise_identity_oidc.sql`.
 
 ## Current Enterprise Capability Matrix
 
@@ -28,11 +28,13 @@ This document is the durable progress source for the Enterprise Workspace progra
 | Workspace Teams | Implemented | `293_workspace_governance_teams_project_access.sql`, `WorkspaceService`, `/workspaces/:id/teams`, bilingual Teams view | Phase A |
 | Project Access Grants | Implemented | Tenant-scoped direct/team grants, fixed viewer/developer/admin roles, project routes and UI | Phase A |
 | Explicit restricted project-access mode | Implemented | `workspaces.project_access_mode`, default `all_projects`, project filtering and legacy key-read parity | Phase A |
-| Verified domains | Missing | No workspace domain model/routes | Phase B |
-| Generic OIDC/JIT/SSO discovery/enforcement | Missing | No workspace IdP binding flow | Phase B |
+| Verified domains | Implemented | Migration 294, canonical IDNA/global claim uniqueness, one-time hashed TXT, transactional DNS check/audit/outbox | Phase B |
+| Generic OIDC and provider presets | Implemented | Unified Authorization Code/PKCE, browser state/completion, JWT/JWKS, HTTPS/DNS pinning, redacted encrypted secrets | Phase B |
+| Linking/JIT and role/Team mappings | Implemented | Global User/subject binding, explicit link, verified-email/domain JIT, source-aware reconciliation and live Phase A grants | Phase B |
+| Discovery, assurance, SSO enforcement/recovery | Implemented | Tenant route and legacy key management gates, revision/age invalidation, locked Owner enable gate, password/TOTP recovery | Phase B |
 | SAML 2.0 | Missing | No SAML SP model or protocol flow | Phase C |
 | SCIM 2.0 | Missing | No SCIM resource/token lifecycle | Phase C |
-| Workspace security policy | Missing | Existing policy engine is gateway policy, not identity security policy | Phase D |
+| Workspace security policy | Foundation implemented; broader controls deferred | Phase B `workspace_security_policies` has SSO/grace; Phase D adds MFA, session/domain/invitation controls | Phase B / D |
 | FinOps anomaly detection | Missing | No anomaly finding model/worker | Phase E |
 | Cost centers/tags/environment allocation | Missing | Usage snapshots do not expose these dimensions | Phase F |
 | Retention/export/deletion lifecycle | Partial | Existing retention workers cover current event/notification/webhook data; enterprise export/deletion is absent | Phase G |
@@ -44,11 +46,6 @@ This document is the durable progress source for the Enterprise Workspace progra
 
 | Missing capability | Contract | Planned phase | Blocking risk |
 | --- | --- | --- | --- |
-| Teams and team membership | Workspace membership collection, SCIM Group-compatible shape | A | Cross-tenant member attachment |
-| Direct/team project grants | Fixed viewer/developer/admin roles, no owner grant | A | IDOR and accidental loss of existing access |
-| Project access mode | Default `all_projects`, explicit `assigned_projects` | A | Backward compatibility |
-| Verified domain ownership | Normalized exact domains, hashed DNS token, 409 ownership conflict | B | Account discovery and takeover |
-| OIDC | Verified JWT/JWKS, state/nonce/PKCE, SSRF-safe discovery | B | Token forgery and SSRF |
 | SAML | Mature library, signature/audience/destination/clock validation | C | XML signature wrapping |
 | SCIM | Idempotent provisioning/deprovisioning and owner/billing safety | C | Lifecycle invariant breakage |
 | Security policy | MFA/SSO/session/domain/invitation controls | D | Human control-plane bypass |
@@ -70,9 +67,9 @@ This document is the durable progress source for the Enterprise Workspace progra
 
 | Phase | Scope | Architecture decision | Migration | Commit | Tests | Status | Risks | Deferred |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| A | Teams, Project Access Grants, restricted project mode | Fixed built-in roles; direct/team grants; default all-project compatibility; owner/admin/billing compatibility retained; no custom roles | 293 | `feat(governance): add workspace teams and project access controls` | Backend unit/service/handler/repository/migration tests; PostgreSQL governance and key isolation integration; full frontend Vitest, lint, typecheck, build; diff review | PASS | Cross-tenant subject IDs are checked in repository transactions and database trigger; project-key, service-account, legacy key list/search, policy, budget, and usage paths recheck project access | Custom roles; browser/manual acceptance; real providers |
-| B | Domains, generic OIDC, JIT, discovery, enforcement | Global User plus workspace identity binding; verified domains; SSRF-safe discovery | 294+ | Not started | Not run | NOT RUN | Account linking, token verification, SSRF | SAML/SCIM |
-| C | SAML 2.0 and SCIM 2.0 | Mature protocol library; idempotent SCIM resources mapped to teams | 295+ | Not started | Not run | NOT RUN | XML wrapping, lifecycle races | Advanced identity federation |
+| A | Teams, Project Access Grants, restricted project mode | Fixed built-in roles; direct/team grants; default all-project compatibility; owner/admin/billing compatibility retained; no custom roles | 293 | `828ccb8419807d2af89fc2adbb654909686634b0` | Backend unit/service/handler/repository/migration tests; PostgreSQL governance and key isolation integration; full frontend Vitest, lint, typecheck, build; diff review | COMPLETE | Cross-tenant subject IDs are checked in repository transactions and database trigger; project-key, service-account, legacy key list/search, policy, budget, and usage paths recheck project access | Custom roles; browser/manual acceptance; real providers |
+| B | Verified domains, OIDC/presets, linking/JIT/mappings, discovery, assurance/enforcement/recovery | Global User; provider/subject binding; no email adoption or Owner/Billing Owner escalation; SSRF-safe protocol; source-aware reconciliation; control-plane/Gateway separation | 294 | `feat(sso): add verified domains and OIDC enterprise SSO`; resolve SHA below | Mock/protocol/PostgreSQL/concurrency/race PASS; full frontend 421 files/3103 tests plus lint/typecheck/build PASS; Go full suites have identical parent-baseline failures; source/security/diff review PASS | COMPLETE | Retained encryption key; provider claim differences; real-provider/load/manual gates not run | SAML/SCIM; Graph overage fetching; periodic DNS health; full Phase D security policy |
+| C | SAML 2.0 and SCIM 2.0 | Mature protocol library; idempotent SCIM resources mapped to teams | 295+ | Not started | Not run | NEXT | XML wrapping, lifecycle races | Advanced identity federation |
 | D | Workspace security policy | Control-plane middleware with explicit assurance context | 296+ | Not started | Not run | NOT RUN | Break-glass and API-key separation | Arbitrary ABAC |
 | E | Advanced FinOps anomalies | Immutable usage snapshots plus bounded detector jobs | 297+ | Not started | Not run | NOT RUN | False positives, cardinality | AI remediation |
 | F | Cost centers, tags, environment allocation | New-write dimensions and explicit legacy NULLs | 298+ | Not started | Not run | NOT RUN | Historical attribution drift | ERP tree |
@@ -98,6 +95,91 @@ Phase A is complete only when the plan's acceptance matrix is evidenced by tests
 - **NOT RUN** — authenticated browser/manual acceptance, external provider smoke tests, load/chaos testing, and final release acceptance remain Phase L work.
 
 The local Phase A commit is created only after this verification record and the final diff/security review are current. No push or PR is part of this phase.
+
+## Phase B execution boundary
+
+Phase B is **COMPLETE** at the local phase-boundary commit. Phase C (SAML/SCIM)
+is **NEXT**. Final release/manual acceptance remains Phase L; this phase does
+not establish real-provider or production acceptance.
+
+### Architecture decisions and migration
+
+- Keep Global User and Personal Workspace. Identity binds Workspace/provider/
+  subject to the existing User; authenticated explicit linking is required for
+  an existing email. No auto Owner or Billing Owner mutation.
+- Use the existing JWT/Redis token family, local TOTP/step-up, AES-GCM,
+  tenant RBAC, Phase A project grants and audit/event/outbox/notification/webhook
+  systems. Refresh preserves original authentication and assurance times.
+- Provider revisions invalidate assurance; enabling SSO rechecks the requesting
+  Owner's exact provider/revision/binding under the Workspace lock. Every human
+  tenant route and legacy Organization key management/list/search enforce SSO;
+  Gateway Direct/Service Account credentials retain their existing path.
+- Claim mapping is bounded; explicit role priority is deterministic. Missing/
+  overage groups preserve grants; complete empty groups reconcile only current
+  provider attribution. Manual, SCIM and other-provider grants survive.
+- Migration `294_enterprise_identity_oidc.sql` adds control-plane tables and
+  manual-default source attribution, composite tenant constraints, one active
+  default provider, global active-domain uniqueness, auth-method/secret CHECK,
+  single-use encrypted state/completion and Owner recovery limits. No historical
+  usage, billing, key or Service Account rewrite.
+- Operational/session/security setup and all architecture/security gate answers:
+  [ENTERPRISE_SSO.md](ENTERPRISE_SSO.md). Deferred manual matrix:
+  [ENTERPRISE_SSO_ACCEPTANCE.md](ENTERPRISE_SSO_ACCEPTANCE.md).
+
+### Verification record (2026-10-07)
+
+Evidence is retained locally under `.cache/phase-b/`; test credentials are
+isolated fixture values, and these local artifacts are not committed.
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| Mock OIDC/service/handler/middleware/refresh protocol | PASS | ID-token signature/claims, discovery, PKCE/state/nonce, JWKS rotation/backoff/cache, local MFA, same-origin exchange, account linking, tenant routes and refresh metadata; full package runs and `identity-race-final.log` |
+| Enterprise PostgreSQL matrix | PASS | `go test -tags=integration ./internal/repository -run '^TestEnterpriseIdentity' -count=1 -timeout=5m`; 28 integration tests, `identity-postgres-final.log` |
+| Full migration history and preservation | PASS | Historical migrations through 293, seeded Phase A/Gateway/billing rows, 294 applied twice and exact historical snapshots; `identity-migration-history.log` |
+| Database concurrency/race | PASS | Simultaneous domain claims, provider revision edits, state consumption, competing subject links, coherent role/Team reconciliation and 8-callback JIT; `identity-postgres-concurrency-race-final.log` |
+| Legacy key and provider rollback boundaries | PASS | Search/list/counts, wrong Workspace/method, expired assurance, grace deadline; rejected provider edits preserve defaults/revision/audit/events/outbox; `identity-additional-boundaries.log` |
+| `go test ./... -count=1 -timeout=10m` | PRE-EXISTING | Only three PgDumper missing-`sh` failures; exact baseline reproduction in `pgdumper-baseline.log`; final `backend-default-reviewed-final.log` |
+| `go test -tags=unit ./... -count=1 -timeout=10m` | PRE-EXISTING | Same three PgDumper failures plus Ollama stale-callback CAS failure; full identical-command `828ccb841` baseline has the same failure set, no difference; `backend-unit-reviewed-final.log` / `backend-unit-baseline.log` |
+| `go test -tags=integration ./... -count=1 -timeout=10m` | PRE-EXISTING | Only the same three PgDumper failures; full baseline integration has the identical failure set; final `backend-integration-reviewed-final.log` / `.cache/backend-integration-baseline.log` |
+| `go vet ./...`, `go build ./...` | PASS | `backend-vet-reviewed-final.log`, `backend-build-reviewed-final.log` |
+| Relevant Go race | PASS | `CGO_ENABLED=1 go test -race -p=2 ./internal/service ./internal/handler ./internal/server/middleware -run 'TestEnterprise|TestWorkspaceSSO|TestRefreshToken' -count=1 -timeout=5m`; `identity-race-final.log` |
+| Pinned golangci-lint 2.13.0 | PASS | Official checksum-verified tool, `0 issues`, `backend-lint-reviewed-final.log` |
+| Full frontend Vitest | PASS | 421 files / 3103 tests; `frontend-vitest-reviewed-final.log` |
+| Frontend lint/typecheck/production build | PASS | `frontend-{lint,typecheck,build}-reviewed-final.log`; existing Vite build warnings remain non-failing |
+| Canvas critical regression | PASS | `pnpm run test:canvas`, 7 Seedance video tests; `canvas-final.log` |
+| Seedance/Grok/Gateway regression | PASS | Included in the full backend/frontend runs; model-credential runtime remains separate from human SSO |
+| Formatting, final diff and secret review | PASS | gofmt, `git diff --check`, explicit phase-file review; no real private key/token or focused/skipped-test/bypass additions |
+| Source security/concurrency review | PASS | Independent read-only review; all blocking findings corrected and re-read, minor form issue corrected; no outstanding source blocker. This is not a formal Codex Security plugin scan. |
+| Real Entra / Google Workspace / Okta | NOT RUN | Actual tenant/client registrations and provider claims require real-provider validation |
+| Final browser/manual, load/chaos/release | NOT RUN | Deferred acceptance document and Phase L gate |
+
+Earlier resource-contention-sensitive current runs failed additional cancel/
+lease/WS-frame/heap timing checks. Exact targeted reruns and the final complete
+serial backend runs pass those checks. They are not labeled PRE-EXISTING;
+only the freshly reproduced identical parent failures above receive that label.
+
+### Commit SHA and deferred risks
+
+- Parent SHA: `828ccb8419807d2af89fc2adbb654909686634b0`.
+- Phase-boundary message: `feat(sso): add verified domains and OIDC enterprise SSO`.
+- Authoritative Phase B commit SHA is resolved from Git metadata using:
+
+  ```sh
+  git log feature/new-feature -1 --format=%H --fixed-strings --grep="feat(sso): add verified domains and OIDC enterprise SSO"
+  ```
+
+  A file cannot embed the immutable SHA of its own containing commit without
+  changing that SHA. This lookup and the delivery report identify the exact
+  local boundary without a separate metadata commit.
+- Real IdP differences remain unverified. In particular, Entra JIT needs signed
+  verified-email proof; UPN or domain possession alone does not relax it. Graph
+  overage expansion, periodic DNS health/reverification, pending-domain claim
+  reclamation/advanced operator tooling, IdP-side zero-downtime secret rotation,
+  Global Admin emergency override and full Phase D policy remain deferred.
+- Retain/back up the encryption key and exact callback configuration. Production
+  load, Workspace-lock contention, migration rehearsal, rendered responsive/
+  keyboard states and Owner recovery drill remain final acceptance work.
+- Local commit only; no push, PR or acceptance deployment is part of Phase B.
 
 ## Deferred scope
 

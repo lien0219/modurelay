@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -54,6 +55,37 @@ func (p *PanelRateLimiter) Global() gin.HandlerFunc {
 // 与 Global 叠加计数：一次重查询同时消耗两档额度。
 func (p *PanelRateLimiter) Heavy() gin.HandlerFunc {
 	return p.userScoped("heavy", func(s service.PanelRateLimitSettings) int { return s.HeavyRPM })
+}
+
+// EnterpriseIdentity bounds DNS and IdP probes even when optional panel
+// limits are disabled. These outbound operations fail closed on store failure.
+func (p *PanelRateLimiter) EnterpriseIdentity() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if c.Request.Method != http.MethodPost || (c.FullPath() != "/api/v1/workspaces/:id/domains/:domain_id/verify" && c.FullPath() != "/api/v1/workspaces/:id/identity-providers/:provider_id/test") {
+			c.Next()
+			return
+		}
+		subject, ok := GetAuthSubjectFromContext(c)
+		if !ok || subject.UserID <= 0 {
+			AbortWithError(c, http.StatusUnauthorized, "UNAUTHORIZED", "authentication required")
+			return
+		}
+		if p == nil || p.limiter == nil {
+			AbortWithError(c, http.StatusServiceUnavailable, "RATE_LIMIT_UNAVAILABLE", "identity rate limit unavailable")
+			return
+		}
+		key := fmt.Sprintf("enterprise-identity:user:%d:workspace:%s", subject.UserID, c.Param("id"))
+		result, err := p.limiter.Allow(c.Request.Context(), key, 10, time.Minute)
+		if err != nil {
+			AbortWithError(c, http.StatusServiceUnavailable, "RATE_LIMIT_UNAVAILABLE", "identity rate limit unavailable")
+			return
+		}
+		if !result.Allowed {
+			abortPanelRateLimited(c, result.RetryAfter)
+			return
+		}
+		c.Next()
+	}
 }
 
 func (p *PanelRateLimiter) userScoped(scope string, limitOf func(service.PanelRateLimitSettings) int) gin.HandlerFunc {

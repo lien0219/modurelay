@@ -19,7 +19,9 @@ func TestWorkspacePermissions(t *testing.T) {
 	}
 	for _, role := range []string{"owner", "admin"} {
 		roles[role] = append(roles[role], "team.read", "team.create", "team.update", "team.archive", "team.member.update", "project_access.read", "project_access.update", "workspace.project_access.update")
+		roles[role] = append(roles[role], "identity.read", "identity.manage")
 	}
+	roles["owner"] = append(roles["owner"], "workspace_sso.update")
 	for _, role := range []string{"owner", "admin"} {
 		roles[role] = append(roles[role], "workspace_policy.update", "project_policy.update", "service_account_policy.update")
 	}

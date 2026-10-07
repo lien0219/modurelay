@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"time"
+
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 )
@@ -8,11 +10,18 @@ import (
 // AuthSubject is the minimal authenticated identity stored in gin context.
 // Decision: {UserID int64, Concurrency int}
 type AuthSubject struct {
-	PrincipalType    string
-	ServiceAccountID int64
-	BillingUserID    int64
-	UserID           int64
-	Concurrency      int
+	PrincipalType        string
+	ServiceAccountID     int64
+	BillingUserID        int64
+	UserID               int64
+	Concurrency          int
+	AuthMethod           string
+	AuthenticatedAt      time.Time
+	MFASatisfied         bool
+	OIDCProviderID       int64
+	OIDCProviderRevision int64
+	OIDCWorkspaceID      int64
+	OIDCAuthenticatedAt  time.Time
 }
 
 // FundingUserID selects the payer for machine concurrency controls. Human keys

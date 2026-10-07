@@ -269,7 +269,7 @@ func (r *workspaceRepository) Mutate(ctx context.Context, a, w int64, m service.
 					return nil, service.ErrWorkspaceConflict
 				}
 			}
-			_, e = tx.ExecContext(ctx, `UPDATE workspace_members SET role=$3,status=$4,updated_at=now() WHERE workspace_id=$1 AND user_id=$2`, w, m.TargetID, m.Role, m.Status)
+			_, e = tx.ExecContext(ctx, `UPDATE workspace_members SET role=$3,status=$4,membership_source='manual',membership_provider_id=NULL,updated_at=now() WHERE workspace_id=$1 AND user_id=$2`, w, m.TargetID, m.Role, m.Status)
 			action = "member_role_changed"
 			meta["role"] = m.Role
 			meta["status"] = m.Status

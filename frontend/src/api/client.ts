@@ -14,6 +14,7 @@ import {
 } from './adminUIRequest'
 import { refreshAuthTokens } from './tokenRefresh'
 import { getAPIBaseURL } from './url'
+import { ssoRequiredRedirect } from '@/utils/enterpriseSSO'
 export { buildApiUrl, buildGatewayUrl } from './url'
 
 // ==================== Axios Instance Configuration ====================
@@ -160,9 +161,16 @@ apiClient.interceptors.response.use(
         })
       }
 
+      if (status === 403 && !window.location.pathname.startsWith('/auth/sso')) {
+        const redirect = ssoRequiredRedirect(url, apiData.code, apiData.reason, window.location.pathname + window.location.search)
+        if (redirect) window.location.href = redirect
+      }
+
       // 401: Try to refresh the token if we have a refresh token
       // This handles TOKEN_EXPIRED, INVALID_TOKEN, TOKEN_REVOKED, etc.
-      if (status === 401 && !originalRequest._retry) {
+      // A failed SSO completion or password/TOTP proof does not invalidate the global session.
+      const isEnterpriseSSOEndpoint = /^\/?auth\/sso\//.test(url)
+      if (status === 401 && !originalRequest._retry && !isEnterpriseSSOEndpoint) {
         const refreshToken = localStorage.getItem('refresh_token')
         const isAuthEndpoint =
           url.includes('/auth/login') || url.includes('/auth/register') || url.includes('/auth/refresh')

@@ -127,3 +127,37 @@ func TestRefreshTokenPairRotatesAfterAtomicConsumption(t *testing.T) {
 	require.Equal(t, 1, cache.consumeCalls)
 	require.Equal(t, 1, cache.storeCalls)
 }
+
+func TestRefreshTokenPairPreservesOriginalAuthenticationAndWorkspace(t *testing.T) {
+	data := validRefreshTokenData()
+	data.AuthMethod = "oidc"
+	data.AuthenticatedAt = time.Now().UTC().Add(-6 * time.Hour).Truncate(time.Second)
+	data.OIDCAuthenticatedAt = data.AuthenticatedAt
+	data.OIDCProviderID, data.OIDCWorkspaceID, data.OIDCProviderRevision = 9, 7, 4
+	data.MFASatisfied = true
+	cache := &refreshTokenConsumeCacheStub{data: data, consume: true}
+	svc := newRefreshTokenConsumeAuthService(cache)
+	result, err := svc.RefreshTokenPair(context.Background(), "rt_original-authentication")
+	require.NoError(t, err)
+	claims, err := svc.ValidateToken(result.AccessToken)
+	require.NoError(t, err)
+	require.Equal(t, data.AuthenticatedAt, claims.AuthenticatedAt)
+	require.Equal(t, data.OIDCAuthenticatedAt, claims.OIDCAuthenticatedAt)
+	require.Equal(t, "oidc", claims.AuthMethod)
+	require.True(t, claims.MFASatisfied)
+	require.EqualValues(t, 7, claims.OIDCWorkspaceID)
+	require.EqualValues(t, 4, claims.OIDCProviderRevision)
+	require.Equal(t, data.FamilyID, claims.SessionID)
+}
+
+func TestRefreshLegacySessionCannotManufactureRecentAuthentication(t *testing.T) {
+	cache := &refreshTokenConsumeCacheStub{data: validRefreshTokenData(), consume: true}
+	svc := newRefreshTokenConsumeAuthService(cache)
+	result, err := svc.RefreshTokenPair(context.Background(), "rt_legacy")
+	require.NoError(t, err)
+	claims, err := svc.ValidateToken(result.AccessToken)
+	require.NoError(t, err)
+	require.True(t, claims.AuthenticatedAt.IsZero())
+	require.False(t, claims.MFASatisfied)
+	require.Zero(t, claims.OIDCWorkspaceID)
+}

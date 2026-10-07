@@ -218,6 +218,7 @@
           />
         </div>
       </form>
+      <RouterLink v-if="!backendModeEnabled" class="btn btn-secondary w-full" data-testid="enterprise-sso-login" to="/auth/sso">{{ t('workspace.ssoLogin') }}</RouterLink>
     </div>
 
     <!-- Footer -->

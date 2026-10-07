@@ -160,6 +160,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/auth/sso',
+    name: 'EnterpriseSSO',
+    component: () => import('@/views/auth/EnterpriseSSOView.vue'),
+    meta: { requiresAuth: false, title: 'Enterprise SSO', titleKey: 'workspace.ssoTitle' }
+  },
+  {
+    path: '/auth/sso/callback',
+    name: 'EnterpriseSSOCallback',
+    component: () => import('@/views/auth/EnterpriseSSOCallbackView.vue'),
+    meta: { requiresAuth: false, title: 'Enterprise SSO', titleKey: 'workspace.ssoTitle' }
+  },
+  {
     path: '/forgot-password',
     name: 'ForgotPassword',
     component: () => import('@/views/auth/ForgotPasswordView.vue'),
@@ -313,6 +325,12 @@ const routes: RouteRecordRaw[] = [
     name: 'WorkspaceWebhooks',
     component: () => import('@/views/workspace/WorkspaceWebhooksView.vue'),
     meta: { requiresAuth: true, requiresAdmin: false, title: 'Workspace Webhooks', titleKey: 'workspace.webhooks', descriptionKey: 'workspace.webhooksDescription' }
+  },
+  {
+    path: '/workspaces/:workspaceId/identity',
+    name: 'WorkspaceIdentity',
+    component: () => import('@/views/workspace/WorkspaceIdentityView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: false, title: 'Workspace Identity', titleKey: 'workspace.identity', descriptionKey: 'workspace.identityDescription' }
   },
   {
     path: '/canvas',
@@ -1145,6 +1163,8 @@ const BACKEND_MODE_CALLBACK_PATHS = [
   '/auth/oidc/callback',
   '/auth/wechat/callback',
   '/auth/wechat/payment/callback',
+  '/auth/sso',
+  '/auth/sso/callback',
 ]
 const BACKEND_MODE_PENDING_AUTH_PATHS = ['/register', '/email-verify']
 

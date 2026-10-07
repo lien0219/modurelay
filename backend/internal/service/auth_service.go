@@ -85,6 +85,16 @@ type JWTClaims struct {
 	SessionID string `json:"sid,omitempty"`
 	// BindingHash 会话指纹哈希（IP+UA），会话绑定开启时校验；空值表示旧 token（平滑升级）。
 	BindingHash string `json:"bnd,omitempty"`
+	// Enterprise authentication metadata is intentionally scoped to the
+	// workspace that performed the OIDC login. It is copied to refresh-token
+	// state so a normal refresh cannot silently lose assurance.
+	AuthMethod           string    `json:"auth_method,omitempty"`
+	AuthenticatedAt      time.Time `json:"authenticated_at,omitempty"`
+	MFASatisfied         bool      `json:"mfa_satisfied,omitempty"`
+	OIDCProviderID       int64     `json:"oidc_provider_id,omitempty"`
+	OIDCProviderRevision int64     `json:"oidc_provider_revision,omitempty"`
+	OIDCWorkspaceID      int64     `json:"oidc_workspace_id,omitempty"`
+	OIDCAuthenticatedAt  time.Time `json:"oidc_authenticated_at,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -1449,11 +1459,11 @@ func (s *AuthService) GenerateToken(ctx context.Context, user *User) (string, er
 	if err != nil {
 		return "", fmt.Errorf("generate session id: %w", err)
 	}
-	return s.generateAccessToken(user, sessionID, sessionBindingHashFromContext(ctx))
+	return s.generateAccessToken(ctx, user, sessionID, sessionBindingHashFromContext(ctx))
 }
 
 // generateAccessToken 生成带会话 ID 与绑定指纹的 access token。
-func (s *AuthService) generateAccessToken(user *User, sessionID, bindingHash string) (string, error) {
+func (s *AuthService) generateAccessToken(ctx context.Context, user *User, sessionID, bindingHash string) (string, error) {
 	now := time.Now()
 	var expiresAt time.Time
 	if s.cfg.JWT.AccessTokenExpireMinutes > 0 {
@@ -1475,6 +1485,18 @@ func (s *AuthService) generateAccessToken(user *User, sessionID, bindingHash str
 			IssuedAt:  jwt.NewNumericDate(now),
 			NotBefore: jwt.NewNumericDate(now),
 		},
+	}
+	if assurance, ok := AuthenticationAssuranceFromContext(ctx); ok {
+		claims.AuthMethod = assurance.AuthMethod
+		claims.OIDCProviderID = assurance.ProviderID
+		claims.OIDCProviderRevision = assurance.ProviderRevision
+		claims.OIDCWorkspaceID = assurance.WorkspaceID
+		claims.OIDCAuthenticatedAt = assurance.AuthenticatedAt
+	}
+	if auth, ok := SessionAuthenticationFromContext(ctx); ok {
+		claims.AuthMethod = auth.AuthMethod
+		claims.AuthenticatedAt = auth.AuthenticatedAt
+		claims.MFASatisfied = auth.MFASatisfied
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -1547,6 +1569,11 @@ func (s *AuthService) RefreshToken(ctx context.Context, oldTokenString string) (
 		}
 	}
 
+	// A refresh cannot manufacture recent password/MFA or extend SSO age.
+	ctx = WithSessionAuthentication(ctx, SessionAuthentication{AuthMethod: claims.AuthMethod, AuthenticatedAt: claims.AuthenticatedAt, MFASatisfied: claims.MFASatisfied})
+	if claims.OIDCWorkspaceID > 0 && claims.OIDCProviderID > 0 {
+		ctx = WithAuthenticationAssurance(ctx, WorkspaceAssurance{WorkspaceID: claims.OIDCWorkspaceID, ProviderID: claims.OIDCProviderID, ProviderRevision: claims.OIDCProviderRevision, AuthenticatedAt: claims.OIDCAuthenticatedAt, AuthMethod: claims.AuthMethod})
+	}
 	// 生成新token
 	return s.GenerateToken(ctx, user)
 }
@@ -1723,6 +1750,9 @@ type TokenPairWithUser struct {
 // GenerateTokenPair 生成Access Token和Refresh Token对
 // familyID: 可选的Token家族ID，用于Token轮转时保持家族关系
 func (s *AuthService) GenerateTokenPair(ctx context.Context, user *User, familyID string) (*TokenPair, error) {
+	if _, ok := SessionAuthenticationFromContext(ctx); !ok {
+		ctx = WithSessionAuthentication(ctx, SessionAuthentication{AuthMethod: "other", AuthenticatedAt: time.Now()})
+	}
 	// 检查 refreshTokenCache 是否可用
 	if s.refreshTokenCache == nil {
 		return nil, errors.New("refresh token cache not configured")
@@ -1739,7 +1769,7 @@ func (s *AuthService) GenerateTokenPair(ctx context.Context, user *User, familyI
 	}
 
 	// 生成Access Token（携带会话ID与绑定指纹）
-	accessToken, err := s.generateAccessToken(user, familyID, sessionBindingHashFromContext(ctx))
+	accessToken, err := s.generateAccessToken(ctx, user, familyID, sessionBindingHashFromContext(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("generate access token: %w", err)
 	}
@@ -1788,6 +1818,18 @@ func (s *AuthService) generateRefreshToken(ctx context.Context, user *User, fami
 		BindingHash:  sessionBindingHashFromContext(ctx),
 		CreatedAt:    now,
 		ExpiresAt:    now.Add(ttl),
+	}
+	if assurance, ok := AuthenticationAssuranceFromContext(ctx); ok {
+		data.AuthMethod = assurance.AuthMethod
+		data.OIDCProviderID = assurance.ProviderID
+		data.OIDCProviderRevision = assurance.ProviderRevision
+		data.OIDCWorkspaceID = assurance.WorkspaceID
+		data.OIDCAuthenticatedAt = assurance.AuthenticatedAt
+	}
+	if auth, ok := SessionAuthenticationFromContext(ctx); ok {
+		data.AuthMethod = auth.AuthMethod
+		data.AuthenticatedAt = auth.AuthenticatedAt
+		data.MFASatisfied = auth.MFASatisfied
 	}
 
 	// 存储Token数据
@@ -1897,6 +1939,16 @@ func (s *AuthService) RefreshTokenPair(ctx context.Context, refreshToken string)
 	}
 
 	// 生成新的Token对，保持同一个家族ID
+	ctx = WithSessionAuthentication(ctx, SessionAuthentication{AuthMethod: data.AuthMethod, AuthenticatedAt: data.AuthenticatedAt, MFASatisfied: data.MFASatisfied})
+	if data.OIDCWorkspaceID > 0 && data.OIDCProviderID > 0 {
+		ctx = WithAuthenticationAssurance(ctx, WorkspaceAssurance{
+			WorkspaceID:      data.OIDCWorkspaceID,
+			ProviderID:       data.OIDCProviderID,
+			ProviderRevision: data.OIDCProviderRevision,
+			AuthenticatedAt:  data.OIDCAuthenticatedAt,
+			AuthMethod:       data.AuthMethod,
+		})
+	}
 	pair, err := s.GenerateTokenPair(ctx, user, data.FamilyID)
 	if err != nil {
 		return nil, err

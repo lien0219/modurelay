@@ -851,6 +851,7 @@ func ProvideAPIKeyService(
 	apiKeyRepo APIKeyRepository,
 	workspaceRepo WorkspaceRepository,
 	workspaceService *WorkspaceService,
+	identity *EnterpriseIdentityService,
 	budgetService *BudgetService,
 	userRepo UserRepository,
 	groupRepo GroupRepository,
@@ -865,6 +866,7 @@ func ProvideAPIKeyService(
 	svc.SetRateLimitCacheInvalidator(billingCacheService)
 	svc.SetConcurrencyService(concurrencyService)
 	svc.ConfigureWorkspaces(workspaceRepo)
+	svc.SetEnterpriseIdentityService(identity)
 	svc.SetBudgetService(budgetService)
 	workspaceService.SetKeyInvalidator(svc)
 	return svc
@@ -888,9 +890,14 @@ func ProvideDomainEventDispatcher(outbox DomainEventOutboxRepository, notificati
 }
 
 // ProviderSet is the Wire provider set for all services
+func ProvidePolicyQuotaServices(quota *PolicyQuotaService) []*PolicyQuotaService {
+	return []*PolicyQuotaService{quota}
+}
+
 var ProviderSet = wire.NewSet(
 	ProvideWorkspaceService,
 	NewWorkspaceAccessService,
+	NewEnterpriseIdentityService,
 	NewServiceAccountService,
 	ProvideWorkspaceWebhookService,
 	ProvideWorkspaceWebhookWorker,
@@ -898,6 +905,7 @@ var ProviderSet = wire.NewSet(
 	ProvideDomainEventDispatcher,
 	NewBudgetService,
 	NewPolicyQuotaService,
+	ProvidePolicyQuotaServices,
 	wire.Bind(new(BalanceRedeemActivityQualifier), new(*ActivityService)),
 	// Core services
 	ProvideAuthService,

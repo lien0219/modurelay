@@ -81,6 +81,7 @@ type Config struct {
 	LinuxDo                 LinuxDoConnectConfig          `mapstructure:"linuxdo_connect"`
 	WeChat                  WeChatConnectConfig           `mapstructure:"wechat_connect"`
 	OIDC                    OIDCConnectConfig             `mapstructure:"oidc_connect"`
+	EnterpriseSSO           EnterpriseSSOConfig           `mapstructure:"enterprise_sso"`
 	DingTalk                DingTalkConnectConfig         `mapstructure:"dingtalk_connect"`
 	GitHubOAuth             EmailOAuthProviderConfig      `mapstructure:"github_oauth"`
 	GoogleOAuth             EmailOAuthProviderConfig      `mapstructure:"google_oauth"`
@@ -338,6 +339,11 @@ type WeChatConnectConfig struct {
 	Scopes              string `mapstructure:"scopes"`
 	RedirectURL         string `mapstructure:"redirect_url"`
 	FrontendRedirectURL string `mapstructure:"frontend_redirect_url"`
+}
+
+// Enterprise SSO is independent from the optional global social OIDC login.
+type EnterpriseSSOConfig struct {
+	RedirectURL string `mapstructure:"redirect_url"`
 }
 
 type OIDCConnectConfig struct {
@@ -2198,6 +2204,7 @@ func setDefaults() {
 	viper.SetDefault("wechat_connect.frontend_redirect_url", defaultWeChatConnectFrontendRedirect)
 
 	// Generic OIDC OAuth 登录
+	viper.SetDefault("enterprise_sso.redirect_url", "")
 	viper.SetDefault("oidc_connect.enabled", false)
 	viper.SetDefault("oidc_connect.provider_name", "OIDC")
 	viper.SetDefault("oidc_connect.client_id", "")
@@ -3055,6 +3062,16 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("wechat_connect.frontend_redirect_url invalid: %w", err)
 		}
 		warnIfInsecureURL("wechat_connect.frontend_redirect_url", weChat.FrontendRedirectURL)
+	}
+	if value := strings.TrimSpace(c.EnterpriseSSO.RedirectURL); value != "" {
+		parsed, err := url.Parse(value)
+		if err != nil || parsed.Hostname() == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" || parsed.Path != "/api/v1/auth/sso/callback" {
+			return fmt.Errorf("enterprise_sso.redirect_url must be an absolute callback URL ending in /api/v1/auth/sso/callback")
+		}
+		loopback := parsed.Hostname() == "localhost" || parsed.Hostname() == "127.0.0.1" || parsed.Hostname() == "::1"
+		if parsed.Scheme != "https" && (parsed.Scheme != "http" || !loopback) {
+			return fmt.Errorf("enterprise_sso.redirect_url requires HTTPS; HTTP is permitted only for a local application callback")
+		}
 	}
 	if c.OIDC.Enabled {
 		if strings.TrimSpace(c.OIDC.ClientID) == "" {

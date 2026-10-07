@@ -20,6 +20,7 @@ type PolicyHandler struct {
 	serviceAccounts *service.ServiceAccountService
 	repository      domain.PolicyRepository
 	resolver        *domain.EffectivePolicyResolver
+	identity        *service.EnterpriseIdentityService
 }
 
 func NewPolicyHandler(workspaces *service.WorkspaceService, serviceAccounts *service.ServiceAccountService, repository domain.PolicyRepository, resolver *domain.EffectivePolicyResolver) *PolicyHandler {
@@ -69,6 +70,9 @@ func (h *PolicyHandler) handle(action string) gin.HandlerFunc {
 			return
 		}
 		ctx := c.Request.Context()
+		if !checkEnterpriseWorkspaceAccess(c, h.workspaces, h.identity, subject, workspaceID) {
+			return
+		}
 		var ref domain.PolicyRef
 		var authorizeErr error
 		switch action {

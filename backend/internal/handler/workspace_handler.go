@@ -14,11 +14,13 @@ import (
 )
 
 type WorkspaceHandler struct {
-	workspaces      *service.WorkspaceService
-	keys            *service.APIKeyService
-	webhooks        *service.WorkspaceWebhookService
-	serviceAccounts *ServiceAccountHandler
-	policies        *PolicyHandler
+	workspaces         *service.WorkspaceService
+	keys               *service.APIKeyService
+	webhooks           *service.WorkspaceWebhookService
+	serviceAccounts    *ServiceAccountHandler
+	policies           *PolicyHandler
+	identity           *service.EnterpriseIdentityService
+	identityRecentAuth func(*gin.Context) bool
 }
 
 func finopsRange(c *gin.Context) (time.Time, time.Time, string, error) {
@@ -59,6 +61,19 @@ func (h *WorkspaceHandler) SetWebhookService(webhooks *service.WorkspaceWebhookS
 func (h *WorkspaceHandler) SetPolicyHandler(policies *PolicyHandler) {
 	h.policies = policies
 }
+func (h *WorkspaceHandler) SetEnterpriseIdentityService(identity *service.EnterpriseIdentityService) {
+	h.identity = identity
+	if h.serviceAccounts != nil {
+		h.serviceAccounts.identity = identity
+		h.serviceAccounts.workspaces = h.workspaces
+	}
+	if h.policies != nil {
+		h.policies.identity = identity
+	}
+}
+func (h *WorkspaceHandler) SetIdentityRecentAuthentication(guard func(*gin.Context) bool) {
+	h.identityRecentAuth = guard
+}
 func (h *WorkspaceHandler) RegisterTenantRoutes(v1 *gin.RouterGroup) {
 	if h.serviceAccounts != nil {
 		h.serviceAccounts.RegisterTenantRoutes(v1)
@@ -82,6 +97,24 @@ func (h *WorkspaceHandler) RegisterTenantRoutes(v1 *gin.RouterGroup) {
 	}
 	for _, r := range routes {
 		v1.Handle(r.method, r.path, h.handle(r.action))
+	}
+	if h.identity != nil {
+		v1.GET("/workspaces/:id/domains", h.handle("identity.domain.list"))
+		v1.POST("/workspaces/:id/domains", h.handle("identity.domain.create"))
+		v1.POST("/workspaces/:id/domains/:domain_id/verify", h.handle("identity.domain.verify"))
+		v1.POST("/workspaces/:id/domains/:domain_id/regenerate", h.handle("identity.domain.regenerate"))
+		v1.POST("/workspaces/:id/domains/:domain_id/revoke", h.handle("identity.domain.revoke"))
+		v1.DELETE("/workspaces/:id/domains/:domain_id", h.handle("identity.domain.revoke"))
+		v1.GET("/workspaces/:id/identity-providers", h.handle("identity.provider.list"))
+		v1.POST("/workspaces/:id/identity-providers", h.handle("identity.provider.create"))
+		v1.GET("/workspaces/:id/identity-providers/:provider_id", h.handle("identity.provider.get"))
+		v1.PATCH("/workspaces/:id/identity-providers/:provider_id", h.handle("identity.provider.update"))
+		v1.POST("/workspaces/:id/identity-providers/:provider_id/disable", h.handle("identity.provider.disable"))
+		v1.POST("/workspaces/:id/identity-providers/:provider_id/test", h.handle("identity.provider.test"))
+		v1.GET("/workspaces/:id/identity-providers/:provider_id/mappings", h.handle("identity.mapping.get"))
+		v1.PUT("/workspaces/:id/identity-providers/:provider_id/mappings", h.handle("identity.mapping.put"))
+		v1.GET("/workspaces/:id/security-policy", h.handle("identity.policy.get"))
+		v1.PATCH("/workspaces/:id/security-policy", h.handle("identity.policy.update"))
 	}
 }
 func (h *WorkspaceHandler) RegisterAdminRoutes(admin *gin.RouterGroup) {
@@ -132,7 +165,7 @@ func (h *WorkspaceHandler) handle(action string) gin.HandlerFunc {
 			return
 		}
 		ids := map[string]int64{}
-		for _, name := range []string{"id", "project_id", "member_id", "team_id", "grant_id", "invitation_id", "key_id", "webhook_id", "delivery_id"} {
+		for _, name := range []string{"id", "project_id", "member_id", "team_id", "grant_id", "invitation_id", "key_id", "webhook_id", "delivery_id", "domain_id", "provider_id"} {
 			if raw := c.Param(name); raw != "" {
 				id, e := strconv.ParseInt(raw, 10, 64)
 				if e != nil || id <= 0 {
@@ -144,6 +177,18 @@ func (h *WorkspaceHandler) handle(action string) gin.HandlerFunc {
 		}
 		a, w, p := subject.UserID, ids["id"], ids["project_id"]
 		ctx := c.Request.Context()
+		if !strings.HasPrefix(action, "admin.") && !checkEnterpriseWorkspaceAccess(c, h.workspaces, h.identity, subject, w) {
+			return
+		}
+		if action == "identity.provider.create" || action == "identity.provider.update" || action == "identity.provider.disable" || action == "identity.policy.update" {
+			if h.identityRecentAuth == nil {
+				response.ErrorFrom(c, service.ErrWorkspaceForbidden)
+				return
+			}
+			if !h.identityRecentAuth(c) {
+				return
+			}
+		}
 		page, size := response.ParsePagination(c)
 		params := pagination.PaginationParams{Page: page, PageSize: size}
 		var out any
@@ -154,6 +199,108 @@ func (h *WorkspaceHandler) handle(action string) gin.HandlerFunc {
 		case "workspace.list":
 			out, total, err = h.workspaces.ListWorkspaces(ctx, a, params)
 			list = true
+		case "identity.domain.list":
+			if h.identity == nil {
+				err = service.ErrWorkspaceNotFound
+				break
+			}
+			out, total, err = h.identity.ListDomains(ctx, a, w, params)
+			list = true
+		case "identity.domain.create":
+			if h.identity == nil {
+				err = service.ErrWorkspaceNotFound
+				break
+			}
+			var req struct {
+				Domain string `json:"domain"`
+			}
+			if !workspaceBind(c, &req) {
+				return
+			}
+			out, err = h.identity.CreateDomain(ctx, a, w, req.Domain)
+		case "identity.domain.verify":
+			if h.identity == nil {
+				err = service.ErrWorkspaceNotFound
+				break
+			}
+			out, err = h.identity.VerifyDomain(ctx, a, w, ids["domain_id"])
+		case "identity.domain.regenerate":
+			if h.identity == nil {
+				err = service.ErrWorkspaceNotFound
+				break
+			}
+			out, err = h.identity.RegenerateDomainToken(ctx, a, w, ids["domain_id"])
+		case "identity.domain.revoke":
+			out, err = h.identity.RevokeDomain(ctx, a, w, ids["domain_id"])
+		case "identity.provider.test":
+			err = h.identity.TestProvider(ctx, a, w, ids["provider_id"])
+		case "identity.mapping.get":
+			out, err = h.identity.GetMappings(ctx, a, w, ids["provider_id"])
+		case "identity.mapping.put":
+			var req service.OIDCMappings
+			if !workspaceBind(c, &req) {
+				return
+			}
+			err = h.identity.ReplaceMappings(ctx, a, w, ids["provider_id"], req)
+		case "identity.provider.list":
+			if h.identity == nil {
+				err = service.ErrWorkspaceNotFound
+				break
+			}
+			out, total, err = h.identity.ListProviders(ctx, a, w, params)
+			list = true
+		case "identity.provider.get":
+			if h.identity == nil {
+				err = service.ErrWorkspaceNotFound
+				break
+			}
+			out, err = h.identity.GetProvider(ctx, a, w, ids["provider_id"])
+		case "identity.provider.create":
+			if h.identity == nil {
+				err = service.ErrWorkspaceNotFound
+				break
+			}
+			var req service.EnterpriseIdentityProviderInput
+			if !workspaceBind(c, &req) {
+				return
+			}
+			out, err = h.identity.CreateProvider(ctx, a, w, req)
+		case "identity.provider.update":
+			if h.identity == nil {
+				err = service.ErrWorkspaceNotFound
+				break
+			}
+			var req service.EnterpriseIdentityProviderInput
+			if !workspaceBind(c, &req) {
+				return
+			}
+			out, err = h.identity.UpdateProvider(ctx, a, w, ids["provider_id"], req)
+		case "identity.provider.disable":
+			if h.identity == nil {
+				err = service.ErrWorkspaceNotFound
+				break
+			}
+			err = h.identity.DisableProvider(ctx, a, w, ids["provider_id"])
+		case "identity.policy.get":
+			if h.identity == nil {
+				err = service.ErrWorkspaceNotFound
+				break
+			}
+			out, err = h.identity.GetPolicy(ctx, a, w)
+		case "identity.policy.update":
+			if h.identity == nil {
+				err = service.ErrWorkspaceNotFound
+				break
+			}
+			var req struct {
+				RequireSSO    bool       `json:"require_sso"`
+				SSOGraceUntil *time.Time `json:"sso_grace_until"`
+			}
+			if !workspaceBind(c, &req) {
+				return
+			}
+			policyCtx := service.WithAuthenticationAssurance(ctx, service.WorkspaceAssurance{WorkspaceID: subject.OIDCWorkspaceID, ProviderID: subject.OIDCProviderID, ProviderRevision: subject.OIDCProviderRevision, AuthenticatedAt: subject.OIDCAuthenticatedAt, AuthMethod: subject.AuthMethod})
+			out, err = h.identity.UpdatePolicy(policyCtx, a, w, req.RequireSSO, req.SSOGraceUntil)
 		case "workspace.create":
 			var req struct {
 				Name string `json:"name"`
