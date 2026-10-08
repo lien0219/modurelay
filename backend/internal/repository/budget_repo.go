@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -40,6 +41,15 @@ func (r *budgetRepository) Reserve(ctx context.Context, a service.BudgetAttribut
 		return nil, service.ErrBudgetUnpriced
 	}
 	estimate = service.QuantizeUsageBillingAmount(estimate)
+	allocation := service.UnallocatedAllocation()
+	if a.Allocation != nil {
+		allocation = *a.Allocation
+	}
+	normalizedAllocation, err := allocation.NormalizeAndValidate()
+	if err != nil {
+		return nil, service.ErrBudgetReservationInvalid
+	}
+	a.Allocation = &normalizedAllocation
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -62,6 +72,17 @@ func (r *budgetRepository) Reserve(ctx context.Context, a service.BudgetAttribut
 		}
 		if existing.Status != "pending" {
 			return nil, service.ErrBudgetReservationClosed
+		}
+		existing.Allocation, err = loadReservationAllocationSnapshot(ctx, tx, existing.ID)
+		if err != nil {
+			return nil, err
+		}
+		if existing.Allocation == nil {
+			fallback := service.UnallocatedAllocation()
+			existing.Allocation = &fallback
+		}
+		if !allocationSnapshotsEqual(existing.Allocation, a.Allocation) {
+			return nil, service.ErrBudgetReservationConflict
 		}
 		for _, scope := range reservationBudgetScopes(existing) {
 			if err = validatePendingBudgetCounter(ctx, tx, scope, existing.Estimate); err != nil {
@@ -115,6 +136,7 @@ func (r *budgetRepository) Reserve(ctx context.Context, a service.BudgetAttribut
 		PeriodStart: workspacePeriod, PeriodEnd: workspacePeriod.AddDate(0, 1, 0),
 		ProjectPeriodStart: projectPeriod, ProjectPeriodEnd: projectPeriod.AddDate(0, 1, 0),
 		Estimate: estimate, Status: "pending",
+		Allocation: &normalizedAllocation,
 	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO budget_reservations(id,request_id,actor_user_id,api_key_id,workspace_id,project_id,billing_principal_user_id,period_start,period_end,project_period_start,project_period_end,estimate,status,service_account_id) VALUES($1,$2,NULLIF($3,0),$4,$5,$6,$7,$8,$9,$10,$11,$12,'pending',NULLIF($13,0))`,
 		reservation.ID, requestID, a.ActorUserID, a.APIKeyID, a.WorkspaceID, a.ProjectID, a.BillingPrincipalUserID,
@@ -122,10 +144,77 @@ func (r *budgetRepository) Reserve(ctx context.Context, a service.BudgetAttribut
 	if err != nil {
 		return nil, err
 	}
+	tagsJSON, err := normalizedAllocation.TagsJSON()
+	if err != nil {
+		return nil, service.ErrBudgetReservationInvalid
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO budget_reservation_allocation_snapshots(reservation_id,workspace_id,project_id,billing_principal_user_id,cost_center_id,environment,allocation_tags,policy_revision) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8)`,
+		reservation.ID, reservation.WorkspaceID, reservation.ProjectID, reservation.BillingPrincipalUserID, nullableAllocationCenter(normalizedAllocation.CostCenterID), normalizedAllocation.Environment, tagsJSON, normalizedAllocation.PolicyRevision)
+	if err != nil {
+		return nil, err
+	}
 	if err = tx.Commit(); err != nil {
 		return nil, err
 	}
 	return reservation, nil
+}
+
+func nullableAllocationCenter(id *int64) any {
+	if id == nil {
+		return nil
+	}
+	return *id
+}
+
+func loadReservationAllocationSnapshot(ctx context.Context, tx *sql.Tx, reservationID string) (*service.AllocationSnapshot, error) {
+	var center sql.NullInt64
+	var environment string
+	var tagsRaw []byte
+	var revision int64
+	err := tx.QueryRowContext(ctx, `SELECT cost_center_id,environment,allocation_tags,policy_revision FROM budget_reservation_allocation_snapshots WHERE reservation_id=$1`, reservationID).Scan(&center, &environment, &tagsRaw, &revision)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var tags map[string]string
+	if err := json.Unmarshal(tagsRaw, &tags); err != nil {
+		return nil, service.ErrBudgetReservationInvalid
+	}
+	snapshot := &service.AllocationSnapshot{Environment: environment, Tags: tags, AllocationTags: tags, PolicyRevision: revision}
+	if center.Valid {
+		snapshot.CostCenterID = &center.Int64
+	}
+	normalized, err := snapshot.NormalizeAndValidate()
+	if err != nil {
+		return nil, service.ErrBudgetReservationInvalid
+	}
+	return &normalized, nil
+}
+
+func allocationSnapshotsEqual(a, b *service.AllocationSnapshot) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	if a.Environment != b.Environment || a.PolicyRevision != b.PolicyRevision {
+		return false
+	}
+	if (a.CostCenterID == nil) != (b.CostCenterID == nil) {
+		return false
+	}
+	if a.CostCenterID != nil && *a.CostCenterID != *b.CostCenterID {
+		return false
+	}
+	if len(a.Tags) != len(b.Tags) {
+		return false
+	}
+	for key, value := range a.Tags {
+		if b.Tags[key] != value {
+			return false
+		}
+	}
+	return true
 }
 
 func budgetMonthStart(now time.Time, timezone string) (time.Time, error) {

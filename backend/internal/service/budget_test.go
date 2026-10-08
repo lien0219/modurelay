@@ -11,6 +11,33 @@ import (
 
 type budgetRepoFake struct{ reserved, finalized, released int }
 
+type allocationCaptureRepo struct{ allocation *AllocationSnapshot }
+
+func (r *allocationCaptureRepo) Reserve(_ context.Context, a BudgetAttribution, _ string, _ float64) (*BudgetReservation, error) {
+	if a.Allocation != nil {
+		copy := cloneAllocationSnapshot(*a.Allocation)
+		r.allocation = &copy
+	}
+	return &BudgetReservation{ID: "allocation-reservation"}, nil
+}
+func (r *allocationCaptureRepo) Finalize(context.Context, string, float64) error { return nil }
+func (r *allocationCaptureRepo) Release(context.Context, string) error           { return nil }
+
+func TestBudgetServiceFreezesAdmissionAllocation(t *testing.T) {
+	center := int64(42)
+	tags := map[string]string{"team": "edge"}
+	repo := &allocationCaptureRepo{}
+	allocation := &AllocationSnapshot{CostCenterID: &center, Environment: AllocationEnvironmentProduction, Tags: tags, PolicyRevision: 3}
+	_, err := NewBudgetService(repo).Reserve(context.Background(), BudgetAttribution{
+		WorkspaceID: 1, ProjectID: 2, BillingPrincipalUserID: 3, ActorUserID: 4, APIKeyID: 5, Allocation: allocation,
+	}, "request", 1)
+	require.NoError(t, err)
+	center = 99
+	tags["team"] = "mutated"
+	require.Equal(t, int64(42), *repo.allocation.CostCenterID)
+	require.Equal(t, "edge", repo.allocation.Tags["team"])
+}
+
 func TestBudgetPolicyUsesFrontendJSONContract(t *testing.T) {
 	policy := BudgetPolicy{WorkspaceID: 1, ProjectID: 2, Amount: 25, HardLimit: true, Enabled: true, Timezone: "Asia/Shanghai"}
 	payload, err := json.Marshal(BudgetView{Policy: policy})

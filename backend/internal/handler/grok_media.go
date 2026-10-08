@@ -822,6 +822,11 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 				pending.ProjectID = tenantProjectID(apiKey)
 				pending.BillingPrincipalUserID = apiKey.BillingUserID()
 				pending.BudgetReservationID = service.BudgetReservationIDFromContext(requestCtx)
+				if apiKey.Tenant.Allocation != nil {
+					if allocation, allocationErr := apiKey.Tenant.Allocation.NormalizeAndValidate(); allocationErr == nil {
+						pending.Allocation = &allocation
+					}
+				}
 			}
 			if err := h.gatewayService.StoreGrokVideoPendingBilling(requestCtx, result.ResponseID, subject.OwnershipID(), apiKey.ID, pending); err != nil {
 				reqLog.Warn("grok_media.store_video_pending_billing_failed_retrying",

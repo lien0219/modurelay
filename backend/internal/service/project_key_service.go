@@ -106,6 +106,10 @@ func (s *APIKeyService) TenantAdmissionSnapshot(ctx context.Context, k *APIKey) 
 		if k.Tenant.AllowedGroupIDs != nil {
 			tenant.AllowedGroupIDs = append([]int64{}, k.Tenant.AllowedGroupIDs...)
 		}
+		if k.Tenant.Allocation != nil {
+			allocation := cloneAllocationSnapshot(*k.Tenant.Allocation)
+			tenant.Allocation = &allocation
+		}
 		copyKey.Tenant = &tenant
 	}
 	if e := s.RevalidateTenant(ctx, &copyKey); e != nil {
@@ -125,7 +129,8 @@ func (s *APIKeyService) VideoPendingTenantSnapshot(ctx context.Context, pending 
 		if k.ProjectID != nil || k.Tenant != nil {
 			return nil, ErrWorkspaceForbidden
 		}
-		return k, nil
+		copyKey := *k
+		return &copyKey, nil
 	}
 	copyKey := pending.ApplyTenantSnapshot(k)
 	if copyKey == nil || copyKey.Tenant == nil {
@@ -147,6 +152,10 @@ func (s *APIKeyService) VideoPendingTenantSnapshot(ctx context.Context, pending 
 		return nil, ErrWorkspaceForbidden
 	}
 	copyKey.BillingPrincipal = payer
+	if copyKey.Tenant.Allocation != nil {
+		allocation := cloneAllocationSnapshot(*copyKey.Tenant.Allocation)
+		copyKey.Tenant.Allocation = &allocation
+	}
 	return copyKey, nil
 }
 func appendNilStrings(in []string) []string {

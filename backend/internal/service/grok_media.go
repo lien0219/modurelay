@@ -484,10 +484,11 @@ type GrokVideoPendingBilling struct {
 	APIKeyID         int64  `json:"api_key_id,omitempty"`
 	// Tenant attribution is captured when the async task is accepted. Completion
 	// and recovery must never infer it from a later API-key/project lookup.
-	WorkspaceID            int64  `json:"workspace_id,omitempty"`
-	ProjectID              int64  `json:"project_id,omitempty"`
-	BillingPrincipalUserID int64  `json:"billing_principal_user_id,omitempty"`
-	BudgetReservationID    string `json:"budget_reservation_id,omitempty"`
+	WorkspaceID            int64               `json:"workspace_id,omitempty"`
+	ProjectID              int64               `json:"project_id,omitempty"`
+	BillingPrincipalUserID int64               `json:"billing_principal_user_id,omitempty"`
+	BudgetReservationID    string              `json:"budget_reservation_id,omitempty"`
+	Allocation             *AllocationSnapshot `json:"allocation,omitempty"`
 	// Policy quota is reserved at async create and settled when completion is
 	// observed (or released on cancellation). Keep the reservation identity and
 	// estimate with the task so polling/recovery never depends on live policy.
@@ -610,8 +611,12 @@ func (s *OpenAIGatewayService) releaseGrokVideoBudgetReservation(ctx context.Con
 // value used by deferred settlement. It deliberately returns a copy so a later
 // live admission/revalidation cannot mutate the async task's identity.
 func (p *GrokVideoPendingBilling) ApplyTenantSnapshot(key *APIKey) *APIKey {
-	if p == nil || key == nil || p.WorkspaceID <= 0 || p.ProjectID <= 0 || p.BillingPrincipalUserID <= 0 {
-		return key
+	if key == nil {
+		return nil
+	}
+	if p == nil || p.WorkspaceID <= 0 || p.ProjectID <= 0 || p.BillingPrincipalUserID <= 0 {
+		copyKey := *key
+		return &copyKey
 	}
 	copyKey := *key
 	if p.ServiceAccountID > 0 {
@@ -624,6 +629,13 @@ func (p *GrokVideoPendingBilling) ApplyTenantSnapshot(key *APIKey) *APIKey {
 		ProjectID:              p.ProjectID,
 		BillingPrincipalUserID: p.BillingPrincipalUserID,
 		BudgetReservationID:    strings.TrimSpace(p.BudgetReservationID),
+	}
+	if p.Allocation != nil {
+		allocation := cloneAllocationSnapshot(*p.Allocation)
+		tenant.Allocation = &allocation
+	} else {
+		allocation := UnallocatedAllocation()
+		tenant.Allocation = &allocation
 	}
 	copyKey.Tenant = tenant
 	return &copyKey

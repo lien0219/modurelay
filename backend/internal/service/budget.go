@@ -54,6 +54,7 @@ type BudgetReservation struct {
 	Estimate               float64
 	Actual                 float64
 	Status                 string
+	Allocation             *AllocationSnapshot
 }
 
 type BudgetPolicy struct {
@@ -90,6 +91,15 @@ func (s *BudgetService) Reserve(ctx context.Context, a BudgetAttribution, reques
 	if a.WorkspaceID <= 0 || a.ProjectID <= 0 || a.BillingPrincipalUserID <= 0 || !ValidExecutionAttribution(a.ActorUserID, a.ServiceAccountID) || a.APIKeyID <= 0 || strings.TrimSpace(requestID) == "" {
 		return nil, ErrBudgetReservationInvalid
 	}
+	allocation := UnallocatedAllocation()
+	if a.Allocation != nil {
+		allocation = cloneAllocationSnapshot(*a.Allocation)
+	}
+	normalized, err := allocation.NormalizeAndValidate()
+	if err != nil {
+		return nil, ErrBudgetReservationInvalid
+	}
+	a.Allocation = &normalized
 	return s.repo.Reserve(ctx, a, requestID, estimate)
 }
 func (s *BudgetService) Finalize(ctx context.Context, id string, actual float64) error {
@@ -133,6 +143,10 @@ func (s *BudgetService) Admit(ctx context.Context, key *APIKey, requestID string
 	}
 	t := key.Tenant
 	a := BudgetAttribution{WorkspaceID: t.WorkspaceID, ProjectID: t.ProjectID, BillingPrincipalUserID: t.BillingPrincipalUserID, ActorUserID: key.UserID, APIKeyID: key.ID, ServiceAccountID: valueOrZero(key.ServiceAccountID)}
+	if t.Allocation != nil {
+		allocation := cloneAllocationSnapshot(*t.Allocation)
+		a.Allocation = &allocation
+	}
 	if err := s.CheckEligibility(ctx, a, estimate, priced); err != nil {
 		return nil, err
 	}
@@ -149,7 +163,33 @@ func (s *BudgetService) Admit(ctx context.Context, key *APIKey, requestID string
 	if r.WorkspaceID != a.WorkspaceID || r.ProjectID != a.ProjectID || r.BillingPrincipalUserID != a.BillingPrincipalUserID || r.ActorUserID != a.ActorUserID || r.ServiceAccountID != a.ServiceAccountID || r.APIKeyID != a.APIKeyID || QuantizeUsageBillingAmount(r.Estimate) != QuantizeUsageBillingAmount(estimate) {
 		return nil, ErrBudgetReservationConflict
 	}
+	if r.Allocation != nil && a.Allocation != nil && !allocationSnapshotsEqual(r.Allocation, a.Allocation) {
+		return nil, ErrBudgetReservationConflict
+	}
 	return NewBudgetReservationHandle(s, r.ID), nil
+}
+
+func allocationSnapshotsEqual(a, b *AllocationSnapshot) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	left := cloneAllocationSnapshot(*a)
+	right := cloneAllocationSnapshot(*b)
+	return left.Environment == right.Environment && left.PolicyRevision == right.PolicyRevision &&
+		((left.CostCenterID == nil && right.CostCenterID == nil) || (left.CostCenterID != nil && right.CostCenterID != nil && *left.CostCenterID == *right.CostCenterID)) &&
+		mapsEqual(left.Tags, right.Tags)
+}
+
+func mapsEqual(a, b map[string]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for key, value := range a {
+		if b[key] != value {
+			return false
+		}
+	}
+	return true
 }
 
 // BudgetReservationHandle ties request admission to the durable reservation.
