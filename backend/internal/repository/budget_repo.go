@@ -41,6 +41,7 @@ func (r *budgetRepository) Reserve(ctx context.Context, a service.BudgetAttribut
 		return nil, service.ErrBudgetUnpriced
 	}
 	estimate = service.QuantizeUsageBillingAmount(estimate)
+	providedAllocation := a.Allocation != nil
 	allocation := service.UnallocatedAllocation()
 	if a.Allocation != nil {
 		allocation = *a.Allocation
@@ -81,9 +82,9 @@ func (r *budgetRepository) Reserve(ctx context.Context, a service.BudgetAttribut
 			fallback := service.UnallocatedAllocation()
 			existing.Allocation = &fallback
 		}
-		if !allocationSnapshotsEqual(existing.Allocation, a.Allocation) {
-			return nil, service.ErrBudgetReservationConflict
-		}
+		// The request ID is the idempotency boundary. Once the first admission
+		// committed, its snapshot is authoritative even if a later retry sees a
+		// newer mutable allocation configuration.
 		for _, scope := range reservationBudgetScopes(existing) {
 			if err = validatePendingBudgetCounter(ctx, tx, scope, existing.Estimate); err != nil {
 				return nil, err
@@ -94,6 +95,17 @@ func (r *budgetRepository) Reserve(ctx context.Context, a service.BudgetAttribut
 	if !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}
+	// This locked read defines the financial admission boundary. A stale auth
+	// value fails explicitly before any provider work or budget hold is created.
+	resolved, err := resolveAllocationSQL(ctx, tx, a.WorkspaceID, a.ProjectID, a.APIKeyID, a.ServiceAccountID)
+	if err != nil {
+		return nil, err
+	}
+	if providedAllocation && allocation.Source != "" && !allocationSnapshotsEqual(resolved, &normalizedAllocation) {
+		return nil, service.ErrWorkspaceAllocationConflict
+	}
+	normalizedAllocation = *resolved
+	a.Allocation = resolved
 
 	now := time.Now()
 	if r.now != nil {
@@ -148,8 +160,8 @@ func (r *budgetRepository) Reserve(ctx context.Context, a service.BudgetAttribut
 	if err != nil {
 		return nil, service.ErrBudgetReservationInvalid
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO budget_reservation_allocation_snapshots(reservation_id,workspace_id,project_id,billing_principal_user_id,cost_center_id,environment,allocation_tags,policy_revision) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8)`,
-		reservation.ID, reservation.WorkspaceID, reservation.ProjectID, reservation.BillingPrincipalUserID, nullableAllocationCenter(normalizedAllocation.CostCenterID), normalizedAllocation.Environment, tagsJSON, normalizedAllocation.PolicyRevision)
+	_, err = tx.ExecContext(ctx, `INSERT INTO budget_reservation_allocation_snapshots(reservation_id,workspace_id,project_id,billing_principal_user_id,cost_center_id,environment,allocation_tags,policy_revision,allocation_source,cost_center_code,cost_center_name) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11)`,
+		reservation.ID, reservation.WorkspaceID, reservation.ProjectID, reservation.BillingPrincipalUserID, nullableAllocationCenter(normalizedAllocation.CostCenterID), normalizedAllocation.Environment, tagsJSON, normalizedAllocation.PolicyRevision, normalizedAllocation.Source, normalizedAllocation.CostCenterCode, normalizedAllocation.CostCenterName)
 	if err != nil {
 		return nil, err
 	}
@@ -171,7 +183,9 @@ func loadReservationAllocationSnapshot(ctx context.Context, tx *sql.Tx, reservat
 	var environment string
 	var tagsRaw []byte
 	var revision int64
-	err := tx.QueryRowContext(ctx, `SELECT cost_center_id,environment,allocation_tags,policy_revision FROM budget_reservation_allocation_snapshots WHERE reservation_id=$1`, reservationID).Scan(&center, &environment, &tagsRaw, &revision)
+	var source service.AllocationSource
+	var code, name string
+	err := tx.QueryRowContext(ctx, `SELECT cost_center_id,environment,allocation_tags,policy_revision,allocation_source,cost_center_code,cost_center_name FROM budget_reservation_allocation_snapshots WHERE reservation_id=$1`, reservationID).Scan(&center, &environment, &tagsRaw, &revision, &source, &code, &name)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -182,7 +196,7 @@ func loadReservationAllocationSnapshot(ctx context.Context, tx *sql.Tx, reservat
 	if err := json.Unmarshal(tagsRaw, &tags); err != nil {
 		return nil, service.ErrBudgetReservationInvalid
 	}
-	snapshot := &service.AllocationSnapshot{Environment: environment, Tags: tags, AllocationTags: tags, PolicyRevision: revision}
+	snapshot := &service.AllocationSnapshot{Environment: environment, Tags: tags, AllocationTags: tags, PolicyRevision: revision, Source: source, CostCenterCode: code, CostCenterName: name}
 	if center.Valid {
 		snapshot.CostCenterID = &center.Int64
 	}
@@ -198,6 +212,9 @@ func allocationSnapshotsEqual(a, b *service.AllocationSnapshot) bool {
 		return a == b
 	}
 	if a.Environment != b.Environment || a.PolicyRevision != b.PolicyRevision {
+		return false
+	}
+	if a.Source != "" && b.Source != "" && a.Source != b.Source {
 		return false
 	}
 	if (a.CostCenterID == nil) != (b.CostCenterID == nil) {

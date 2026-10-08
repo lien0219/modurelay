@@ -495,6 +495,69 @@ export interface WorkspaceUsage {
   [key: string]: unknown
 }
 
+export type AllocationEnvironment = 'production' | 'staging' | 'development' | 'testing' | 'unallocated' | `custom:${string}`
+
+export interface WorkspaceCostCenter {
+  id: number
+  workspace_id: number
+  code: string
+  name: string
+  description: string
+  status: 'active' | 'archived' | string
+}
+
+export interface WorkspaceAllocationTag {
+  id: number
+  workspace_id: number
+  key: string
+  value: string
+  description: string
+  status: 'active' | 'archived' | string
+}
+
+export interface WorkspaceAllocationConfig {
+  cost_center_id?: number | null
+  environment: Exclude<AllocationEnvironment, 'unallocated'>
+  tags?: Record<string, string>
+  allocation_tags?: Record<string, string>
+  policy_revision: number
+}
+
+export interface WorkspaceProjectAllocation {
+  workspace_id: number
+  project_id: number
+  allocation: WorkspaceAllocationConfig
+  updated_by_user_id?: number
+}
+
+export interface WorkspaceAllocationReportGroup {
+  key: string
+  cost: number
+  request_count: number
+}
+
+export interface WorkspaceAllocationReport {
+  workspace_id: number
+  project_id?: number
+  workspace_total: number
+  allocated: number
+  unallocated: number
+  overlapping_tags: boolean
+  cost_centers?: WorkspaceAllocationReportGroup[]
+  environments?: WorkspaceAllocationReportGroup[]
+  tags?: WorkspaceAllocationReportGroup[]
+}
+
+export interface WorkspaceAllocationFilter {
+  start?: string
+  end?: string
+  timezone?: string
+  cost_center_id?: number
+  environment?: string
+  tag_key?: string
+  tag_value?: string
+}
+
 type PageParams = { page?: number; page_size?: number; signal?: AbortSignal }
 
 const pageConfig = (params: PageParams = {}) => ({
@@ -583,6 +646,19 @@ export const workspaceAPI = {
   getProjectBudget: async (workspaceId: number, projectId: number, signal?: AbortSignal) => (await apiClient.get<WorkspaceBudget>(`/workspaces/${workspaceId}/projects/${projectId}/budget`, { signal })).data,
   updateProjectBudget: async (workspaceId: number, projectId: number, payload: Record<string, unknown>) => (await apiClient.put<WorkspaceBudget>(`/workspaces/${workspaceId}/projects/${projectId}/budget`, payload)).data,
   getProjectUsage: async (workspaceId: number, projectId: number, params: Record<string, unknown> = {}, signal?: AbortSignal) => (await apiClient.get<WorkspaceUsage>(`/workspaces/${workspaceId}/projects/${projectId}/usage`, { params, signal })).data,
+
+  listCostCenters: async (workspaceId: number, archived = false, signal?: AbortSignal) => (await apiClient.get<WorkspaceCostCenter[]>(`/workspaces/${workspaceId}/cost-centers`, { params: { include_archived: archived }, signal })).data,
+  createCostCenter: async (workspaceId: number, payload: Pick<WorkspaceCostCenter, 'code' | 'name' | 'description'>) => (await apiClient.post<WorkspaceCostCenter>(`/workspaces/${workspaceId}/cost-centers`, payload)).data,
+  updateCostCenter: async (workspaceId: number, centerId: number, payload: Pick<WorkspaceCostCenter, 'code' | 'name' | 'description'>) => (await apiClient.patch<WorkspaceCostCenter>(`/workspaces/${workspaceId}/cost-centers/${centerId}`, payload)).data,
+  archiveCostCenter: async (workspaceId: number, centerId: number) => (await apiClient.delete(`/workspaces/${workspaceId}/cost-centers/${centerId}`)).data,
+  listAllocationTags: async (workspaceId: number, archived = false, signal?: AbortSignal) => (await apiClient.get<WorkspaceAllocationTag[]>(`/workspaces/${workspaceId}/allocation-tags`, { params: { include_archived: archived }, signal })).data,
+  createAllocationTag: async (workspaceId: number, payload: Pick<WorkspaceAllocationTag, 'key' | 'value' | 'description'>) => (await apiClient.post<WorkspaceAllocationTag>(`/workspaces/${workspaceId}/allocation-tags`, payload)).data,
+  updateAllocationTag: async (workspaceId: number, tagId: number, payload: Pick<WorkspaceAllocationTag, 'key' | 'value' | 'description'>) => (await apiClient.patch<WorkspaceAllocationTag>(`/workspaces/${workspaceId}/allocation-tags/${tagId}`, payload)).data,
+  archiveAllocationTag: async (workspaceId: number, tagId: number) => (await apiClient.delete(`/workspaces/${workspaceId}/allocation-tags/${tagId}`)).data,
+  getAllocationReport: async (workspaceId: number, params: WorkspaceAllocationFilter = {}, signal?: AbortSignal) => (await apiClient.get<WorkspaceAllocationReport>(`/workspaces/${workspaceId}/finops/allocation`, { params, signal })).data,
+  getProjectAllocationReport: async (workspaceId: number, projectId: number, params: WorkspaceAllocationFilter = {}, signal?: AbortSignal) => (await apiClient.get<WorkspaceAllocationReport>(`/workspaces/${workspaceId}/projects/${projectId}/finops/allocation`, { params, signal })).data,
+  getProjectAllocation: async (workspaceId: number, projectId: number, signal?: AbortSignal) => (await apiClient.get<WorkspaceProjectAllocation>(`/workspaces/${workspaceId}/projects/${projectId}/allocation`, { signal })).data,
+  updateProjectAllocation: async (workspaceId: number, projectId: number, payload: WorkspaceAllocationConfig) => (await apiClient.put<WorkspaceProjectAllocation>(`/workspaces/${workspaceId}/projects/${projectId}/allocation`, payload)).data,
 
   listFinopsAnomalies: async (workspaceId: number, params: WorkspaceFinopsAnomalyFilter = {}, signal?: AbortSignal) => (await apiClient.get<BasePaginationResponse<WorkspaceFinopsAnomaly>>(`/workspaces/${workspaceId}/finops/anomalies`, { params, signal })).data,
   getFinopsAnomaly: async (workspaceId: number, anomalyId: number, signal?: AbortSignal) => (await apiClient.get<WorkspaceFinopsAnomaly>(`/workspaces/${workspaceId}/finops/anomalies/${anomalyId}`, { signal })).data,

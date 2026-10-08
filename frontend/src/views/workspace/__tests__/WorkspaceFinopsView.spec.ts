@@ -7,7 +7,7 @@ import type { WorkspaceOverview } from '@/api/workspace'
 import workspaceMessages from '@/i18n/locales/en/workspace'
 import WorkspaceFinopsView from '../WorkspaceFinopsView.vue'
 
-const api = vi.hoisted(() => ({ listWorkspaces: vi.fn(), listProjects: vi.fn(), getWorkspace: vi.fn(), getBudget: vi.fn(), updateBudget: vi.fn(), getUsage: vi.fn(), getOverview: vi.fn(), listFinopsAnomalies: vi.fn(), getFinopsAnomalyStatus: vi.fn(), getFinopsAnomaly: vi.fn(), updateFinopsAnomaly: vi.fn() }))
+const api = vi.hoisted(() => ({ listWorkspaces: vi.fn(), listProjects: vi.fn(), getWorkspace: vi.fn(), getBudget: vi.fn(), updateBudget: vi.fn(), getUsage: vi.fn(), getOverview: vi.fn(), listFinopsAnomalies: vi.fn(), getFinopsAnomalyStatus: vi.fn(), getFinopsAnomaly: vi.fn(), updateFinopsAnomaly: vi.fn(), getAllocationReport: vi.fn(), listCostCenters: vi.fn(), createCostCenter: vi.fn(), updateCostCenter: vi.fn(), archiveCostCenter: vi.fn(), listAllocationTags: vi.fn(), createAllocationTag: vi.fn(), updateAllocationTag: vi.fn(), archiveAllocationTag: vi.fn(), getProjectAllocation: vi.fn(), updateProjectAllocation: vi.fn() }))
 vi.mock('@/api/workspace', () => ({ workspaceAPI: api }))
 vi.mock('@/components/layout/AppLayout.vue', () => ({ default: { template: '<main><slot /></main>' } }))
 vi.mock('@/stores/app', () => ({ useAppStore: () => ({ showError: vi.fn(), showSuccess: vi.fn() }) }))
@@ -43,6 +43,9 @@ describe('workspace FinOps', () => {
     api.getOverview.mockImplementation(async (id: number) => overview(`Project in ${id}`))
     api.listFinopsAnomalies.mockResolvedValue({ items: [] })
     api.getFinopsAnomalyStatus.mockResolvedValue({ lag_seconds: 0, candidate_count: 0, finding_count: 0, scan_duration_ms: 0, last_successful_scan: null })
+    api.getAllocationReport.mockResolvedValue({ workspace_id: 1, workspace_total: 0, allocated: 0, unallocated: 0, overlapping_tags: false, cost_centers: [], environments: [], tags: [] })
+    api.listCostCenters.mockResolvedValue([])
+    api.listAllocationTags.mockResolvedValue([])
   })
   afterEach(() => { wrapper?.unmount(); wrapper = undefined })
 
@@ -112,5 +115,36 @@ describe('workspace FinOps', () => {
     await flushPromises()
     expect(wrapper.find('.anomaly-detail').text()).toContain('model-new')
     expect(wrapper.find('.anomaly-detail').text()).not.toContain('model-old')
+  })
+
+  it('edits active allocation definitions through the server APIs', async () => {
+    api.listWorkspaces.mockResolvedValueOnce({ items: [{ id: 1, name: 'Workspace 1', slug: 'workspace-1', type: 'organization', status: 'active', owner_user_id: 7, billing_owner_user_id: 7, permissions: ['workspace.read', 'workspace.update', 'project.read', 'usage.read', 'budget.read'] }] })
+    const center = { id: 41, workspace_id: 1, code: 'core', name: 'Core', description: 'Primary', status: 'active' }
+    const tag = { id: 51, workspace_id: 1, key: 'team', value: 'platform', description: 'Platform team', status: 'active' }
+    api.listCostCenters.mockResolvedValue([center])
+    api.listAllocationTags.mockResolvedValue([tag])
+    api.updateCostCenter.mockResolvedValue({ ...center, code: 'core-prod', name: 'Core production' })
+    api.updateAllocationTag.mockResolvedValue({ ...tag, value: 'runtime' })
+    const { wrapper } = await render()
+
+    const centerRow = wrapper.findAll('.allocation-list-row')[0]
+    await centerRow.findAll('button').find(button => button.text() === 'common.edit')?.trigger('click')
+    await flushPromises()
+    const centerEdit = wrapper.find('form.allocation-edit-form')
+    expect(centerEdit.exists()).toBe(true)
+    await centerEdit.find('input').setValue('core-prod')
+    await centerEdit.trigger('submit')
+    await flushPromises()
+    expect(api.updateCostCenter).toHaveBeenCalledWith(1, 41, expect.objectContaining({ code: 'core-prod' }))
+
+    const tagRow = wrapper.findAll('.allocation-list-row')[1]
+    await tagRow.findAll('button').find(button => button.text() === 'common.edit')?.trigger('click')
+    await flushPromises()
+    const tagEdit = wrapper.find('form.allocation-tag-edit-form')
+    expect(tagEdit.exists()).toBe(true)
+    await tagEdit.findAll('input')[1].setValue('runtime')
+    await tagEdit.trigger('submit')
+    await flushPromises()
+    expect(api.updateAllocationTag).toHaveBeenCalledWith(1, 51, expect.objectContaining({ value: 'runtime' }))
   })
 })

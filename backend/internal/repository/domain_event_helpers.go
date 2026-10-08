@@ -45,6 +45,11 @@ func insertWorkspaceMutationEvent(ctx context.Context, q workspaceSQL, workspace
 		eventType = service.EventMemberRemoved
 	case "budget_updated":
 		eventType = service.EventBudgetUpdated
+	case "allocation_center_created", "allocation_center_updated", "allocation_center_archived",
+		"allocation_tag_created", "allocation_tag_updated", "allocation_tag_archived":
+		eventType = service.EventWorkspaceUpdated
+	case "allocation_project_updated", "allocation_key_updated", "allocation_service_account_updated":
+		eventType = service.EventProjectUpdated
 	case "policy_updated":
 		eventType = service.EventPolicyUpdated
 	case "workspace_project_access_mode_updated":

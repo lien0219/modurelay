@@ -10,7 +10,7 @@ This document is the durable progress source for the Enterprise Workspace progra
 - C2 local commit / Phase D baseline: `6981e17de52d87ba4723b28452ad8e455e0317b5`, `feat(scim): add enterprise identity provisioning`.
 - Phase D boundary: `feat(security): add workspace security policies and assurance enforcement`; the delivery response records its exact local SHA.
 - Phase E boundary: current implementation starts from `a7e8427a6` (migration ceiling 297); the local Phase E SHA is resolved from Git after commit because a commit cannot embed its own SHA.
-- Migration ceiling after E: 298. Phase D and Phase E are COMPLETE; Phase F is NEXT. Historical Phase A/B/C/D audits and verification records are retained below.
+- Migration ceiling after F: 299. Phases D, E, and F are COMPLETE; Phase G is NEXT. Historical Phase A/B/C/D audits and verification records are retained below.
 
 ## Current Enterprise Capability Matrix
 
@@ -38,7 +38,7 @@ This document is the durable progress source for the Enterprise Workspace progra
 | SCIM 2.0 | Implemented | Migration296, independent connector/hash-only tokens, Users/Groups, typed multi-source reconciliation, explicit Team bindings; local source/test/review gates complete | Phase C2 |
 | Workspace security policy | Implemented | Migration297 extends one canonical SQL policy; actual Session MFA/original age/provider approval and shared transactional Invitation/JIT/SCIM admission; functional UI and bounded recovery | Phase D |
 | FinOps anomaly detection | Implemented | Migration 298 immutable snapshots/findings, bounded rollup detector, lease worker, RBAC/API/UI | Phase E |
-| Cost centers/tags/environment allocation | Missing | Usage snapshots do not expose these dimensions | Phase F |
+| Cost centers/tags/environment allocation | Implemented | Migration 299 immutable allocation snapshots, hourly rollups, tenant-scoped CRUD/report APIs, and bilingual Workspace FinOps UI | Phase F |
 | Retention/export/deletion lifecycle | Partial | Existing retention workers cover current event/notification/webhook data; enterprise export/deletion is absent | Phase G |
 | Enterprise admin diagnostics | Partial | Global workspace list/inspect/status exists; health/backlog/search controls are absent | Phase H |
 | Production hardening | Partial | Existing tests cover many billing/policy invariants; full enterprise matrix does not yet exist | Phase I |
@@ -49,7 +49,6 @@ This document is the durable progress source for the Enterprise Workspace progra
 | Missing capability | Contract | Planned phase | Blocking risk |
 | --- | --- | --- | --- |
 | Security policy | MFA/SSO/session/domain/invitation controls | D | Human control-plane bypass |
-| Anomaly/cost allocation | Immutable snapshots and bounded aggregation | E–F | Historical billing drift |
 | Lifecycle/export/admin | Retention floors, tenant-owned exports, controlled emergency actions | G–H | Data loss and operator overreach |
 | Cross-module hardening | Tenant matrix, concurrency, chaos/recovery, rehearsal | I | Production integrity |
 
@@ -74,8 +73,8 @@ This document is the durable progress source for the Enterprise Workspace progra
 | C2 | SCIM 2.0 Enterprise Provisioning | Independent hash-token connector; attributed Membership/Team sources; explicit Group binding | 296 | `feat(scim): add enterprise identity provisioning`; resolve SHA at delivery | Post-R1 relevant/realPG/allidentityrace/vet/build/default lint PASS; frontend424files3149tests and Canvas7 PASS; final full suites and supplemental tagged lint PRE-EXISTING | COMPLETE | Cross-source removal, Owner/Billing safety and email retries independently rechecked | Real Entra/Okta provisioning in Phase L |
 | D | Workspace security policy | One human security evaluator and shared transactional member admission | 297 | `feat(security): add workspace security policies and assurance enforcement`; exact SHA at delivery | Focused/realPG/race/IDOR/vet/build/pinned lint/frontend/Canvas gates PASS; raw full-suite baseline failures and transient separately disclosed; formal scan completed with partial sealed coverage and two remediated initial findings | COMPLETE | Conservative local MFA; access-JWT baseline revocation; Workspace contention; browser/provider/load NOT RUN | IdP/passkey MFA mapping, immutable final-commit formal scan in I/L, arbitrary ABAC |
 | E | Advanced FinOps anomalies | Immutable usage snapshots plus bounded detector jobs | 298 | `feat(finops): add workspace anomaly detection and findings` (SHA resolved after commit) | Targeted/backend/frontend gates recorded below; full-suite baseline comparison and unavailable integration/manual checks explicitly classified | COMPLETE | Late rollups, bounded candidate omission, PostgreSQL/manual/load availability | AI remediation |
-| F | Cost centers, tags, environment allocation | New-write dimensions and explicit legacy NULLs | 299+ | Not started | Not run | NEXT | Historical attribution drift | ERP tree |
-| G | Retention, export, archive/restore, deletion lifecycle | Tenant-owned jobs, retention floors, resumable purge | 299+ | Not started | Not run | NOT RUN | Data loss, legal retention | Complex legal hold |
+| F | Cost centers, tags, environment allocation | New-write dimensions, explicit legacy NULLs, immutable admission snapshots, bounded rollups | 299 | `feat(finops): add workspace cost allocation and tags` (SHA resolved from Git) | Targeted/migration/PostgreSQL/race/static/frontend/Canvas gates PASS; complete backend suites retain only the recorded Windows `sh.exe` baseline failures; manual/provider/load/deployment gates NOT RUN | COMPLETE | Historical attribution drift; bounded tag overlap; external acceptance availability | ERP tree |
+| G | Retention, export, archive/restore, deletion lifecycle | Tenant-owned jobs, retention floors, resumable purge | 300+ | Not started | Not run | NEXT | Data loss, legal retention | Complex legal hold |
 | H | Admin diagnostics and operations | Global Admin remains outside tenant membership | 300+ | Not started | Not run | NOT RUN | High-cardinality metrics, emergency actions | SIEM integration |
 | I | Production hardening | Lifecycle/isolation/concurrency/chaos/migration rehearsal gates | 301+ | Not started | Not run | NOT RUN | Recovery and billing integrity | New business features |
 | J | Functional freeze | Only bugs, UI, docs, release blockers after gate | None expected | Not started | Not run | NOT RUN | Scope creep | — |
@@ -355,8 +354,8 @@ uniqueness and a transactional snapshot/finding/event write make retries
 idempotent. ACK/Resolve uses the existing WorkspaceAccessService, composite
 workspace/project predicates, audit rows, bounded scalar domain events, and
 optimistic version checks. Notifications remain limited to owner/admin/billing;
-Phase F cost centers/tags/environment allocation and AI remediation remain
-deferred.
+Phase F cost centers, tags, and environment allocation are delivered below;
+AI remediation remains deferred.
 
 Implementation and operational details are in
 [FINOPS_ANOMALY_DETECTION.md](FINOPS_ANOMALY_DETECTION.md). The executable
@@ -401,4 +400,58 @@ cannot leave a stale pre-Phase-E payload allowlist for anomaly events.
 The local boundary is `feat(finops): add workspace anomaly detection and
 findings`; its immutable SHA and final clean-tree state are resolved from Git in
 the delivery report. No push, PR, `main`, or `develop` mutation is part of this
-phase. Phase E is COMPLETE; Phase F is NEXT.
+phase. At this boundary Phase E was COMPLETE and Phase F was NEXT; Phase F is
+recorded below.
+
+## Phase F completion record (2026-10-09)
+
+Phase F adds tenant-scoped cost centers, controlled allocation tags, standard
+production/staging/development/testing environments, Project defaults, and
+optional API-key and Service-account overrides. The trusted admission path
+resolves allocation after existing Workspace, Project, credential, access,
+policy, quota, and billing-principal checks with deterministic precedence:
+API-key override, Service-account override, Project default, then explicit
+unallocated. Every configured candidate is validated before selection, and
+foreign or archived references fail closed.
+
+Migration 299 is append-only. It adds the configuration tables and composite
+tenant constraints, reservation and usage allocation snapshots, immutable
+snapshot triggers, bounded tag JSON validation, and an indexed UTC hourly
+rollup. A reservation snapshot is written with the budget hold. Usage evidence
+copies that snapshot one time; async video placeholders defer capture until
+validated settlement. Configuration changes and archives cannot rewrite
+historical evidence, and legacy tenant-scoped rows remain visible as
+unallocated without a historical usage rewrite.
+
+The control plane exposes cost-center/tag lifecycle, Project defaults,
+credential overrides, and Workspace/Project allocation reports. It reuses the
+central WorkspaceAccessService and existing Workspace/Project/usage
+permissions, rechecks all route IDs in service/repository transactions, and
+writes the existing audit, domain-event, and outbox records. Reports use the
+hourly rollup for base dimensions, immutable snapshots for tag filters, and
+explicitly preserve `workspace_total = allocated + unallocated` while marking
+multi-tag groups as overlapping.
+
+The Workspace FinOps surface adds bilingual allocation filters, totals,
+breakdown tables, configuration controls, validation, permission visibility,
+mobile table containment, and stale-response protection without changing
+existing anomaly or budget behavior. Phase E anomaly evidence and its detector
+remain unchanged.
+
+### Phase F verification record
+
+| Area | Result | Recorded evidence |
+| --- | --- | --- |
+| Migration/domain/admission/control-plane tests | PASS | Migration contract, service allocation/budget, repository allocation/budget, and handler allocation/Workspace targeted commands passed. |
+| PostgreSQL allocation integration | PASS | Real PostgreSQL integration covered tenant isolation, audit/event writes, reservation and usage snapshots, archive/history, rollups/reconciliation, tag overlap, and async video settlement. The same matrix passed under `-race`. |
+| Go static checks | PASS | `go vet ./...`, `go build ./...`, and pinned `golangci-lint v2.13.0` (`0 issues`) passed; Phase F Go files are gofmt-clean. |
+| Frontend | PASS | Focused allocation/FinOps tests 11/11; full Vitest 431 files/3205 tests; i18n 3 tests; lint, typecheck, and production build passed. |
+| Canvas and media regression | PASS | Canvas Seedance suite 7/7 plus focused Seedance/Grok/video service, handler, and repository tests. |
+| Complete backend default/integration suites | PRE-EXISTING | Current commands retain only the recorded three Windows `backup_pg_dumper` missing-`sh.exe` failures and unlock-expectation cascade; no Phase F-only failure was introduced. |
+| Manual/provider/load/deployment | NOT RUN | Authenticated browser/manual, real upstream/provider, production load/chaos, and deployment cutover remain release-level gates. |
+
+Phase F is COMPLETE at local commit boundary
+`feat(finops): add workspace cost allocation and tags`; its immutable SHA is
+resolved from Git after commit. Phase G (retention, export, archive/restore,
+and deletion lifecycle) is NEXT. No push, PR, branch switch, `main`/`develop`
+mutation, or deployment is part of this phase.

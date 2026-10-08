@@ -211,6 +211,27 @@ type WorkspaceGovernanceRepository interface {
 	ListProjectAccessGrants(context.Context, int64, int64, int64, pagination.PaginationParams) ([]ProjectAccessGrant, int64, error)
 }
 
+// WorkspaceAllocationRepository is optional so legacy WorkspaceRepository
+// test doubles remain source-compatible while production repositories expose
+// Phase F control-plane configuration and reports.
+type WorkspaceAllocationRepository interface {
+	ListAllocationCostCenters(context.Context, int64, int64, bool) ([]WorkspaceCostCenter, error)
+	CreateAllocationCostCenter(context.Context, int64, int64, string, string, string) (*WorkspaceCostCenter, error)
+	UpdateAllocationCostCenter(context.Context, int64, int64, int64, string, string, string) (*WorkspaceCostCenter, error)
+	ArchiveAllocationCostCenter(context.Context, int64, int64, int64) error
+	ListAllocationTags(context.Context, int64, int64, bool) ([]WorkspaceAllocationTag, error)
+	CreateAllocationTag(context.Context, int64, int64, string, string, string) (*WorkspaceAllocationTag, error)
+	UpdateAllocationTag(context.Context, int64, int64, int64, string, string, string) (*WorkspaceAllocationTag, error)
+	ArchiveAllocationTag(context.Context, int64, int64, int64) error
+	GetProjectAllocation(context.Context, int64, int64, int64) (*ProjectAllocation, error)
+	SetProjectAllocation(context.Context, int64, int64, int64, AllocationConfig) (*ProjectAllocation, error)
+	GetAPIKeyAllocationOverride(context.Context, int64, int64, int64, int64) (*APIKeyAllocationOverride, error)
+	SetAPIKeyAllocationOverride(context.Context, int64, int64, int64, int64, AllocationConfig) (*APIKeyAllocationOverride, error)
+	GetServiceAccountAllocationOverride(context.Context, int64, int64, int64, int64) (*ServiceAccountAllocationOverride, error)
+	SetServiceAccountAllocationOverride(context.Context, int64, int64, int64, int64, AllocationConfig) (*ServiceAccountAllocationOverride, error)
+	GetAllocationReport(context.Context, AllocationFilter) (*AllocationReport, error)
+}
+
 // WorkspaceAdminLifecycleGuard is optionally implemented by UserRepository so
 // admin deletion can fail before enumerating/tombstoning API keys.
 type WorkspaceAdminLifecycleGuard interface {

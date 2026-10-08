@@ -148,6 +148,8 @@ func TestBudgetSecondScopeSQLFailureRollsBackAdmission(t *testing.T) {
 	mock.ExpectQuery(`SELECT user_id FROM workspace_members`).WithArgs(a.WorkspaceID, a.ActorUserID, a.BillingPrincipalUserID).
 		WillReturnRows(sqlmock.NewRows([]string{"user_id"}).AddRow(3).AddRow(4))
 	mock.ExpectQuery(`SELECT .* FROM budget_reservations`).WithArgs("request", a.APIKeyID).WillReturnError(sql.ErrNoRows)
+	mock.ExpectQuery(`WITH candidates AS`).WithArgs(a.WorkspaceID, a.ProjectID, a.APIKeyID, int64(0)).
+		WillReturnRows(sqlmock.NewRows([]string{"cost_center_id", "cost_center_code", "cost_center_name", "environment", "policy_revision", "allocation_source", "allocation_tags", "valid"}))
 	for _, policy := range []string{"workspace_budget_policies", "project_budget_policies"} {
 		id := a.WorkspaceID
 		if policy == "project_budget_policies" {

@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	entsql "entgo.io/ent/dialect/sql"
-	"errors"
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
@@ -13,7 +12,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/lib/pq"
 	"strconv"
-	"strings"
 	"time"
 )
 
@@ -199,94 +197,9 @@ func (r *apiKeyRepository) ResolveTenant(ctx context.Context, k *service.APIKey)
 	return tenant, nil
 }
 
-// resolveTenantAllocation reads all configured candidates under the already
-// admitted composite tenant. Every configured candidate is validated before
-// precedence is applied so stale or malformed configuration fails closed.
+// resolveTenantAllocation returns one coherent, server-owned admission value.
 func (r *apiKeyRepository) resolveTenantAllocation(ctx context.Context, workspaceID, projectID, apiKeyID, serviceAccountID int64) (*service.AllocationSnapshot, error) {
-	apiKey, err := r.loadAllocationCandidate(ctx, "api_key_allocation_overrides", "api_key_allocation_override_tags", apiKeyID, workspaceID, projectID, true)
-	if err != nil {
-		return nil, err
-	}
-	var machine *service.AllocationSnapshot
-	if serviceAccountID > 0 {
-		machine, err = r.loadAllocationCandidate(ctx, "service_account_allocation_overrides", "service_account_allocation_override_tags", serviceAccountID, workspaceID, projectID, false)
-		if err != nil {
-			return nil, err
-		}
-	}
-	project, err := r.loadAllocationCandidate(ctx, "project_cost_allocations", "project_cost_allocation_tags", projectID, workspaceID, projectID, false)
-	if err != nil {
-		return nil, err
-	}
-	resolved := service.ResolveAllocation(apiKey, machine, project)
-	return &resolved, nil
-}
-
-func (r *apiKeyRepository) loadAllocationCandidate(ctx context.Context, table, tagsTable string, candidateID, workspaceID, projectID int64, apiKey bool) (*service.AllocationSnapshot, error) {
-	if candidateID <= 0 {
-		return nil, nil
-	}
-	column := "project_id"
-	if apiKey {
-		column = "api_key_id"
-	} else if strings.Contains(table, "service_account") {
-		column = "service_account_id"
-	}
-	query := `SELECT o.cost_center_id,o.environment,o.policy_revision,
- COALESCE(jsonb_object_agg(t.tag_key,t.tag_value) FILTER (WHERE t.id IS NOT NULL),'{}'::jsonb),
- (o.project_id=$3 AND (o.cost_center_id IS NULL OR (c.id IS NOT NULL AND c.workspace_id=$1 AND c.status='active')))
-  AND bool_and(t.id IS NULL OR (t.workspace_id=$1 AND t.status='active'))
- FROM ` + table + ` o
- LEFT JOIN ` + tagsTable + ` ot ON ot.workspace_id=o.workspace_id AND ot.` + column + `=o.` + column + `
- LEFT JOIN workspace_allocation_tags t ON t.workspace_id=ot.workspace_id AND t.id=ot.tag_id
- LEFT JOIN workspace_cost_centers c ON c.workspace_id=o.workspace_id AND c.id=o.cost_center_id
-	 WHERE o.workspace_id=$1 AND o.` + column + `=$2
- GROUP BY o.cost_center_id,o.environment,o.policy_revision,c.id,c.workspace_id,c.status`
-	var center sql.NullInt64
-	var env string
-	var revision int64
-	var rawTags []byte
-	var valid bool
-	rows, err := r.sql.QueryContext(ctx, query, workspaceID, candidateID, projectID)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = rows.Close() }()
-	if !rows.Next() {
-		if err := rows.Err(); err != nil {
-			return nil, err
-		}
-		return nil, nil
-	}
-	err = rows.Scan(&center, &env, &revision, &rawTags, &valid)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	if !valid {
-		return nil, service.ErrWorkspaceForbidden
-	}
-	var raw map[string]any
-	if len(rawTags) > 0 {
-		if err := json.Unmarshal(rawTags, &raw); err != nil {
-			return nil, service.ErrWorkspaceForbidden
-		}
-	}
-	tags, err := service.ValidateAllocationJSONTags(raw)
-	if err != nil {
-		return nil, service.ErrWorkspaceForbidden
-	}
-	snapshot := &service.AllocationSnapshot{Environment: env, Tags: tags, AllocationTags: tags, PolicyRevision: revision}
-	if center.Valid {
-		snapshot.CostCenterID = &center.Int64
-	}
-	normalized, err := snapshot.NormalizeAndValidate()
-	if err != nil {
-		return nil, service.ErrWorkspaceForbidden
-	}
-	return &normalized, nil
+	return resolveAllocationSQL(ctx, r.sql, workspaceID, projectID, apiKeyID, serviceAccountID)
 }
 
 // Reads constrain membership, workspace, project and key in SQL, even if an

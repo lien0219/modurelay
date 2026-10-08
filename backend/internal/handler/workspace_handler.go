@@ -122,6 +122,12 @@ func (h *WorkspaceHandler) RegisterTenantRoutes(v1 *gin.RouterGroup) {
 		{"GET", "/workspaces/:id/projects/:project_id/keys", "key.list"}, {"POST", "/workspaces/:id/projects/:project_id/keys", "key.create"}, {"GET", "/workspaces/:id/projects/:project_id/keys/:key_id", "key.get"}, {"PATCH", "/workspaces/:id/projects/:project_id/keys/:key_id", "key.update"}, {"DELETE", "/workspaces/:id/projects/:project_id/keys/:key_id", "key.revoke"}, {"GET", "/workspaces/:id/projects/:project_id/groups/available", "group.available"}, {"GET", "/workspaces/:id/audit", "audit.list"},
 		{"GET", "/workspaces/:id/webhooks", "webhook.list"}, {"POST", "/workspaces/:id/webhooks", "webhook.create"}, {"PATCH", "/workspaces/:id/webhooks/:webhook_id", "webhook.update"}, {"DELETE", "/workspaces/:id/webhooks/:webhook_id", "webhook.delete"}, {"POST", "/workspaces/:id/webhooks/:webhook_id/rotate", "webhook.rotate"}, {"POST", "/workspaces/:id/webhooks/:webhook_id/test", "webhook.test"}, {"GET", "/workspaces/:id/webhooks/:webhook_id/deliveries", "webhook.deliveries"}, {"POST", "/workspaces/:id/webhooks/:webhook_id/deliveries/:delivery_id/retry", "webhook.retry"},
 		{"GET", "/workspaces/:id/usage", "finops.workspace.usage"}, {"GET", "/workspaces/:id/overview", "finops.workspace.overview"}, {"GET", "/workspaces/:id/budget", "finops.workspace.budget.get"}, {"PUT", "/workspaces/:id/budget", "finops.workspace.budget.put"},
+		{"GET", "/workspaces/:id/cost-centers", "allocation.center.list"}, {"POST", "/workspaces/:id/cost-centers", "allocation.center.create"}, {"PATCH", "/workspaces/:id/cost-centers/:center_id", "allocation.center.update"}, {"DELETE", "/workspaces/:id/cost-centers/:center_id", "allocation.center.archive"},
+		{"GET", "/workspaces/:id/allocation-tags", "allocation.tag.list"}, {"POST", "/workspaces/:id/allocation-tags", "allocation.tag.create"}, {"PATCH", "/workspaces/:id/allocation-tags/:tag_id", "allocation.tag.update"}, {"DELETE", "/workspaces/:id/allocation-tags/:tag_id", "allocation.tag.archive"},
+		{"GET", "/workspaces/:id/finops/allocation", "allocation.workspace.report"}, {"GET", "/workspaces/:id/projects/:project_id/finops/allocation", "allocation.project.report"},
+		{"GET", "/workspaces/:id/projects/:project_id/allocation", "allocation.project.get"}, {"PUT", "/workspaces/:id/projects/:project_id/allocation", "allocation.project.put"},
+		{"GET", "/workspaces/:id/projects/:project_id/keys/:key_id/allocation", "allocation.key.get"}, {"PUT", "/workspaces/:id/projects/:project_id/keys/:key_id/allocation", "allocation.key.put"},
+		{"GET", "/workspaces/:id/projects/:project_id/service-accounts/:service_account_id/allocation", "allocation.service_account.get"}, {"PUT", "/workspaces/:id/projects/:project_id/service-accounts/:service_account_id/allocation", "allocation.service_account.put"},
 		{"GET", "/workspaces/:id/finops/anomalies/status", "finops.workspace.anomalies.status"}, {"GET", "/workspaces/:id/finops/anomalies", "finops.workspace.anomalies.list"}, {"GET", "/workspaces/:id/finops/anomalies/:anomaly_id", "finops.workspace.anomalies.get"}, {"PATCH", "/workspaces/:id/finops/anomalies/:anomaly_id", "finops.workspace.anomalies.patch"},
 		{"GET", "/workspaces/:id/projects/:project_id/usage", "finops.project.usage"}, {"GET", "/workspaces/:id/projects/:project_id/overview", "finops.project.overview"}, {"GET", "/workspaces/:id/projects/:project_id/budget", "finops.project.budget.get"}, {"PUT", "/workspaces/:id/projects/:project_id/budget", "finops.project.budget.put"},
 		{"GET", "/workspaces/:id/projects/:project_id/finops/anomalies", "finops.project.anomalies.list"}, {"GET", "/workspaces/:id/projects/:project_id/finops/anomalies/:anomaly_id", "finops.project.anomalies.get"}, {"PATCH", "/workspaces/:id/projects/:project_id/finops/anomalies/:anomaly_id", "finops.project.anomalies.patch"},
@@ -199,7 +205,7 @@ func (h *WorkspaceHandler) handle(action string) gin.HandlerFunc {
 			return
 		}
 		ids := map[string]int64{}
-		for _, name := range []string{"id", "project_id", "member_id", "team_id", "grant_id", "invitation_id", "key_id", "webhook_id", "delivery_id", "domain_id", "provider_id", "anomaly_id"} {
+		for _, name := range []string{"id", "project_id", "member_id", "team_id", "grant_id", "invitation_id", "key_id", "service_account_id", "center_id", "tag_id", "webhook_id", "delivery_id", "domain_id", "provider_id", "anomaly_id"} {
 			if raw := c.Param(name); raw != "" {
 				// Route enumeration tests and malformed internal probes can carry a
 				// literal :param placeholder. Let the normal tenant/security gate
@@ -231,6 +237,9 @@ func (h *WorkspaceHandler) handle(action string) gin.HandlerFunc {
 		ctx := c.Request.Context()
 		if strings.HasPrefix(action, "identity.") {
 			c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 512<<10)
+		}
+		if strings.HasPrefix(action, "allocation.") && c.Request.Method != http.MethodGet {
+			c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 64<<10)
 		}
 		page, size := response.ParsePagination(c)
 		params := pagination.PaginationParams{Page: page, PageSize: size}
@@ -715,6 +724,97 @@ func (h *WorkspaceHandler) handle(action string) gin.HandlerFunc {
 				break
 			}
 			out, err = h.webhooks.Retry(ctx, a, w, ids["webhook_id"], ids["delivery_id"])
+		case "allocation.center.list":
+			out, err = h.workspaces.ListAllocationCostCenters(ctx, a, w, c.Query("include_archived") == "true")
+		case "allocation.center.create":
+			var req struct {
+				Code        string `json:"code"`
+				Name        string `json:"name"`
+				Description string `json:"description"`
+			}
+			if !workspaceBind(c, &req) {
+				return
+			}
+			out, err = h.workspaces.CreateAllocationCostCenter(ctx, a, w, req.Code, req.Name, req.Description)
+		case "allocation.center.update":
+			var req struct {
+				Code        string `json:"code"`
+				Name        string `json:"name"`
+				Description string `json:"description"`
+			}
+			if !workspaceBind(c, &req) {
+				return
+			}
+			out, err = h.workspaces.UpdateAllocationCostCenter(ctx, a, w, ids["center_id"], req.Code, req.Name, req.Description)
+		case "allocation.center.archive":
+			err = h.workspaces.ArchiveAllocationCostCenter(ctx, a, w, ids["center_id"])
+		case "allocation.tag.list":
+			out, err = h.workspaces.ListAllocationTags(ctx, a, w, c.Query("include_archived") == "true")
+		case "allocation.tag.create":
+			var req struct {
+				Key         string `json:"key"`
+				Value       string `json:"value"`
+				Description string `json:"description"`
+			}
+			if !workspaceBind(c, &req) {
+				return
+			}
+			out, err = h.workspaces.CreateAllocationTag(ctx, a, w, req.Key, req.Value, req.Description)
+		case "allocation.tag.update":
+			var req struct {
+				Key         string `json:"key"`
+				Value       string `json:"value"`
+				Description string `json:"description"`
+			}
+			if !workspaceBind(c, &req) {
+				return
+			}
+			out, err = h.workspaces.UpdateAllocationTag(ctx, a, w, ids["tag_id"], req.Key, req.Value, req.Description)
+		case "allocation.tag.archive":
+			err = h.workspaces.ArchiveAllocationTag(ctx, a, w, ids["tag_id"])
+		case "allocation.project.get":
+			out, err = h.workspaces.GetProjectAllocation(ctx, a, w, p)
+		case "allocation.project.put":
+			var req service.AllocationConfig
+			if !workspaceBind(c, &req) {
+				return
+			}
+			out, err = h.workspaces.SetProjectAllocation(ctx, a, w, p, req)
+		case "allocation.key.get":
+			out, err = h.workspaces.GetAPIKeyAllocationOverride(ctx, a, w, p, ids["key_id"])
+		case "allocation.key.put":
+			var req service.AllocationConfig
+			if !workspaceBind(c, &req) {
+				return
+			}
+			out, err = h.workspaces.SetAPIKeyAllocationOverride(ctx, a, w, p, ids["key_id"], req)
+		case "allocation.service_account.get":
+			out, err = h.workspaces.GetServiceAccountAllocationOverride(ctx, a, w, p, ids["service_account_id"])
+		case "allocation.service_account.put":
+			var req service.AllocationConfig
+			if !workspaceBind(c, &req) {
+				return
+			}
+			out, err = h.workspaces.SetServiceAccountAllocationOverride(ctx, a, w, p, ids["service_account_id"], req)
+		case "allocation.workspace.report", "allocation.project.report":
+			start, end, timezone, rangeErr := finopsRange(c)
+			if rangeErr != nil {
+				response.ErrorFrom(c, rangeErr)
+				return
+			}
+			filter := service.AllocationFilter{WorkspaceID: w, ProjectID: 0, From: start.Format(time.RFC3339), To: end.Format(time.RFC3339), Timezone: timezone, Environment: strings.TrimSpace(c.Query("environment")), TagKey: strings.TrimSpace(c.Query("tag_key")), TagValue: c.Query("tag_value")}
+			if strings.HasPrefix(action, "allocation.project") {
+				filter.ProjectID = p
+			}
+			if raw := c.Query("cost_center_id"); raw != "" {
+				id, parseErr := strconv.ParseInt(raw, 10, 64)
+				if parseErr != nil || id <= 0 {
+					response.ErrorFrom(c, service.ErrWorkspaceInvalid)
+					return
+				}
+				filter.CostCenterID = &id
+			}
+			out, err = h.workspaces.GetAllocationReport(ctx, a, filter)
 		case "finops.workspace.usage", "finops.project.usage", "finops.workspace.overview", "finops.project.overview":
 			var serviceAccountIDs []int64
 			if raw := c.Query("service_account_id"); raw != "" {

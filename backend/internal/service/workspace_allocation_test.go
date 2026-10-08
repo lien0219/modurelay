@@ -7,12 +7,12 @@ import (
 )
 
 func TestNormalizeAllocationEnvironment(t *testing.T) {
-	for _, value := range []string{"production", " staging ", "development", "testing", "custom:eu-west-1"} {
+	for _, value := range []string{"production", " staging ", "development", "testing"} {
 		got, err := NormalizeAllocationEnvironment(value)
 		require.NoError(t, err)
 		require.NotEmpty(t, got)
 	}
-	for _, value := range []string{"", "prod", "custom:EU", "custom:-bad", "custom:bad_"} {
+	for _, value := range []string{"", "prod", "custom:eu-west-1", "custom:EU", "custom:-bad", "custom:bad_"} {
 		require.Error(t, ValidateAllocationEnvironment(value), value)
 	}
 }
@@ -68,4 +68,16 @@ func TestAllocationConfigAndSnapshotValidation(t *testing.T) {
 	require.NoError(t, CheckAllocationPolicyRevision(0, 1))
 	require.NoError(t, CheckAllocationPolicyRevision(2, 2))
 	require.ErrorIs(t, CheckAllocationPolicyRevision(1, 2), ErrWorkspaceAllocationConflict)
+}
+
+func TestAllocationSnapshotRejectsInvalidCenterAndSource(t *testing.T) {
+	negative := int64(-1)
+	_, err := (AllocationSnapshot{CostCenterID: &negative, Environment: "production", PolicyRevision: 1}).NormalizeAndValidate()
+	require.ErrorIs(t, err, ErrWorkspaceAllocationInvalid)
+
+	_, err = (AllocationSnapshot{Environment: "production", PolicyRevision: 1, Source: AllocationSource("forged")}).NormalizeAndValidate()
+	require.ErrorIs(t, err, ErrWorkspaceAllocationInvalid)
+
+	_, err = (AllocationSnapshot{Environment: "production", PolicyRevision: 1, Source: AllocationSourceUnallocated}).NormalizeAndValidate()
+	require.ErrorIs(t, err, ErrWorkspaceAllocationInvalid)
 }

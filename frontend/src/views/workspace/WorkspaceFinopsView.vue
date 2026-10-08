@@ -42,6 +42,87 @@
         </div>
         <div v-else class="workspace-state">{{ t('workspace.usageUnavailable') }}</div>
       </section>
+      <section v-if="store.can('usage.read') && allocationSupported" class="workspace-panel" aria-labelledby="allocation-report-title">
+        <div class="workspace-panel__heading">
+          <div><h2 id="allocation-report-title">{{ t('workspace.allocationBreakdown') }}</h2><p>{{ t('workspace.allocationDescription') }}</p></div>
+          <button type="button" class="btn btn-secondary btn-sm" :disabled="allocationLoading" @click="() => loadAllocation()">{{ t('common.refresh') }}</button>
+        </div>
+        <form class="allocation-filters" @submit.prevent="() => loadAllocation()">
+          <label><span>{{ t('workspace.environment') }}</span><select v-model="allocationFilters.environment" class="input"><option value="">{{ t('workspace.allEnvironments') }}</option><option value="production">{{ t('workspace.environments.production') }}</option><option value="staging">{{ t('workspace.environments.staging') }}</option><option value="development">{{ t('workspace.environments.development') }}</option><option value="testing">{{ t('workspace.environments.testing') }}</option><option value="unallocated">{{ t('workspace.unallocated') }}</option></select></label>
+          <label><span>{{ t('workspace.costCenter') }}</span><select v-model="allocationFilters.cost_center_id" class="input"><option :value="undefined">{{ t('workspace.allCostCenters') }}</option><option v-for="center in costCenters" :key="center.id" :value="center.id">{{ center.code }} · {{ center.name }}</option></select></label>
+          <label><span>{{ t('workspace.tagKey') }}</span><input v-model="allocationFilters.tag_key" class="input" maxlength="63" autocomplete="off"></label>
+          <label><span>{{ t('workspace.tagValue') }}</span><input v-model="allocationFilters.tag_value" class="input" maxlength="255" autocomplete="off"></label>
+          <button type="submit" class="btn btn-secondary" :disabled="allocationLoading">{{ t('workspace.applyAllocationFilters') }}</button>
+        </form>
+        <p v-if="allocationError" class="workspace-warning" role="alert">{{ t('workspace.allocationLoadError') }}</p>
+        <div v-if="allocationLoading" class="workspace-state" role="status">{{ t('common.loading') }}</div>
+        <template v-else-if="allocationReport">
+          <div class="workspace-budget__values allocation-totals">
+            <div><span>{{ t('workspace.workspaceTotal') }}</span><strong>{{ money(allocationReport.workspace_total) }}</strong></div>
+            <div><span>{{ t('workspace.allocatedSpend') }}</span><strong>{{ money(allocationReport.allocated) }}</strong></div>
+            <div><span>{{ t('workspace.unallocated') }}</span><strong>{{ money(allocationReport.unallocated) }}</strong></div>
+          </div>
+          <p class="workspace-period">{{ allocationReport.overlapping_tags ? t('workspace.overlappingTagsNote') : '' }}</p>
+          <div class="allocation-groups">
+            <div class="allocation-group"><h3>{{ t('workspace.costCenters') }}</h3><div class="allocation-table-wrap"><table class="allocation-table"><caption class="sr-only">{{ t('workspace.costCenters') }}</caption><thead><tr><th>{{ t('workspace.group') }}</th><th>{{ t('workspace.spend') }}</th><th>{{ t('workspace.requests') }}</th></tr></thead><tbody><tr v-for="item in allocationReport.cost_centers || []" :key="item.key"><td>{{ allocationCenterLabel(item.key) }}</td><td>{{ money(item.cost) }}</td><td>{{ item.request_count }}</td></tr><tr v-if="!(allocationReport.cost_centers || []).length"><td colspan="3">{{ t('workspace.noAllocationData') }}</td></tr></tbody></table></div></div>
+            <div class="allocation-group"><h3>{{ t('workspace.environment') }}</h3><div class="allocation-table-wrap"><table class="allocation-table"><caption class="sr-only">{{ t('workspace.environment') }}</caption><thead><tr><th>{{ t('workspace.group') }}</th><th>{{ t('workspace.spend') }}</th><th>{{ t('workspace.requests') }}</th></tr></thead><tbody><tr v-for="item in allocationReport.environments || []" :key="item.key"><td>{{ environmentLabel(item.key) }}</td><td>{{ money(item.cost) }}</td><td>{{ item.request_count }}</td></tr><tr v-if="!(allocationReport.environments || []).length"><td colspan="3">{{ t('workspace.noAllocationData') }}</td></tr></tbody></table></div></div>
+            <div class="allocation-group"><h3>{{ t('workspace.tags') }}</h3><div class="allocation-table-wrap"><table class="allocation-table"><caption class="sr-only">{{ t('workspace.tags') }}</caption><thead><tr><th>{{ t('workspace.group') }}</th><th>{{ t('workspace.spend') }}</th><th>{{ t('workspace.requests') }}</th></tr></thead><tbody><tr v-for="item in allocationReport.tags || []" :key="item.key"><td class="allocation-technical">{{ item.key }}</td><td>{{ money(item.cost) }}</td><td>{{ item.request_count }}</td></tr><tr v-if="!(allocationReport.tags || []).length"><td colspan="3">{{ t('workspace.noAllocationData') }}</td></tr></tbody></table></div></div>
+          </div>
+        </template>
+        <div v-else class="workspace-state">{{ t('workspace.allocationUnavailable') }}</div>
+      </section>
+      <section v-if="store.can('workspace.read') && allocationSupported" class="workspace-panel" aria-labelledby="allocation-config-title">
+        <div class="workspace-panel__heading"><div><h2 id="allocation-config-title">{{ t('workspace.allocationConfiguration') }}</h2><p>{{ t('workspace.allocationConfigurationDescription') }}</p></div></div>
+        <div class="allocation-config-grid">
+          <div class="allocation-config-column">
+            <h3>{{ t('workspace.costCenters') }}</h3>
+            <form v-if="store.can('workspace.update')" class="allocation-inline-form" @submit.prevent="createCenter">
+              <label><span>{{ t('workspace.code') }}</span><input v-model="centerForm.code" class="input" maxlength="63" required></label>
+              <label><span>{{ t('workspace.name') }}</span><input v-model="centerForm.name" class="input" maxlength="120" required></label>
+              <label><span>{{ t('workspace.descriptionLabel') }}</span><input v-model="centerForm.description" class="input" maxlength="2000"></label>
+              <button type="submit" class="btn btn-primary" :disabled="allocationSaving">{{ t('workspace.createCostCenter') }}</button>
+            </form>
+            <div v-if="costCenters.length" class="allocation-list"><div v-for="center in costCenters" :key="center.id" class="allocation-list-row">
+              <form v-if="editingCenterId === center.id" class="allocation-edit-form" @submit.prevent="saveCenter(center)">
+                <label><span>{{ t('workspace.code') }}</span><input v-model="centerEditForm.code" class="input" maxlength="63" required></label>
+                <label><span>{{ t('workspace.name') }}</span><input v-model="centerEditForm.name" class="input" maxlength="120" required></label>
+                <label><span>{{ t('workspace.descriptionLabel') }}</span><input v-model="centerEditForm.description" class="input" maxlength="2000"></label>
+                <div class="allocation-edit-actions"><button type="submit" class="btn btn-primary btn-sm" :disabled="allocationSaving">{{ allocationSaving ? t('common.saving') : t('common.save') }}</button><button type="button" class="btn btn-secondary btn-sm" :disabled="allocationSaving" @click="cancelCenterEdit">{{ t('common.cancel') }}</button></div>
+              </form>
+              <template v-else><div><strong>{{ center.code }}</strong><span>{{ center.name }}</span></div><div class="allocation-row-actions"><button v-if="store.can('workspace.update')" type="button" class="btn btn-secondary btn-sm" :disabled="allocationSaving" @click="beginCenterEdit(center)">{{ t('common.edit') }}</button><button v-if="store.can('workspace.update')" type="button" class="btn btn-secondary btn-sm" :disabled="allocationSaving" @click="archiveCenter(center)">{{ t('workspace.archive') }}</button></div></template>
+            </div></div>
+            <p v-else class="workspace-state allocation-empty">{{ t('workspace.noCostCenters') }}</p>
+          </div>
+          <div class="allocation-config-column">
+            <h3>{{ t('workspace.tags') }}</h3>
+            <form v-if="store.can('workspace.update')" class="allocation-inline-form" @submit.prevent="createTag">
+              <label><span>{{ t('workspace.tagKey') }}</span><input v-model="tagForm.key" class="input" maxlength="63" required></label>
+              <label><span>{{ t('workspace.tagValue') }}</span><input v-model="tagForm.value" class="input" maxlength="255" required></label>
+              <label><span>{{ t('workspace.descriptionLabel') }}</span><input v-model="tagForm.description" class="input" maxlength="500"></label>
+              <button type="submit" class="btn btn-primary" :disabled="allocationSaving">{{ t('workspace.createTag') }}</button>
+            </form>
+            <div v-if="allocationTags.length" class="allocation-list"><div v-for="tag in allocationTags" :key="tag.id" class="allocation-list-row">
+              <form v-if="editingTagId === tag.id" class="allocation-edit-form allocation-tag-edit-form" @submit.prevent="saveTag(tag)">
+                <label><span>{{ t('workspace.tagKey') }}</span><input v-model="tagEditForm.key" class="input" maxlength="63" required></label>
+                <label><span>{{ t('workspace.tagValue') }}</span><input v-model="tagEditForm.value" class="input" maxlength="255" required></label>
+                <label><span>{{ t('workspace.descriptionLabel') }}</span><input v-model="tagEditForm.description" class="input" maxlength="500"></label>
+                <div class="allocation-edit-actions"><button type="submit" class="btn btn-primary btn-sm" :disabled="allocationSaving">{{ allocationSaving ? t('common.saving') : t('common.save') }}</button><button type="button" class="btn btn-secondary btn-sm" :disabled="allocationSaving" @click="cancelTagEdit">{{ t('common.cancel') }}</button></div>
+              </form>
+              <template v-else><div><strong class="allocation-technical">{{ tag.key }}={{ tag.value }}</strong><span>{{ tag.description }}</span></div><div class="allocation-row-actions"><button v-if="store.can('workspace.update')" type="button" class="btn btn-secondary btn-sm" :disabled="allocationSaving" @click="beginTagEdit(tag)">{{ t('common.edit') }}</button><button v-if="store.can('workspace.update')" type="button" class="btn btn-secondary btn-sm" :disabled="allocationSaving" @click="archiveTag(tag)">{{ t('workspace.archive') }}</button></div></template>
+            </div></div>
+            <p v-else class="workspace-state allocation-empty">{{ t('workspace.noTags') }}</p>
+          </div>
+        </div>
+        <div v-if="projects.length" class="project-allocation-editor">
+          <h3>{{ t('workspace.projectDefaultAllocation') }}</h3>
+          <label class="project-allocation-select"><span>{{ t('workspace.project') }}</span><select v-model="selectedProjectId" class="input"><option v-for="project in projects" :key="project.id" :value="project.id">{{ project.name }}</option></select></label>
+          <form v-if="projectAllocationForm" class="workspace-form" @submit.prevent="saveProjectAllocation">
+            <div class="workspace-form-grid"><label><span>{{ t('workspace.environment') }}</span><select v-model="projectAllocationForm.environment" class="input"><option value="production">{{ t('workspace.environments.production') }}</option><option value="staging">{{ t('workspace.environments.staging') }}</option><option value="development">{{ t('workspace.environments.development') }}</option><option value="testing">{{ t('workspace.environments.testing') }}</option></select></label><label><span>{{ t('workspace.costCenter') }}</span><select v-model="projectAllocationForm.cost_center_id" class="input"><option :value="null">{{ t('workspace.unallocated') }}</option><option v-for="center in costCenters" :key="center.id" :value="center.id">{{ center.code }} · {{ center.name }}</option></select></label></div>
+            <fieldset class="allocation-tag-picker"><legend>{{ t('workspace.tags') }}</legend><label v-for="tag in allocationTags" :key="tag.id" class="allocation-tag-option"><input type="checkbox" :checked="projectAllocationForm.tags[tag.key] === tag.value" @change="toggleProjectTag(tag)"><span class="allocation-technical">{{ tag.key }}={{ tag.value }}</span></label><p v-if="!allocationTags.length" class="workspace-state allocation-empty">{{ t('workspace.noTags') }}</p></fieldset>
+            <div class="workspace-actions"><button type="submit" class="btn btn-primary" :disabled="allocationSaving || !store.can('project.update')">{{ allocationSaving ? t('common.saving') : t('workspace.saveAllocation') }}</button><span class="allocation-revision">{{ t('workspace.policyRevision', { revision: projectAllocationForm.policy_revision }) }}</span></div>
+          </form>
+        </div>
+      </section>
       <section v-if="store.can('finops_anomaly.read')" class="workspace-panel" aria-labelledby="finops-anomalies-title">
         <div class="workspace-panel__heading">
           <div><h2 id="finops-anomalies-title">{{ t('workspace.anomalies') }}</h2><p>{{ t('workspace.anomaliesDescription') }}</p></div>
@@ -82,7 +163,7 @@ import { useI18n } from 'vue-i18n'
 import WorkspaceFrame from '@/components/workspace/WorkspaceFrame.vue'
 import WorkspaceUsageBreakdowns from '@/components/workspace/WorkspaceUsageBreakdowns.vue'
 import WorkspaceDailySpend from '@/components/workspace/WorkspaceDailySpend.vue'
-import { workspaceAPI, type WorkspaceBudget, type WorkspaceOverview, type WorkspaceUsage, type WorkspaceFinopsAnomaly, type WorkspaceFinopsAnomalyDetectorStatus, type WorkspaceFinopsAnomalyFilter } from '@/api/workspace'
+import { workspaceAPI, type WorkspaceBudget, type WorkspaceOverview, type WorkspaceUsage, type WorkspaceFinopsAnomaly, type WorkspaceFinopsAnomalyDetectorStatus, type WorkspaceFinopsAnomalyFilter, type WorkspaceAllocationReport, type WorkspaceAllocationFilter, type WorkspaceCostCenter, type WorkspaceAllocationTag, type WorkspaceProjectAllocation, type Project } from '@/api/workspace'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useAppStore } from '@/stores/app'
 const { t } = useI18n()
@@ -98,6 +179,23 @@ const anomalyLoading = ref(false)
 const anomalySaving = ref(false)
 const anomalyError = ref(false)
 const resolutionReason = ref('')
+const allocationReport = ref<WorkspaceAllocationReport | null>(null)
+const allocationLoading = ref(false)
+const allocationError = ref(false)
+const allocationSaving = ref(false)
+const costCenters = ref<WorkspaceCostCenter[]>([])
+const allocationTags = ref<WorkspaceAllocationTag[]>([])
+const projects = ref<Project[]>([])
+const selectedProjectId = ref<number | undefined>(undefined)
+const projectAllocation = ref<WorkspaceProjectAllocation | null>(null)
+const editingCenterId = ref<number | null>(null)
+const editingTagId = ref<number | null>(null)
+const allocationFilters = reactive<WorkspaceAllocationFilter>({ timezone: 'UTC' })
+const centerForm = reactive({ code: '', name: '', description: '' })
+const tagForm = reactive({ key: '', value: '', description: '' })
+const centerEditForm = reactive({ code: '', name: '', description: '' })
+const tagEditForm = reactive({ key: '', value: '', description: '' })
+const projectAllocationForm = reactive<{ cost_center_id: number | null; environment: 'production' | 'staging' | 'development' | 'testing'; tags: Record<string, string>; policy_revision: number }>({ cost_center_id: null, environment: 'development', tags: {}, policy_revision: 1 })
 const anomalyFilters = reactive<WorkspaceFinopsAnomalyFilter>({ status: undefined, severity: undefined, detector_type: undefined, page: 1, page_size: 50 })
 const available = computed(() => budget.value !== null)
 const loading = ref(false)
@@ -124,6 +222,129 @@ const lastDetected = computed(() => anomalies.value.map(item => item.last_detect
 const detectorStatusLabel = computed(() => anomalyStatus.value?.last_failure_code ? t('workspace.anomalyStatusDegraded') : anomalyStatus.value?.last_successful_scan ? t('workspace.anomalyStatusHealthy') : t('workspace.anomalyStatusPending'))
 const budgetPolicy = computed(() => budget.value?.policy || budget.value?.workspace || budget.value?.project)
 const usageSummary = computed(() => overview.value?.summary || usage.value?.summary || usage.value || {})
+const allocationSupported = computed(() => typeof workspaceAPI.getAllocationReport === 'function')
+function allocationCenterLabel(key: string) { if (key === '0' || key === '') return t('workspace.unallocated'); return costCenters.value.find(center => String(center.id) === key)?.code || key }
+function environmentLabel(key: string) { return key === 'unallocated' ? t('workspace.unallocated') : t(`workspace.environments.${key}`) }
+
+function syncProjectAllocation(value: WorkspaceProjectAllocation | null) {
+  projectAllocation.value = value
+  if (!value) {
+    Object.assign(projectAllocationForm, { cost_center_id: null, environment: 'development', tags: {}, policy_revision: 1 })
+    return
+  }
+  const tags = { ...(value.allocation.tags || value.allocation.allocation_tags || {}) }
+  Object.assign(projectAllocationForm, { cost_center_id: value.allocation.cost_center_id ?? null, environment: value.allocation.environment as typeof projectAllocationForm.environment, tags, policy_revision: value.allocation.policy_revision || 1 })
+}
+
+async function loadProjectAllocation(id: number, currentGeneration = generation) {
+  if (!id || typeof workspaceAPI.getProjectAllocation !== 'function') return
+  try {
+    const result = await workspaceAPI.getProjectAllocation(idWorkspace(), id)
+    if (currentGeneration === generation && id === selectedProjectId.value && idWorkspace() === store.selectedWorkspaceId) syncProjectAllocation(result)
+  } catch { if (currentGeneration === generation) syncProjectAllocation(null) }
+}
+
+function idWorkspace() { return store.selectedWorkspaceId || 0 }
+
+async function loadAllocation(id = store.selectedWorkspaceId, signal = controller?.signal, currentGeneration = generation) {
+  if (!id || !allocationSupported.value) return
+  allocationLoading.value = true
+  allocationError.value = false
+  const reportPromise = workspaceAPI.getAllocationReport(id, { ...allocationFilters }, signal)
+  const centersPromise = typeof workspaceAPI.listCostCenters === 'function' ? workspaceAPI.listCostCenters(id, false, signal) : Promise.resolve([])
+  const tagsPromise = typeof workspaceAPI.listAllocationTags === 'function' ? workspaceAPI.listAllocationTags(id, false, signal) : Promise.resolve([])
+  const projectsPromise = typeof workspaceAPI.listProjects === 'function' ? workspaceAPI.listProjects(id, { page: 1, page_size: 100, signal }) : Promise.resolve({ items: [] })
+  try {
+    const [reportResult, centersResult, tagsResult, projectsResult] = await Promise.allSettled([reportPromise, centersPromise, tagsPromise, projectsPromise])
+    if (currentGeneration !== generation || id !== store.selectedWorkspaceId) return
+    if (reportResult.status === 'fulfilled') allocationReport.value = reportResult.value
+    else allocationError.value = true
+    if (centersResult.status === 'fulfilled') costCenters.value = Array.isArray(centersResult.value) ? centersResult.value : ((centersResult.value as { items?: WorkspaceCostCenter[] }).items || [])
+    if (tagsResult.status === 'fulfilled') allocationTags.value = Array.isArray(tagsResult.value) ? tagsResult.value : ((tagsResult.value as { items?: WorkspaceAllocationTag[] }).items || [])
+    if (projectsResult.status === 'fulfilled') {
+      const page = projectsResult.value as { items?: Project[] }
+      projects.value = Array.isArray(page) ? page as unknown as Project[] : (page.items || [])
+      if (!selectedProjectId.value || !projects.value.some(project => project.id === selectedProjectId.value)) selectedProjectId.value = projects.value[0]?.id
+      if (selectedProjectId.value) await loadProjectAllocation(selectedProjectId.value, currentGeneration)
+    }
+  } catch { if (currentGeneration === generation) allocationError.value = true }
+  finally { if (currentGeneration === generation) allocationLoading.value = false }
+}
+
+function toggleProjectTag(tag: WorkspaceAllocationTag) {
+  const next = { ...projectAllocationForm.tags }
+  if (next[tag.key] === tag.value) delete next[tag.key]
+  else next[tag.key] = tag.value
+  projectAllocationForm.tags = next
+}
+
+async function createCenter() {
+  const id = store.selectedWorkspaceId
+  if (!id || allocationSaving.value || typeof workspaceAPI.createCostCenter !== 'function') return
+  allocationSaving.value = true
+  try { await workspaceAPI.createCostCenter(id, { ...centerForm }); Object.assign(centerForm, { code: '', name: '', description: '' }); await loadAllocation() } catch (error) { app.showError((error as { message?: string })?.message || t('workspace.allocationSaveError')) } finally { allocationSaving.value = false }
+}
+function beginCenterEdit(center: WorkspaceCostCenter) {
+  editingCenterId.value = center.id
+  Object.assign(centerEditForm, { code: center.code, name: center.name, description: center.description || '' })
+}
+function cancelCenterEdit() {
+  editingCenterId.value = null
+  Object.assign(centerEditForm, { code: '', name: '', description: '' })
+}
+async function saveCenter(center: WorkspaceCostCenter) {
+  const id = store.selectedWorkspaceId
+  if (!id || allocationSaving.value || typeof workspaceAPI.updateCostCenter !== 'function') return
+  allocationSaving.value = true
+  try {
+    await workspaceAPI.updateCostCenter(id, center.id, { code: centerEditForm.code, name: centerEditForm.name, description: centerEditForm.description })
+    cancelCenterEdit()
+    await loadAllocation()
+  } catch (error) { app.showError((error as { message?: string })?.message || t('workspace.allocationSaveError')) } finally { allocationSaving.value = false }
+}
+async function archiveCenter(center: WorkspaceCostCenter) {
+  const id = store.selectedWorkspaceId
+  if (!id || allocationSaving.value || typeof workspaceAPI.archiveCostCenter !== 'function') return
+  allocationSaving.value = true
+  try { await workspaceAPI.archiveCostCenter(id, center.id); await loadAllocation() } catch (error) { app.showError((error as { message?: string })?.message || t('workspace.allocationSaveError')) } finally { allocationSaving.value = false }
+}
+async function createTag() {
+  const id = store.selectedWorkspaceId
+  if (!id || allocationSaving.value || typeof workspaceAPI.createAllocationTag !== 'function') return
+  allocationSaving.value = true
+  try { await workspaceAPI.createAllocationTag(id, { ...tagForm }); Object.assign(tagForm, { key: '', value: '', description: '' }); await loadAllocation() } catch (error) { app.showError((error as { message?: string })?.message || t('workspace.allocationSaveError')) } finally { allocationSaving.value = false }
+}
+function beginTagEdit(tag: WorkspaceAllocationTag) {
+  editingTagId.value = tag.id
+  Object.assign(tagEditForm, { key: tag.key, value: tag.value, description: tag.description || '' })
+}
+function cancelTagEdit() {
+  editingTagId.value = null
+  Object.assign(tagEditForm, { key: '', value: '', description: '' })
+}
+async function saveTag(tag: WorkspaceAllocationTag) {
+  const id = store.selectedWorkspaceId
+  if (!id || allocationSaving.value || typeof workspaceAPI.updateAllocationTag !== 'function') return
+  allocationSaving.value = true
+  try {
+    await workspaceAPI.updateAllocationTag(id, tag.id, { key: tagEditForm.key, value: tagEditForm.value, description: tagEditForm.description })
+    cancelTagEdit()
+    await loadAllocation()
+  } catch (error) { app.showError((error as { message?: string })?.message || t('workspace.allocationSaveError')) } finally { allocationSaving.value = false }
+}
+async function archiveTag(tag: WorkspaceAllocationTag) {
+  const id = store.selectedWorkspaceId
+  if (!id || allocationSaving.value || typeof workspaceAPI.archiveAllocationTag !== 'function') return
+  allocationSaving.value = true
+  try { await workspaceAPI.archiveAllocationTag(id, tag.id); await loadAllocation() } catch (error) { app.showError((error as { message?: string })?.message || t('workspace.allocationSaveError')) } finally { allocationSaving.value = false }
+}
+async function saveProjectAllocation() {
+  const workspaceId = store.selectedWorkspaceId
+  const projectId = selectedProjectId.value
+  if (!workspaceId || !projectId || allocationSaving.value || typeof workspaceAPI.updateProjectAllocation !== 'function') return
+  allocationSaving.value = true
+  try { const result = await workspaceAPI.updateProjectAllocation(workspaceId, projectId, { cost_center_id: projectAllocationForm.cost_center_id, environment: projectAllocationForm.environment, tags: { ...projectAllocationForm.tags }, policy_revision: projectAllocationForm.policy_revision }); syncProjectAllocation(result); app.showSuccess(t('common.saved')) } catch (error) { app.showError((error as { message?: string })?.message || t('workspace.allocationSaveError')) } finally { allocationSaving.value = false }
+}
 
 async function load() {
   const id = store.selectedWorkspaceId
@@ -135,6 +356,14 @@ async function load() {
   anomalies.value = []
   anomalyStatus.value = null
   selectedAnomaly.value = null
+  allocationReport.value = null
+  costCenters.value = []
+  allocationTags.value = []
+  cancelCenterEdit()
+  cancelTagEdit()
+  projects.value = []
+  selectedProjectId.value = undefined
+  syncProjectAllocation(null)
   detailRequest += 1
   anomalyError.value = false
   if (!id) { loading.value = false; anomalyLoading.value = false; return }
@@ -157,6 +386,7 @@ async function load() {
     if (currentGeneration !== generation) return
     usage.value = usageResult.status === 'fulfilled' ? usageResult.value : null
     overview.value = overviewResult.status === 'fulfilled' ? overviewResult.value : null
+    await loadAllocation(id, signal, currentGeneration)
     await loadAnomalies(id, signal, currentGeneration)
   } finally { if (currentGeneration === generation) loading.value = false }
 }
@@ -221,6 +451,7 @@ async function saveBudget() {
 
 onMounted(load)
 watch([() => store.selectedWorkspaceId, () => store.permissions], () => void load())
+watch(selectedProjectId, value => { if (value) void loadProjectAllocation(value) })
 onBeforeUnmount(() => { ++generation; controller?.abort() })
 </script>
 
@@ -273,8 +504,46 @@ onBeforeUnmount(() => { ++generation; controller?.abort() })
 .anomaly-explanation { margin: 0 !important; padding: 10px 12px; border-left: 3px solid var(--color-primary); background: var(--color-primary-soft); }
 .anomaly-actions { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; }
 .anomaly-reason { flex: 1 1 240px; }
+.allocation-filters { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin: 18px 0; }
+.allocation-filters label, .allocation-inline-form label, .project-allocation-select { display: grid; min-width: 150px; gap: 6px; color: var(--color-text-secondary); font-size: 13px; }
+.allocation-filters input, .allocation-filters select { min-width: 150px; }
+.allocation-totals { margin-top: 8px; }
+.allocation-groups { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 18px; }
+.allocation-group { min-width: 0; overflow: hidden; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-surface-soft); }
+.allocation-group h3 { margin: 0; padding: 12px 14px; border-bottom: 1px solid var(--color-border); }
+.allocation-table-wrap { max-width: 100%; overflow-x: auto; }
+.allocation-table { width: 100%; min-width: 320px; border-collapse: collapse; font-size: 12px; }
+.allocation-table th, .allocation-table td { padding: 9px 10px; border-bottom: 1px solid var(--color-border); text-align: left; vertical-align: middle; }
+.allocation-table th { color: var(--color-text-muted); font-weight: 600; white-space: nowrap; }
+.allocation-table tr:last-child td { border-bottom: 0; }
+.allocation-table td:nth-child(2), .allocation-table td:nth-child(3) { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.allocation-technical { overflow-wrap: anywhere; font-family: var(--font-mono, ui-monospace, monospace); font-size: 11px; }
+.allocation-config-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin-top: 18px; }
+.allocation-config-column { min-width: 0; }
+.allocation-config-column h3, .project-allocation-editor h3 { margin: 0 0 12px; color: var(--color-text-primary); font-size: 16px; }
+.allocation-inline-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: end; gap: 10px; margin-bottom: 14px; }
+.allocation-inline-form label:last-of-type { grid-column: 1 / -1; }
+.allocation-list { display: grid; gap: 7px; }
+.allocation-list-row { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-surface-soft); }
+.allocation-list-row > div { display: grid; min-width: 0; gap: 3px; }
+.allocation-list-row strong, .allocation-list-row span { overflow-wrap: anywhere; }
+.allocation-list-row span { color: var(--color-text-secondary); font-size: 12px; }
+.allocation-row-actions, .allocation-edit-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 7px; }
+.allocation-edit-form { display: grid; width: 100%; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: end; gap: 10px; }
+.allocation-edit-form label { display: grid; min-width: 0; gap: 6px; color: var(--color-text-secondary); font-size: 12px; }
+.allocation-edit-actions { grid-column: 1 / -1; }
+.allocation-empty { padding: 14px 0; text-align: left; }
+.project-allocation-editor { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--color-border); }
+.project-allocation-select { max-width: 360px; }
+.allocation-tag-picker { display: flex; flex-wrap: wrap; gap: 8px 14px; min-width: 0; margin: 0; padding: 12px; border: 1px solid var(--color-border); border-radius: 8px; }
+.allocation-tag-picker legend { padding: 0 4px; color: var(--color-text-secondary); font-size: 13px; }
+.allocation-tag-option { display: inline-flex; min-height: 36px; align-items: center; gap: 7px; }
+.allocation-tag-option input { width: 16px; height: 16px; accent-color: var(--color-primary); }
+.allocation-revision { align-self: center; color: var(--color-text-muted); font-size: 12px; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 @media (max-width: 640px) { .workspace-panel__heading { align-items: stretch; flex-direction: column; } .workspace-budget__values, .workspace-form-grid { grid-template-columns: 1fr; } }
 @media (max-width: 760px) { .anomaly-summary, .anomaly-evidence { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 480px) { .anomaly-summary, .anomaly-evidence { grid-template-columns: 1fr; } .anomaly-filters label, .anomaly-filters select { width: 100%; } }
+@media (max-width: 900px) { .allocation-groups, .allocation-config-grid { grid-template-columns: 1fr; } }
+@media (max-width: 760px) { .allocation-edit-form { grid-template-columns: repeat(2, minmax(0, 1fr)); } .allocation-edit-actions { grid-column: 1 / -1; } }
+@media (max-width: 480px) { .anomaly-summary, .anomaly-evidence { grid-template-columns: 1fr; } .anomaly-filters label, .anomaly-filters select, .allocation-filters label, .allocation-filters input, .allocation-filters select { width: 100%; } .allocation-inline-form, .allocation-edit-form { grid-template-columns: 1fr; } .allocation-inline-form label:last-of-type { grid-column: auto; } .allocation-edit-actions { grid-column: auto; justify-content: flex-start; } .allocation-row-actions { justify-content: flex-start; } }
 </style>

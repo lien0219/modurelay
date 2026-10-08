@@ -37,7 +37,6 @@ const (
 	AllocationEnvironmentUnallocated = "unallocated"
 )
 
-var allocationEnvironmentSlugRE = regexp.MustCompile(`^custom:[a-z0-9][a-z0-9-]{0,62}$`)
 var allocationTagKeyRE = regexp.MustCompile(`^[a-z0-9][a-z0-9_.-]{0,62}$`)
 var allocationTagSecretRE = regexp.MustCompile(`(?i)(secret|token|password|credential|api[_-]?key)`)
 
@@ -45,6 +44,8 @@ var allocationTagSecretRE = regexp.MustCompile(`(?i)(secret|token|password|crede
 // means that the request is intentionally unallocated.
 type AllocationSnapshot struct {
 	CostCenterID   *int64            `json:"cost_center_id,omitempty"`
+	CostCenterCode string            `json:"cost_center_code,omitempty"`
+	CostCenterName string            `json:"cost_center_name,omitempty"`
 	Environment    string            `json:"environment"`
 	Tags           map[string]string `json:"tags,omitempty"`
 	AllocationTags map[string]string `json:"allocation_tags,omitempty"`
@@ -143,11 +144,6 @@ func NormalizeAllocationEnvironment(value string) (string, error) {
 	case AllocationEnvironmentProduction, AllocationEnvironmentStaging, AllocationEnvironmentDevelopment, AllocationEnvironmentTesting:
 		return v, nil
 	default:
-		// Custom environments are identifiers, not labels: their slug must
-		// already be lower-case and may not be silently canonicalized.
-		if strings.HasPrefix(v, "custom:") && raw == v && allocationEnvironmentSlugRE.MatchString(raw) {
-			return raw, nil
-		}
 		return "", ErrWorkspaceAllocationInvalid
 	}
 }
@@ -275,6 +271,16 @@ func (c AllocationConfig) NormalizeAndValidate() (AllocationConfig, error) {
 }
 
 func (s AllocationSnapshot) NormalizeAndValidate() (AllocationSnapshot, error) {
+	if s.CostCenterID != nil && *s.CostCenterID <= 0 {
+		return AllocationSnapshot{}, ErrWorkspaceAllocationInvalid
+	}
+	if s.Source != "" {
+		switch s.Source {
+		case AllocationSourceAPIKey, AllocationSourceServiceAccount, AllocationSourceProject, AllocationSourceUnallocated:
+		default:
+			return AllocationSnapshot{}, ErrWorkspaceAllocationInvalid
+		}
+	}
 	env, err := NormalizeAllocationEnvironment(s.Environment)
 	if s.Environment == AllocationEnvironmentUnallocated {
 		env = AllocationEnvironmentUnallocated
@@ -292,13 +298,13 @@ func (s AllocationSnapshot) NormalizeAndValidate() (AllocationSnapshot, error) {
 		return AllocationSnapshot{}, err
 	}
 	if env == AllocationEnvironmentUnallocated {
-		if s.CostCenterID != nil || s.PolicyRevision != 0 || len(tags) != 0 {
+		if s.CostCenterID != nil || s.PolicyRevision != 0 || len(tags) != 0 || (s.Source != "" && s.Source != AllocationSourceUnallocated) {
 			return AllocationSnapshot{}, ErrWorkspaceAllocationInvalid
 		}
-	} else if s.PolicyRevision < 0 {
+	} else if s.PolicyRevision < 0 || s.Source == AllocationSourceUnallocated {
 		return AllocationSnapshot{}, ErrWorkspaceAllocationInvalid
 	}
-	return AllocationSnapshot{CostCenterID: allocationCloneInt64Ptr(s.CostCenterID), Environment: env, Tags: tags, AllocationTags: tags, PolicyRevision: s.PolicyRevision, Source: s.Source}, nil
+	return AllocationSnapshot{CostCenterID: allocationCloneInt64Ptr(s.CostCenterID), CostCenterCode: s.CostCenterCode, CostCenterName: s.CostCenterName, Environment: env, Tags: tags, AllocationTags: tags, PolicyRevision: s.PolicyRevision, Source: s.Source}, nil
 }
 
 func UnallocatedAllocation() AllocationSnapshot {
