@@ -68,12 +68,13 @@ type Project struct {
 	UpdatedAt       time.Time `json:"updated_at"`
 }
 type TenantContext struct {
-	WorkspaceID            int64    `json:"workspace_id"`
-	ProjectID              int64    `json:"project_id"`
-	BillingPrincipalUserID int64    `json:"billing_principal_user_id"`
-	BudgetReservationID    string   `json:"budget_reservation_id,omitempty"`
-	AllowedGroupIDs        []int64  `json:"allowed_group_ids"`
-	AllowedModels          []string `json:"allowed_models"`
+	WorkspaceID            int64               `json:"workspace_id"`
+	ProjectID              int64               `json:"project_id"`
+	BillingPrincipalUserID int64               `json:"billing_principal_user_id"`
+	BudgetReservationID    string              `json:"budget_reservation_id,omitempty"`
+	Allocation             *AllocationSnapshot `json:"allocation,omitempty"`
+	AllowedGroupIDs        []int64             `json:"allowed_group_ids"`
+	AllowedModels          []string            `json:"allowed_models"`
 }
 type WorkspaceAccess struct {
 	Workspace   *Workspace       `json:"workspace"`

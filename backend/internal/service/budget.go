@@ -28,6 +28,9 @@ type BudgetAttribution struct {
 	BillingPrincipalUserID int64
 	ActorUserID            int64
 	APIKeyID               int64
+	// Allocation is the immutable admission snapshot. It is optional to keep
+	// legacy callers and direct-key billing behavior unchanged.
+	Allocation *AllocationSnapshot
 }
 
 // ValidExecutionAttribution enforces an exclusive human or machine actor.
