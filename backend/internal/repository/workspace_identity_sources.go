@@ -12,9 +12,9 @@ import (
 func reconcileWorkspaceMemberSources(ctx context.Context, tx *sql.Tx, w, m int64) error {
 	var role, status, source string
 	var provider sql.NullInt64
-	var suspended bool
+	var suspended, removed bool
 	var effective sql.NullInt64
-	if e := tx.QueryRowContext(ctx, `SELECT role,status,membership_source,membership_provider_id,administratively_suspended,effective_membership_source_id FROM workspace_members WHERE workspace_id=$1 AND id=$2 FOR UPDATE`, w, m).Scan(&role, &status, &source, &provider, &suspended, &effective); e != nil {
+	if e := tx.QueryRowContext(ctx, `SELECT role,status,membership_source,membership_provider_id,administratively_suspended,administratively_removed,effective_membership_source_id FROM workspace_members WHERE workspace_id=$1 AND id=$2 FOR UPDATE`, w, m).Scan(&role, &status, &source, &provider, &suspended, &removed, &effective); e != nil {
 		return e
 	}
 	var chosenRole, chosenSource string
@@ -29,8 +29,22 @@ func reconcileWorkspaceMemberSources(ctx context.Context, tx *sql.Tx, w, m int64
 		return e
 	}
 	nextStatus := "active"
-	if suspended {
+	if suspended || removed {
 		nextStatus = "suspended"
+	}
+	if status != "active" && nextStatus == "active" {
+		source := service.AdmissionAdminRestore
+		switch chosenSource {
+		case "oidc":
+			source = service.AdmissionOIDCJIT
+		case "saml":
+			source = service.AdmissionSAMLJIT
+		case "scim":
+			source = service.AdmissionSCIM
+		}
+		if e = checkWorkspaceMemberAdmissionTx(ctx, tx, w, service.WorkspaceMemberAdmissionRequest{Source: source, MemberID: m, ProviderID: chosenProvider.Int64}); e != nil {
+			return e
+		}
 	}
 	_, e = tx.ExecContext(ctx, `UPDATE workspace_members SET role=$3,status=$4,membership_source=$5,membership_provider_id=$6,effective_membership_source_id=$7,updated_at=now() WHERE workspace_id=$1 AND id=$2 AND (role,status,membership_source,membership_provider_id,effective_membership_source_id) IS DISTINCT FROM ($3::varchar,$4::varchar,$5::varchar,$6::bigint,$7::bigint)`, w, m, chosenRole, nextStatus, chosenSource, chosenProvider, chosenID)
 	return e

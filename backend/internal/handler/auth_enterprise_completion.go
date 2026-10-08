@@ -163,11 +163,13 @@ func (h *AuthHandler) RequireEnterpriseRecentAuthentication(c *gin.Context) bool
 	recent := auth.Recent(time.Now(), 10*time.Minute)
 	if user.TotpEnabled {
 		if recent && auth.MFASatisfied {
+			c.Request = c.Request.WithContext(service.WithRecentAuthentication(c.Request.Context(), auth.AuthenticatedAt, true))
 			return true
 		}
 		if h.totpService != nil && c.GetString(middleware.ContextKeySessionID) != "" {
 			granted, err := h.totpService.HasStepUpGrant(c.Request.Context(), user.ID, middleware.StepUpSessionKey(c, user.ID))
 			if err == nil && granted {
+				c.Request = c.Request.WithContext(service.WithRecentAuthentication(c.Request.Context(), time.Now(), true))
 				return true
 			}
 		}
@@ -178,6 +180,7 @@ func (h *AuthHandler) RequireEnterpriseRecentAuthentication(c *gin.Context) bool
 		response.ErrorFrom(c, infraerrors.Forbidden("RECENT_AUTH_REQUIRED", "sign in again before changing enterprise identity settings"))
 		return false
 	}
+	c.Request = c.Request.WithContext(service.WithRecentAuthentication(c.Request.Context(), auth.AuthenticatedAt, auth.MFASatisfied))
 	return true
 }
 
@@ -241,6 +244,7 @@ func (h *AuthHandler) EnterpriseSSORecover(c *gin.Context) {
 		response.ErrorFrom(c, service.ErrInvalidCredentials)
 		return
 	}
+	recoveryMFA := false
 	if user.TotpEnabled {
 		if h.totpService == nil || len(req.TOTPCode) != 6 {
 			response.ErrorFrom(c, infraerrors.Forbidden("STEP_UP_REQUIRED", "two-factor authentication is required for recovery"))
@@ -250,8 +254,11 @@ func (h *AuthHandler) EnterpriseSSORecover(c *gin.Context) {
 			response.ErrorFrom(c, err)
 			return
 		}
+		recoveryMFA = true
 	}
-	policy, err := h.enterpriseIdentity.BreakGlass(c.Request.Context(), user.ID, req.WorkspaceID, time.Now(), true, req.Reason)
+	verifiedAt := time.Now()
+	ctx := service.WithRecentAuthentication(c.Request.Context(), verifiedAt, recoveryMFA)
+	policy, err := h.enterpriseIdentity.BreakGlass(ctx, user.ID, req.WorkspaceID, verifiedAt, true, req.Reason)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

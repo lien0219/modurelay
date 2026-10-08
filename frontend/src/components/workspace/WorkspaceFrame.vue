@@ -35,17 +35,18 @@
       </div>
       <div v-if="store.loading && !store.workspaces.length" class="workspace-frame__loading" role="status">{{ t('common.loading') }}</div>
       <div v-else-if="invalidRoute" class="workspace-frame__error" role="alert">{{ t('workspace.inaccessibleWorkspace') }}</div>
-      <slot v-else />
+      <template v-else><WorkspaceAccessRecovery v-if="accessError" :workspace-id="selectedWorkspaceId || 0" :error="accessError" :return-to="route.fullPath" @verified="reloadAfterVerification" /><slot /></template>
     </section>
   </AppLayout>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import { useWorkspaceStore } from '@/stores/workspace'
+import WorkspaceAccessRecovery from './WorkspaceAccessRecovery.vue'
 
 const props = withDefaults(defineProps<{ section?: string }>(), { section: 'overview' })
 const { t } = useI18n()
@@ -55,6 +56,12 @@ const store = useWorkspaceStore()
 const selectedWorkspace = computed(() => store.selectedWorkspace)
 const selectedWorkspaceId = computed(() => store.selectedWorkspaceId)
 const selectedProjectId = computed(() => store.selectedProjectId)
+const accessError = ref<unknown>(null)
+function handleAccessError(event: Event) {
+  const detail = (event as CustomEvent<{ workspace_id?: number; error?: unknown }>).detail
+  if (detail.workspace_id === selectedWorkspaceId.value && Number(route.params.workspaceId) === detail.workspace_id && !['security', 'invitations'].includes(props.section)) accessError.value = detail.error
+}
+function reloadAfterVerification() { window.location.reload() }
 const invalidRoute = computed(() => {
   const id = Number(route.params.workspaceId)
   return id > 0 && !store.loading && !store.workspaces.some(item => item.id === id)
@@ -72,6 +79,7 @@ const tabs = computed(() => {
     { to: `/workspaces/${id}/finops`, label: t('workspace.finops') },
     { to: `/workspaces/${id}/audit`, label: t('workspace.audit') },
     ...(store.can('webhook.read') ? [{ to: `/workspaces/${id}/webhooks`, label: t('workspace.webhooks') }] : []),
+    ...(store.can('workspace_security.read') && store.selectedWorkspace?.type === 'organization' ? [{ to: `/workspaces/${id}/security`, label: t('workspace.securityTitle') }] : []),
     ...((store.can('identity.read') || store.can('provisioning.read')) && store.selectedWorkspace?.type === 'organization' ? [{ to: `/workspaces/${id}/identity`, label: t('workspace.identity') }] : []),
     ...(store.can('service_account.read') && route.params.projectId ? [{ to: `/workspaces/${id}/projects/${route.params.projectId}/service-accounts`, label: t('serviceAccounts.title') }] : []),
   ]
@@ -96,6 +104,7 @@ async function switchProject(event: Event) {
 }
 
 onMounted(async () => {
+  window.addEventListener('workspace-security-required', handleAccessError)
   if (!store.workspaces.length) await store.loadWorkspaces()
   if (route.name === 'WorkspaceRoot' && store.selectedWorkspaceId) {
     await router.replace(`/workspaces/${store.selectedWorkspaceId}/${props.section}`)
@@ -109,6 +118,8 @@ watch(() => route.params.workspaceId, async (value) => {
   const id = Number(value)
   if (id && id !== store.selectedWorkspaceId && store.workspaces.some(item => item.id === id)) await store.selectWorkspace(id)
 })
+watch([selectedWorkspaceId, () => route.fullPath], () => { accessError.value = null; window.dispatchEvent(new Event('workspace-context-changed')) }, { flush: 'sync' })
+onBeforeUnmount(() => { window.removeEventListener('workspace-security-required', handleAccessError); window.dispatchEvent(new Event('workspace-context-changed')) })
 </script>
 
 <style scoped>

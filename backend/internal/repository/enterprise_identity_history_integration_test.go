@@ -48,9 +48,11 @@ func TestEnterpriseIdentityMigrationsPreservePhaseAAndGatewayRows(t *testing.T) 
 	require.NoError(t, err)
 	project, err := workspaces.CreateProject(ctx, owner, workspace.ID, service.ProjectInput{Name: "Production", Slug: "production"})
 	require.NoError(t, err)
-	_, token, err := workspaces.CreateInvitation(ctx, owner, workspace.ID, "history-member@example.com", "developer", time.Hour)
+	// Seed the Phase A state directly: current invitation APIs require policy
+	// tables that intentionally do not exist in this pre-294 database.
+	_, err = db.Exec(`INSERT INTO workspace_invitations(workspace_id,email,role,token_hash,invited_by_user_id,expires_at,accepted_at) VALUES($1,'history-member@example.com','developer',$2,$3,now()+interval '1 hour',now())`, workspace.ID, service.HashEnterpriseToken("historical-invitation"), owner)
 	require.NoError(t, err)
-	_, err = workspaces.AcceptInvitation(ctx, member, token)
+	_, err = db.Exec(`INSERT INTO workspace_members(workspace_id,user_id,role,invited_by_user_id) VALUES($1,$2,'developer',$3)`, workspace.ID, member, owner)
 	require.NoError(t, err)
 	team, err := workspaces.CreateTeam(ctx, owner, workspace.ID, service.WorkspaceTeamInput{Name: "History", Slug: "history"})
 	require.NoError(t, err)

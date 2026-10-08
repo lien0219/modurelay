@@ -134,6 +134,7 @@ func TestRefreshTokenPairPreservesOriginalAuthenticationAndWorkspace(t *testing.
 	data.AuthenticatedAt = time.Now().UTC().Add(-6 * time.Hour).Truncate(time.Second)
 	data.OIDCAuthenticatedAt = data.AuthenticatedAt
 	data.OIDCProviderID, data.OIDCWorkspaceID, data.OIDCProviderRevision = 9, 7, 4
+	data.OIDCValidUntil = time.Now().UTC().Add(30 * time.Minute).Truncate(time.Second)
 	data.MFASatisfied = true
 	cache := &refreshTokenConsumeCacheStub{data: data, consume: true}
 	svc := newRefreshTokenConsumeAuthService(cache)
@@ -143,6 +144,7 @@ func TestRefreshTokenPairPreservesOriginalAuthenticationAndWorkspace(t *testing.
 	require.NoError(t, err)
 	require.Equal(t, data.AuthenticatedAt, claims.AuthenticatedAt)
 	require.Equal(t, data.OIDCAuthenticatedAt, claims.OIDCAuthenticatedAt)
+	require.Equal(t, data.OIDCValidUntil, claims.OIDCValidUntil)
 	require.Equal(t, "oidc", claims.AuthMethod)
 	require.True(t, claims.MFASatisfied)
 	require.EqualValues(t, 7, claims.OIDCWorkspaceID)

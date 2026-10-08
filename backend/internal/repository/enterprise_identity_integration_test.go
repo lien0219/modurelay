@@ -214,6 +214,7 @@ func TestEnterpriseIdentityMigrationIsIdempotentAndTenantBounded(t *testing.T) {
 		require.NoError(t, e)
 		_, e = integrationDB.Exec(string(body))
 		require.NoError(t, e)
+		restoreWorkspaceSecurityMigration(t)
 	})
 	ctx, repo, owner, workspace, provider, _ := enterpriseIdentityFixture(t)
 	migration, err := os.ReadFile("../../migrations/294_enterprise_identity_oidc.sql")
@@ -241,6 +242,8 @@ func enterpriseProviderInput(provider *service.EnterpriseIdentityProvider) servi
 
 func TestEnterpriseIdentityEnforcementRechecksOwnerAssuranceUnderWorkspaceLock(t *testing.T) {
 	ctx, repo, owner, workspace, provider, _ := enterpriseIdentityFixture(t)
+	// This test isolates live SSO validation after the sensitive-operation guard.
+	ctx = service.WithRecentAuthentication(ctx, time.Now())
 	link := enterpriseProvisionInput(workspace.ID, provider, "enforcement-owner", owner.Email)
 	link.LinkUserID = &owner.ID
 	_, err := repo.CompleteIdentityLogin(ctx, link)

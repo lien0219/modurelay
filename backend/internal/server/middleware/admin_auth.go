@@ -207,10 +207,7 @@ func validateJWTForAdmin(
 		return false
 	}
 
-	c.Set(string(ContextKeyUser), AuthSubject{
-		UserID:      user.ID,
-		Concurrency: user.Concurrency,
-	})
+	setHumanJWTAuthentication(c, user, claims)
 	c.Set(string(ContextKeyUserRole), user.Role)
 	c.Set(ContextKeyAuthEmail, user.Email)
 	c.Set(ContextKeySessionID, claims.SessionID)

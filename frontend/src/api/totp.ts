@@ -4,6 +4,7 @@
  */
 
 import { apiClient } from './client'
+import { coordinateSessionUpgrade, type RefreshTokenResponse } from './tokenRefresh'
 import type {
   TotpStatus,
   TotpSetupRequest,
@@ -77,6 +78,10 @@ export async function disable(request: TotpDisableRequest): Promise<{ success: b
 export interface TotpStepUpResponse {
   verified: boolean
   expires_in: number
+  access_token?: string
+  refresh_token?: string
+  token_type?: string
+  token_expires_in?: number
 }
 
 /**
@@ -84,9 +89,16 @@ export interface TotpStepUpResponse {
  * (sudo) window for sensitive operations (account export, DB backup download...).
  * @param code - 6-digit TOTP code
  */
-export async function stepUp(code: string): Promise<TotpStepUpResponse> {
-  const { data } = await apiClient.post<TotpStepUpResponse>('/user/totp/step-up', { code })
+export async function stepUp(code: string, refreshToken?: string): Promise<TotpStepUpResponse> {
+  const { data } = await apiClient.post<TotpStepUpResponse>('/user/totp/step-up', refreshToken ? { code, refresh_token: refreshToken } : { code })
   return data
+}
+
+export function upgradeSessionMFA(code: string): Promise<RefreshTokenResponse> {
+  return coordinateSessionUpgrade(async snapshot => {
+    const { data } = await apiClient.post<TotpStepUpResponse>('/user/totp/step-up', { code, refresh_token: snapshot.refreshToken }, { preserveAuthSessionOnFailure: true, sessionProofAccessToken: snapshot.accessToken! })
+    return { access_token: data.access_token || '', refresh_token: data.refresh_token || '', token_type: data.token_type || 'Bearer', expires_in: data.token_expires_in ?? 0 }
+  })
 }
 
 export const totpAPI = {
@@ -96,7 +108,8 @@ export const totpAPI = {
   initiateSetup,
   enable,
   disable,
-  stepUp
+  stepUp,
+  upgradeSessionMFA
 }
 
 export default totpAPI

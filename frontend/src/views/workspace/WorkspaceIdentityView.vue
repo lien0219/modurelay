@@ -135,12 +135,11 @@
           <div class="identity-heading"><div><h2>{{ t('workspace.identitySecurityPolicy') }}</h2><p>{{ t('workspace.identitySecurityPolicyDescription') }}</p></div><span v-if="policy" class="identity-revision">{{ t('workspace.policyRevision', { revision: policy.revision }) }}</span></div>
           <div v-if="policyLoading" class="workspace-state" role="status">{{ t('common.loading') }}</div>
           <div v-else-if="policy" class="identity-policy">
-            <label class="identity-check identity-check--policy"><input v-model="policyForm.require_sso" name="require_sso" type="checkbox" :disabled="!store.can('workspace_sso.update') || (!policy.require_sso && !providerTotal)"><span><strong>{{ t('workspace.identityRequireSSO') }}</strong><small>{{ t('workspace.identityRequireSSOHint') }}</small></span></label>
+            <p>{{ t('workspace.identityRequireSSO') }}: {{ t(policy.require_sso ? 'common.enabled' : 'common.disabled') }}</p>
             <p class="identity-provision-warning">{{ t('workspace.identityEnforcementPrerequisites') }}</p>
             <p v-if="!providerTotal" class="identity-provision-warning" role="status">{{ t('workspace.identityEnforcementNoProvider') }}</p>
-            <label v-if="store.can('workspace_sso.update')" class="identity-field--grace"><span>{{ t('workspace.identityGraceUntil') }}</span><input v-model="policyForm.sso_grace_until" class="input" type="datetime-local"><small>{{ t('workspace.identityGraceHint') }}</small></label>
-            <div v-if="store.can('workspace_sso.update')" class="identity-actions"><button type="button" class="btn btn-primary" data-testid="identity-save-policy" :disabled="policySaving || !policyDirty" @click="savePolicy">{{ policySaving ? t('common.saving') : t('common.save') }}</button></div>
-            <p v-else class="identity-readonly">{{ t('workspace.identityReadOnly') }}</p>
+            <p v-if="policy.sso_grace_until">{{ t('workspace.identityGraceUntil') }}: {{ formatDateTime(policy.sso_grace_until) }}</p>
+            <RouterLink class="btn btn-secondary" data-testid="identity-security-link" :to="`/workspaces/${workspaceId}/security`">{{ t('workspace.securityManageLink') }}</RouterLink>
           </div>
           <div v-else class="identity-error" role="alert">{{ t('workspace.identityPolicyLoadError') }}</div>
         </section>
@@ -184,7 +183,6 @@ const loadError = ref(false)
 const policyLoading = ref(false)
 const domainSaving = ref(false)
 const providerSaving = ref(false)
-const policySaving = ref(false)
 const domainActionId = ref<number | null>(null)
 const providerActionId = ref<number | null>(null)
 const domainInput = ref('')
@@ -196,7 +194,6 @@ const selectedSAMLProvider = ref<WorkspaceIdentityProvider | null>(null)
 const providerType = ref<'oidc' | 'saml'>('oidc')
 const samlForm = ref(createSAMLForm())
 const providerPreset = ref('generic')
-const policyForm = reactive<{ require_sso: boolean; sso_grace_until: string }>({ require_sso: false, sso_grace_until: '' })
 const providerForm = reactive({ name: '', provider_key: '', issuer_url: '', client_id: '', client_secret: '', secret_action: 'preserve' as 'preserve' | 'replace' | 'remove', token_auth_method: 'client_secret_basic' as 'client_secret_basic' | 'client_secret_post' | 'none', authorization_endpoint: '', token_endpoint: '', jwks_uri: '', userinfo_endpoint: '', scopes: 'openid profile email', email_claim: 'email', name_claim: 'name', groups_claim: 'groups', jit_enabled: false, default_role: 'viewer', allowed_domains: '', is_default: false, discovery_enabled: true })
 const providerSecretError = computed(() => {
   if (providerType.value === 'saml' || !editingProvider.value || providerForm.secret_action === 'remove') return ''
@@ -206,19 +203,12 @@ const providerSecretError = computed(() => {
 })
 const verificationHost = computed(() => verificationResult.value?.domain.dns_host || (verificationResult.value ? `_modurelay-verification.${verificationResult.value.domain.normalized_domain}` : ''))
 const managedRoles = ['viewer', 'developer', 'billing', 'admin']
-const policyDirty = computed(() => Boolean(policy.value && (policy.value.require_sso !== policyForm.require_sso || (policy.value.sso_grace_until ? toLocalDateTime(policy.value.sso_grace_until) : '') !== policyForm.sso_grace_until)))
 let generation = 0
 let contextGeneration = 0
 let controller: AbortController | null = null
 
 function errorMessage(error: unknown, fallback: string): string { return (error as { message?: string })?.message || fallback }
 function currentWorkspace(id: number, expectedContext = contextGeneration): boolean { return workspaceId.value === id && canRead.value && expectedContext === contextGeneration }
-function toLocalDateTime(value: string): string {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return ''
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
-  return local.toISOString().slice(0, 16)
-}
 function domainStatusLabel(status: string): string { return t(`workspace.identityDomainStatus.${status}`, status) }
 function providerStatusLabel(status: string): string { return t(`workspace.identityProviderStatus.${status}`, status) }
 function validationLabel(code: unknown): string {
@@ -317,8 +307,6 @@ async function load(): Promise<void> {
 
 function setPolicy(value: WorkspaceIdentityPolicy): void {
   policy.value = value
-  policyForm.require_sso = value.require_sso
-  policyForm.sso_grace_until = value.sso_grace_until ? toLocalDateTime(value.sso_grace_until) : ''
 }
 
 async function addDomain(): Promise<void> {
@@ -450,21 +438,6 @@ async function testSSO(provider: WorkspaceIdentityProvider): Promise<void> {
   }
 }
 
-async function savePolicy(): Promise<void> {
-  const id = workspaceId.value
-  const requestContext = contextGeneration
-  if (!id || policySaving.value || !store.can('workspace_sso.update') || !policyDirty.value || (policyForm.require_sso && !providerTotal.value)) return
-  const grace = policyForm.sso_grace_until ? new Date(policyForm.sso_grace_until) : null
-  if (policyForm.sso_grace_until && Number.isNaN(grace?.getTime())) return
-  policySaving.value = true
-  try {
-    const updated = await workspaceAPI.updateIdentityPolicy(id, { require_sso: policyForm.require_sso, sso_grace_until: grace?.toISOString() || null })
-    if (!currentWorkspace(id, requestContext)) return
-    setPolicy(updated)
-    app.showSuccess(t('common.saved'))
-  } catch (error) { if (currentWorkspace(id, requestContext)) app.showError(errorMessage(error, t('workspace.identityPolicySaveError'))) }
-  finally { if (currentWorkspace(id, requestContext)) policySaving.value = false }
-}
 
 onMounted(load)
 watch(() => providerForm.secret_action, action => {
@@ -483,7 +456,6 @@ watch([workspaceId, () => store.permissions], () => {
   providerTotal.value = 0
   domainSaving.value = false
   providerSaving.value = false
-  policySaving.value = false
   domainActionId.value = null
   providerActionId.value = null
   selectedMappingProvider.value = null

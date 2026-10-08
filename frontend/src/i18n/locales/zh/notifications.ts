@@ -45,6 +45,7 @@ export default {
       system: '系统', workspace: '工作区', project: '项目', api_key: 'API 密钥', policy: '策略', budget: '预算', billing: '账单', quota: '配额', security: '安全', resources: '论坛',
     },
     workspace: { title: '工作区更新', body: '有一项工作区事件需要处理。' },
+    workspaceSecurity: { title: '工作区安全策略已更新', body: '工作区认证或成员准入要求发生了变化。请查看当前安全策略与工作区审计日志。' },
     member: { title: '成员更新', body: '工作区成员信息已变更。' },
     project: { title: '项目更新', body: '项目信息已变更。' },
     api_key: { title: 'API 密钥更新', body: 'API 密钥信息已变更。' },

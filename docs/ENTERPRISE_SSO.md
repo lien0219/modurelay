@@ -155,7 +155,7 @@ completion and issues a fresh local token family. Accounts with local TOTP must 
 Return paths are restricted to `/workspaces`, `/dashboard`, `/profile`.
 
 Enforcement is Owner-only. Enabling requires verified domain, active provider,
-Owner binding, current successful Workspace OIDC assurance and valid provider
+Owner binding, current successful Workspace OIDC/SAML assurance and valid provider
 configuration. Sensitive changes require authentication within ten minutes or
 recent account TOTP step-up. Rollout grace is bounded to seven days. All human
 Workspace management routes, including separate Service Account/Policy routes,
@@ -177,7 +177,9 @@ independent. Provider revisions/disable and twelve-hour age invalidate assurance
 Use `/auth/sso?workspace_id=<id>&error=provider_failure` from the failed SSO flow. The Owner recovery section also appears when `required=1`. The global
 password session remains available. The active Owner must reverify password,
 account TOTP if enabled, confirm and provide a 10–500 character reason. The
-endpoint only disables `require_sso`; it cannot grant access to unrelated APIs.
+Phase D recovery relaxes `require_sso`, `require_mfa` and the general Workspace
+session-age constraint. It retains member admission restrictions and provider
+approvals and cannot grant membership, RBAC or access to unrelated APIs.
 IP/user limits fail closed on Redis errors. A DB limit permits one recovery per
 Workspace per fifteen minutes. Audit/event/outbox commit with the policy;
 `workspace.sso.break_glass_used` notifies active Owners/Admins and eligible
@@ -186,7 +188,9 @@ webhook subscribers. Global administrator override is deferred.
 ## APIs and RBAC
 
 All paths are under `/api/v1`. Owner/Admin: `identity.read`, `identity.manage`.
-Only Owner: `workspace_sso.update`/recovery. Other roles cannot manage identity.
+Only Owner: `workspace_sso.update`/recovery and `workspace_security.update`.
+All tenant roles have `workspace_security.read`; identity management remains
+Owner/Admin. Read and preview still require current human Workspace assurance.
 Tenant IDs never widen authorization; repositories repeat RBAC transactionally.
 
 | API | Purpose |
@@ -200,7 +204,8 @@ Tenant IDs never widen authorization; repositories repeat RBAC transactionally.
 | `POST /workspaces/:id/identity-providers/:provider_id/disable` | Sole-provider safety. |
 | `POST /workspaces/:id/identity-providers/:provider_id/test` | Discovery/config test. |
 | `GET/PUT /workspaces/:id/identity-providers/:provider_id/mappings` | Role/Team mappings. |
-| `GET/PATCH /workspaces/:id/security-policy` | Enforcement/grace. |
+| `GET/PATCH /workspaces/:id/security-policy` | Canonical Phase D policy; PATCH requires expected revision and recent strong Owner proof. |
+| `POST /workspaces/:id/security-policy/preview` | Read-only candidate access decision and prerequisites. |
 | `POST /auth/sso/discover` | Domain-based discovery; no account-existence lookup. |
 | `GET/POST /auth/sso/start` | Start browser login. |
 | `POST /auth/sso/link/start` | JWT-authenticated explicit link. |

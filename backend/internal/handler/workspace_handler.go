@@ -124,6 +124,7 @@ func (h *WorkspaceHandler) RegisterTenantRoutes(v1 *gin.RouterGroup) {
 		v1.PUT("/workspaces/:id/identity-providers/:provider_id/mappings", h.handle("identity.mapping.put"))
 		v1.GET("/workspaces/:id/security-policy", h.handle("identity.policy.get"))
 		v1.PATCH("/workspaces/:id/security-policy", h.handle("identity.policy.update"))
+		v1.POST("/workspaces/:id/security-policy/preview", h.handle("identity.policy.preview"))
 	}
 }
 func (h *WorkspaceHandler) RegisterAdminRoutes(admin *gin.RouterGroup) {
@@ -185,7 +186,6 @@ func (h *WorkspaceHandler) handle(action string) gin.HandlerFunc {
 			}
 		}
 		a, w, p := subject.UserID, ids["id"], ids["project_id"]
-		ctx := c.Request.Context()
 		if !strings.HasPrefix(action, "admin.") && !checkEnterpriseWorkspaceAccess(c, h.workspaces, h.identity, subject, w) {
 			return
 		}
@@ -198,6 +198,7 @@ func (h *WorkspaceHandler) handle(action string) gin.HandlerFunc {
 				return
 			}
 		}
+		ctx := c.Request.Context()
 		if strings.HasPrefix(action, "identity.") {
 			c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 512<<10)
 		}
@@ -315,15 +316,17 @@ func (h *WorkspaceHandler) handle(action string) gin.HandlerFunc {
 				err = service.ErrWorkspaceNotFound
 				break
 			}
-			var req struct {
-				RequireSSO    bool       `json:"require_sso"`
-				SSOGraceUntil *time.Time `json:"sso_grace_until"`
-			}
+			var req service.WorkspaceSecurityPolicyPatch
 			if !workspaceBind(c, &req) {
 				return
 			}
-			policyCtx := service.WithAuthenticationAssurance(ctx, service.WorkspaceAssurance{WorkspaceID: subject.OIDCWorkspaceID, ProviderID: subject.OIDCProviderID, ProviderRevision: subject.OIDCProviderRevision, AuthenticatedAt: subject.OIDCAuthenticatedAt, AuthMethod: subject.AuthMethod})
-			out, err = h.identity.UpdatePolicy(policyCtx, a, w, req.RequireSSO, req.SSOGraceUntil)
+			out, err = h.identity.PatchSecurityPolicy(c.Request.Context(), a, w, req)
+		case "identity.policy.preview":
+			var req service.WorkspaceSecurityPolicyPatch
+			if !workspaceBind(c, &req) {
+				return
+			}
+			out, err = h.identity.PreviewSecurityPolicy(ctx, a, w, req)
 		case "workspace.create":
 			var req struct {
 				Name string `json:"name"`

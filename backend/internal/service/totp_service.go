@@ -6,7 +6,6 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"fmt"
-	"log/slog"
 	"time"
 
 	"github.com/pquerna/otp/totp"
@@ -51,6 +50,12 @@ type TotpCache interface {
 type SecretEncryptor interface {
 	Encrypt(plaintext string) (string, error)
 	Decrypt(ciphertext string) (string, error)
+}
+
+// UserFactorDependencyRepository performs the dependency check and factor
+// removal atomically under the user's row lock.
+type UserFactorDependencyRepository interface {
+	DisableTOTP(ctx context.Context, userID int64, expectedPasswordHash string) error
 }
 
 // TotpSetupSession represents a TOTP setup session
@@ -98,12 +103,17 @@ const (
 
 // TotpService handles TOTP operations
 type TotpService struct {
-	userRepo          UserRepository
-	encryptor         SecretEncryptor
-	cache             TotpCache
-	settingService    *SettingService
-	emailService      *EmailService
-	emailQueueService *EmailQueueService
+	userRepo           UserRepository
+	encryptor          SecretEncryptor
+	cache              TotpCache
+	settingService     *SettingService
+	emailService       *EmailService
+	emailQueueService  *EmailQueueService
+	factorDependencies UserFactorDependencyRepository
+}
+
+func (s *TotpService) SetFactorDependencyRepository(repo UserFactorDependencyRepository) {
+	s.factorDependencies = repo
 }
 
 // NewTotpService creates a new TOTP service
@@ -249,42 +259,10 @@ func (s *TotpService) CompleteSetup(ctx context.Context, userID int64, totpCode,
 		return ErrTotpInvalidCode
 	}
 
-	setupSecretPrefix := "N/A"
-	if len(session.Secret) >= 4 {
-		setupSecretPrefix = session.Secret[:4]
-	}
-	slog.Debug("totp_complete_setup_before_encrypt",
-		"user_id", userID,
-		"secret_len", len(session.Secret),
-		"secret_prefix", setupSecretPrefix)
-
 	// Encrypt the secret
 	encryptedSecret, err := s.encryptor.Encrypt(session.Secret)
 	if err != nil {
 		return fmt.Errorf("encrypt totp secret: %w", err)
-	}
-
-	slog.Debug("totp_complete_setup_encrypted",
-		"user_id", userID,
-		"encrypted_len", len(encryptedSecret))
-
-	// Verify encryption by decrypting
-	decrypted, decErr := s.encryptor.Decrypt(encryptedSecret)
-	if decErr != nil {
-		slog.Debug("totp_complete_setup_verify_failed",
-			"user_id", userID,
-			"error", decErr)
-	} else {
-		decryptedPrefix := "N/A"
-		if len(decrypted) >= 4 {
-			decryptedPrefix = decrypted[:4]
-		}
-		slog.Debug("totp_complete_setup_verified",
-			"user_id", userID,
-			"original_len", len(session.Secret),
-			"decrypted_len", len(decrypted),
-			"match", session.Secret == decrypted,
-			"decrypted_prefix", decryptedPrefix)
 	}
 
 	// Update user with encrypted TOTP secret
@@ -320,8 +298,10 @@ func (s *TotpService) Disable(ctx context.Context, userID int64, emailCode, pass
 		return err
 	}
 
-	// Disable TOTP
-	if err := s.userRepo.DisableTotp(ctx, userID); err != nil {
+	if s.factorDependencies == nil {
+		return ErrServiceUnavailable
+	}
+	if err := s.factorDependencies.DisableTOTP(ctx, userID, user.PasswordHash); err != nil {
 		return fmt.Errorf("disable totp: %w", err)
 	}
 
@@ -330,9 +310,6 @@ func (s *TotpService) Disable(ctx context.Context, userID int64, emailCode, pass
 
 // VerifyCode verifies a TOTP code for a user
 func (s *TotpService) VerifyCode(ctx context.Context, userID int64, code string) error {
-	slog.Debug("totp_verify_code_called",
-		"user_id", userID,
-		"code_len", len(code))
 
 	// Check rate limiting
 	attempts, err := s.cache.GetVerifyAttempts(ctx, userID)
@@ -343,44 +320,21 @@ func (s *TotpService) VerifyCode(ctx context.Context, userID int64, code string)
 	// Get user
 	user, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
-		slog.Debug("totp_verify_get_user_failed",
-			"user_id", userID,
-			"error", err)
 		return infraerrors.InternalServer("TOTP_VERIFY_ERROR", "failed to verify totp code")
 	}
 
 	if !user.TotpEnabled || user.TotpSecretEncrypted == nil {
-		slog.Debug("totp_verify_not_setup",
-			"user_id", userID,
-			"enabled", user.TotpEnabled,
-			"has_secret", user.TotpSecretEncrypted != nil)
 		return ErrTotpNotSetup
 	}
-
-	slog.Debug("totp_verify_encrypted_secret",
-		"user_id", userID,
-		"encrypted_len", len(*user.TotpSecretEncrypted))
 
 	// Decrypt the secret
 	secret, err := s.encryptor.Decrypt(*user.TotpSecretEncrypted)
 	if err != nil {
-		slog.Debug("totp_verify_decrypt_failed",
-			"user_id", userID,
-			"error", err)
 		return infraerrors.InternalServer("TOTP_VERIFY_ERROR", "failed to verify totp code")
 	}
 
-	slog.Debug("totp_verify_decrypted",
-		"user_id", userID,
-		"secret_len", len(secret))
-
 	// Verify the code
 	valid := totp.Validate(code, secret)
-	slog.Debug("totp_verify_result",
-		"user_id", userID,
-		"valid", valid,
-		"secret_len", len(secret),
-		"server_time", time.Now().UTC().Format(time.RFC3339))
 
 	if !valid {
 		// Increment failed attempts

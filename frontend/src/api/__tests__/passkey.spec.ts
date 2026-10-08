@@ -68,6 +68,12 @@ describe('passkey api', () => {
     })
   })
 
+  it('preserves the current global session on a failed explicit reauthentication ceremony', async () => {
+    post.mockRejectedValueOnce({ status: 401, code: 'PASSKEY_INVALID' })
+    await expect(passkeyAPI.login(undefined, { preserveSessionOnFailure: true })).rejects.toMatchObject({ code: 'PASSKEY_INVALID' })
+    expect(post).toHaveBeenCalledWith('/auth/passkey/login/begin', undefined, { preserveAuthSessionOnFailure: true })
+  })
+
   afterEach(() => {
     vi.unstubAllGlobals()
   })

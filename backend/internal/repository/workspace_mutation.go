@@ -274,6 +274,9 @@ func (r *workspaceRepository) Mutate(ctx context.Context, a, w int64, m service.
 				if !exists {
 					return nil, service.ErrWorkspaceConflict
 				}
+				if e = checkWorkspaceMemberAdmissionTx(ctx, tx, w, service.WorkspaceMemberAdmissionRequest{Source: service.AdmissionAdminRestore, MemberID: member.ID, UserID: m.TargetID}); e != nil {
+					return nil, e
+				}
 			}
 			e = upsertManualMemberSource(ctx, tx, w, member.ID, m.Role, true)
 			if e == nil {
@@ -331,6 +334,9 @@ func (r *workspaceRepository) Mutate(ctx context.Context, a, w int64, m service.
 			}
 			if m.Role == "owner" && !service.HasWorkspacePermission(ac.Member.Role, "owner.manage") {
 				return nil, service.ErrWorkspaceForbidden
+			}
+			if e = checkWorkspaceMemberAdmissionTx(ctx, tx, w, service.WorkspaceMemberAdmissionRequest{Source: service.AdmissionInvitationCreate, Email: normalized}); e != nil {
+				return nil, e
 			}
 			var exists bool
 			e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM workspace_members m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=$1 AND lower(trim(u.email))=$2 AND u.deleted_at IS NULL)`, w, normalized).Scan(&exists)
@@ -441,6 +447,12 @@ func (r *workspaceRepository) AcceptInvitation(ctx context.Context, a int64, has
 	}
 	if inv.Role == "owner" && !service.HasWorkspacePermission(inviter.Member.Role, "owner.manage") {
 		return nil, service.ErrWorkspaceConflict
+	}
+	if e = checkWorkspaceMemberAdmissionTx(ctx, tx, w, service.WorkspaceMemberAdmissionRequest{Source: service.AdmissionInvitationAccept, UserID: a}); e != nil {
+		return nil, e
+	}
+	if e = evaluateWorkspaceSecurityTx(ctx, tx, w, a); e != nil {
+		return nil, e
 	}
 	_, e = tx.ExecContext(ctx, `INSERT INTO workspace_members(workspace_id,user_id,role,invited_by_user_id) VALUES($1,$2,$3,$4)`, w, a, inv.Role, inv.InvitedByUserID)
 	if e != nil {

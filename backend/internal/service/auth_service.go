@@ -95,6 +95,7 @@ type JWTClaims struct {
 	OIDCProviderRevision int64     `json:"oidc_provider_revision,omitempty"`
 	OIDCWorkspaceID      int64     `json:"oidc_workspace_id,omitempty"`
 	OIDCAuthenticatedAt  time.Time `json:"oidc_authenticated_at,omitempty"`
+	OIDCValidUntil       time.Time `json:"oidc_valid_until,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -115,6 +116,21 @@ type AuthService struct {
 	affiliateService      *AffiliateService
 	defaultSubAssigner    DefaultSubscriptionAssigner
 	userPlatformQuotaRepo UserPlatformQuotaRepository
+	sessionMFAVerifier    SessionMFAVerifier
+}
+
+// SessionMFAVerifier verifies a local second factor; enrollment is not evidence.
+type SessionMFAVerifier interface {
+	VerifyStepUp(ctx context.Context, userID int64, sessionKey, code string) (time.Duration, error)
+}
+
+var (
+	ErrSessionMFAUpgradeInvalid = infraerrors.Forbidden("SESSION_MFA_UPGRADE_INVALID", "the refresh token does not match the current session")
+	ErrSessionMFAUpgradeReused  = infraerrors.Conflict("SESSION_MFA_UPGRADE_REUSED", "the refresh token has already been consumed; retry with the current session")
+)
+
+func (s *AuthService) SetSessionMFAVerifier(verifier SessionMFAVerifier) {
+	s.sessionMFAVerifier = verifier
 }
 
 type CaptchaProof struct {
@@ -1492,6 +1508,7 @@ func (s *AuthService) generateAccessToken(ctx context.Context, user *User, sessi
 		claims.OIDCProviderRevision = assurance.ProviderRevision
 		claims.OIDCWorkspaceID = assurance.WorkspaceID
 		claims.OIDCAuthenticatedAt = assurance.AuthenticatedAt
+		claims.OIDCValidUntil = assurance.ValidUntil
 	}
 	if auth, ok := SessionAuthenticationFromContext(ctx); ok {
 		claims.AuthMethod = auth.AuthMethod
@@ -1572,7 +1589,7 @@ func (s *AuthService) RefreshToken(ctx context.Context, oldTokenString string) (
 	// A refresh cannot manufacture recent password/MFA or extend SSO age.
 	ctx = WithSessionAuthentication(ctx, SessionAuthentication{AuthMethod: claims.AuthMethod, AuthenticatedAt: claims.AuthenticatedAt, MFASatisfied: claims.MFASatisfied})
 	if claims.OIDCWorkspaceID > 0 && claims.OIDCProviderID > 0 {
-		ctx = WithAuthenticationAssurance(ctx, WorkspaceAssurance{WorkspaceID: claims.OIDCWorkspaceID, ProviderID: claims.OIDCProviderID, ProviderRevision: claims.OIDCProviderRevision, AuthenticatedAt: claims.OIDCAuthenticatedAt, AuthMethod: claims.AuthMethod})
+		ctx = WithAuthenticationAssurance(ctx, WorkspaceAssurance{WorkspaceID: claims.OIDCWorkspaceID, ProviderID: claims.OIDCProviderID, ProviderRevision: claims.OIDCProviderRevision, AuthenticatedAt: claims.OIDCAuthenticatedAt, ValidUntil: claims.OIDCValidUntil, AuthMethod: claims.AuthMethod})
 	}
 	// 生成新token
 	return s.GenerateToken(ctx, user)
@@ -1767,15 +1784,18 @@ func (s *AuthService) GenerateTokenPair(ctx context.Context, user *User, familyI
 		}
 		familyID = hex.EncodeToString(familyBytes)
 	}
+	return s.generateTokenPairForSession(ctx, user, familyID, sessionBindingHashFromContext(ctx))
+}
 
+func (s *AuthService) generateTokenPairForSession(ctx context.Context, user *User, familyID, bindingHash string) (*TokenPair, error) {
 	// 生成Access Token（携带会话ID与绑定指纹）
-	accessToken, err := s.generateAccessToken(ctx, user, familyID, sessionBindingHashFromContext(ctx))
+	accessToken, err := s.generateAccessToken(ctx, user, familyID, bindingHash)
 	if err != nil {
 		return nil, fmt.Errorf("generate access token: %w", err)
 	}
 
 	// 生成Refresh Token
-	refreshToken, err := s.generateRefreshToken(ctx, user, familyID)
+	refreshToken, err := s.generateRefreshTokenBound(ctx, user, familyID, bindingHash)
 	if err != nil {
 		return nil, fmt.Errorf("generate refresh token: %w", err)
 	}
@@ -1787,8 +1807,7 @@ func (s *AuthService) GenerateTokenPair(ctx context.Context, user *User, familyI
 	}, nil
 }
 
-// generateRefreshToken 生成并存储Refresh Token
-func (s *AuthService) generateRefreshToken(ctx context.Context, user *User, familyID string) (string, error) {
+func (s *AuthService) generateRefreshTokenBound(ctx context.Context, user *User, familyID, bindingHash string) (string, error) {
 	// 生成随机Token
 	tokenBytes := make([]byte, 32)
 	if _, err := rand.Read(tokenBytes); err != nil {
@@ -1815,7 +1834,7 @@ func (s *AuthService) generateRefreshToken(ctx context.Context, user *User, fami
 		UserID:       user.ID,
 		TokenVersion: resolvedTokenVersion(user),
 		FamilyID:     familyID,
-		BindingHash:  sessionBindingHashFromContext(ctx),
+		BindingHash:  bindingHash,
 		CreatedAt:    now,
 		ExpiresAt:    now.Add(ttl),
 	}
@@ -1825,6 +1844,7 @@ func (s *AuthService) generateRefreshToken(ctx context.Context, user *User, fami
 		data.OIDCProviderRevision = assurance.ProviderRevision
 		data.OIDCWorkspaceID = assurance.WorkspaceID
 		data.OIDCAuthenticatedAt = assurance.AuthenticatedAt
+		data.OIDCValidUntil = assurance.ValidUntil
 	}
 	if auth, ok := SessionAuthenticationFromContext(ctx); ok {
 		data.AuthMethod = auth.AuthMethod
@@ -1946,6 +1966,7 @@ func (s *AuthService) RefreshTokenPair(ctx context.Context, refreshToken string)
 			ProviderID:       data.OIDCProviderID,
 			ProviderRevision: data.OIDCProviderRevision,
 			AuthenticatedAt:  data.OIDCAuthenticatedAt,
+			ValidUntil:       data.OIDCValidUntil,
 			AuthMethod:       data.AuthMethod,
 		})
 	}
@@ -1957,6 +1978,61 @@ func (s *AuthService) RefreshTokenPair(ctx context.Context, refreshToken string)
 		TokenPair: *pair,
 		UserRole:  user.Role,
 	}, nil
+}
+
+// UpgradeSessionMFA verifies a local factor and rotates only the authenticated
+// session's refresh token. It never restarts either authentication clock.
+func (s *AuthService) UpgradeSessionMFA(ctx context.Context, accessToken, refreshToken, code string) (*TokenPair, error) {
+	if s == nil || s.refreshTokenCache == nil || s.sessionMFAVerifier == nil || s.userRepo == nil {
+		return nil, ErrServiceUnavailable
+	}
+	claims, err := s.ValidateToken(accessToken)
+	if err != nil || claims == nil || claims.UserID <= 0 || claims.SessionID == "" || !strings.HasPrefix(refreshToken, refreshTokenPrefix) {
+		return nil, ErrSessionMFAUpgradeInvalid
+	}
+	tokenHash := hashToken(refreshToken)
+	data, err := s.refreshTokenCache.GetRefreshToken(ctx, tokenHash)
+	if errors.Is(err, ErrRefreshTokenNotFound) {
+		return nil, ErrSessionMFAUpgradeReused
+	}
+	if err != nil {
+		return nil, ErrServiceUnavailable
+	}
+	if data == nil || !time.Now().Before(data.ExpiresAt) || data.UserID != claims.UserID || data.FamilyID != claims.SessionID || data.TokenVersion != claims.TokenVersion || data.BindingHash != claims.BindingHash ||
+		data.AuthMethod != claims.AuthMethod || !data.AuthenticatedAt.Equal(claims.AuthenticatedAt) || data.OIDCWorkspaceID != claims.OIDCWorkspaceID || data.OIDCProviderID != claims.OIDCProviderID ||
+		data.OIDCProviderRevision != claims.OIDCProviderRevision || !data.OIDCAuthenticatedAt.Equal(claims.OIDCAuthenticatedAt) || !data.OIDCValidUntil.Equal(claims.OIDCValidUntil) {
+		return nil, ErrSessionMFAUpgradeInvalid
+	}
+	user, err := s.userRepo.GetByID(ctx, claims.UserID)
+	if err != nil {
+		if errors.Is(err, ErrUserNotFound) {
+			return nil, ErrSessionMFAUpgradeInvalid
+		}
+		return nil, ErrServiceUnavailable
+	}
+	if user == nil || !user.IsActive() || resolvedTokenVersion(user) != claims.TokenVersion {
+		return nil, ErrSessionMFAUpgradeInvalid
+	}
+	if s.settingService != nil && s.settingService.IsSessionBindingEnabled(ctx) && data.BindingHash != "" && sessionBindingHashFromContext(ctx) != data.BindingHash {
+		return nil, ErrSessionMFAUpgradeInvalid
+	}
+	consumer, ok := s.refreshTokenCache.(RefreshTokenConsumer)
+	if !ok {
+		return nil, ErrServiceUnavailable
+	}
+	if _, err := s.sessionMFAVerifier.VerifyStepUp(ctx, user.ID, data.FamilyID, code); err != nil {
+		return nil, err
+	}
+	consumed, err := consumer.ConsumeRefreshToken(ctx, tokenHash)
+	if err != nil {
+		return nil, ErrServiceUnavailable
+	}
+	if !consumed {
+		return nil, ErrSessionMFAUpgradeReused
+	}
+	ctx = WithSessionAuthentication(ctx, SessionAuthentication{AuthMethod: data.AuthMethod, AuthenticatedAt: data.AuthenticatedAt, MFASatisfied: true})
+	ctx = WithAuthenticationAssurance(ctx, WorkspaceAssurance{WorkspaceID: data.OIDCWorkspaceID, ProviderID: data.OIDCProviderID, ProviderRevision: data.OIDCProviderRevision, AuthenticatedAt: data.OIDCAuthenticatedAt, ValidUntil: data.OIDCValidUntil, AuthMethod: data.AuthMethod})
+	return s.generateTokenPairForSession(ctx, user, data.FamilyID, data.BindingHash)
 }
 
 // RevokeRefreshToken 撤销单个Refresh Token

@@ -333,33 +333,15 @@ func (h *AuthHandler) Login2FA(c *gin.Context) {
 		return
 	}
 
-	slog.Debug("login_2fa_request",
-		"temp_token_len", len(req.TempToken),
-		"totp_code_len", len(req.TotpCode))
-
 	// Get the login session
 	session, err := h.totpService.GetLoginSession(c.Request.Context(), req.TempToken)
 	if err != nil || session == nil {
-		tokenPrefix := ""
-		if len(req.TempToken) >= 8 {
-			tokenPrefix = req.TempToken[:8]
-		}
-		slog.Debug("login_2fa_session_invalid",
-			"temp_token_prefix", tokenPrefix,
-			"error", err)
 		response.BadRequest(c, "Invalid or expired 2FA session")
 		return
 	}
 
-	slog.Debug("login_2fa_session_found",
-		"user_id", session.UserID,
-		"email", session.Email)
-
 	// Verify the TOTP code
 	if err := h.totpService.VerifyCode(c.Request.Context(), session.UserID, req.TotpCode); err != nil {
-		slog.Debug("login_2fa_verify_failed",
-			"user_id", session.UserID,
-			"error", err)
 		response.ErrorFrom(c, err)
 		return
 	}

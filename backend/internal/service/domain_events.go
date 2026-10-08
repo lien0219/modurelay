@@ -36,66 +36,67 @@ const (
 	EventServiceAccountCredentialExpiring = "service_account.credential.expiring"
 	EventServiceAccountCredentialExpired  = "service_account.credential.expired"
 
-	EventWorkspaceCreated              = "workspace.created"
-	EventWorkspaceUpdated              = "workspace.updated"
-	EventWorkspaceSuspended            = "workspace.suspended"
-	EventWorkspaceResumed              = "workspace.resumed"
-	EventWorkspaceArchived             = "workspace.archived"
-	EventMemberInvited                 = "member.invited"
-	EventMemberJoined                  = "member.joined"
-	EventMemberRoleChanged             = "member.role_changed"
-	EventMemberSuspended               = "member.suspended"
-	EventMemberRemoved                 = "member.removed"
-	EventProjectCreated                = "project.created"
-	EventProjectUpdated                = "project.updated"
-	EventProjectArchived               = "project.archived"
-	EventProjectRestored               = "project.restored"
-	EventAPIKeyCreated                 = "api_key.created"
-	EventAPIKeyUpdated                 = "api_key.updated"
-	EventAPIKeyRevoked                 = "api_key.revoked"
-	EventBudgetThreshold               = "budget.threshold_reached"
-	EventBudgetSoftLimit               = "budget.soft_limit_exceeded"
-	EventBudgetHardLimit               = "budget.hard_limit_reached"
-	EventBudgetUpdated                 = "budget.updated"
-	EventBillingPending                = "billing.settlement_pending"
-	EventBillingRecovered              = "billing.settlement_recovered"
-	EventQuotaThreshold                = "quota.threshold_reached"
-	EventQuotaExhausted                = "quota.exhausted"
-	EventPolicyUpdated                 = "policy.updated"
-	EventWebhookTest                   = "webhook.test"
-	EventWorkspaceTeamCreated          = "workspace.team.created"
-	EventWorkspaceTeamUpdated          = "workspace.team.updated"
-	EventWorkspaceTeamArchived         = "workspace.team.archived"
-	EventWorkspaceTeamMemberAdded      = "workspace.team.member_added"
-	EventWorkspaceTeamMemberRemoved    = "workspace.team.member_removed"
-	EventWorkspaceProjectAccessCreated = "workspace.project_access.grant_created"
-	EventWorkspaceProjectAccessUpdated = "workspace.project_access.grant_updated"
-	EventWorkspaceProjectAccessDeleted = "workspace.project_access.grant_deleted"
-	EventWorkspaceProjectAccessMode    = "workspace.project_access_mode.updated"
-	EventWorkspaceDomainCreated        = "workspace.domain.created"
-	EventWorkspaceDomainRegenerated    = "workspace.domain.regenerated"
-	EventWorkspaceDomainVerified       = "workspace.domain.verified"
-	EventWorkspaceDomainRevoked        = "workspace.domain.revoked"
-	EventIdentityProviderCreated       = "workspace.identity_provider.created"
-	EventIdentityProviderUpdated       = "workspace.identity_provider.updated"
-	EventIdentityProviderDisabled      = "workspace.identity_provider.disabled"
-	EventSAMLMetadataUpdated           = "workspace.saml.metadata.updated"
-	EventSAMLCertificateRotated        = "workspace.saml.certificate.rotated"
-	EventSSOEnforcementEnabled         = "workspace.sso.enforcement_enabled"
-	EventSSOEnforcementDisabled        = "workspace.sso.enforcement_disabled"
-	EventSSOBreakGlassUsed             = "workspace.sso.break_glass_used"
-	EventOIDCJITProvisioned            = "workspace.member.jit_provisioned"
-	EventOIDCIdentityLinked            = "workspace.identity.linked"
-	EventOIDCMappingsUpdated           = "workspace.identity_provider.mappings_updated"
-	EventOIDCRoleReconciled            = "workspace.identity.role_reconciled"
-	EventOIDCTeamsReconciled           = "workspace.identity.teams_reconciled"
-	EventSCIMConnectorCreated          = "workspace.scim.connector.created"
-	EventSCIMConnectorDisabled         = "workspace.scim.connector.disabled"
-	EventSCIMTokenCreated              = "workspace.scim.token.created"
-	EventSCIMTokenRevoked              = "workspace.scim.token.revoked"
-	EventSCIMSyncFailed                = "workspace.scim.sync.failed"
-	EventSCIMTokenExpiring             = "workspace.scim.token.expiring"
-	EventSCIMSecurityConflict          = "workspace.scim.security.conflict"
+	EventWorkspaceCreated               = "workspace.created"
+	EventWorkspaceUpdated               = "workspace.updated"
+	EventWorkspaceSuspended             = "workspace.suspended"
+	EventWorkspaceResumed               = "workspace.resumed"
+	EventWorkspaceArchived              = "workspace.archived"
+	EventMemberInvited                  = "member.invited"
+	EventMemberJoined                   = "member.joined"
+	EventMemberRoleChanged              = "member.role_changed"
+	EventMemberSuspended                = "member.suspended"
+	EventMemberRemoved                  = "member.removed"
+	EventProjectCreated                 = "project.created"
+	EventProjectUpdated                 = "project.updated"
+	EventProjectArchived                = "project.archived"
+	EventProjectRestored                = "project.restored"
+	EventAPIKeyCreated                  = "api_key.created"
+	EventAPIKeyUpdated                  = "api_key.updated"
+	EventAPIKeyRevoked                  = "api_key.revoked"
+	EventBudgetThreshold                = "budget.threshold_reached"
+	EventBudgetSoftLimit                = "budget.soft_limit_exceeded"
+	EventBudgetHardLimit                = "budget.hard_limit_reached"
+	EventBudgetUpdated                  = "budget.updated"
+	EventBillingPending                 = "billing.settlement_pending"
+	EventBillingRecovered               = "billing.settlement_recovered"
+	EventQuotaThreshold                 = "quota.threshold_reached"
+	EventQuotaExhausted                 = "quota.exhausted"
+	EventPolicyUpdated                  = "policy.updated"
+	EventWebhookTest                    = "webhook.test"
+	EventWorkspaceTeamCreated           = "workspace.team.created"
+	EventWorkspaceTeamUpdated           = "workspace.team.updated"
+	EventWorkspaceTeamArchived          = "workspace.team.archived"
+	EventWorkspaceTeamMemberAdded       = "workspace.team.member_added"
+	EventWorkspaceTeamMemberRemoved     = "workspace.team.member_removed"
+	EventWorkspaceProjectAccessCreated  = "workspace.project_access.grant_created"
+	EventWorkspaceProjectAccessUpdated  = "workspace.project_access.grant_updated"
+	EventWorkspaceProjectAccessDeleted  = "workspace.project_access.grant_deleted"
+	EventWorkspaceProjectAccessMode     = "workspace.project_access_mode.updated"
+	EventWorkspaceDomainCreated         = "workspace.domain.created"
+	EventWorkspaceDomainRegenerated     = "workspace.domain.regenerated"
+	EventWorkspaceDomainVerified        = "workspace.domain.verified"
+	EventWorkspaceDomainRevoked         = "workspace.domain.revoked"
+	EventIdentityProviderCreated        = "workspace.identity_provider.created"
+	EventIdentityProviderUpdated        = "workspace.identity_provider.updated"
+	EventIdentityProviderDisabled       = "workspace.identity_provider.disabled"
+	EventSAMLMetadataUpdated            = "workspace.saml.metadata.updated"
+	EventSAMLCertificateRotated         = "workspace.saml.certificate.rotated"
+	EventSSOEnforcementEnabled          = "workspace.sso.enforcement_enabled"
+	EventSSOEnforcementDisabled         = "workspace.sso.enforcement_disabled"
+	EventSSOBreakGlassUsed              = "workspace.sso.break_glass_used"
+	EventWorkspaceSecurityPolicyUpdated = "workspace.security_policy.updated"
+	EventOIDCJITProvisioned             = "workspace.member.jit_provisioned"
+	EventOIDCIdentityLinked             = "workspace.identity.linked"
+	EventOIDCMappingsUpdated            = "workspace.identity_provider.mappings_updated"
+	EventOIDCRoleReconciled             = "workspace.identity.role_reconciled"
+	EventOIDCTeamsReconciled            = "workspace.identity.teams_reconciled"
+	EventSCIMConnectorCreated           = "workspace.scim.connector.created"
+	EventSCIMConnectorDisabled          = "workspace.scim.connector.disabled"
+	EventSCIMTokenCreated               = "workspace.scim.token.created"
+	EventSCIMTokenRevoked               = "workspace.scim.token.revoked"
+	EventSCIMSyncFailed                 = "workspace.scim.sync.failed"
+	EventSCIMTokenExpiring              = "workspace.scim.token.expiring"
+	EventSCIMSecurityConflict           = "workspace.scim.security.conflict"
 )
 
 var allowedDomainEventTypes = map[string]struct{}{
@@ -127,7 +128,8 @@ var allowedDomainEventTypes = map[string]struct{}{
 	EventIdentityProviderCreated: {}, EventIdentityProviderUpdated: {}, EventIdentityProviderDisabled: {},
 	EventSAMLMetadataUpdated: {}, EventSAMLCertificateRotated: {},
 	EventSSOEnforcementEnabled: {}, EventSSOEnforcementDisabled: {}, EventSSOBreakGlassUsed: {},
-	EventOIDCJITProvisioned: {}, EventOIDCIdentityLinked: {}, EventOIDCMappingsUpdated: {}, EventOIDCRoleReconciled: {}, EventOIDCTeamsReconciled: {},
+	EventWorkspaceSecurityPolicyUpdated: {},
+	EventOIDCJITProvisioned:             {}, EventOIDCIdentityLinked: {}, EventOIDCMappingsUpdated: {}, EventOIDCRoleReconciled: {}, EventOIDCTeamsReconciled: {},
 	EventSCIMConnectorCreated: {}, EventSCIMConnectorDisabled: {}, EventSCIMTokenCreated: {}, EventSCIMTokenRevoked: {},
 	EventSCIMSyncFailed: {}, EventSCIMTokenExpiring: {}, EventSCIMSecurityConflict: {},
 }
@@ -156,6 +158,7 @@ var allowedDomainEventDataKeys = map[string]struct{}{
 	"domain_id": {}, "domain": {}, "normalized_domain": {}, "provider_id": {}, "provider_revision": {},
 	"require_sso": {}, "role_source": {}, "source_provider_id": {}, "role_count": {}, "team_count": {}, "mapping_revision": {},
 	"connector_id": {}, "token_id": {}, "resource_id": {}, "operation": {}, "added_count": {}, "removed_count": {}, "failure_count": {},
+	"previous_revision": {}, "require_mfa": {}, "session_max_age_seconds": {}, "invitation_policy": {}, "allow_external_members": {}, "workspace_jit_enabled": {}, "approved_identity_provider_mode": {}, "changed_fields": {},
 }
 
 type DomainEvent struct {
@@ -279,7 +282,7 @@ func IsWorkspaceVisibleEvent(eventType string) bool {
 		EventWorkspaceDomainCreated, EventWorkspaceDomainRegenerated, EventWorkspaceDomainVerified, EventWorkspaceDomainRevoked,
 		EventIdentityProviderCreated, EventIdentityProviderUpdated, EventIdentityProviderDisabled, EventOIDCMappingsUpdated,
 		EventSAMLMetadataUpdated, EventSAMLCertificateRotated,
-		EventSSOEnforcementEnabled, EventSSOEnforcementDisabled, EventSSOBreakGlassUsed, EventOIDCJITProvisioned,
+		EventSSOEnforcementEnabled, EventSSOEnforcementDisabled, EventSSOBreakGlassUsed, EventWorkspaceSecurityPolicyUpdated, EventOIDCJITProvisioned,
 		EventOIDCIdentityLinked, EventOIDCRoleReconciled, EventOIDCTeamsReconciled,
 		EventSCIMConnectorCreated, EventSCIMConnectorDisabled, EventSCIMTokenCreated, EventSCIMTokenRevoked,
 		EventSCIMSyncFailed, EventSCIMTokenExpiring, EventSCIMSecurityConflict:
@@ -650,6 +653,8 @@ func safeDomainEventID(id string) bool {
 
 func notificationPresentation(eventType string) (category, titleKey, bodyKey string) {
 	switch eventType {
+	case EventWorkspaceSecurityPolicyUpdated:
+		return "security", "notifications.workspaceSecurity.title", "notifications.workspaceSecurity.body"
 	case EventSCIMConnectorDisabled, EventSCIMSyncFailed, EventSCIMTokenExpiring, EventSCIMSecurityConflict:
 		return "security", "notifications.scim.title", "notifications.scim.body"
 	case EventWorkspaceDomainVerified:

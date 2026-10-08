@@ -128,8 +128,10 @@ export function clearAuthToken(): void {
  * @param credentials - Email and password
  * @returns Authentication response with token and user data, or 2FA required response
  */
-export async function login(credentials: LoginRequest): Promise<LoginResponse> {
-  const { data } = await apiClient.post<LoginResponse>('/auth/login', credentials)
+export async function login(credentials: LoginRequest, options?: { preserveSessionOnFailure?: boolean }): Promise<LoginResponse> {
+  const { data } = options?.preserveSessionOnFailure
+    ? await apiClient.post<LoginResponse>('/auth/login', credentials, { preserveAuthSessionOnFailure: true })
+    : await apiClient.post<LoginResponse>('/auth/login', credentials)
 
   // Only store token if 2FA is not required
   if (!isTotp2FARequired(data)) {
@@ -151,8 +153,10 @@ export async function login(credentials: LoginRequest): Promise<LoginResponse> {
  * @param request - Temp token and TOTP code
  * @returns Authentication response with token and user data
  */
-export async function login2FA(request: TotpLogin2FARequest): Promise<AuthResponse> {
-  const { data } = await apiClient.post<AuthResponse>('/auth/login/2fa', request)
+export async function login2FA(request: TotpLogin2FARequest, options?: { preserveSessionOnFailure?: boolean }): Promise<AuthResponse> {
+  const { data } = options?.preserveSessionOnFailure
+    ? await apiClient.post<AuthResponse>('/auth/login/2fa', request, { preserveAuthSessionOnFailure: true })
+    : await apiClient.post<AuthResponse>('/auth/login/2fa', request)
 
   // Store token and user data
   setAuthToken(data.access_token)

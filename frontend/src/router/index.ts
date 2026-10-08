@@ -327,6 +327,12 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, requiresAdmin: false, title: 'Workspace Webhooks', titleKey: 'workspace.webhooks', descriptionKey: 'workspace.webhooksDescription' }
   },
   {
+    path: '/workspaces/:workspaceId/security',
+    name: 'WorkspaceSecurity',
+    component: () => import('@/views/workspace/WorkspaceSecurityView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: false, title: 'Workspace Security', titleKey: 'workspace.securityTitle', descriptionKey: 'workspace.securityDescription' }
+  },
+  {
     path: '/workspaces/:workspaceId/identity',
     name: 'WorkspaceIdentity',
     component: () => import('@/views/workspace/WorkspaceIdentityView.vue'),
@@ -1224,7 +1230,7 @@ router.beforeEach(async (to, _from, next) => {
   // If route doesn't require auth, allow access
   if (!requiresAuth) {
     // If already authenticated and trying to access login/register, redirect to appropriate dashboard
-    if (authStore.isAuthenticated && (to.path === '/login' || to.path === '/register')) {
+    if (authStore.isAuthenticated && (to.path === '/login' || to.path === '/register') && !(to.path === '/login' && to.query.reauth === '1')) {
       // In backend mode, non-admin users should NOT be redirected away from login
       // (they are blocked from all protected routes, so redirecting would cause a loop)
       if (appStore.backendModeEnabled && !authStore.isAdmin) {
@@ -1476,6 +1482,7 @@ router.beforeEach(async (to, _from, next) => {
  * Navigation guard: End loading and trigger prefetch
  */
 router.afterEach((to) => {
+  window.dispatchEvent(new Event('workspace-context-changed'))
   // 结束导航加载状态
   navigationLoading.endNavigation()
 

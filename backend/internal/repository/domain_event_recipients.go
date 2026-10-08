@@ -53,7 +53,7 @@ func (r *notificationRecipientResolver) Resolve(ctx context.Context, event *serv
 	allowed := func(role string) bool { return true }
 	switch event.Type {
 	case service.EventWorkspaceDomainVerified, service.EventIdentityProviderDisabled, service.EventSAMLCertificateRotated,
-		service.EventSSOEnforcementEnabled, service.EventSSOEnforcementDisabled, service.EventSSOBreakGlassUsed,
+		service.EventSSOEnforcementEnabled, service.EventSSOEnforcementDisabled, service.EventSSOBreakGlassUsed, service.EventWorkspaceSecurityPolicyUpdated,
 		service.EventSCIMConnectorDisabled, service.EventSCIMSyncFailed, service.EventSCIMTokenExpiring, service.EventSCIMSecurityConflict:
 		allowed = func(role string) bool { return role == "owner" || role == "admin" }
 	case service.EventBudgetThreshold, service.EventBudgetSoftLimit, service.EventBudgetHardLimit,

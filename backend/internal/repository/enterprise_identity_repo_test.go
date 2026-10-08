@@ -55,8 +55,8 @@ func TestEnterprisePolicyReadDoesNotWrite(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 	mock.ExpectQuery("SELECT.*FROM workspaces.*workspace_security_policies").WithArgs(int64(8)).WillReturnRows(
-		sqlmock.NewRows([]string{"workspace_id", "require_sso", "sso_grace_until", "revision", "updated_by_user_id", "updated_at"}).
-			AddRow(8, false, nil, 1, nil, time.Now().UTC()))
+		sqlmock.NewRows([]string{"workspace_id", "require_sso", "sso_grace_until", "revision", "updated_by_user_id", "updated_at", "require_mfa", "session_max_age_seconds", "invitation_policy", "allow_external_members", "workspace_jit_enabled", "approved_identity_provider_mode", "approved_provider_ids"}).
+			AddRow(8, false, nil, 1, nil, time.Now().UTC(), false, nil, "any", true, true, "any_active", "{}"))
 	policy, err := (&enterpriseIdentityRepository{db: db}).GetPolicy(context.Background(), 8, 0)
 	require.NoError(t, err)
 	require.False(t, policy.RequireSSO)

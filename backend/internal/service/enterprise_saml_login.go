@@ -118,5 +118,5 @@ func (s *EnterpriseIdentityService) CompleteSAML(ctx context.Context, relayState
 	if err != nil || user == nil || !user.IsActive() {
 		return nil, ErrUserNotActive
 	}
-	return &EnterpriseSSOLoginResult{User: user, Workspace: state.WorkspaceID, ProviderID: state.ProviderID, Claims: verified.Claims, ReturnTo: state.ReturnTo, Assurance: WorkspaceAssurance{WorkspaceID: state.WorkspaceID, ProviderID: state.ProviderID, ProviderRevision: state.ProviderRevision, AuthenticatedAt: verified.AuthenticatedAt, AuthMethod: "saml"}}, nil
+	return &EnterpriseSSOLoginResult{User: user, Workspace: state.WorkspaceID, ProviderID: state.ProviderID, Claims: verified.Claims, ReturnTo: state.ReturnTo, Assurance: WorkspaceAssurance{WorkspaceID: state.WorkspaceID, ProviderID: state.ProviderID, ProviderRevision: state.ProviderRevision, AuthenticatedAt: verified.AuthenticatedAt, ValidUntil: verified.ValidUntil, AuthMethod: "saml"}}, nil
 }

@@ -5,6 +5,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import type { Component } from 'vue'
 import { useWorkspaceStore } from '@/stores/workspace'
 import workspaceMessages from '@/i18n/locales/en/workspace'
+import securityMessages from '@/i18n/locales/en/workspaceSecurity'
 import WorkspaceMembersView from '../WorkspaceMembersView.vue'
 import WorkspaceInvitationsView from '../WorkspaceInvitationsView.vue'
 import WorkspaceAuditView from '../WorkspaceAuditView.vue'
@@ -14,17 +15,22 @@ import WorkspaceProjectsView from '../WorkspaceProjectsView.vue'
 const api = vi.hoisted(() => ({
   listWorkspaces: vi.fn(), listProjects: vi.fn(), getWorkspace: vi.fn(), getOverview: vi.fn(), getBudget: vi.fn(), listMembers: vi.fn(), listInvitations: vi.fn(), listAudit: vi.fn(),
   acceptInvitation: vi.fn(), createInvitation: vi.fn(), revokeInvitation: vi.fn(), updateMember: vi.fn(), removeMember: vi.fn(), updateWorkspace: vi.fn(), createWorkspace: vi.fn(),
-  createProject: vi.fn(), updateProject: vi.fn(), archiveProject: vi.fn(),
+  createProject: vi.fn(), updateProject: vi.fn(), archiveProject: vi.fn(), getSecurityPolicy: vi.fn(),
 }))
 vi.mock('@/api/workspace', () => ({ workspaceAPI: api }))
 vi.mock('@/components/layout/AppLayout.vue', () => ({ default: { template: '<main><slot /></main>' } }))
+vi.mock('@/components/workspace/WorkspaceAccessRecovery.vue', () => ({ default: { props: ['workspaceId', 'error', 'returnTo'], template: '<button @click="$emit(\'verified\')">Verify session</button>' } }))
 vi.mock('@/stores/app', () => ({ useAppStore: () => ({ showError: vi.fn(), showSuccess: vi.fn() }) }))
 vi.mock('vue-i18n', async (importOriginal) => ({
   ...await importOriginal<typeof import('vue-i18n')>(),
-  useI18n: () => ({ t: (key: string) => key.startsWith('workspace.') ? workspaceMessages.workspace[key.slice(10) as keyof typeof workspaceMessages.workspace] ?? key : key }),
+  useI18n: () => ({ t: (key: string) => {
+    let value: unknown = { ...workspaceMessages.workspace, ...securityMessages.workspace }
+    for (const part of key.replace(/^workspace\./, '').split('.')) value = (value as Record<string, unknown>)?.[part]
+    return typeof value === 'string' ? value : key
+  } }),
 }))
 
-const permissions = ['workspace.read', 'workspace.update', 'project.read', 'project.create', 'project.update', 'project.archive', 'member.read', 'member.update', 'member.remove', 'member.invite', 'invitation.read', 'usage.read', 'budget.read', 'audit.read']
+const permissions = ['workspace.read', 'workspace.update', 'workspace_security.read', 'project.read', 'project.create', 'project.update', 'project.archive', 'member.read', 'member.update', 'member.remove', 'member.invite', 'invitation.read', 'usage.read', 'budget.read', 'audit.read']
 const workspace = (id: number) => ({ id, name: `Workspace ${id}`, slug: `workspace-${id}`, type: 'organization', status: 'active', owner_user_id: 7, billing_owner_user_id: 7, permissions })
 const member = (name = 'New member', role = 'developer') => ({ id: 2, workspace_id: 1, user_id: 8, role, status: 'active', username: name })
 let wrapper: VueWrapper | undefined
@@ -53,6 +59,7 @@ describe('workspace views keep their tenant context', () => {
     api.getOverview.mockResolvedValue({ summary: { members: 1, requests: 7, spend: 12.5 }, projects: [], platforms: [], models: [], api_keys: [] })
     api.getBudget.mockResolvedValue({ policy: { amount: 100 }, spent: 12.5, reserved: 0, remaining: 87.5 })
     api.acceptInvitation.mockResolvedValue(workspace(2))
+    api.getSecurityPolicy.mockResolvedValue({ invitation_policy: 'any', allow_external_members: true, verified_domains: [] })
   })
   afterEach(() => { wrapper?.unmount(); wrapper = undefined })
 
@@ -93,6 +100,65 @@ describe('workspace views keep their tenant context', () => {
     await flushPromises()
     expect(api.acceptInvitation).toHaveBeenCalledWith('invitation-token')
     expect(router.currentRoute.value.path).toBe('/workspaces/2/overview')
+  })
+
+  it('explains disabled invitation creation without hiding acceptance for another target workspace', async () => {
+    api.getSecurityPolicy.mockResolvedValue({ invitation_policy: 'disabled', allow_external_members: false, verified_domains: ['example.com'] })
+    const { wrapper } = await render(WorkspaceInvitationsView, 'invitations')
+    const create = wrapper.findAll('button').find(button => button.text() === 'Create invitation')!
+    expect(create.attributes()).toHaveProperty('disabled')
+    expect(wrapper.text()).toContain('Invitation creation is disabled')
+    expect(wrapper.find('[data-testid="accept-invitation-form"]').exists()).toBe(true)
+  })
+
+  it('keeps a rejected invitation token and renders the specific target-policy denial inline', async () => {
+    api.acceptInvitation.mockRejectedValue({ status: 403, code: 'INVITATIONS_DISABLED', message: 'internal secret', metadata: { workspace_id: 2 } })
+    const { wrapper } = await render(WorkspaceInvitationsView, 'invitations')
+    await wrapper.find('[name="invitation-token"]').setValue('pending-invite')
+    await wrapper.find('[data-testid="accept-invitation-form"]').trigger('submit')
+    await flushPromises()
+    expect((wrapper.find('[name="invitation-token"]').element as HTMLInputElement).value).toBe('pending-invite')
+    expect(wrapper.find('[data-testid="invitation-accept-error"]').text()).toContain('Invitations are disabled in the target workspace')
+    expect(wrapper.text()).not.toContain('internal secret')
+  })
+
+  it('recovers denied invitation management without dropping an entered acceptance token', async () => {
+    api.listInvitations.mockRejectedValueOnce({ status: 403, code: 'MFA_REQUIRED' })
+    const { wrapper } = await render(WorkspaceInvitationsView, 'invitations')
+    await wrapper.find('[name="invitation-token"]').setValue('pending-invite')
+    const recovery = wrapper.find('[data-testid="invitation-management-recovery"]')
+    expect(recovery.exists()).toBe(true)
+    await recovery.trigger('click')
+    await flushPromises()
+    expect(api.listInvitations).toHaveBeenCalledTimes(2)
+    expect(wrapper.text()).toContain('new@example.com')
+    expect((wrapper.find('[name="invitation-token"]').element as HTMLInputElement).value).toBe('pending-invite')
+  })
+
+  it('offers authentication recovery if policy changes before invitation creation', async () => {
+    api.createInvitation.mockRejectedValue({ status: 403, code: 'MFA_REQUIRED' })
+    const { wrapper } = await render(WorkspaceInvitationsView, 'invitations')
+    await wrapper.findAll('button').find(button => button.text() === 'Create invitation')!.trigger('click')
+    await wrapper.find('input[type="email"]').setValue('new@example.com')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+    expect(wrapper.find('[data-testid="invitation-management-recovery"]').exists()).toBe(true)
+    expect(api.createInvitation).toHaveBeenCalledTimes(1)
+  })
+
+  it('drops a created invitation secret after switching away and back before completion', async () => {
+    let finish!: (value: unknown) => void
+    api.createInvitation.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    const { wrapper } = await render(WorkspaceInvitationsView, 'invitations')
+    await wrapper.findAll('button').find(button => button.text() === 'Create invitation')!.trigger('click')
+    await wrapper.find('input[type="email"]').setValue('new@example.com')
+    await wrapper.find('form').trigger('submit')
+    await useWorkspaceStore().selectWorkspace(2)
+    await useWorkspaceStore().selectWorkspace(1)
+    await flushPromises()
+    finish({ token: 'stale-invitation-secret' })
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('stale-invitation-secret')
   })
 
   it('does not offer owner changes without the server owner.manage permission', async () => {

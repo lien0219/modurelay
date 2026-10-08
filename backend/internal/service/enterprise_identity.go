@@ -303,10 +303,25 @@ func ReconcileOIDCTeams(existing []OIDCTeamMembership, desired []int64, groupsPr
 }
 
 type WorkspaceSecurityPolicy struct {
-	WorkspaceID   int64      `json:"workspace_id"`
-	RequireSSO    bool       `json:"require_sso"`
-	SSOGraceUntil *time.Time `json:"sso_grace_until,omitempty"`
-	Revision      int64      `json:"revision"`
+	WorkspaceID                  int64                      `json:"workspace_id"`
+	RequireSSO                   bool                       `json:"require_sso"`
+	SSOGraceUntil                *time.Time                 `json:"sso_grace_until"`
+	RequireMFA                   bool                       `json:"require_mfa"`
+	SessionMaxAgeSeconds         *int                       `json:"session_max_age_seconds"`
+	InvitationPolicy             string                     `json:"invitation_policy"`
+	AllowExternalMembers         bool                       `json:"allow_external_members"`
+	WorkspaceJITEnabled          bool                       `json:"workspace_jit_enabled"`
+	ApprovedIdentityProviderMode string                     `json:"approved_identity_provider_mode"`
+	ApprovedIdentityProviderIDs  []int64                    `json:"approved_identity_provider_ids"`
+	Revision                     int64                      `json:"revision"`
+	UpdatedBy                    *int64                     `json:"updated_by_user_id,omitempty"`
+	UpdatedAt                    time.Time                  `json:"updated_at"`
+	VerifiedDomains              []string                   `json:"verified_domains,omitempty"`
+	ExternalMemberCount          int64                      `json:"external_member_count"`
+	Decision                     *WorkspaceSecurityDecision `json:"decision,omitempty"`
+	PrerequisiteReason           string                     `json:"prerequisite_reason,omitempty"`
+	SessionMaxAgeMinSeconds      int                        `json:"session_max_age_min_seconds"`
+	SessionMaxAgeMaxSeconds      int                        `json:"session_max_age_max_seconds"`
 }
 
 type WorkspaceAssurance struct {
@@ -338,7 +353,7 @@ func AuthenticationAssuranceFromContext(ctx context.Context) (WorkspaceAssurance
 }
 
 func (a WorkspaceAssurance) Valid(now time.Time) bool {
-	return a.WorkspaceID > 0 && a.ProviderID > 0 && !a.AuthenticatedAt.IsZero() && !a.AuthenticatedAt.After(now.Add(time.Minute)) && now.Sub(a.AuthenticatedAt) < 12*time.Hour && (a.ValidUntil.IsZero() || now.Before(a.ValidUntil))
+	return a.WorkspaceID > 0 && a.ProviderID > 0 && !a.AuthenticatedAt.IsZero() && !a.AuthenticatedAt.After(now.Add(time.Minute)) && now.Sub(a.AuthenticatedAt) < LegacyEnterpriseAssuranceMaxAge && (a.ValidUntil.IsZero() || now.Before(a.ValidUntil))
 }
 
 func RequireWorkspaceAssurance(policy WorkspaceSecurityPolicy, workspaceType, principal string, assurance WorkspaceAssurance) error {

@@ -104,21 +104,33 @@ function serializeAssertionCredential(credential: PublicKeyCredential): Record<s
   }
 }
 
-async function login(proof?: ActionCaptchaRequestProof): Promise<AuthResponse> {
+async function login(
+  proof?: ActionCaptchaRequestProof,
+  options?: { preserveSessionOnFailure?: boolean }
+): Promise<AuthResponse> {
   requirePasskeySupport()
-  const { data: begin } = proof
-    ? await apiClient.post<CeremonyOptionsResponse>('/auth/passkey/login/begin', proof)
-    : await apiClient.post<CeremonyOptionsResponse>('/auth/passkey/login/begin')
+  const { data: begin } = options?.preserveSessionOnFailure
+    ? await apiClient.post<CeremonyOptionsResponse>('/auth/passkey/login/begin', proof, {
+        preserveAuthSessionOnFailure: true
+      })
+    : proof
+      ? await apiClient.post<CeremonyOptionsResponse>('/auth/passkey/login/begin', proof)
+      : await apiClient.post<CeremonyOptionsResponse>('/auth/passkey/login/begin')
   const credential = await navigator.credentials.get({
     publicKey: requestOptionsFromJSON(begin.options.publicKey)
   })
   if (!(credential instanceof PublicKeyCredential)) {
     throw new Error('Passkey sign-in was cancelled')
   }
-  const { data } = await apiClient.post<AuthResponse>('/auth/passkey/login/finish', {
+  const request = {
     session_token: begin.session_token,
     credential: serializeAssertionCredential(credential)
-  })
+  }
+  const { data } = options?.preserveSessionOnFailure
+    ? await apiClient.post<AuthResponse>('/auth/passkey/login/finish', request, {
+        preserveAuthSessionOnFailure: true
+      })
+    : await apiClient.post<AuthResponse>('/auth/passkey/login/finish', request)
   return data
 }
 

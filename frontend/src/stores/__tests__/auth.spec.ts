@@ -9,6 +9,7 @@ const mockLogout = vi.fn()
 const mockGetCurrentUser = vi.fn()
 const mockRegister = vi.fn()
 const mockRefreshToken = vi.fn()
+const mockPasskeyLogin = vi.fn()
 
 vi.mock('@/api', () => ({
   authAPI: {
@@ -20,6 +21,7 @@ vi.mock('@/api', () => ({
     refreshToken: (...args: any[]) => mockRefreshToken(...args),
   },
   isTotp2FARequired: (response: any) => response?.requires_2fa === true,
+  passkeyAPI: { login: (...args: unknown[]) => mockPasskeyLogin(...args) },
 }))
 
 const fakeUser = {
@@ -61,6 +63,38 @@ describe('useAuthStore', () => {
 
   afterEach(() => {
     vi.useRealTimers()
+  })
+
+  it('adopts only the already coordinated token pair and reschedules token refresh', async () => {
+    mockLogin.mockResolvedValue(fakeAuthResponse)
+    const store = useAuthStore()
+    await store.login({ email: 'test@example.com', password: '123456' })
+    const tokens = { access_token: 'mfa-access', refresh_token: 'mfa-refresh', expires_in: 1800, token_type: 'Bearer' }
+    localStorage.setItem('auth_token', tokens.access_token)
+    localStorage.setItem('refresh_token', tokens.refresh_token)
+    localStorage.setItem('token_expires_at', String(Date.now() + 1800000))
+    store.adoptStoredSessionTokens(tokens)
+    expect(store.token).toBe('mfa-access')
+    expect(store.user).toEqual(fakeUser)
+    expect(() => store.adoptStoredSessionTokens({ ...tokens, access_token: 'stale' })).toThrow('Session changed')
+  })
+
+  it('preserves the global session when explicit reauthentication proof fails', async () => {
+    mockLogin.mockResolvedValueOnce(fakeAuthResponse).mockRejectedValue(new Error('Invalid credentials'))
+    const store = useAuthStore()
+    await store.login({ email: 'test@example.com', password: '123456' })
+    await expect(store.login({ email: 'test@example.com', password: 'wrong' }, { preserveSessionOnFailure: true })).rejects.toThrow('Invalid credentials')
+    expect(store.token).toBe('test-token-123')
+    expect(localStorage.getItem('refresh_token')).toBe('refresh-token-456')
+  })
+
+  it('preserves the global session when explicit passkey reauthentication is cancelled', async () => {
+    mockLogin.mockResolvedValueOnce(fakeAuthResponse)
+    mockPasskeyLogin.mockRejectedValue(new Error('Passkey sign-in was cancelled'))
+    const store = useAuthStore()
+    await store.login({ email: 'test@example.com', password: '123456' })
+    await expect(store.loginWithPasskey(undefined, { preserveSessionOnFailure: true })).rejects.toThrow('cancelled')
+    expect(store.token).toBe('test-token-123')
   })
 
   // --- login ---

@@ -46,12 +46,13 @@ func init() {
 	// mutation is intentionally narrower because it affects all credentials in
 	// a scope.
 	for _, role := range []string{"owner", "admin", "developer", "billing", "viewer"} {
-		workspaceRolePermissions[role] = append(workspaceRolePermissions[role], "policy.read")
+		workspaceRolePermissions[role] = append(workspaceRolePermissions[role], "policy.read", "workspace_security.read")
 	}
 	for _, role := range []string{"owner", "admin"} {
 		workspaceRolePermissions[role] = append(workspaceRolePermissions[role], "workspace_policy.update", "project_policy.update", "provisioning.read", "provisioning.manage", "provisioning.token.rotate")
 	}
 	workspaceRolePermissions["owner"] = append(workspaceRolePermissions["owner"], "service_account_policy.update")
+	workspaceRolePermissions["owner"] = append(workspaceRolePermissions["owner"], "workspace_security.update")
 	workspaceRolePermissions["admin"] = append(workspaceRolePermissions["admin"], "service_account_policy.update")
 	workspaceRolePermissions["developer"] = append(workspaceRolePermissions["developer"], "service_account_policy.update")
 }

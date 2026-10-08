@@ -18,6 +18,11 @@ describe('enterprise SSO navigation', () => {
     expect(ssoRequiredRedirect('/workspaces/0/teams', 'SSO_REQUIRED', '', '/dashboard')).toBeNull()
   })
 
+  it('does not redirect a late denial from another workspace into the current route', () => {
+    expect(ssoRequiredRedirect('/workspaces/7/teams', 'SSO_REQUIRED', '', '/workspaces/8/teams')).toBeNull()
+    expect(ssoRequiredRedirect('/workspaces/7/teams', 'SSO_REQUIRED', '', '/profile')).toBeNull()
+  })
+
   it('keeps only an expiring safe navigation hint and clears it after completion', () => {
     sessionStorage.clear()
     const now = Date.now()

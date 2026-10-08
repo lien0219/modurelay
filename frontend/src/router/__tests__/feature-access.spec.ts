@@ -93,6 +93,19 @@ function createDeferred<T>() {
   return { promise, resolve }
 }
 
+describe('workspace reauthentication entry', () => {
+  beforeAll(async () => { await import('../index') })
+  it('allows an authenticated user to reauthenticate without clearing the current session', async () => {
+    authStore.isAuthenticated = true
+    authStore.isAdmin = false
+    appStore.backendModeEnabled = false
+    const next = vi.fn()
+    await routerHarness.guard!({ path: '/login', fullPath: '/login?reauth=1', params: {}, query: { reauth: '1', redirect: '/workspaces/7/security' }, meta: { requiresAuth: false }, name: 'Login' }, { path: '/workspaces/7/security' }, next)
+    expect(next).toHaveBeenCalledWith()
+    expect(authStore.isAuthenticated).toBe(true)
+  })
+})
+
 function runGuard(meta: Record<string, unknown>, path: string) {
   if (!routerHarness.guard) {
     throw new Error('router guard was not registered')

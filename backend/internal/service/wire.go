@@ -72,6 +72,7 @@ func ProvideAuthService(
 	defaultSubAssigner DefaultSubscriptionAssigner,
 	affiliateService *AffiliateService,
 	userPlatformQuotaRepo UserPlatformQuotaRepository,
+	totpService *TotpService,
 ) *AuthService {
 	svc := NewAuthService(
 		entClient,
@@ -90,6 +91,13 @@ func ProvideAuthService(
 	)
 	svc.SetTencentCaptchaService(tencentCaptchaService)
 	svc.SetAliyunCaptchaService(aliyunCaptchaService)
+	svc.SetSessionMFAVerifier(totpService)
+	return svc
+}
+
+func ProvideTotpService(userRepo UserRepository, encryptor SecretEncryptor, cache TotpCache, settings *SettingService, email *EmailService, emailQueue *EmailQueueService, dependencies UserFactorDependencyRepository) *TotpService {
+	svc := NewTotpService(userRepo, encryptor, cache, settings, email, emailQueue)
+	svc.SetFactorDependencyRepository(dependencies)
 	return svc
 }
 
@@ -1015,7 +1023,7 @@ var ProviderSet = wire.NewSet(
 	NewGrokQuotaFetcher,
 	NewUserAttributeService,
 	NewUsageCache,
-	NewTotpService,
+	ProvideTotpService,
 	NewErrorPassthroughService,
 	NewTLSFingerprintProfileService,
 	ProvidePluginManager,

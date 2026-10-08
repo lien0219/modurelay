@@ -530,7 +530,7 @@ func (r *enterpriseIdentityRepository) DisableProvider(ctx context.Context, work
 		return err
 	}
 	var lockout bool
-	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM workspace_security_policies WHERE workspace_id=$1 AND require_sso) AND NOT EXISTS(SELECT 1 FROM workspace_identity_providers WHERE workspace_id=$1 AND id<>$2 AND status='active')`, workspaceID, providerID).Scan(&lockout); err != nil {
+	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM workspace_security_policies sp WHERE sp.workspace_id=$1 AND sp.require_sso AND EXISTS(SELECT 1 FROM workspace_identity_providers ip WHERE ip.workspace_id=sp.workspace_id AND ip.id=$2 AND ip.status='active' AND (sp.approved_identity_provider_mode='any_active' OR EXISTS(SELECT 1 FROM workspace_security_approved_providers ap WHERE ap.workspace_id=ip.workspace_id AND ap.provider_id=ip.id))) AND NOT EXISTS(SELECT 1 FROM workspace_identity_providers ip WHERE ip.workspace_id=sp.workspace_id AND ip.id<>$2 AND ip.status='active' AND (sp.approved_identity_provider_mode='any_active' OR EXISTS(SELECT 1 FROM workspace_security_approved_providers ap WHERE ap.workspace_id=ip.workspace_id AND ap.provider_id=ip.id))))`, workspaceID, providerID).Scan(&lockout); err != nil {
 		return err
 	}
 	if lockout {
@@ -596,66 +596,44 @@ func (r *enterpriseIdentityRepository) HasVerifiedDomain(ctx context.Context, wo
 }
 
 func (r *enterpriseIdentityRepository) GetPolicy(ctx context.Context, workspaceID, actorID int64) (*service.WorkspaceIdentityPolicy, error) {
-	const query = `SELECT w.id,COALESCE(p.require_sso,false),p.sso_grace_until,COALESCE(p.revision,1),p.updated_by_user_id,COALESCE(p.updated_at,w.updated_at) FROM workspaces w LEFT JOIN workspace_security_policies p ON p.workspace_id=w.id WHERE w.id=$1`
 	if actorID == 0 {
-		return scanIdentityPolicy(r.db.QueryRowContext(ctx, query, workspaceID))
+		return loadWorkspaceSecurityPolicy(ctx, r.db, workspaceID)
 	}
-	tx, _, err := r.beginScoped(ctx, workspaceID, actorID, "identity.read")
+	tx, _, err := r.beginScoped(ctx, workspaceID, actorID, "workspace_security.read")
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	item, err := scanIdentityPolicy(tx.QueryRowContext(ctx, query, workspaceID))
+	item, err := loadWorkspaceSecurityPolicyTx(ctx, tx, workspaceID)
 	if err != nil {
+		return nil, err
+	}
+	if err = describeWorkspaceSecurityPolicyTx(ctx, tx, item); err != nil {
 		return nil, err
 	}
 	return item, enterpriseIdentityError(tx.Commit())
 }
 
 func scanIdentityPolicy(scanner interface{ Scan(...any) error }) (*service.WorkspaceIdentityPolicy, error) {
-	p := &service.WorkspaceIdentityPolicy{}
-	err := scanner.Scan(&p.WorkspaceID, &p.RequireSSO, &p.SSOGraceUntil, &p.Revision, &p.UpdatedBy, &p.UpdatedAt)
+	defaults := service.DefaultWorkspaceSecurityPolicy(0)
+	p := &defaults
+	err := scanner.Scan(&p.WorkspaceID, &p.RequireSSO, &p.SSOGraceUntil, &p.Revision, &p.UpdatedBy, &p.UpdatedAt, &p.RequireMFA, &p.SessionMaxAgeSeconds, &p.InvitationPolicy, &p.AllowExternalMembers, &p.WorkspaceJITEnabled, &p.ApprovedIdentityProviderMode, pq.Array(&p.ApprovedIdentityProviderIDs))
 	return p, enterpriseIdentityError(err)
 }
 
 func (r *enterpriseIdentityRepository) UpdatePolicy(ctx context.Context, workspaceID, actorID int64, requireSSO bool, graceUntil *time.Time) (*service.WorkspaceIdentityPolicy, error) {
-	tx, _, err := r.beginScoped(ctx, workspaceID, actorID, "workspace_sso.update")
+	// The legacy in-process API delegates to the single locked writer.
+	tx, _, enrolled, err := r.beginSecurityMutation(ctx, workspaceID, actorID)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if requireSSO {
-		// Configuration validation runs outside the transaction. Recheck the
-		// requesting Owner's exact assurance after acquiring the same workspace
-		// lock used by provider edits, so a revision change cannot race enabling.
-		assurance, ok := service.AuthenticationAssuranceFromContext(ctx)
-		if !ok || assurance.WorkspaceID != workspaceID || (assurance.AuthMethod != "oidc" && assurance.AuthMethod != "saml") || !assurance.Valid(time.Now()) {
-			return nil, service.ErrSSORequired
-		}
-		var ready bool
-		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM workspace_domains WHERE workspace_id=$1 AND status='verified') AND EXISTS(SELECT 1 FROM workspace_user_identities i JOIN workspace_identity_providers p ON p.workspace_id=i.workspace_id AND p.id=i.provider_id AND p.status='active' JOIN workspace_members m ON m.workspace_id=i.workspace_id AND m.user_id=i.user_id AND m.role='owner' AND m.status='active' JOIN users u ON u.id=m.user_id AND u.status='active' AND u.deleted_at IS NULL WHERE i.workspace_id=$1 AND i.provider_id=$2 AND p.revision=$3 AND i.user_id=$4 AND p.type=$5)`, workspaceID, assurance.ProviderID, assurance.ProviderRevision, actorID, assurance.AuthMethod).Scan(&ready); err != nil {
-			return nil, err
-		}
-		if !ready {
-			return nil, service.ErrWorkspaceConflict
-		}
-	}
-	item, err := writeIdentityPolicy(ctx, tx, workspaceID, actorID, requireSSO, graceUntil)
+	current, err := loadWorkspaceSecurityPolicyTx(ctx, tx, workspaceID)
 	if err != nil {
 		return nil, err
 	}
-	eventType := service.EventSSOEnforcementDisabled
-	if requireSSO {
-		eventType = service.EventSSOEnforcementEnabled
-	}
-	if err = appendIdentityMutation(ctx, tx, workspaceID, actorID, "identity.policy_updated", eventType, "workspace", workspaceID, service.DomainEventData{"policy_revision": item.Revision, "require_sso": requireSSO}); err != nil {
-		return nil, err
-	}
-	return item, enterpriseIdentityError(tx.Commit())
-}
-
-func writeIdentityPolicy(ctx context.Context, tx *sql.Tx, workspaceID, actorID int64, requireSSO bool, graceUntil *time.Time) (*service.WorkspaceIdentityPolicy, error) {
-	return scanIdentityPolicy(tx.QueryRowContext(ctx, `INSERT INTO workspace_security_policies(workspace_id,require_sso,sso_grace_until,revision,updated_by_user_id) VALUES($1,$2,$3,2,$4) ON CONFLICT (workspace_id) DO UPDATE SET require_sso=EXCLUDED.require_sso,sso_grace_until=EXCLUDED.sso_grace_until,revision=workspace_security_policies.revision+1,updated_by_user_id=EXCLUDED.updated_by_user_id,updated_at=now() RETURNING workspace_id,require_sso,sso_grace_until,revision,updated_by_user_id,updated_at`, workspaceID, requireSSO, graceUntil, actorID))
+	patch := service.WorkspaceSecurityPolicyPatch{ExpectedRevision: current.Revision, RequireSSO: &requireSSO, SSOGraceUntil: service.NullableSecurityValue[time.Time]{Present: true, Value: graceUntil}}
+	return r.patchSecurityPolicyTx(ctx, tx, workspaceID, actorID, patch, enrolled)
 }
 
 func (r *enterpriseIdentityRepository) CreateOIDCState(ctx context.Context, state *service.OIDCState) error {
@@ -817,6 +795,13 @@ func (r *enterpriseIdentityRepository) EnsureOIDCMembership(ctx context.Context,
 	}
 	// Existing manual/SCIM/other-provider assignments and Owner survive. This
 	// compatibility helper never recreates a removed or suspended membership.
+	source := service.AdmissionOIDCJIT
+	if provider.Type == "saml" {
+		source = service.AdmissionSAMLJIT
+	}
+	if err = checkWorkspaceMemberAdmissionTx(ctx, tx, workspaceID, service.WorkspaceMemberAdmissionRequest{Source: source, UserID: userID, MemberID: access.Member.ID, ProviderID: providerID, ProviderRevision: provider.Revision}); err != nil {
+		return err
+	}
 	if err = upsertProviderMemberSource(ctx, tx, workspaceID, access.Member.ID, providerID, provider.Type, role); err != nil {
 		return enterpriseIdentityError(err)
 	}
@@ -1045,6 +1030,10 @@ func (r *enterpriseIdentityRepository) CompleteIdentityLogin(ctx context.Context
 	if provider.Revision != input.ProviderRevision || provider.Type != protocol {
 		return 0, service.ErrOIDCStateSessionMismatch
 	}
+	admissionSource := service.AdmissionOIDCJIT
+	if protocol == "saml" {
+		admissionSource = service.AdmissionSAMLJIT
+	}
 	var userID, identityID int64
 	err = tx.QueryRowContext(ctx, `SELECT id,user_id FROM workspace_user_identities WHERE workspace_id=$1 AND provider_id=$2 AND subject=$3 FOR UPDATE`, input.WorkspaceID, input.ProviderID, claims.Subject).Scan(&identityID, &userID)
 	newIdentity, newUser := errors.Is(err, sql.ErrNoRows), false
@@ -1061,6 +1050,9 @@ func (r *enterpriseIdentityRepository) CompleteIdentityLogin(ctx context.Context
 			userID = *input.LinkUserID
 		} else {
 			email := strings.ToLower(strings.TrimSpace(claims.Email))
+			if err = checkWorkspaceMemberAdmissionTx(ctx, tx, input.WorkspaceID, service.WorkspaceMemberAdmissionRequest{Source: admissionSource, Email: email, ProviderID: input.ProviderID, ProviderRevision: input.ProviderRevision}); err != nil {
+				return 0, err
+			}
 			parsed, parseErr := mail.ParseAddress(email)
 			if parseErr != nil || parsed.Address != email || len(email) > 255 || !claims.EmailVerified || !provider.JITConfig.Enabled || input.PasswordHash == "" {
 				return 0, service.ErrOIDCAccountLinkRequired
@@ -1133,6 +1125,30 @@ func (r *enterpriseIdentityRepository) CompleteIdentityLogin(ctx context.Context
 	}
 	if administrativelySuspended || existingActiveSource || (newIdentity || input.LinkUserID != nil) && memberStatus != "active" {
 		return 0, service.ErrWorkspaceForbidden
+	}
+	if err = checkWorkspaceMemberAdmissionTx(ctx, tx, input.WorkspaceID, service.WorkspaceMemberAdmissionRequest{Source: admissionSource, UserID: userID, MemberID: memberID, ProviderID: input.ProviderID, ProviderRevision: input.ProviderRevision}); err != nil {
+		return 0, err
+	}
+	if memberStatus != "active" {
+		// A stable identity may restore source-deprovisioned access, subject to
+		// the same verified-email/domain and provider JIT bounds as new access.
+		email := strings.ToLower(strings.TrimSpace(claims.Email))
+		parsed, parseErr := mail.ParseAddress(email)
+		at := strings.LastIndex(email, "@")
+		if parseErr != nil || parsed.Address != email || at < 1 || !claims.EmailVerified {
+			return 0, service.ErrOIDCAccountLinkRequired
+		}
+		domain, domainErr := service.NormalizeEnterpriseDomain(email[at+1:])
+		if domainErr != nil {
+			return 0, service.ErrOIDCAccountLinkRequired
+		}
+		var verified bool
+		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM workspace_domains WHERE workspace_id=$1 AND normalized_domain=$2 AND status='verified')`, input.WorkspaceID, domain).Scan(&verified); err != nil {
+			return 0, err
+		}
+		if !verified || !provider.JITConfig.Allows(email, true, []string{domain}, true) {
+			return 0, service.ErrOIDCAccountLinkRequired
+		}
 	}
 	var currentSourceRole string
 	sourceErr := tx.QueryRowContext(ctx, `SELECT role FROM workspace_membership_sources WHERE workspace_id=$1 AND member_id=$2 AND provider_id=$3 AND source_type=$4`, input.WorkspaceID, memberID, input.ProviderID, protocol).Scan(&currentSourceRole)
@@ -1278,7 +1294,7 @@ func (r *enterpriseIdentityRepository) BreakGlass(ctx context.Context, workspace
 	if strings.TrimSpace(reason) == "" || len(reason) > 500 {
 		return nil, service.ErrEnterpriseIdentityInvalid
 	}
-	tx, access, err := r.beginScoped(ctx, workspaceID, actorID, "workspace_sso.update")
+	tx, access, enrolled, err := r.beginSecurityMutation(ctx, workspaceID, actorID)
 	if err != nil {
 		return nil, err
 	}
@@ -1286,12 +1302,18 @@ func (r *enterpriseIdentityRepository) BreakGlass(ctx context.Context, workspace
 	if access.Workspace.Status != "active" || access.Member.Role != service.WorkspaceRoleOwner || access.Member.Status != "active" {
 		return nil, service.ErrWorkspaceForbidden
 	}
-	var requireSSO bool
-	if err = tx.QueryRowContext(ctx, `SELECT require_sso FROM workspace_security_policies WHERE workspace_id=$1 FOR UPDATE`, workspaceID).Scan(&requireSSO); err != nil {
-		return nil, enterpriseIdentityError(err)
+	current, err := loadWorkspaceSecurityPolicyTx(ctx, tx, workspaceID)
+	if err != nil {
+		return nil, err
 	}
-	if !requireSSO {
+	if !current.RequireSSO && !current.RequireMFA && current.SessionMaxAgeSeconds == nil {
 		return nil, service.ErrWorkspaceConflict
+	}
+	auth, _ := service.SessionAuthenticationFromContext(ctx)
+	auth.MFAEnrolled = enrolled
+	ctx = service.WithSessionAuthentication(ctx, auth)
+	if err = service.RequireRecentAuthentication(ctx, time.Now(), 10*time.Minute); err != nil {
+		return nil, err
 	}
 	var lastUsed time.Time
 	err = tx.QueryRowContext(ctx, `INSERT INTO workspace_identity_break_glass_limits(workspace_id,last_used_at,actor_user_id) VALUES($1,now(),$2) ON CONFLICT(workspace_id) DO UPDATE SET last_used_at=now(),actor_user_id=EXCLUDED.actor_user_id WHERE workspace_identity_break_glass_limits.last_used_at<=now()-interval '15 minutes' RETURNING last_used_at`, workspaceID, actorID).Scan(&lastUsed)
@@ -1301,8 +1323,16 @@ func (r *enterpriseIdentityRepository) BreakGlass(ctx context.Context, workspace
 	if err != nil {
 		return nil, err
 	}
-	item, err := writeIdentityPolicy(ctx, tx, workspaceID, actorID, false, nil)
+	next := *current
+	next.RequireSSO = false
+	next.RequireMFA = false
+	next.SSOGraceUntil = nil
+	next.SessionMaxAgeSeconds = nil
+	item, err := writeWorkspaceSecurityPolicyTx(ctx, tx, actorID, next)
 	if err != nil {
+		return nil, err
+	}
+	if err = appendWorkspaceSecurityMutationTx(ctx, tx, actorID, *current, *item); err != nil {
 		return nil, err
 	}
 	if err = appendWorkspaceAudit(ctx, tx, workspaceID, actorID, nil, "identity.break_glass", "workspace", workspaceID, map[string]any{"reason": strings.TrimSpace(reason), "policy_revision": item.Revision}); err != nil {
@@ -1345,7 +1375,11 @@ func (r *enterpriseIdentityRepository) CreateLoginCompletion(ctx context.Context
 	}
 	// Binding the current revision prevents config edits or disable/enable from
 	// turning an old completion into fresh assurance.
-	result, err := tx.ExecContext(ctx, `INSERT INTO workspace_identity_login_completions(token_hash,browser_session_hash,workspace_id,provider_id,provider_revision,user_id,return_to,authenticated_at,expires_at,auth_method) SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9,$10 FROM workspaces w JOIN workspace_members m ON m.workspace_id=w.id AND m.user_id=$6 AND m.status='active' JOIN users u ON u.id=m.user_id AND u.status='active' AND u.deleted_at IS NULL WHERE w.id=$3 AND w.type='organization' AND w.status='active'`, tokenHash, browserHash, login.Workspace, login.ProviderID, provider.Revision, login.User.ID, login.ReturnTo, login.Assurance.AuthenticatedAt, expiresAt, provider.Type)
+	var validUntil any
+	if !login.Assurance.ValidUntil.IsZero() {
+		validUntil = login.Assurance.ValidUntil
+	}
+	result, err := tx.ExecContext(ctx, `INSERT INTO workspace_identity_login_completions(token_hash,browser_session_hash,workspace_id,provider_id,provider_revision,user_id,return_to,authenticated_at,expires_at,auth_method,valid_until) SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11 FROM workspaces w JOIN workspace_members m ON m.workspace_id=w.id AND m.user_id=$6 AND m.status='active' JOIN users u ON u.id=m.user_id AND u.status='active' AND u.deleted_at IS NULL WHERE w.id=$3 AND w.type='organization' AND w.status='active'`, tokenHash, browserHash, login.Workspace, login.ProviderID, provider.Revision, login.User.ID, login.ReturnTo, login.Assurance.AuthenticatedAt, expiresAt, provider.Type, validUntil)
 	if err != nil {
 		return enterpriseIdentityError(err)
 	}
@@ -1366,8 +1400,8 @@ func (r *enterpriseIdentityRepository) ConsumeLoginCompletion(ctx context.Contex
 	return scanIdentityLoginCompletion(r.db.QueryRowContext(ctx, `UPDATE workspace_identity_login_completions c SET consumed_at=$3 WHERE `+enterpriseCompletionIsLive+` RETURNING `+enterpriseCompletionProjection, tokenHash, browserHash, now))
 }
 
-const enterpriseCompletionIsLive = `c.token_hash=$1 AND c.browser_session_hash=$2 AND c.consumed_at IS NULL AND c.expires_at>$3 AND EXISTS(SELECT 1 FROM workspace_identity_providers p JOIN workspaces w ON w.id=p.workspace_id AND w.type='organization' AND w.status='active' JOIN workspace_members m ON m.workspace_id=w.id AND m.user_id=c.user_id AND m.status='active' JOIN users u ON u.id=m.user_id AND u.status='active' AND u.deleted_at IS NULL WHERE p.workspace_id=c.workspace_id AND p.id=c.provider_id AND p.revision=c.provider_revision AND p.type=c.auth_method AND p.status='active')`
-const enterpriseCompletionProjection = `c.workspace_id,c.provider_id,c.provider_revision,c.user_id,c.return_to,c.authenticated_at,c.auth_method`
+const enterpriseCompletionIsLive = `c.token_hash=$1 AND c.browser_session_hash=$2 AND c.consumed_at IS NULL AND c.expires_at>$3 AND (c.valid_until IS NULL OR c.valid_until>$3) AND EXISTS(SELECT 1 FROM workspace_identity_providers p JOIN workspaces w ON w.id=p.workspace_id AND w.type='organization' AND w.status='active' JOIN workspace_members m ON m.workspace_id=w.id AND m.user_id=c.user_id AND m.status='active' JOIN users u ON u.id=m.user_id AND u.status='active' AND u.deleted_at IS NULL WHERE p.workspace_id=c.workspace_id AND p.id=c.provider_id AND p.revision=c.provider_revision AND p.type=c.auth_method AND p.status='active')`
+const enterpriseCompletionProjection = `c.workspace_id,c.provider_id,c.provider_revision,c.user_id,c.return_to,c.authenticated_at,c.auth_method,c.valid_until`
 
 func (r *enterpriseIdentityRepository) PreviewLoginCompletion(ctx context.Context, tokenHash, browserHash []byte, now time.Time) (*service.OIDCLoginResult, int64, error) {
 	if len(tokenHash) != 32 || len(browserHash) != 32 {
@@ -1379,7 +1413,8 @@ func (r *enterpriseIdentityRepository) PreviewLoginCompletion(ctx context.Contex
 func scanIdentityLoginCompletion(scanner workspaceScanner) (*service.OIDCLoginResult, int64, error) {
 	login := &service.OIDCLoginResult{}
 	var userID, revision int64
-	err := scanner.Scan(&login.Workspace, &login.ProviderID, &revision, &userID, &login.ReturnTo, &login.Assurance.AuthenticatedAt, &login.Assurance.AuthMethod)
+	var validUntil sql.NullTime
+	err := scanner.Scan(&login.Workspace, &login.ProviderID, &revision, &userID, &login.ReturnTo, &login.Assurance.AuthenticatedAt, &login.Assurance.AuthMethod, &validUntil)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, 0, service.ErrOIDCStateSessionMismatch
 	}
@@ -1387,5 +1422,8 @@ func scanIdentityLoginCompletion(scanner workspaceScanner) (*service.OIDCLoginRe
 		return nil, 0, err
 	}
 	login.Assurance.WorkspaceID, login.Assurance.ProviderID, login.Assurance.ProviderRevision = login.Workspace, login.ProviderID, revision
+	if validUntil.Valid {
+		login.Assurance.ValidUntil = validUntil.Time
+	}
 	return login, userID, nil
 }

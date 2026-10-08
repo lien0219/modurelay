@@ -47,11 +47,11 @@ describe('workspace identity API', () => {
 
   it('serializes the policy and starts SSO with a safe relative return path', async () => {
     await workspaceAPI.getIdentityPolicy(7)
-    await workspaceAPI.updateIdentityPolicy(7, { require_sso: true, sso_grace_until: null })
+    await workspaceAPI.updateIdentityPolicy(7, { expected_revision: 2, require_sso: true, sso_grace_until: null })
     await workspaceAPI.startSSO(7, 9, '/workspaces/7/identity')
 
     expect(apiClient.get).toHaveBeenCalledWith('/workspaces/7/security-policy', { signal: undefined })
-    expect(apiClient.patch).toHaveBeenCalledWith('/workspaces/7/security-policy', { require_sso: true, sso_grace_until: null })
+    expect(apiClient.patch).toHaveBeenCalledWith('/workspaces/7/security-policy', { expected_revision: 2, require_sso: true, sso_grace_until: null })
     expect(apiClient.post).toHaveBeenCalledWith('/auth/sso/start', { workspace_id: 7, provider_id: 9, return_to: '/workspaces/7/identity' })
   })
 })

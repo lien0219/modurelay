@@ -272,6 +272,9 @@ func (r *enterpriseSCIMRepository) MutateUser(ctx context.Context, p *service.SC
 		}
 	}
 	if u == nil {
+		if e = checkWorkspaceMemberAdmissionTx(ctx, tx, p.WorkspaceID, service.WorkspaceMemberAdmissionRequest{Source: service.AdmissionSCIMCreate, Email: email}); e != nil {
+			return nil, scimAdmissionError(e)
+		}
 		uid, e := resolveSCIMUser(ctx, tx, p.WorkspaceID, email)
 		if e != nil {
 			return nil, e
@@ -306,6 +309,11 @@ func (r *enterpriseSCIMRepository) MutateUser(ctx context.Context, p *service.SC
 		deactivate := action == "delete" || !*in.Active
 		if e = protectSCIMMember(ctx, tx, p.WorkspaceID, u.MemberID, deactivate); e != nil {
 			return nil, e
+		}
+		if !deactivate {
+			if e = checkWorkspaceMemberAdmissionTx(ctx, tx, p.WorkspaceID, service.WorkspaceMemberAdmissionRequest{Source: service.AdmissionSCIM, MemberID: u.MemberID, UserID: u.UserID}); e != nil {
+				return nil, scimAdmissionError(e)
+			}
 		}
 		if action == "delete" {
 			_, e = tx.ExecContext(ctx, `UPDATE workspace_scim_users SET active=false,deleted=true,revision=revision+1,updated_at=now() WHERE id=$1`, id)
@@ -367,7 +375,7 @@ func reconcileSCIMMember(ctx context.Context, tx *sql.Tx, p *service.SCIMPrincip
 		return e
 	}
 	if e := reconcileWorkspaceMemberSources(ctx, tx, p.WorkspaceID, m); e != nil {
-		return e
+		return scimAdmissionError(e)
 	}
 	var role, status string
 	if e := tx.QueryRowContext(ctx, `SELECT role,status FROM workspace_members WHERE workspace_id=$1 AND id=$2`, p.WorkspaceID, m).Scan(&role, &status); e != nil {

@@ -23,6 +23,7 @@ type RefreshTokenData struct {
 	OIDCProviderRevision int64     `json:"oidc_provider_revision,omitempty"`
 	OIDCWorkspaceID      int64     `json:"oidc_workspace_id,omitempty"`
 	OIDCAuthenticatedAt  time.Time `json:"oidc_authenticated_at,omitempty"`
+	OIDCValidUntil       time.Time `json:"oidc_valid_until,omitempty"`
 	CreatedAt            time.Time `json:"created_at"`
 	ExpiresAt            time.Time `json:"expires_at"`
 }

@@ -353,3 +353,19 @@ Billing Owner remain manually managed. No historical Usage/Billing/Key/Service
 Account rewrite or new Gateway protocol dependency occurs. Operational details
 and local/deferred acceptance are in [ENTERPRISE_SAML.md](ENTERPRISE_SAML.md),
 [ENTERPRISE_SCIM.md](ENTERPRISE_SCIM.md) and their acceptance documents.
+
+## Phase D Workspace Security Policy
+
+Migration 297 extends the single existing policy with actual current-Session
+MFA, original-authentication age, approved OIDC/SAML providers, invitations,
+external-member and Workspace JIT controls. Human tenant management uses one
+security evaluator; invitation create/accept, OIDC/SAML JIT, SCIM create/restore
+and explicit member restoration use one transactional admission policy.
+Enrollment never supplies MFA proof; refresh/step-up never renew original age.
+Machine execution and SCIM Bearer remain separate. Policies preserve current
+members/sources, require expected revision and recent strong Owner proof, and
+commit safe audit/event/outbox atomically. See
+[WORKSPACE_SECURITY_POLICY.md](WORKSPACE_SECURITY_POLICY.md),
+[delivery evidence](WORKSPACE_SECURITY_POLICY_DELIVERY.md), and the
+[manual runbook](WORKSPACE_SECURITY_POLICY_ACCEPTANCE.md), whose status remains
+NOT RUN.

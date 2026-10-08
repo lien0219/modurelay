@@ -194,4 +194,51 @@ describe('refreshAuthTokens', () => {
     expect(localStorage.getItem('auth_token')).toBeNull()
     expect(localStorage.getItem('refresh_token')).toBeNull()
   })
+
+  it('coordinates session upgrade with an existing refresh and adopts the exact returned pair', async () => {
+    seedSession()
+    let finishRefresh!: (value: ReturnType<typeof refreshedResponse>) => void
+    mockedPost.mockImplementationOnce(() => new Promise(resolve => { finishRefresh = resolve }))
+    const tokens = await import('@/api/tokenRefresh')
+    const refresh = tokens.refreshAuthTokens()
+    const performUpgrade = vi.fn(async (snapshot: { accessToken: string | null; refreshToken: string }) => {
+      expect(snapshot).toMatchObject({ accessToken: 'new-access', refreshToken: 'new-refresh' })
+      return { access_token: 'mfa-access', refresh_token: 'mfa-refresh', token_type: 'Bearer', expires_in: 1800 }
+    })
+    const upgrade = tokens.coordinateSessionUpgrade(performUpgrade)
+    expect(performUpgrade).not.toHaveBeenCalled()
+    finishRefresh(refreshedResponse())
+    await refresh
+    await upgrade
+    expect(localStorage.getItem('auth_token')).toBe('mfa-access')
+    expect(localStorage.getItem('refresh_token')).toBe('mfa-refresh')
+  })
+
+  it('rejects a late upgrade after same-user session replacement instead of restoring old tokens', async () => {
+    seedSession()
+    const { coordinateSessionUpgrade } = await import('@/api/tokenRefresh')
+    let finish!: (value: { access_token: string; refresh_token: string; token_type: string; expires_in: number }) => void
+    const pending = coordinateSessionUpgrade(() => new Promise(resolve => { finish = resolve }))
+    await vi.waitFor(() => expect(finish).toBeDefined())
+    localStorage.setItem('auth_token', 'replacement-access')
+    localStorage.setItem('refresh_token', 'replacement-refresh')
+    finish({ access_token: 'old-mfa', refresh_token: 'old-mfa-refresh', token_type: 'Bearer', expires_in: 1800 })
+    await expect(pending).rejects.toMatchObject({ code: 'AUTH_SESSION_CHANGED' })
+    expect(localStorage.getItem('auth_token')).toBe('replacement-access')
+  })
+
+  it('does not verify a new same-user session that replaced the requested family while waiting for the lock', async () => {
+    seedSession({ auth_token: `header.${btoa(JSON.stringify({ sid: 'family-1' }))}.signature` })
+    let enter!: () => Promise<unknown>
+    Object.defineProperty(navigator, 'locks', { configurable: true, value: { request: (_name: string, callback: () => Promise<unknown>) => new Promise((resolve, reject) => { enter = () => callback().then(resolve, reject) }) } })
+    const { coordinateSessionUpgrade } = await import('@/api/tokenRefresh')
+    const operation = vi.fn().mockResolvedValue({ access_token: 'mfa-new-family', refresh_token: 'mfa-new-refresh', expires_in: 1800, token_type: 'Bearer' })
+    const result = coordinateSessionUpgrade(operation)
+    const rejection = expect(result).rejects.toMatchObject({ code: 'AUTH_SESSION_CHANGED' })
+    localStorage.setItem('auth_token', `header.${btoa(JSON.stringify({ sid: 'family-2' }))}.signature`)
+    localStorage.setItem('refresh_token', 'other-family-refresh')
+    await enter()
+    await rejection
+    expect(operation).not.toHaveBeenCalled()
+  })
 })

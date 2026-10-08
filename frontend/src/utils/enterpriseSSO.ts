@@ -20,6 +20,8 @@ export function ssoRequiredRedirect(requestUrl: string, code: unknown, reason: u
   if (code !== 'SSO_REQUIRED' && reason !== 'SSO_REQUIRED') return null
   const match = requestUrl.match(/^\/?workspaces\/(\d+)(?:\/|$)/)
   if (!match || !Number.isSafeInteger(Number(match[1])) || Number(match[1]) <= 0) return null
+  const routeWorkspace = returnTo.match(/^\/workspaces\/(\d+)(?:\/|$)/)
+  if (!routeWorkspace || routeWorkspace[1] !== match[1]) return null
   const params = new URLSearchParams({ workspace_id: match[1], required: '1', return_to: safeEnterpriseReturnTo(returnTo, `/workspaces/${match[1]}/overview`) })
   return `/auth/sso?${params.toString()}`
 }

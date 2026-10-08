@@ -15,7 +15,16 @@ import {
 import { refreshAuthTokens } from './tokenRefresh'
 import { getAPIBaseURL } from './url'
 import { ssoRequiredRedirect } from '@/utils/enterpriseSSO'
+import { browserSessionIdentity, isWorkspaceAssuranceRequired, workspaceNavigationGeneration } from '@/utils/workspaceSecurity'
 export { buildApiUrl, buildGatewayUrl } from './url'
+
+declare module 'axios' {
+  interface AxiosRequestConfig {
+    preserveAuthSessionOnFailure?: boolean
+    sessionProofAccessToken?: string
+    workspaceSecurityContext?: { path: string; session: string; generation: number }
+  }
+}
 
 // ==================== Axios Instance Configuration ====================
 
@@ -42,10 +51,11 @@ const getUserTimezone = (): string => {
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
     // Attach token from localStorage
-    const token = localStorage.getItem('auth_token')
+    const token = config.sessionProofAccessToken || localStorage.getItem('auth_token')
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`
     }
+    config.workspaceSecurityContext = { path: window.location.pathname + window.location.search, session: browserSessionIdentity(), generation: workspaceNavigationGeneration() }
 
     // Attach locale for backend translations
     if (config.headers) {
@@ -161,16 +171,23 @@ apiClient.interceptors.response.use(
         })
       }
 
-      if (status === 403 && !window.location.pathname.startsWith('/auth/sso')) {
+      const securityContext = originalRequest.workspaceSecurityContext
+      const stillCurrent = securityContext?.path === window.location.pathname + window.location.search && securityContext.session === browserSessionIdentity() && securityContext.generation === workspaceNavigationGeneration()
+      if (status === 403 && stillCurrent && !window.location.pathname.startsWith('/auth/sso')) {
         const redirect = ssoRequiredRedirect(url, apiData.code, apiData.reason, window.location.pathname + window.location.search)
         if (redirect) window.location.href = redirect
+        else if (isWorkspaceAssuranceRequired(apiData)) {
+          const requestWorkspace = url.match(/^\/?workspaces\/(\d+)(?:\/|$)/)
+          const routeWorkspace = window.location.pathname.match(/^\/workspaces\/(\d+)(?:\/|$)/)
+          if (requestWorkspace && routeWorkspace?.[1] === requestWorkspace[1]) window.dispatchEvent(new CustomEvent('workspace-security-required', { detail: { workspace_id: Number(requestWorkspace[1]), error: { code: apiData.code, reason: apiData.reason, metadata: apiData.metadata }, return_to: securityContext.path } }))
+        }
       }
 
       // 401: Try to refresh the token if we have a refresh token
       // This handles TOKEN_EXPIRED, INVALID_TOKEN, TOKEN_REVOKED, etc.
       // A failed SSO completion or password/TOTP proof does not invalidate the global session.
       const isEnterpriseSSOEndpoint = /^\/?auth\/sso\//.test(url)
-      if (status === 401 && !originalRequest._retry && !isEnterpriseSSOEndpoint) {
+      if (status === 401 && !originalRequest._retry && !isEnterpriseSSOEndpoint && !originalRequest.preserveAuthSessionOnFailure) {
         const refreshToken = localStorage.getItem('refresh_token')
         const isAuthEndpoint =
           url.includes('/auth/login') || url.includes('/auth/register') || url.includes('/auth/refresh')

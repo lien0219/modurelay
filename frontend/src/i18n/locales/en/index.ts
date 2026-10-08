@@ -12,6 +12,7 @@ import tools from './tools'
 import workspace from './workspace'
 import workspaceWebhooks from './workspaceWebhooks'
 import workspaceIdentity from './workspaceIdentity'
+import workspaceSecurity from './workspaceSecurity'
 import notifications from './notifications'
 import serviceAccounts from './serviceAccounts'
 
@@ -27,7 +28,7 @@ export default {
   ...distribution,
   ...canvas,
   ...tools,
-  workspace: { ...workspace.workspace, ...workspaceWebhooks.workspace, ...workspaceIdentity.workspace },
+  workspace: { ...workspace.workspace, ...workspaceWebhooks.workspace, ...workspaceIdentity.workspace, ...workspaceSecurity.workspace },
   ...notifications,
   ...serviceAccounts,
   nav: {

@@ -7,8 +7,9 @@ This document is the durable progress source for the Enterprise Workspace progra
 - Branch: `feature/new-feature`
 - Phase C baseline: `81e68865463755f3fb684199b3de5a31e8572713`.
 - C1 local commit: `41b0b31dfd59ca2ddc337b78d2c1bc609bba0a77`, `feat(saml): add enterprise SAML single sign-on`.
-- C2 boundary: `feat(scim): add enterprise identity provisioning`; exact SHA is resolved from Git and recorded at delivery.
-- Migration ceiling after C2: 296. Historical Phase A/Phase B audits and verification records are retained below.
+- C2 local commit / Phase D baseline: `6981e17de52d87ba4723b28452ad8e455e0317b5`, `feat(scim): add enterprise identity provisioning`.
+- Phase D boundary: `feat(security): add workspace security policies and assurance enforcement`; the delivery response records its exact local SHA.
+- Migration ceiling after D: 297. Phase D is COMPLETE; Phase E is NEXT. Historical Phase A/B/C audits and verification records are retained below.
 
 ## Current Enterprise Capability Matrix
 
@@ -34,7 +35,7 @@ This document is the durable progress source for the Enterprise Workspace progra
 | Discovery, assurance, SSO enforcement/recovery | Implemented | Tenant route and legacy key management gates, revision/age invalidation, locked Owner enable gate, password/TOTP recovery | Phase B |
 | SAML 2.0 | Implemented | Migration295, maintained gosaml2/xmldsig, signed/encrypted SP flow, shared binding/JIT/mappings/assurance; local C1 commit | Phase C1 |
 | SCIM 2.0 | Implemented | Migration296, independent connector/hash-only tokens, Users/Groups, typed multi-source reconciliation, explicit Team bindings; local source/test/review gates complete | Phase C2 |
-| Workspace security policy | Foundation implemented; broader controls deferred | Phase B `workspace_security_policies` has SSO/grace; Phase D adds MFA, session/domain/invitation controls | Phase B / D |
+| Workspace security policy | Implemented | Migration297 extends one canonical SQL policy; actual Session MFA/original age/provider approval and shared transactional Invitation/JIT/SCIM admission; functional UI and bounded recovery | Phase D |
 | FinOps anomaly detection | Missing | No anomaly finding model/worker | Phase E |
 | Cost centers/tags/environment allocation | Missing | Usage snapshots do not expose these dimensions | Phase F |
 | Retention/export/deletion lifecycle | Partial | Existing retention workers cover current event/notification/webhook data; enterprise export/deletion is absent | Phase G |
@@ -70,8 +71,8 @@ This document is the durable progress source for the Enterprise Workspace progra
 | C | SAML 2.0 and SCIM 2.0 | Shared SSO/provider binding and typed provisioning sources; see Phase C report | 295–296 | Two local phase boundaries below | Final relevant/PostgreSQL/race/frontend/Canvas/audit/review gates PASS; final full backend failures match81e688 baseline; initial external TLS failure separately disclosed | COMPLETE | Workspace-lock contention, migration suspension review, initial explicit SSO linking | IdP-initiated SSO, SLO; real providers/browser/load/deployment in Phase L |
 | C1 | SAML 2.0 Enterprise SSO | Nullable protocol fields with DB integrity; gosaml2 v0.12.0; shared JIT/link/mapping/completion/assurance | 295 | `41b0b31dfd59ca2ddc337b78d2c1bc609bba0a77` | Complete; detailed C1 record below | COMPLETE | Certificate/key retention and IdP interoperability | IdP-initiated SSO, SLO |
 | C2 | SCIM 2.0 Enterprise Provisioning | Independent hash-token connector; attributed Membership/Team sources; explicit Group binding | 296 | `feat(scim): add enterprise identity provisioning`; resolve SHA at delivery | Post-R1 relevant/realPG/allidentityrace/vet/build/default lint PASS; frontend424files3149tests and Canvas7 PASS; final full suites and supplemental tagged lint PRE-EXISTING | COMPLETE | Cross-source removal, Owner/Billing safety and email retries independently rechecked | Real Entra/Okta provisioning in Phase L |
-| D | Workspace security policy | Control-plane middleware with explicit assurance context | 296+ | Not started | Not run | NEXT | Break-glass and API-key separation | Arbitrary ABAC |
-| E | Advanced FinOps anomalies | Immutable usage snapshots plus bounded detector jobs | 297+ | Not started | Not run | NOT RUN | False positives, cardinality | AI remediation |
+| D | Workspace security policy | One human security evaluator and shared transactional member admission | 297 | `feat(security): add workspace security policies and assurance enforcement`; exact SHA at delivery | Focused/realPG/race/IDOR/vet/build/pinned lint/frontend/Canvas gates PASS; raw full-suite baseline failures and transient separately disclosed; formal scan completed with partial sealed coverage and two remediated initial findings | COMPLETE | Conservative local MFA; access-JWT baseline revocation; Workspace contention; browser/provider/load NOT RUN | IdP/passkey MFA mapping, immutable final-commit formal scan in I/L, arbitrary ABAC |
+| E | Advanced FinOps anomalies | Immutable usage snapshots plus bounded detector jobs | 298+ | Not started | Not run | NEXT | False positives, cardinality | AI remediation |
 | F | Cost centers, tags, environment allocation | New-write dimensions and explicit legacy NULLs | 298+ | Not started | Not run | NOT RUN | Historical attribution drift | ERP tree |
 | G | Retention, export, archive/restore, deletion lifecycle | Tenant-owned jobs, retention floors, resumable purge | 299+ | Not started | Not run | NOT RUN | Data loss, legal retention | Complex legal hold |
 | H | Admin diagnostics and operations | Global Admin remains outside tenant membership | 300+ | Not started | Not run | NOT RUN | High-cardinality metrics, emergency actions | SIEM integration |
@@ -233,7 +234,8 @@ C2 completes SCIM provisioning after the local C1 boundary
 `git log -1 --format='%H' --grep='^feat(scim): add enterprise identity provisioning$'`.
 A commit cannot embed its own SHA. The final delivery response records both SHAs,
 the clean-tree result and exactly two commits after the original81e688 baseline.
-Phase C/C1/C2 are COMPLETE, Phase D is NEXT; D/E/F are not implemented.
+At this historical C2 boundary, Phase C/C1/C2 were COMPLETE and Phase D was NEXT;
+the current Phase D completion record is below. E/F remain unimplemented.
 
 Architecture: independent Workspace SCIM connector and hash-only/show-once
 credentials, up to8 active tokens, connector-derived tenant and token/expiry
@@ -296,3 +298,40 @@ Operational detail: [ENTERPRISE_SCIM.md](ENTERPRISE_SCIM.md); acceptance/securit
 Q1-Q16: [ENTERPRISE_SCIM_ACCEPTANCE.md](ENTERPRISE_SCIM_ACCEPTANCE.md); complete
 architecture/gates/report: [ENTERPRISE_IDENTITY_PHASE_C_REPORT.md](ENTERPRISE_IDENTITY_PHASE_C_REPORT.md).
 No push, PR, branch switch or acceptance18081 runtime mutation occurs.
+
+## Phase D completion record (2026-10-08)
+
+Phase D extends the existing Workspace SQL security policy in migration297.
+Actual signed current-Session MFA is mandatory when required; enrollment never
+proves MFA. Original Global/enterprise clocks and SAML deadlines survive refresh
+and exact-family TOTP upgrade. One Workspace-locked SQL admission helper invokes
+one pure member policy for Invitation create/accept, OIDC/SAML JIT,
+SCIM create/reactivation and administrative restoration. Administrative blocks,
+source attribution and machine/human separation are retained.
+
+Review fixes include typed recent proof with locked live enrollment for policy
+mutation/recovery, User FOR NO KEY UPDATE compatibility with Workspace audit FKs,
+and unchanged expired grace/precise UI timestamp preservation. Relevant unit,
+actual PostgreSQL and race, tenant route/legacy key IDOR, final gofmt/vet/build/
+pinned lint2.13.0, frontend430/3193 plus19 affected tests/build, Canvas7/build/embed,
+and secret/dependency threshold checks pass. Full backend suites retain exact
+baseline PgDumper/sh and full-order Ollama CAS failures; an initial current-only
+memory-threshold transient passes subsequent repeats/full-service retry and is
+not labeled PRE-EXISTING. Full-suite snapshot and final affected-check boundaries
+are explicitly recorded.
+
+Codex Security scan `02d22b4b-ba5a-4e0e-9303-35f114289de5` finalized with two
+remediated initial-snapshot medium recent-proof findings. Its sealed coverage is
+PARTIAL because the generated artifact retains an early checkpoint deferred
+entry; it also warns about post-snapshot source changes. Final independent
+remediation/hash checks are separate. A complete immutable final-commit formal
+scan remains Phase I/L. Manual/browser/real provider/load/deployment acceptance
+is NOT RUN; port18081 was not redeployed.
+
+The local phase boundary uses `feat(security): add workspace security policies
+and assurance enforcement`; exact SHA/clean-tree result are in the delivery
+response. Phase D COMPLETE, Phase E NEXT. Full contract, gate answers, evidence,
+risks and operational runbook:
+[policy](WORKSPACE_SECURITY_POLICY.md),
+[delivery](WORKSPACE_SECURITY_POLICY_DELIVERY.md),
+[acceptance](WORKSPACE_SECURITY_POLICY_ACCEPTANCE.md).

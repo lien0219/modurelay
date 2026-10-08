@@ -7,6 +7,7 @@ import { defineStore } from 'pinia'
 import { ref, computed, readonly } from 'vue'
 import { authAPI, isTotp2FARequired, passkeyAPI, type LoginResponse } from '@/api'
 import { useWorkspaceStore } from './workspace'
+import type { RefreshTokenResponse } from '@/api/tokenRefresh'
 import type {
   User,
   LoginRequest,
@@ -228,6 +229,18 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  function adoptStoredSessionTokens(tokens: RefreshTokenResponse): void {
+    const storedUser = localStorage.getItem(AUTH_USER_KEY)
+    let storedUserID: number | undefined
+    try { storedUserID = storedUser ? JSON.parse(storedUser).id : undefined } catch { /* Fail closed below. */ }
+    if (!user.value || storedUserID !== user.value.id || localStorage.getItem(AUTH_TOKEN_KEY) !== tokens.access_token || localStorage.getItem(REFRESH_TOKEN_KEY) !== tokens.refresh_token) throw new Error('Session changed while adopting tokens')
+    token.value = tokens.access_token
+    refreshTokenValue.value = tokens.refresh_token
+    tokenExpiresAt.value = Number(localStorage.getItem(TOKEN_EXPIRES_AT_KEY))
+    if (!Number.isFinite(tokenExpiresAt.value) || tokenExpiresAt.value <= Date.now()) throw new Error('Invalid session token expiry')
+    scheduleTokenRefreshAt(tokenExpiresAt.value)
+  }
+
   /**
    * Stop token refresh timeout
    */
@@ -244,9 +257,9 @@ export const useAuthStore = defineStore('auth', () => {
    * @returns Promise resolving to the login response (may require 2FA)
    * @throws Error if login fails
    */
-  async function login(credentials: LoginRequest): Promise<LoginResponse> {
+  async function login(credentials: LoginRequest, options?: { preserveSessionOnFailure?: boolean }): Promise<LoginResponse> {
     try {
-      const response = await authAPI.login(credentials)
+      const response = options?.preserveSessionOnFailure ? await authAPI.login(credentials, options) : await authAPI.login(credentials)
 
       // If 2FA is required, return the response without setting auth state
       if (isTotp2FARequired(response)) {
@@ -259,7 +272,7 @@ export const useAuthStore = defineStore('auth', () => {
       return response
     } catch (error) {
       // Clear any partial state on error
-      clearAuth({ preservePendingAuthSession: pendingAuthSession.value !== null })
+      if (!options?.preserveSessionOnFailure) clearAuth({ preservePendingAuthSession: pendingAuthSession.value !== null })
       throw error
     }
   }
@@ -271,24 +284,30 @@ export const useAuthStore = defineStore('auth', () => {
    * @returns Promise resolving to the authenticated user
    * @throws Error if 2FA verification fails
    */
-  async function login2FA(tempToken: string, totpCode: string): Promise<User> {
+  async function login2FA(tempToken: string, totpCode: string, options?: { preserveSessionOnFailure?: boolean }): Promise<User> {
     try {
-      const response = await authAPI.login2FA({ temp_token: tempToken, totp_code: totpCode })
+      const request = { temp_token: tempToken, totp_code: totpCode }
+      const response = options?.preserveSessionOnFailure ? await authAPI.login2FA(request, options) : await authAPI.login2FA(request)
       setAuthFromResponse(response)
       return user.value!
     } catch (error) {
-      clearAuth({ preservePendingAuthSession: pendingAuthSession.value !== null })
+      if (!options?.preserveSessionOnFailure) clearAuth({ preservePendingAuthSession: pendingAuthSession.value !== null })
       throw error
     }
   }
 
-  async function loginWithPasskey(proof?: ActionCaptchaRequestProof): Promise<User> {
+  async function loginWithPasskey(
+    proof?: ActionCaptchaRequestProof,
+    options?: { preserveSessionOnFailure?: boolean }
+  ): Promise<User> {
     try {
-      const response = await passkeyAPI.login(proof)
+      const response = options?.preserveSessionOnFailure
+        ? await passkeyAPI.login(proof, options)
+        : await passkeyAPI.login(proof)
       setAuthFromResponse(response)
       return user.value!
     } catch (error) {
-      clearAuth({ preservePendingAuthSession: pendingAuthSession.value !== null })
+      if (!options?.preserveSessionOnFailure) clearAuth({ preservePendingAuthSession: pendingAuthSession.value !== null })
       throw error
     }
   }
@@ -511,6 +530,7 @@ export const useAuthStore = defineStore('auth', () => {
     login2FA,
     register,
     setToken,
+    adoptStoredSessionTokens,
     logout,
     checkAuth,
     refreshUser,

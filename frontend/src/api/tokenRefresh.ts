@@ -24,7 +24,7 @@ export interface RefreshAuthTokensOptions {
   failedAccessToken?: string | null
 }
 
-interface AuthSnapshot {
+export interface AuthSnapshot {
   accessToken: string | null
   refreshToken: string
   expiresAt: number
@@ -32,6 +32,18 @@ interface AuthSnapshot {
 }
 
 let inFlightRefresh: Promise<RefreshTokenResponse> | null = null
+
+function sessionChangedError(): Error & { code: string } {
+  return Object.assign(new Error('Authentication session changed while upgrading.'), { code: 'AUTH_SESSION_CHANGED' })
+}
+
+function storedSessionFamily(): string | null {
+  try {
+    const encoded = (localStorage.getItem(AUTH_TOKEN_KEY) || '').split('.')[1]
+    const sid = JSON.parse(atob(encoded.replace(/-/g, '+').replace(/_/g, '/'))).sid
+    return typeof sid === 'string' && sid ? sid : null
+  } catch { return null }
+}
 
 function getStoredUserID(): number | null {
   const rawUser = localStorage.getItem(AUTH_USER_KEY)
@@ -224,6 +236,30 @@ export function refreshAuthTokens(
       inFlightRefresh = null
     }
   }
+  void pending.then(clearPending, clearPending)
+  return pending
+}
+
+/** Serialize exact-family MFA rotation with refresh; never persist a stale upgrade. */
+export function coordinateSessionUpgrade(operation: (snapshot: AuthSnapshot) => Promise<RefreshTokenResponse>): Promise<RefreshTokenResponse> {
+  const previous = inFlightRefresh
+  const startingUser = getStoredUserID()
+  const startingFamily = storedSessionFamily()
+  const pending = (async () => {
+    if (previous) await previous
+    const upgrade = async () => {
+      const snapshot = readAuthSnapshot()
+      if (snapshot.userID !== startingUser || !snapshot.accessToken || (startingFamily && storedSessionFamily() !== startingFamily)) throw sessionChangedError()
+      const tokens = await operation(snapshot)
+      if (getStoredUserID() !== snapshot.userID || localStorage.getItem(AUTH_TOKEN_KEY) !== snapshot.accessToken || localStorage.getItem(REFRESH_TOKEN_KEY) !== snapshot.refreshToken) throw sessionChangedError()
+      if (!tokens.access_token || !tokens.refresh_token || !Number.isFinite(tokens.expires_in) || tokens.expires_in <= 0) throw new Error('Invalid session upgrade response')
+      persistTokenPair(tokens)
+      return tokens
+    }
+    return typeof navigator !== 'undefined' && navigator.locks ? navigator.locks.request(TOKEN_REFRESH_LOCK_NAME, upgrade) : upgrade()
+  })()
+  inFlightRefresh = pending
+  const clearPending = () => { if (inFlightRefresh === pending) inFlightRefresh = null }
   void pending.then(clearPending, clearPending)
   return pending
 }

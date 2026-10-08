@@ -18,10 +18,23 @@ type AuthSubject struct {
 	AuthMethod           string
 	AuthenticatedAt      time.Time
 	MFASatisfied         bool
+	MFAEnrolled          bool
 	OIDCProviderID       int64
 	OIDCProviderRevision int64
 	OIDCWorkspaceID      int64
 	OIDCAuthenticatedAt  time.Time
+	OIDCValidUntil       time.Time
+}
+
+func setHumanJWTAuthentication(c *gin.Context, user *service.User, claims *service.JWTClaims) {
+	c.Set(string(ContextKeyUser), AuthSubject{
+		PrincipalType: service.PrincipalHuman, UserID: user.ID, Concurrency: user.Concurrency,
+		AuthMethod: claims.AuthMethod, AuthenticatedAt: claims.AuthenticatedAt, MFASatisfied: claims.MFASatisfied, MFAEnrolled: user.TotpEnabled,
+		OIDCProviderID: claims.OIDCProviderID, OIDCProviderRevision: claims.OIDCProviderRevision, OIDCWorkspaceID: claims.OIDCWorkspaceID, OIDCAuthenticatedAt: claims.OIDCAuthenticatedAt, OIDCValidUntil: claims.OIDCValidUntil,
+	})
+	ctx := service.WithSessionAuthentication(c.Request.Context(), service.SessionAuthentication{AuthMethod: claims.AuthMethod, AuthenticatedAt: claims.AuthenticatedAt, MFASatisfied: claims.MFASatisfied, MFAEnrolled: user.TotpEnabled})
+	ctx = service.WithAuthenticationAssurance(ctx, service.WorkspaceAssurance{WorkspaceID: claims.OIDCWorkspaceID, ProviderID: claims.OIDCProviderID, ProviderRevision: claims.OIDCProviderRevision, AuthenticatedAt: claims.OIDCAuthenticatedAt, ValidUntil: claims.OIDCValidUntil, AuthMethod: claims.AuthMethod})
+	c.Request = c.Request.WithContext(ctx)
 }
 
 // FundingUserID selects the payer for machine concurrency controls. Human keys

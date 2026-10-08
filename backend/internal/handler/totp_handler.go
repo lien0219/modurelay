@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"strings"
+
 	"github.com/gin-gonic/gin"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
@@ -12,6 +14,11 @@ import (
 type TotpHandler struct {
 	totpService *service.TotpService
 	settingSvc  *service.SettingService
+	authService *service.AuthService
+}
+
+func (h *TotpHandler) SetAuthService(authService *service.AuthService) {
+	h.authService = authService
 }
 
 // NewTotpHandler creates a new TotpHandler
@@ -215,13 +222,18 @@ func (h *TotpHandler) SendVerifyCode(c *gin.Context) {
 
 // TotpStepUpRequest represents the request to verify a step-up TOTP code
 type TotpStepUpRequest struct {
-	Code string `json:"code" binding:"required"`
+	Code         string `json:"code" binding:"required"`
+	RefreshToken string `json:"refresh_token,omitempty"`
 }
 
 // TotpStepUpResponse represents the step-up verification response
 type TotpStepUpResponse struct {
-	Verified  bool  `json:"verified"`
-	ExpiresIn int64 `json:"expires_in"` // 授权剩余有效期（秒）
+	Verified       bool   `json:"verified"`
+	ExpiresIn      int64  `json:"expires_in"` // 授权剩余有效期（秒）
+	AccessToken    string `json:"access_token,omitempty"`
+	RefreshToken   string `json:"refresh_token,omitempty"`
+	TokenType      string `json:"token_type,omitempty"`
+	TokenExpiresIn int    `json:"token_expires_in,omitempty"`
 }
 
 // StepUp 敏感操作二次验证：校验 TOTP 码并为当前会话授予一段时间的 step-up 权限。
@@ -236,6 +248,24 @@ func (h *TotpHandler) StepUp(c *gin.Context) {
 	var req TotpStepUpRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "TOTP code is required")
+		return
+	}
+	if req.RefreshToken != "" {
+		if h.authService == nil || subject.PrincipalType != "" && subject.PrincipalType != service.PrincipalHuman {
+			response.ErrorFrom(c, service.ErrServiceUnavailable)
+			return
+		}
+		parts := strings.SplitN(c.GetHeader("Authorization"), " ", 2)
+		if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
+			response.ErrorFrom(c, service.ErrSessionMFAUpgradeInvalid)
+			return
+		}
+		pair, err := h.authService.UpgradeSessionMFA(c.Request.Context(), strings.TrimSpace(parts[1]), req.RefreshToken, req.Code)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		response.Success(c, TotpStepUpResponse{Verified: true, ExpiresIn: int64(service.StepUpGrantTTL.Seconds()), AccessToken: pair.AccessToken, RefreshToken: pair.RefreshToken, TokenType: "Bearer", TokenExpiresIn: pair.ExpiresIn})
 		return
 	}
 

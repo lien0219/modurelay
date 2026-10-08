@@ -16,6 +16,7 @@ type samlValidatedResponse struct {
 	AssertionID     string
 	ExpiresAt       time.Time
 	AuthenticatedAt time.Time
+	ValidUntil      time.Time
 }
 
 // Library output contains the cryptographically validated/transformed assertion.
@@ -128,7 +129,11 @@ func (s *EnterpriseIdentityService) validateSAMLResponse(provider *EnterpriseIde
 	if err != nil {
 		return nil, err
 	}
-	return &samlValidatedResponse{Claims: claims, ResponseID: response.ID, AssertionID: assertion.ID, ExpiresAt: expires.Add(2 * time.Minute), AuthenticatedAt: authenticated}, nil
+	validUntil := expires
+	if deadline := assertion.AuthnStatement.SessionNotOnOrAfter; deadline != nil && deadline.Before(validUntil) {
+		validUntil = *deadline
+	}
+	return &samlValidatedResponse{Claims: claims, ResponseID: response.ID, AssertionID: assertion.ID, ExpiresAt: expires.Add(2 * time.Minute), AuthenticatedAt: authenticated, ValidUntil: validUntil}, nil
 }
 
 func samlClaimsFromAssertion(assertion *types.Assertion, config *SAMLProviderConfig) (*EnterpriseIdentityClaims, error) {

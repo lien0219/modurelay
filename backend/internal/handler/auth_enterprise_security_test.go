@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
+	"github.com/pquerna/otp/totp"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -75,12 +77,20 @@ func (r *enterpriseHandlerWorkspaceRepo) GetAccess(_ context.Context, actor, wor
 type enterpriseHandlerIdentityRepo struct {
 	service.EnterpriseIdentityRepository
 	recoveries int
+	liveFactor bool
 }
 
 func (r *enterpriseHandlerIdentityRepo) GetPolicy(_ context.Context, workspace, actor int64) (*service.WorkspaceIdentityPolicy, error) {
 	return &service.WorkspaceIdentityPolicy{WorkspaceID: workspace, RequireSSO: true}, nil
 }
-func (r *enterpriseHandlerIdentityRepo) BreakGlass(_ context.Context, workspace, actor int64, reason string) (*service.WorkspaceIdentityPolicy, error) {
+func (r *enterpriseHandlerIdentityRepo) BreakGlass(ctx context.Context, workspace, actor int64, reason string) (*service.WorkspaceIdentityPolicy, error) {
+	if r.liveFactor {
+		auth, _ := service.SessionAuthenticationFromContext(ctx)
+		auth.MFAEnrolled = true
+		if err := service.RequireRecentAuthentication(service.WithSessionAuthentication(ctx, auth), time.Now(), 10*time.Minute); err != nil {
+			return nil, err
+		}
+	}
 	r.recoveries++
 	return &service.WorkspaceIdentityPolicy{WorkspaceID: workspace, RequireSSO: false}, nil
 }
@@ -163,6 +173,44 @@ func TestEnterpriseSSORecoveryRequiresPasswordMFAConfirmationAndOwner(t *testing
 			} else {
 				require.Zero(t, repo.recoveries)
 			}
+		})
+	}
+}
+
+func TestEnterpriseRecoveryCarriesActualFactorProofAcrossLockedEnrollment(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	hash, err := bcrypt.GenerateFromPassword([]byte("recovery-password"), bcrypt.MinCost)
+	require.NoError(t, err)
+	for _, enrolledAtRead := range []bool{false, true} {
+		t.Run(fmt.Sprintf("enrolled_at_handler_read_%t", enrolledAtRead), func(t *testing.T) {
+			ciphertext := "fixture-ciphertext"
+			users := &enterpriseCompletionUsers{user: &service.User{ID: 42, Status: service.StatusActive, PasswordHash: string(hash), TotpEnabled: enrolledAtRead, TotpSecretEncrypted: &ciphertext}}
+			repo := &enterpriseHandlerIdentityRepo{liveFactor: true}
+			access := service.NewWorkspaceAccessService(&enterpriseHandlerWorkspaceRepo{role: "owner"})
+			h := &AuthHandler{userService: service.NewUserService(users, nil, nil, nil), enterpriseIdentity: service.NewEnterpriseIdentityService(repo, access, users, nil), totpService: service.NewTotpService(users, totpUpgradeCipher{}, &totpUpgradeCache{}, nil, nil, nil)}
+			code := ""
+			if enrolledAtRead {
+				code, err = totp.GenerateCode("JBSWY3DPEHPK3PXP", time.Now())
+				require.NoError(t, err)
+			}
+			body := fmt.Sprintf(`{"workspace_id":7,"password":"recovery-password","totp_code":%q,"reason":"provider unavailable for recovery","confirmed":true}`, code)
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/auth/sso/recover", strings.NewReader(body))
+			c.Request.Header.Set("Content-Type", "application/json")
+			original := time.Now().Add(-time.Hour)
+			c.Request = c.Request.WithContext(service.WithSessionAuthentication(c.Request.Context(), service.SessionAuthentication{AuthMethod: "password", AuthenticatedAt: original, MFAEnrolled: enrolledAtRead}))
+			c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 42, PrincipalType: service.PrincipalHuman})
+			h.EnterpriseSSORecover(c)
+			if enrolledAtRead {
+				require.Equal(t, http.StatusOK, recorder.Code)
+			} else {
+				require.Equal(t, http.StatusForbidden, recorder.Code)
+				require.Contains(t, recorder.Body.String(), "RECENT_AUTH_REQUIRED", "time-only strong proof cannot become MFA when locked enrollment changed")
+			}
+			auth, _ := service.SessionAuthenticationFromContext(c.Request.Context())
+			require.False(t, auth.MFASatisfied, "recovery proof must not fabricate durable Session MFA")
+			require.Equal(t, original, auth.AuthenticatedAt)
 		})
 	}
 }

@@ -31,6 +31,10 @@ func (s *totpVMUserRepoStub) DisableTotp(ctx context.Context, userID int64) erro
 	return nil
 }
 
+func (s *totpVMUserRepoStub) DisableTOTP(ctx context.Context, userID int64, _ string) error {
+	return s.DisableTotp(ctx, userID)
+}
+
 type totpVMSettingRepoStub struct {
 	SettingRepository
 	values map[string]string
@@ -92,6 +96,7 @@ func TestTotpDisableAdminUsesPasswordEvenWithEmailVerifyEnabled(t *testing.T) {
 	require.ErrorIs(t, err, ErrPasswordIncorrect)
 
 	// 密码正确 → 成功停用；全程不需要邮箱验证码（emailService 为 nil，走到邮箱分支会 panic）。
+	svc.SetFactorDependencyRepository(userRepo)
 	err = svc.Disable(context.Background(), admin.ID, "", "correct-password")
 	require.NoError(t, err)
 	require.True(t, userRepo.disableCalled)

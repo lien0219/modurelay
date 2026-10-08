@@ -43,6 +43,7 @@ export default {
       system: 'System', workspace: 'Workspace', project: 'Project', api_key: 'API key', service_account: 'Service account', policy: 'Policy', budget: 'Budget', billing: 'Billing', quota: 'Quota', security: 'Security', resources: 'Forum',
     },
     workspace: { title: 'Workspace update', body: 'A workspace event needs your attention.' },
+    workspaceSecurity: { title: 'Workspace security policy updated', body: 'Workspace authentication or member admission requirements changed. Review the current security policy and workspace audit log.' },
     member: { title: 'Member update', body: 'A workspace member changed.' },
     project: { title: 'Project update', body: 'A project changed.' },
     api_key: { title: 'API key update', body: 'An API key changed.' },

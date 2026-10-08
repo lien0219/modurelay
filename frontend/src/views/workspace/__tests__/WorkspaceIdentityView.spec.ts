@@ -39,7 +39,7 @@ async function render(items = [workspace]) {
   api.listWorkspaces.mockResolvedValue({ items })
   api.listProjects.mockResolvedValue({ items: [] })
   await useWorkspaceStore().loadWorkspaces()
-  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/workspaces/:workspaceId/identity', component: WorkspaceIdentityView }, { path: '/auth/sso', component: { template: '<div />' } }] })
+  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/workspaces/:workspaceId/identity', component: WorkspaceIdentityView }, { path: '/workspaces/:workspaceId/security', component: { template: '<div />' } }, { path: '/auth/sso', component: { template: '<div />' } }] })
   await router.push('/workspaces/1/identity')
   wrapper = mount(WorkspaceIdentityView, { global: { plugins: [pinia, router] } })
   await flushPromises()
@@ -311,14 +311,13 @@ describe('WorkspaceIdentityView', () => {
     expect(api.revokeDomain).toHaveBeenCalledWith(1, 4)
   })
 
-  it('saves SSO policy and explains the server-enforced owner linking prerequisites', async () => {
+  it('keeps Identity policy read-only and links the sole Security editor', async () => {
     const view = await render()
     expect(view.text()).toContain('Link your owner account')
     expect(view.find('[data-testid="identity-link-provider-9"]').attributes('href')).toContain('link=1')
-    await view.find('input[name="require_sso"]').setValue(true)
-    await view.find('[data-testid="identity-save-policy"]').trigger('click')
-    await flushPromises()
-    expect(api.updateIdentityPolicy).toHaveBeenCalledWith(1, { require_sso: true, sso_grace_until: null })
+    expect(view.find('input[name="require_sso"]').exists()).toBe(false)
+    expect(view.find('a[data-testid="identity-security-link"]').attributes('href')).toBe('/workspaces/1/security')
+    expect(api.updateIdentityPolicy).not.toHaveBeenCalled()
   })
 
   it('keeps organization identity settings read-only without management permissions', async () => {
@@ -326,7 +325,7 @@ describe('WorkspaceIdentityView', () => {
     expect(view.text()).toContain('Entra ID')
     expect(view.find('[data-testid="identity-domain-form"]').exists()).toBe(false)
     expect(view.find('[data-testid="identity-add-provider"]').exists()).toBe(false)
-    expect(view.find('input[name="require_sso"]').attributes()).toHaveProperty('disabled')
+    expect(view.find('input[name="require_sso"]').exists()).toBe(false)
   })
 
   it('can navigate beyond the first page of domains and identity providers', async () => {

@@ -90,14 +90,8 @@ type EnterpriseIdentityProviderInput struct {
 	Revision              int64               `json:"revision,omitempty"`
 }
 
-type WorkspaceIdentityPolicy struct {
-	WorkspaceID   int64      `json:"workspace_id"`
-	RequireSSO    bool       `json:"require_sso"`
-	SSOGraceUntil *time.Time `json:"sso_grace_until,omitempty"`
-	Revision      int64      `json:"revision"`
-	UpdatedBy     *int64     `json:"updated_by_user_id,omitempty"`
-	UpdatedAt     time.Time  `json:"updated_at"`
-}
+// WorkspaceIdentityPolicy is the legacy source name for the single security policy.
+type WorkspaceIdentityPolicy = WorkspaceSecurityPolicy
 
 type EnterpriseIdentityRepository interface {
 	ListDomains(context.Context, int64, pagination.PaginationParams) ([]EnterpriseDomain, int64, error)
@@ -627,42 +621,36 @@ func HashPasswordForEnterprise(value string) (string, error) {
 }
 
 func (s *EnterpriseIdentityService) GetPolicy(ctx context.Context, actorID, workspaceID int64) (*WorkspaceIdentityPolicy, error) {
-	if err := s.require(ctx, actorID, workspaceID, "identity.read"); err != nil {
+	if err := s.require(ctx, actorID, workspaceID, "workspace_security.read"); err != nil {
 		return nil, err
 	}
-	return s.repo.GetPolicy(ctx, workspaceID, actorID)
+	policy, err := s.repo.GetPolicy(ctx, workspaceID, actorID)
+	if err != nil {
+		return nil, err
+	}
+	return s.describeSecurityPolicy(ctx, policy)
 }
 
-// CheckWorkspaceAccess enforces SSO only for the requested organization
+// CheckWorkspaceAccess enforces human security for the requested organization
 // workspace. Assurance from another workspace, a disabled provider, or an
 // expired session is never accepted. Personal workspaces and machine
 // principals remain outside the browser-session policy.
 func (s *EnterpriseIdentityService) CheckWorkspaceAccess(ctx context.Context, workspaceID int64, workspaceType, principal string, assurance WorkspaceAssurance) error {
+	if workspaceType == WorkspaceTypePersonal || principal == PrincipalAPIKey || principal == PrincipalServiceAccount {
+		return nil
+	}
 	if s == nil || s.repo == nil || workspaceID <= 0 {
-		return ErrWorkspaceForbidden
+		return ErrSecurityPolicyUnavailable
 	}
 	policy, err := s.repo.GetPolicy(ctx, workspaceID, 0)
 	if err != nil {
+		return ErrSecurityPolicyUnavailable.WithCause(err)
+	}
+	input, err := s.workspaceSecurityContext(ctx, *policy, workspaceType, principal, assurance)
+	if err != nil {
 		return err
 	}
-	base := WorkspaceSecurityPolicy{WorkspaceID: policy.WorkspaceID, RequireSSO: policy.RequireSSO, SSOGraceUntil: policy.SSOGraceUntil, Revision: policy.Revision}
-	if !base.RequireSSO || workspaceType == WorkspaceTypePersonal || principal == PrincipalAPIKey || principal == PrincipalServiceAccount {
-		return nil
-	}
-	if policy.SSOGraceUntil != nil && s.now().Before(*policy.SSOGraceUntil) {
-		return nil
-	}
-	if principal == "" {
-		principal = PrincipalHuman
-	}
-	if principal != PrincipalHuman || !assurance.Valid(s.now()) || assurance.WorkspaceID != workspaceID || !validEnterpriseProtocol(assurance.AuthMethod) {
-		return ErrSSORequired
-	}
-	provider, _, providerErr := s.repo.GetProvider(ctx, workspaceID, 0, assurance.ProviderID)
-	if providerErr != nil || provider == nil || provider.Status != "active" || provider.Revision != assurance.ProviderRevision || identityProtocol(provider.Type) != assurance.AuthMethod {
-		return ErrSSORequired
-	}
-	return nil
+	return WorkspaceSecurityDecisionError(*policy, EvaluateWorkspaceSecurity(*policy, input, s.now()))
 }
 
 func (s *EnterpriseIdentityService) UpdatePolicy(ctx context.Context, actorID, workspaceID int64, requireSSO bool, graceUntil *time.Time) (*WorkspaceIdentityPolicy, error) {
@@ -749,6 +737,11 @@ func (s *EnterpriseIdentityService) BreakGlass(ctx context.Context, actorID, wor
 	}
 	if access.Member.Role != WorkspaceRoleOwner || access.Workspace.Type != WorkspaceTypeOrganization || !strong || authenticatedAt.IsZero() || authenticatedAt.After(s.now().Add(time.Minute)) || s.now().Sub(authenticatedAt) > 10*time.Minute || len(strings.TrimSpace(reason)) < 10 || len(reason) > 500 {
 		return nil, ErrWorkspaceForbidden
+	}
+	// The caller can supply explicitly verified local factor proof. A legacy
+	// strong/time assertion is recent primary authentication, never MFA.
+	if _, ok := RecentAuthenticationProofFromContext(ctx); !ok {
+		ctx = WithRecentAuthentication(ctx, authenticatedAt)
 	}
 	return s.repo.BreakGlass(ctx, workspaceID, actorID, strings.TrimSpace(reason))
 }

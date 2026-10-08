@@ -84,6 +84,16 @@ restores default true, subject to the authoritative suspension checks below.
 
 ## Users and global identity safety
 
+Phase D applies the shared transactional Workspace Member Admission Policy
+before new User resources and inactive-to-active membership restoration. The
+same exact verified-domain and external-member restrictions protect invitation,
+OIDC/SAML JIT and SCIM entry. Policy/domain writes serialize with provisioning;
+denial rolls back resources, Global Users, sources, membership and durable
+events. Existing active sources are retained and administrative removal or
+suspension always prevails. SCIM Bearer remains independent of human MFA/SSO
+and age; human connector/token/group management uses the Workspace Security
+Evaluator. See [WORKSPACE_SECURITY_POLICY.md](WORKSPACE_SECURITY_POLICY.md).
+
 User attributes are schemas, id, externalId, userName, active, name, displayName
 and emails. Exactly one primary inbox is required, except a single email is
 implicitly primary. Existing Global User adoption requires normalized exact

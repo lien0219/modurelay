@@ -319,6 +319,7 @@ func TestEnterpriseSCIMExpiryAndFailuresAreBounded(t *testing.T) {
 	_ = token
 }
 func TestEnterpriseSCIMMigrationRerunPreservesNewAdministrativeState(t *testing.T) {
+	t.Cleanup(func() { restoreWorkspaceSecurityMigration(t) })
 	ctx, r, owner, w, _, p := scimFixture(t)
 	u, e := r.MutateUser(ctx, p, "", service.SCIMUserMutation{Action: "create", User: scimUserInput(w.ID, "rerun")})
 	require.NoError(t, e)

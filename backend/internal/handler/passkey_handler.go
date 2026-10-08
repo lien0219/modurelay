@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
@@ -97,9 +98,8 @@ func (h *PasskeyHandler) BeginLogin(c *gin.Context) {
 }
 
 // FinishLogin validates a passkey assertion and creates a normal Sub2API token
-// session. User verification is mandatory, so a successful passkey assertion
-// already supplies phishing-resistant multi-factor authentication and does not
-// enter the separate TOTP challenge flow.
+// session. Workspace MFA recognition remains conservative until assertion
+// evidence is explicitly carried from the WebAuthn service.
 func (h *PasskeyHandler) FinishLogin(c *gin.Context) {
 	if !h.requirePasskeysEnabled(c) {
 		return
@@ -121,6 +121,12 @@ func (h *PasskeyHandler) FinishLogin(c *gin.Context) {
 	middleware2.SetAuditActor(c, user.ID, user.Email)
 	c.Set("auth_method", service.AuditAuthMethodPasskey)
 	h.authService.RecordSuccessfulLogin(c.Request.Context(), user.ID)
+	h.respondWithLoginSession(c, user)
+}
+
+func (h *PasskeyHandler) respondWithLoginSession(c *gin.Context, user *service.User) {
+	ctx := service.WithSessionAuthentication(c.Request.Context(), service.SessionAuthentication{AuthMethod: "passkey", AuthenticatedAt: time.Now()})
+	c.Request = c.Request.WithContext(ctx)
 	respondWithTokenPair(c, h.authService, user)
 }
 

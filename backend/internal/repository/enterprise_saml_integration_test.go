@@ -24,6 +24,7 @@ func TestEnterpriseSAMLRepositoryProtocolPersistenceAndRevision(t *testing.T) {
 		require.NoError(t, e)
 		_, e = integrationDB.Exec(string(body))
 		require.NoError(t, e)
+		restoreWorkspaceSecurityMigration(t)
 	})
 	ctx, repo, owner, workspace, oidc, _ := enterpriseIdentityFixture(t)
 	before := enterpriseHistorySnapshot(t, integrationDB, "workspace_identity_providers", false)
@@ -273,6 +274,7 @@ func TestEnterpriseSAMLMixedProviderTeamGrantsPreserveManualRole(t *testing.T) {
 
 func TestEnterpriseSAMLPolicyUsesLiveMatchingOwnerAssurance(t *testing.T) {
 	ctx, repo, owner, workspace, _, _ := enterpriseIdentityFixture(t)
+	ctx = service.WithRecentAuthentication(ctx, time.Now())
 	saml, err := repo.CreateProvider(ctx, workspace.ID, owner.ID, samlRepositoryInput("saml"), "cipher:keys", nil)
 	require.NoError(t, err)
 	input := enterpriseProvisionInput(workspace.ID, saml, "owner", owner.Email)
@@ -285,11 +287,11 @@ func TestEnterpriseSAMLPolicyUsesLiveMatchingOwnerAssurance(t *testing.T) {
 	require.True(t, policy.RequireSSO)
 	assurance.AuthMethod = "oidc"
 	_, err = repo.UpdatePolicy(service.WithAuthenticationAssurance(ctx, assurance), workspace.ID, owner.ID, true, nil)
-	require.ErrorIs(t, err, service.ErrWorkspaceConflict)
+	require.ErrorIs(t, err, service.ErrSSORequired, "the already-enforced policy rejects mismatched protocol before mutation")
 	assurance.AuthMethod = "saml"
 	assurance.ProviderRevision++
 	_, err = repo.UpdatePolicy(service.WithAuthenticationAssurance(ctx, assurance), workspace.ID, owner.ID, true, nil)
-	require.ErrorIs(t, err, service.ErrWorkspaceConflict)
+	require.ErrorIs(t, err, service.ErrSSORequired, "the already-enforced policy rejects stale assurance before mutation")
 }
 
 func TestEnterpriseSAMLKeyMutationRequiresTenantRevisionAndRBAC(t *testing.T) {

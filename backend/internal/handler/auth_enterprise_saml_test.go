@@ -76,5 +76,8 @@ func TestSAMLRecentAuthenticationAcceptedAndStaleRejected(t *testing.T) {
 		c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
 		c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 42, PrincipalType: service.PrincipalHuman, AuthMethod: "saml", AuthenticatedAt: time.Now().Add(-age)})
 		require.Equal(t, age < 10*time.Minute, h.RequireEnterpriseRecentAuthentication(c))
+		if age < 10*time.Minute {
+			require.NoError(t, service.RequireRecentAuthentication(c.Request.Context(), time.Now(), 10*time.Minute))
+		}
 	}
 }

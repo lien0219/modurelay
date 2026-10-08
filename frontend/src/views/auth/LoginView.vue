@@ -602,7 +602,7 @@ async function handleLogin(): Promise<void> {
 
   try {
     // Call auth store login（阿里云 captchaVerifyParam 复用 turnstile_token 字段）
-    const response = await authStore.login({
+    const credentials = {
       email: formData.email,
       password: formData.password,
       turnstile_token:
@@ -611,7 +611,10 @@ async function handleLogin(): Promise<void> {
       tencent_captcha_randstr: tencentCaptchaEnabled.value
         ? tencentCaptchaRandstr.value
         : undefined
-    })
+    }
+    const response = router.currentRoute.value.query.reauth === '1'
+      ? await authStore.login(credentials, { preserveSessionOnFailure: true })
+      : await authStore.login(credentials)
 
     // Check if 2FA is required
     if (isTotp2FARequired(response)) {
@@ -666,7 +669,11 @@ async function handlePasskeyLogin(): Promise<void> {
         : { turnstile_token: result.token }
     }
 
-    await authStore.loginWithPasskey(proof)
+    if (router.currentRoute.value.query.reauth === '1') {
+      await authStore.loginWithPasskey(proof, { preserveSessionOnFailure: true })
+    } else {
+      await authStore.loginWithPasskey(proof)
+    }
     clearAllAffiliateReferralCodes()
     appStore.showSuccess(t('auth.loginSuccess'))
     const redirectTo = (router.currentRoute.value.query.redirect as string) || '/dashboard'
@@ -730,7 +737,8 @@ async function handle2FAVerify(code: string): Promise<void> {
   }
 
   try {
-    await authStore.login2FA(totpTempToken.value, code)
+    if (router.currentRoute.value.query.reauth === '1') await authStore.login2FA(totpTempToken.value, code, { preserveSessionOnFailure: true })
+    else await authStore.login2FA(totpTempToken.value, code)
 
     // Close modal and show success
     show2FAModal.value = false

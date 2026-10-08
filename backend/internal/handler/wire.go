@@ -279,6 +279,13 @@ func ProvideEnterpriseAuthHandler(cfg *config.Config, authService *service.AuthS
 	return h
 }
 
+func ProvideTotpHandler(totpService *service.TotpService, authService *service.AuthService, settings *service.SettingService) *TotpHandler {
+	h := NewTotpHandler(totpService)
+	h.SetAuthService(authService)
+	h.SetSettingService(settings)
+	return h
+}
+
 // ProviderSet is the Wire provider set for all handlers
 var ProviderSet = wire.NewSet(
 	// Top-level handlers
@@ -295,7 +302,7 @@ var ProviderSet = wire.NewSet(
 	NewChannelMonitorV2Handler,
 	ProvideGatewayHandler,
 	ProvideOpenAIGatewayHandler,
-	NewTotpHandler,
+	ProvideTotpHandler,
 	NewPasskeyHandler,
 	ProvideSettingHandler,
 	NewPaymentHandler,

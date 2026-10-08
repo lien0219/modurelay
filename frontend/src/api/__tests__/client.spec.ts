@@ -323,6 +323,54 @@ describe('API Client', () => {
 
   // --- 401 Token 刷新 ---
 
+  describe('workspace security denials', () => {
+    it('broadcasts an actionable MFA error only for the current request context and retains tokens', async () => {
+      window.history.replaceState({}, '', '/workspaces/7/teams')
+      localStorage.setItem('auth_token', 'global-token')
+      localStorage.setItem('refresh_token', 'global-refresh')
+      const listener = vi.fn()
+      window.addEventListener('workspace-security-required', listener)
+      apiClient.defaults.adapter = config => Promise.reject({ config, response: { status: 403, data: { code: 'MFA_REQUIRED', metadata: { workspace_id: '7', requires_sso: 'true' } } } })
+      await expect(apiClient.get('/workspaces/7/teams')).rejects.toMatchObject({ code: 'MFA_REQUIRED' })
+      expect(listener).toHaveBeenCalledTimes(1)
+      expect((listener.mock.calls[0][0] as CustomEvent).detail.error.metadata).toEqual({ workspace_id: '7', requires_sso: 'true' })
+      expect(localStorage.getItem('auth_token')).toBe('global-token')
+      expect(localStorage.getItem('refresh_token')).toBe('global-refresh')
+      window.removeEventListener('workspace-security-required', listener)
+    })
+
+    it('ignores a late denial after returning to the same workspace in a different request context', async () => {
+      window.history.replaceState({}, '', '/workspaces/7/teams')
+      localStorage.setItem('auth_token', 'global-token')
+      const listener = vi.fn()
+      window.addEventListener('workspace-security-required', listener)
+      let reject!: (error: unknown) => void
+      let requestConfig: unknown
+      apiClient.defaults.adapter = config => { requestConfig = config; return new Promise((_resolve, fail) => { reject = fail }) }
+      const request = apiClient.get('/workspaces/7/teams')
+      await vi.waitFor(() => expect(reject).toBeDefined())
+      window.history.replaceState({}, '', '/workspaces/8/teams')
+      window.dispatchEvent(new PopStateEvent('popstate'))
+      window.history.replaceState({}, '', '/workspaces/7/teams')
+      window.dispatchEvent(new PopStateEvent('popstate'))
+      reject({ config: requestConfig, response: { status: 403, data: { code: 'MFA_REQUIRED' } } })
+      await expect(request).rejects.toMatchObject({ code: 'MFA_REQUIRED' })
+      expect(listener).not.toHaveBeenCalled()
+      window.removeEventListener('workspace-security-required', listener)
+    })
+
+    it('keeps an invalid TOTP session proof out of the global refresh and logout path', async () => {
+      localStorage.setItem('auth_token', 'global-token')
+      localStorage.setItem('refresh_token', 'global-refresh')
+      const refresh = await import('@/api/tokenRefresh')
+      const refreshSpy = vi.spyOn(refresh, 'refreshAuthTokens')
+      apiClient.defaults.adapter = config => Promise.reject({ config, response: { status: 401, data: { code: 'TOTP_INVALID_CODE' } } })
+      await expect(apiClient.post('/user/totp/step-up', { code: '123456' }, { preserveAuthSessionOnFailure: true })).rejects.toMatchObject({ code: 'TOTP_INVALID_CODE' })
+      expect(refreshSpy).not.toHaveBeenCalled()
+      expect(localStorage.getItem('auth_token')).toBe('global-token')
+    })
+  })
+
   describe('401 Token 刷新', () => {
     it.each(['/auth/sso/exchange', '/auth/sso/link/start', '/auth/sso/recover'])('SSO 凭据或完成错误保留全局会话：%s', async url => {
       localStorage.setItem('auth_token', 'valid-global-token')

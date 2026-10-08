@@ -171,14 +171,42 @@ export interface WorkspaceIdentityMappings {
   teams: Array<{ claim_value: string; team_id: number }>
 }
 
-export interface WorkspaceIdentityPolicy {
+export interface WorkspaceSecurityDecision {
+  allowed: boolean
+  reason: string
+  requires_sso: boolean
+  requires_mfa: boolean
+  requires_mfa_enrollment: boolean
+  requires_reauthentication: boolean
+  provider_allowed: boolean
+  policy_revision: number
+}
+
+export interface WorkspaceSecurityPolicy {
   workspace_id: number
   require_sso: boolean
+  require_mfa: boolean
   sso_grace_until?: string | null
+  session_max_age_seconds: number | null
+  invitation_policy: 'any' | 'verified_domains_only' | 'disabled'
+  allow_external_members: boolean
+  workspace_jit_enabled: boolean
+  approved_identity_provider_mode: 'any_active' | 'selected'
+  approved_identity_provider_ids: number[]
   revision: number
   updated_by_user_id?: number
   updated_at?: string
+  verified_domains?: string[]
+  external_member_count?: number
+  decision?: WorkspaceSecurityDecision
+  session_max_age_min_seconds?: number
+  session_max_age_max_seconds?: number
+  prerequisites?: string[]
+  prerequisite_reason?: string
 }
+
+export type WorkspaceIdentityPolicy = WorkspaceSecurityPolicy
+export type WorkspaceSecurityPolicyPatch = Partial<Pick<WorkspaceSecurityPolicy, 'require_sso' | 'require_mfa' | 'sso_grace_until' | 'session_max_age_seconds' | 'invitation_policy' | 'allow_external_members' | 'workspace_jit_enabled' | 'approved_identity_provider_mode' | 'approved_identity_provider_ids'>> & { expected_revision: number }
 
 export type ProjectAccessMode = 'all_projects' | 'assigned_projects'
 export type ProjectAccessSubjectType = 'member' | 'team'
@@ -440,7 +468,10 @@ export const workspaceAPI = {
   getIdentityProviderMappings: async (workspaceId: number, providerId: number, signal?: AbortSignal) => (await apiClient.get<WorkspaceIdentityMappings>(`/workspaces/${workspaceId}/identity-providers/${providerId}/mappings`, { signal })).data,
   updateIdentityProviderMappings: async (workspaceId: number, providerId: number, payload: WorkspaceIdentityMappings) => (await apiClient.put(`/workspaces/${workspaceId}/identity-providers/${providerId}/mappings`, payload)).data,
   getIdentityPolicy: async (workspaceId: number, signal?: AbortSignal) => (await apiClient.get<WorkspaceIdentityPolicy>(`/workspaces/${workspaceId}/security-policy`, { signal })).data,
-  updateIdentityPolicy: async (workspaceId: number, payload: Pick<WorkspaceIdentityPolicy, 'require_sso' | 'sso_grace_until'>) => (await apiClient.patch<WorkspaceIdentityPolicy>(`/workspaces/${workspaceId}/security-policy`, payload)).data,
+  getSecurityPolicy: async (workspaceId: number, signal?: AbortSignal) => (await apiClient.get<WorkspaceSecurityPolicy>(`/workspaces/${workspaceId}/security-policy`, { signal })).data,
+  updateIdentityPolicy: async (workspaceId: number, payload: WorkspaceSecurityPolicyPatch) => (await apiClient.patch<WorkspaceIdentityPolicy>(`/workspaces/${workspaceId}/security-policy`, payload)).data,
+  updateSecurityPolicy: async (workspaceId: number, payload: WorkspaceSecurityPolicyPatch) => (await apiClient.patch<WorkspaceSecurityPolicy>(`/workspaces/${workspaceId}/security-policy`, payload)).data,
+  previewSecurityPolicy: async (workspaceId: number, payload: WorkspaceSecurityPolicyPatch, signal?: AbortSignal) => (await apiClient.post<WorkspaceSecurityPolicy>(`/workspaces/${workspaceId}/security-policy/preview`, payload, { signal })).data,
   startSSO: async (workspaceId: number, providerId: number, returnTo = `/workspaces/${workspaceId}/overview`) => (await apiClient.post<{ authorization_url: string; expires_at: string }>('/auth/sso/start', { workspace_id: workspaceId, provider_id: providerId, return_to: returnTo })).data,
 
   listTeams: async (workspaceId: number, params?: PageParams) => (await apiClient.get<BasePaginationResponse<WorkspaceTeam>>(`/workspaces/${workspaceId}/teams`, pageConfig(params))).data,
