@@ -59,6 +59,8 @@ func (r *notificationRecipientResolver) Resolve(ctx context.Context, event *serv
 	case service.EventBudgetThreshold, service.EventBudgetSoftLimit, service.EventBudgetHardLimit,
 		service.EventBudgetUpdated, service.EventBillingPending, service.EventBillingRecovered:
 		allowed = func(role string) bool { return role == "owner" || role == "admin" || role == "billing" }
+	case service.EventFinOpsAnomalyDetected, service.EventFinOpsAnomalyAcknowledged, service.EventFinOpsAnomalyResolved:
+		allowed = func(role string) bool { return role == "owner" || role == "admin" || role == "billing" }
 	case service.EventProjectCreated, service.EventProjectUpdated, service.EventProjectArchived, service.EventProjectRestored:
 		allowed = func(role string) bool { return role == "owner" || role == "admin" || role == "developer" }
 	case service.EventServiceAccountCreated, service.EventServiceAccountUpdated, service.EventServiceAccountDisabled, service.EventServiceAccountEnabled, service.EventServiceAccountCredentialCreated, service.EventServiceAccountCredentialUpdated, service.EventServiceAccountCredentialRevoked, service.EventServiceAccountCredentialRotated, service.EventServiceAccountCredentialExpiring, service.EventServiceAccountCredentialExpired:

@@ -7,25 +7,25 @@ import (
 
 // The only tenant role map. Global admin is deliberately not a tenant role.
 var workspaceRolePermissions = map[string][]string{
-	"owner":     {"service_account.read", "service_account.create", "service_account.update", "service_account.disable", "service_account.credential.read", "service_account.credential.create", "service_account.credential.update", "service_account.credential.revoke", "service_account.credential.rotate", "workspace.read", "workspace.update", "workspace.archive", "member.read", "invitation.read", "member.invite", "member.update", "member.remove", "owner.manage", "billing.owner.update", "project.read", "project.create", "project.update", "project.archive", "key.read", "key.create", "key.update", "key.revoke", "usage.read", "billing.read", "budget.read", "budget.update", "audit.read", "webhook.read", "webhook.create", "webhook.update", "webhook.delete", "webhook.secret.rotate", "webhook.test", "webhook.delivery.read", "webhook.delivery.retry", "team.read", "team.create", "team.update", "team.archive", "team.member.update", "project_access.read", "project_access.update", "workspace.project_access.update", "identity.read", "identity.manage", "workspace_sso.update"},
-	"admin":     {"service_account.read", "service_account.create", "service_account.update", "service_account.disable", "service_account.credential.read", "service_account.credential.create", "service_account.credential.update", "service_account.credential.revoke", "service_account.credential.rotate", "workspace.read", "workspace.update", "member.read", "invitation.read", "member.invite", "member.update", "member.remove", "project.read", "project.create", "project.update", "project.archive", "key.read", "key.create", "key.update", "key.revoke", "usage.read", "budget.read", "budget.update", "audit.read", "webhook.read", "webhook.create", "webhook.update", "webhook.delete", "webhook.secret.rotate", "webhook.test", "webhook.delivery.read", "webhook.delivery.retry", "team.read", "team.create", "team.update", "team.archive", "team.member.update", "project_access.read", "project_access.update", "workspace.project_access.update", "identity.read", "identity.manage"},
-	"developer": {"service_account.read", "service_account.create", "service_account.update", "service_account.disable", "service_account.credential.read", "service_account.credential.create", "service_account.credential.update", "service_account.credential.revoke", "service_account.credential.rotate", "workspace.read", "member.read", "project.read", "key.read", "key.create", "key.update", "key.revoke", "usage.read", "budget.read", "webhook.read", "webhook.delivery.read"},
-	"billing":   {"service_account.read", "workspace.read", "project.read", "usage.read", "billing.read", "budget.read", "budget.update", "webhook.read"},
-	"viewer":    {"service_account.read", "workspace.read", "project.read", "usage.read", "budget.read"},
+	"owner":     {"service_account.read", "service_account.create", "service_account.update", "service_account.disable", "service_account.credential.read", "service_account.credential.create", "service_account.credential.update", "service_account.credential.revoke", "service_account.credential.rotate", "workspace.read", "workspace.update", "workspace.archive", "member.read", "invitation.read", "member.invite", "member.update", "member.remove", "owner.manage", "billing.owner.update", "project.read", "project.create", "project.update", "project.archive", "key.read", "key.create", "key.update", "key.revoke", "usage.read", "billing.read", "budget.read", "budget.update", "finops_anomaly.read", "finops_anomaly.manage", "audit.read", "webhook.read", "webhook.create", "webhook.update", "webhook.delete", "webhook.secret.rotate", "webhook.test", "webhook.delivery.read", "webhook.delivery.retry", "team.read", "team.create", "team.update", "team.archive", "team.member.update", "project_access.read", "project_access.update", "workspace.project_access.update", "identity.read", "identity.manage", "workspace_sso.update"},
+	"admin":     {"service_account.read", "service_account.create", "service_account.update", "service_account.disable", "service_account.credential.read", "service_account.credential.create", "service_account.credential.update", "service_account.credential.revoke", "service_account.credential.rotate", "workspace.read", "workspace.update", "member.read", "invitation.read", "member.invite", "member.update", "member.remove", "project.read", "project.create", "project.update", "project.archive", "key.read", "key.create", "key.update", "key.revoke", "usage.read", "budget.read", "budget.update", "finops_anomaly.read", "finops_anomaly.manage", "audit.read", "webhook.read", "webhook.create", "webhook.update", "webhook.delete", "webhook.secret.rotate", "webhook.test", "webhook.delivery.read", "webhook.delivery.retry", "team.read", "team.create", "team.update", "team.archive", "team.member.update", "project_access.read", "project_access.update", "workspace.project_access.update", "identity.read", "identity.manage"},
+	"developer": {"service_account.read", "service_account.create", "service_account.update", "service_account.disable", "service_account.credential.read", "service_account.credential.create", "service_account.credential.update", "service_account.credential.revoke", "service_account.credential.rotate", "workspace.read", "member.read", "project.read", "key.read", "key.create", "key.update", "key.revoke", "usage.read", "budget.read", "finops_anomaly.read", "webhook.read", "webhook.delivery.read"},
+	"billing":   {"service_account.read", "workspace.read", "project.read", "usage.read", "billing.read", "budget.read", "budget.update", "finops_anomaly.read", "finops_anomaly.manage", "webhook.read"},
+	"viewer":    {"service_account.read", "workspace.read", "project.read", "usage.read", "budget.read", "finops_anomaly.read"},
 }
 
 var projectRolePermissions = map[string][]string{
 	ProjectAccessRoleViewer: {
-		"project.read", "key.read", "usage.read", "billing.read", "budget.read",
+		"project.read", "key.read", "usage.read", "billing.read", "budget.read", "finops_anomaly.read",
 		"service_account.read", "service_account.credential.read", "policy.read",
 	},
 	ProjectAccessRoleDeveloper: {
-		"project.read", "key.read", "key.create", "key.update", "key.revoke", "usage.read", "billing.read", "budget.read",
+		"project.read", "key.read", "key.create", "key.update", "key.revoke", "usage.read", "billing.read", "budget.read", "finops_anomaly.read",
 		"service_account.read", "service_account.create", "service_account.update", "service_account.disable",
 		"service_account.credential.read", "service_account.credential.create", "service_account.credential.update", "service_account.credential.revoke", "service_account.credential.rotate", "policy.read",
 	},
 	ProjectAccessRoleAdmin: {
-		"project.read", "project.update", "project.archive", "key.read", "key.create", "key.update", "key.revoke", "usage.read", "billing.read", "budget.read", "budget.update",
+		"project.read", "project.update", "project.archive", "key.read", "key.create", "key.update", "key.revoke", "usage.read", "billing.read", "budget.read", "budget.update", "finops_anomaly.read", "finops_anomaly.manage",
 		"service_account.read", "service_account.create", "service_account.update", "service_account.disable",
 		"service_account.credential.read", "service_account.credential.create", "service_account.credential.update", "service_account.credential.revoke", "service_account.credential.rotate", "project_policy.update", "policy.read",
 	},
@@ -34,7 +34,7 @@ var projectRolePermissions = map[string][]string{
 var projectScopedPermissions = map[string]struct{}{
 	"project.read": {}, "project.update": {}, "project.archive": {},
 	"key.read": {}, "key.create": {}, "key.update": {}, "key.revoke": {},
-	"usage.read": {}, "billing.read": {}, "budget.read": {}, "budget.update": {},
+	"usage.read": {}, "billing.read": {}, "budget.read": {}, "budget.update": {}, "finops_anomaly.read": {}, "finops_anomaly.manage": {},
 	"service_account.read": {}, "service_account.create": {}, "service_account.update": {}, "service_account.disable": {},
 	"service_account.credential.read": {}, "service_account.credential.create": {}, "service_account.credential.update": {}, "service_account.credential.revoke": {}, "service_account.credential.rotate": {},
 	"project_policy.update": {}, "policy.read": {},

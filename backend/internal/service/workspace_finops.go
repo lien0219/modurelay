@@ -9,6 +9,10 @@ type FinOpsScope struct {
 	WorkspaceID      int64
 	ProjectID        int64
 	ServiceAccountID int64
+	// WorkspaceOnly is used by anomaly reads for assigned-project members. It
+	// keeps workspace-level findings visible while excluding project findings
+	// that the caller has not been granted.
+	WorkspaceOnly bool
 }
 
 type FinOpsUsageSummary struct {

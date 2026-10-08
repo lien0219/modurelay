@@ -61,6 +61,9 @@ const (
 	EventBillingRecovered               = "billing.settlement_recovered"
 	EventQuotaThreshold                 = "quota.threshold_reached"
 	EventQuotaExhausted                 = "quota.exhausted"
+	EventFinOpsAnomalyDetected          = "finops.anomaly.detected"
+	EventFinOpsAnomalyAcknowledged      = "finops.anomaly.acknowledged"
+	EventFinOpsAnomalyResolved          = "finops.anomaly.resolved"
 	EventPolicyUpdated                  = "policy.updated"
 	EventWebhookTest                    = "webhook.test"
 	EventWorkspaceTeamCreated           = "workspace.team.created"
@@ -120,6 +123,7 @@ var allowedDomainEventTypes = map[string]struct{}{
 	EventBudgetSoftLimit: {}, EventBudgetHardLimit: {}, EventBudgetUpdated: {},
 	EventBillingPending: {}, EventBillingRecovered: {}, EventQuotaThreshold: {},
 	EventQuotaExhausted: {}, EventPolicyUpdated: {}, EventWebhookTest: {},
+	EventFinOpsAnomalyDetected: {}, EventFinOpsAnomalyAcknowledged: {}, EventFinOpsAnomalyResolved: {},
 	EventWorkspaceTeamCreated: {}, EventWorkspaceTeamUpdated: {}, EventWorkspaceTeamArchived: {},
 	EventWorkspaceTeamMemberAdded: {}, EventWorkspaceTeamMemberRemoved: {},
 	EventWorkspaceProjectAccessCreated: {}, EventWorkspaceProjectAccessUpdated: {}, EventWorkspaceProjectAccessDeleted: {},
@@ -159,6 +163,9 @@ var allowedDomainEventDataKeys = map[string]struct{}{
 	"require_sso": {}, "role_source": {}, "source_provider_id": {}, "role_count": {}, "team_count": {}, "mapping_revision": {},
 	"connector_id": {}, "token_id": {}, "resource_id": {}, "operation": {}, "added_count": {}, "removed_count": {}, "failure_count": {},
 	"previous_revision": {}, "require_mfa": {}, "session_max_age_seconds": {}, "invitation_policy": {}, "allow_external_members": {}, "workspace_jit_enabled": {}, "approved_identity_provider_mode": {}, "changed_fields": {},
+	"anomaly_id": {}, "detector_type": {}, "detector_version": {}, "dimension_type": {}, "dimension_value": {}, "severity": {},
+	"observed_spend": {}, "expected_spend": {}, "spend_delta": {}, "observed_requests": {}, "expected_requests": {},
+	"observed_unit_cost": {}, "expected_unit_cost": {}, "score": {}, "window_start": {}, "window_end": {}, "resolution_reason": {},
 }
 
 type DomainEvent struct {
@@ -279,6 +286,7 @@ func IsWorkspaceVisibleEvent(eventType string) bool {
 		EventWebhookTest,
 		EventWorkspaceTeamCreated, EventWorkspaceTeamUpdated, EventWorkspaceTeamArchived, EventWorkspaceTeamMemberAdded, EventWorkspaceTeamMemberRemoved,
 		EventWorkspaceProjectAccessCreated, EventWorkspaceProjectAccessUpdated, EventWorkspaceProjectAccessDeleted, EventWorkspaceProjectAccessMode,
+		EventFinOpsAnomalyDetected, EventFinOpsAnomalyAcknowledged, EventFinOpsAnomalyResolved,
 		EventWorkspaceDomainCreated, EventWorkspaceDomainRegenerated, EventWorkspaceDomainVerified, EventWorkspaceDomainRevoked,
 		EventIdentityProviderCreated, EventIdentityProviderUpdated, EventIdentityProviderDisabled, EventOIDCMappingsUpdated,
 		EventSAMLMetadataUpdated, EventSAMLCertificateRotated,
@@ -669,6 +677,8 @@ func notificationPresentation(eventType string) (category, titleKey, bodyKey str
 		return "security", "notifications.sso_recovery.title", "notifications.sso_recovery.body"
 	case EventBudgetThreshold, EventBudgetSoftLimit, EventBudgetHardLimit, EventBudgetUpdated:
 		return "budget", "notifications.budget.title", "notifications.budget.body"
+	case EventFinOpsAnomalyDetected, EventFinOpsAnomalyAcknowledged, EventFinOpsAnomalyResolved:
+		return "finops", "notifications.finops_anomaly.title", "notifications.finops_anomaly.body"
 	case EventBillingPending, EventBillingRecovered:
 		return "billing", "notifications.billing.title", "notifications.billing.body"
 	case EventAPIKeyCreated, EventAPIKeyUpdated, EventAPIKeyRevoked:

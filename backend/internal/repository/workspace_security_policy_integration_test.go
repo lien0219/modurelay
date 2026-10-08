@@ -23,6 +23,10 @@ func restoreWorkspaceSecurityMigration(t *testing.T) {
 	require.NoError(t, err)
 	_, err = integrationDB.Exec(string(body))
 	require.NoError(t, err)
+	phaseE, err := migrations.FS.ReadFile("298_finops_anomalies.sql")
+	require.NoError(t, err)
+	_, err = integrationDB.Exec(string(phaseE))
+	require.NoError(t, err)
 }
 
 func workspaceSecurityActorContext(ctx context.Context) context.Context {

@@ -15,6 +15,72 @@ export interface Workspace {
   permissions: string[]
 }
 
+export type WorkspaceFinopsAnomalyStatus = 'open' | 'acknowledged' | 'resolved'
+export type WorkspaceFinopsAnomalySeverity = 'low' | 'medium' | 'high' | 'critical'
+export type WorkspaceFinopsAnomalyDetector = 'spend_spike' | 'request_spike' | 'unit_cost_spike'
+
+export interface WorkspaceFinopsAnomaly {
+  id: number
+  workspace_id: number
+  project_id?: number
+  scope_type: string
+  scope_id?: number
+  dimension_type: string
+  dimension_value: string
+  detector_type: WorkspaceFinopsAnomalyDetector | string
+  detector_version: string
+  window_start: string
+  window_end: string
+  observed_spend: number
+  expected_spend: number
+  spend_delta: number
+  observed_requests: number
+  expected_requests: number
+  observed_unit_cost: number
+  expected_unit_cost: number
+  baseline_sample_count: number
+  baseline_start?: string
+  baseline_end?: string
+  baseline_mad: number
+  relative_increase: number
+  score: number
+  severity: WorkspaceFinopsAnomalySeverity | string
+  fingerprint: string
+  snapshot_id: number
+  status: WorkspaceFinopsAnomalyStatus
+  first_detected_at: string
+  last_detected_at: string
+  acknowledged_at?: string | null
+  acknowledged_by_user_id?: number | null
+  resolved_at?: string | null
+  resolved_by_user_id?: number | null
+  resolution_reason?: string
+  version: number
+  created_at: string
+  updated_at: string
+}
+
+export interface WorkspaceFinopsAnomalyFilter {
+  status?: WorkspaceFinopsAnomalyStatus
+  severity?: WorkspaceFinopsAnomalySeverity
+  detector_type?: WorkspaceFinopsAnomalyDetector
+  dimension_type?: string
+  start?: string
+  end?: string
+  page?: number
+  page_size?: number
+}
+
+export interface WorkspaceFinopsAnomalyDetectorStatus {
+  last_successful_scan?: string | null
+  last_processed_bucket?: string | null
+  last_failure_code?: string
+  lag_seconds: number
+  candidate_count: number
+  finding_count: number
+  scan_duration_ms: number
+}
+
 export interface EnterpriseDomain {
   id: number
   workspace_id: number
@@ -517,6 +583,14 @@ export const workspaceAPI = {
   getProjectBudget: async (workspaceId: number, projectId: number, signal?: AbortSignal) => (await apiClient.get<WorkspaceBudget>(`/workspaces/${workspaceId}/projects/${projectId}/budget`, { signal })).data,
   updateProjectBudget: async (workspaceId: number, projectId: number, payload: Record<string, unknown>) => (await apiClient.put<WorkspaceBudget>(`/workspaces/${workspaceId}/projects/${projectId}/budget`, payload)).data,
   getProjectUsage: async (workspaceId: number, projectId: number, params: Record<string, unknown> = {}, signal?: AbortSignal) => (await apiClient.get<WorkspaceUsage>(`/workspaces/${workspaceId}/projects/${projectId}/usage`, { params, signal })).data,
+
+  listFinopsAnomalies: async (workspaceId: number, params: WorkspaceFinopsAnomalyFilter = {}, signal?: AbortSignal) => (await apiClient.get<BasePaginationResponse<WorkspaceFinopsAnomaly>>(`/workspaces/${workspaceId}/finops/anomalies`, { params, signal })).data,
+  getFinopsAnomaly: async (workspaceId: number, anomalyId: number, signal?: AbortSignal) => (await apiClient.get<WorkspaceFinopsAnomaly>(`/workspaces/${workspaceId}/finops/anomalies/${anomalyId}`, { signal })).data,
+  updateFinopsAnomaly: async (workspaceId: number, anomalyId: number, payload: { status: 'acknowledged' | 'resolved'; resolution_reason?: string; expected_version: number }) => (await apiClient.patch<WorkspaceFinopsAnomaly>(`/workspaces/${workspaceId}/finops/anomalies/${anomalyId}`, payload)).data,
+  getFinopsAnomalyStatus: async (workspaceId: number, signal?: AbortSignal) => (await apiClient.get<WorkspaceFinopsAnomalyDetectorStatus>(`/workspaces/${workspaceId}/finops/anomalies/status`, { signal })).data,
+  listProjectFinopsAnomalies: async (workspaceId: number, projectId: number, params: WorkspaceFinopsAnomalyFilter = {}, signal?: AbortSignal) => (await apiClient.get<BasePaginationResponse<WorkspaceFinopsAnomaly>>(`/workspaces/${workspaceId}/projects/${projectId}/finops/anomalies`, { params, signal })).data,
+  getProjectFinopsAnomaly: async (workspaceId: number, projectId: number, anomalyId: number, signal?: AbortSignal) => (await apiClient.get<WorkspaceFinopsAnomaly>(`/workspaces/${workspaceId}/projects/${projectId}/finops/anomalies/${anomalyId}`, { signal })).data,
+  updateProjectFinopsAnomaly: async (workspaceId: number, projectId: number, anomalyId: number, payload: { status: 'acknowledged' | 'resolved'; resolution_reason?: string; expected_version: number }) => (await apiClient.patch<WorkspaceFinopsAnomaly>(`/workspaces/${workspaceId}/projects/${projectId}/finops/anomalies/${anomalyId}`, payload)).data,
 
   adminList: async (params?: PageParams) => (await apiClient.get<BasePaginationResponse<Workspace>>('/admin/workspaces', pageConfig(params))).data,
   adminInspect: async (workspaceId: number) => (await apiClient.get<Workspace>(`/admin/workspaces/${workspaceId}`)).data,

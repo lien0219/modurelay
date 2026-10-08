@@ -19,6 +19,7 @@ type WorkspaceService struct {
 	keyInvalidator  interface{ InvalidateWorkspaceAuth(context.Context, int64) }
 	bootstrapCancel context.CancelFunc
 	bootstrapWG     sync.WaitGroup
+	anomalyWorker   *FinOpsAnomalyWorker
 }
 
 func NewWorkspaceService(repo WorkspaceRepository) *WorkspaceService {
@@ -30,6 +31,7 @@ func NewWorkspaceService(repo WorkspaceRepository) *WorkspaceService {
 func ProvideWorkspaceService(repo WorkspaceRepository) *WorkspaceService {
 	s := NewWorkspaceService(repo)
 	s.StartBootstrapWorker()
+	s.StartAnomalyWorker()
 	return s
 }
 func (s *WorkspaceService) SetKeyInvalidator(k interface{ InvalidateWorkspaceAuth(context.Context, int64) }) {
@@ -68,6 +70,7 @@ func (s *WorkspaceService) StopBootstrapWorker() {
 		s.bootstrapCancel()
 	}
 	s.bootstrapWG.Wait()
+	s.StopAnomalyWorker()
 }
 func (s *WorkspaceService) EnsurePersonalWorkspace(ctx context.Context, userID int64) (*Workspace, error) {
 	return s.repo.EnsurePersonalWorkspace(ctx, userID)

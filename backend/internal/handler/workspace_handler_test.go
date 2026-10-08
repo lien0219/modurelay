@@ -78,7 +78,9 @@ func TestWorkspaceHTTPForeignNumericScopesAreHidden(t *testing.T) {
 			{"GET", "/workspaces/1/projects", ""}, {"POST", "/workspaces/1/projects", `{"name":"Valid","slug":"valid"}`}, {"GET", "/workspaces/1/projects/4", ""}, {"PATCH", "/workspaces/1/projects/4", `{"name":"Valid","slug":"valid"}`}, {"DELETE", "/workspaces/1/projects/4", ""},
 			{"GET", "/workspaces/1/projects/4/keys", ""}, {"POST", "/workspaces/1/projects/4/keys", `{"name":"Valid"}`}, {"GET", "/workspaces/1/projects/4/keys/8", ""}, {"PATCH", "/workspaces/1/projects/4/keys/8", `{"name":"Changed"}`}, {"DELETE", "/workspaces/1/projects/4/keys/8", ""}, {"GET", "/workspaces/1/projects/4/groups/available", ""}, {"GET", "/workspaces/1/audit", ""},
 			{"GET", "/workspaces/1/usage", ""}, {"GET", "/workspaces/1/overview", ""}, {"GET", "/workspaces/1/budget", ""}, {"PUT", "/workspaces/1/budget", `{"amount":10,"enabled":true}`},
+			{"GET", "/workspaces/1/finops/anomalies/status", ""}, {"GET", "/workspaces/1/finops/anomalies", ""}, {"GET", "/workspaces/1/finops/anomalies/8", ""}, {"PATCH", "/workspaces/1/finops/anomalies/8", `{"status":"acknowledged","expected_version":1}`},
 			{"GET", "/workspaces/1/projects/4/usage", ""}, {"GET", "/workspaces/1/projects/4/overview", ""}, {"GET", "/workspaces/1/projects/4/budget", ""}, {"PUT", "/workspaces/1/projects/4/budget", `{"amount":10,"enabled":true}`},
+			{"GET", "/workspaces/1/projects/4/finops/anomalies", ""}, {"GET", "/workspaces/1/projects/4/finops/anomalies/8", ""}, {"PATCH", "/workspaces/1/projects/4/finops/anomalies/8", `{"status":"acknowledged","expected_version":1}`},
 		}
 		for _, tc := range cases {
 			t.Run(fmt.Sprintf("%t %s %s", authenticated, tc.method, tc.path), func(t *testing.T) {
@@ -106,6 +108,33 @@ func TestWorkspaceFinOpsDefaultRangeIsLocalCalendarMonth(t *testing.T) {
 	require.True(t, start.Equal(time.Date(2026, 9, 30, 16, 0, 0, 0, time.UTC)))
 	require.True(t, end.Equal(time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC)))
 }
+
+func TestFinOpsAnomalyFilterIsBoundedAndChronological(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tests := []struct {
+		name  string
+		query string
+		valid bool
+	}{
+		{name: "valid bounded filter", query: "status=open&severity=high&detector_type=spend_spike&dimension_type=model&start=2026-10-01T00:00:00Z&end=2026-10-02T00:00:00Z", valid: true},
+		{name: "invalid enum", query: "status=unknown", valid: false},
+		{name: "reversed window", query: "start=2026-10-02T00:00:00Z&end=2026-10-01T00:00:00Z", valid: false},
+		{name: "invalid timestamp", query: "start=not-a-time", valid: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+			ctx.Request = httptest.NewRequest("GET", "/?"+tt.query, nil)
+			_, err := finopsAnomalyFilter(ctx, 1, 20)
+			if tt.valid {
+				require.NoError(t, err)
+			} else {
+				require.ErrorIs(t, err, service.ErrWorkspaceInvalid)
+			}
+		})
+	}
+}
+
 func TestWorkspaceHTTPForbiddenAndConflictEnvelopes(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	for _, tc := range []struct {

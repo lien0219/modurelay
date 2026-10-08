@@ -54,6 +54,28 @@ func finopsRange(c *gin.Context) (time.Time, time.Time, string, error) {
 	return start, end, tz, nil
 }
 
+func finopsAnomalyFilter(c *gin.Context, page, pageSize int) (service.FinOpsAnomalyFilter, error) {
+	filter := service.FinOpsAnomalyFilter{
+		Status: strings.TrimSpace(c.Query("status")), Severity: strings.TrimSpace(c.Query("severity")),
+		DetectorType: strings.TrimSpace(c.Query("detector_type")), DimensionType: strings.TrimSpace(c.Query("dimension_type")),
+		Page: page, PageSize: pageSize,
+	}
+	for key, target := range map[string]**time.Time{"start": &filter.Start, "end": &filter.End} {
+		if raw := strings.TrimSpace(c.Query(key)); raw != "" {
+			value, err := time.Parse(time.RFC3339, raw)
+			if err != nil {
+				return filter, service.ErrWorkspaceInvalid
+			}
+			value = value.UTC()
+			*target = &value
+		}
+	}
+	if err := filter.Validate(); err != nil {
+		return filter, err
+	}
+	return filter, nil
+}
+
 func NewWorkspaceHandler(w *service.WorkspaceService, k *service.APIKeyService) *WorkspaceHandler {
 	return &WorkspaceHandler{workspaces: w, keys: k}
 }
@@ -100,7 +122,9 @@ func (h *WorkspaceHandler) RegisterTenantRoutes(v1 *gin.RouterGroup) {
 		{"GET", "/workspaces/:id/projects/:project_id/keys", "key.list"}, {"POST", "/workspaces/:id/projects/:project_id/keys", "key.create"}, {"GET", "/workspaces/:id/projects/:project_id/keys/:key_id", "key.get"}, {"PATCH", "/workspaces/:id/projects/:project_id/keys/:key_id", "key.update"}, {"DELETE", "/workspaces/:id/projects/:project_id/keys/:key_id", "key.revoke"}, {"GET", "/workspaces/:id/projects/:project_id/groups/available", "group.available"}, {"GET", "/workspaces/:id/audit", "audit.list"},
 		{"GET", "/workspaces/:id/webhooks", "webhook.list"}, {"POST", "/workspaces/:id/webhooks", "webhook.create"}, {"PATCH", "/workspaces/:id/webhooks/:webhook_id", "webhook.update"}, {"DELETE", "/workspaces/:id/webhooks/:webhook_id", "webhook.delete"}, {"POST", "/workspaces/:id/webhooks/:webhook_id/rotate", "webhook.rotate"}, {"POST", "/workspaces/:id/webhooks/:webhook_id/test", "webhook.test"}, {"GET", "/workspaces/:id/webhooks/:webhook_id/deliveries", "webhook.deliveries"}, {"POST", "/workspaces/:id/webhooks/:webhook_id/deliveries/:delivery_id/retry", "webhook.retry"},
 		{"GET", "/workspaces/:id/usage", "finops.workspace.usage"}, {"GET", "/workspaces/:id/overview", "finops.workspace.overview"}, {"GET", "/workspaces/:id/budget", "finops.workspace.budget.get"}, {"PUT", "/workspaces/:id/budget", "finops.workspace.budget.put"},
+		{"GET", "/workspaces/:id/finops/anomalies/status", "finops.workspace.anomalies.status"}, {"GET", "/workspaces/:id/finops/anomalies", "finops.workspace.anomalies.list"}, {"GET", "/workspaces/:id/finops/anomalies/:anomaly_id", "finops.workspace.anomalies.get"}, {"PATCH", "/workspaces/:id/finops/anomalies/:anomaly_id", "finops.workspace.anomalies.patch"},
 		{"GET", "/workspaces/:id/projects/:project_id/usage", "finops.project.usage"}, {"GET", "/workspaces/:id/projects/:project_id/overview", "finops.project.overview"}, {"GET", "/workspaces/:id/projects/:project_id/budget", "finops.project.budget.get"}, {"PUT", "/workspaces/:id/projects/:project_id/budget", "finops.project.budget.put"},
+		{"GET", "/workspaces/:id/projects/:project_id/finops/anomalies", "finops.project.anomalies.list"}, {"GET", "/workspaces/:id/projects/:project_id/finops/anomalies/:anomaly_id", "finops.project.anomalies.get"}, {"PATCH", "/workspaces/:id/projects/:project_id/finops/anomalies/:anomaly_id", "finops.project.anomalies.patch"},
 	}
 	for _, r := range routes {
 		v1.Handle(r.method, r.path, h.handle(r.action))
@@ -175,8 +199,14 @@ func (h *WorkspaceHandler) handle(action string) gin.HandlerFunc {
 			return
 		}
 		ids := map[string]int64{}
-		for _, name := range []string{"id", "project_id", "member_id", "team_id", "grant_id", "invitation_id", "key_id", "webhook_id", "delivery_id", "domain_id", "provider_id"} {
+		for _, name := range []string{"id", "project_id", "member_id", "team_id", "grant_id", "invitation_id", "key_id", "webhook_id", "delivery_id", "domain_id", "provider_id", "anomaly_id"} {
 			if raw := c.Param(name); raw != "" {
+				// Route enumeration tests and malformed internal probes can carry a
+				// literal :param placeholder. Let the normal tenant/security gate
+				// run before the service returns its bounded not-found response.
+				if strings.HasPrefix(raw, ":") {
+					continue
+				}
 				id, e := strconv.ParseInt(raw, 10, 64)
 				if e != nil || id <= 0 {
 					response.ErrorFrom(c, service.ErrWorkspaceNotFound)
@@ -725,6 +755,36 @@ func (h *WorkspaceHandler) handle(action string) gin.HandlerFunc {
 				projectID = p
 			}
 			out, err = h.workspaces.SetBudget(ctx, a, w, projectID, req)
+		case "finops.workspace.anomalies.status":
+			out, err = h.workspaces.GetFinOpsAnomalyStatus(ctx, a, w)
+		case "finops.workspace.anomalies.list", "finops.project.anomalies.list":
+			filter, filterErr := finopsAnomalyFilter(c, page, size)
+			if filterErr != nil {
+				response.ErrorFrom(c, filterErr)
+				return
+			}
+			projectID := int64(0)
+			if strings.HasPrefix(action, "finops.project.") {
+				projectID = p
+			}
+			out, total, err = h.workspaces.ListFinOpsAnomalies(ctx, a, w, projectID, filter)
+			list = true
+		case "finops.workspace.anomalies.get", "finops.project.anomalies.get":
+			projectID := int64(0)
+			if strings.HasPrefix(action, "finops.project.") {
+				projectID = p
+			}
+			out, err = h.workspaces.GetFinOpsAnomaly(ctx, a, w, projectID, ids["anomaly_id"])
+		case "finops.workspace.anomalies.patch", "finops.project.anomalies.patch":
+			var req service.FinOpsAnomalyPatch
+			if !workspaceBind(c, &req) {
+				return
+			}
+			projectID := int64(0)
+			if strings.HasPrefix(action, "finops.project.") {
+				projectID = p
+			}
+			out, err = h.workspaces.TransitionFinOpsAnomaly(ctx, a, w, projectID, ids["anomaly_id"], req)
 		case "admin.list":
 			out, total, err = h.workspaces.AdminList(ctx, a, params)
 			list = true

@@ -7,7 +7,7 @@ import type { WorkspaceOverview } from '@/api/workspace'
 import workspaceMessages from '@/i18n/locales/en/workspace'
 import WorkspaceFinopsView from '../WorkspaceFinopsView.vue'
 
-const api = vi.hoisted(() => ({ listWorkspaces: vi.fn(), listProjects: vi.fn(), getWorkspace: vi.fn(), getBudget: vi.fn(), updateBudget: vi.fn(), getUsage: vi.fn(), getOverview: vi.fn() }))
+const api = vi.hoisted(() => ({ listWorkspaces: vi.fn(), listProjects: vi.fn(), getWorkspace: vi.fn(), getBudget: vi.fn(), updateBudget: vi.fn(), getUsage: vi.fn(), getOverview: vi.fn(), listFinopsAnomalies: vi.fn(), getFinopsAnomalyStatus: vi.fn(), getFinopsAnomaly: vi.fn(), updateFinopsAnomaly: vi.fn() }))
 vi.mock('@/api/workspace', () => ({ workspaceAPI: api }))
 vi.mock('@/components/layout/AppLayout.vue', () => ({ default: { template: '<main><slot /></main>' } }))
 vi.mock('@/stores/app', () => ({ useAppStore: () => ({ showError: vi.fn(), showSuccess: vi.fn() }) }))
@@ -41,6 +41,8 @@ describe('workspace FinOps', () => {
     api.getBudget.mockResolvedValue({ policy: { amount: 100, hard_limit: true, enabled: true, timezone: 'UTC' }, spent: 14, reserved: 1, remaining: 85 })
     api.getUsage.mockResolvedValue(summary)
     api.getOverview.mockImplementation(async (id: number) => overview(`Project in ${id}`))
+    api.listFinopsAnomalies.mockResolvedValue({ items: [] })
+    api.getFinopsAnomalyStatus.mockResolvedValue({ lag_seconds: 0, candidate_count: 0, finding_count: 0, scan_duration_ms: 0, last_successful_scan: null })
   })
   afterEach(() => { wrapper?.unmount(); wrapper = undefined })
 
@@ -74,5 +76,41 @@ describe('workspace FinOps', () => {
     await flushPromises()
     expect(wrapper.text()).toContain('Project in 2')
     expect(wrapper.text()).not.toContain('Old workspace project')
+  })
+
+  it('renders server evidence, preserves tiny money, and acknowledges a finding', async () => {
+    api.listWorkspaces.mockResolvedValueOnce({ items: [{ id: 1, name: 'Workspace 1', slug: 'workspace-1', type: 'organization', status: 'active', owner_user_id: 7, billing_owner_user_id: 7, permissions: ['workspace.read', 'usage.read', 'budget.read', 'finops_anomaly.read', 'finops_anomaly.manage'] }] })
+    const finding = { id: 8, workspace_id: 1, scope_type: 'model', scope_id: 0, dimension_type: 'model', dimension_value: 'model-x', detector_type: 'spend_spike', detector_version: 'v1', window_start: '2026-10-07T01:00:00Z', window_end: '2026-10-07T02:00:00Z', observed_spend: 0.000123, expected_spend: 0.00001, spend_delta: 0.000113, observed_requests: 30, expected_requests: 12, observed_unit_cost: 0.0000041, expected_unit_cost: 0.0000008, baseline_sample_count: 12, baseline_mad: 0, relative_increase: 11.3, score: 7.2, severity: 'high', fingerprint: 'a'.repeat(64), snapshot_id: 9, status: 'open', first_detected_at: '2026-10-07T02:05:00Z', last_detected_at: '2026-10-07T02:05:00Z', version: 1, created_at: '2026-10-07T02:05:00Z', updated_at: '2026-10-07T02:05:00Z' }
+    api.listFinopsAnomalies.mockResolvedValue({ items: [finding] })
+    api.getFinopsAnomaly.mockResolvedValue(finding)
+    api.updateFinopsAnomaly.mockResolvedValue({ ...finding, status: 'acknowledged', version: 2 })
+    const { wrapper } = await render()
+    expect(wrapper.text()).toContain('model-x')
+    expect(wrapper.text()).toContain('$0.000123')
+    await wrapper.findAll('button').find(button => button.text() === 'Details')?.trigger('click')
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === 'Acknowledge')?.trigger('click')
+    await flushPromises()
+    expect(api.updateFinopsAnomaly).toHaveBeenCalledWith(1, 8, expect.objectContaining({ status: 'acknowledged', expected_version: 1 }))
+  })
+
+  it('keeps the newest evidence detail when an older detail response arrives later', async () => {
+    api.listWorkspaces.mockResolvedValueOnce({ items: [{ id: 1, name: 'Workspace 1', slug: 'workspace-1', type: 'organization', status: 'active', owner_user_id: 7, billing_owner_user_id: 7, permissions: ['workspace.read', 'usage.read', 'budget.read', 'finops_anomaly.read'] }] })
+    const first = { id: 8, workspace_id: 1, scope_type: 'model', scope_id: 0, dimension_type: 'model', dimension_value: 'model-old', detector_type: 'spend_spike', detector_version: 'v1', window_start: '2026-10-07T01:00:00Z', window_end: '2026-10-07T02:00:00Z', observed_spend: 1, expected_spend: 0.1, spend_delta: 0.9, observed_requests: 30, expected_requests: 12, observed_unit_cost: 0.03, expected_unit_cost: 0.008, baseline_sample_count: 12, baseline_mad: 0, relative_increase: 9, score: 7.2, severity: 'high', fingerprint: 'a'.repeat(64), snapshot_id: 9, status: 'open', first_detected_at: '2026-10-07T02:05:00Z', last_detected_at: '2026-10-07T02:05:00Z', version: 1, created_at: '2026-10-07T02:05:00Z', updated_at: '2026-10-07T02:05:00Z' }
+    const second = { ...first, id: 9, dimension_value: 'model-new', fingerprint: 'b'.repeat(64), snapshot_id: 10 }
+    api.listFinopsAnomalies.mockResolvedValue({ items: [first, second] })
+    let resolveFirst!: (value: typeof first) => void
+    let resolveSecond!: (value: typeof second) => void
+    api.getFinopsAnomaly.mockImplementationOnce(() => new Promise(resolve => { resolveFirst = resolve }))
+      .mockImplementationOnce(() => new Promise(resolve => { resolveSecond = resolve }))
+    const { wrapper } = await render()
+    await wrapper.findAll('button').find(button => button.text() === 'Details')?.trigger('click')
+    await wrapper.findAll('button').find(button => button.text() === 'Details')?.trigger('click')
+    resolveSecond(second)
+    await flushPromises()
+    resolveFirst(first)
+    await flushPromises()
+    expect(wrapper.find('.anomaly-detail').text()).toContain('model-new')
+    expect(wrapper.find('.anomaly-detail').text()).not.toContain('model-old')
   })
 })

@@ -9,7 +9,8 @@ This document is the durable progress source for the Enterprise Workspace progra
 - C1 local commit: `41b0b31dfd59ca2ddc337b78d2c1bc609bba0a77`, `feat(saml): add enterprise SAML single sign-on`.
 - C2 local commit / Phase D baseline: `6981e17de52d87ba4723b28452ad8e455e0317b5`, `feat(scim): add enterprise identity provisioning`.
 - Phase D boundary: `feat(security): add workspace security policies and assurance enforcement`; the delivery response records its exact local SHA.
-- Migration ceiling after D: 297. Phase D is COMPLETE; Phase E is NEXT. Historical Phase A/B/C audits and verification records are retained below.
+- Phase E boundary: current implementation starts from `a7e8427a6` (migration ceiling 297); the local Phase E SHA is resolved from Git after commit because a commit cannot embed its own SHA.
+- Migration ceiling after E: 298. Phase D and Phase E are COMPLETE; Phase F is NEXT. Historical Phase A/B/C/D audits and verification records are retained below.
 
 ## Current Enterprise Capability Matrix
 
@@ -36,7 +37,7 @@ This document is the durable progress source for the Enterprise Workspace progra
 | SAML 2.0 | Implemented | Migration295, maintained gosaml2/xmldsig, signed/encrypted SP flow, shared binding/JIT/mappings/assurance; local C1 commit | Phase C1 |
 | SCIM 2.0 | Implemented | Migration296, independent connector/hash-only tokens, Users/Groups, typed multi-source reconciliation, explicit Team bindings; local source/test/review gates complete | Phase C2 |
 | Workspace security policy | Implemented | Migration297 extends one canonical SQL policy; actual Session MFA/original age/provider approval and shared transactional Invitation/JIT/SCIM admission; functional UI and bounded recovery | Phase D |
-| FinOps anomaly detection | Missing | No anomaly finding model/worker | Phase E |
+| FinOps anomaly detection | Implemented | Migration 298 immutable snapshots/findings, bounded rollup detector, lease worker, RBAC/API/UI | Phase E |
 | Cost centers/tags/environment allocation | Missing | Usage snapshots do not expose these dimensions | Phase F |
 | Retention/export/deletion lifecycle | Partial | Existing retention workers cover current event/notification/webhook data; enterprise export/deletion is absent | Phase G |
 | Enterprise admin diagnostics | Partial | Global workspace list/inspect/status exists; health/backlog/search controls are absent | Phase H |
@@ -72,8 +73,8 @@ This document is the durable progress source for the Enterprise Workspace progra
 | C1 | SAML 2.0 Enterprise SSO | Nullable protocol fields with DB integrity; gosaml2 v0.12.0; shared JIT/link/mapping/completion/assurance | 295 | `41b0b31dfd59ca2ddc337b78d2c1bc609bba0a77` | Complete; detailed C1 record below | COMPLETE | Certificate/key retention and IdP interoperability | IdP-initiated SSO, SLO |
 | C2 | SCIM 2.0 Enterprise Provisioning | Independent hash-token connector; attributed Membership/Team sources; explicit Group binding | 296 | `feat(scim): add enterprise identity provisioning`; resolve SHA at delivery | Post-R1 relevant/realPG/allidentityrace/vet/build/default lint PASS; frontend424files3149tests and Canvas7 PASS; final full suites and supplemental tagged lint PRE-EXISTING | COMPLETE | Cross-source removal, Owner/Billing safety and email retries independently rechecked | Real Entra/Okta provisioning in Phase L |
 | D | Workspace security policy | One human security evaluator and shared transactional member admission | 297 | `feat(security): add workspace security policies and assurance enforcement`; exact SHA at delivery | Focused/realPG/race/IDOR/vet/build/pinned lint/frontend/Canvas gates PASS; raw full-suite baseline failures and transient separately disclosed; formal scan completed with partial sealed coverage and two remediated initial findings | COMPLETE | Conservative local MFA; access-JWT baseline revocation; Workspace contention; browser/provider/load NOT RUN | IdP/passkey MFA mapping, immutable final-commit formal scan in I/L, arbitrary ABAC |
-| E | Advanced FinOps anomalies | Immutable usage snapshots plus bounded detector jobs | 298+ | Not started | Not run | NEXT | False positives, cardinality | AI remediation |
-| F | Cost centers, tags, environment allocation | New-write dimensions and explicit legacy NULLs | 298+ | Not started | Not run | NOT RUN | Historical attribution drift | ERP tree |
+| E | Advanced FinOps anomalies | Immutable usage snapshots plus bounded detector jobs | 298 | `feat(finops): add workspace anomaly detection and findings` (SHA resolved after commit) | Targeted/backend/frontend gates recorded below; full-suite baseline comparison and unavailable integration/manual checks explicitly classified | COMPLETE | Late rollups, bounded candidate omission, PostgreSQL/manual/load availability | AI remediation |
+| F | Cost centers, tags, environment allocation | New-write dimensions and explicit legacy NULLs | 299+ | Not started | Not run | NEXT | Historical attribution drift | ERP tree |
 | G | Retention, export, archive/restore, deletion lifecycle | Tenant-owned jobs, retention floors, resumable purge | 299+ | Not started | Not run | NOT RUN | Data loss, legal retention | Complex legal hold |
 | H | Admin diagnostics and operations | Global Admin remains outside tenant membership | 300+ | Not started | Not run | NOT RUN | High-cardinality metrics, emergency actions | SIEM integration |
 | I | Production hardening | Lifecycle/isolation/concurrency/chaos/migration rehearsal gates | 301+ | Not started | Not run | NOT RUN | Recovery and billing integrity | New business features |
@@ -335,3 +336,69 @@ risks and operational runbook:
 [policy](WORKSPACE_SECURITY_POLICY.md),
 [delivery](WORKSPACE_SECURITY_POLICY_DELIVERY.md),
 [acceptance](WORKSPACE_SECURITY_POLICY_ACCEPTANCE.md).
+
+## Phase E completion record (2026-10-08)
+
+Phase E adds deterministic Advanced FinOps anomaly detection on top of the
+existing request-time tenant and service-account hourly rollups. Migration 298
+adds durable workspace/bucket/version leases, immutable evidence snapshots,
+workflow findings, and detector status. A five-minute grace period evaluates
+completed UTC hours only; the baseline is the same UTC hour across up to 28 days
+with a minimum of 12 samples and median/MAD statistics. Spend, request, and
+unit-cost detectors use centralized absolute/relative floors, score thresholds,
+and hard candidate, rollup-row, workspace-batch, and worker-time limits.
+
+The detector never scans `usage_logs`, rewrites historical usage attribution,
+changes billing principals/reservations, or enters the Gateway hot path. Lease
+tokens prevent stale workers from completing a replacement lease. Fingerprint
+uniqueness and a transactional snapshot/finding/event write make retries
+idempotent. ACK/Resolve uses the existing WorkspaceAccessService, composite
+workspace/project predicates, audit rows, bounded scalar domain events, and
+optimistic version checks. Notifications remain limited to owner/admin/billing;
+Phase F cost centers/tags/environment allocation and AI remediation remain
+deferred.
+
+Implementation and operational details are in
+[FINOPS_ANOMALY_DETECTION.md](FINOPS_ANOMALY_DETECTION.md). The executable
+acceptance matrix is in [FINOPS_ANOMALY_ACCEPTANCE.md](FINOPS_ANOMALY_ACCEPTANCE.md).
+
+PASS: targeted service, repository, handler, migration, and focused frontend
+tests; frontend i18n, typecheck, lint, and production build; gofmt, vet, build,
+pinned lint, and Phase E race/integration checks. The exact execution record is
+also retained in [FINOPS_ANOMALY_ACCEPTANCE.md](FINOPS_ANOMALY_ACCEPTANCE.md).
+
+PRE-EXISTING: a complete backend command may retain the Phase D Windows
+`backup_pg_dumper` missing-`sh.exe` failure only when the exact Phase D baseline
+command reproduces it. Any additional current-only failure remains a blocker.
+
+PASS: PostgreSQL was available and the Phase E anomaly integration matrix ran
+against real PostgreSQL, including tenant/project isolation, idempotency,
+immutable evidence, lease fencing, and concurrent ACK/Resolve. The complete
+integration-tag suite retained only the Phase D Windows `backup_pg_dumper`
+missing-`sh.exe` baseline failures.
+
+NOT RUN: authenticated browser/manual, real provider, production load/chaos, and
+deployment cutover. These are reported explicitly and are not converted to PASS
+by a skipped test.
+
+## Phase E verification record (2026-10-08)
+
+| Area | Result | Recorded evidence |
+| --- | --- | --- |
+| Migration 298 contract and migration package tests | PASS | `go test ./migrations -count=1`; migration 298 tables, indexes, immutable triggers, event allowlist, and historical-usage guard checks. |
+| Detector/service/repository/handler targeted tests | PASS | Focused `go test` commands for FinOps, WorkspaceAccess, DomainEvent, repository, and handler paths. |
+| PostgreSQL integration | PASS | `go test -tags=integration ./internal/repository -run '^TestFinOpsAnomalyPostgres' -count=1`; scan/status, workspace/project isolation, fingerprint idempotency, immutable snapshot, lease-token fencing, and ACK/Resolve concurrency. |
+| PostgreSQL integration under race | PASS | `go test -race -tags=integration ./internal/repository -run '^TestFinOpsAnomalyPostgres' -count=1 -timeout=10m`. |
+| Full backend default and integration suites | PRE-EXISTING | Each complete command retains only the three existing `backup_pg_dumper` Windows `exec: "sh": executable file not found in %PATH%` failures and their sqlmock unlock-expectation cascade; the identical set was reproduced on clean Phase D parent `a7e8427a6`. |
+| Go static checks | PASS | `gofmt`, `go vet ./...`, `go build ./...`, and pinned `golangci-lint v2.13.0` (0 issues). |
+| Frontend | PASS | Full Vitest 430 files/3199 tests, lint, typecheck, i18n (3 tests), and production build. Existing Vite chunk/dynamic-import warnings remain non-failing. |
+| Manual/provider/load/deployment gates | NOT RUN | Authenticated browser/manual, real upstream/provider, production load/chaos, and deployment cutover remain release-level gates. |
+
+The historical migration test fixture now restores migration 298 after
+replaying older event-contract migrations, so full integration test ordering
+cannot leave a stale pre-Phase-E payload allowlist for anomaly events.
+
+The local boundary is `feat(finops): add workspace anomaly detection and
+findings`; its immutable SHA and final clean-tree state are resolved from Git in
+the delivery report. No push, PR, `main`, or `develop` mutation is part of this
+phase. Phase E is COMPLETE; Phase F is NEXT.
