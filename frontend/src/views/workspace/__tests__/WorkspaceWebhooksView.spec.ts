@@ -61,6 +61,18 @@ describe('WorkspaceWebhooksView', () => {
     vi.mocked(webhooksAPI.listDeliveries).mockResolvedValue(deliveryPage([]))
   })
 
+  it('lets an endpoint explicitly subscribe to administrator retry events', async () => {
+    vi.mocked(webhooksAPI.create).mockResolvedValue({ webhook: { ...webhook, id: 2, event_types: ['webhook.administrator_retried'] }, secret: 'whsec_once' })
+    const { wrapper } = await render()
+    await wrapper.get('[data-testid="webhook-create-toggle"]').trigger('click')
+    await wrapper.get('input[name="webhook-name"]').setValue('Retry observer')
+    await wrapper.get('input[name="webhook-url"]').setValue('https://example.com/retry')
+    await wrapper.get('input[name="webhook-events"][value="webhook.administrator_retried"]').setValue(true)
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(webhooksAPI.create).toHaveBeenCalledWith(7, { name: 'Retry observer', url: 'https://example.com/retry', event_types: ['webhook.administrator_retried'] })
+  })
+
   it('renders actual Chinese copy and shows and clears a newly created secret', async () => {
     vi.mocked(webhooksAPI.create).mockResolvedValue({ webhook: { ...webhook, id: 2 }, secret: 'whsec_once' })
     const { wrapper } = await render(permissions, 'zh')

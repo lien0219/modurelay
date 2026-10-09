@@ -162,9 +162,15 @@ func (h *WorkspaceHandler) RegisterAdminRoutes(admin *gin.RouterGroup) {
 	if h.serviceAccounts != nil {
 		h.serviceAccounts.RegisterAdminRoutes(admin)
 	}
-	admin.GET("/workspaces", h.handle("admin.list"))
-	admin.GET("/workspaces/:id", h.handle("admin.inspect"))
-	admin.PATCH("/workspaces/:id/status", h.handle("admin.status"))
+	admin.GET("/workspaces", h.enterpriseAdminHandle("search"))
+	admin.GET("/workspaces/diagnostics/overview", h.enterpriseAdminHandle("overview"))
+	admin.GET("/operations/jobs", h.enterpriseAdminHandle("jobs"))
+	admin.GET("/operations/health", h.enterpriseAdminHandle("health"))
+	admin.GET("/operations/metrics", h.enterpriseAdminHandle("metrics"))
+	admin.GET("/workspaces/:id", h.enterpriseAdminHandle("inspect"))
+	admin.GET("/workspaces/:id/diagnostics", h.enterpriseAdminHandle("diagnostics"))
+	admin.PATCH("/workspaces/:id/status", h.enterpriseAdminHandle("status"))
+	admin.POST("/workspaces/:id/webhooks/:webhook_id/deliveries/:delivery_id/retry", h.enterpriseAdminHandle("retry"))
 }
 
 type workspaceKeyDTO struct {
@@ -886,22 +892,6 @@ func (h *WorkspaceHandler) handle(action string) gin.HandlerFunc {
 				projectID = p
 			}
 			out, err = h.workspaces.TransitionFinOpsAnomaly(ctx, a, w, projectID, ids["anomaly_id"], req)
-		case "admin.list":
-			out, total, err = h.workspaces.AdminList(ctx, a, params)
-			list = true
-		case "admin.inspect":
-			out, err = h.workspaces.AdminInspect(ctx, a, w)
-		case "admin.status":
-			var req struct {
-				Status string `json:"status"`
-			}
-			if !workspaceBind(c, &req) {
-				return
-			}
-			err = h.workspaces.AdminSetStatus(ctx, a, w, req.Status)
-			if err == nil {
-				out, err = h.workspaces.AdminInspect(ctx, a, w)
-			}
 		}
 		if response.ErrorFrom(c, err) {
 			return

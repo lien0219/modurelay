@@ -75,6 +75,8 @@ import type { StepUpController } from '@/composables/useStepUp'
 
 const props = defineProps<{
   controller: StepUpController
+  onVerify?: (code: string, signal: AbortSignal) => Promise<void>
+  safeErrors?: boolean
 }>()
 
 const { t } = useI18n()
@@ -84,14 +86,21 @@ const verifying = ref(false)
 const code = ref<string[]>(['', '', '', '', '', ''])
 const inputRefs = ref<(HTMLInputElement | null)[]>([])
 const hiddenOtpInputRef = ref<HTMLInputElement | null>(null)
+let requestGeneration = 0
+let requestController: AbortController | null = null
 
 // Focus the first cell whenever the dialog opens.
 watch(
   () => props.controller.visible.value,
   (open) => {
     if (open) {
+      requestGeneration++
       resetInputs()
       nextTick(() => inputRefs.value[0]?.focus())
+    } else {
+      requestGeneration++
+      requestController?.abort()
+      requestController = null
     }
   }
 )
@@ -107,15 +116,22 @@ watch(
 )
 
 async function submit(otp: string) {
+  const expected = ++requestGeneration
+  requestController?.abort()
+  const controller = new AbortController()
+  requestController = controller
   verifying.value = true
   try {
-    await totpAPI.stepUp(otp)
+    if (props.onVerify) await props.onVerify(otp, controller.signal)
+    else await totpAPI.stepUp(otp)
+    if (controller.signal.aborted || expected !== requestGeneration) return
     verifying.value = false
     resetInputs()
     props.controller.onVerified()
   } catch (err: any) {
+    if (controller.signal.aborted || expected !== requestGeneration) return
     verifying.value = false
-    appStore.showError(err?.message || t('stepUp.verifyFailed'))
+    appStore.showError(props.safeErrors ? t('stepUp.verifyFailed') : err?.message || t('stepUp.verifyFailed'))
     resetInputs()
     nextTick(() => inputRefs.value[0]?.focus())
   }
@@ -130,7 +146,9 @@ function resetInputs() {
 }
 
 function handleCancel() {
-  if (verifying.value) return
+  requestController?.abort()
+  requestGeneration++
+  verifying.value = false
   props.controller.onCancel()
 }
 

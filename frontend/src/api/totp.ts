@@ -4,6 +4,7 @@
  */
 
 import { apiClient } from './client'
+import type { AxiosRequestConfig } from 'axios'
 import { coordinateSessionUpgrade, type RefreshTokenResponse } from './tokenRefresh'
 import type {
   TotpStatus,
@@ -89,14 +90,16 @@ export interface TotpStepUpResponse {
  * (sudo) window for sensitive operations (account export, DB backup download...).
  * @param code - 6-digit TOTP code
  */
-export async function stepUp(code: string, refreshToken?: string): Promise<TotpStepUpResponse> {
-  const { data } = await apiClient.post<TotpStepUpResponse>('/user/totp/step-up', refreshToken ? { code, refresh_token: refreshToken } : { code })
+export async function stepUp(code: string, refreshToken?: string, config?: AxiosRequestConfig): Promise<TotpStepUpResponse> {
+  const { data } = await apiClient.post<TotpStepUpResponse>('/user/totp/step-up', refreshToken ? { code, refresh_token: refreshToken } : { code }, config)
   return data
 }
 
-export function upgradeSessionMFA(code: string): Promise<RefreshTokenResponse> {
+export function upgradeSessionMFA(code: string, config?: Pick<AxiosRequestConfig, 'signal' | 'sessionProofAccessToken'>): Promise<RefreshTokenResponse> {
   return coordinateSessionUpgrade(async snapshot => {
-    const { data } = await apiClient.post<TotpStepUpResponse>('/user/totp/step-up', { code, refresh_token: snapshot.refreshToken }, { preserveAuthSessionOnFailure: true, sessionProofAccessToken: snapshot.accessToken! })
+    if (config?.signal?.aborted || (config?.sessionProofAccessToken && config.sessionProofAccessToken !== snapshot.accessToken)) throw Object.assign(new Error('Session changed'), { code: 'AUTH_SESSION_CHANGED' })
+    const { data } = await apiClient.post<TotpStepUpResponse>('/user/totp/step-up', { code, refresh_token: snapshot.refreshToken }, { preserveAuthSessionOnFailure: true, sessionProofAccessToken: snapshot.accessToken!, ...(config?.signal ? { signal: config.signal } : {}) })
+    if (config?.signal?.aborted) throw Object.assign(new Error('Session changed'), { code: 'AUTH_SESSION_CHANGED' })
     return { access_token: data.access_token || '', refresh_token: data.refresh_token || '', token_type: data.token_type || 'Bearer', expires_in: data.token_expires_in ?? 0 }
   })
 }

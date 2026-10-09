@@ -76,6 +76,7 @@ const (
 	EventFinOpsAnomalyResolved          = "finops.anomaly.resolved"
 	EventPolicyUpdated                  = "policy.updated"
 	EventWebhookTest                    = "webhook.test"
+	EventWebhookAdministratorRetried    = "webhook.administrator_retried"
 	EventWorkspaceTeamCreated           = "workspace.team.created"
 	EventWorkspaceTeamUpdated           = "workspace.team.updated"
 	EventWorkspaceTeamArchived          = "workspace.team.archived"
@@ -136,7 +137,7 @@ var allowedDomainEventTypes = map[string]struct{}{
 	EventAPIKeyUpdated: {}, EventAPIKeyRevoked: {}, EventBudgetThreshold: {},
 	EventBudgetSoftLimit: {}, EventBudgetHardLimit: {}, EventBudgetUpdated: {},
 	EventBillingPending: {}, EventBillingRecovered: {}, EventQuotaThreshold: {},
-	EventQuotaExhausted: {}, EventPolicyUpdated: {}, EventWebhookTest: {},
+	EventQuotaExhausted: {}, EventPolicyUpdated: {}, EventWebhookTest: {}, EventWebhookAdministratorRetried: {},
 	EventFinOpsAnomalyDetected: {}, EventFinOpsAnomalyAcknowledged: {}, EventFinOpsAnomalyResolved: {},
 	EventWorkspaceTeamCreated: {}, EventWorkspaceTeamUpdated: {}, EventWorkspaceTeamArchived: {},
 	EventWorkspaceTeamMemberAdded: {}, EventWorkspaceTeamMemberRemoved: {},
@@ -245,7 +246,31 @@ func (e *DomainEvent) Validate() error {
 		return errors.New("invalid domain event scope")
 	}
 	_, err := validateDomainEventData(e.Data)
-	return err
+	if err != nil {
+		return err
+	}
+	if e.Type == EventWebhookAdministratorRetried {
+		if e.WorkspaceID == nil || e.ProjectID != nil || e.ActorUserID == nil || e.Subject.Type != "webhook_delivery" || e.Data["previous_status"] != "dead" || e.Data["status"] != "retrying" {
+			return errors.New("invalid administrator retry event")
+		}
+		var id int64
+		switch value := e.Data["delivery_id"].(type) {
+		case int64:
+			id = value
+		case json.Number:
+			parsed, parseErr := strconv.ParseInt(string(value), 10, 64)
+			if parseErr != nil || strconv.FormatInt(parsed, 10) != string(value) {
+				return errors.New("invalid administrator retry event")
+			}
+			id = parsed
+		default:
+			return errors.New("invalid administrator retry event")
+		}
+		if id <= 0 || e.Subject.ID != strconv.FormatInt(id, 10) || len(e.Data) != 3 {
+			return errors.New("invalid administrator retry event")
+		}
+	}
+	return nil
 }
 
 func validateDomainEventData(data DomainEventData) (DomainEventData, error) {
@@ -301,7 +326,7 @@ func IsWorkspaceVisibleEvent(eventType string) bool {
 		EventProjectCreated, EventProjectUpdated, EventProjectArchived, EventProjectRestored,
 		EventAPIKeyCreated, EventAPIKeyUpdated, EventAPIKeyRevoked, EventPolicyUpdated, EventBudgetThreshold, EventBudgetSoftLimit,
 		EventBudgetHardLimit, EventBudgetUpdated, EventBillingPending, EventBillingRecovered, EventQuotaThreshold, EventQuotaExhausted,
-		EventWebhookTest,
+		EventWebhookTest, EventWebhookAdministratorRetried,
 		EventWorkspaceTeamCreated, EventWorkspaceTeamUpdated, EventWorkspaceTeamArchived, EventWorkspaceTeamMemberAdded, EventWorkspaceTeamMemberRemoved,
 		EventWorkspaceProjectAccessCreated, EventWorkspaceProjectAccessUpdated, EventWorkspaceProjectAccessDeleted, EventWorkspaceProjectAccessMode,
 		EventFinOpsAnomalyDetected, EventFinOpsAnomalyAcknowledged, EventFinOpsAnomalyResolved,

@@ -11,7 +11,8 @@ This document is the durable progress source for the Enterprise Workspace progra
 - Phase D boundary: `feat(security): add workspace security policies and assurance enforcement`; the delivery response records its exact local SHA.
 - Phase E boundary: current implementation starts from `a7e8427a6` (migration ceiling 297); the local Phase E SHA is resolved from Git after commit because a commit cannot embed its own SHA.
 - Phase G baseline: `3888ba452d8da926d1d6d234b7641acb6ebcc193`; local boundary `feat(lifecycle): add workspace retention export and deletion lifecycle` (SHA resolved after commit).
-- Migration ceiling after G: 301. Phases D, E, F and G are COMPLETE; Phase H is NEXT. Historical audits and verification records remain below. Local completion does not authorize production lifecycle activation.
+- Phase G local boundary / Phase H starting source: `3a37b2e562db1dbbf13669f42049fff83edc7c1f`.
+- Migration ceiling after G: 301. Phases D, E, F and G are COMPLETE; Phase H is IN PROGRESS. Historical audits and verification records remain below. Local completion does not authorize production lifecycle activation.
 
 ## Current Enterprise Capability Matrix
 
@@ -75,7 +76,7 @@ This document is the durable progress source for the Enterprise Workspace progra
 | E | Advanced FinOps anomalies | Immutable usage snapshots plus bounded detector jobs | 298 | `feat(finops): add workspace anomaly detection and findings` (SHA resolved after commit) | Targeted/backend/frontend gates recorded below; full-suite baseline comparison and unavailable integration/manual checks explicitly classified | COMPLETE | Late rollups, bounded candidate omission, PostgreSQL/manual/load availability | AI remediation |
 | F | Cost centers, tags, environment allocation | New-write dimensions, explicit legacy NULLs, immutable admission snapshots, bounded rollups | 299 | `feat(finops): add workspace cost allocation and tags` (SHA resolved from Git) | Targeted/migration/PostgreSQL/race/static/frontend/Canvas gates PASS; complete backend suites retain only the recorded Windows `sh.exe` baseline failures; manual/provider/load/deployment gates NOT RUN | COMPLETE | Historical attribution drift; bounded tag overlap; external acceptance availability | ERP tree |
 | G | Retention, export, archive/restore, deletion lifecycle | Business closure separated from protected evidence; platform floors, MVCC encrypted tenant exports and token-fenced resumable purge | 300–301 | `feat(lifecycle): add workspace retention export and deletion lifecycle` (SHA resolved from Git) | Native vet/build/compatible lint, complete default/integration, PostgreSQL16/18.1, relevant race, frontend433files3252tests and Canvas7 PASS; old native lint TOOLCHAIN BLOCKED and full unit-tag Ollama baseline failure precisely disclosed below | COMPLETE | DDL lock window, key custody/rotation, retained metadata, real storage/manual/load gates | Complex legal hold; production activation |
-| H | Admin diagnostics and operations | Global Admin remains outside tenant membership | 302+ if needed | Not started | Not run | NEXT | High-cardinality metrics, emergency actions | SIEM integration |
+| H | Admin diagnostics and operations | Independent Global Admin reads and guarded actions; read-only export rotation risks | 302–304 review candidate | Local phase boundary pending | Focused read/migration/realPG evidence exists; full feature, independent reviews and required final gates pending | IN PROGRESS | Query/index cost, emergency replay, unknown heartbeat, single-key recovery | SIEM integration; automatic key rotation; production activation |
 | I | Production hardening | Lifecycle/isolation/concurrency/chaos/migration rehearsal gates | After H if needed | Not started | Not run | NOT RUN | Recovery and billing integrity | New business features |
 | J | Functional freeze | Only bugs, UI, docs, release blockers after gate | None expected | Not started | Not run | NOT RUN | Scope creep | — |
 | K | Unified UI/UX | Frosted Precision for official non-home surfaces after functionality freeze | None expected | Not started | Not run | NOT RUN | Visual regressions | Home Sylva changes |
@@ -521,3 +522,27 @@ The local boundary is `feat(lifecycle): add workspace retention export and
 deletion lifecycle`; resolve its exact SHA from Git after commit. Phase G
 COMPLETE, Phase H NEXT. No push, PR, branch switch, main/develop or port18081
 mutation, production activation or deployment belongs to this phase.
+
+## Phase H execution and export-key release gates (2026-10-09)
+
+Phase H implementation and local verification are complete on `feature/new-feature`, starting from
+`3a37b2e562db1dbbf13669f42049fff83edc7c1f`. The
+[architecture gate](ENTERPRISE_ADMIN_DIAGNOSTICS_ARCHITECTURE.md) approves
+implementation. The [acceptance record](ENTERPRISE_ADMIN_DIAGNOSTICS_ACCEPTANCE.md)
+contains the executed local gates and review outcome. Phase I is next; production
+activation remains subject to the explicit release gates below.
+
+The Phase G export format `MRLEX01` has one loaded32-byte key and no key ID,
+key ring or old-key lookup. H exposes current-instance capabilities and bounded
+job/object/hold evidence with risks and explicit coverage. Empty queues and a
+valid loaded key cannot certify safe rotation. H provides no automatic rotation
+or artifact decryption probe.
+
+Before entering Phase I, record the concrete drain-or-key-ring design, key
+custody/versioning, all-instance rollout, rollback and recovery procedure.
+Before Phase L acceptance, execute real private-storage old/new-key readability
+and recovery drills covering retained/held/orphan objects, interrupted uploads,
+lost or mismatched keys and rollback. These entry/release gates remain OPEN;
+Phase H diagnostics and local crypto tests cannot close them. The
+[administrator runbook](ENTERPRISE_ADMIN_DIAGNOSTICS_RUNBOOK.md) describes the
+evidence boundary and required recovery cases.

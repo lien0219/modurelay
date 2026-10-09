@@ -143,7 +143,7 @@ const allowedEvents = [
   'service_account.created', 'service_account.updated', 'service_account.disabled', 'service_account.enabled',
   'service_account.credential.created', 'service_account.credential.updated', 'service_account.credential.revoked', 'service_account.credential.rotated', 'service_account.credential.expiring', 'service_account.credential.expired',
   'budget.threshold_reached', 'budget.soft_limit_exceeded', 'budget.hard_limit_reached', 'budget.updated',
-  'billing.settlement_pending', 'billing.settlement_recovered', 'quota.threshold_reached', 'quota.exhausted', 'webhook.test',
+  'billing.settlement_pending', 'billing.settlement_recovered', 'quota.threshold_reached', 'quota.exhausted', 'webhook.test', 'webhook.administrator_retried',
 ]
 const { t, te, locale } = useI18n()
 const store = useWorkspaceStore()

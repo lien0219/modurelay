@@ -1,5 +1,6 @@
 import { apiClient } from './client'
 import type { BasePaginationResponse } from '@/types'
+import type { AdminWorkspaceFilter, AdminWorkspacePage, AdminOperationInput, AdminSensitiveConfig } from './enterpriseAdmin'
 
 export interface Workspace {
   id: number
@@ -668,9 +669,12 @@ export const workspaceAPI = {
   getProjectFinopsAnomaly: async (workspaceId: number, projectId: number, anomalyId: number, signal?: AbortSignal) => (await apiClient.get<WorkspaceFinopsAnomaly>(`/workspaces/${workspaceId}/projects/${projectId}/finops/anomalies/${anomalyId}`, { signal })).data,
   updateProjectFinopsAnomaly: async (workspaceId: number, projectId: number, anomalyId: number, payload: { status: 'acknowledged' | 'resolved'; resolution_reason?: string; expected_version: number }) => (await apiClient.patch<WorkspaceFinopsAnomaly>(`/workspaces/${workspaceId}/projects/${projectId}/finops/anomalies/${anomalyId}`, payload)).data,
 
-  adminList: async (params?: PageParams) => (await apiClient.get<BasePaginationResponse<Workspace>>('/admin/workspaces', pageConfig(params))).data,
-  adminInspect: async (workspaceId: number) => (await apiClient.get<Workspace>(`/admin/workspaces/${workspaceId}`)).data,
-  adminSetStatus: async (workspaceId: number, status: string) => (await apiClient.patch<Workspace>(`/admin/workspaces/${workspaceId}/status`, { status })).data,
+  adminList: async ({ signal, ...params }: AdminWorkspaceFilter = {}) => (await apiClient.get<AdminWorkspacePage>('/admin/workspaces', { signal, params: { page: 1, page_size: 20, sort: 'id', direction: 'desc', ...params } })).data,
+  adminInspect: async (workspaceId: number, signal?: AbortSignal) => (await apiClient.get<Workspace>(`/admin/workspaces/${workspaceId}`, { signal })).data,
+  adminSetStatus: async (workspaceId: number, body: AdminOperationInput | string, config?: AdminSensitiveConfig) => {
+    const input = typeof body === 'string' ? { status: body } as AdminOperationInput : body
+    return (await apiClient.patch<Workspace>(`/admin/workspaces/${workspaceId}/status`, input, config)).data
+  },
 }
 
 export type WorkspacePage<T> = BasePaginationResponse<T>

@@ -338,6 +338,8 @@ func prepareNonTransactionalMigration(ctx context.Context, db migrationConnectio
 			}
 		}
 		return nil
+	case "303_enterprise_admin_diagnostics_indexes_notx.sql":
+		return prepareEnterpriseAdminDiagnosticsIndexes(ctx, db)
 	default:
 		return nil
 	}

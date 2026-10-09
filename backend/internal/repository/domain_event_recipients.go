@@ -34,6 +34,8 @@ func (r *notificationRecipientResolver) Resolve(ctx context.Context, event *serv
 	switch event.Type {
 	case service.EventSCIMConnectorCreated, service.EventSCIMTokenCreated, service.EventSCIMTokenRevoked:
 		return nil, nil
+	case service.EventWebhookAdministratorRetried:
+		return nil, nil
 	case service.EventWorkspaceDomainCreated, service.EventWorkspaceDomainRegenerated, service.EventWorkspaceDomainRevoked,
 		service.EventIdentityProviderCreated, service.EventIdentityProviderUpdated, service.EventOIDCMappingsUpdated,
 		service.EventSAMLMetadataUpdated,

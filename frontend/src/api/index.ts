@@ -28,6 +28,7 @@ export { smsAPI } from './sms'
 export { emailAPI } from './email'
 export { verificationRecordsAPI } from './verificationRecords'
 export { workspaceAPI } from './workspace'
+export { enterpriseAdminAPI } from './enterpriseAdmin'
 
 // Admin APIs
 export { adminAPI } from './admin'
