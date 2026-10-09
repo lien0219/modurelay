@@ -193,5 +193,7 @@ issues/
 
 # Vitest / Vite cache at repo root
 .vite/
+# Local Task 4 test and view result caches
+frontend/.cache-task4-*.json
 # 本地闭源插件开发目录及构建产物不进入 Sub2API 仓库
 /plugins/
