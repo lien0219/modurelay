@@ -286,6 +286,9 @@ func (r *usageCleanupRepository) DeleteUsageLogsBatch(ctx context.Context, filte
 	if filters.StartTime.IsZero() || filters.EndTime.IsZero() {
 		return 0, fmt.Errorf("cleanup filters missing time range")
 	}
+	if limit <= 0 || limit > usageLogsCleanupBatchSize {
+		return 0, fmt.Errorf("cleanup batch limit must be between 1 and %d", usageLogsCleanupBatchSize)
+	}
 	whereClause, args := buildUsageCleanupWhere(filters)
 	if whereClause == "" {
 		return 0, fmt.Errorf("cleanup filters missing time range")
@@ -441,6 +444,7 @@ func buildUsageCleanupWhere(filters service.UsageCleanupFilters) (string, []any)
 		conditions = append(conditions, fmt.Sprintf("billing_type = $%d", idx))
 		args = append(args, *filters.BillingType)
 	}
+	conditions = append(conditions, legacyUsageRetentionPredicate)
 	return strings.Join(conditions, " AND "), args
 }
 

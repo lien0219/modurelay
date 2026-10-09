@@ -1323,3 +1323,18 @@ image_storage:
   presign_expiry_hours: 24
   # 当上游返回的是图片 url 时，下载该图片再转存的字节上限（默认 32MB）
   max_download_bytes: 33554432
+
+# Phase G tenant lifecycle. Enable only after validating the platform retention
+# policy and isolated acceptance. These credentials are separate from backups.
+data_lifecycle:
+  enabled: false
+  purge_enabled: false
+  # Stable 32-byte hex key, stored in the secret manager. Never use an ephemeral
+  # key; retain it until all artifacts encrypted with it have expired.
+  encryption_key: ""
+  endpoint: ""
+  region: "auto"
+  bucket: ""
+  access_key_id: ""
+  secret_access_key: ""
+  force_path_style: true

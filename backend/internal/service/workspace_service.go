@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"log/slog"
 	"net/mail"
@@ -20,6 +21,7 @@ type WorkspaceService struct {
 	bootstrapCancel context.CancelFunc
 	bootstrapWG     sync.WaitGroup
 	anomalyWorker   *FinOpsAnomalyWorker
+	lifecycle       *LifecycleRuntime
 }
 
 func NewWorkspaceService(repo WorkspaceRepository) *WorkspaceService {
@@ -28,11 +30,15 @@ func NewWorkspaceService(repo WorkspaceRepository) *WorkspaceService {
 
 // Production DI owns the worker; direct service construction remains free of
 // background activity for tools and existing tests.
-func ProvideWorkspaceService(repo WorkspaceRepository) *WorkspaceService {
+func ProvideWorkspaceService(repo WorkspaceRepository, cfg *config.Config, factory BackupObjectStoreFactory) (*WorkspaceService, error) {
 	s := NewWorkspaceService(repo)
+	if err := s.ConfigureLifecycle(cfg, factory); err != nil {
+		return nil, err
+	}
 	s.StartBootstrapWorker()
 	s.StartAnomalyWorker()
-	return s
+	s.StartLifecycleWorker()
+	return s, nil
 }
 func (s *WorkspaceService) SetKeyInvalidator(k interface{ InvalidateWorkspaceAuth(context.Context, int64) }) {
 	s.keyInvalidator = k
@@ -71,6 +77,7 @@ func (s *WorkspaceService) StopBootstrapWorker() {
 	}
 	s.bootstrapWG.Wait()
 	s.StopAnomalyWorker()
+	s.StopLifecycleWorker()
 }
 func (s *WorkspaceService) EnsurePersonalWorkspace(ctx context.Context, userID int64) (*Workspace, error) {
 	return s.repo.EnsurePersonalWorkspace(ctx, userID)
@@ -104,7 +111,7 @@ func (s *WorkspaceService) CreateOrganization(ctx context.Context, actorID int64
 func (s *WorkspaceService) mutate(ctx context.Context, actorID, workspaceID int64, m WorkspaceMutation) (*WorkspaceMutationResult, error) {
 	permission := WorkspaceMutationPermission(m)
 	var e error
-	if (m.Action == "project.update" || m.Action == "project.archive") && m.TargetID > 0 {
+	if (m.Action == "project.update" || m.Action == "project.archive" || m.Action == "project.restore") && m.TargetID > 0 {
 		_, e = s.access.RequireProject(ctx, actorID, workspaceID, m.TargetID, permission)
 	} else if _, e = s.access.RequireWorkspace(ctx, actorID, workspaceID, permission); e != nil {
 		return nil, e
@@ -130,6 +137,14 @@ func (s *WorkspaceService) UpdateWorkspace(ctx context.Context, actorID, workspa
 }
 func (s *WorkspaceService) ArchiveWorkspace(ctx context.Context, actorID, workspaceID int64) error {
 	_, e := s.mutate(ctx, actorID, workspaceID, WorkspaceMutation{Action: "workspace.archive"})
+	return e
+}
+func (s *WorkspaceService) RestoreWorkspace(ctx context.Context, actorID, workspaceID int64) error {
+	_, e := s.mutate(ctx, actorID, workspaceID, WorkspaceMutation{Action: "workspace.restore"})
+	return e
+}
+func (s *WorkspaceService) RestoreProject(ctx context.Context, actorID, workspaceID, projectID int64) error {
+	_, e := s.mutate(ctx, actorID, workspaceID, WorkspaceMutation{Action: "project.restore", TargetID: projectID})
 	return e
 }
 func (s *WorkspaceService) CreateProject(ctx context.Context, actorID, workspaceID int64, p ProjectInput) (*Project, error) {

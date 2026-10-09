@@ -21,6 +21,17 @@
         </dl>
       </section>
 
+      <section v-if="canArchiveProject || canRestoreProject || projectLifecycleError" class="workspace-panel">
+        <div class="workspace-panel__heading"><div><h2>{{ t('workspace.lifecycle.projectLifecycle') }}</h2><p>{{ t('workspace.lifecycle.projectArchiveHint') }}</p></div></div>
+        <p v-if="projectLifecycleError" class="workspace-lifecycle-error" role="alert">{{ projectLifecycleError }}</p>
+        <RouterLink v-if="projectLifecycleReauth" class="btn btn-secondary btn-sm" :to="{ path: '/login', query: { reauth: '1', redirect: route.fullPath } }">{{ t('workspace.lifecycle.signIn') }}</RouterLink>
+        <p v-if="projectLifecycleNotice" role="status">{{ projectLifecycleNotice }}</p>
+        <div class="workspace-actions">
+          <button v-if="canArchiveProject" type="button" data-testid="archive-project" class="btn btn-secondary" :disabled="projectLifecycleBusy" @click="projectLifecycleAction = 'archive'">{{ t('workspace.archive') }}</button>
+          <button v-if="canRestoreProject" type="button" data-testid="restore-project" class="btn btn-primary" :disabled="projectLifecycleBusy" @click="projectLifecycleAction = 'restore'">{{ t('workspace.lifecycle.restoreProject') }}</button>
+        </div>
+      </section>
+
       <section v-if="store.can('key.read')" class="workspace-panel">
         <div class="workspace-panel__heading">
           <div><h2>{{ t('workspace.keys') }}</h2><p>{{ t('workspace.keyDescription') }}</p></div>
@@ -143,6 +154,11 @@
           <div class="workspace-actions"><button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? t('common.saving') : t('common.create') }}</button><button type="button" class="btn btn-secondary" @click="closeCreateForm">{{ t('common.cancel') }}</button></div>
         </form>
       </section>
+      <ConfirmDialog :show="projectLifecycleAction !== null" :title="projectLifecycleAction === 'archive' ? t('workspace.archive') : t('workspace.lifecycle.restoreProject')" :message="projectLifecycleAction === 'archive' ? t('workspace.archiveConfirm') : t('workspace.lifecycle.restoreHint')" :confirming="projectLifecycleBusy" @cancel="projectLifecycleAction = null" @confirm="confirmProjectLifecycle">
+        <p v-if="projectLifecycleError" class="workspace-lifecycle-error" role="alert">{{ projectLifecycleError }}</p>
+        <RouterLink v-if="projectLifecycleReauth" class="btn btn-secondary btn-sm" :to="{ path: '/login', query: { reauth: '1', redirect: route.fullPath } }">{{ t('workspace.lifecycle.signIn') }}</RouterLink>
+      </ConfirmDialog>
+      <TotpStepUpDialog :controller="projectStepUp" />
     </div>
   </WorkspaceFrame>
 </template>
@@ -154,6 +170,10 @@ import { useI18n } from 'vue-i18n'
 import WorkspaceFrame from '@/components/workspace/WorkspaceFrame.vue'
 import WorkspaceUsageBreakdowns from '@/components/workspace/WorkspaceUsageBreakdowns.vue'
 import WorkspaceDailySpend from '@/components/workspace/WorkspaceDailySpend.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
+import TotpStepUpDialog from '@/components/auth/TotpStepUpDialog.vue'
+import { useStepUp, isStepUpCancelled } from '@/composables/useStepUp'
+import { workspaceLifecycleAPI } from '@/api/workspaceLifecycle'
 import { workspaceAPI, type Project, type ProjectKey, type WorkspaceAvailableGroup, type WorkspaceBudget, type WorkspaceOverview, type WorkspaceUsage, type ServiceAccountUsageBreakdown } from '@/api/workspace'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useAppStore } from '@/stores/app'
@@ -180,6 +200,47 @@ const saving = ref(false)
 const secret = ref('')
 let loadGeneration = 0
 let loadController: AbortController | null = null
+const projectStepUp = useStepUp()
+const projectLifecycleAction = ref<'archive' | 'restore' | null>(null)
+const projectLifecycleBusy = ref(false)
+const projectLifecycleError = ref('')
+const projectLifecycleNotice = ref('')
+const projectLifecycleReauth = ref(false)
+let projectLifecycleGeneration = 0
+let projectLifecycleController = new AbortController()
+const activeParent = computed(() => store.selectedWorkspaceId === workspaceId.value && store.selectedWorkspace?.status === 'active')
+const canArchiveProject = computed(() => activeParent.value && project.value?.status === 'active' && store.can('project.archive'))
+const canRestoreProject = computed(() => activeParent.value && project.value?.status === 'archived' && store.can('project.restore'))
+
+async function confirmProjectLifecycle() {
+  const action = projectLifecycleAction.value
+  if (projectLifecycleBusy.value || !action || (action === 'archive' ? !canArchiveProject.value : !canRestoreProject.value)) return
+  const wid = workspaceId.value
+  const pid = projectId.value
+  const generation = projectLifecycleGeneration
+  const signal = projectLifecycleController.signal
+  const current = () => !signal.aborted && generation === projectLifecycleGeneration && wid === workspaceId.value && pid === projectId.value && wid === store.selectedWorkspaceId
+  projectLifecycleBusy.value = true
+  projectLifecycleError.value = ''; projectLifecycleReauth.value = false; projectLifecycleNotice.value = ''
+  try {
+    await projectStepUp.run(async () => {
+      if (!current() || (action === 'archive' ? !canArchiveProject.value : !canRestoreProject.value)) throw { code: 'ERR_CANCELED' }
+      if (action === 'archive') await workspaceAPI.archiveProject(wid, pid)
+      else await workspaceLifecycleAPI.restoreProject(wid, pid, signal)
+    })
+    if (!current()) return
+    projectLifecycleAction.value = null
+    projectLifecycleNotice.value = t('workspace.lifecycle.operationSuccess')
+    await store.loadProjects(wid, pid)
+    if (current()) await load()
+  } catch (error) {
+    if (!current()) return
+    const item = error as { code?: string; reason?: string; message?: string }
+    if (item?.code === 'ERR_CANCELED') return
+    projectLifecycleReauth.value = [item?.code, item?.reason].some(marker => Boolean(marker && ['RECENT_AUTH_REQUIRED', 'WORKSPACE_REAUTH_REQUIRED', 'MFA_REQUIRED', 'MFA_ENROLLMENT_REQUIRED', 'STEP_UP_TOTP_NOT_ENABLED'].includes(marker)))
+    projectLifecycleError.value = isStepUpCancelled(error) ? t('workspace.lifecycle.verificationCancelled') : item?.message || t('workspace.lifecycle.requestError')
+  } finally { if (current()) projectLifecycleBusy.value = false }
+}
 
 type KeyForm = {
   name: string
@@ -317,6 +378,10 @@ async function copy(value: string) {
 }
 
 onMounted(load)
+watch([workspaceId, projectId, () => store.selectedWorkspaceId, () => store.selectedWorkspace?.status, () => store.permissions.join('|')], () => {
+  ++projectLifecycleGeneration; projectLifecycleController.abort(); projectLifecycleController = new AbortController(); projectStepUp.onCancel()
+  projectLifecycleAction.value = null; projectLifecycleBusy.value = false; projectLifecycleError.value = ''; projectLifecycleNotice.value = ''; projectLifecycleReauth.value = false
+}, { flush: 'sync' })
 watch([workspaceId, projectId], () => {
   ++loadGeneration
   loadController?.abort()
@@ -336,7 +401,7 @@ watch([workspaceId, projectId, () => store.selectedWorkspaceId, () => store.perm
 watch([() => store.projects, projectId], () => {
   if (store.selectedWorkspaceId === workspaceId.value && store.projects.some(item => item.id === projectId.value) && store.selectedProjectId !== projectId.value) void store.selectProject(projectId.value)
 }, { immediate: true })
-onBeforeUnmount(() => { ++loadGeneration; loadController?.abort() })
+onBeforeUnmount(() => { ++loadGeneration; loadController?.abort(); ++projectLifecycleGeneration; projectLifecycleController.abort(); projectStepUp.onCancel() })
 </script>
 
 <style scoped>
@@ -346,6 +411,7 @@ onBeforeUnmount(() => { ++loadGeneration; loadController?.abort() })
 .workspace-panel h2 { margin: 0; color: var(--color-text-primary); font-size: 17px; }
 .workspace-panel h3 { margin: 0; color: var(--color-text-primary); font-size: 15px; }
 .workspace-panel p { margin: 5px 0 0; color: var(--color-text-secondary); font-size: 13px; }
+.workspace-lifecycle-error { color: var(--color-danger) !important; overflow-wrap: anywhere; }
 .workspace-machine-filter { display: grid; gap: 6px; margin-top: 16px; max-width: 360px; color: var(--color-text-secondary); font-size: 14px; }
 .workspace-eyebrow { color: var(--color-text-muted) !important; font-size: 12px !important; font-weight: 700; text-transform: uppercase; }
 .workspace-details { display: grid; min-width: 0; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 20px 0 0; }

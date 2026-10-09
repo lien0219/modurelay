@@ -52,6 +52,9 @@ func (r *notificationRecipientResolver) Resolve(ctx context.Context, event *serv
 	}
 	allowed := func(role string) bool { return true }
 	switch event.Type {
+	case service.EventWorkspaceRestored, service.EventWorkspaceRetentionUpdated, service.EventWorkspaceExportRequested, service.EventWorkspaceExportCompleted, service.EventWorkspaceExportFailed, service.EventWorkspaceExportCancelled,
+		service.EventWorkspaceDeletionRequested, service.EventWorkspaceDeletionCancelled, service.EventWorkspaceDeletionBlocked, service.EventWorkspaceDeletionCompleted:
+		allowed = func(role string) bool { return role == "owner" || role == "admin" }
 	case service.EventWorkspaceDomainVerified, service.EventIdentityProviderDisabled, service.EventSAMLCertificateRotated,
 		service.EventSSOEnforcementEnabled, service.EventSSOEnforcementDisabled, service.EventSSOBreakGlassUsed, service.EventWorkspaceSecurityPolicyUpdated,
 		service.EventSCIMConnectorDisabled, service.EventSCIMSyncFailed, service.EventSCIMTokenExpiring, service.EventSCIMSecurityConflict:

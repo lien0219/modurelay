@@ -11,9 +11,13 @@ const api = vi.hoisted(() => ({
   getProject: vi.fn(), listKeys: vi.fn(), listAvailableGroups: vi.fn(),
   getProjectBudget: vi.fn(), getProjectUsage: vi.fn(), getProjectOverview: vi.fn(),
   updateProjectBudget: vi.fn(), createKey: vi.fn(), updateKey: vi.fn(), revokeKey: vi.fn(),
+  archiveProject: vi.fn(),
 }))
+const lifecycle = vi.hoisted(() => ({ restoreProject: vi.fn() }))
 
 vi.mock('@/api/workspace', () => ({ workspaceAPI: api }))
+vi.mock('@/api/workspaceLifecycle', () => ({ workspaceLifecycleAPI: lifecycle }))
+vi.mock('@/components/auth/TotpStepUpDialog.vue', () => ({ default: { template: '<div />' } }))
 vi.mock('@/components/layout/AppLayout.vue', () => ({ default: { template: '<main><slot /></main>' } }))
 vi.mock('@/stores/app', () => ({ useAppStore: () => ({ showError: vi.fn(), showSuccess: vi.fn() }) }))
 vi.mock('vue-chartjs', () => ({ Line: { name: 'Line', props: ['data', 'options'], template: '<canvas />' } }))
@@ -143,5 +147,55 @@ describe('project workspace context and FinOps', () => {
     resolveOld(project(20))
     await flushPromises()
     expect(wrapper.find('h2').text()).toBe('Default')
+  })
+
+  it('offers project archive only with permission and confirms before using the existing archive API', async () => {
+    const { wrapper } = await render([...allPermissions, 'project.archive'])
+    expect(wrapper.find('[data-testid="archive-project"]').exists()).toBe(true)
+    await wrapper.get('[data-testid="archive-project"]').trigger('click')
+    await flushPromises()
+    expect(api.archiveProject).not.toHaveBeenCalled()
+    const dialog = wrapper.findComponent({ name: 'ConfirmDialog' })
+    expect(dialog.exists()).toBe(true)
+    dialog.vm.$emit('confirm')
+    await flushPromises()
+    expect(api.archiveProject).toHaveBeenCalledWith(1, 20)
+  })
+
+  it('offers restore for an archived project in an active parent Workspace', async () => {
+    api.getProject.mockImplementation(async (_wid: number, pid: number) => ({ ...project(pid), status: 'archived' }))
+    const { wrapper } = await render(['workspace.read', 'project.read', 'project.restore'])
+    expect(wrapper.find('[data-testid="restore-project"]').exists()).toBe(true)
+    await wrapper.get('[data-testid="restore-project"]').trigger('click')
+    await flushPromises()
+    wrapper.findComponent({ name: 'ConfirmDialog' }).vm.$emit('confirm')
+    await flushPromises()
+    expect(lifecycle.restoreProject).toHaveBeenCalledWith(1, 20, expect.any(AbortSignal))
+  })
+
+  it('hides project restore when its parent is archived even if stale permissions include restore', async () => {
+    api.getProject.mockImplementation(async (_wid: number, pid: number) => ({ ...project(pid), status: 'archived' }))
+    const { wrapper, store } = await render(['workspace.read', 'project.read', 'project.restore'])
+    store.workspaces[0].status = 'archived'
+    await flushPromises()
+    expect(wrapper.find('[data-testid="restore-project"]').exists()).toBe(false)
+  })
+
+  it('ignores a late restore failure after changing the project route', async () => {
+    let rejectRestore!: (error: unknown) => void
+    api.getProject.mockImplementation(async (_wid: number, pid: number) => ({ ...project(pid), status: 'archived' }))
+    lifecycle.restoreProject.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectRestore = reject }))
+    const { wrapper, router } = await render(['workspace.read', 'project.read', 'project.restore'])
+    await wrapper.get('[data-testid="restore-project"]').trigger('click')
+    await flushPromises()
+    wrapper.findComponent({ name: 'ConfirmDialog' }).vm.$emit('confirm')
+    await flushPromises()
+    await router.push('/workspaces/1/projects/10')
+    await flushPromises()
+    rejectRestore({ message: 'OLD_PROJECT_FAILURE' })
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('OLD_PROJECT_FAILURE')
+    expect(wrapper.find('h2').text()).toBe('Default')
+    expect(wrapper.get('[data-testid="restore-project"]').attributes('disabled')).toBeUndefined()
   })
 })

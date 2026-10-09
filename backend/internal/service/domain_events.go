@@ -41,6 +41,16 @@ const (
 	EventWorkspaceSuspended             = "workspace.suspended"
 	EventWorkspaceResumed               = "workspace.resumed"
 	EventWorkspaceArchived              = "workspace.archived"
+	EventWorkspaceRestored              = "workspace.restored"
+	EventWorkspaceRetentionUpdated      = "workspace.retention.updated"
+	EventWorkspaceExportRequested       = "workspace.export.requested"
+	EventWorkspaceExportCompleted       = "workspace.export.completed"
+	EventWorkspaceExportFailed          = "workspace.export.failed"
+	EventWorkspaceExportCancelled       = "workspace.export.cancelled"
+	EventWorkspaceDeletionRequested     = "workspace.deletion.requested"
+	EventWorkspaceDeletionCancelled     = "workspace.deletion.cancelled"
+	EventWorkspaceDeletionBlocked       = "workspace.deletion.blocked"
+	EventWorkspaceDeletionCompleted     = "workspace.deletion.completed"
 	EventMemberInvited                  = "member.invited"
 	EventMemberJoined                   = "member.joined"
 	EventMemberRoleChanged              = "member.role_changed"
@@ -103,6 +113,10 @@ const (
 )
 
 var allowedDomainEventTypes = map[string]struct{}{
+	EventWorkspaceRetentionUpdated: {},
+	EventWorkspaceRestored:         {},
+	EventWorkspaceExportRequested:  {}, EventWorkspaceExportCompleted: {}, EventWorkspaceExportFailed: {}, EventWorkspaceExportCancelled: {},
+	EventWorkspaceDeletionRequested: {}, EventWorkspaceDeletionCancelled: {}, EventWorkspaceDeletionBlocked: {}, EventWorkspaceDeletionCompleted: {},
 	EventServiceAccountCreated:            {},
 	EventServiceAccountUpdated:            {},
 	EventServiceAccountDisabled:           {},
@@ -149,6 +163,7 @@ type EventSubject struct {
 type DomainEventData map[string]any
 
 var allowedDomainEventDataKeys = map[string]struct{}{
+	"retention_days":     {},
 	"service_account_id": {}, "credential_id": {}, "credential_name": {}, "old_credential_id": {}, "new_credential_id": {}, "expires_at": {},
 	"name": {}, "slug": {}, "status": {}, "role": {}, "user_id": {},
 	"member_id": {}, "invitation_id": {}, "key_id": {}, "key_name": {},
@@ -279,6 +294,9 @@ func IsWorkspaceVisibleEvent(eventType string) bool {
 	switch strings.TrimSpace(eventType) {
 	case EventServiceAccountCreated, EventServiceAccountUpdated, EventServiceAccountDisabled, EventServiceAccountEnabled, EventServiceAccountCredentialCreated, EventServiceAccountCredentialUpdated, EventServiceAccountCredentialRevoked, EventServiceAccountCredentialRotated, EventServiceAccountCredentialExpiring, EventServiceAccountCredentialExpired,
 		EventWorkspaceCreated, EventWorkspaceUpdated, EventWorkspaceSuspended, EventWorkspaceResumed, EventWorkspaceArchived,
+		EventWorkspaceRestored, EventWorkspaceRetentionUpdated,
+		EventWorkspaceExportRequested, EventWorkspaceExportCompleted, EventWorkspaceExportFailed, EventWorkspaceExportCancelled,
+		EventWorkspaceDeletionRequested, EventWorkspaceDeletionCancelled, EventWorkspaceDeletionBlocked, EventWorkspaceDeletionCompleted,
 		EventMemberInvited, EventMemberJoined, EventMemberRoleChanged, EventMemberSuspended, EventMemberRemoved,
 		EventProjectCreated, EventProjectUpdated, EventProjectArchived, EventProjectRestored,
 		EventAPIKeyCreated, EventAPIKeyUpdated, EventAPIKeyRevoked, EventPolicyUpdated, EventBudgetThreshold, EventBudgetSoftLimit,

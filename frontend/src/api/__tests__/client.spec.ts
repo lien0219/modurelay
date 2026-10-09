@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import axios from 'axios'
 import type { AxiosInstance } from 'axios'
+import { Blob as NodeBlob } from 'node:buffer'
 
 // 需要在导入 client 之前设置 mock
 vi.mock('@/i18n', () => ({
@@ -23,6 +24,7 @@ describe('API Client', () => {
   afterEach(() => {
     vi.restoreAllMocks()
     vi.unstubAllEnvs()
+    vi.unstubAllGlobals()
   })
 
   // --- 请求拦截器 ---
@@ -324,6 +326,58 @@ describe('API Client', () => {
   // --- 401 Token 刷新 ---
 
   describe('workspace security denials', () => {
+    it('keeps a download redemption JSON Blob denial in the existing MFA recovery path', async () => {
+      vi.stubGlobal('Blob', NodeBlob)
+      window.history.replaceState({}, '', '/workspaces/7/overview')
+      localStorage.setItem('auth_token', 'global-token')
+      const listener = vi.fn()
+      window.addEventListener('workspace-security-required', listener)
+      apiClient.defaults.adapter = config => Promise.reject({ config, response: { status: 403, data: new Blob([JSON.stringify({ code: 'MFA_REQUIRED', message: 'Session MFA is required', metadata: { workspace_id: '7' } })], { type: 'application/json' }) } })
+      const { workspaceLifecycleAPI } = await import('@/api/workspaceLifecycle')
+      await expect(workspaceLifecycleAPI.redeemDownload(7, 'export-id', 'private-one-use-token')).rejects.toMatchObject({ status: 403, code: 'MFA_REQUIRED', message: 'Session MFA is required', metadata: { workspace_id: '7' } })
+      expect(listener).toHaveBeenCalledTimes(1)
+      expect(localStorage.getItem('auth_token')).toBe('global-token')
+      window.removeEventListener('workspace-security-required', listener)
+    })
+
+    it('does not interpret malformed or non-JSON Blob errors as successful downloads', async () => {
+      vi.stubGlobal('Blob', NodeBlob)
+      apiClient.defaults.adapter = config => Promise.reject({ config, message: 'Download rejected', response: { status: 403, data: new Blob(['<html>denied</html>'], { type: 'text/html' }) } })
+      const { workspaceLifecycleAPI } = await import('@/api/workspaceLifecycle')
+      await expect(workspaceLifecycleAPI.redeemDownload(7, 'export-id', 'private-one-use-token')).rejects.toMatchObject({ status: 403, message: 'Download rejected' })
+    })
+
+    it.each(['{invalid JSON', JSON.stringify({ code: 'MFA_REQUIRED', message: 'x'.repeat(64 * 1024) })])('keeps malformed and oversized JSON download denials as HTTP failures', async body => {
+      vi.stubGlobal('Blob', NodeBlob)
+      apiClient.defaults.adapter = config => Promise.reject({ config, message: 'Download rejected', response: { status: 403, data: new Blob([body], { type: 'application/json' }) } })
+      const { workspaceLifecycleAPI } = await import('@/api/workspaceLifecycle')
+      await expect(workspaceLifecycleAPI.redeemDownload(7, 'export-id', 'private-one-use-token')).rejects.toMatchObject({ status: 403, code: undefined, message: 'Download rejected' })
+    })
+
+    it('does not prompt for a stale Workspace after asynchronous download-error decoding', async () => {
+      vi.stubGlobal('Blob', NodeBlob)
+      window.history.replaceState({}, '', '/workspaces/7/overview')
+      localStorage.setItem('auth_token', 'global-token')
+      const listener = vi.fn()
+      window.addEventListener('workspace-security-required', listener)
+      const body = JSON.stringify({ code: 'MFA_REQUIRED', metadata: { workspace_id: '7' } })
+      const blob = new Blob([body], { type: 'application/json' })
+      let finishReading!: (text: string) => void
+      const reading = vi.spyOn(blob, 'text').mockImplementation(() => new Promise(resolve => { finishReading = resolve }))
+      apiClient.defaults.adapter = config => Promise.reject({ config, response: { status: 403, data: blob } })
+      const { workspaceLifecycleAPI } = await import('@/api/workspaceLifecycle')
+      const request = workspaceLifecycleAPI.redeemDownload(7, 'export-id', 'private-one-use-token')
+      await vi.waitFor(() => expect(reading).toHaveBeenCalledTimes(1))
+      window.history.replaceState({}, '', '/workspaces/8/overview')
+      window.dispatchEvent(new PopStateEvent('popstate'))
+      window.history.replaceState({}, '', '/workspaces/7/overview')
+      window.dispatchEvent(new PopStateEvent('popstate'))
+      finishReading(body)
+      await expect(request).rejects.toMatchObject({ status: 403, code: 'MFA_REQUIRED' })
+      expect(listener).not.toHaveBeenCalled()
+      window.removeEventListener('workspace-security-required', listener)
+    })
+
     it('broadcasts an actionable MFA error only for the current request context and retains tokens', async () => {
       window.history.replaceState({}, '', '/workspaces/7/teams')
       localStorage.setItem('auth_token', 'global-token')

@@ -266,7 +266,7 @@ func (r *dashboardAggregationRepository) cleanupUsageLogsBatches(ctx context.Con
 			WITH victims AS (
 				SELECT tableoid, ctid
 				FROM usage_logs
-				WHERE created_at < $1
+				WHERE created_at < $1 AND `+legacyUsageRetentionPredicate+`
 				ORDER BY created_at ASC, id ASC
 				LIMIT $2
 			)
@@ -303,7 +303,7 @@ func cleanupUsageLogsBatchWithRollupInvalidation(ctx context.Context, db *sql.DB
 		WITH victims AS (
 			SELECT tableoid, ctid
 			FROM usage_logs
-			WHERE created_at < $1
+			WHERE created_at < $1 AND `+legacyUsageRetentionPredicate+`
 			ORDER BY created_at ASC, id ASC
 			LIMIT $2
 		)
@@ -347,33 +347,25 @@ func cleanupUsageLogsBatchWithRollupInvalidation(ctx context.Context, db *sql.DB
 }
 
 func (r *dashboardAggregationRepository) CleanupUsageBillingDedup(ctx context.Context, cutoff time.Time) error {
-	for {
-		res, err := r.sql.ExecContext(ctx, `
-			WITH victims AS (
-				SELECT ctid, request_id, api_key_id, request_fingerprint, created_at
-				FROM usage_billing_dedup
-				WHERE created_at < $1
-				LIMIT $2
-			), archived AS (
-				INSERT INTO usage_billing_dedup_archive (request_id, api_key_id, request_fingerprint, created_at)
-				SELECT request_id, api_key_id, request_fingerprint, created_at
-				FROM victims
-				ON CONFLICT (request_id, api_key_id) DO NOTHING
-			)
-			DELETE FROM usage_billing_dedup
-			WHERE ctid IN (SELECT ctid FROM victims)
-		`, cutoff.UTC(), usageBillingDedupCleanupBatchSize)
+	if db, ok := r.sql.(*sql.DB); ok {
+		tx, err := db.BeginTx(ctx, nil)
 		if err != nil {
 			return err
 		}
-		affected, err := res.RowsAffected()
-		if err != nil {
+		defer func() { _ = tx.Rollback() }()
+		if _, err = tx.ExecContext(ctx, `SET LOCAL statement_timeout='20s'; SET LOCAL lock_timeout='1s'`); err != nil {
 			return err
 		}
-		if affected < usageBillingDedupCleanupBatchSize {
-			return nil
+		if err = cleanupUsageBillingDedupPage(ctx, tx, cutoff); err != nil {
+			return err
 		}
+		return tx.Commit()
 	}
+	if tx, ok := r.sql.(*sql.Tx); ok {
+		return cleanupUsageBillingDedupPage(ctx, tx, cutoff)
+	}
+	// Retain all markers when atomic archive/cursor progress cannot be proven.
+	return nil
 }
 
 func (r *dashboardAggregationRepository) EnsureUsageLogsPartitions(ctx context.Context, now time.Time) error {
@@ -573,7 +565,7 @@ func (r *dashboardAggregationRepository) isUsageLogsPartitioned(ctx context.Cont
 			SELECT 1
 			FROM pg_partitioned_table pt
 			JOIN pg_class c ON c.oid = pt.partrelid
-			WHERE c.relname = 'usage_logs'
+			WHERE c.oid = to_regclass('usage_logs')
 		)
 	`
 	var partitioned bool
@@ -584,39 +576,49 @@ func (r *dashboardAggregationRepository) isUsageLogsPartitioned(ctx context.Cont
 }
 
 func (r *dashboardAggregationRepository) dropUsageLogsPartitions(ctx context.Context, cutoff time.Time) error {
+	db, ok := r.sql.(*sql.DB)
+	if !ok {
+		// DDL is safe only when this repository owns the locking transaction.
+		// Other executors still prune eligible rows through bounded cleanup.
+		return nil
+	}
 	rows, err := r.sql.QueryContext(ctx, `
-		SELECT c.relname
+		SELECT c.relname,n.nspname,c.oid,p.oid
 		FROM pg_inherits
 		JOIN pg_class c ON c.oid = pg_inherits.inhrelid
 		JOIN pg_class p ON p.oid = pg_inherits.inhparent
-		WHERE p.relname = 'usage_logs'
+		JOIN pg_namespace n ON n.oid=c.relnamespace
+		WHERE p.oid=to_regclass('usage_logs') AND c.relname ~ '^usage_logs_[0-9]{6}$'
+		ORDER BY c.relname LIMIT 120
 	`)
 	if err != nil {
 		return err
 	}
 	cutoffMonth := truncateToMonthUTC(cutoff)
 	type usageLogsPartition struct {
-		name  string
-		month time.Time
+		name, schema string
+		oid, parent  int64
+		month        time.Time
 	}
 	partitions := make([]usageLogsPartition, 0)
 	for rows.Next() {
-		var name string
-		if err := rows.Scan(&name); err != nil {
+		var partition usageLogsPartition
+		if err := rows.Scan(&partition.name, &partition.schema, &partition.oid, &partition.parent); err != nil {
 			_ = rows.Close()
 			return err
 		}
-		if !strings.HasPrefix(name, "usage_logs_") {
+		if !strings.HasPrefix(partition.name, "usage_logs_") {
 			continue
 		}
-		suffix := strings.TrimPrefix(name, "usage_logs_")
+		suffix := strings.TrimPrefix(partition.name, "usage_logs_")
 		month, err := time.Parse("200601", suffix)
 		if err != nil {
 			continue
 		}
 		month = month.UTC()
 		if month.Before(cutoffMonth) {
-			partitions = append(partitions, usageLogsPartition{name: name, month: month})
+			partition.month = month
+			partitions = append(partitions, partition)
 		}
 	}
 	if err := rows.Err(); err != nil {
@@ -630,46 +632,59 @@ func (r *dashboardAggregationRepository) dropUsageLogsPartitions(ctx context.Con
 	sort.Slice(partitions, func(i, j int) bool {
 		return partitions[i].month.Before(partitions[j].month)
 	})
-	if db, ok := r.sql.(*sql.DB); ok {
-		for _, partition := range partitions {
-			if err := dropUsageLogsPartitionWithRollupInvalidation(ctx, db, partition.name, partition.month); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
 	for _, partition := range partitions {
-		if _, err := r.sql.ExecContext(ctx, fmt.Sprintf("DROP TABLE IF EXISTS %s", pq.QuoteIdentifier(partition.name))); err != nil {
+		if err := dropUsageLogsPartitionWithRollupInvalidation(ctx, db, partition.schema, partition.name, partition.oid, partition.parent, partition.month, cutoff); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func dropUsageLogsPartitionWithRollupInvalidation(ctx context.Context, db *sql.DB, name string, monthStart time.Time) error {
+func dropUsageLogsPartitionWithRollupInvalidation(ctx context.Context, db *sql.DB, schema, name string, oid, parent int64, monthStart, cutoff time.Time) error {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
+	defer func() { _ = tx.Rollback() }()
 	rollback := func(err error) error {
 		_ = tx.Rollback()
 		return err
 	}
 
+	if _, err := tx.ExecContext(ctx, `SET LOCAL statement_timeout='20s'; SET LOCAL lock_timeout='1s'`); err != nil {
+		return rollback(err)
+	}
 	if err := lockGroupUsageRollupState(ctx, tx); err != nil {
 		return rollback(err)
+	}
+	qualified := pq.QuoteIdentifier(schema) + "." + pq.QuoteIdentifier(name)
+	// ACCESS EXCLUSIVE fences inserts, attribution changes and competing DDL
+	// until the exact relation's protection check and DROP commit together.
+	if _, err := tx.ExecContext(ctx, "LOCK TABLE "+qualified+" IN ACCESS EXCLUSIVE MODE"); err != nil {
+		return rollback(err)
+	}
+	var attached bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM pg_inherits i JOIN pg_class c ON c.oid=i.inhrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE c.oid=$1 AND i.inhparent=$2 AND n.nspname=$3 AND c.relname=$4)`, oid, parent, schema, name).Scan(&attached); err != nil {
+		return rollback(err)
+	}
+	if !attached {
+		return nil
+	}
+	var protected bool
+	if err := tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM "+qualified+" AS usage_logs WHERE NOT ("+legacyUsageRetentionPredicate+") OR created_at >= $1 OR created_at IS NULL)", cutoff.UTC()).Scan(&protected); err != nil {
+		return rollback(err)
+	}
+	if protected {
+		return nil
 	}
 	if err := invalidateGroupUsageRollupsAt(ctx, tx, monthStart); err != nil {
 		return rollback(err)
 	}
-	if _, err := tx.ExecContext(ctx, fmt.Sprintf("DROP TABLE IF EXISTS %s", pq.QuoteIdentifier(name))); err != nil {
+	if _, err := tx.ExecContext(ctx, "DROP TABLE "+qualified); err != nil {
 		return rollback(err)
 	}
-	// Dropping a partition bypasses row DELETE triggers. Retire the matching
-	// tenant aggregates atomically so FinOps follows the source retention range.
-	if _, err := tx.ExecContext(ctx, `DELETE FROM usage_tenant_hourly_rollups WHERE bucket_start >= $1 AND bucket_start < $2`, monthStart, monthStart.AddDate(0, 1, 0)); err != nil {
-		return rollback(err)
-	}
+	// Tenant aggregates are retained financial evidence, including pre-snapshot
+	// rollups. A legacy-only partition never authorizes their deletion.
 	return tx.Commit()
 }
 

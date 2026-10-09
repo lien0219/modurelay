@@ -302,8 +302,8 @@ func TestServiceAccountSchemaUsageIdentityAndRollupParity(t *testing.T) {
 	_, err = integrationDB.Exec(`UPDATE budget_reservations SET status='finalized',actual=2,finalized_at=now() WHERE id=$1`, r)
 	require.NoError(t, err)
 	_, err = integrationDB.Exec(`DELETE FROM usage_logs WHERE id=$1`, id)
-	require.NoError(t, err)
-	assert(0, 0, 0, 0)
+	require.Error(t, err, "machine Usage must retain its original financial evidence")
+	assert(1, 2, 30, 40)
 }
 
 func TestServiceAccountSchemaHistoricalSnapshotsAndCreatorIndependence(t *testing.T) {

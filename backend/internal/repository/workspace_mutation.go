@@ -14,11 +14,17 @@ func (r *workspaceRepository) Mutate(ctx context.Context, a, w int64, m service.
 		return nil, e
 	}
 	defer func() { _ = tx.Rollback() }()
+	if m.Action == "workspace.restore" || m.Action == "project.restore" {
+		var userID int64
+		if e = tx.QueryRowContext(ctx, `SELECT id FROM users WHERE id=$1 AND status='active' AND deleted_at IS NULL FOR SHARE`, a).Scan(&userID); e != nil {
+			return nil, workspaceError(e)
+		}
+	}
 	if e = lockWorkspace(ctx, tx, w, true); e != nil {
 		return nil, e
 	}
 	projectScope := int64(0)
-	if m.Action == "project.update" || m.Action == "project.archive" {
+	if m.Action == "project.update" || m.Action == "project.archive" || m.Action == "project.restore" {
 		projectScope = m.TargetID
 	}
 	ac, e := workspaceAccess(ctx, tx, a, w, projectScope)
@@ -33,6 +39,25 @@ func (r *workspaceRepository) Mutate(ctx context.Context, a, w int64, m service.
 	var project *int64
 	meta := map[string]any{}
 	switch m.Action {
+	case "workspace.restore", "project.restore":
+		if e = lifecycleRestoreChecks(ctx, tx, a, w, ac); e != nil {
+			return nil, e
+		}
+		if m.Action == "workspace.restore" {
+			if ac.Workspace.Type != "organization" || ac.Workspace.Status != "archived" {
+				return nil, service.ErrWorkspaceConflict
+			}
+			_, e = tx.ExecContext(ctx, `UPDATE workspaces SET status='active',updated_at=now() WHERE id=$1 AND status='archived'`, w)
+			action = "workspace_restored"
+		} else {
+			if ac.Workspace.Status != "active" || ac.Project == nil || ac.Project.Status != "archived" {
+				return nil, service.ErrWorkspaceConflict
+			}
+			_, e = tx.ExecContext(ctx, `UPDATE projects SET status='active',updated_at=now() WHERE workspace_id=$1 AND id=$2 AND status='archived'`, w, m.TargetID)
+			action, target, id = "project_restored", "project", m.TargetID
+			project = &m.TargetID
+		}
+		meta["previous_status"], meta["status"] = "archived", "active"
 	case "workspace.project_access_mode.update":
 		if ac.Workspace.Type == "personal" || !service.ValidProjectAccessMode(m.ProjectAccessMode) {
 			return nil, service.ErrWorkspaceInvalid

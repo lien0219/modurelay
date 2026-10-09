@@ -103,6 +103,7 @@ func (h *WorkspaceHandler) SetIdentitySSORedirectURL(redirectURL string) {
 	h.identityRedirectURL = strings.TrimSpace(redirectURL)
 }
 func (h *WorkspaceHandler) RegisterTenantRoutes(v1 *gin.RouterGroup) {
+	h.registerLifecycleRoutes(v1)
 	h.registerSCIMControlRoutes(v1)
 	if h.serviceAccounts != nil {
 		h.serviceAccounts.RegisterTenantRoutes(v1)

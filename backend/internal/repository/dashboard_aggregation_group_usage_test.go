@@ -226,29 +226,31 @@ func TestDashboardAggregationRepositoryCleanupUsageLogsPartitionedSortsAndInvali
 	mock.ExpectQuery(`SELECT EXISTS`).
 		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
 	mock.ExpectQuery(`SELECT c.relname`).
-		WillReturnRows(sqlmock.NewRows([]string{"relname"}).
-			AddRow("usage_logs_202606").
-			AddRow("usage_logs_invalid").
-			AddRow("usage_logs_202604").
-			AddRow("usage_logs_202607"))
+		WillReturnRows(sqlmock.NewRows([]string{"relname", "schema", "oid", "parent"}).
+			AddRow("usage_logs_202606", "public", 606, 1).
+			AddRow("usage_logs_invalid", "public", 99, 1).
+			AddRow("usage_logs_202604", "public", 604, 1).
+			AddRow("usage_logs_202607", "public", 607, 1))
 
 	for _, partition := range []struct {
 		name  string
 		start time.Time
+		oid   int64
 	}{
-		{name: "usage_logs_202604", start: aprilStart},
-		{name: "usage_logs_202606", start: juneStart},
+		{name: "usage_logs_202604", start: aprilStart, oid: 604},
+		{name: "usage_logs_202606", start: juneStart, oid: 606},
 	} {
 		mock.ExpectBegin()
+		mock.ExpectExec(`SET LOCAL statement_timeout`).WillReturnResult(sqlmock.NewResult(0, 0))
 		mock.ExpectQuery(`SELECT id FROM usage_group_rollup_state.*FOR UPDATE`).
 			WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
+		mock.ExpectExec(`LOCK TABLE "public"\."` + partition.name + `" IN ACCESS EXCLUSIVE MODE`).WillReturnResult(sqlmock.NewResult(0, 0))
+		mock.ExpectQuery(`SELECT EXISTS\(SELECT 1 FROM pg_inherits`).WithArgs(partition.oid, int64(1), "public", partition.name).WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+		mock.ExpectQuery(`SELECT EXISTS\(SELECT 1 FROM "public"\.`).WithArgs(cutoff).WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
 		mock.ExpectExec(`UPDATE usage_group_rollup_state`).
 			WithArgs(partition.start, "Asia/Shanghai").
 			WillReturnResult(sqlmock.NewResult(0, 1))
-		mock.ExpectExec(`DROP TABLE IF EXISTS "` + partition.name + `"`).
-			WillReturnResult(sqlmock.NewResult(0, 0))
-		mock.ExpectExec(`DELETE FROM usage_tenant_hourly_rollups`).
-			WithArgs(partition.start, partition.start.AddDate(0, 1, 0)).
+		mock.ExpectExec(`DROP TABLE "public"\."` + partition.name + `"`).
 			WillReturnResult(sqlmock.NewResult(0, 0))
 		mock.ExpectCommit()
 	}
@@ -310,16 +312,20 @@ func TestDashboardAggregationRepositoryCleanupUsageLogsPartitionFailureRollsBack
 	mock.ExpectQuery(`SELECT EXISTS`).
 		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
 	mock.ExpectQuery(`SELECT c.relname`).
-		WillReturnRows(sqlmock.NewRows([]string{"relname"}).
-			AddRow("usage_logs_202606").
-			AddRow("usage_logs_202604"))
+		WillReturnRows(sqlmock.NewRows([]string{"relname", "schema", "oid", "parent"}).
+			AddRow("usage_logs_202606", "public", 606, 1).
+			AddRow("usage_logs_202604", "public", 604, 1))
 	mock.ExpectBegin()
+	mock.ExpectExec(`SET LOCAL statement_timeout`).WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectQuery(`SELECT id FROM usage_group_rollup_state.*FOR UPDATE`).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
+	mock.ExpectExec(`LOCK TABLE "public"\."usage_logs_202604" IN ACCESS EXCLUSIVE MODE`).WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery(`SELECT EXISTS\(SELECT 1 FROM pg_inherits`).WithArgs(int64(604), int64(1), "public", "usage_logs_202604").WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+	mock.ExpectQuery(`SELECT EXISTS\(SELECT 1 FROM "public"\.`).WithArgs(cutoff).WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
 	mock.ExpectExec(`UPDATE usage_group_rollup_state`).
 		WithArgs(aprilStart, "Asia/Shanghai").
 		WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectExec(`DROP TABLE IF EXISTS "usage_logs_202604"`).
+	mock.ExpectExec(`DROP TABLE "public"\."usage_logs_202604"`).
 		WillReturnError(dropErr)
 	mock.ExpectRollback()
 

@@ -128,11 +128,11 @@ func TestWorkspaceFinOpsRollupSettlementRollbackAndNonHourlyTimezone(t *testing.
 	require.NoError(t, err)
 	require.Equal(t, float64(3), view.Summary.Spend, "rolled-back corrections must not publish aggregate spend")
 	_, err = integrationDB.Exec(`DELETE FROM usage_logs WHERE request_id=$1 AND api_key_id=$2`, second.RequestID, a.APIKeyID)
-	require.NoError(t, err)
+	require.Error(t, err, "tenant Usage must retain its original financial evidence")
 	view, err = finops.GetOverview(ctx, service.FinOpsScope{WorkspaceID: a.WorkspaceID}, start, end, "UTC")
 	require.NoError(t, err)
-	require.Equal(t, int64(1), view.Summary.Requests)
-	require.Equal(t, float64(1), view.Summary.Spend)
+	require.Equal(t, int64(2), view.Summary.Requests)
+	require.Equal(t, float64(3), view.Summary.Spend)
 }
 
 func TestWorkspaceUsageDatabaseRejectsPartialAndForeignSnapshots(t *testing.T) {

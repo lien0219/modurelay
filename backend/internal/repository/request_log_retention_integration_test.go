@@ -15,10 +15,10 @@ func TestRequestLogRetention_PartitionBoundaryKeepsRecentRows(t *testing.T) {
 	tx := testTx(t)
 	// Temporary tables shadow the real schema and disappear on rollback.
 	_, err := tx.ExecContext(ctx, `
-		CREATE TEMP TABLE usage_logs (id bigint, created_at timestamptz) PARTITION BY RANGE (created_at);
+		CREATE TEMP TABLE usage_logs (id bigint, created_at timestamptz,workspace_id bigint,project_id bigint,billing_principal_user_id bigint,budget_reservation_id uuid,service_account_id bigint) PARTITION BY RANGE (created_at);
 		CREATE TEMP TABLE retention_july PARTITION OF usage_logs FOR VALUES FROM ('2026-07-01') TO ('2026-08-01');
 		CREATE TEMP TABLE retention_august PARTITION OF usage_logs FOR VALUES FROM ('2026-08-01') TO ('2026-09-01');
-		INSERT INTO usage_logs VALUES
+		INSERT INTO usage_logs(id,created_at) VALUES
 			(1, '2026-07-17 23:59:59+00'),
 			(2, '2026-07-18 00:00:00+00'),
 			(3, '2026-08-01 00:00:00+00');

@@ -48,6 +48,8 @@
         </form>
       </section>
 
+      <WorkspaceLifecyclePanel />
+
       <section v-if="budgetAvailable" class="workspace-panel workspace-budget">
         <div class="workspace-panel__heading"><div><h2>{{ t('workspace.budget') }}</h2><p>{{ t('workspace.budgetDescription') }}</p></div><RouterLink class="btn btn-secondary btn-sm" :to="finopsPath">{{ t('workspace.viewFinops') }}</RouterLink></div>
         <div class="workspace-budget__values"><div><span>{{ t('workspace.spent') }}</span><strong>{{ formatMoney(budget?.spent) }}</strong></div><div><span>{{ t('workspace.reserved') }}</span><strong>{{ formatMoney(budget?.reserved) }}</strong></div><div><span>{{ t('workspace.remaining') }}</span><strong>{{ formatMoney(budget?.remaining) }}</strong></div></div>
@@ -62,6 +64,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import WorkspaceFrame from '@/components/workspace/WorkspaceFrame.vue'
+import WorkspaceLifecyclePanel from '@/components/workspace/WorkspaceLifecyclePanel.vue'
 import { workspaceAPI, type WorkspaceBudget, type WorkspaceMember, type WorkspaceOverview } from '@/api/workspace'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useAppStore } from '@/stores/app'

@@ -15,6 +15,10 @@ import (
 
 func TestDomainEventRetentionKeepsPendingRetryAndActiveLeases(t *testing.T) {
 	ctx, _, owner, workspace, projectID := outboxFixture(t)
+	// This disposable database opts into finite audit and 90-day operational
+	// floors to exercise the existing terminal-state and lease boundaries.
+	_, err := integrationDB.ExecContext(ctx, `UPDATE platform_retention_policies SET minimum_days=90,default_days=90 WHERE category IN ('operational','audit')`)
+	require.NoError(t, err)
 	repo, ok := NewDomainEventOutboxRepository(integrationDB).(service.DomainEventRetentionRepository)
 	require.True(t, ok, "SQL outbox must provide retention cleanup")
 	var webhookID int64
@@ -45,7 +49,7 @@ func TestDomainEventRetentionKeepsPendingRetryAndActiveLeases(t *testing.T) {
 	oldInbox := outboxTestEvent(t, workspace.ID, projectID, owner.ID)
 	oldInbox.CreatedAt = time.Now().UTC().AddDate(0, 0, -181)
 	insertOutboxTestEvent(t, ctx, oldInbox, "")
-	_, err := integrationDB.ExecContext(ctx, `INSERT INTO user_notifications(event_id,recipient_user_id,workspace_id,project_id,category,title_key,body_key,data,created_at) SELECT id,$2,workspace_id,project_id,'project','title','body','{}',created_at FROM domain_events WHERE id=$1`, oldInbox.ID, owner.ID)
+	_, err = integrationDB.ExecContext(ctx, `INSERT INTO user_notifications(event_id,recipient_user_id,workspace_id,project_id,category,title_key,body_key,data,created_at) SELECT id,$2,workspace_id,project_id,'project','title','body','{}',created_at FROM domain_events WHERE id=$1`, oldInbox.ID, owner.ID)
 	require.NoError(t, err)
 	_, err = integrationDB.ExecContext(ctx, `UPDATE domain_event_outbox SET delivered_at=now()-interval '91 days' WHERE event_id=$1`, oldInbox.ID)
 	require.NoError(t, err)

@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"os/exec"
 	"strconv"
@@ -30,14 +31,17 @@ import (
 )
 
 const (
-	redisImageTag    = "redis:8.4-alpine"
-	postgresImageTag = "postgres:18.1-alpine3.23"
+	redisImageTag            = "redis:8.4-alpine"
+	postgresImageTag         = "postgres:18.1-alpine3.23"
+	workspaceFixtureTemplate = "modurelay_pristine_fixture"
 )
 
 var (
 	integrationDB        *sql.DB
 	integrationEntClient *dbent.Client
 	integrationRedis     *redisclient.Client
+	integrationAdminDB   *sql.DB
+	integrationDSN       string
 
 	redisNamespaceSeq uint64
 )
@@ -100,6 +104,37 @@ func TestMain(m *testing.M) {
 		log.Printf("failed to apply db migrations: %v", err)
 		os.Exit(1)
 	}
+	// Clone the pristine migrated database before any tests write committed
+	// fixtures. A schema is insufficient: migrations explicitly address public.
+	integrationDSN = dsn
+	adminURL, err := url.Parse(dsn)
+	if err != nil {
+		log.Printf("invalid test dsn: %v", err)
+		os.Exit(1)
+	}
+	adminURL.Path = "/postgres"
+	integrationAdminDB, err = openSQLWithRetry(ctx, adminURL.String(), 30*time.Second)
+	if err != nil {
+		log.Printf("open fixture admin db: %v", err)
+		os.Exit(1)
+	}
+	if err = integrationDB.Close(); err != nil {
+		log.Printf("close fixture source db: %v", err)
+		os.Exit(1)
+	}
+	if _, err = integrationAdminDB.ExecContext(ctx, `CREATE DATABASE modurelay_pristine_fixture WITH TEMPLATE sub2api_test`); err != nil {
+		log.Printf("create pristine test template: %v", err)
+		os.Exit(1)
+	}
+	if _, err = integrationAdminDB.ExecContext(ctx, `ALTER DATABASE modurelay_pristine_fixture ALLOW_CONNECTIONS false`); err != nil {
+		log.Printf("seal pristine test template: %v", err)
+		os.Exit(1)
+	}
+	integrationDB, err = openSQLWithRetry(ctx, dsn, 30*time.Second)
+	if err != nil {
+		log.Printf("reopen test db: %v", err)
+		os.Exit(1)
+	}
 
 	// 创建 ent client 用于集成测试
 	drv := entsql.OpenDB(dialect.Postgres, integrationDB)
@@ -130,6 +165,7 @@ func TestMain(m *testing.M) {
 	_ = integrationEntClient.Close()
 	_ = integrationRedis.Close()
 	_ = integrationDB.Close()
+	_ = integrationAdminDB.Close()
 
 	os.Exit(code)
 }

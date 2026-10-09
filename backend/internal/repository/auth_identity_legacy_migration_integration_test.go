@@ -14,6 +14,7 @@ import (
 )
 
 func TestAuthIdentityLegacyExternalBackfillMigration(t *testing.T) {
+	isolateWorkspaceTestFixtures(t)
 	tx := testTx(t)
 	ctx := context.Background()
 
@@ -159,6 +160,7 @@ WHERE report_type = 'wechat_openid_only_requires_remediation'
 }
 
 func TestAuthIdentityLegacyExternalBackfillMigration_IsSafeWhenLegacyTableMissing(t *testing.T) {
+	isolateWorkspaceTestFixtures(t)
 	tx := testTx(t)
 	ctx := context.Background()
 
@@ -184,6 +186,7 @@ FROM auth_identity_migration_reports
 }
 
 func TestAuthIdentityLegacyExternalMigrations_ChainHandlesMalformedAndNonObjectMetadata(t *testing.T) {
+	isolateWorkspaceTestFixtures(t)
 	tx := testTx(t)
 	ctx := context.Background()
 
@@ -354,6 +357,7 @@ WHERE id IN (
 }
 
 func TestAuthIdentityLegacyExternalSafetyMigration_ReportsConflictsAndDowngradesInvalidJSON(t *testing.T) {
+	isolateWorkspaceTestFixtures(t)
 	tx := testTx(t)
 	ctx := context.Background()
 
@@ -552,6 +556,7 @@ WHERE report_type = 'wechat_openid_only_requires_remediation'
 }
 
 func TestAuthIdentityLegacyExternalSafetyMigration_IsSafeWhenLegacyTableMissing(t *testing.T) {
+	isolateWorkspaceTestFixtures(t)
 	tx := testTx(t)
 	ctx := context.Background()
 
@@ -577,6 +582,7 @@ FROM auth_identity_migration_reports
 }
 
 func TestAuthIdentityLegacyExternalBackfillMigration_SkipsAmbiguousCanonicalSubjects(t *testing.T) {
+	isolateWorkspaceTestFixtures(t)
 	tx := testTx(t)
 	ctx := context.Background()
 
@@ -699,6 +705,7 @@ WHERE provider_type = 'wechat'
 }
 
 func TestAuthIdentityLegacyExternalMigrations_ReportAmbiguousCanonicalSubjectsWithoutWinnerAttribution(t *testing.T) {
+	isolateWorkspaceTestFixtures(t)
 	tx := testTx(t)
 	ctx := context.Background()
 
@@ -829,6 +836,7 @@ WHERE report_type = 'legacy_external_identity_conflict'
 }
 
 func TestAuthIdentityMigrationReportTypeWideningPreflightKeeps109And116SafeBefore121(t *testing.T) {
+	isolateWorkspaceTestFixtures(t)
 	tx := testTx(t)
 	ctx := context.Background()
 
@@ -951,8 +959,7 @@ TRUNCATE TABLE
 	auth_identity_migration_reports,
 	user_provider_default_grants,
 	user_avatars,
-	user_external_identities,
-	users
+	user_external_identities
 RESTART IDENTITY CASCADE;
 `)
 	require.NoError(t, err)

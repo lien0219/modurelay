@@ -88,7 +88,7 @@ func (r *usageLogRepository) ListByModelAndTimeRange(ctx context.Context, modelN
 }
 
 func (r *usageLogRepository) Delete(ctx context.Context, id int64) error {
-	_, err := r.sql.ExecContext(ctx, "DELETE FROM usage_logs WHERE id = $1", id)
+	_, err := r.sql.ExecContext(ctx, "DELETE FROM usage_logs WHERE id = $1 AND "+legacyUsageRetentionPredicate, id)
 	return err
 }
 

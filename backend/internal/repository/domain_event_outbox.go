@@ -140,22 +140,23 @@ func (r *domainEventOutboxRepository) Cleanup(ctx context.Context, limit int) (s
 		return counts, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	steps := []struct {
-		query string
-		count *int64
-	}{
-		{`WITH old AS (SELECT id FROM user_notifications WHERE created_at<now()-interval '180 days' ORDER BY created_at,id LIMIT $1 FOR UPDATE SKIP LOCKED) DELETE FROM user_notifications n USING old WHERE n.id=old.id`, &counts.Notifications},
-		{`WITH old AS (SELECT id FROM workspace_webhook_deliveries WHERE ((status='succeeded' AND COALESCE(finished_at,delivered_at,created_at)<now()-interval '90 days') OR (status='dead' AND COALESCE(finished_at,created_at)<now()-interval '180 days')) AND lock_owner IS NULL AND locked_at IS NULL ORDER BY COALESCE(finished_at,delivered_at,created_at),id LIMIT $1 FOR UPDATE SKIP LOCKED) DELETE FROM workspace_webhook_deliveries d USING old WHERE d.id=old.id`, &counts.WebhookDeliveries},
-		{`WITH old AS (SELECT event_id FROM domain_event_outbox WHERE delivered_at<now()-interval '90 days' AND (locked_until IS NULL OR locked_until<=now()) ORDER BY delivered_at,event_id LIMIT $1 FOR UPDATE SKIP LOCKED) DELETE FROM domain_event_outbox o USING old WHERE o.event_id=old.event_id`, &counts.Outbox},
-		{`WITH old AS (SELECT id FROM domain_events e WHERE created_at<now()-interval '180 days' AND NOT EXISTS(SELECT 1 FROM domain_event_outbox o WHERE o.event_id=e.id) AND NOT EXISTS(SELECT 1 FROM user_notifications n WHERE n.event_id=e.id) AND NOT EXISTS(SELECT 1 FROM workspace_webhook_deliveries d WHERE d.event_id=e.id) ORDER BY created_at,id LIMIT $1 FOR UPDATE SKIP LOCKED) DELETE FROM domain_events e USING old WHERE e.id=old.id`, &counts.Events},
+	if _, err = tx.ExecContext(ctx, `SET LOCAL statement_timeout='20s'; SET LOCAL lock_timeout='1s'; LOCK TABLE platform_retention_policies,workspace_retention_policies,workspace_lifecycle_holds IN SHARE MODE`); err != nil {
+		return counts, err
 	}
-	for _, step := range steps {
-		result, execErr := tx.ExecContext(ctx, step.query, limit)
-		if execErr != nil {
-			return service.DomainEventRetentionResult{}, execErr
+	for i, step := range domainEventRetentionSteps {
+		count, cleanupErr := cleanupDomainEventRetentionClass(ctx, tx, step, limit)
+		if cleanupErr != nil {
+			return service.DomainEventRetentionResult{}, cleanupErr
 		}
-		if *step.count, err = result.RowsAffected(); err != nil {
-			return service.DomainEventRetentionResult{}, err
+		switch i {
+		case 0:
+			counts.Notifications = count
+		case 1:
+			counts.WebhookDeliveries = count
+		case 2:
+			counts.Outbox = count
+		case 3:
+			counts.Events = count
 		}
 	}
 	if err := tx.Commit(); err != nil {

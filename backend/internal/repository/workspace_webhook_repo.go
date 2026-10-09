@@ -478,6 +478,23 @@ func (r *workspaceWebhookRepository) EnqueueEventDeliveries(ctx context.Context,
 	if err != nil {
 		return err
 	}
-	_, err = r.db.ExecContext(ctx, `INSERT INTO workspace_webhook_deliveries(workspace_id,webhook_id,event_id,event_type,payload) SELECT w.workspace_id,w.id,$1,$2,$3 FROM workspace_webhooks w JOIN workspace_webhook_subscriptions s ON s.webhook_id=w.id WHERE w.workspace_id=$4 AND w.enabled AND s.event_type=$2 ON CONFLICT(webhook_id,event_id) DO NOTHING`, event.ID, event.Type, payload, *event.WorkspaceID)
-	return err
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	// Serialize fan-out with lifecycle's Workspace lock. After waiting for a
+	// concurrent purge, recheck its committed state before admitting work that
+	// would need an endpoint secret already scheduled for destruction.
+	var state string
+	if err = tx.QueryRowContext(ctx, `SELECT status FROM workspaces WHERE id=$1 FOR SHARE`, *event.WorkspaceID).Scan(&state); err != nil {
+		return err
+	}
+	if state == "purging" || state == "deleted" {
+		return tx.Commit()
+	}
+	if _, err = tx.ExecContext(ctx, `INSERT INTO workspace_webhook_deliveries(workspace_id,webhook_id,event_id,event_type,payload) SELECT w.workspace_id,w.id,$1,$2,$3 FROM workspace_webhooks w JOIN workspace_webhook_subscriptions s ON s.webhook_id=w.id WHERE w.workspace_id=$4 AND w.enabled AND s.event_type=$2 ON CONFLICT(webhook_id,event_id) DO NOTHING`, event.ID, event.Type, payload, *event.WorkspaceID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }

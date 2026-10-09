@@ -23,6 +23,7 @@ declare module 'axios' {
     preserveAuthSessionOnFailure?: boolean
     sessionProofAccessToken?: string
     workspaceSecurityContext?: { path: string; session: string; generation: number }
+    decodeJSONBlobErrors?: boolean
   }
 }
 
@@ -125,8 +126,14 @@ apiClient.interceptors.response.use(
       const { status, data } = error.response
       const url = String(error.config?.url || '')
 
-      // Validate `data` shape to avoid HTML error pages breaking our error handling.
-      const apiData = (typeof data === 'object' && data !== null ? data : {}) as Record<string, any>
+      // A binary download can fail with a JSON API denial. Decode only opted-in,
+      // small JSON errors so the existing MFA/SSO recovery keeps its error code.
+      let decoded: unknown = data
+      if (originalRequest?.decodeJSONBlobErrors && originalRequest.responseType === 'blob' && data instanceof Blob && data.size <= 64 * 1024 && data.type.split(';')[0].trim().toLowerCase() === 'application/json') {
+        try { decoded = JSON.parse(await data.text()) } catch { /* Keep the original HTTP denial for malformed JSON. */ }
+      }
+      // Validate the shape to avoid HTML error pages breaking error handling.
+      const apiData = (typeof decoded === 'object' && decoded !== null ? decoded : {}) as Record<string, any>
 
       // Ops monitoring disabled: treat as feature-flagged 404, and proactively redirect away
       // from ops pages to avoid broken UI states.

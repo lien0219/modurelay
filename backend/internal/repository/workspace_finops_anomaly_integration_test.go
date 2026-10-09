@@ -33,31 +33,7 @@ func newAnomalyWorkspaceFixture(t *testing.T) anomalyWorkspaceFixture {
 	project, err := workspaces.CreateProject(ctx, owner.ID, workspace.ID, service.ProjectInput{Name: "Anomaly Project", Slug: "anomaly-project-" + uuid.NewString()})
 	require.NoError(t, err)
 
-	cleanupAnomalyWorkspace(t, workspace.ID)
 	return anomalyWorkspaceFixture{ctx: ctx, repo: repo, owner: owner, ws: workspace, project: project}
-}
-
-func cleanupAnomalyWorkspace(t *testing.T, workspaceID int64) {
-	t.Helper()
-	// Register after isolateWorkspaceTestFixtures so this cleanup runs first.
-	t.Cleanup(func() {
-		for _, query := range []string{
-			`DELETE FROM domain_event_outbox WHERE event_id IN (SELECT id FROM domain_events WHERE workspace_id=$1 AND subject_type='finops_anomaly')`,
-			`DELETE FROM user_notifications WHERE workspace_id=$1 AND event_id IN (SELECT id FROM domain_events WHERE workspace_id=$1 AND subject_type='finops_anomaly')`,
-			`DELETE FROM domain_events WHERE workspace_id=$1 AND subject_type='finops_anomaly'`,
-			`DELETE FROM workspace_audit_logs WHERE workspace_id=$1 AND action LIKE 'finops_anomaly_%'`,
-			`DELETE FROM finops_anomaly_detection_leases WHERE workspace_id=$1`,
-		} {
-			_, err := integrationDB.ExecContext(context.Background(), query, workspaceID)
-			require.NoError(t, err, "clean up anomaly fixture")
-		}
-		// Evidence snapshots deliberately reject DELETE. The integration database
-		// is private to this package run, so TRUNCATE is the safe test teardown.
-		_, err := integrationDB.ExecContext(context.Background(), `TRUNCATE TABLE finops_anomaly_snapshots RESTART IDENTITY CASCADE`)
-		require.NoError(t, err, "truncate immutable anomaly evidence")
-		_, err = integrationDB.ExecContext(context.Background(), `DELETE FROM finops_anomaly_detector_status`)
-		require.NoError(t, err, "clean up anomaly detector status")
-	})
 }
 
 func anomalyDetectionFixture(workspaceID, projectID int64, detector, dimensionType, dimensionValue string, window time.Time) service.FinOpsAnomalyDetection {
@@ -189,7 +165,6 @@ func TestFinOpsAnomalyPostgresPersistsIdempotentlyAndProtectsEvidence(t *testing
 	require.NoError(t, err)
 	otherProject, err := workspaces.CreateProject(ctx, otherOwner.ID, otherWorkspace.ID, service.ProjectInput{Name: "Other Project", Slug: "other-project-" + uuid.NewString()})
 	require.NoError(t, err)
-	cleanupAnomalyWorkspace(t, otherWorkspace.ID)
 	otherDetection := anomalyDetectionFixture(otherWorkspace.ID, otherProject.ID, service.AnomalyDetectorSpendSpike, service.AnomalyScopeProject, "project", time.Date(2026, 10, 8, 2, 0, 0, 0, time.UTC))
 	created, err = repo.persistAnomalyDetection(ctx, otherDetection, otherDetection.WindowStart.Add(-28*24*time.Hour), otherDetection.WindowStart)
 	require.NoError(t, err)

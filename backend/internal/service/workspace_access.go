@@ -41,6 +41,13 @@ var projectScopedPermissions = map[string]struct{}{
 }
 
 func init() {
+	workspaceRolePermissions["owner"] = append(workspaceRolePermissions["owner"], "lifecycle.read", "lifecycle.manage", "export.create", "export.read", "export.download", "export.cancel", "workspace.restore", "deletion.request", "deletion.cancel", "deletion.retry")
+	workspaceRolePermissions["admin"] = append(workspaceRolePermissions["admin"], "lifecycle.read")
+	for _, role := range []string{"owner", "admin"} {
+		workspaceRolePermissions[role] = append(workspaceRolePermissions[role], "project.restore")
+	}
+	projectRolePermissions[ProjectAccessRoleAdmin] = append(projectRolePermissions[ProjectAccessRoleAdmin], "project.restore")
+	projectScopedPermissions["project.restore"] = struct{}{}
 	// Policy permissions live in the same central role map as every other
 	// tenant capability. Read access is available to all tenant roles; policy
 	// mutation is intentionally narrower because it affects all credentials in
@@ -122,7 +129,7 @@ func WorkspaceEffectivePermissions(a *WorkspaceAccess) []string {
 	}
 	reads := []string{}
 	for _, p := range permissions {
-		if strings.HasSuffix(p, ".read") {
+		if strings.HasSuffix(p, ".read") || lifecyclePermissionForState(a, p) {
 			reads = append(reads, p)
 		}
 	}
@@ -163,10 +170,33 @@ func CheckWorkspacePermission(a *WorkspaceAccess, permission string) error {
 	} else if !HasWorkspacePermission(a.Member.Role, permission) {
 		return ErrWorkspaceForbidden
 	}
-	if !strings.HasSuffix(permission, ".read") && (a.Workspace.Status != "active" || (a.Project != nil && a.Project.Status != "active")) {
+	if !strings.HasSuffix(permission, ".read") && !lifecyclePermissionForState(a, permission) && (a.Workspace.Status != "active" || (a.Project != nil && a.Project.Status != "active")) {
 		return ErrWorkspaceConflict
 	}
 	return nil
+}
+
+func lifecyclePermissionForState(a *WorkspaceAccess, permission string) bool {
+	if a == nil || a.Workspace == nil {
+		return false
+	}
+	status := a.Workspace.Status
+	switch permission {
+	case "workspace.restore":
+		return status == "archived" && a.Project == nil
+	case "project.restore":
+		return status == "active" && a.Project != nil && a.Project.Status == "archived"
+	case "export.create", "deletion.request":
+		return (status == "active" || status == "archived") && a.Project == nil
+	case "export.download", "export.cancel":
+		return a.Project == nil && (status == "archived" || status == "pending_deletion" || status == "deleted")
+	case "deletion.cancel":
+		return status == "pending_deletion" && a.Project == nil
+	case "deletion.retry":
+		return (status == "pending_deletion" || status == "purging") && a.Project == nil
+	default:
+		return false
+	}
 }
 
 type WorkspaceAccessService struct{ repo WorkspaceRepository }

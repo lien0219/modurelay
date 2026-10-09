@@ -21,6 +21,10 @@ func insertWorkspaceMutationEvent(ctx context.Context, q workspaceSQL, workspace
 		eventType = service.EventWorkspaceUpdated
 	case "workspace_archived":
 		eventType = service.EventWorkspaceArchived
+	case "workspace_restored":
+		eventType = service.EventWorkspaceRestored
+	case "retention_updated":
+		eventType = service.EventWorkspaceRetentionUpdated
 	case "workspace_suspended":
 		eventType = service.EventWorkspaceSuspended
 	case "workspace_active", "workspace_resumed":
@@ -33,6 +37,8 @@ func insertWorkspaceMutationEvent(ctx context.Context, q workspaceSQL, workspace
 		eventType = service.EventProjectUpdated
 	case "project_archived":
 		eventType = service.EventProjectArchived
+	case "project_restored":
+		eventType = service.EventProjectRestored
 	case "member_invited":
 		eventType = service.EventMemberInvited
 	case "member_joined":

@@ -305,7 +305,7 @@ func (r *workspaceRepository) AdminSetStatus(ctx context.Context, a, w int64, st
 	if e != nil {
 		return e
 	}
-	if ws.Status == "archived" && status != "archived" {
+	if ws.Status == "pending_deletion" || ws.Status == "purging" || ws.Status == "deleted" || (ws.Status == "archived" && status != "archived") {
 		return service.ErrWorkspaceConflict
 	}
 	if status == "active" {

@@ -10,7 +10,8 @@ This document is the durable progress source for the Enterprise Workspace progra
 - C2 local commit / Phase D baseline: `6981e17de52d87ba4723b28452ad8e455e0317b5`, `feat(scim): add enterprise identity provisioning`.
 - Phase D boundary: `feat(security): add workspace security policies and assurance enforcement`; the delivery response records its exact local SHA.
 - Phase E boundary: current implementation starts from `a7e8427a6` (migration ceiling 297); the local Phase E SHA is resolved from Git after commit because a commit cannot embed its own SHA.
-- Migration ceiling after F: 299. Phases D, E, and F are COMPLETE; Phase G is NEXT. Historical Phase A/B/C/D audits and verification records are retained below.
+- Phase G baseline: `3888ba452d8da926d1d6d234b7641acb6ebcc193`; local boundary `feat(lifecycle): add workspace retention export and deletion lifecycle` (SHA resolved after commit).
+- Migration ceiling after G: 301. Phases D, E, F and G are COMPLETE; Phase H is NEXT. Historical audits and verification records remain below. Local completion does not authorize production lifecycle activation.
 
 ## Current Enterprise Capability Matrix
 
@@ -39,7 +40,7 @@ This document is the durable progress source for the Enterprise Workspace progra
 | Workspace security policy | Implemented | Migration297 extends one canonical SQL policy; actual Session MFA/original age/provider approval and shared transactional Invitation/JIT/SCIM admission; functional UI and bounded recovery | Phase D |
 | FinOps anomaly detection | Implemented | Migration 298 immutable snapshots/findings, bounded rollup detector, lease worker, RBAC/API/UI | Phase E |
 | Cost centers/tags/environment allocation | Implemented | Migration 299 immutable allocation snapshots, hourly rollups, tenant-scoped CRUD/report APIs, and bilingual Workspace FinOps UI | Phase F |
-| Retention/export/deletion lifecycle | Partial | Existing retention workers cover current event/notification/webhook data; enterprise export/deletion is absent | Phase G |
+| Retention/export/deletion lifecycle | Implemented | Migrations300–301, enforced floors/financial protection, encrypted MVCC tenant exports, controlled restore and resumable business closure with retained evidence; functional bilingual UI | Phase G |
 | Enterprise admin diagnostics | Partial | Global workspace list/inspect/status exists; health/backlog/search controls are absent | Phase H |
 | Production hardening | Partial | Existing tests cover many billing/policy invariants; full enterprise matrix does not yet exist | Phase I |
 | Functional freeze, unified UI, final release gate | Not started | Explicitly deferred until functional phases are complete | J–L |
@@ -48,8 +49,7 @@ This document is the durable progress source for the Enterprise Workspace progra
 
 | Missing capability | Contract | Planned phase | Blocking risk |
 | --- | --- | --- | --- |
-| Security policy | MFA/SSO/session/domain/invitation controls | D | Human control-plane bypass |
-| Lifecycle/export/admin | Retention floors, tenant-owned exports, controlled emergency actions | G–H | Data loss and operator overreach |
+| Global admin diagnostics/operations | Health/backlog/search and controlled emergency actions; tenant ownership remains separate | H | Operator overreach and financial integrity |
 | Cross-module hardening | Tenant matrix, concurrency, chaos/recovery, rehearsal | I | Production integrity |
 
 ## Architecture Risks and gates
@@ -74,9 +74,9 @@ This document is the durable progress source for the Enterprise Workspace progra
 | D | Workspace security policy | One human security evaluator and shared transactional member admission | 297 | `feat(security): add workspace security policies and assurance enforcement`; exact SHA at delivery | Focused/realPG/race/IDOR/vet/build/pinned lint/frontend/Canvas gates PASS; raw full-suite baseline failures and transient separately disclosed; formal scan completed with partial sealed coverage and two remediated initial findings | COMPLETE | Conservative local MFA; access-JWT baseline revocation; Workspace contention; browser/provider/load NOT RUN | IdP/passkey MFA mapping, immutable final-commit formal scan in I/L, arbitrary ABAC |
 | E | Advanced FinOps anomalies | Immutable usage snapshots plus bounded detector jobs | 298 | `feat(finops): add workspace anomaly detection and findings` (SHA resolved after commit) | Targeted/backend/frontend gates recorded below; full-suite baseline comparison and unavailable integration/manual checks explicitly classified | COMPLETE | Late rollups, bounded candidate omission, PostgreSQL/manual/load availability | AI remediation |
 | F | Cost centers, tags, environment allocation | New-write dimensions, explicit legacy NULLs, immutable admission snapshots, bounded rollups | 299 | `feat(finops): add workspace cost allocation and tags` (SHA resolved from Git) | Targeted/migration/PostgreSQL/race/static/frontend/Canvas gates PASS; complete backend suites retain only the recorded Windows `sh.exe` baseline failures; manual/provider/load/deployment gates NOT RUN | COMPLETE | Historical attribution drift; bounded tag overlap; external acceptance availability | ERP tree |
-| G | Retention, export, archive/restore, deletion lifecycle | Tenant-owned jobs, retention floors, resumable purge | 300+ | Not started | Not run | NEXT | Data loss, legal retention | Complex legal hold |
-| H | Admin diagnostics and operations | Global Admin remains outside tenant membership | 300+ | Not started | Not run | NOT RUN | High-cardinality metrics, emergency actions | SIEM integration |
-| I | Production hardening | Lifecycle/isolation/concurrency/chaos/migration rehearsal gates | 301+ | Not started | Not run | NOT RUN | Recovery and billing integrity | New business features |
+| G | Retention, export, archive/restore, deletion lifecycle | Business closure separated from protected evidence; platform floors, MVCC encrypted tenant exports and token-fenced resumable purge | 300–301 | `feat(lifecycle): add workspace retention export and deletion lifecycle` (SHA resolved from Git) | Native vet/build/compatible lint, complete default/integration, PostgreSQL16/18.1, relevant race, frontend433files3252tests and Canvas7 PASS; old native lint TOOLCHAIN BLOCKED and full unit-tag Ollama baseline failure precisely disclosed below | COMPLETE | DDL lock window, key custody/rotation, retained metadata, real storage/manual/load gates | Complex legal hold; production activation |
+| H | Admin diagnostics and operations | Global Admin remains outside tenant membership | 302+ if needed | Not started | Not run | NEXT | High-cardinality metrics, emergency actions | SIEM integration |
+| I | Production hardening | Lifecycle/isolation/concurrency/chaos/migration rehearsal gates | After H if needed | Not started | Not run | NOT RUN | Recovery and billing integrity | New business features |
 | J | Functional freeze | Only bugs, UI, docs, release blockers after gate | None expected | Not started | Not run | NOT RUN | Scope creep | — |
 | K | Unified UI/UX | Frosted Precision for official non-home surfaces after functionality freeze | None expected | Not started | Not run | NOT RUN | Visual regressions | Home Sylva changes |
 | L | Final release gate/manual acceptance | Full backend/frontend/security/migration/performance gate | None expected | Not started | Not run | NOT RUN | Real-provider availability | — |
@@ -189,7 +189,7 @@ STS, AWS-style temporary credentials, workload identity federation, PrivateLink,
 
 ## Verification policy
 
-Every phase records targeted tests, full relevant tests, security/diff review, and explicit `PASS`, `FAIL`, `PRE-EXISTING`, or `NOT RUN` classification. A failure is compared with the clean parent baseline before it is classified. No push or PR is part of this workstream.
+Every phase records targeted tests, full relevant tests, security/diff review, and explicit `PASS`, `FAIL`, `PRE-EXISTING`, `TOOLCHAIN BLOCKED` or `NOT RUN` classification. A failure is compared with the clean parent baseline before it is classified. No push or PR is part of this workstream.
 
 ## Phase C1 completion record (2026-10-07)
 
@@ -450,8 +450,74 @@ remain unchanged.
 | Complete backend default/integration suites | PRE-EXISTING | Current commands retain only the recorded three Windows `backup_pg_dumper` missing-`sh.exe` failures and unlock-expectation cascade; no Phase F-only failure was introduced. |
 | Manual/provider/load/deployment | NOT RUN | Authenticated browser/manual, real upstream/provider, production load/chaos, and deployment cutover remain release-level gates. |
 
-Phase F is COMPLETE at local commit boundary
+At the historical Phase F boundary, Phase F was COMPLETE at local commit
 `feat(finops): add workspace cost allocation and tags`; its immutable SHA is
 resolved from Git after commit. Phase G (retention, export, archive/restore,
-and deletion lifecycle) is NEXT. No push, PR, branch switch, `main`/`develop`
+and deletion lifecycle) was NEXT. No push, PR, branch switch, `main`/`develop`
 mutation, or deployment is part of this phase.
+
+## Phase G completion record (2026-10-09)
+
+Phase G completes Retention, tenant Export, Archive/Restore and Deletion Lifecycle
+from3888ba452. Workspace business closure is independent of protected financial
+and audit evidence retention. An eligible Organization deletion job completes
+with `business_closed=true` and `protected_evidence_retained=true`; historical
+finance alone does not strand the job. Pending funds/reservations, unsettled
+or unknown async media/recovery, pending deliveries/exports and active operator
+holds block irreversible work with explicit reasons. Personal Workspace and
+Global User lifecycles remain separate.
+
+Migration300 enforces platform/tenant policy precedence and conservative
+indefinite financial/audit defaults, protects tenant Usage/reservations/dedup,
+strengthens allocation parent RESTRICT and immutable DELETE/TRUNCATE guards,
+and makes legacy cleanup/partition and delivery retention bounded and safe.
+Migration301 adds durable export/deletion jobs, attempt objects, one-use grants/
+challenges, minimal operator holds, grace floors and constrained lifecycle states.
+No trigger/FK was disabled and no historical attribution was rewritten.
+
+Exports use bounded REPEATABLE READ snapshots, exact decimal section totals,
+manifest hashes/visibility semantics, an allowlist excluding credentials and
+global personal/billing data, AES-GCM ciphertext and short authenticated POST
+grants. Workers use bounded attempts, SKIP LOCKED, live-clock lease/token fences,
+durable checkpoints/reaping and graceful cancellation. Purge removes/revokes
+eligible resources and credentials in200-row phases, retains all financial
+parents and independently verifies final resource invariants before closure.
+Restore applies live RBAC/security/recent proof and never revives revoked keys
+or disabled identities. Functional bilingual UI preserves existing routes and
+settings while displaying retention, exports, blockers and resumable job states.
+
+PASS: native Go1.27.2 vet/build; native lint2.14.0 with original rules (`0 issues`);
+equivalent-source isolated lint2.13.0 (`0 issues`); complete default/integration
+backend; Phase G/migration/media/FinOps E/F/Workspace Security regressions;
+real PostgreSQL16/18.1 lifecycle/financial tests and relevant race; full frontend
+433files/3252tests, lint/typecheck/i18n/build; Canvas7/7; independent backend/
+frontend/destructive review and final scoped security discovery/sealing.
+
+PRE-EXISTING / TOOLCHAIN BLOCKED: native lint2.13.0 cannot import Go1.27.2 export
+data version5, reproduced on actual3888ba452. The repository CI already pins
+the verified compatible2.14.0; require compatible CI checks before PR/release.
+PRE-EXISTING (observed FAIL): the additional complete unit-tag suite has only
+the untouched Ollama `StaleLongDoesNotOverrideNewShort` line405 assertion; the
+exact native test reproduces on both current and actual starting source at
+count20. It is not declared PASS, skipped or repaired by weakening its assertion.
+Process-local Git Bash PATH resolves the independently reproduced Windows sh
+baseline and lets the complete default/integration suites pass. Earlier parallel
+lint timeout/runner-lock failures recovered in serialized runs, not as baselines.
+
+NOT RUN: authenticated browser/mobile/theme/manual, real provider and S3 IAM/TLS,
+production load/chaos, migration-lock timing, backup/restore/key-drain rehearsal,
+deployment/cutover and any real tenant lifecycle operation. Feature and purge
+switches default off. The single artifact key requires approved drain or a
+separate key-ring migration before rotation. Complex holds and global diagnostics
+remain separate phases; Phase G's own concurrency/financial tests were executed.
+
+Contracts, architecture/risks, executed evidence and release runbook:
+[lifecycle](ENTERPRISE_DATA_LIFECYCLE.md),
+[architecture](ENTERPRISE_DATA_LIFECYCLE_ARCHITECTURE.md),
+[acceptance](ENTERPRISE_DATA_LIFECYCLE_ACCEPTANCE.md),
+[plan](ENTERPRISE_DATA_LIFECYCLE_PLAN.md).
+
+The local boundary is `feat(lifecycle): add workspace retention export and
+deletion lifecycle`; resolve its exact SHA from Git after commit. Phase G
+COMPLETE, Phase H NEXT. No push, PR, branch switch, main/develop or port18081
+mutation, production activation or deployment belongs to this phase.

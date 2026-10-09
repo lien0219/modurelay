@@ -535,7 +535,7 @@ func TestBuildUsageCleanupWhere(t *testing.T) {
 		BillingType: &billingType,
 	})
 
-	require.Equal(t, "created_at >= $1 AND created_at <= $2 AND user_id = $3 AND api_key_id = $4 AND account_id = $5 AND group_id = $6 AND model = $7 AND stream = $8 AND billing_type = $9", where)
+	require.Equal(t, "created_at >= $1 AND created_at <= $2 AND user_id = $3 AND api_key_id = $4 AND account_id = $5 AND group_id = $6 AND model = $7 AND stream = $8 AND billing_type = $9"+expectedLegacyUsageProtection, where)
 	require.Equal(t, []any{start, end, userID, apiKeyID, accountID, groupID, "gpt-4", stream, billingType}, args)
 }
 
@@ -552,7 +552,7 @@ func TestBuildUsageCleanupWhereRequestTypePriority(t *testing.T) {
 		Stream:      &stream,
 	})
 
-	require.Equal(t, "created_at >= $1 AND created_at <= $2 AND (request_type = $3 OR (request_type = 0 AND openai_ws_mode = TRUE))", where)
+	require.Equal(t, "created_at >= $1 AND created_at <= $2 AND (request_type = $3 OR (request_type = 0 AND openai_ws_mode = TRUE))"+expectedLegacyUsageProtection, where)
 	require.Equal(t, []any{start, end, requestType}, args)
 }
 
@@ -567,7 +567,7 @@ func TestBuildUsageCleanupWhereRequestTypeLegacyFallback(t *testing.T) {
 		RequestType: &requestType,
 	})
 
-	require.Equal(t, "created_at >= $1 AND created_at <= $2 AND (request_type = $3 OR (request_type = 0 AND stream = TRUE AND openai_ws_mode = FALSE))", where)
+	require.Equal(t, "created_at >= $1 AND created_at <= $2 AND (request_type = $3 OR (request_type = 0 AND stream = TRUE AND openai_ws_mode = FALSE))"+expectedLegacyUsageProtection, where)
 	require.Equal(t, []any{start, end, requestType}, args)
 }
 
@@ -582,6 +582,12 @@ func TestBuildUsageCleanupWhereModelEmpty(t *testing.T) {
 		Model:     &model,
 	})
 
-	require.Equal(t, "created_at >= $1 AND created_at <= $2", where)
+	require.Equal(t, "created_at >= $1 AND created_at <= $2"+expectedLegacyUsageProtection, where)
 	require.Equal(t, []any{start, end}, args)
 }
+
+const expectedLegacyUsageProtection = ` AND workspace_id IS NULL AND project_id IS NULL
+	AND billing_principal_user_id IS NULL AND budget_reservation_id IS NULL
+	AND service_account_id IS NULL AND NOT EXISTS (
+		SELECT 1 FROM usage_allocation_snapshots s WHERE s.usage_log_id=usage_logs.id
+	)`

@@ -13,6 +13,7 @@ import workspace from './workspace'
 import workspaceWebhooks from './workspaceWebhooks'
 import workspaceIdentity from './workspaceIdentity'
 import workspaceSecurity from './workspaceSecurity'
+import workspaceLifecycle from './workspaceLifecycle'
 import notifications from './notifications'
 import serviceAccounts from './serviceAccounts'
 
@@ -28,7 +29,7 @@ export default {
   ...distribution,
   ...canvas,
   ...tools,
-  workspace: { ...workspace.workspace, ...workspaceWebhooks.workspace, ...workspaceIdentity.workspace, ...workspaceSecurity.workspace },
+  workspace: { ...workspace.workspace, ...workspaceWebhooks.workspace, ...workspaceIdentity.workspace, ...workspaceSecurity.workspace, ...workspaceLifecycle.workspace },
   ...notifications,
   ...serviceAccounts,
   nav: {

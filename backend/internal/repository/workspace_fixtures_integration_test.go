@@ -4,64 +4,62 @@ package repository
 
 import (
 	"context"
+	"fmt"
+	"net/url"
+	"regexp"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
+	"entgo.io/ent/dialect"
+	entsql "entgo.io/ent/dialect/sql"
+	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/lib/pq"
 	"github.com/stretchr/testify/require"
 )
 
-// Workspace tests need committed rows to exercise concurrent transactions. The
-// integration package runs these tests sequentially; retain the existing fixture
-// IDs and remove only rows created by this test, in foreign-key dependency order.
+var workspaceFixtureSequence uint64
+var workspaceFixtureTests sync.Map
+var disposableWorkspaceDBName = regexp.MustCompile(`^modurelay_fixture_[0-9]+$`)
+
+// Workspace tests need committed rows to exercise concurrent transactions. Each
+// sequential test gets a pristine disposable database. Teardown never deletes
+// protected evidence or disables triggers. Nested helper calls are idempotent;
+// nested subtests restore the parent's database before the parent resumes.
 func isolateWorkspaceTestFixtures(t *testing.T) {
 	t.Helper()
-	var userID, workspaceID, groupID, accountID int64
-	err := integrationDB.QueryRow(`SELECT
-	 COALESCE((SELECT MAX(id) FROM users),0),COALESCE((SELECT MAX(id) FROM workspaces),0),
-	 COALESCE((SELECT MAX(id) FROM groups),0),COALESCE((SELECT MAX(id) FROM accounts),0)`).
-		Scan(&userID, &workspaceID, &groupID, &accountID)
+	if _, ok := workspaceFixtureTests.Load(t); ok {
+		return
+	}
+	name := fmt.Sprintf("modurelay_fixture_%d", atomic.AddUint64(&workspaceFixtureSequence, 1))
+	require.True(t, disposableWorkspaceDBName.MatchString(name), "bounded disposable database name")
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	_, err := integrationAdminDB.ExecContext(ctx, "CREATE DATABASE "+pq.QuoteIdentifier(name)+" WITH TEMPLATE "+pq.QuoteIdentifier(workspaceFixtureTemplate))
 	require.NoError(t, err)
+	previousDB, previousClient := integrationDB, integrationEntClient
+	workspaceFixtureTests.Store(t, name)
+	var client *dbent.Client
 	t.Cleanup(func() {
-		for _, statement := range []struct {
-			query string
-			args  []any
-		}{
-			{`DELETE FROM domain_events WHERE workspace_id>$1 OR actor_user_id>$2`, []any{workspaceID, userID}},
-			{`DELETE FROM budget_alert_transitions WHERE (scope_type='workspace' AND scope_id>$1) OR (scope_type='project' AND scope_id IN (SELECT id FROM projects WHERE workspace_id>$1))`, []any{workspaceID}},
-			{`DELETE FROM usage_logs WHERE user_id>$1 OR workspace_id>$2`, []any{userID, workspaceID}},
-			{`DELETE FROM batch_image_jobs WHERE user_id>$1 OR workspace_id>$2`, []any{userID, workspaceID}},
-			{`DELETE FROM usage_tenant_hourly_rollups WHERE workspace_id>$1`, []any{workspaceID}},
-			{`DELETE FROM usage_service_account_hourly_rollups WHERE workspace_id>$1`, []any{workspaceID}},
-			{`DELETE FROM budget_reservations WHERE workspace_id>$1`, []any{workspaceID}},
-			{`DELETE FROM budget_counters WHERE workspace_scope_id>$1 OR project_scope_id IN (SELECT id FROM projects WHERE workspace_id>$1)`, []any{workspaceID}},
-			{`DELETE FROM api_keys WHERE user_id>$1 OR project_id IN (SELECT id FROM projects WHERE workspace_id>$2)`, []any{userID, workspaceID}},
-			{`DELETE FROM service_accounts WHERE workspace_id>$1`, []any{workspaceID}},
-			{`DELETE FROM project_access_grants WHERE workspace_id>$1`, []any{workspaceID}},
-			{`UPDATE workspace_members SET effective_membership_source_id=NULL WHERE workspace_id>$1`, []any{workspaceID}},
-			{`DELETE FROM workspace_team_membership_sources WHERE workspace_id>$1`, []any{workspaceID}},
-			{`DELETE FROM workspace_membership_sources WHERE workspace_id>$1`, []any{workspaceID}},
-			{`DELETE FROM workspace_scim_group_members WHERE workspace_id>$1`, []any{workspaceID}},
-			{`DELETE FROM workspace_scim_groups WHERE workspace_id>$1`, []any{workspaceID}},
-			{`DELETE FROM workspace_scim_users WHERE workspace_id>$1`, []any{workspaceID}},
-			{`DELETE FROM workspace_scim_tokens WHERE workspace_id>$1`, []any{workspaceID}},
-			{`DELETE FROM workspace_scim_connectors WHERE workspace_id>$1`, []any{workspaceID}},
-			{`DELETE FROM workspace_team_members WHERE workspace_id>$1`, []any{workspaceID}},
-			{`DELETE FROM workspace_teams WHERE workspace_id>$1`, []any{workspaceID}},
-			{`DELETE FROM workspace_audit_logs WHERE workspace_id>$1`, []any{workspaceID}},
-			{`DELETE FROM workspace_invitations WHERE workspace_id>$1`, []any{workspaceID}},
-			{`DELETE FROM workspace_members WHERE workspace_id>$1`, []any{workspaceID}},
-			{`DELETE FROM projects WHERE workspace_id>$1`, []any{workspaceID}},
-			{`DELETE FROM workspaces WHERE id>$1`, []any{workspaceID}},
-			{`DELETE FROM user_subscriptions WHERE user_id>$1 OR group_id>$2`, []any{userID, groupID}},
-			{`DELETE FROM user_allowed_groups WHERE user_id>$1 OR group_id>$2`, []any{userID, groupID}},
-			{`DELETE FROM account_groups WHERE account_id>$1 OR group_id>$2`, []any{accountID, groupID}},
-			{`DELETE FROM users WHERE id>$1`, []any{userID}},
-			{`DELETE FROM accounts WHERE id>$1`, []any{accountID}},
-			{`DELETE FROM groups WHERE id>$1`, []any{groupID}},
-		} {
-			_, err := integrationDB.ExecContext(context.Background(), statement.query, statement.args...)
-			require.NoError(t, err, "clean up committed workspace test fixtures")
+		if client != nil {
+			_ = client.Close()
 		}
+		integrationDB, integrationEntClient = previousDB, previousClient
+		workspaceFixtureTests.Delete(t)
+		dropCtx, dropCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer dropCancel()
+		require.True(t, disposableWorkspaceDBName.MatchString(name), "DROP targets only this disposable database")
+		_, err := integrationAdminDB.ExecContext(dropCtx, "DROP DATABASE "+pq.QuoteIdentifier(name)+" WITH (FORCE)")
+		require.NoError(t, err, "drop disposable fixture database")
 	})
+	fixtureURL, err := url.Parse(integrationDSN)
+	require.NoError(t, err)
+	fixtureURL.Path = "/" + name
+	db, err := openSQLWithRetry(ctx, fixtureURL.String(), 15*time.Second)
+	require.NoError(t, err)
+	client = dbent.NewClient(dbent.Driver(entsql.OpenDB(dialect.Postgres, db)))
+	integrationDB, integrationEntClient = db, client
 }
 
 // Registration now creates a personal workspace in the user transaction. Legacy
