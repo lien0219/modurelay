@@ -19,6 +19,7 @@ import (
 const (
 	videoBillingRecoveryPollInterval = 10 * time.Second
 	videoBillingRecoveryQueryTimeout = 30 * time.Second
+	videoMediaAttemptRecoveryGrace   = 5 * time.Minute
 )
 
 type videoRecoveryAPIKeyLoader interface {
@@ -102,6 +103,16 @@ func (s *OpenAIGatewayService) runVideoBillingRecovery(ctx context.Context) {
 }
 
 func (s *OpenAIGatewayService) recoverDueVideoBilling(ctx context.Context) {
+	if attempts, ok := s.cache.(MediaAttemptRecovery); ok {
+		if recovered, err := attempts.RecoverMediaAttempts(ctx, time.Now().Add(-videoMediaAttemptRecoveryGrace), grokVideoRecoveryBatchLimit); err != nil {
+			logger.L().Warn("video_media_attempt_recovery.failed", zap.Error(err))
+		} else if recovered > 0 {
+			logger.L().Warn("video_media_attempt_recovery.unknown_outcome",
+				zap.Int("count", recovered),
+				zap.Duration("grace", videoMediaAttemptRecoveryGrace),
+			)
+		}
+	}
 	recovery, ok := s.cache.(GrokVideoRecoveryCache)
 	if !ok {
 		return
@@ -178,6 +189,9 @@ func (s *OpenAIGatewayService) recoverVideoBillingKey(ctx context.Context, key s
 		return true, nil
 	}
 
+	if pending.Settlement != nil {
+		return s.replayFrozenVideoSettlement(ctx, &pending)
+	}
 	account, err := s.accountRepo.GetByID(ctx, pending.AccountID)
 	if err != nil || account == nil {
 		return false, fmt.Errorf("load video account %d: %w", pending.AccountID, err)

@@ -1332,6 +1332,16 @@ data_lifecycle:
   # Stable 32-byte hex key, stored in the secret manager. Never use an ephemeral
   # key; retain it until all artifacts encrypted with it have expired.
   encryption_key: ""
+  # Keep encryption_key unchanged for every MRLEX01 artifact, including held,
+  # retained and orphan objects. The ring below adds explicit MRLEX02 readers.
+  active_key_id: ""
+  keys: [] # Secret-mounted entries: {id, version (>0), status: active|decrypt_only, key: <32-byte hex>}
+  # Deploy compatible readers first. Promotion requires the complete approved
+  # fleet inventory, matching live registrations and a V1/V2 rollback binary.
+  v2_write_enabled: false
+  instance_id: ""
+  expected_instance_ids: []
+  v2_rollback_compatible: false
   endpoint: ""
   region: "auto"
   bucket: ""

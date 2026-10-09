@@ -125,7 +125,7 @@ var ProviderSet = wire.NewSet(
 	NewPlanCatalogRepository,
 
 	// Cache implementations
-	NewGatewayCache,
+	NewDurableGatewayCache,
 	NewBillingCache,
 	NewAPIKeyCache,
 	NewTempUnschedCache,
@@ -143,7 +143,7 @@ var ProviderSet = wire.NewSet(
 	NewRedeemCache,
 	NewUpdateCache,
 	NewGeminiTokenCache,
-	NewImageTaskStore,
+	NewDurableImageTaskStore,
 	NewBatchImageQueue,
 	NewBatchImageDownloadLimiter,
 	NewLeaderLockCache,

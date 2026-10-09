@@ -84,6 +84,10 @@ type ImageTaskStore interface {
 	Get(ctx context.Context, id string) (*ImageTaskRecord, error)
 }
 
+type imageTaskProviderStartStore interface {
+	MarkImageProviderStarted(context.Context, string, int64) error
+}
+
 // ImageStorageResolver reports the currently effective object-storage binding.
 // It exists so the async image feature can be switched on and off from the admin
 // UI without a restart: the wiring below is fixed at startup, but the answer to
@@ -163,6 +167,20 @@ func (s *ImageTaskService) ExecutionTimeout() time.Duration {
 		return defaultImageTaskExecutionTimeout
 	}
 	return s.executionTimeout
+}
+
+// MarkProviderStarted persists the async task's provider-boundary marker when
+// the backing store supports durable media state. Redis-only stores remain
+// compatible and simply have no SQL marker to write.
+func (s *ImageTaskService) MarkProviderStarted(ctx context.Context, taskID string, accountID int64) error {
+	if s == nil || s.store == nil {
+		return ErrImageTaskUnavailable
+	}
+	marker, ok := s.store.(imageTaskProviderStartStore)
+	if !ok {
+		return nil
+	}
+	return marker.MarkImageProviderStarted(ctx, taskID, accountID)
 }
 
 func (s *ImageTaskService) Create(ctx context.Context, owner ImageTaskOwner) (*ImageTask, error) {

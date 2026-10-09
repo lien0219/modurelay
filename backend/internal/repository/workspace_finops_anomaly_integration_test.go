@@ -103,11 +103,14 @@ func TestFinOpsAnomalyPostgresPersistsIdempotentlyAndProtectsEvidence(t *testing
 	fixture := newAnomalyWorkspaceFixture(t)
 	ctx, repo, owner, workspace, project := fixture.ctx, fixture.repo, fixture.owner, fixture.ws, fixture.project
 	detection := anomalyDetectionFixture(workspace.ID, project.ID, service.AnomalyDetectorSpendSpike, service.AnomalyScopeProject, "project", time.Date(2026, 10, 8, 1, 0, 0, 0, time.UTC))
+	claimed, token, err := repo.claimAnomalyLease(ctx, workspace.ID, detection.WindowStart, detection.DetectorVersion)
+	require.NoError(t, err)
+	require.True(t, claimed)
 
-	created, err := repo.persistAnomalyDetection(ctx, detection, detection.WindowStart.Add(-28*24*time.Hour), detection.WindowStart)
+	created, err := repo.persistAnomalyDetection(ctx, detection, detection.WindowStart.Add(-28*24*time.Hour), detection.WindowStart, token)
 	require.NoError(t, err)
 	require.True(t, created)
-	created, err = repo.persistAnomalyDetection(ctx, detection, detection.WindowStart.Add(-28*24*time.Hour), detection.WindowStart)
+	created, err = repo.persistAnomalyDetection(ctx, detection, detection.WindowStart.Add(-28*24*time.Hour), detection.WindowStart, token)
 	require.NoError(t, err)
 	require.False(t, created, "fingerprint retry must not duplicate evidence or events")
 
@@ -166,7 +169,10 @@ func TestFinOpsAnomalyPostgresPersistsIdempotentlyAndProtectsEvidence(t *testing
 	otherProject, err := workspaces.CreateProject(ctx, otherOwner.ID, otherWorkspace.ID, service.ProjectInput{Name: "Other Project", Slug: "other-project-" + uuid.NewString()})
 	require.NoError(t, err)
 	otherDetection := anomalyDetectionFixture(otherWorkspace.ID, otherProject.ID, service.AnomalyDetectorSpendSpike, service.AnomalyScopeProject, "project", time.Date(2026, 10, 8, 2, 0, 0, 0, time.UTC))
-	created, err = repo.persistAnomalyDetection(ctx, otherDetection, otherDetection.WindowStart.Add(-28*24*time.Hour), otherDetection.WindowStart)
+	claimed, otherToken, err := repo.claimAnomalyLease(ctx, otherWorkspace.ID, otherDetection.WindowStart, otherDetection.DetectorVersion)
+	require.NoError(t, err)
+	require.True(t, claimed)
+	created, err = repo.persistAnomalyDetection(ctx, otherDetection, otherDetection.WindowStart.Add(-28*24*time.Hour), otherDetection.WindowStart, otherToken)
 	require.NoError(t, err)
 	require.True(t, created)
 	otherItems, otherTotal, err := repo.ListFinOpsAnomalies(ctx, service.FinOpsScope{WorkspaceID: otherWorkspace.ID}, service.FinOpsAnomalyFilter{Page: 1, PageSize: 10})
@@ -222,7 +228,7 @@ func TestFinOpsAnomalyPostgresLeaseTokenFencesExpiredWorker(t *testing.T) {
 	require.True(t, claimed)
 	require.NotEqual(t, winner.token, replacementToken)
 
-	require.NoError(t, repo.finishAnomalyLease(ctx, workspace.ID, bucket, service.FinOpsAnomalyDetectorVersion, winner.token, nil))
+	require.ErrorIs(t, repo.finishAnomalyLease(ctx, workspace.ID, bucket, service.FinOpsAnomalyDetectorVersion, winner.token, nil), service.ErrFinOpsAnomalyLeaseLost)
 	var completed bool
 	require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT completed_at IS NOT NULL FROM finops_anomaly_detection_leases WHERE workspace_id=$1 AND bucket_start=$2 AND detector_version=$3`, workspace.ID, bucket, service.FinOpsAnomalyDetectorVersion).Scan(&completed))
 	require.False(t, completed, "expired worker cannot complete a replacement lease")

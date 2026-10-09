@@ -127,8 +127,13 @@ func (s *OpenAIGatewayService) ForwardCompatibleVideo(
 		if account.ProxyID != nil && account.Proxy != nil {
 			proxyURL = account.Proxy.URL()
 		}
+		if index == 0 {
+			if err := markMediaProviderStart(ctx, endpoint, account.ID); err != nil {
+				releaseUpstreamCtx()
+				return nil, err
+			}
+		}
 		upstreamStart := time.Now()
-		markVideoProviderStarted(ctx, endpoint)
 		resp, err = s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
 		releaseUpstreamCtx()
 		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())

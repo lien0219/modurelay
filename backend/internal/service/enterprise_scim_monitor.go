@@ -13,11 +13,11 @@ type SCIMTokenExpiryRepository interface {
 // Expiry monitoring is independent of client traffic. Each scan is bounded and
 // repository transactions use the same workspace lock as token mutations.
 type SCIMTokenExpiryMonitor struct {
-	repo   SCIMRepository
-	cancel context.CancelFunc
-	wg     sync.WaitGroup
-	start  sync.Once
-	stop   sync.Once
+	repo             SCIMRepository
+	cancel           context.CancelFunc
+	wg               sync.WaitGroup
+	lifecycle        sync.Mutex
+	started, stopped bool
 }
 
 func NewSCIMTokenExpiryMonitor(repo SCIMRepository) *SCIMTokenExpiryMonitor {
@@ -35,32 +35,43 @@ func (m *SCIMTokenExpiryMonitor) runBatch(ctx context.Context) error {
 	return nil
 }
 func (m *SCIMTokenExpiryMonitor) Start() {
-	m.start.Do(func() {
-		ctx, cancel := context.WithCancel(context.Background())
-		m.cancel = cancel
-		m.wg.Add(1)
-		go func() {
-			defer m.wg.Done()
-			ticker := time.NewTicker(time.Hour)
-			defer ticker.Stop()
-			for {
-				batchCtx, batchCancel := context.WithTimeout(ctx, 20*time.Second)
-				_ = m.runBatch(batchCtx)
-				batchCancel()
-				select {
-				case <-ctx.Done():
-					return
-				case <-ticker.C:
-				}
+	if m == nil || m.repo == nil {
+		return
+	}
+	m.lifecycle.Lock()
+	defer m.lifecycle.Unlock()
+	if m.started || m.stopped {
+		return
+	}
+	m.started = true
+	ctx, cancel := context.WithCancel(context.Background())
+	m.cancel = cancel
+	m.wg.Add(1)
+	go func() {
+		defer m.wg.Done()
+		ticker := time.NewTicker(time.Hour)
+		defer ticker.Stop()
+		for {
+			batchCtx, batchCancel := context.WithTimeout(ctx, 20*time.Second)
+			_ = m.runBatch(batchCtx)
+			batchCancel()
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
 			}
-		}()
-	})
+		}
+	}()
 }
 func (m *SCIMTokenExpiryMonitor) Stop() {
-	m.stop.Do(func() {
-		if m.cancel != nil {
-			m.cancel()
-		}
-		m.wg.Wait()
-	})
+	if m == nil {
+		return
+	}
+	m.lifecycle.Lock()
+	m.stopped = true
+	if m.cancel != nil {
+		m.cancel()
+	}
+	m.lifecycle.Unlock()
+	m.wg.Wait()
 }

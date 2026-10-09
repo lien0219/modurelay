@@ -110,6 +110,15 @@ func (r *BatchImageWorkerRuntime) runBillingRecovery(ctx context.Context) {
 			return
 		}
 		_, _ = r.billingRecovery.ReleaseStaleUnsubmittedOnce(ctx)
+		if sqlRecovery, ok := r.billingRecovery.Repo.(BatchImageSQLRecovery); ok && r.worker.queue != nil {
+			if jobs, err := sqlRecovery.ListRecoverableBatchImageJobs(ctx, r.worker.opts.RecoverLimit); err == nil {
+				for _, job := range jobs {
+					if job != nil {
+						_ = r.worker.queue.Enqueue(ctx, job.BatchID)
+					}
+				}
+			}
+		}
 		sleepOrDone(ctx, interval)
 	}
 }

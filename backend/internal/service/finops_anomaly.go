@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -516,6 +517,12 @@ type FinOpsAnomalyDetectorStatus struct {
 	ScanDurationMS      int64      `json:"scan_duration_ms"`
 }
 
+var (
+	ErrFinOpsAnomalyLeaseLost      = errors.New("finops anomaly lease lost")
+	ErrFinOpsAnomalyRetryExhausted = errors.New("finops anomaly retries exhausted")
+	ErrFinOpsAnomalyRollupLimit    = errors.New("finops anomaly rollup input limit exceeded")
+)
+
 // FinOpsAnomalyRepository is optional on WorkspaceRepository to keep existing
 // focused test doubles source-compatible while production enables Phase E.
 type FinOpsAnomalyRepository interface {
@@ -529,12 +536,14 @@ type FinOpsAnomalyRepository interface {
 // FinOpsAnomalyWorker is a single process-wide bounded polling loop. The SQL
 // lease is the multi-instance guard; this lifecycle wrapper only owns shutdown.
 type FinOpsAnomalyWorker struct {
-	repo     FinOpsAnomalyRepository
-	cfg      FinOpsAnomalyConfig
-	interval time.Duration
-	ctx      context.Context
-	cancel   context.CancelFunc
-	wg       sync.WaitGroup
+	repo             FinOpsAnomalyRepository
+	cfg              FinOpsAnomalyConfig
+	interval         time.Duration
+	ctx              context.Context
+	cancel           context.CancelFunc
+	wg               sync.WaitGroup
+	lifecycle        sync.Mutex
+	started, stopped bool
 }
 
 func NewFinOpsAnomalyWorker(repo FinOpsAnomalyRepository, cfg FinOpsAnomalyConfig, interval time.Duration) *FinOpsAnomalyWorker {
@@ -549,6 +558,12 @@ func (w *FinOpsAnomalyWorker) Start() {
 	if w == nil || w.repo == nil {
 		return
 	}
+	w.lifecycle.Lock()
+	defer w.lifecycle.Unlock()
+	if w.started || w.stopped {
+		return
+	}
+	w.started = true
 	w.wg.Add(1)
 	go func() {
 		defer w.wg.Done()
@@ -576,6 +591,9 @@ func (w *FinOpsAnomalyWorker) Stop() {
 	if w == nil {
 		return
 	}
+	w.lifecycle.Lock()
+	w.stopped = true
 	w.cancel()
+	w.lifecycle.Unlock()
 	w.wg.Wait()
 }

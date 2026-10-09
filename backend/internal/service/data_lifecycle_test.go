@@ -28,6 +28,18 @@ func TestLifecycleArtifactTenantBindingAndAuthentication(t *testing.T) {
 	require.Error(t, DecryptLifecycleArtifact(&bytes.Buffer{}, bytes.NewReader(append(sealed.Bytes(), 1)), key, "42/job/attempt"))
 }
 
+func TestLifecycleAuthenticationFailureReleasesNoPlaintext(t *testing.T) {
+	key := bytes.Repeat([]byte{7}, 32)
+	plain := bytes.Repeat([]byte("retained financial evidence\n"), 10000)
+	var sealed bytes.Buffer
+	require.NoError(t, EncryptLifecycleArtifact(&sealed, bytes.NewReader(plain), key, "42/job/attempt"))
+	corrupt := append([]byte{}, sealed.Bytes()...)
+	corrupt[len(corrupt)-1] ^= 1 // Mandatory terminal authentication fails after valid data chunks.
+	var output bytes.Buffer
+	require.Error(t, DecryptLifecycleArtifact(&output, bytes.NewReader(corrupt), key, "42/job/attempt"))
+	require.Empty(t, output.Bytes(), "whole artifact authentication must precede releasing plaintext")
+}
+
 func TestLifecycleObjectKeyRejectsForeignScopeAndTraversal(t *testing.T) {
 	job := "d8df15e1-f98b-4781-98b4-2b716edc4fbf"
 	attempt := "86b2f358-214a-4095-9d0c-ce4063f23410"

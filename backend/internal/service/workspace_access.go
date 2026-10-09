@@ -22,12 +22,12 @@ var projectRolePermissions = map[string][]string{
 	ProjectAccessRoleDeveloper: {
 		"project.read", "key.read", "key.create", "key.update", "key.revoke", "usage.read", "billing.read", "budget.read", "finops_anomaly.read",
 		"service_account.read", "service_account.create", "service_account.update", "service_account.disable",
-		"service_account.credential.read", "service_account.credential.create", "service_account.credential.update", "service_account.credential.revoke", "service_account.credential.rotate", "policy.read",
+		"service_account.credential.read", "service_account.credential.create", "service_account.credential.update", "service_account.credential.revoke", "service_account.credential.rotate", "service_account_policy.update", "policy.read",
 	},
 	ProjectAccessRoleAdmin: {
 		"project.read", "project.update", "project.archive", "key.read", "key.create", "key.update", "key.revoke", "usage.read", "billing.read", "budget.read", "budget.update", "finops_anomaly.read", "finops_anomaly.manage",
 		"service_account.read", "service_account.create", "service_account.update", "service_account.disable",
-		"service_account.credential.read", "service_account.credential.create", "service_account.credential.update", "service_account.credential.revoke", "service_account.credential.rotate", "project_policy.update", "policy.read",
+		"service_account.credential.read", "service_account.credential.create", "service_account.credential.update", "service_account.credential.revoke", "service_account.credential.rotate", "service_account_policy.update", "project_policy.update", "policy.read",
 	},
 }
 
@@ -37,7 +37,7 @@ var projectScopedPermissions = map[string]struct{}{
 	"usage.read": {}, "billing.read": {}, "budget.read": {}, "budget.update": {}, "finops_anomaly.read": {}, "finops_anomaly.manage": {},
 	"service_account.read": {}, "service_account.create": {}, "service_account.update": {}, "service_account.disable": {},
 	"service_account.credential.read": {}, "service_account.credential.create": {}, "service_account.credential.update": {}, "service_account.credential.revoke": {}, "service_account.credential.rotate": {},
-	"project_policy.update": {}, "policy.read": {},
+	"project_policy.update": {}, "service_account_policy.update": {}, "policy.read": {},
 }
 
 func init() {
@@ -151,6 +151,12 @@ func CheckWorkspacePermission(a *WorkspaceAccess, permission string) error {
 		return ErrWorkspaceNotFound
 	}
 	if a.Member.Status != "active" {
+		return ErrWorkspaceForbidden
+	}
+	// Service Account policy writes retain their existing Workspace role ceiling.
+	// Project grants may constrain that authority, but cannot give a Workspace
+	// Viewer or Billing member new policy mutation rights.
+	if permission == "service_account_policy.update" && !HasWorkspacePermission(a.Member.Role, permission) {
 		return ErrWorkspaceForbidden
 	}
 	if a.Project != nil && isProjectScopedPermission(permission) && a.Workspace.ProjectAccessMode == ProjectAccessModeAssigned {

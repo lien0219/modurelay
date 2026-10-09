@@ -128,7 +128,7 @@ func (r *policyRepository) UpdatePolicy(ctx context.Context, ref domain.PolicyRe
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	workspaceID, projectID, err := policyTenantScope(ctx, tx, ref)
+	workspaceID, projectID, err := authorizePolicyMutation(ctx, tx, actorID, ref)
 	if err != nil {
 		return nil, err
 	}
@@ -185,6 +185,60 @@ func (r *policyRepository) UpdatePolicy(ctx context.Context, ref domain.PolicyRe
 		return nil, err
 	}
 	return &value, nil
+}
+
+// Policy writes repeat the central tenant and human-session checks in the same
+// transaction as CAS, audit and outbox. User locks precede Workspace locks so
+// global lifecycle/factor changes cannot race a previously authorized write.
+// Workspace mutations serialize membership, grants, parent lifecycle and
+// security policy with this lock; runtime key admission remains separate.
+func authorizePolicyMutation(ctx context.Context, tx *sql.Tx, actorID int64, ref domain.PolicyRef) (int64, int64, error) {
+	if _, err := tx.ExecContext(ctx, `SET LOCAL statement_timeout='20s'; SET LOCAL lock_timeout='5s'`); err != nil {
+		return 0, 0, err
+	}
+	var userID int64
+	if err := tx.QueryRowContext(ctx, `SELECT id FROM users WHERE id=$1 AND status='active' AND deleted_at IS NULL FOR SHARE`, actorID).Scan(&userID); err != nil {
+		return 0, 0, workspaceError(err)
+	}
+	workspaceID, projectID, err := policyTenantScope(ctx, tx, ref)
+	if err != nil {
+		return 0, 0, err
+	}
+	if err = lockWorkspace(ctx, tx, workspaceID, true); err != nil {
+		return 0, 0, err
+	}
+	access, err := workspaceAccess(ctx, tx, actorID, workspaceID, projectID)
+	if err != nil {
+		return 0, 0, err
+	}
+	permission := "workspace_policy.update"
+	switch ref.Scope {
+	case domain.PolicyScopeProject:
+		permission = "project_policy.update"
+	case domain.PolicyScopeServiceAccount:
+		permission = "service_account_policy.update"
+	}
+	if err = service.CheckWorkspacePermission(access, permission); err != nil {
+		return 0, 0, err
+	}
+	if ref.Scope == domain.PolicyScopeServiceAccount {
+		// The preliminary lookup only discovers the parent to lock. Recheck the
+		// complete immutable binding after live authorization and hold the target
+		// until the policy and its evidence commit.
+		var id int64
+		if err = tx.QueryRowContext(ctx, `SELECT id FROM service_accounts WHERE workspace_id=$1 AND project_id=$2 AND id=$3 FOR SHARE`, workspaceID, projectID, ref.ScopeID).Scan(&id); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return 0, 0, domain.ErrPolicyNotFound
+			}
+			return 0, 0, err
+		}
+	}
+	if access.Workspace.Type == service.WorkspaceTypeOrganization {
+		if err = evaluateWorkspaceSecurityTx(ctx, tx, workspaceID, actorID); err != nil {
+			return 0, 0, err
+		}
+	}
+	return workspaceID, projectID, nil
 }
 
 func policyTenantScope(ctx context.Context, q workspaceSQL, ref domain.PolicyRef) (int64, int64, error) {

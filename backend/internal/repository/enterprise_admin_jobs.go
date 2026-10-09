@@ -92,6 +92,8 @@ func adminScopedSQL(selectExpr, from, predicate, scope string, w int64) (string,
 	if from == "finops_anomaly_detection_leases f" && w > 0 {
 		if strings.Contains(predicate, "f.completed_at IS NULL") && (strings.Contains(predicate, "f.claimed_until") || strings.Contains(predicate, "f.last_error_code")) {
 			from = `(SELECT * FROM finops_anomaly_detection_leases WHERE workspace_id=$1 AND completed_at IS NULL ORDER BY bucket_start LIMIT 10001) f`
+		} else if strings.Contains(predicate, "f.failed_at IS NOT NULL") {
+			from = `(SELECT * FROM finops_anomaly_detection_leases WHERE workspace_id=$1 AND completed_at IS NULL AND failed_at IS NOT NULL ORDER BY bucket_start LIMIT 10001) f`
 		} else if strings.Contains(predicate, "f.completed_at IS NOT NULL") {
 			from = `(SELECT * FROM finops_anomaly_detection_leases WHERE workspace_id=$1 ORDER BY bucket_start DESC LIMIT 10001) f`
 		}
@@ -305,22 +307,23 @@ func adminJobsTx(ctx context.Context, tx *sql.Tx, now time.Time, w int64) *servi
 
 	fin := adminWorker(now, "finops", "finops_anomaly_detection_leases", "materialized_work_only; undiscovered_rollup_work_unknown")
 	adminWorkerCounts(ctx, tx, now, w, &fin, []adminWorkerQuery{
-		{"materialized_pending", "finops_anomaly_detection_leases f", `f.completed_at IS NULL`, "f.workspace_id"},
-		{"live_leases", "finops_anomaly_detection_leases f", `f.completed_at IS NULL AND f.claimed_until>now()`, "f.workspace_id"},
-		{"expired_leases", "finops_anomaly_detection_leases f", `f.completed_at IS NULL AND f.claimed_until<=now()`, "f.workspace_id"},
+		{"materialized_pending", "finops_anomaly_detection_leases f", `f.completed_at IS NULL AND f.failed_at IS NULL`, "f.workspace_id"},
+		{"live_leases", "finops_anomaly_detection_leases f", `f.completed_at IS NULL AND f.failed_at IS NULL AND f.claimed_until>now()`, "f.workspace_id"},
+		{"expired_leases", "finops_anomaly_detection_leases f", `f.completed_at IS NULL AND f.failed_at IS NULL AND f.claimed_until<=now()`, "f.workspace_id"},
 		{"retry_evidence", "finops_anomaly_detection_leases f", `f.completed_at IS NULL AND COALESCE(f.last_error_code,'')<>''`, "f.workspace_id"},
+		{"terminal_failed", "finops_anomaly_detection_leases f", `f.completed_at IS NULL AND f.failed_at IS NOT NULL`, "f.workspace_id"},
 	})
 	fin.Counts["pending"] = adminUnknownCount(now, "rollup_discovery", "undiscovered_work_not_enumerated")
 	fin.Counts["running"] = adminUnknownCount(now, "finops_anomaly_detection_leases", "live_claims_are_candidates_not_process_execution")
-	fin.Counts["failed"] = adminUnknownCount(now, "finops_anomaly_detection_leases", "retry_error_is_not_terminal_failure")
+	fin.Counts["failed"] = adminUnknownCount(now, "finops_anomaly_detection_leases", "legacy_failure_alias; use terminal_failed for durable failed_at evidence")
 	adminWorkerCounts(ctx, tx, now, w, &fin, []adminWorkerQuery{{"completed", "finops_anomaly_detection_leases f", `f.completed_at IS NOT NULL`, "f.workspace_id"}})
 	oldestFinFrom := "finops_anomaly_detection_leases f"
 	if w == 0 {
 		oldestFinFrom = `(SELECT bucket_start,workspace_id FROM finops_anomaly_detection_leases WHERE completed_at IS NULL LIMIT 10001) f`
 	}
-	fin.OldestPending = adminTimeProbe(ctx, tx, now, w, oldestFinFrom, `TRUE`, "f.workspace_id", "f.bucket_start", "ASC", "oldest_materialized_work_bucket_time; not_job_creation_or_undiscovered_work")
+	fin.OldestPending = adminTimeProbe(ctx, tx, now, w, oldestFinFrom, `f.completed_at IS NULL AND f.failed_at IS NULL`, "f.workspace_id", "f.bucket_start", "ASC", "oldest_materialized_work_bucket_time; not_job_creation_or_undiscovered_work")
 	if w > 0 {
-		fin.OldestPending = adminTimeProbe(ctx, tx, now, w, "finops_anomaly_detection_leases f", `f.completed_at IS NULL`, "f.workspace_id", "f.bucket_start", "ASC", "oldest_scoped_materialized_bucket_time")
+		fin.OldestPending = adminTimeProbe(ctx, tx, now, w, "finops_anomaly_detection_leases f", `f.completed_at IS NULL AND f.failed_at IS NULL`, "f.workspace_id", "f.bucket_start", "ASC", "oldest_scoped_materialized_bucket_time")
 	}
 	adminFailureProbe(ctx, tx, now, w, &fin, "finops_anomaly_detection_leases f", `f.completed_at IS NULL AND COALESCE(f.last_error_code,'')<>''`, "f.workspace_id", "f.last_error_code", "f.updated_at", "last_materialized_error_state_update; no_failure_occurrence_clock")
 	adminLatestSuccess(ctx, tx, w, &fin, "finops_anomaly_detection_leases f", `f.completed_at IS NOT NULL`, "f.workspace_id", "f.completed_at")

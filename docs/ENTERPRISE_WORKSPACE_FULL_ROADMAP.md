@@ -12,7 +12,7 @@ This document is the durable progress source for the Enterprise Workspace progra
 - Phase E boundary: current implementation starts from `a7e8427a6` (migration ceiling 297); the local Phase E SHA is resolved from Git after commit because a commit cannot embed its own SHA.
 - Phase G baseline: `3888ba452d8da926d1d6d234b7641acb6ebcc193`; local boundary `feat(lifecycle): add workspace retention export and deletion lifecycle` (SHA resolved after commit).
 - Phase G local boundary / Phase H starting source: `3a37b2e562db1dbbf13669f42049fff83edc7c1f`.
-- Migration ceiling after G: 301. Phases D, E, F and G are COMPLETE; Phase H is IN PROGRESS. Historical audits and verification records remain below. Local completion does not authorize production lifecycle activation.
+- Phase H local boundary: `bf4f1c79e495e7ada555c0af402f852ca94c6d7c`; Phase I starts at `2e24b086d04c52fb4174e8f995a253bfe62e4989`, including subsequent housekeeping. Migration ceiling at Phase I entry: 304. Phases A–H are COMPLETE; Phase I is IN PROGRESS. Historical audits and verification records remain below. Local completion does not authorize production lifecycle activation.
 
 ## Current Enterprise Capability Matrix
 
@@ -42,7 +42,7 @@ This document is the durable progress source for the Enterprise Workspace progra
 | FinOps anomaly detection | Implemented | Migration 298 immutable snapshots/findings, bounded rollup detector, lease worker, RBAC/API/UI | Phase E |
 | Cost centers/tags/environment allocation | Implemented | Migration 299 immutable allocation snapshots, hourly rollups, tenant-scoped CRUD/report APIs, and bilingual Workspace FinOps UI | Phase F |
 | Retention/export/deletion lifecycle | Implemented | Migrations300–301, enforced floors/financial protection, encrypted MVCC tenant exports, controlled restore and resumable business closure with retained evidence; functional bilingual UI | Phase G |
-| Enterprise admin diagnostics | Partial | Global workspace list/inspect/status exists; health/backlog/search controls are absent | Phase H |
+| Enterprise admin diagnostics | Implemented | Migrations302–304, bounded diagnostics, guarded idempotent operations; Phase H acceptance and local commit `bf4f1c79e` | Phase H |
 | Production hardening | Partial | Existing tests cover many billing/policy invariants; full enterprise matrix does not yet exist | Phase I |
 | Functional freeze, unified UI, final release gate | Not started | Explicitly deferred until functional phases are complete | J–L |
 
@@ -50,7 +50,7 @@ This document is the durable progress source for the Enterprise Workspace progra
 
 | Missing capability | Contract | Planned phase | Blocking risk |
 | --- | --- | --- | --- |
-| Global admin diagnostics/operations | Health/backlog/search and controlled emergency actions; tenant ownership remains separate | H | Operator overreach and financial integrity |
+| Production validation of admin operations | Local Phase H implemented; cold/fragmented estate, lock/load and real operational drills remain release gates | I/L | Operator overreach and financial integrity |
 | Cross-module hardening | Tenant matrix, concurrency, chaos/recovery, rehearsal | I | Production integrity |
 
 ## Architecture Risks and gates
@@ -76,8 +76,8 @@ This document is the durable progress source for the Enterprise Workspace progra
 | E | Advanced FinOps anomalies | Immutable usage snapshots plus bounded detector jobs | 298 | `feat(finops): add workspace anomaly detection and findings` (SHA resolved after commit) | Targeted/backend/frontend gates recorded below; full-suite baseline comparison and unavailable integration/manual checks explicitly classified | COMPLETE | Late rollups, bounded candidate omission, PostgreSQL/manual/load availability | AI remediation |
 | F | Cost centers, tags, environment allocation | New-write dimensions, explicit legacy NULLs, immutable admission snapshots, bounded rollups | 299 | `feat(finops): add workspace cost allocation and tags` (SHA resolved from Git) | Targeted/migration/PostgreSQL/race/static/frontend/Canvas gates PASS; complete backend suites retain only the recorded Windows `sh.exe` baseline failures; manual/provider/load/deployment gates NOT RUN | COMPLETE | Historical attribution drift; bounded tag overlap; external acceptance availability | ERP tree |
 | G | Retention, export, archive/restore, deletion lifecycle | Business closure separated from protected evidence; platform floors, MVCC encrypted tenant exports and token-fenced resumable purge | 300–301 | `feat(lifecycle): add workspace retention export and deletion lifecycle` (SHA resolved from Git) | Native vet/build/compatible lint, complete default/integration, PostgreSQL16/18.1, relevant race, frontend433files3252tests and Canvas7 PASS; old native lint TOOLCHAIN BLOCKED and full unit-tag Ollama baseline failure precisely disclosed below | COMPLETE | DDL lock window, key custody/rotation, retained metadata, real storage/manual/load gates | Complex legal hold; production activation |
-| H | Admin diagnostics and operations | Independent Global Admin reads and guarded actions; read-only export rotation risks | 302–304 review candidate | Local phase boundary pending | Focused read/migration/realPG evidence exists; full feature, independent reviews and required final gates pending | IN PROGRESS | Query/index cost, emergency replay, unknown heartbeat, single-key recovery | SIEM integration; automatic key rotation; production activation |
-| I | Production hardening | Lifecycle/isolation/concurrency/chaos/migration rehearsal gates | After H if needed | Not started | Not run | NOT RUN | Recovery and billing integrity | New business features |
+| H | Admin diagnostics and operations | Independent Global Admin reads and guarded actions; read-only export rotation risks | 302–304 | `bf4f1c79e495e7ada555c0af402f852ca94c6d7c` | Required local gates in `ENTERPRISE_ADMIN_DIAGNOSTICS_ACCEPTANCE.md`; formal scan honestly INCOMPLETE | COMPLETE | Query/index cost, emergency replay, unknown heartbeat, single-key recovery | SIEM integration; automatic key rotation; production activation |
+| I | Production hardening | Versioned export keys; live authorization, financial integrity and recovery; isolated migration/chaos/performance gates | 305–307 | Local implementation underway | `ENTERPRISE_PRODUCTION_HARDENING_ACCEPTANCE.md`; local key, tenant, financial, worker, and recovery receipts; remaining release gates classified explicitly | IN PROGRESS | Formal scan, full-suite baseline/toolchain issues, migration/backup rehearsal, and Phase L external gates remain open | New business features; production activation |
 | J | Functional freeze | Only bugs, UI, docs, release blockers after gate | None expected | Not started | Not run | NOT RUN | Scope creep | — |
 | K | Unified UI/UX | Frosted Precision for official non-home surfaces after functionality freeze | None expected | Not started | Not run | NOT RUN | Visual regressions | Home Sylva changes |
 | L | Final release gate/manual acceptance | Full backend/frontend/security/migration/performance gate | None expected | Not started | Not run | NOT RUN | Real-provider availability | — |
@@ -546,3 +546,35 @@ lost or mismatched keys and rollback. These entry/release gates remain OPEN;
 Phase H diagnostics and local crypto tests cannot close them. The
 [administrator runbook](ENTERPRISE_ADMIN_DIAGNOSTICS_RUNBOOK.md) describes the
 evidence boundary and required recovery cases.
+
+## Phase I production hardening record (2026-10-10)
+
+Phase I hardens the three requested failure boundaries: explicit export-key
+compatibility, financial evidence integrity, and recovery after process or
+dependency failure. The local implementation starts at
+`2e24b086d04c52fb4174e8f995a253bfe62e4989`; migrations 305-307 are additive.
+MRLEX01 remains readable, MRLEX02 writes are fail-closed behind key-ring and
+reader-consensus checks, billing recovery replays frozen creation-time
+attribution, provider-start markers precede upstream submission, and worker
+leases fence stale commits.
+
+### Phase I verification record
+
+| Area | Result | Recorded evidence |
+| --- | --- | --- |
+| Key-ring, MRLEX01/MRLEX02, PostgreSQL reader consensus, MinIO recovery | PASS | `crypto-unit-final`, `crypto-config-green`, `crypto-final-focused`, `crypto-readiness-pg`, `crypto-postgres16`, `crypto-minio-recovery-2` |
+| Tenant live authorization and policy atomicity | PASS | `tenant-final-focused`, `tenant-green-live-policy`, `tenant-green-policy-atomicity`, `tenant-race-policy-runtime` |
+| Financial evidence and media/batch recovery | PASS | `financial-unit-green-01`, `financial-sql-green-01`, `financial-media-current-02`, video marker/frozen completion/rejection/unknown integration tests, `TestBatchSQLRecoveryFindsAcceptedJobsAndFailedUnreleasedHolds` |
+| FinOps, dispatcher, SCIM and worker fencing | PASS | `worker-finops-green-pg-2`, `worker-service-race`, `worker-recovery-regressions-pg`, `worker-admin-finops-pg-3` |
+| Fresh migration/recovery replay on PostgreSQL 16 and 18.1 | PASS | `migration-replay-pg16`, `migration-replay-pg18` |
+| Go compile, vet, build and full default suite with Git `sh.exe` on PATH | PASS | `compile-all-current`, `default-full-sh-fixed`, `repository-default-sh-fixed` |
+| Full integration-tag suite | PASS | `integration-full-sh-fixed`, exit code 0 |
+| Full unit-tag suite | PRE-EXISTING + TRANSIENT | Baseline Ollama CAS failure reproduces; one Grok cancellation subtest flaked in the full run, then passed 5/5 in an exact focused rerun. |
+| Formal Codex Security scan | INCOMPLETE / NOT VERIFIED | Scan `79ed5fa4-aecc-4130-8b2d-d6996ddd6fe9` reports 0 findings for reviewed Phase I surfaces, but canonical coverage is partial over the repository inventory. |
+| Production provider/storage/KMS, load/chaos, backup/restore, deployment/manual | NOT RUN | Phase L and release-readiness gates |
+
+Phase I remains **IN PROGRESS**. The focused local controls have evidence, but
+release is blocked by partial formal security coverage, backup/restore and
+migration-lock rehearsal, key-drain/rotation rehearsal, and the external Phase
+L gates. See [the acceptance record](ENTERPRISE_PRODUCTION_HARDENING_ACCEPTANCE.md)
+and [the release checklist](ENTERPRISE_RELEASE_READINESS.md).

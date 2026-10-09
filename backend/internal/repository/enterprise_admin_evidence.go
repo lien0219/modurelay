@@ -247,7 +247,7 @@ func adminFamilyFailureCode(family, code string) string {
 		return "JOB_FAILURE"
 	case "finops":
 		switch code {
-		case "canceled", "timeout", "database_error":
+		case "canceled", "timeout", "database_error", "retry_exhausted", "lease_lost", "rollup_limit":
 			return code
 		}
 		return "DETECTOR_FAILURE"

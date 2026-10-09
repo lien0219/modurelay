@@ -143,7 +143,9 @@ func (s *OpenAIGatewayService) doSeedanceCompatibleRequest(ctx context.Context, 
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxy = account.Proxy.URL()
 	}
-	markVideoProviderStarted(ctx, endpoint)
+	if err := markMediaProviderStart(ctx, endpoint, account.ID); err != nil {
+		return nil, nil, 0, err
+	}
 	started := time.Now()
 	resp, err := s.httpUpstream.Do(req, proxy, account.ID, account.Concurrency)
 	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(started).Milliseconds())

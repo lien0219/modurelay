@@ -12,6 +12,8 @@ import (
 	"os"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // One export build per process and two authenticated downloads keep memory and
@@ -25,6 +27,9 @@ type LifecycleRuntime struct {
 	cfg              config.DataLifecycleConfig
 	store            BackupObjectStore
 	key              []byte
+	keys             *LifecycleKeyRing
+	cryptoRepo       LifecycleCryptoRepository
+	reader           LifecycleCryptoReader
 	mu               sync.Mutex
 	started, stopped bool
 	cancel           context.CancelFunc
@@ -49,11 +54,29 @@ func (s *WorkspaceService) ConfigureLifecycle(cfg *config.Config, factory Backup
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	c := cfg.DataLifecycle
+	ring, err := NewLifecycleKeyRing(c)
+	if err != nil {
+		return err
+	}
+	cryptoRepo, hasCryptoRepo := s.repo.(LifecycleCryptoRepository)
+	if !hasCryptoRepo && (len(c.Keys) > 0 || c.V2WriteEnabled) {
+		return ErrLifecycleKeyRingNotReady
+	}
+	instanceID := c.InstanceID
+	if instanceID == "" {
+		instanceID = uuid.NewString()
+	}
+	reader := LifecycleCryptoReader{InstanceID: instanceID, Token: uuid.NewString(), Fingerprint: ring.Fingerprint, ExpectedInstanceIDs: append([]string(nil), c.ExpectedInstanceIDs...), V2Readable: len(c.Keys) > 0, RollbackCompatible: c.V2RollbackCompatible}
+	if hasCryptoRepo {
+		if err = cryptoRepo.RegisterLifecycleCryptoReader(ctx, reader, c.V2WriteEnabled); err != nil {
+			return err
+		}
+	}
 	store, err := factory(ctx, &BackupS3Config{Endpoint: c.Endpoint, Region: c.Region, Bucket: c.Bucket, AccessKeyID: c.AccessKeyID, SecretAccessKey: c.SecretAccessKey, ForcePathStyle: c.ForcePathStyle})
 	if err != nil {
 		return ErrLifecycleStorage.WithCause(err)
 	}
-	s.lifecycle = &LifecycleRuntime{repo: repo, owner: s, cfg: c, store: store, key: key}
+	s.lifecycle = &LifecycleRuntime{repo: repo, owner: s, cfg: c, store: store, key: key, keys: ring, cryptoRepo: cryptoRepo, reader: reader}
 	return nil
 }
 func (s *WorkspaceService) LifecycleCapabilities() map[string]bool {
@@ -131,7 +154,15 @@ func (r *LifecycleRuntime) processExport(ctx context.Context) error {
 	}
 	ctx, cancel := context.WithTimeout(ctx, 4*time.Minute)
 	defer cancel()
-	job, err := r.repo.ClaimLifecycleExport(ctx)
+	var job *LifecycleExportJob
+	var err error
+	if r.cryptoRepo != nil {
+		job, err = r.cryptoRepo.ClaimLifecycleExportWithCrypto(ctx, r.reader, r.cfg.V2WriteEnabled)
+	} else if r.cfg.V2WriteEnabled {
+		return ErrLifecycleKeyRingNotReady
+	} else {
+		job, err = r.repo.ClaimLifecycleExport(ctx)
+	}
 	if err != nil || job == nil {
 		return err
 	}
@@ -145,7 +176,11 @@ func (r *LifecycleRuntime) processExport(ctx context.Context) error {
 		} else {
 			path := file.Name()
 			defer func() { _ = os.Remove(path) }()
-			buildErr = EncryptLifecycleArtifact(file, bytes.NewReader(plain.Bytes()), r.key, job.ObjectKey)
+			if r.cfg.V2WriteEnabled {
+				buildErr = EncryptLifecycleArtifactV2(ctx, file, bytes.NewReader(plain.Bytes()), r.keys, job.ObjectKey)
+			} else {
+				buildErr = EncryptLifecycleArtifact(file, bytes.NewReader(plain.Bytes()), r.key, job.ObjectKey)
+			}
 			closeErr := file.Close()
 			if buildErr == nil {
 				buildErr = closeErr
@@ -241,7 +276,13 @@ func (s *WorkspaceService) DownloadLifecycleExport(ctx context.Context, a, w int
 	}
 	defer func() { _ = body.Close() }()
 	var plain bytes.Buffer
-	if err = DecryptLifecycleArtifact(&plain, io.LimitReader(body, LifecycleMaxArtifactBytes+(4<<20)), r.key, job.ObjectKey); err != nil {
+	limited := io.LimitReader(body, LifecycleMaxArtifactBytes+(4<<20))
+	if r.keys != nil {
+		err = DecryptLifecycleArtifactWithKeys(ctx, &plain, limited, r.keys, job.ObjectKey)
+	} else {
+		err = DecryptLifecycleArtifact(&plain, limited, r.key, job.ObjectKey)
+	}
+	if err != nil {
 		return nil, ErrLifecycleStorage
 	}
 	sum := sha256.Sum256(plain.Bytes())

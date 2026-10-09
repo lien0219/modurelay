@@ -14,7 +14,12 @@ import (
 	"github.com/google/uuid"
 )
 
-const anomalyLeaseDuration = 2 * time.Minute
+const (
+	anomalyLeaseDuration    = 2 * time.Minute
+	anomalyWorkspaceTimeout = 3 * time.Second
+	anomalyFinishTimeout    = 3 * time.Second
+	anomalyMaxAttempts      = 5
+)
 
 type anomalyCandidate struct {
 	scopeType      string
@@ -123,6 +128,9 @@ func (r *workspaceRepository) RunFinOpsAnomalyScan(ctx context.Context, now time
 			return statusValue, nil
 		}
 	}
+	if err = r.reapAnomalyLeases(ctx, bucket, cfg.DetectorVersion, cfg.ScanWorkspaceBatch); err != nil {
+		return statusValue, err
+	}
 	workspaceIDs, err := r.listAnomalyWorkspaceIDs(ctx, bucket, cfg.DetectorVersion, cfg.ScanWorkspaceBatch)
 	if err != nil {
 		_ = r.updateAnomalyDetectorStatus(ctx, statusValue, time.Time{}, err)
@@ -130,6 +138,10 @@ func (r *workspaceRepository) RunFinOpsAnomalyScan(ctx context.Context, now time
 	}
 	var firstErr error
 	for _, workspaceID := range workspaceIDs {
+		if err := ctx.Err(); err != nil {
+			firstErr = errors.Join(firstErr, err)
+			break
+		}
 		claimed, leaseToken, claimErr := r.claimAnomalyLease(ctx, workspaceID, bucket, cfg.DetectorVersion)
 		if claimErr != nil {
 			if firstErr == nil {
@@ -141,28 +153,35 @@ func (r *workspaceRepository) RunFinOpsAnomalyScan(ctx context.Context, now time
 			continue
 		}
 		workspaceFailed := false
-		candidates, scanErr := r.scanAnomalyWorkspace(ctx, workspaceID, bucket, cfg)
+		unitCtx, cancelUnit := context.WithTimeout(ctx, anomalyWorkspaceTimeout)
+		candidates, scanErr := r.scanAnomalyWorkspace(unitCtx, workspaceID, bucket, cfg)
 		statusValue.CandidateCount += int64(len(candidates))
 		if scanErr != nil {
 			workspaceFailed = true
-			_ = r.finishAnomalyLease(ctx, workspaceID, bucket, cfg.DetectorVersion, leaseToken, scanErr)
+			cancelUnit()
+			finish, cancelFinish := context.WithTimeout(context.WithoutCancel(ctx), anomalyFinishTimeout)
+			finishErr := r.finishAnomalyLease(finish, workspaceID, bucket, cfg.DetectorVersion, leaseToken, scanErr)
+			cancelFinish()
 			if firstErr == nil {
-				firstErr = scanErr
+				firstErr = errors.Join(scanErr, finishErr)
 			}
 			continue
 		}
 		for _, candidate := range candidates {
-			created, createErr := r.detectAnomalyCandidate(ctx, workspaceID, bucket, candidate, cfg)
+			created, createErr := r.detectAnomalyCandidate(unitCtx, workspaceID, bucket, candidate, cfg, leaseToken)
 			if createErr != nil {
 				workspaceFailed = true
-				_ = r.finishAnomalyLease(ctx, workspaceID, bucket, cfg.DetectorVersion, leaseToken, createErr)
+				finish, cancelFinish := context.WithTimeout(context.WithoutCancel(ctx), anomalyFinishTimeout)
+				finishErr := r.finishAnomalyLease(finish, workspaceID, bucket, cfg.DetectorVersion, leaseToken, createErr)
+				cancelFinish()
 				if firstErr == nil {
-					firstErr = createErr
+					firstErr = errors.Join(createErr, finishErr)
 				}
 				break
 			}
 			statusValue.FindingCount += int64(created)
 		}
+		cancelUnit()
 		if !workspaceFailed {
 			if err := r.finishAnomalyLease(ctx, workspaceID, bucket, cfg.DetectorVersion, leaseToken, nil); err != nil {
 				if firstErr == nil {
@@ -171,16 +190,24 @@ func (r *workspaceRepository) RunFinOpsAnomalyScan(ctx context.Context, now time
 			}
 		}
 	}
-	pending := false
-	if firstErr == nil {
-		pending, err = r.hasPendingAnomalyWorkspace(ctx, bucket, cfg.DetectorVersion)
-		if err != nil {
-			firstErr = err
-		}
+	pending, pendingErr := r.hasPendingAnomalyWorkspace(ctx, bucket, cfg.DetectorVersion)
+	if pendingErr != nil {
+		firstErr = errors.Join(firstErr, pendingErr)
 	}
-	advanced := firstErr == nil && !pending
+	failed, failedErr := r.hasFailedAnomalyWorkspace(ctx, bucket, cfg.DetectorVersion)
+	if failedErr != nil {
+		firstErr = errors.Join(firstErr, failedErr)
+	}
+	if failed {
+		firstErr = errors.Join(firstErr, service.ErrFinOpsAnomalyRetryExhausted)
+	}
+	// Explicitly failed units are processed, never successfully completed. Their
+	// immutable evidence and durable error remain while healthy future work proceeds.
+	advanced := pendingErr == nil && !pending && ctx.Err() == nil && (firstErr == nil || failed)
 	if advanced {
-		statusValue.LastSuccessfulScan = timePtr(time.Now().UTC())
+		if firstErr == nil {
+			statusValue.LastSuccessfulScan = timePtr(time.Now().UTC())
+		}
 		statusValue.LastProcessedBucket = timePtr(bucket)
 	}
 	lag := time.Since(bucket.Add(time.Hour).Add(cfg.Grace))
@@ -209,6 +236,15 @@ func anomalyFailureCode(err error) string {
 	if err == nil {
 		return ""
 	}
+	if errors.Is(err, service.ErrFinOpsAnomalyRetryExhausted) {
+		return "retry_exhausted"
+	}
+	if errors.Is(err, service.ErrFinOpsAnomalyLeaseLost) {
+		return "lease_lost"
+	}
+	if errors.Is(err, service.ErrFinOpsAnomalyRollupLimit) {
+		return "rollup_limit"
+	}
 	if errors.Is(err, context.Canceled) {
 		return "canceled"
 	}
@@ -224,10 +260,10 @@ func (r *workspaceRepository) listAnomalyWorkspaceIDs(ctx context.Context, bucke
 	}
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT workspace_id FROM usage_tenant_hourly_rollups u WHERE bucket_start=$1
-		  AND NOT EXISTS (SELECT 1 FROM finops_anomaly_detection_leases l WHERE l.workspace_id=u.workspace_id AND l.bucket_start=$1 AND l.detector_version=$3 AND l.completed_at IS NOT NULL)
+		  AND NOT EXISTS (SELECT 1 FROM finops_anomaly_detection_leases l WHERE l.workspace_id=u.workspace_id AND l.bucket_start=$1 AND l.detector_version=$3 AND (l.completed_at IS NOT NULL OR l.failed_at IS NOT NULL OR l.available_at>clock_timestamp() OR l.claimed_until>clock_timestamp()))
 		UNION
 		SELECT workspace_id FROM usage_service_account_hourly_rollups u WHERE bucket_start=$1
-		  AND NOT EXISTS (SELECT 1 FROM finops_anomaly_detection_leases l WHERE l.workspace_id=u.workspace_id AND l.bucket_start=$1 AND l.detector_version=$3 AND l.completed_at IS NOT NULL)
+		  AND NOT EXISTS (SELECT 1 FROM finops_anomaly_detection_leases l WHERE l.workspace_id=u.workspace_id AND l.bucket_start=$1 AND l.detector_version=$3 AND (l.completed_at IS NOT NULL OR l.failed_at IS NOT NULL OR l.available_at>clock_timestamp() OR l.claimed_until>clock_timestamp()))
 		ORDER BY workspace_id LIMIT $2`, bucket, limit, detectorVersion)
 	if err != nil {
 		return nil, err
@@ -256,9 +292,26 @@ func (r *workspaceRepository) hasPendingAnomalyWorkspace(ctx context.Context, bu
 			) u
 			LEFT JOIN finops_anomaly_detection_leases l
 			  ON l.workspace_id=u.workspace_id AND l.bucket_start=$1 AND l.detector_version=$2
-			WHERE l.completed_at IS NULL
+			WHERE l.completed_at IS NULL AND l.failed_at IS NULL
 		)`, bucket, detectorVersion).Scan(&pending)
 	return pending, err
+}
+
+func (r *workspaceRepository) hasFailedAnomalyWorkspace(ctx context.Context, bucket time.Time, version string) (bool, error) {
+	var failed bool
+	err := r.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM finops_anomaly_detection_leases WHERE bucket_start=$1 AND detector_version=$2 AND failed_at IS NOT NULL)`, bucket, version).Scan(&failed)
+	return failed, err
+}
+
+func (r *workspaceRepository) reapAnomalyLeases(ctx context.Context, bucket time.Time, version string, limit int) error {
+	_, err := r.db.ExecContext(ctx, `WITH expired AS (
+	 SELECT workspace_id FROM finops_anomaly_detection_leases
+	 WHERE bucket_start=$1 AND detector_version=$2 AND completed_at IS NULL AND failed_at IS NULL AND attempts>=$4
+	 AND (claimed_until IS NULL OR claimed_until<=clock_timestamp())
+	 ORDER BY workspace_id LIMIT $3 FOR UPDATE SKIP LOCKED)
+	 UPDATE finops_anomaly_detection_leases l SET failed_at=clock_timestamp(),claimed_until=NULL,lease_token=NULL,last_error_code='retry_exhausted',updated_at=clock_timestamp()
+	 FROM expired e WHERE l.workspace_id=e.workspace_id AND l.bucket_start=$1 AND l.detector_version=$2`, bucket, version, limit, anomalyMaxAttempts)
+	return err
 }
 
 func (r *workspaceRepository) claimAnomalyLease(ctx context.Context, workspaceID int64, bucket time.Time, version string) (bool, string, error) {
@@ -266,12 +319,14 @@ func (r *workspaceRepository) claimAnomalyLease(ctx context.Context, workspaceID
 	var claimed int64
 	err := r.db.QueryRowContext(ctx, `
 		INSERT INTO finops_anomaly_detection_leases(workspace_id,bucket_start,detector_version,lease_token,claimed_until,attempts,last_error_code,updated_at)
-		VALUES($1,$2,$3,$4,now()+$5 * interval '1 second',1,NULL,now())
+		VALUES($1,$2,$3,$4,clock_timestamp()+$5 * interval '1 second',1,NULL,clock_timestamp())
 		ON CONFLICT(workspace_id,bucket_start,detector_version) DO UPDATE SET
-		 lease_token=$4,claimed_until=now()+$5 * interval '1 second', attempts=finops_anomaly_detection_leases.attempts+1,
-		 last_error_code=NULL, updated_at=now()
+		 lease_token=$4,claimed_until=clock_timestamp()+$5 * interval '1 second', attempts=finops_anomaly_detection_leases.attempts+1,
+		 last_error_code=NULL, updated_at=clock_timestamp()
 		WHERE finops_anomaly_detection_leases.completed_at IS NULL
-		  AND (finops_anomaly_detection_leases.claimed_until IS NULL OR finops_anomaly_detection_leases.claimed_until<now())
+		  AND finops_anomaly_detection_leases.failed_at IS NULL AND finops_anomaly_detection_leases.attempts<5
+		  AND finops_anomaly_detection_leases.available_at<=clock_timestamp()
+		  AND (finops_anomaly_detection_leases.claimed_until IS NULL OR finops_anomaly_detection_leases.claimed_until<=clock_timestamp())
 		RETURNING workspace_id`, workspaceID, bucket, version, token, anomalyLeaseDuration.Seconds()).Scan(&claimed)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, "", nil
@@ -281,11 +336,28 @@ func (r *workspaceRepository) claimAnomalyLease(ctx context.Context, workspaceID
 
 func (r *workspaceRepository) finishAnomalyLease(ctx context.Context, workspaceID int64, bucket time.Time, version, token string, scanErr error) error {
 	if scanErr == nil {
-		_, err := r.db.ExecContext(ctx, `UPDATE finops_anomaly_detection_leases SET completed_at=now(),claimed_until=NULL,last_error_code=NULL,updated_at=now() WHERE workspace_id=$1 AND bucket_start=$2 AND detector_version=$3 AND lease_token=$4 AND completed_at IS NULL`, workspaceID, bucket, version, token)
+		result, err := r.db.ExecContext(ctx, `UPDATE finops_anomaly_detection_leases SET completed_at=clock_timestamp(),claimed_until=NULL,lease_token=NULL,last_error_code=NULL,updated_at=clock_timestamp() WHERE workspace_id=$1 AND bucket_start=$2 AND detector_version=$3 AND lease_token=$4 AND completed_at IS NULL AND failed_at IS NULL AND claimed_until>clock_timestamp()`, workspaceID, bucket, version, token)
+		return requireAnomalyLeaseAffected(result, err)
+	}
+	result, err := r.db.ExecContext(ctx, `UPDATE finops_anomaly_detection_leases SET claimed_until=NULL,lease_token=NULL,last_error_code=$5,
+	 available_at=clock_timestamp()+LEAST(attempts*30,300)*interval '1 second',
+	 failed_at=CASE WHEN attempts>=5 THEN clock_timestamp() ELSE NULL END,updated_at=clock_timestamp()
+	 WHERE workspace_id=$1 AND bucket_start=$2 AND detector_version=$3 AND lease_token=$4 AND completed_at IS NULL AND failed_at IS NULL AND claimed_until>clock_timestamp()`, workspaceID, bucket, version, token, anomalyFailureCode(scanErr))
+	return requireAnomalyLeaseAffected(result, err)
+}
+
+func requireAnomalyLeaseAffected(result sql.Result, err error) error {
+	if err != nil {
 		return err
 	}
-	_, err := r.db.ExecContext(ctx, `UPDATE finops_anomaly_detection_leases SET claimed_until=NULL,last_error_code=$5,updated_at=now() WHERE workspace_id=$1 AND bucket_start=$2 AND detector_version=$3 AND lease_token=$4 AND completed_at IS NULL`, workspaceID, bucket, version, token, anomalyFailureCode(scanErr))
-	return err
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return service.ErrFinOpsAnomalyLeaseLost
+	}
+	return nil
 }
 
 func (r *workspaceRepository) updateAnomalyDetectorStatus(ctx context.Context, status service.FinOpsAnomalyDetectorStatus, bucket time.Time, scanErr error) error {
@@ -305,9 +377,9 @@ func (r *workspaceRepository) updateAnomalyDetectorStatus(ctx context.Context, s
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO finops_anomaly_detector_status(id,last_successful_scan,last_processed_bucket,last_failure_code,lag_seconds,candidate_count,finding_count,scan_duration_ms,updated_at)
 		VALUES(1,$1,$2,$3,$4,$5,$6,$7,now())
-		ON CONFLICT(id) DO UPDATE SET last_successful_scan=COALESCE(EXCLUDED.last_successful_scan,finops_anomaly_detector_status.last_successful_scan),last_processed_bucket=COALESCE(EXCLUDED.last_processed_bucket,finops_anomaly_detector_status.last_processed_bucket),
-		 last_failure_code=EXCLUDED.last_failure_code,lag_seconds=EXCLUDED.lag_seconds,candidate_count=EXCLUDED.candidate_count,
-		 finding_count=EXCLUDED.finding_count,scan_duration_ms=EXCLUDED.scan_duration_ms,updated_at=now()`, successful, processed, nullIfEmpty(lastFailure), status.LagSeconds, status.CandidateCount, status.FindingCount, status.ScanDurationMS)
+		ON CONFLICT(id) DO UPDATE SET last_successful_scan=GREATEST(EXCLUDED.last_successful_scan,finops_anomaly_detector_status.last_successful_scan),last_processed_bucket=GREATEST(EXCLUDED.last_processed_bucket,finops_anomaly_detector_status.last_processed_bucket),
+		 last_failure_code=COALESCE(EXCLUDED.last_failure_code,finops_anomaly_detector_status.last_failure_code),lag_seconds=EXCLUDED.lag_seconds,candidate_count=GREATEST(EXCLUDED.candidate_count,finops_anomaly_detector_status.candidate_count),
+		 finding_count=GREATEST(EXCLUDED.finding_count,finops_anomaly_detector_status.finding_count),scan_duration_ms=EXCLUDED.scan_duration_ms,updated_at=now()`, successful, processed, nullIfEmpty(lastFailure), status.LagSeconds, status.CandidateCount, status.FindingCount, status.ScanDurationMS)
 	return err
 }
 
@@ -320,28 +392,41 @@ func nullIfEmpty(value string) any {
 
 func (r *workspaceRepository) scanAnomalyWorkspace(ctx context.Context, workspaceID int64, bucket time.Time, cfg service.FinOpsAnomalyConfig) ([]anomalyCandidate, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		WITH candidates AS (
+		WITH tenant_rollups AS MATERIALIZED (
+		 SELECT workspace_id,project_id,api_key_id,resolved_platform,model,request_count,actual_cost
+		 FROM usage_tenant_hourly_rollups WHERE workspace_id=$1 AND bucket_start=$2 LIMIT ($4+1)
+		), service_rollups AS MATERIALIZED (
+		 SELECT service_account_id,project_id,request_count,actual_cost
+		 FROM usage_service_account_hourly_rollups WHERE workspace_id=$1 AND bucket_start=$2 LIMIT ($4+1)
+		), input_overflow AS (
+		 SELECT (SELECT count(*) FROM tenant_rollups)+(SELECT count(*) FROM service_rollups)>$4 AS exceeded
+		), candidates AS (
 		 SELECT 'workspace'::text scope_type, workspace_id scope_id, 'workspace'::text dimension_type, workspace_id::text dimension_value,
 		        SUM(request_count)::bigint requests,SUM(actual_cost)::double precision spend,false service_account,NULL::bigint project_id
-		 FROM usage_tenant_hourly_rollups WHERE workspace_id=$1 AND bucket_start=$2 GROUP BY workspace_id
+		 FROM tenant_rollups GROUP BY workspace_id
 		 UNION ALL
 		 SELECT 'project',project_id,'project',project_id::text,SUM(request_count)::bigint,SUM(actual_cost)::double precision,false,project_id
-		 FROM usage_tenant_hourly_rollups WHERE workspace_id=$1 AND bucket_start=$2 GROUP BY project_id
+		 FROM tenant_rollups GROUP BY project_id
 		 UNION ALL
 		 SELECT 'platform',NULL::bigint,'platform',resolved_platform,SUM(request_count)::bigint,SUM(actual_cost)::double precision,false,NULL::bigint
-		 FROM usage_tenant_hourly_rollups WHERE workspace_id=$1 AND bucket_start=$2 AND trim(resolved_platform)<>'' GROUP BY resolved_platform
+		 FROM tenant_rollups WHERE trim(resolved_platform)<>'' GROUP BY resolved_platform
 		 UNION ALL
 		 SELECT 'model',NULL::bigint,'model',model,SUM(request_count)::bigint,SUM(actual_cost)::double precision,false,NULL::bigint
-		 FROM usage_tenant_hourly_rollups WHERE workspace_id=$1 AND bucket_start=$2 AND trim(model)<>'' GROUP BY model
+		 FROM tenant_rollups WHERE trim(model)<>'' GROUP BY model
 		 UNION ALL
 		 SELECT 'api_key',api_key_id,'api_key',api_key_id::text,SUM(request_count)::bigint,SUM(actual_cost)::double precision,false,project_id
-		 FROM usage_tenant_hourly_rollups WHERE workspace_id=$1 AND bucket_start=$2 GROUP BY api_key_id,project_id
+		 FROM tenant_rollups GROUP BY api_key_id,project_id
 		 UNION ALL
 		 SELECT 'service_account',service_account_id,'service_account',service_account_id::text,SUM(request_count)::bigint,SUM(actual_cost)::double precision,true,project_id
-		 FROM usage_service_account_hourly_rollups WHERE workspace_id=$1 AND bucket_start=$2 GROUP BY service_account_id,project_id
-		)
+		 FROM service_rollups GROUP BY service_account_id,project_id
+		), limited AS (
 		SELECT scope_type,scope_id,dimension_type,dimension_value,requests,spend,service_account,project_id
-		FROM candidates WHERE requests>0 ORDER BY spend DESC,requests DESC,dimension_type,dimension_value LIMIT $3`, workspaceID, bucket, cfg.CandidateCap)
+		FROM candidates WHERE requests>0 AND NOT (SELECT exceeded FROM input_overflow)
+		ORDER BY spend DESC,requests DESC,dimension_type,dimension_value LIMIT $3)
+		SELECT limited.*,false FROM limited
+		UNION ALL SELECT '',NULL::bigint,'','',0::bigint,0::double precision,false,NULL::bigint,true
+		WHERE (SELECT exceeded FROM input_overflow)
+		ORDER BY spend DESC,requests DESC,dimension_type,dimension_value`, workspaceID, bucket, cfg.CandidateCap, cfg.MaxRollupRows)
 	if err != nil {
 		return nil, err
 	}
@@ -350,8 +435,12 @@ func (r *workspaceRepository) scanAnomalyWorkspace(ctx context.Context, workspac
 	for rows.Next() {
 		var c anomalyCandidate
 		var scopeID, projectID sql.NullInt64
-		if err := rows.Scan(&c.scopeType, &scopeID, &c.dimensionType, &c.dimensionValue, &c.requests, &c.spend, &c.serviceAccount, &projectID); err != nil {
+		var overflow bool
+		if err := rows.Scan(&c.scopeType, &scopeID, &c.dimensionType, &c.dimensionValue, &c.requests, &c.spend, &c.serviceAccount, &projectID, &overflow); err != nil {
 			return nil, err
+		}
+		if overflow {
+			return nil, service.ErrFinOpsAnomalyRollupLimit
 		}
 		if scopeID.Valid {
 			c.scopeID = scopeID.Int64
@@ -398,7 +487,14 @@ func (r *workspaceRepository) anomalySamples(ctx context.Context, workspaceID in
 		table = "usage_service_account_hourly_rollups"
 	}
 	args = append(args, cfg.MaxRollupRows)
-	rows, err := r.db.QueryContext(ctx, fmt.Sprintf(`SELECT bucket_start,SUM(request_count)::bigint,SUM(actual_cost)::double precision FROM %s WHERE %s GROUP BY bucket_start ORDER BY bucket_start DESC LIMIT $%d`, table, where, len(args)), args...)
+	rows, err := r.db.QueryContext(ctx, fmt.Sprintf(`WITH source AS MATERIALIZED (
+	 SELECT bucket_start,request_count,actual_cost FROM %s WHERE %s LIMIT ($%d+1)
+	), input_overflow AS (SELECT count(*)>$%d AS exceeded FROM source), samples AS (
+	 SELECT bucket_start,SUM(request_count)::bigint requests,SUM(actual_cost)::double precision spend
+	 FROM source WHERE NOT (SELECT exceeded FROM input_overflow) GROUP BY bucket_start)
+	 SELECT bucket_start,requests,spend,false FROM samples
+	 UNION ALL SELECT 'epoch'::timestamptz,0::bigint,0::double precision,true WHERE (SELECT exceeded FROM input_overflow)
+	 ORDER BY bucket_start DESC`, table, where, len(args), len(args)), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -406,8 +502,12 @@ func (r *workspaceRepository) anomalySamples(ctx context.Context, workspaceID in
 	samples := make([]anomalyRollupSample, 0, cfg.MaxRollupRows)
 	for rows.Next() {
 		var item anomalyRollupSample
-		if err := rows.Scan(&item.bucket, &item.requests, &item.spend); err != nil {
+		var overflow bool
+		if err := rows.Scan(&item.bucket, &item.requests, &item.spend, &overflow); err != nil {
 			return nil, err
+		}
+		if overflow {
+			return nil, service.ErrFinOpsAnomalyRollupLimit
 		}
 		if item.requests < 0 || math.IsNaN(item.spend) || math.IsInf(item.spend, 0) || item.spend < 0 {
 			continue
@@ -417,7 +517,7 @@ func (r *workspaceRepository) anomalySamples(ctx context.Context, workspaceID in
 	return samples, rows.Err()
 }
 
-func (r *workspaceRepository) detectAnomalyCandidate(ctx context.Context, workspaceID int64, bucket time.Time, candidate anomalyCandidate, cfg service.FinOpsAnomalyConfig) (int, error) {
+func (r *workspaceRepository) detectAnomalyCandidate(ctx context.Context, workspaceID int64, bucket time.Time, candidate anomalyCandidate, cfg service.FinOpsAnomalyConfig, leaseToken string) (int, error) {
 	samples, err := r.anomalySamples(ctx, workspaceID, bucket, candidate, cfg)
 	if err != nil {
 		return 0, err
@@ -464,7 +564,7 @@ func (r *workspaceRepository) detectAnomalyCandidate(ctx context.Context, worksp
 		if !ok {
 			continue
 		}
-		inserted, err := r.persistAnomalyDetection(ctx, detection, bucket.Add(-time.Duration(cfg.LookbackDays)*24*time.Hour), bucket)
+		inserted, err := r.persistAnomalyDetection(ctx, detection, bucket.Add(-time.Duration(cfg.LookbackDays)*24*time.Hour), bucket, leaseToken)
 		if err != nil {
 			return created, err
 		}
@@ -491,12 +591,27 @@ func anomalyEventData(d service.FinOpsAnomalyDetection, anomalyID int64, status,
 	return data
 }
 
-func (r *workspaceRepository) persistAnomalyDetection(ctx context.Context, d service.FinOpsAnomalyDetection, baselineStart, baselineEnd time.Time) (bool, error) {
+func (r *workspaceRepository) persistAnomalyDetection(ctx context.Context, d service.FinOpsAnomalyDetection, baselineStart, baselineEnd time.Time, leaseToken string) (bool, error) {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return false, err
 	}
 	defer func() { _ = tx.Rollback() }()
+	var workspaceID int64
+	err = tx.QueryRowContext(ctx, `SELECT workspace_id FROM finops_anomaly_detection_leases WHERE workspace_id=$1 AND bucket_start=$2 AND detector_version=$3 AND lease_token=$4 AND completed_at IS NULL AND failed_at IS NULL AND claimed_until>clock_timestamp() FOR UPDATE`, d.WorkspaceID, d.WindowStart, d.DetectorVersion, leaseToken).Scan(&workspaceID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, service.ErrFinOpsAnomalyLeaseLost
+	}
+	if err != nil {
+		return false, err
+	}
+	commit := func() error {
+		result, err := tx.ExecContext(ctx, `UPDATE finops_anomaly_detection_leases SET updated_at=clock_timestamp() WHERE workspace_id=$1 AND bucket_start=$2 AND detector_version=$3 AND lease_token=$4 AND completed_at IS NULL AND failed_at IS NULL AND claimed_until>clock_timestamp()`, d.WorkspaceID, d.WindowStart, d.DetectorVersion, leaseToken)
+		if err = requireAnomalyLeaseAffected(result, err); err != nil {
+			return err
+		}
+		return tx.Commit()
+	}
 	var snapshotID int64
 	err = tx.QueryRowContext(ctx, `
 		INSERT INTO finops_anomaly_snapshots(workspace_id,project_id,scope_type,scope_id,dimension_type,dimension_value,detector_type,detector_version,window_start,window_end,baseline_start,baseline_end,observed_spend,expected_spend,spend_delta,observed_requests,expected_requests,observed_unit_cost,expected_unit_cost,baseline_sample_count,baseline_mad,relative_increase,score,severity,fingerprint)
@@ -515,7 +630,7 @@ func (r *workspaceRepository) persistAnomalyDetection(ctx context.Context, d ser
 		VALUES($1,NULLIF($2,0),$3,$4,'open',now(),now(),1)
 		ON CONFLICT(fingerprint) DO NOTHING RETURNING id`, d.WorkspaceID, d.ProjectID, snapshotID, d.Fingerprint).Scan(&findingID)
 	if errors.Is(err, sql.ErrNoRows) {
-		return false, tx.Commit()
+		return false, commit()
 	}
 	if err != nil {
 		return false, workspaceError(err)
@@ -527,7 +642,7 @@ func (r *workspaceRepository) persistAnomalyDetection(ctx context.Context, d ser
 	if err = InsertDomainEventTx(ctx, tx, event, "finops.anomaly.detected:"+d.Fingerprint); err != nil {
 		return false, err
 	}
-	if err = tx.Commit(); err != nil {
+	if err = commit(); err != nil {
 		return false, err
 	}
 	return true, nil

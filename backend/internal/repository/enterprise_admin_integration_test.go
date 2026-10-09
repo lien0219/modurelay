@@ -843,6 +843,33 @@ func TestEnterpriseAdminPostgresWorkerLeaseAndFailureEvidence(t *testing.T) {
 	}
 }
 
+func TestEnterpriseAdminPostgresFinOpsTerminalFailureIsSeparateFromPending(t *testing.T) {
+	ctx, r, _, w := lifecycleFixture(t)
+	admin := enterpriseAdminActor(t)
+	_, e := integrationDB.ExecContext(ctx, `INSERT INTO finops_anomaly_detection_leases(workspace_id,bucket_start,detector_version,attempts,last_error_code,failed_at,updated_at)
+	 VALUES($1,date_trunc('hour',clock_timestamp()),'phase-i-v1',5,'retry_exhausted',clock_timestamp(),clock_timestamp())`, w.ID)
+	require.NoError(t, e)
+	diagnostics, e := r.AdminWorkspaceDiagnostics(ctx, admin.ID, w.ID)
+	require.NoError(t, e)
+	var found bool
+	for _, worker := range diagnostics.Jobs.Workers {
+		if worker.Worker != "finops" {
+			continue
+		}
+		found = true
+		require.True(t, worker.Counts["terminal_failed"].Available)
+		require.EqualValues(t, 1, *worker.Counts["terminal_failed"].Value)
+		require.True(t, worker.Counts["materialized_pending"].Available)
+		require.EqualValues(t, 0, *worker.Counts["materialized_pending"].Value)
+		require.True(t, worker.Counts["live_leases"].Available)
+		require.EqualValues(t, 0, *worker.Counts["live_leases"].Value)
+		require.True(t, worker.Counts["expired_leases"].Available)
+		require.EqualValues(t, 0, *worker.Counts["expired_leases"].Value)
+		require.Equal(t, "retry_exhausted", *worker.LastFailure.Code)
+	}
+	require.True(t, found, "FinOps diagnostics worker must be present")
+}
+
 func TestEnterpriseAdminPostgresSearchExplainAndConcurrentReplay(t *testing.T) {
 	ctx, r, owner, w := lifecycleFixture(t)
 	admin := enterpriseAdminActor(t)

@@ -118,6 +118,22 @@ func (c StubGatewayCache) ReleaseGrokVideoBilled(_ context.Context, _ string) er
 	return nil
 }
 
+func (c StubGatewayCache) StartMediaAttempt(_ context.Context, _ *service.GrokVideoPendingBilling) error {
+	return nil
+}
+
+func (c StubGatewayCache) CompleteMediaAttempt(_ context.Context, _ *service.GrokVideoPendingBilling) error {
+	return nil
+}
+
+func (c StubGatewayCache) RejectMediaAttempt(_ context.Context, _ string) error {
+	return nil
+}
+
+func (c StubGatewayCache) RecoverMediaAttempts(_ context.Context, _ time.Time, _ int) (int, error) {
+	return 0, nil
+}
+
 func (c StubGatewayCache) SetReasoningContent(_ context.Context, _ string, _ string, _ time.Duration) error {
 	return nil
 }

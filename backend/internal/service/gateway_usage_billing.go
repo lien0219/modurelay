@@ -1203,6 +1203,9 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		SimpleModeKeyRateLimitOnly: simpleModeKeyRateLimitOnly,
 	}, s.billingDeps(), s.usageBillingRepo)
 	if billingErr != nil {
+		if usageLog.WorkspaceID != nil && *usageLog.WorkspaceID > 0 {
+			return billingErr
+		}
 		usageLog.ActualCost = 0
 		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
 		return billingErr

@@ -84,4 +84,16 @@ func (s *WorkspaceService) appendAdminRotationCapabilities(v *AdminExportRotatio
 	v.State = "blocked"
 	v.RotationCertified = false
 	v.Capabilities = AdminInstanceCapabilities{Available: true, Scope: "current_instance", ExportEnabled: s.lifecycle != nil && s.lifecycle.cfg.Enabled, PurgeEnabled: s.lifecycle != nil && s.lifecycle.cfg.PurgeEnabled, KeyAvailable: s.lifecycle != nil && len(s.lifecycle.key) == 32}
+	if s.lifecycle != nil && s.lifecycle.keys != nil && s.lifecycle.keys.ActiveID != "" {
+		v.Format = "MRLEX01/MRLEX02"
+		v.SingleKeyNoID = false
+		issues := v.Issues[:0]
+		for _, issue := range v.Issues {
+			if issue.Code != "SINGLE_KEY_NO_KEY_ID" {
+				issues = append(issues, issue)
+			}
+		}
+		v.Issues = issues
+		v.Prerequisites = []string{"Complete approved instance inventory, matching live key-ring readers and a V1/V2 compatible rollback binary before V2 writes.", "Private-storage inventory and old/new-key restore drills, including held, retained and orphan artifacts, before any historical key retirement."}
+	}
 }

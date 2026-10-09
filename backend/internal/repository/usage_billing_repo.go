@@ -64,6 +64,17 @@ func (r *usageBillingRepository) ApplyTenantUsage(ctx context.Context, cmd *serv
 	if err := validateTenantUsageSnapshot(cmd, log); err != nil {
 		return nil, err
 	}
+	id, err := r.stageFrozenTenantUsage(ctx, cmd, log)
+	if err != nil {
+		return nil, err
+	}
+	return r.applyFrozenTenantUsage(ctx, cmd, log, id, "")
+}
+
+func (r *usageBillingRepository) applyFrozenTenantUsage(ctx context.Context, cmd *service.UsageBillingCommand, log *service.UsageLog, receiptID, token string) (*service.UsageBillingApplyResult, error) {
+	if err := validateTenantUsageSnapshot(cmd, log); err != nil {
+		return nil, err
+	}
 
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -74,6 +85,15 @@ func (r *usageBillingRepository) ApplyTenantUsage(ctx context.Context, cmd *serv
 			_ = tx.Rollback()
 		}
 	}()
+	var fingerprint string
+	err = tx.QueryRowContext(ctx, `SELECT fingerprint FROM frozen_usage_recovery WHERE id=$1::uuid
+	 AND ($2='' OR (lease_token::text=$2 AND lease_until>clock_timestamp())) FOR UPDATE`, receiptID, token).Scan(&fingerprint)
+	if err != nil {
+		return nil, err
+	}
+	if fingerprint != cmd.RequestFingerprint {
+		return nil, service.ErrUsageBillingRequestConflict
+	}
 	applied, err := r.claimUsageBillingKey(ctx, tx, cmd)
 	if err != nil {
 		return nil, err
@@ -86,6 +106,9 @@ func (r *usageBillingRepository) ApplyTenantUsage(ctx context.Context, cmd *serv
 		if !matched {
 			return nil, service.ErrUsageBillingRequestConflict
 		}
+		if err = r.settleFrozenReceiptTx(ctx, tx, receiptID, token); err != nil {
+			return nil, err
+		}
 		if err = tx.Commit(); err != nil {
 			return nil, err
 		}
@@ -97,6 +120,9 @@ func (r *usageBillingRepository) ApplyTenantUsage(ctx context.Context, cmd *serv
 	if existing, verifyErr := verifyTenantUsageLog(ctx, tx, cmd); verifyErr != nil {
 		return nil, verifyErr
 	} else if existing {
+		if err = r.settleFrozenReceiptTx(ctx, tx, receiptID, token); err != nil {
+			return nil, err
+		}
 		if err = tx.Commit(); err != nil {
 			return nil, err
 		}
@@ -122,6 +148,9 @@ func (r *usageBillingRepository) ApplyTenantUsage(ctx context.Context, cmd *serv
 		return nil, service.ErrUsageBillingRequestConflict
 	}
 	result.TenantUsageLogPersisted = true
+	if err = r.settleFrozenReceiptTx(ctx, tx, receiptID, token); err != nil {
+		return nil, err
+	}
 	if err = tx.Commit(); err != nil {
 		return nil, err
 	}

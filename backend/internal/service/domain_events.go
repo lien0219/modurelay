@@ -516,11 +516,15 @@ type DomainEventWebhookEnqueuer interface {
 }
 
 const (
-	domainEventDispatcherPollInterval = 500 * time.Millisecond
-	domainEventDispatcherLease        = 2 * time.Minute
-	domainEventDispatcherBatchSize    = 100
-	domainEventRetentionInterval      = time.Hour
-	domainEventRetentionBatchSize     = 500
+	domainEventDispatcherPollInterval    = 500 * time.Millisecond
+	domainEventDispatcherLease           = 2 * time.Minute
+	domainEventDispatcherBatchSize       = 100
+	domainEventDispatcherBatchTimeout    = time.Minute
+	domainEventDispatcherClaimTimeout    = 5 * time.Second
+	domainEventDispatcherConsumerTimeout = 5 * time.Second
+	domainEventDispatcherLeaseReserve    = 100 * time.Millisecond
+	domainEventRetentionInterval         = time.Hour
+	domainEventRetentionBatchSize        = 500
 )
 
 // DomainEventDispatcher reliably fans out claimed events to both durable
@@ -604,7 +608,14 @@ func (d *DomainEventDispatcher) ProcessBatch(ctx context.Context) error {
 	if d == nil || d.outbox == nil || d.notifications == nil || d.recipients == nil {
 		return errors.New("domain event dispatcher is unavailable")
 	}
-	claimed, err := d.outbox.Claim(ctx, domainEventDispatcherBatchSize, domainEventDispatcherLease)
+	ctx, cancelBatch := context.WithTimeout(ctx, domainEventDispatcherBatchTimeout)
+	defer cancelBatch()
+	if err := ctx.Err(); err != nil {
+		return domainEventFailure("dispatch_canceled", err)
+	}
+	claimCtx, cancelClaim := context.WithTimeout(ctx, domainEventDispatcherClaimTimeout)
+	claimed, err := d.outbox.Claim(claimCtx, domainEventDispatcherBatchSize, domainEventDispatcherLease)
+	cancelClaim()
 	if err != nil {
 		return domainEventFailure("outbox_claim_failed", err)
 	}
@@ -613,7 +624,25 @@ func (d *DomainEventDispatcher) ProcessBatch(ctx context.Context) error {
 		if err := ctx.Err(); err != nil {
 			return errors.Join(append(failures, domainEventFailure("dispatch_canceled", err))...)
 		}
-		if err := d.processClaim(ctx, item); err != nil {
+		deadline := item.LockedUntil.Add(-domainEventDispatcherLeaseReserve)
+		if !deadline.After(time.Now()) {
+			failures = append(failures, domainEventFailure("outbox_lease_lost", ErrDomainEventLeaseLost))
+			continue
+		}
+		consumerCtx, cancelConsumer := context.WithTimeout(ctx, domainEventDispatcherConsumerTimeout)
+		consumerCtx, cancelLease := context.WithDeadline(consumerCtx, deadline)
+		consumeErr := d.processClaim(consumerCtx, item)
+		cancelLease()
+		cancelConsumer()
+		if ctx.Err() != nil {
+			return errors.Join(append(failures, domainEventFailure("dispatch_canceled", ctx.Err()))...)
+		}
+		if consumeErr != nil {
+			err := consumeErr
+			if !item.LockedUntil.After(time.Now()) {
+				failures = append(failures, domainEventFailure("outbox_lease_lost", ErrDomainEventLeaseLost))
+				continue
+			}
 			delay := time.Duration(item.Attempts) * time.Second
 			if delay < time.Second {
 				delay = time.Second

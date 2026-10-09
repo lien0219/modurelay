@@ -65,11 +65,11 @@ func TestScanAnomalyWorkspacePreservesProjectAttributionForScopedDimensions(t *t
 	t.Cleanup(func() { _ = db.Close() })
 
 	bucket := time.Date(2026, 10, 8, 11, 0, 0, 0, time.UTC)
-	mock.ExpectQuery("WITH candidates").
-		WithArgs(int64(7), bucket, 100).
-		WillReturnRows(sqlmock.NewRows([]string{"scope_type", "scope_id", "dimension_type", "dimension_value", "requests", "spend", "service_account", "project_id"}).
-			AddRow("api_key", int64(19), "api_key", "19", int64(30), 2.5, false, int64(31)).
-			AddRow("service_account", int64(23), "service_account", "23", int64(40), 3.5, true, int64(32)))
+	mock.ExpectQuery("WITH tenant_rollups").
+		WithArgs(int64(7), bucket, 100, 10000).
+		WillReturnRows(sqlmock.NewRows([]string{"scope_type", "scope_id", "dimension_type", "dimension_value", "requests", "spend", "service_account", "project_id", "overflow"}).
+			AddRow("api_key", int64(19), "api_key", "19", int64(30), 2.5, false, int64(31), false).
+			AddRow("service_account", int64(23), "service_account", "23", int64(40), 3.5, true, int64(32), false))
 
 	repo := &workspaceRepository{db: db}
 	candidates, err := repo.scanAnomalyWorkspace(context.Background(), 7, bucket, service.DefaultFinOpsAnomalyConfig())

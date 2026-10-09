@@ -8,12 +8,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 
@@ -311,6 +313,67 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 	videoCreateStartedAt := ""
 	if isGrokVideoCreateEndpoint(endpoint) {
 		videoCreateStartedAt = service.GrokVideoPendingCreatedAtNow()
+	}
+	videoAttemptIDs := make(map[int64]string)
+	videoProviderStarted := make(map[int64]bool)
+	if isGrokVideoCreateEndpoint(endpoint) {
+		requestCtx = service.WithMediaProviderStart(requestCtx, func(markerCtx context.Context, accountID int64) error {
+			attemptID := videoAttemptIDs[accountID]
+			if attemptID == "" {
+				attemptID = "video-attempt:" + uuid.NewString()
+				videoAttemptIDs[accountID] = attemptID
+			}
+			principal := apiKey.ExecutionPrincipal()
+			pending := &service.GrokVideoPendingBilling{
+				AttemptID:            attemptID,
+				RequestID:            attemptID,
+				UserID:               principal.UserID,
+				ServiceAccountID:     principal.ServiceAccountID,
+				APIKeyID:             apiKey.ID,
+				AccountID:            accountID,
+				GroupID:              0,
+				QuotaPlatform:        service.QuotaPlatform(markerCtx, apiKey),
+				Model:                requestModel,
+				BillingModel:         requestModel,
+				UpstreamModel:        routingModel,
+				VideoResolution:      service.NormalizeVideoBillingResolutionOrDefault(requestInfo.Resolution),
+				VideoDurationSeconds: service.NormalizeVideoBillingDurationSecondsOrDefault(requestInfo.DurationSeconds),
+				NativeProtocol:       endpoint.IsSeedance(),
+				OriginalModel:        clientRequestedModel(c, requestModel),
+				CreatedAt:            videoCreateStartedAt,
+				BudgetReservationID:  service.BudgetReservationIDFromContext(markerCtx),
+			}
+			if apiKey.GroupID != nil {
+				pending.GroupID = *apiKey.GroupID
+			}
+			if requestID, _ := markerCtx.Value(ctxkey.RequestID).(string); strings.TrimSpace(requestID) != "" {
+				pending.RequestID = strings.TrimSpace(requestID)
+			}
+			if subscription != nil {
+				pending.SubscriptionID = subscription.ID
+			}
+			if policyQuota := service.PolicyQuotaReservationFromContext(markerCtx); policyQuota != nil {
+				pending.PolicyQuotaReservationID = policyQuota.ID()
+				pending.PolicyQuotaEstimatedTokens = policyQuota.EstimatedTokens()
+			}
+			if apiKey.Tenant != nil {
+				pending.WorkspaceID = tenantWorkspaceID(apiKey)
+				pending.ProjectID = tenantProjectID(apiKey)
+				pending.BillingPrincipalUserID = apiKey.BillingUserID()
+				if apiKey.Tenant.Allocation != nil {
+					allocation, err := apiKey.Tenant.Allocation.NormalizeAndValidate()
+					if err != nil {
+						return err
+					}
+					pending.Allocation = &allocation
+				}
+			}
+			if err := h.gatewayService.StartMediaAttempt(markerCtx, pending); err != nil {
+				return err
+			}
+			videoProviderStarted[accountID] = true
+			return nil
+		})
 	}
 	maxAccountSwitches := h.maxAccountSwitches
 	if maxAccountSwitches <= 0 {
@@ -624,9 +687,25 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 		// survive request cleanup for recovery; a definitive 4xx is marked by the
 		// adapter and remains releasable.
 		videoBudget := service.BudgetReservationFromContext(requestCtx)
+		policyQuota := service.PolicyQuotaReservationFromContext(requestCtx)
+		providerStarted := videoProviderStarted[account.ID] || (videoBudget != nil && videoBudget.ProviderStarted())
+		providerRejected := videoBudget != nil && videoBudget.ProviderRejected()
+		if policyQuota != nil {
+			providerStarted = providerStarted || policyQuota.ProviderStarted()
+			providerRejected = providerRejected || policyQuota.ProviderRejected()
+		}
+		var mediaFailoverErr *service.UpstreamFailoverError
+		if errors.As(err, &mediaFailoverErr) && mediaFailoverErr.StatusCode >= http.StatusBadRequest && mediaFailoverErr.StatusCode < http.StatusInternalServerError {
+			// The provider rejected this account's attempt (including 429). Close
+			// that marker before the bounded failover loop selects another account.
+			providerRejected = true
+		}
+		if status := c.Writer.Status(); status >= http.StatusBadRequest && status < http.StatusInternalServerError {
+			providerRejected = true
+		}
 		if err != nil {
 			videoBudget.PreserveIfProviderStarted()
-			if policyQuota := service.PolicyQuotaReservationFromContext(requestCtx); policyQuota != nil {
+			if policyQuota != nil {
 				policyQuota.PreserveIfProviderStarted()
 			}
 		}
@@ -640,8 +719,19 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 		service.SetOpsLatencyMs(c, service.OpsResponseLatencyMsKey, responseLatencyMs)
 
 		if err != nil {
+			if isGrokVideoCreateEndpoint(endpoint) && providerRejected {
+				if attemptID := strings.TrimSpace(videoAttemptIDs[account.ID]); attemptID != "" {
+					if rejectErr := h.gatewayService.RejectMediaAttempt(requestCtx, attemptID); rejectErr != nil {
+						reqLog.Error("grok_media.reject_video_attempt_failed",
+							zap.Int64("account_id", account.ID),
+							zap.String("attempt_id", attemptID),
+							zap.Error(rejectErr),
+						)
+					}
+				}
+			}
 			var videoCreateFailoverErr *service.UpstreamFailoverError
-			if isGrokVideoCreateEndpoint(endpoint) && videoBudget != nil && videoBudget.ProviderStarted() && !videoBudget.ProviderRejected() {
+			if isGrokVideoCreateEndpoint(endpoint) && providerStarted && !providerRejected {
 				videoBudget.PreserveIfProviderStarted()
 				if errors.As(err, &videoCreateFailoverErr) {
 					h.handleFailoverExhausted(c, videoCreateFailoverErr, false)
@@ -798,6 +888,8 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 			}
 			pendingDuration = service.NormalizeVideoBillingDurationSecondsOrDefault(pendingDuration)
 			pending := service.GrokVideoPendingBilling{
+				AttemptID:            videoAttemptIDs[account.ID],
+				RequestID:            strings.TrimSpace(result.ResponseID),
 				AccountID:            account.ID,
 				GroupID:              pendingGroupID,
 				SubscriptionID:       pendingSubscriptionID,
@@ -847,6 +939,16 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 					}
 				}
 			}
+			if strings.TrimSpace(pending.AttemptID) != "" && strings.TrimSpace(pending.RequestID) != "" {
+				if err := h.gatewayService.CompleteMediaAttempt(requestCtx, &pending); err != nil {
+					reqLog.Error("grok_media.complete_video_attempt_failed",
+						zap.Int64("account_id", account.ID),
+						zap.String("attempt_id", pending.AttemptID),
+						zap.String("request_id", result.ResponseID),
+						zap.Error(err),
+					)
+				}
+			}
 			if selectedCapability == service.OpenAIEndpointCapabilitySeedance {
 				if seedanceStateErr != nil {
 					h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "Video task state is temporarily unavailable")
@@ -858,7 +960,9 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 			// A successful HTTP response without a task ID is still an uncertain
 			// provider outcome. Keep the reservation for recovery rather than
 			// treating the malformed response as a safe local failure.
-			videoBudget.PreserveIfProviderStarted()
+			if videoBudget != nil {
+				videoBudget.PreserveIfProviderStarted()
+			}
 			if policyQuota := service.PolicyQuotaReservationFromContext(requestCtx); policyQuota != nil {
 				policyQuota.PreserveIfProviderStarted()
 			}

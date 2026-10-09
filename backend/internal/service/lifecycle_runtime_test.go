@@ -70,3 +70,37 @@ func TestLifecycleRuntimeEncryptsBeforeUploadAndDefersLostLeaseCleanupToLedger(t
 	require.Equal(t, "tenant-snapshot", plain.String())
 	require.False(t, errors.Is(r.finished, ErrLifecycleExportLimit))
 }
+
+type lifecycleCryptoRuntimeRepo struct {
+	lifecycleRuntimeRepo
+	ready bool
+}
+
+func (r *lifecycleCryptoRuntimeRepo) RegisterLifecycleCryptoReader(context.Context, LifecycleCryptoReader, bool) error {
+	if !r.ready {
+		return ErrLifecycleKeyRingNotReady
+	}
+	return nil
+}
+func (r *lifecycleCryptoRuntimeRepo) ClaimLifecycleExportWithCrypto(ctx context.Context, _ LifecycleCryptoReader, _ bool) (*LifecycleExportJob, error) {
+	if !r.ready {
+		return nil, ErrLifecycleKeyRingNotReady
+	}
+	return r.ClaimLifecycleExport(ctx)
+}
+
+func TestLifecycleRuntimeV2RequiresConsensusBeforeClaimAndUpload(t *testing.T) {
+	ring := fixtureLifecycleKeyRing(t)
+	r := &lifecycleCryptoRuntimeRepo{lifecycleRuntimeRepo: lifecycleRuntimeRepo{claim: &LifecycleExportJob{ID: "job", WorkspaceID: 1, ObjectKey: "scope", LeaseToken: "token"}}}
+	store := &lifecycleRuntimeStore{}
+	runtime := &LifecycleRuntime{repo: r, cryptoRepo: r, keys: ring, store: store, cfg: config.DataLifecycleConfig{Enabled: true, V2WriteEnabled: true}}
+	require.ErrorIs(t, runtime.processExport(context.Background()), ErrLifecycleKeyRingNotReady)
+	require.Empty(t, store.uploaded)
+	require.NotNil(t, r.claim, "failed promotion leaves the queued attempt available")
+	r.ready = true
+	require.NoError(t, runtime.processExport(context.Background()))
+	require.True(t, bytes.HasPrefix(store.uploaded, []byte("MRLEX02\n")))
+	var out bytes.Buffer
+	require.NoError(t, DecryptLifecycleArtifactWithKeys(context.Background(), &out, bytes.NewReader(store.uploaded), ring, "scope"))
+	require.Equal(t, "tenant-snapshot", out.String())
+}

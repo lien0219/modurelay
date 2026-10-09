@@ -82,6 +82,24 @@ func markVideoProviderStarted(ctx context.Context, endpoint GrokMediaEndpoint) {
 	MarkPolicyQuotaProviderStarted(ctx)
 }
 
+// markMediaProviderStart makes the durable attempt marker the first side
+// effect at an asynchronous video provider boundary. The marker is optional
+// for direct legacy service callers, while production handlers attach it to
+// tenant-aware requests and fail closed when it cannot be written.
+func markMediaProviderStart(ctx context.Context, endpoint GrokMediaEndpoint, accountID int64) error {
+	if !isAsyncVideoCreateEndpoint(endpoint) {
+		return nil
+	}
+	if marker, ok := ctx.Value(mediaProviderStartContextKey{}).(func(context.Context, int64) error); ok {
+		if err := marker(ctx, accountID); err != nil {
+			return err
+		}
+	}
+	markVideoProviderStarted(ctx, endpoint)
+	markGrokMediaPolicyProviderStarted(ctx, endpoint)
+	return nil
+}
+
 func markVideoProviderRejected(ctx context.Context, endpoint GrokMediaEndpoint, statusCode int) {
 	if !isAsyncVideoCreateEndpoint(endpoint) || statusCode < 400 || statusCode >= 500 {
 		return
@@ -412,6 +430,9 @@ func (s *OpenAIGatewayService) BindGrokMediaVideoRequestAccount(
 	if cacheKey == "" || accountID <= 0 {
 		return fmt.Errorf("grok video request binding is invalid")
 	}
+	if authority, ok := s.cache.(VideoTaskBindingStore); ok {
+		return authority.BindVideoTaskAccount(ctx, requestID, userID, apiKeyID, derefGroupID(groupID), accountID)
+	}
 	// Keep routing ownership longer than billing state so completed task history
 	// remains queryable without extending money-event snapshots unnecessarily.
 	return s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), cacheKey, accountID, grokVideoRequestBindingTTL(s.cfg))
@@ -429,6 +450,9 @@ func (s *OpenAIGatewayService) ResolveGrokMediaVideoRequestAccount(
 	cacheKey := s.openAISessionCacheKey(GrokMediaVideoRequestSessionHash(requestID, userID, apiKeyID))
 	if cacheKey == "" {
 		return 0, fmt.Errorf("grok video request binding is invalid")
+	}
+	if authority, ok := s.cache.(VideoTaskBindingStore); ok {
+		return authority.GetVideoTaskAccount(ctx, requestID, userID, apiKeyID, derefGroupID(groupID))
 	}
 	return s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), cacheKey)
 }
@@ -478,6 +502,9 @@ func (s *OpenAIGatewayService) SelectMediaVideoRequestAccount(
 // first observes a completed video URL. Status may omit model/duration; we fall
 // back to this snapshot, then defaults.
 type GrokVideoPendingBilling struct {
+	// AttemptID identifies the durable pre-send marker independently from the
+	// provider task ID, which is unknown until the async create returns.
+	AttemptID        string `json:"attempt_id,omitempty"`
 	ServiceAccountID int64  `json:"service_account_id,omitempty"`
 	RequestID        string `json:"request_id,omitempty"`
 	UserID           int64  `json:"user_id,omitempty"`
@@ -756,6 +783,41 @@ type GrokVideoRecoveryCache interface {
 // grow a method for unrelated gateway behavior.
 type GrokVideoPendingBillingCleanup interface {
 	DeleteGrokVideoPendingBilling(ctx context.Context, key string) error
+}
+
+// StartMediaAttempt persists the frozen ownership and pricing snapshot before
+// an asynchronous video request crosses the provider boundary.
+func (s *OpenAIGatewayService) StartMediaAttempt(ctx context.Context, pending *GrokVideoPendingBilling) error {
+	if s == nil || s.cache == nil {
+		return fmt.Errorf("media attempt store is unavailable")
+	}
+	store, ok := s.cache.(MediaAttemptStore)
+	if !ok {
+		return fmt.Errorf("media attempt store is unavailable")
+	}
+	return store.StartMediaAttempt(ctx, pending)
+}
+
+func (s *OpenAIGatewayService) CompleteMediaAttempt(ctx context.Context, pending *GrokVideoPendingBilling) error {
+	if s == nil || s.cache == nil {
+		return fmt.Errorf("media attempt finalizer is unavailable")
+	}
+	finalizer, ok := s.cache.(MediaAttemptFinalizer)
+	if !ok {
+		return fmt.Errorf("media attempt finalizer is unavailable")
+	}
+	return finalizer.CompleteMediaAttempt(ctx, pending)
+}
+
+func (s *OpenAIGatewayService) RejectMediaAttempt(ctx context.Context, attemptID string) error {
+	if s == nil || s.cache == nil {
+		return fmt.Errorf("media attempt rejector is unavailable")
+	}
+	rejector, ok := s.cache.(MediaAttemptRejector)
+	if !ok {
+		return fmt.Errorf("media attempt rejector is unavailable")
+	}
+	return rejector.RejectMediaAttempt(ctx, attemptID)
 }
 
 // StoreGrokVideoPendingBilling persists create-time billing params for deferred status billing.
@@ -1129,8 +1191,9 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
 	}
-	markVideoProviderStarted(ctx, endpoint)
-	markGrokMediaPolicyProviderStarted(ctx, endpoint)
+	if err := markMediaProviderStart(ctx, endpoint, account.ID); err != nil {
+		return nil, err
+	}
 	upstreamStart := time.Now()
 	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())

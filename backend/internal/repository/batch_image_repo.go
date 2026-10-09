@@ -671,6 +671,40 @@ func (r *batchImageRepository) ListStaleUnsubmittedBatchImageJobs(ctx context.Co
 	return scanBatchImageJobs(rows)
 }
 
+// ListRecoverableBatchImageJobs is the bounded SQL rehydration path used when
+// the Redis queue was lost. Accepted provider jobs are safe to poll again; a
+// failed/cancelled job is returned only when its provider create never crossed
+// the durable start marker and its release receipt is still absent. Unknown
+// provider starts are intentionally excluded so recovery cannot resubmit or
+// refund an ambiguous outcome.
+func (r *batchImageRepository) ListRecoverableBatchImageJobs(ctx context.Context, limit int) ([]*service.BatchImageJob, error) {
+	if limit <= 0 || limit > 1000 {
+		limit = 100
+	}
+	rows, err := r.sql.QueryContext(ctx, batchImageJobSelectSQL+`
+ WHERE (
+   (provider_job_name IS NOT NULL AND status IN ('submitted','running','indexing','settling'))
+   OR (
+     status IN ('failed','cancelled')
+     AND provider_create_started_at IS NULL
+     AND COALESCE(hold_amount, estimated_cost, 0) > 0
+     AND COALESCE(last_error_code, '') <> 'SUBMIT_OUTCOME_UNKNOWN'
+     AND NOT EXISTS (
+       SELECT 1 FROM usage_billing_dedup d
+       WHERE d.request_id = 'batch_image_release:' || batch_id
+         AND d.api_key_id = batch_image_jobs.api_key_id
+     )
+   )
+ )
+ ORDER BY updated_at ASC, id ASC
+ LIMIT $1`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	return scanBatchImageJobs(rows)
+}
+
 func (r *batchImageRepository) MarkBatchImageInputDeleted(ctx context.Context, batchID string, deletedAt time.Time) error {
 	res, err := r.sql.ExecContext(ctx, `
 UPDATE batch_image_jobs

@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -52,6 +53,19 @@ func TestSeedanceNativeForwarding(t *testing.T) {
 	for _, field := range []string{"content", "duration", "generate_audio", "future_field"} {
 		require.Equal(t, gjson.GetBytes(body, field).Raw, gjson.GetBytes(forwarded, field).Raw)
 	}
+}
+
+func TestSeedanceProviderMarkerFailureFailsClosed(t *testing.T) {
+	markerErr := errors.New("durable media attempt unavailable")
+	upstream := &grokMediaContentUpstreamStub{response: grokMediaContentStatusResponse(`{"id":"task-1"}`)}
+	svc := &OpenAIGatewayService{httpUpstream: upstream}
+	c, _ := grokMediaContentTestContext(http.MethodPost, "/api/v3/contents/generations/tasks", nil)
+	ctx := WithMediaProviderStart(context.Background(), func(context.Context, int64) error { return markerErr })
+
+	_, err := svc.ForwardSeedance(ctx, c, seedanceFirstClassTestAccount(), SeedanceEndpointCreate, "", []byte(`{"model":"video","content":[{"type":"text","text":"waves"}]}`))
+
+	require.ErrorIs(t, err, markerErr)
+	require.Empty(t, upstream.requests, "the provider must not receive a create before durable attempt evidence commits")
 }
 
 func TestSeedanceCompatibleVideoCreateAndStatus(t *testing.T) {

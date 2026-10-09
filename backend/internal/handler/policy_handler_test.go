@@ -182,3 +182,25 @@ func TestPolicyHTTPServiceAccountRouteRejectsCrossTenantTarget(t *testing.T) {
 	r.ServeHTTP(w, httptest.NewRequest("GET", "/api/v1/workspaces/999/projects/2/service-accounts/9/policy", nil))
 	require.Equal(t, 404, w.Code, w.Body.String())
 }
+
+func TestPolicyHTTPServiceAccountViewerGrantCannotUpdatePolicy(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	store := domain.NewMemoryPolicyStore()
+	workspaceRepo := &policyHandlerWorkspaceRepo{access: &service.WorkspaceAccess{
+		Workspace:          &service.Workspace{ID: 1, Status: "active", ProjectAccessMode: service.ProjectAccessModeAssigned},
+		Project:            &service.Project{ID: 2, WorkspaceID: 1, Status: "active"},
+		Member:             &service.WorkspaceMember{Role: "developer", Status: "active"},
+		ProjectRole:        service.ProjectAccessRoleViewer,
+		ProjectPermissions: service.ProjectRolePermissions(service.ProjectAccessRoleViewer),
+	}}
+	sa := service.NewServiceAccountService(&policyHandlerServiceAccountRepo{}, service.NewWorkspaceAccessService(workspaceRepo), nil, nil)
+	r := gin.New()
+	r.Use(func(c *gin.Context) { c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 4}) })
+	NewPolicyHandler(service.NewWorkspaceService(workspaceRepo), sa, store, nil).RegisterTenantRoutes(r.Group("/api/v1"))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest("PATCH", "/api/v1/workspaces/1/projects/2/service-accounts/9/policy", strings.NewReader(`{"expected_revision":0,"allowed_models":[]}`)))
+	require.Equal(t, 403, w.Code, w.Body.String())
+	policy, err := store.GetPolicy(context.Background(), domain.PolicyRef{Scope: domain.PolicyScopeServiceAccount, ScopeID: 9})
+	require.NoError(t, err)
+	require.Nil(t, policy, "denied policy writes must have no side effects")
+}

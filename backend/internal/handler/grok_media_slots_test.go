@@ -120,14 +120,27 @@ func (s *grokMediaSlotsCache) assertReleased(t *testing.T) {
 
 type grokMediaSlotBindings struct {
 	testutil.StubGatewayCache
-	owner   int64
-	writes  int
-	key     string
-	billed  map[string]bool
-	pending map[string][]byte
+	owner      int64
+	writes     int
+	key        string
+	billed     map[string]bool
+	pending    map[string][]byte
+	pendingErr error
+	completed  []*service.GrokVideoPendingBilling
+}
+
+func (s *grokMediaSlotBindings) CompleteMediaAttempt(_ context.Context, pending *service.GrokVideoPendingBilling) error {
+	if pending != nil {
+		copy := *pending
+		s.completed = append(s.completed, &copy)
+	}
+	return nil
 }
 
 func (s *grokMediaSlotBindings) SetGrokVideoPendingBilling(_ context.Context, key string, body []byte, _ time.Duration) error {
+	if s.pendingErr != nil {
+		return s.pendingErr
+	}
 	if s.pending == nil {
 		s.pending = make(map[string][]byte)
 	}
@@ -337,7 +350,7 @@ func TestGrokMediaLookupSlotLifecycle(t *testing.T) {
 func TestGrokMediaEligibilityReleasesBeforeSwitch(t *testing.T) {
 	for _, scenario := range []string{"switch", "exhausted", "cancel during probe"} {
 		t.Run(scenario, func(t *testing.T) {
-			h, slots, _, upstream := newGrokMediaSlotHandler(t, true, false)
+			h, slots, bindings, upstream := newGrokMediaSlotHandler(t, true, false)
 			h.maxAccountSwitches = 1
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
@@ -363,6 +376,9 @@ func TestGrokMediaEligibilityReleasesBeforeSwitch(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, 200, w.Code, "body=%s probes=%d upstream=%d events=%s", w.Body.String(), probes, upstream.calls, detail)
 				require.Equal(t, 1, upstream.calls)
+				require.Len(t, bindings.completed, 1)
+				require.Equal(t, "task", bindings.completed[0].RequestID)
+				require.NotEmpty(t, bindings.completed[0].AttemptID)
 			}
 			if scenario == "exhausted" {
 				require.Equal(t, 503, w.Code)
@@ -371,6 +387,39 @@ func TestGrokMediaEligibilityReleasesBeforeSwitch(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGrokMediaGenerationUpstreamErrorWithoutTenantDoesNotPanic(t *testing.T) {
+	h, slots, _, upstream := newGrokMediaSlotHandler(t, false, false)
+	h.grokMediaEligibilityProber = grokMediaSlotProber(func(context.Context, int64) (bool, string, error) {
+		return true, "eligible", nil
+	})
+	upstream.call = func(*http.Request, int64) (*http.Response, error) {
+		return nil, errors.New("upstream unavailable")
+	}
+	c, w := grokMediaSlotContext(context.Background(), true)
+
+	require.NotPanics(t, func() { h.GrokVideoGeneration(c) })
+	require.Equal(t, http.StatusBadGateway, w.Code)
+	slots.assertReleased(t)
+}
+
+func TestGrokMediaGenerationCompletesAttemptWhenPendingProjectionFails(t *testing.T) {
+	h, slots, bindings, upstream := newGrokMediaSlotHandler(t, false, false)
+	h.grokMediaEligibilityProber = grokMediaSlotProber(func(context.Context, int64) (bool, string, error) {
+		return true, "eligible", nil
+	})
+	bindings.pendingErr = errors.New("pending projection unavailable")
+	c, w := grokMediaSlotContext(context.Background(), true)
+
+	h.GrokVideoGeneration(c)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, 1, upstream.calls)
+	require.Len(t, bindings.completed, 1)
+	require.Equal(t, "task", bindings.completed[0].RequestID)
+	require.NotEmpty(t, bindings.completed[0].AttemptID)
+	slots.assertReleased(t)
 }
 
 func TestGrokMediaVideoLookupOwnerIsolation(t *testing.T) {

@@ -262,8 +262,6 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 			jsonKeepaliveStarted = true
 		}
 		forwardStart := time.Now()
-		service.BudgetReservationFromContext(requestCtx).MarkProviderStarted()
-		service.MarkPolicyQuotaProviderStarted(requestCtx)
 		writerSizeBeforeForward := service.OpenAIImagesJSONKeepaliveAdjustedWrittenSize(c)
 		result, err := func() (*service.OpenAIForwardResult, error) {
 			defer func() {

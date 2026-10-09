@@ -1,6 +1,9 @@
 package service
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
 func TestProjectAccessRolePermissionsAndValidation(t *testing.T) {
 	if !ValidProjectAccessMode("all_projects") || !ValidProjectAccessMode("assigned_projects") {
@@ -72,5 +75,41 @@ func TestAssignedProjectBillingRemainsReadOnly(t *testing.T) {
 	}
 	if err := CheckWorkspacePermission(access, "key.create"); err == nil {
 		t.Fatal("billing must not create keys in assigned-project mode")
+	}
+}
+
+func TestServiceAccountPolicyRequiresProjectWriteGrantWithoutExpandingWorkspaceRoles(t *testing.T) {
+	for _, tc := range []struct {
+		name, mode, workspaceRole, projectRole string
+		allowed                                bool
+	}{
+		{"developer_without_grant", ProjectAccessModeAssigned, "developer", "", false},
+		{"developer_with_viewer_override", ProjectAccessModeAssigned, "developer", "viewer", false},
+		{"developer_with_developer_grant", ProjectAccessModeAssigned, "developer", "developer", true},
+		{"developer_with_admin_grant", ProjectAccessModeAssigned, "developer", "admin", true},
+		{"viewer_with_developer_grant", ProjectAccessModeAssigned, "viewer", "developer", false},
+		{"viewer_with_admin_grant", ProjectAccessModeAssigned, "viewer", "admin", false},
+		{"billing_with_admin_grant", ProjectAccessModeAssigned, "billing", "admin", false},
+		{"owner_without_grant", ProjectAccessModeAssigned, "owner", "", true},
+		{"admin_without_grant", ProjectAccessModeAssigned, "admin", "", true},
+		{"all_projects_developer", ProjectAccessModeAllProjects, "developer", "", true},
+		{"all_projects_viewer", ProjectAccessModeAllProjects, "viewer", "admin", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			access := &WorkspaceAccess{
+				Workspace:          &Workspace{Status: "active", ProjectAccessMode: tc.mode},
+				Project:            &Project{Status: "active"},
+				Member:             &WorkspaceMember{Role: tc.workspaceRole, Status: "active"},
+				ProjectRole:        tc.projectRole,
+				ProjectPermissions: ProjectRolePermissions(tc.projectRole),
+			}
+			err := CheckWorkspacePermission(access, "service_account_policy.update")
+			if tc.allowed && err != nil {
+				t.Fatalf("authorized policy write denied: %v", err)
+			}
+			if !tc.allowed && !errors.Is(err, ErrWorkspaceForbidden) {
+				t.Fatalf("policy write must be forbidden, got %v", err)
+			}
+		})
 	}
 }

@@ -664,6 +664,22 @@ func (s *OpenAIGatewayService) ForwardImages(
 	}
 }
 
+// markOpenAIImagesProviderStarted records the durable provider boundary before
+// the in-memory budget and policy handles become non-releasable. Async callers
+// install the marker; synchronous callers proceed without one for compatibility.
+func markOpenAIImagesProviderStarted(ctx context.Context, accountID int64) error {
+	if marker, ok := ctx.Value(mediaProviderStartContextKey{}).(func(context.Context, int64) error); ok {
+		if err := marker(ctx, accountID); err != nil {
+			return err
+		}
+	}
+	if handle := BudgetReservationFromContext(ctx); handle != nil {
+		handle.MarkProviderStarted()
+	}
+	MarkPolicyQuotaProviderStarted(ctx)
+	return nil
+}
+
 func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 	ctx context.Context,
 	c *gin.Context,
@@ -717,6 +733,9 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
+	}
+	if err := markOpenAIImagesProviderStarted(ctx, account.ID); err != nil {
+		return nil, err
 	}
 	upstreamStart := time.Now()
 	resp, err := s.doOpenAIUpstream(upstreamReq, proxyURL, account)

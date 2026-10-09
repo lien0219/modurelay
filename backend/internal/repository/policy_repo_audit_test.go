@@ -32,8 +32,7 @@ func TestPolicyRepositoryCreateAtomicallyAttributesAuditAndOutbox(t *testing.T) 
 	defer func() { _ = db.Close() }()
 	ctx := service.WithPolicyActor(context.Background(), 7)
 	mock.ExpectBegin()
-	mock.ExpectQuery("SELECT workspace_id FROM projects WHERE id=\\$1").WithArgs(int64(42)).
-		WillReturnRows(sqlmock.NewRows([]string{"workspace_id"}).AddRow(int64(11)))
+	expectPolicyAuthorization(mock, 7, 11, 42, domain.PolicyRef{Scope: domain.PolicyScopeProject, ScopeID: 42})
 	mock.ExpectQuery("INSERT INTO project_policies").
 		WithArgs(int64(42), sqlmock.AnyArg(), sqlmock.AnyArg(), nil, nil, nil, nil, nil, int64(7), int64(7)).
 		WillReturnRows(sqlmock.NewRows([]string{"revision"}).AddRow(int64(1)))
@@ -57,8 +56,7 @@ func TestPolicyRepositoryRevisionMissRollsBackWithoutAudit(t *testing.T) {
 	defer func() { _ = db.Close() }()
 	ctx := service.WithPolicyActor(context.Background(), 7)
 	mock.ExpectBegin()
-	mock.ExpectQuery("SELECT workspace_id FROM projects WHERE id=\\$1").WithArgs(int64(42)).
-		WillReturnRows(sqlmock.NewRows([]string{"workspace_id"}).AddRow(int64(11)))
+	expectPolicyAuthorization(mock, 7, 11, 42, domain.PolicyRef{Scope: domain.PolicyScopeProject, ScopeID: 42})
 	mock.ExpectQuery("SELECT .* FROM project_policies WHERE project_id=\\$1 FOR UPDATE").
 		WithArgs(int64(42)).
 		WillReturnRows(sqlmock.NewRows([]string{"revision", "allowed_models", "allowed_platforms", "rpm_limit", "daily_request_limit", "monthly_request_limit", "daily_token_limit", "monthly_token_limit"}).

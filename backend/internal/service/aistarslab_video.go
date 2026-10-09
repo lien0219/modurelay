@@ -207,7 +207,9 @@ func (s *OpenAIGatewayService) doAIStarsLabOpenAPI(ctx context.Context, c *gin.C
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxy = account.Proxy.URL()
 	}
-	markVideoProviderStarted(ctx, endpoint)
+	if err := markMediaProviderStart(ctx, endpoint, account.ID); err != nil {
+		return nil, nil, err
+	}
 	started := time.Now()
 	resp, err := s.httpUpstream.Do(req, proxy, account.ID, account.Concurrency)
 	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(started).Milliseconds())

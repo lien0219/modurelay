@@ -192,12 +192,21 @@ func (r *workspaceRepository) ClaimLifecycleExport(ctx context.Context) (*servic
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback() }()
+	job, err := r.claimLifecycleExportTx(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	return job, tx.Commit()
+}
+
+func (r *workspaceRepository) claimLifecycleExportTx(ctx context.Context, tx *sql.Tx) (*service.LifecycleExportJob, error) {
+	var err error
 	if err = lifecycleReapExhausted(ctx, tx, "export"); err != nil {
 		return nil, err
 	}
 	job, err := scanLifecycleExport(tx.QueryRowContext(ctx, `SELECT `+lifecycleExportColumns+` FROM workspace_export_jobs WHERE state IN ('pending','running') AND available_at<=now() AND attempts<5 AND (lease_expires_at IS NULL OR lease_expires_at<=now()) ORDER BY available_at,id LIMIT 1 FOR UPDATE SKIP LOCKED`))
 	if errors.Is(err, service.ErrWorkspaceNotFound) {
-		return nil, tx.Commit()
+		return nil, nil
 	}
 	if err != nil {
 		return nil, err
@@ -214,7 +223,7 @@ func (r *workspaceRepository) ClaimLifecycleExport(ctx context.Context) (*servic
 	if _, err = tx.ExecContext(ctx, `INSERT INTO workspace_export_objects(object_key,workspace_id,export_id,lease_token,cleanup_after) VALUES($1,$2,$3,$4,now()+interval '1 day')`, key, job.WorkspaceID, job.ID, token); err != nil {
 		return nil, err
 	}
-	return job, tx.Commit()
+	return job, nil
 }
 
 func (r *workspaceRepository) FinishLifecycleExport(ctx context.Context, claim *service.LifecycleExportJob, result *service.LifecycleExportResult, failure error) error {

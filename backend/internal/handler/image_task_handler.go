@@ -274,6 +274,12 @@ func (h *AsyncImageHandler) executeWithGateway(platform string, c *gin.Context) 
 
 func (h *AsyncImageHandler) run(taskID, platform string, taskCtx *gin.Context, recorder *httptest.ResponseRecorder, cancel context.CancelFunc) {
 	defer cancel()
+	if h.tasks != nil {
+		requestContext := service.WithMediaProviderStart(taskCtx.Request.Context(), func(ctx context.Context, accountID int64) error {
+			return h.tasks.MarkProviderStarted(ctx, taskID, accountID)
+		})
+		taskCtx.Request = taskCtx.Request.WithContext(requestContext)
+	}
 	policyQuota := service.PolicyQuotaReservationFromContext(taskCtx.Request.Context())
 	defer func() {
 		cleanupAsyncImagePolicyQuota(taskCtx.Request.Context(), policyQuota, recorder.Code)
