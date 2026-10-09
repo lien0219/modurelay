@@ -9,7 +9,7 @@
 ---
 
 [![License: LGPL v3](https://img.shields.io/badge/License-LGPL%20v3-blue.svg)](LICENSE)
-[![Go](https://img.shields.io/badge/Go-1.27.0-00ADD8.svg)](https://golang.org/)
+[![Go](https://img.shields.io/badge/Go-1.27.2-00ADD8.svg)](https://golang.org/)
 [![Vue](https://img.shields.io/badge/Vue-3.4+-4FC08D.svg)](https://vuejs.org/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15+-336791.svg)](https://www.postgresql.org/)
 [![Redis](https://img.shields.io/badge/Redis-7+-DC382D.svg)](https://redis.io/)
@@ -102,7 +102,7 @@ flowchart LR
 
 | 层级 | 技术 |
 | --- | --- |
-| 后端 | Go 1.27.0、Gin、Ent |
+| 后端 | Go 1.27.2、Gin、Ent |
 | 前端 | Vue 3.4+、Vite 5+、TypeScript、pnpm |
 | 数据库 | PostgreSQL 15+ |
 | 缓存/队列 | Redis 7+ |
@@ -139,7 +139,7 @@ docker compose -f docker-compose.dev.yml up --build -d
 
 ### 后端
 
-需要：Go `1.27.0+`、PostgreSQL、Redis。
+需要：Go `1.27.2+`、PostgreSQL、Redis。
 
 ```bash
 cd backend

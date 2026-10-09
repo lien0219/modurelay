@@ -23,14 +23,12 @@ func http2KeepAliveTestPoolSettings() poolSettings {
 	}
 }
 
-// requireHTTP2Configured 断言 http2 已显式挂到 http.Transport 上。
-// x/net/http2 在 go1.27 && !http2legacy 下是标准库 HTTP/2 的包装：ConfigureTransports 通过
-// Transport.RegisterProtocol("http/2") 注册配置并打开 Protocols.HTTP2（TLSNextProto 不承载 h2 入口），
-// ReadIdleTimeout/PingTimeout 在建连时映射为 http.HTTP2Config.SendPingTimeout/PingTimeout。
+// requireHTTP2Configured 断言 HTTP/2 协议和保活参数已配置到底层标准库 Transport。
 func requireHTTP2Configured(t *testing.T, tr *http.Transport, msg string) {
 	t.Helper()
 	require.NotNil(t, tr.Protocols, msg)
 	require.True(t, tr.Protocols.HTTP2(), msg)
+	require.NotNil(t, tr.HTTP2, msg)
 }
 
 // 长流 / OpenAI 上游改走 HTTP/2 后，池化连接被代理/NAT 静默掐断会成为“死连接”：
@@ -51,10 +49,10 @@ func TestEnableHTTP2KeepAlive_EnablesPingHealthCheck(t *testing.T) {
 			tr := &http.Transport{}
 			h2, err := enableHTTP2KeepAlive(tr, tc.mode)
 			require.NoError(t, err)
-			require.NotNil(t, h2, "必须返回已配置的 *http2.Transport")
-			require.Equal(t, tc.readIdleTimeout, h2.ReadIdleTimeout)
-			require.Equal(t, tc.pingTimeout, h2.PingTimeout, "各模式应使用独立的 PING 应答期限")
 			requireHTTP2Configured(t, tr, "http2 必须已挂到底层 http.Transport 上")
+			require.Same(t, tr.HTTP2, h2, "返回的保活配置必须由标准库 Transport 使用")
+			require.Equal(t, tc.readIdleTimeout, tr.HTTP2.SendPingTimeout)
+			require.Equal(t, tc.pingTimeout, tr.HTTP2.PingTimeout, "各模式应使用独立的 PING 应答期限")
 		})
 	}
 }
@@ -74,6 +72,7 @@ func TestBuildUpstreamTransport_NonHTTP2_NotEagerlyConfigured(t *testing.T) {
 			tr, err := buildUpstreamTransport(http2KeepAliveTestPoolSettings(), nil, mode)
 			require.NoError(t, err)
 			require.Nil(t, tr.Protocols, "非 H2 模式不应主动配置 http2 keepalive")
+			require.Nil(t, tr.HTTP2, "非 H2 模式不应主动配置 HTTP/2 保活参数")
 			require.Nil(t, tr.TLSNextProto["h2"], "非 H2 模式不应主动配置 http2 keepalive")
 		})
 	}

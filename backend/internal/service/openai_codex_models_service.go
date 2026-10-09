@@ -1534,6 +1534,7 @@ func isRetryableCodexModelsManifestTransportError(err error) bool {
 	if errors.As(err, &dnsErr) {
 		return true
 	}
+	// Retain legacy typed GOAWAY errors; net/http does not export its replacement.
 	var goAwayErr http2.GoAwayError
 	if errors.As(err, &goAwayErr) {
 		return true

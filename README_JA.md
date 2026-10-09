@@ -9,7 +9,7 @@ Connect once. Route any model.
 ---
 
 [![License: LGPL v3](https://img.shields.io/badge/License-LGPL%20v3-blue.svg)](LICENSE)
-[![Go](https://img.shields.io/badge/Go-1.27.0-00ADD8.svg)](https://golang.org/)
+[![Go](https://img.shields.io/badge/Go-1.27.2-00ADD8.svg)](https://golang.org/)
 [![Vue](https://img.shields.io/badge/Vue-3.4+-4FC08D.svg)](https://vuejs.org/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15+-336791.svg)](https://www.postgresql.org/)
 [![Redis](https://img.shields.io/badge/Redis-7+-DC382D.svg)](https://redis.io/)
@@ -110,7 +110,7 @@ underscores_in_headers on;
 
 | Layer | Technology |
 | --- | --- |
-| Backend | Go `1.27.0` (`backend/go.mod`) |
+| Backend | Go `1.27.2` (`backend/go.mod`) |
 | Frontend | Vue `^3.4`, Vite, TypeScript, pnpm (`frontend/package.json`) |
 | Database | PostgreSQL 15+ |
 | Cache | Redis 7+ |
@@ -147,7 +147,7 @@ docker compose -f docker-compose.dev.yml up --build -d
 
 ### Backend
 
-必要: Go `1.27.0+`、PostgreSQL、Redis。
+必要: Go `1.27.2+`、PostgreSQL、Redis。
 
 ```bash
 cd backend

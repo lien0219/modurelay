@@ -17,6 +17,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/net/http2"
 )
 
 func ingressTestConfig() *config.Config {
@@ -53,6 +54,77 @@ func TestProvideHTTPServerEnablesBoundedH2C(t *testing.T) {
 	require.NotNil(t, srv.Protocols)
 	require.True(t, srv.Protocols.UnencryptedHTTP2())
 	require.True(t, srv.Protocols.HTTP1())
+	require.Equal(t, 5*time.Second, srv.IdleTimeout, "H2C 空闲超时不能覆盖独立的 HTTP/1 空闲超时")
+
+	conn, framer := connectIngressHTTP2(t, srv)
+	require.NoError(t, conn.SetDeadline(time.Now().Add(3*time.Second)))
+	settingsReceived, windowReceived := false, false
+	for !settingsReceived || !windowReceived {
+		frame, err := framer.ReadFrame()
+		require.NoError(t, err)
+		switch frame := frame.(type) {
+		case *http2.SettingsFrame:
+			if frame.IsAck() {
+				continue
+			}
+			for id, want := range map[http2.SettingID]uint32{
+				http2.SettingMaxConcurrentStreams: cfg.Server.H2C.MaxConcurrentStreams,
+				http2.SettingMaxFrameSize:         uint32(cfg.Server.H2C.MaxReadFrameSize),
+				http2.SettingInitialWindowSize:    uint32(cfg.Server.H2C.MaxUploadBufferPerStream),
+			} {
+				got, ok := frame.Value(id)
+				require.True(t, ok, "missing HTTP/2 setting %s", id)
+				require.Equal(t, want, got, "HTTP/2 setting %s", id)
+			}
+			require.NoError(t, framer.WriteSettingsAck())
+			settingsReceived = true
+		case *http2.WindowUpdateFrame:
+			if frame.StreamID == 0 {
+				require.Equal(t, uint32(cfg.Server.H2C.MaxUploadBufferPerConnection)-65535, frame.Increment)
+				windowReceived = true
+			}
+		}
+	}
+}
+
+func TestHTTPServerPreservesIndependentH2CIdleTimeout(t *testing.T) {
+	cfg := ingressTestConfig()
+	cfg.Server.IdleTimeout = 1
+	cfg.Server.H2C = config.H2CConfig{Enabled: true, IdleTimeout: 2}
+	srv := ProvideHTTPServer(cfg, gin.New())
+	started := time.Now()
+	conn, framer := connectIngressHTTP2(t, srv)
+	require.NoError(t, conn.SetDeadline(time.Now().Add(5*time.Second)))
+	for {
+		frame, err := framer.ReadFrame()
+		require.NoError(t, err)
+		switch frame := frame.(type) {
+		case *http2.SettingsFrame:
+			if !frame.IsAck() {
+				require.NoError(t, framer.WriteSettingsAck())
+			}
+		case *http2.GoAwayFrame:
+			require.Equal(t, http2.ErrCodeNo, frame.ErrCode)
+			require.GreaterOrEqual(t, time.Since(started), 1500*time.Millisecond,
+				"H2C must retain its idle timeout instead of inheriting the shorter HTTP/1 timeout")
+			return
+		}
+	}
+}
+
+func connectIngressHTTP2(t *testing.T, srv *http.Server) (net.Conn, *http2.Framer) {
+	t.Helper()
+	addr, stop := serveIngressTestServer(t, srv)
+	t.Cleanup(stop)
+	conn, err := net.DialTimeout("tcp", addr, time.Second)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = conn.Close() })
+	require.NoError(t, conn.SetDeadline(time.Now().Add(5*time.Second)))
+	_, err = io.WriteString(conn, http2.ClientPreface)
+	require.NoError(t, err)
+	framer := http2.NewFramer(conn, conn)
+	require.NoError(t, framer.WriteSettings())
+	return conn, framer
 }
 
 func TestConfigureTrustedProxies(t *testing.T) {

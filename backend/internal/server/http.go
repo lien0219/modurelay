@@ -140,12 +140,18 @@ func ProvideHTTPServer(cfg *config.Config, router *gin.Engine) *http.Server {
 	// 根据配置决定是否启用 H2C
 	if cfg.Server.H2C.Enabled {
 		h2cConfig := cfg.Server.H2C
+		// Preserve the adapter's 32-bit buffer limits in net/http's int fields.
+		server.HTTP2 = &http.HTTP2Config{
+			MaxConcurrentStreams:          int(h2cConfig.MaxConcurrentStreams),
+			MaxReadFrameSize:              h2cConfig.MaxReadFrameSize,
+			MaxReceiveBufferPerConnection: int(int32(h2cConfig.MaxUploadBufferPerConnection)),
+			MaxReceiveBufferPerStream:     int(int32(h2cConfig.MaxUploadBufferPerStream)),
+		}
+		// net/http shares IdleTimeout across protocols; keep the adapter so H2C
+		// can use its configured timeout without changing the HTTP/1 timeout.
+		// The necessary adapter APIs are exempted from SA1019 in .golangci.yml.
 		if err := http2.ConfigureServer(server, &http2.Server{
-			MaxConcurrentStreams:         h2cConfig.MaxConcurrentStreams,
-			IdleTimeout:                  time.Duration(h2cConfig.IdleTimeout) * time.Second,
-			MaxReadFrameSize:             uint32(h2cConfig.MaxReadFrameSize),
-			MaxUploadBufferPerConnection: int32(h2cConfig.MaxUploadBufferPerConnection),
-			MaxUploadBufferPerStream:     int32(h2cConfig.MaxUploadBufferPerStream),
+			IdleTimeout: time.Duration(h2cConfig.IdleTimeout) * time.Second,
 		}); err != nil {
 			log.Printf("Failed to configure HTTP/2 Cleartext (h2c): %v", err)
 		} else {
