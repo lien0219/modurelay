@@ -302,16 +302,6 @@ func upsertPendingFinancialMediaTx(ctx context.Context, tx *sql.Tx, key string, 
 	return err
 }
 
-func insertFinancialMediaTx(ctx context.Context, tx *sql.Tx, kind, key string, p *service.GrokVideoPendingBilling, payload, state string) error {
-	if p == nil || !service.ValidExecutionAttribution(p.UserID, p.ServiceAccountID) || p.APIKeyID <= 0 || len(payload) == 0 || len(payload) > 1800000 || len(key) > 512 {
-		return service.ErrBudgetReservationInvalid
-	}
-	_, err := tx.ExecContext(ctx, `INSERT INTO financial_media_records(kind,record_key,api_key_id,actor_user_id,service_account_id,workspace_id,project_id,billing_principal_user_id,reservation_id,account_id,payload,state)
-		VALUES($1,$2,$3,NULLIF($4,0),NULLIF($5,0),NULLIF($6,0),NULLIF($7,0),NULLIF($8,0),NULLIF($9,'')::uuid,NULLIF($10,0),$11::jsonb,$12)
-		ON CONFLICT(kind,record_key) DO NOTHING`, kind, key, p.APIKeyID, p.UserID, p.ServiceAccountID, p.WorkspaceID, p.ProjectID, p.BillingPrincipalUserID, p.BudgetReservationID, p.AccountID, string(payload), state)
-	return err
-}
-
 func (c *durableGatewayCache) RejectMediaAttempt(ctx context.Context, attemptID string) error {
 	if strings.TrimSpace(attemptID) == "" {
 		return service.ErrBudgetReservationInvalid
