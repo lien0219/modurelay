@@ -25,7 +25,7 @@ import (
 func TestLifecyclePostgresS3MixedKeyRecoveryAndProtectedObjects(t *testing.T) {
 	ctx, repo, owner, w := lifecycleFixture(t)
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{ContainerRequest: testcontainers.ContainerRequest{
-		Image: "quay.io/minio/minio:latest", ExposedPorts: []string{"9000/tcp"}, Cmd: []string{"server", "/data"},
+		Image: "bitnamilegacy/minio:2025.7.23-debian-12-r5@sha256:6dabb4a2088c9a79908de3bc05f4586c23ad2182c8908e7e3acbf61c1467fb20", ExposedPorts: []string{"9000/tcp"}, Cmd: []string{"server", "/bitnami/minio/data"},
 		Env:        map[string]string{"MINIO_ROOT_USER": "phase-i-fixture", "MINIO_ROOT_PASSWORD": "phase-i-disposable-fixture"},
 		WaitingFor: wait.ForHTTP("/minio/health/ready").WithPort("9000/tcp").WithStartupTimeout(time.Minute),
 	}, Started: true})
