@@ -841,13 +841,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 			account.ID, *apiKey.GroupID, result.UpstreamModel, result.Model,
 			// Anthropic's input_tokens excludes cache_read and cache_creation (billed separately);
 			// OpenAI gateway uses actualInputTokens which also excludes cache_read for the same reason.
-			UsageTokens{
-				InputTokens:         result.Usage.InputTokens,
-				OutputTokens:        result.Usage.OutputTokens,
-				CacheCreationTokens: result.Usage.CacheCreationInputTokens,
-				CacheReadTokens:     result.Usage.CacheReadInputTokens,
-				ImageOutputTokens:   result.Usage.ImageOutputTokens,
-			},
+			accountStatsUsageTokens(result.Usage),
 			cost.TotalCost-cacheStorageCost, pricingAt,
 			accountStatsLongContextPricingEnabled(nil),
 		)
@@ -1364,4 +1358,20 @@ func optionalSubscriptionID(subscription *UserSubscription) *int64 {
 		return &subscription.ID
 	}
 	return nil
+}
+
+
+// accountStatsUsageTokens preserves the per-TTL cache creation breakdown for
+// account cost pricing. Passing only the aggregate incorrectly bills 1h writes
+// at the 5m cache price, while user billing keeps the correct breakdown.
+func accountStatsUsageTokens(usage ClaudeUsage) UsageTokens {
+	return UsageTokens{
+		InputTokens:           usage.InputTokens,
+		OutputTokens:          usage.OutputTokens,
+		CacheCreationTokens:   usage.CacheCreationInputTokens,
+		CacheReadTokens:       usage.CacheReadInputTokens,
+		CacheCreation5mTokens: usage.CacheCreation5mTokens,
+		CacheCreation1hTokens: usage.CacheCreation1hTokens,
+		ImageOutputTokens:     usage.ImageOutputTokens,
+	}
 }
