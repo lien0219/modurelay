@@ -1154,7 +1154,6 @@ func newTestChannelServiceForStats(t *testing.T, channel *Channel, groupID int64
 	return cs
 }
 
-
 // Regression: a 1h Claude cache write must use its 1h unit price when
 // calculating upstream account costs, not the cheaper 5m price.
 func TestAccountStatsUsageTokens_OneHourCache(t *testing.T) {
@@ -1193,9 +1192,9 @@ func TestAccountStatsUsageTokens_MixedCacheTTLAndFallback(t *testing.T) {
 		CacheWrite1hPrice: testPtrFloat64(8e-6),
 	}
 	for _, tt := range []struct {
-		name string
+		name  string
 		usage ClaudeUsage
-		want float64
+		want  float64
 	}{
 		{
 			name: "mixed_5m_and_1h_no_double_count",
@@ -1215,9 +1214,9 @@ func TestAccountStatsUsageTokens_MixedCacheTTLAndFallback(t *testing.T) {
 			want: 3000 * 5e-6,
 		},
 		{
-			name: "missing_ttl_details_falls_back_to_5m",
+			name:  "missing_ttl_details_falls_back_to_5m",
 			usage: ClaudeUsage{CacheCreationInputTokens: 3000},
-			want: 3000 * 5e-6,
+			want:  3000 * 5e-6,
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

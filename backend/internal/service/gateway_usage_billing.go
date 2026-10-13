@@ -1360,7 +1360,6 @@ func optionalSubscriptionID(subscription *UserSubscription) *int64 {
 	return nil
 }
 
-
 // accountStatsUsageTokens preserves the per-TTL cache creation breakdown for
 // account cost pricing. Passing only the aggregate incorrectly bills 1h writes
 // at the 5m cache price, while user billing keeps the correct breakdown.
