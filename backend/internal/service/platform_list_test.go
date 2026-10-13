@@ -51,6 +51,9 @@ func legacyNormalizeOpenAICompatiblePlatform(platform string) string {
 }
 
 func legacyIsUpstreamBillingProbeIdentity(platform, accountType string) bool {
+	if accountType == AccountTypeUpstream {
+		return platform == PlatformAntigravity
+	}
 	if accountType != AccountTypeAPIKey {
 		return false
 	}
