@@ -393,9 +393,13 @@ func TestOllamaProbeCallback_StaleLongDoesNotOverrideNewShort(t *testing.T) {
 
 	svc.handle429(context.Background(), acct, http.Header{}, nil) // schedules gen @5s
 	require.Equal(t, 1, scheduler.count())
+	oldReset := repo.currentReset(acct.ID)
+	require.NotNil(t, oldReset)
 
 	// An admin / newer policy re-arms the account to a fresh SHORT cooldown.
-	newShort := time.Now().Add(5 * time.Second)
+	// Derive it from the persisted value so the new generation cannot collide
+	// with the initial fallback reset on fast Windows test runs.
+	newShort := oldReset.Add(time.Second)
 	repo.mutate(acct.ID, func(a *Account) { a.RateLimitResetAt = ollama429TimePtr(newShort) })
 
 	// The old async result reports a long 7d reset; it must not override.

@@ -262,7 +262,8 @@ func (h *UsageHandler) List(c *gin.Context) {
 	}
 	out := make([]map[string]any, 0, len(records))
 	for i := range records {
-		out = append(out, dto.UsageLogFromServiceWithVisibility(&records[i], visibility))
+		localized := dto.UsageLogFromService(&records[i]).Localized(c.GetHeader("Accept-Language"))
+		out = append(out, dto.RedactUsageLogForUser(localized, visibility))
 	}
 	response.Paginated(c, out, result.Total, page, pageSize)
 }
@@ -416,7 +417,8 @@ func (h *UsageHandler) GetByID(c *gin.Context) {
 	if h.settingService != nil {
 		visibility = h.settingService.GetUsageDetailVisibility(c.Request.Context())
 	}
-	response.Success(c, dto.UsageLogFromServiceWithVisibility(record, visibility))
+	localized := dto.UsageLogFromService(record).Localized(c.GetHeader("Accept-Language"))
+	response.Success(c, dto.RedactUsageLogForUser(localized, visibility))
 }
 
 // Stats handles getting usage statistics

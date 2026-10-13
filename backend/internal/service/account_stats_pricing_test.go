@@ -933,7 +933,7 @@ func TestResolveAccountStatsCost_Gemini36FlashTierUsesFallbackPricing(t *testing
 		UsageTokens{InputTokens: 1_000_000, OutputTokens: 1_000_000, CacheReadTokens: 1_000_000}, 1, 0, "", time.Time{}, true,
 	)
 	require.NotNil(t, result)
-	require.InDelta(t, 9.15, *result, 1e-12)
+	require.InDelta(t, 4.575, *result, 1e-12)
 }
 
 func TestResolveAccountStatsCost_AllMiss_ReturnsNil(t *testing.T) {
@@ -1152,4 +1152,78 @@ func newTestChannelServiceForStats(t *testing.T, channel *Channel, groupID int64
 	cache.loadedAt = time.Now()
 	cs.cache.Store(cache)
 	return cs
+}
+
+// Regression: a 1h Claude cache write must use its 1h unit price when
+// calculating upstream account costs, not the cheaper 5m price.
+func TestAccountStatsUsageTokens_OneHourCache(t *testing.T) {
+	usage := ClaudeUsage{
+		InputTokens:              4,
+		OutputTokens:             245,
+		CacheCreationInputTokens: 32071,
+		CacheReadInputTokens:     157900,
+		CacheCreation5mTokens:    0,
+		CacheCreation1hTokens:    32071,
+	}
+	tokens := accountStatsUsageTokens(usage)
+	require.Equal(t, 32071, tokens.CacheCreationTokens)
+	require.Zero(t, tokens.CacheCreation5mTokens)
+	require.Equal(t, 32071, tokens.CacheCreation1hTokens)
+
+	pricing := &ChannelModelPricing{
+		BillingMode:       BillingModeToken,
+		InputPrice:        testPtrFloat64(4e-6),
+		OutputPrice:       testPtrFloat64(20e-6),
+		CacheWritePrice:   testPtrFloat64(5e-6),
+		CacheWrite1hPrice: testPtrFloat64(8e-6),
+		CacheReadPrice:    testPtrFloat64(0.2e-6),
+	}
+	cost := calculateStatsCost(pricing, tokens, 1)
+	require.NotNil(t, cost)
+	// Official base: 0.293064; account multiplier 0.95: 0.2784108.
+	require.InDelta(t, 0.293064, *cost, 1e-12)
+	require.InDelta(t, 0.2784108, *cost*0.95, 1e-12)
+}
+
+func TestAccountStatsUsageTokens_MixedCacheTTLAndFallback(t *testing.T) {
+	pricing := &ChannelModelPricing{
+		BillingMode:       BillingModeToken,
+		CacheWritePrice:   testPtrFloat64(5e-6),
+		CacheWrite1hPrice: testPtrFloat64(8e-6),
+	}
+	for _, tt := range []struct {
+		name  string
+		usage ClaudeUsage
+		want  float64
+	}{
+		{
+			name: "mixed_5m_and_1h_no_double_count",
+			usage: ClaudeUsage{
+				CacheCreationInputTokens: 3000,
+				CacheCreation5mTokens:    1000,
+				CacheCreation1hTokens:    2000,
+			},
+			want: 1000*5e-6 + 2000*8e-6,
+		},
+		{
+			name: "only_5m_cache",
+			usage: ClaudeUsage{
+				CacheCreationInputTokens: 3000,
+				CacheCreation5mTokens:    3000,
+			},
+			want: 3000 * 5e-6,
+		},
+		{
+			name:  "missing_ttl_details_falls_back_to_5m",
+			usage: ClaudeUsage{CacheCreationInputTokens: 3000},
+			want:  3000 * 5e-6,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			tokens := accountStatsUsageTokens(tt.usage)
+			cost := calculateStatsCost(pricing, tokens, 1)
+			require.NotNil(t, cost)
+			require.InDelta(t, tt.want, *cost, 1e-12)
+		})
+	}
 }
