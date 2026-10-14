@@ -299,7 +299,7 @@ func (c *Channel) IsWebSearchEmulationEnabled(platform string) bool {
 }
 
 // IsBedrockCCCompatEnabled 返回该渠道是否启用了 Bedrock CC 兼容模式。
-// 一旦启用，该渠道下所有请求都会应用 CC 兼容转换，不区分账号 platform。
+// 这是渠道级布尔开关；调用方还必须通过 Account.IsBedrock 限制执行账号类型。
 func (c *Channel) IsBedrockCCCompatEnabled(platform string) bool {
 	if c == nil || c.FeaturesConfig == nil {
 		return false

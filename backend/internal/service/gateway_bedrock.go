@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -19,8 +18,9 @@ import (
 )
 
 // ApplyBedrockCCCompat 应用 Bedrock CC 兼容转换（渠道级模型映射后调用）
-// 清理 body 中 Anthropic API 专有字段、修复 thinking/tool_use ID、过滤 beta token，
-// 同时过滤 HTTP header 中的 anthropic-beta（防止 Passthrough 路径透传不支持的 token）。
+// 仅对 Bedrock 账号清理 body 专有字段、修复 thinking/tool_use ID、过滤 body beta token。
+// 保留原始 HTTP header，供 beta policy 和后续非 Bedrock failover 使用；
+// forwardBedrock 在构造 Bedrock 请求时过滤 header token。
 func (s *GatewayService) ApplyBedrockCCCompat(c *gin.Context, body []byte, model string, account *Account, groupID *int64) []byte {
 	if !s.isBedrockCCCompatEnabled(c.Request.Context(), account, groupID) {
 		return body
@@ -32,20 +32,12 @@ func (s *GatewayService) ApplyBedrockCCCompat(c *gin.Context, body []byte, model
 	body = sanitizeBedrockThinking(body, model)
 	body = sanitizeBedrockToolUseIDs(body)
 	body = sanitizeBedrockCCBetaTokens(body, model)
-	// 过滤 HTTP header 中的 anthropic-beta，只保留 Bedrock 支持的 token
-	if betaHeader := c.GetHeader("anthropic-beta"); betaHeader != "" {
-		if filtered := ResolveBedrockBetaTokens(betaHeader, body, model); len(filtered) > 0 {
-			c.Request.Header.Set("anthropic-beta", strings.Join(filtered, ", "))
-		} else {
-			c.Request.Header.Del("anthropic-beta")
-		}
-	}
 	return body
 }
 
 // isBedrockCCCompatEnabled 检查渠道是否启用了 Bedrock CC 兼容模式
 func (s *GatewayService) isBedrockCCCompatEnabled(ctx context.Context, account *Account, groupID *int64) bool {
-	if groupID == nil || s.channelService == nil {
+	if account == nil || !account.IsBedrock() || groupID == nil || s.channelService == nil {
 		return false
 	}
 	ch, err := s.channelService.GetChannelForGroup(ctx, *groupID)

@@ -83,6 +83,11 @@ export interface Channel {
   updated_at: string
 }
 
+// Writes use a channel-level boolean. Read payloads remain tolerant of legacy JSON.
+export interface ChannelFeaturesConfig extends Record<string, unknown> {
+  bedrock_cc_compat?: boolean
+}
+
 export interface CreateChannelRequest {
   name: string
   description?: string
@@ -91,7 +96,7 @@ export interface CreateChannelRequest {
   model_mapping?: Record<string, Record<string, string>>
   billing_model_source?: string
   restrict_models?: boolean
-  features_config?: Record<string, unknown>
+  features_config?: ChannelFeaturesConfig
   apply_pricing_to_account_stats?: boolean
   account_stats_pricing_rules?: AccountStatsPricingRule[]
 }
@@ -105,7 +110,7 @@ export interface UpdateChannelRequest {
   model_mapping?: Record<string, Record<string, string>>
   billing_model_source?: string
   restrict_models?: boolean
-  features_config?: Record<string, unknown>
+  features_config?: ChannelFeaturesConfig
   apply_pricing_to_account_stats?: boolean
   account_stats_pricing_rules?: AccountStatsPricingRule[]
 }
