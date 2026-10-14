@@ -503,7 +503,7 @@ func marshalFeaturesConfig(m map[string]any) ([]byte, error) {
 	if len(m) == 0 {
 		return []byte("{}"), nil
 	}
-	data, err := json.Marshal(m)
+	data, err := json.Marshal(normalizeChannelFeaturesConfig(m))
 	if err != nil {
 		return nil, fmt.Errorf("marshal features_config: %w", err)
 	}
@@ -518,7 +518,31 @@ func unmarshalFeaturesConfig(data []byte) map[string]any {
 	if err := json.Unmarshal(data, &m); err != nil {
 		return nil
 	}
-	return m
+	return normalizeChannelFeaturesConfig(m)
+}
+
+// normalizeChannelFeaturesConfig repairs the exact legacy shape emitted by the
+// channel form. All read paths (detail, list and cache reload) expose a boolean;
+// subsequent saves persist it without a bulk update or read-time database write.
+// Unrecognized values stay disabled. Other feature keys are left intact.
+func normalizeChannelFeaturesConfig(m map[string]any) map[string]any {
+	value, exists := m["bedrock_cc_compat"]
+	if !exists {
+		return m
+	}
+	if _, ok := value.(bool); ok {
+		return m
+	}
+	enabled := false
+	if legacy, ok := value.(map[string]any); ok && len(legacy) == 1 {
+		enabled, _ = legacy["anthropic"].(bool)
+	}
+	normalized := make(map[string]any, len(m))
+	for key, value := range m {
+		normalized[key] = value
+	}
+	normalized["bedrock_cc_compat"] = enabled
+	return normalized
 }
 
 // GetGroupPlatforms 批量查询分组 ID 对应的平台

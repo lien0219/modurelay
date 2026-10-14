@@ -633,7 +633,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { adminAPI } from '@/api/admin'
-import type { Channel, ChannelModelPricing, CreateChannelRequest, UpdateChannelRequest, AccountStatsPricingRule } from '@/api/admin/channels'
+import type { Channel, ChannelFeaturesConfig, ChannelModelPricing, CreateChannelRequest, UpdateChannelRequest, AccountStatsPricingRule } from '@/api/admin/channels'
 import type { PricingFormEntry } from '@/components/admin/channel/types'
 import { apiIntervalsToForm, apiTimePricingToForm, createDefaultTimePricingForm, findModelConflict, formIntervalsToAPI, formReasoningEffortMultipliersToAPI, formTimePricingToAPI, isValidPositiveMultiplier, mTokToPerToken, perTokenToMTok, validateIntervals, validateReasoningEffortMultipliers, validateTimePricing } from '@/components/admin/channel/types'
 import type { AdminGroup, GroupPlatform } from '@/types'
@@ -1107,12 +1107,12 @@ function accountStatsRulesToAPI(): AccountStatsPricingRule[] {
 }
 
 // ── Form ↔ API conversion ──
-function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[], model_mapping: Record<string, Record<string, string>>, features_config: Record<string, unknown> } {
+function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[], model_mapping: Record<string, Record<string, string>>, features_config: ChannelFeaturesConfig } {
   const group_ids: number[] = []
   const model_pricing: ChannelModelPricing[] = []
   const model_mapping: Record<string, Record<string, string>> = {}
   // Preserve existing features_config fields not managed by the form
-  const featuresConfig: Record<string, unknown> = editingChannel.value?.features_config
+  const featuresConfig: ChannelFeaturesConfig = editingChannel.value?.features_config
     ? { ...editingChannel.value.features_config }
     : {}
 
@@ -1179,20 +1179,21 @@ function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[
     delete featuresConfig.codex_image_generation_bridge
   }
 
-  const bedrockCCCompat: Record<string, boolean> = {}
-  for (const section of form.platforms) {
-    if (!section.enabled) continue
-    if (section.platform === 'anthropic') {
-      bedrockCCCompat[section.platform] = !!section.bedrock_cc_compat
-    }
-  }
-  if (Object.keys(bedrockCCCompat).length > 0) {
-    featuresConfig.bedrock_cc_compat = bedrockCCCompat
-  } else {
-    delete featuresConfig.bedrock_cc_compat
-  }
+  // This flag is channel-wide, unlike the platform maps above. Explicit false
+  // also clears a previously enabled flag when the Anthropic section is removed.
+  featuresConfig.bedrock_cc_compat = form.platforms.some(
+    section => section.enabled && section.platform === 'anthropic' && section.bedrock_cc_compat
+  )
 
   return { group_ids: uniqueGroupIds, model_pricing, model_mapping, features_config: featuresConfig }
+}
+
+function readBedrockCCCompat(value: unknown): boolean {
+  if (typeof value === 'boolean') return value
+  // Older servers may still return the exact object emitted by the buggy form.
+  // Do not interpret unknown platform maps or truthy strings as enabled.
+  return value !== null && typeof value === 'object' &&
+    Object.keys(value).length === 1 && 'anthropic' in value && value.anthropic === true
 }
 
 function apiToForm(channel: Channel): PlatformSection[] {
@@ -1256,7 +1257,7 @@ function apiToForm(channel: Channel): PlatformSection[] {
     const webSearchEnabled = wsEmulation?.[platform] === true
     const codexImageGenerationBridge = fc?.codex_image_generation_bridge as Record<string, boolean> | undefined
     const codexImageGenerationBridgeEnabled = codexImageGenerationBridge?.[platform] === true
-    const bedrockCCCompatEnabled = fc?.bedrock_cc_compat === true
+    const bedrockCCCompatEnabled = readBedrockCCCompat(fc?.bedrock_cc_compat)
 
     sections.push({
       platform,

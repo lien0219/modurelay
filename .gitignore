@@ -171,6 +171,7 @@ docs/*
 !docs/COMPOSITE_GROUPS.md
 !docs/PLUGIN_DEVELOPMENT.md
 !docs/channel-monitor-v2-safe-defaults.md
+!docs/bedrock-cc-compat-persistence.md
 !docs/codex-credits.md
 !docs/legal/
 !docs/legal/*.md
