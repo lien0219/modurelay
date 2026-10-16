@@ -963,18 +963,32 @@ func (s *SchedulerSnapshotService) rebuildBucketWithTokenPolicyAndQueryCache(
 		return ErrSchedulerCacheNotReady
 	}
 	bucket := task.bucket
-	ok, err := s.cache.TryLockBucket(ctx, bucket, 30*time.Second)
+	var acquired bool
+	var err error
+	var release func(context.Context) error
+	if leases, supportsOwners := s.cache.(SchedulerBucketLeaseCache); supportsOwners {
+		var owner string
+		owner, acquired, err = leases.TryAcquireBucketLease(ctx, bucket, 30*time.Second)
+		release = func(releaseCtx context.Context) error { return leases.ReleaseBucketLease(releaseCtx, bucket, owner) }
+	} else {
+		acquired, err = s.cache.TryLockBucket(ctx, bucket, 30*time.Second)
+		release = func(releaseCtx context.Context) error { return s.cache.UnlockBucket(releaseCtx, bucket) }
+	}
 	if err != nil {
 		return err
 	}
-	if !ok {
+	if !acquired {
 		if strict {
 			return fmt.Errorf("%w: bucket=%s", ErrSchedulerBucketRebuildBusy, bucket.String())
 		}
 		return nil
 	}
 	defer func() {
-		_ = s.cache.UnlockBucket(ctx, bucket)
+		// The rebuild context can expire before cleanup. Release with a short
+		// independent context, still checking the per-acquisition owner.
+		releaseCtx, releaseCancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer releaseCancel()
+		_ = release(releaseCtx)
 	}()
 
 	rebuildCtx, cancel := context.WithTimeout(ctx, 30*time.Second)

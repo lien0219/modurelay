@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/redisutil"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
 )
@@ -19,12 +21,12 @@ const pluginKVKeyPrefix = "plugin:kv:v1:"
 const pluginKVScanCount = 200
 
 type pluginKVStore struct {
-	rdb *redis.Client
+	rdb redis.UniversalClient
 }
 
 // NewPluginKVStore 返回 Redis 支撑的通用插件键值存储。使用 Redis 而非进程内存，使得
 // 插件状态可跨副本、跨重启共享，这正是有状态插件所需的通用能力。
-func NewPluginKVStore(rdb *redis.Client) service.PluginKVStore {
+func NewPluginKVStore(rdb redis.UniversalClient) service.PluginKVStore {
 	return &pluginKVStore{rdb: rdb}
 }
 
@@ -73,27 +75,24 @@ func (s *pluginKVStore) List(ctx context.Context, pluginKey, namespace, keyPrefi
 	pattern := internalPrefix + keyPrefix + "*"
 	seen := make(map[string]struct{}, limit)
 	keys := make([]string, 0, limit)
-	var cursor uint64
-	for {
-		batch, next, err := s.rdb.Scan(ctx, cursor, pattern, pluginKVScanCount).Result()
-		if err != nil {
-			return nil, fmt.Errorf("scan plugin kv: %w", err)
-		}
+	var mu sync.Mutex
+	err := redisutil.Scan(ctx, s.rdb, pattern, pluginKVScanCount, func(batch []string) bool {
+		mu.Lock()
+		defer mu.Unlock()
 		for _, full := range batch {
-			// SCAN 可能返回重复键，去重后再裁剪前缀返回面向插件的键名。
+			if len(keys) >= limit {
+				return false
+			}
 			if _, ok := seen[full]; ok {
 				continue
 			}
 			seen[full] = struct{}{}
 			keys = append(keys, strings.TrimPrefix(full, internalPrefix))
-			if len(keys) >= limit {
-				return keys, nil
-			}
 		}
-		cursor = next
-		if cursor == 0 {
-			break
-		}
+		return len(keys) < limit
+	})
+	if err != nil {
+		return nil, fmt.Errorf("scan plugin kv: %w", err)
 	}
 	return keys, nil
 }

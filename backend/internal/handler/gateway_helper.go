@@ -119,7 +119,7 @@ func claudeCodeBodyMapFromParsedRequest(parsedReq *service.ParsedRequest) map[st
 // 3. 减少 Redis 压力，避免惊群效应
 const (
 	// maxConcurrencyWait 等待并发槽位的最大时间
-	maxConcurrencyWait = 30 * time.Second
+	maxConcurrencyWait = service.DefaultConcurrencyWaitTimeout
 	// defaultPingInterval 流式响应等待时发送 ping 的默认间隔
 	defaultPingInterval = 10 * time.Second
 	// initialBackoff 初始退避时间
@@ -202,23 +202,23 @@ func wrapReleaseOnDone(ctx context.Context, releaseFunc func()) func() {
 }
 
 // IncrementWaitCount increments the wait count for a user
-func (h *ConcurrencyHelper) IncrementWaitCount(ctx context.Context, userID int64, maxWait int) (bool, error) {
-	return h.concurrencyService.IncrementWaitCount(ctx, userID, maxWait)
+func (h *ConcurrencyHelper) IncrementWaitCount(ctx context.Context, userID int64, maxWait int, waiterID string) (bool, error) {
+	return h.concurrencyService.IncrementWaitCount(ctx, userID, maxWait, waiterID)
 }
 
 // DecrementWaitCount decrements the wait count for a user
-func (h *ConcurrencyHelper) DecrementWaitCount(ctx context.Context, userID int64) {
-	h.concurrencyService.DecrementWaitCount(ctx, userID)
+func (h *ConcurrencyHelper) DecrementWaitCount(ctx context.Context, userID int64, waiterID string) {
+	h.concurrencyService.DecrementWaitCount(ctx, userID, waiterID)
 }
 
 // IncrementAccountWaitCount increments the wait count for an account
-func (h *ConcurrencyHelper) IncrementAccountWaitCount(ctx context.Context, accountID int64, maxWait int) (bool, error) {
-	return h.concurrencyService.IncrementAccountWaitCount(ctx, accountID, maxWait)
+func (h *ConcurrencyHelper) IncrementAccountWaitCount(ctx context.Context, accountID int64, maxWait int, waiterID string) (bool, error) {
+	return h.concurrencyService.IncrementAccountWaitCount(ctx, accountID, maxWait, waiterID)
 }
 
 // DecrementAccountWaitCount decrements the wait count for an account
-func (h *ConcurrencyHelper) DecrementAccountWaitCount(ctx context.Context, accountID int64) {
-	h.concurrencyService.DecrementAccountWaitCount(ctx, accountID)
+func (h *ConcurrencyHelper) DecrementAccountWaitCount(ctx context.Context, accountID int64, waiterID string) {
+	h.concurrencyService.DecrementAccountWaitCount(ctx, accountID, waiterID)
 }
 
 // TryAcquireUserSlot 尝试立即获取用户并发槽位。
@@ -288,14 +288,15 @@ func (h *ConcurrencyHelper) acquireUserSlotWithWaitTimeout(c *gin.Context, userI
 	if queueLimit < 1 {
 		queueLimit = 1
 	}
-	canWait, err := h.IncrementWaitCount(ctx, userID, queueLimit)
+	waiterID := service.NewWaiterID()
+	canWait, err := h.IncrementWaitCount(ctx, userID, queueLimit, waiterID)
 	if err != nil {
 		return nil, err
 	}
 	if !canWait {
 		return nil, &WaitQueueFullError{SlotType: "user"}
 	}
-	defer h.DecrementWaitCount(ctx, userID)
+	defer h.DecrementWaitCount(ctx, userID, waiterID)
 
 	// Need to wait - handle streaming ping if needed
 	releaseFunc, err = h.waitForSlotWithPingTimeout(c, "user", userID, maxConcurrency, timeout, isStream, streamStarted, false)

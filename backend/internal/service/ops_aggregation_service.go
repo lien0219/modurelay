@@ -57,7 +57,7 @@ type OpsAggregationService struct {
 	cfg         *config.Config
 
 	db          *sql.DB
-	redisClient *redis.Client
+	redisClient redis.UniversalClient
 	instanceID  string
 
 	stopCh    chan struct{}
@@ -75,7 +75,7 @@ func NewOpsAggregationService(
 	opsRepo OpsRepository,
 	settingRepo SettingRepository,
 	db *sql.DB,
-	redisClient *redis.Client,
+	redisClient redis.UniversalClient,
 	cfg *config.Config,
 ) *OpsAggregationService {
 	return &OpsAggregationService{
@@ -388,8 +388,16 @@ func (s *OpsAggregationService) tryAcquireLeaderLock(ctx context.Context, key st
 		ctx = context.Background()
 	}
 
-	// Prefer Redis leader lock when available (multi-instance), but avoid stampeding
-	// the DB when Redis is flaky by falling back to a DB advisory lock.
+	// Always use the primary database when configured so partial Redis outages
+	// cannot elect a second leader in a different lock domain.
+	if s.db != nil {
+		release, ok := tryAcquireDBAdvisoryLock(ctx, s.db, hashAdvisoryLockID(key))
+		if !ok {
+			s.maybeLogSkip(logPrefix)
+		}
+		return release, ok
+	}
+	// Redis-only compatibility path for callers without a database.
 	if s.redisClient != nil {
 		ok, err := s.redisClient.SetNX(ctx, key, s.instanceID, ttl).Result()
 		if err == nil {
@@ -404,15 +412,11 @@ func (s *OpsAggregationService) tryAcquireLeaderLock(ctx context.Context, key st
 			}
 			return release, true
 		}
-		// Redis error: fall through to DB advisory lock.
+		// Skip the cycle when the configured coordination backend fails.
 	}
 
-	release, ok := tryAcquireDBAdvisoryLock(ctx, s.db, hashAdvisoryLockID(key))
-	if !ok {
-		s.maybeLogSkip(logPrefix)
-		return nil, false
-	}
-	return release, true
+	s.maybeLogSkip(logPrefix)
+	return nil, false
 }
 
 func (s *OpsAggregationService) maybeLogSkip(prefix string) {

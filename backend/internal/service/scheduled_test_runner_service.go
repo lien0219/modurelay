@@ -2,15 +2,19 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"sync"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/google/uuid"
 	"github.com/robfig/cron/v3"
 )
 
 const scheduledTestDefaultMaxWorkers = 10
+
+const scheduledTestLeaderLockKey = "leader:scheduled-account-tests"
 
 // ScheduledTestRunnerService periodically scans due test plans and executes them.
 type ScheduledTestRunnerService struct {
@@ -19,6 +23,9 @@ type ScheduledTestRunnerService struct {
 	accountTestSvc *AccountTestService
 	rateLimitSvc   *RateLimitService
 	cfg            *config.Config
+	lockCache      LeaderLockCache
+	db             *sql.DB
+	instanceID     string
 
 	cron      *cron.Cron
 	startOnce sync.Once
@@ -39,7 +46,14 @@ func NewScheduledTestRunnerService(
 		accountTestSvc: accountTestSvc,
 		rateLimitSvc:   rateLimitSvc,
 		cfg:            cfg,
+		instanceID:     uuid.NewString(),
 	}
+}
+
+// SetLeaderLock coordinates scans across pods before any upstream test is sent.
+func (s *ScheduledTestRunnerService) SetLeaderLock(cache LeaderLockCache, db *sql.DB) {
+	s.lockCache = cache
+	s.db = db
 }
 
 // Start begins the cron ticker (every minute).
@@ -90,6 +104,15 @@ func (s *ScheduledTestRunnerService) runScheduled() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
+	s.runDue(ctx)
+}
+
+func (s *ScheduledTestRunnerService) runDue(ctx context.Context) {
+	release, acquired := tryAcquireSingletonLeaderLock(ctx, s.lockCache, s.db, scheduledTestLeaderLockKey, s.instanceID, 6*time.Minute)
+	if !acquired {
+		return
+	}
+	defer release()
 
 	now := time.Now()
 	plans, err := s.planRepo.ListDue(ctx, now)

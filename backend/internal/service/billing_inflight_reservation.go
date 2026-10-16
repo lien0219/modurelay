@@ -251,8 +251,10 @@ func (s *BillingCacheService) ReserveInflightBalance(ctx context.Context, user *
 // 调用方须在 handler 结束时调用 HandlerDone（nil 安全）。
 //
 // 以下情况直接放行且不登记预留（fail-open，保持旧行为）：
-// 开关关闭 / 简易模式 / 订阅模式 / estimate <= 0 / 缓存不支持 / 余额读取失败 / Redis 执行失败。
-// 仅当 Redis 明确判定 缓存余额 - 在途合计 < estimate（且已有在途请求）时返回 ErrInsufficientBalance。
+// 开关关闭 / 简易模式 / 订阅模式 / estimate <= 0 / 缓存不支持 / Redis 预留执行失败。
+// 主库余额读取失败或该用户的缓存失效未获确认时，返回 ErrBillingServiceUnavailable。
+// 主库余额不满足最低余额要求，或 Redis 判定 主库余额 - 在途合计 < estimate
+// （且已有在途请求）时，返回 ErrInsufficientBalance。
 func (s *BillingCacheService) ReserveInflight(ctx context.Context, user *User, group *Group, subscription *UserSubscription, estimate float64) (*InflightReservation, error) {
 	return s.reserveInflight(ctx, user, group, subscription, estimate, true, true)
 }
@@ -316,10 +318,13 @@ func (s *BillingCacheService) reserveInflight(ctx context.Context, user *User, g
 		return nil, nil
 	}
 
-	balance, err := s.GetUserBalance(ctx, user.ID)
+	balance, err := s.getUserBalanceForAdmission(ctx, user.ID)
 	if err != nil {
-		logger.LegacyPrintf("service.billing_cache", "Warning: inflight reservation balance read failed for user %d (fail-open): %v", user.ID, err)
-		return nil, nil
+		logger.LegacyPrintf("service.billing_cache", "Warning: inflight reservation balance read failed for user %d: %v", user.ID, err)
+		return nil, ErrBillingServiceUnavailable.WithCause(err)
+	}
+	if s.balanceBelowEligibilityThreshold(balance) {
+		return nil, ErrInsufficientBalance
 	}
 
 	ttl := defaultInflightReservationTTL

@@ -2,10 +2,13 @@ package repository
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/redisutil"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
 )
@@ -43,10 +46,10 @@ return {current, ttl, blocked}
 // RedisLoginAbuseStore contains the atomic counter and TTL operations used by
 // the service-level login protection policy.
 type RedisLoginAbuseStore struct {
-	client *redis.Client
+	client redis.UniversalClient
 }
 
-func NewRedisLoginAbuseStore(client *redis.Client) *RedisLoginAbuseStore {
+func NewRedisLoginAbuseStore(client redis.UniversalClient) *RedisLoginAbuseStore {
 	return &RedisLoginAbuseStore{client: client}
 }
 
@@ -59,7 +62,7 @@ func (s *RedisLoginAbuseStore) IncrementRequest(
 	if s == nil || s.client == nil {
 		return 0, 0, false, errors.New("login abuse redis client is not configured")
 	}
-	values, err := loginRequestRateScript.Run(ctx, s.client, []string{counterKey, auditKey}, window.Milliseconds(), limit).Slice()
+	values, err := loginRequestRateScript.Run(ctx, s.client, []string{s.clusterKey(counterKey), s.clusterKey(auditKey)}, window.Milliseconds(), limit).Slice()
 	if err != nil {
 		return 0, 0, false, fmt.Errorf("increment login request counter: %w", err)
 	}
@@ -89,8 +92,8 @@ func (s *RedisLoginAbuseStore) CredentialBlockTTLs(
 		return 0, 0, errors.New("login abuse redis client is not configured")
 	}
 	pipe := s.client.Pipeline()
-	accountIPTTL := pipe.PTTL(ctx, accountIPKey)
-	accountTTL := pipe.PTTL(ctx, accountKey)
+	accountIPTTL := pipe.PTTL(ctx, s.clusterKey(accountIPKey))
+	accountTTL := pipe.PTTL(ctx, s.clusterKey(accountKey))
 	_, err := pipe.Exec(ctx)
 	if err != nil && !errors.Is(err, redis.Nil) {
 		return 0, 0, fmt.Errorf("read login credential block TTLs: %w", err)
@@ -111,7 +114,7 @@ func (s *RedisLoginAbuseStore) IncrementFailure(
 	values, err := loginFailureScript.Run(
 		ctx,
 		s.client,
-		[]string{counterKey, blockKey},
+		[]string{s.clusterKey(counterKey), s.clusterKey(blockKey)},
 		window.Milliseconds(),
 		limit,
 		blockTTL.Milliseconds(),
@@ -137,7 +140,7 @@ func (s *RedisLoginAbuseStore) DeleteCounter(ctx context.Context, key string) er
 	if s == nil || s.client == nil {
 		return errors.New("login abuse redis client is not configured")
 	}
-	return s.client.Del(ctx, key).Err()
+	return s.client.Del(ctx, s.clusterKey(key)).Err()
 }
 
 func loginScriptInt64(value any) (int64, error) {
@@ -165,3 +168,16 @@ func positiveTTL(ttl time.Duration) time.Duration {
 }
 
 var _ service.LoginAbuseStore = (*RedisLoginAbuseStore)(nil)
+
+// The service supplies :fail/:block and request/:audit sibling keys. Hash the
+// identity so arbitrary text can never inject a Redis hash-tag delimiter.
+func (s *RedisLoginAbuseStore) clusterKey(key string) string {
+	base := key
+	for _, suffix := range []string{":audit", ":fail", ":block"} {
+		if strings.HasSuffix(base, suffix) {
+			base = strings.TrimSuffix(base, suffix)
+			break
+		}
+	}
+	return redisutil.TaggedKey(s.client, fmt.Sprintf("login:%x", sha256.Sum256([]byte(base))), key)
+}

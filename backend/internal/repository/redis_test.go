@@ -47,3 +47,22 @@ func TestBuildRedisOptions(t *testing.T) {
 	require.NotNil(t, optsTLS.TLSConfig)
 	require.Equal(t, "localhost", optsTLS.TLSConfig.ServerName)
 }
+
+func TestBuildRedisClusterOptionsUsesPrimariesAndPreservesAuth(t *testing.T) {
+	cfg := &config.Config{Redis: config.RedisConfig{
+		Mode: "cluster", ClusterAddrs: []string{"redis-0:6379", "redis-1:6379"},
+		Username: "app-user", Password: "secret", EnableTLS: true, Host: "unused-standalone",
+		PoolSize: 20, MinIdleConns: 2, DialTimeoutSeconds: 5,
+	}}
+	options := buildRedisClusterOptions(cfg)
+	require.Equal(t, cfg.Redis.ClusterAddrs, options.Addrs)
+	require.Equal(t, "app-user", options.Username)
+	require.Equal(t, "secret", options.Password)
+	require.Equal(t, 20, options.PoolSize)
+	require.Equal(t, 2, options.MinIdleConns)
+	require.False(t, options.ReadOnly)
+	require.False(t, options.RouteByLatency)
+	require.False(t, options.RouteRandomly)
+	require.NotNil(t, options.TLSConfig)
+	require.Empty(t, options.TLSConfig.ServerName)
+}

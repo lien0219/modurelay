@@ -267,6 +267,10 @@ func (r *cachedBillingUserRepo) GetByID(_ context.Context, id int64) (*service.U
 	return &service.User{ID: id, Balance: r.balance}, nil
 }
 
+func (r *cachedBillingUserRepo) GetBalance(context.Context, int64) (float64, error) {
+	return r.balance, nil
+}
+
 func (r *cachedBillingUserRepo) DeductBalance(context.Context, int64, float64) error { return nil }
 
 type cachedBillingUsageRepo struct {
@@ -672,7 +676,8 @@ func enableCachedBillingReservations(t *testing.T, env *cachedBillingEnv, cache 
 	t.Helper()
 	cfg := &config.Config{}
 	cfg.Billing.InflightReservation.Enabled = true
-	bcs := service.NewBillingCacheService(cache, nil, nil, nil, nil, nil, cfg, nil)
+	primary := &cachedBillingUserRepo{balance: cache.balance}
+	bcs := service.NewBillingCacheService(cache, primary, nil, nil, nil, nil, cfg, nil)
 	t.Cleanup(bcs.Stop)
 	env.h.billingCacheService = bcs
 }

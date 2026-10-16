@@ -383,14 +383,14 @@ func TestReserveFixedCharge(t *testing.T) {
 	ctx := context.Background()
 	user := &User{ID: 1}
 	newSvc := func(cache *fixedChargeCacheStub) *BillingCacheService {
-		svc := NewBillingCacheService(cache, nil, nil, nil, nil, nil, &config.Config{}, nil)
+		svc := NewBillingCacheService(cache, &balanceLoadUserRepoStub{balance: cache.balance}, nil, nil, nil, nil, &config.Config{}, nil)
 		t.Cleanup(svc.Stop)
 		return svc
 	}
 	reservingSvc := func(cache *fixedChargeCacheStub, subRepo UserSubscriptionRepository, apiKeyRepo APIKeyRepository) *BillingCacheService {
 		cfg := &config.Config{}
 		cfg.Billing.InflightReservation.Enabled = true
-		svc := NewBillingCacheService(cache, nil, subRepo, apiKeyRepo, nil, nil, cfg, nil)
+		svc := NewBillingCacheService(cache, &balanceLoadUserRepoStub{balance: cache.balance}, subRepo, apiKeyRepo, nil, nil, cfg, nil)
 		t.Cleanup(svc.Stop)
 		return svc
 	}

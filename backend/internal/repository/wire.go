@@ -4,8 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"time"
 
-	entsql "entgo.io/ent/dialect/sql"
 	"github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -15,14 +15,15 @@ import (
 
 // ProvideConcurrencyCache 创建并发控制缓存，从配置读取 TTL 参数
 // 性能优化：TTL 可配置，支持长时间运行的 LLM 请求场景
-func ProvideConcurrencyCache(rdb *redis.Client, cfg *config.Config) service.ConcurrencyCache {
-	waitTTLSeconds := int(cfg.Gateway.Scheduling.StickySessionWaitTimeout.Seconds())
-	if cfg.Gateway.Scheduling.FallbackWaitTimeout > cfg.Gateway.Scheduling.StickySessionWaitTimeout {
-		waitTTLSeconds = int(cfg.Gateway.Scheduling.FallbackWaitTimeout.Seconds())
+func ProvideConcurrencyCache(rdb redis.UniversalClient, cfg *config.Config) service.ConcurrencyCache {
+	waitTimeout := max(cfg.Gateway.Scheduling.StickySessionWaitTimeout, cfg.Gateway.Scheduling.FallbackWaitTimeout)
+	if waitTimeout <= 0 {
+		waitTimeout = time.Duration(cfg.Gateway.ConcurrencySlotTTLMinutes) * time.Minute
 	}
-	if waitTTLSeconds <= 0 {
-		waitTTLSeconds = cfg.Gateway.ConcurrencySlotTTLMinutes * 60
-	}
+	waitTimeout = max(waitTimeout, service.DefaultConcurrencyWaitTimeout)
+	// Round up and leave one second for Redis TIME's integer-second precision.
+	// Every member must remain counted through its own handler wait deadline.
+	waitTTLSeconds := int((waitTimeout+time.Second-1)/time.Second) + 1
 	return NewConcurrencyCache(rdb, cfg.Gateway.ConcurrencySlotTTLMinutes, waitTTLSeconds)
 }
 
@@ -40,7 +41,7 @@ func ProvidePricingRemoteClient(cfg *config.Config) service.PricingRemoteClient 
 
 // ProvideSessionLimitCache 创建会话限制缓存
 // 用于 Anthropic OAuth/SetupToken 账号的并发会话数量控制
-func ProvideSessionLimitCache(rdb *redis.Client, cfg *config.Config) service.SessionLimitCache {
+func ProvideSessionLimitCache(rdb redis.UniversalClient, cfg *config.Config) service.SessionLimitCache {
 	defaultIdleTimeoutMinutes := 5 // 默认 5 分钟空闲超时
 	if cfg != nil && cfg.Gateway.SessionIdleTimeoutMinutes > 0 {
 		defaultIdleTimeoutMinutes = cfg.Gateway.SessionIdleTimeoutMinutes
@@ -49,7 +50,7 @@ func ProvideSessionLimitCache(rdb *redis.Client, cfg *config.Config) service.Ses
 }
 
 // ProvideSchedulerCache 创建调度快照缓存，并注入快照分块参数。
-func ProvideSchedulerCache(rdb *redis.Client, cfg *config.Config) service.SchedulerCache {
+func ProvideSchedulerCache(rdb redis.UniversalClient, cfg *config.Config) service.SchedulerCache {
 	mgetChunkSize := defaultSchedulerSnapshotMGetChunkSize
 	writeChunkSize := defaultSchedulerSnapshotWriteChunkSize
 	if cfg != nil {
@@ -215,7 +216,9 @@ func ProvideSQLDB(client *ent.Client) (*sql.DB, error) {
 		return nil, errors.New("nil ent client")
 	}
 	// 从 Ent 客户端获取底层驱动
-	drv, ok := client.Driver().(*entsql.Driver)
+	// Both the plain driver and the reporting-aware wrapper expose the primary.
+	// Never inject the replica as *sql.DB: billing and all transactions use this.
+	drv, ok := client.Driver().(interface{ DB() *sql.DB })
 	if !ok {
 		return nil, errors.New("ent driver does not expose *sql.DB")
 	}
@@ -232,7 +235,7 @@ func ProvideSQLDB(client *ent.Client) (*sql.DB, error) {
 //   - 实时统计数据
 //
 // 依赖：config.Config
-// 提供：*redis.Client
-func ProvideRedis(cfg *config.Config) *redis.Client {
+// 提供：redis.UniversalClient
+func ProvideRedis(cfg *config.Config) redis.UniversalClient {
 	return InitRedis(cfg)
 }

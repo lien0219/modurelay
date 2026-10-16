@@ -252,7 +252,7 @@ func newInflightSvc(t *testing.T, cache BillingCache, ttlSeconds int) *BillingCa
 	t.Helper()
 	cfg := &config.Config{}
 	cfg.Billing.InflightReservation = config.InflightReservationConfig{Enabled: true, TTLSeconds: ttlSeconds}
-	svc := NewBillingCacheService(cache, nil, nil, nil, nil, nil, cfg, nil)
+	svc := NewBillingCacheService(cache, &balanceLoadUserRepoStub{balance: 1}, nil, nil, nil, nil, cfg, nil)
 	t.Cleanup(svc.Stop)
 	return svc
 }

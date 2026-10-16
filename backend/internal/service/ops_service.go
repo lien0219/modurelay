@@ -43,9 +43,10 @@ type OpsRuntimeSettingsRefreshHealth struct {
 
 // OpsService provides ingestion and query APIs for the Ops monitoring module.
 type OpsService struct {
-	opsRepo     OpsRepository
-	settingRepo SettingRepository
-	cfg         *config.Config
+	opsRepo          OpsRepository
+	settingRepo      SettingRepository
+	cfg              *config.Config
+	metricsCollector *OpsMetricsCollector
 
 	accountRepo AccountRepository
 	userRepo    UserRepository

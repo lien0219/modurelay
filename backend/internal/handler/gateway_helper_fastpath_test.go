@@ -44,11 +44,11 @@ func (m *concurrencyCacheMock) GetAccountConcurrencyBatch(ctx context.Context, a
 	return result, nil
 }
 
-func (m *concurrencyCacheMock) IncrementAccountWaitCount(ctx context.Context, accountID int64, maxWait int) (bool, error) {
+func (m *concurrencyCacheMock) IncrementAccountWaitCount(ctx context.Context, accountID int64, maxWait int, waiterID string) (bool, error) {
 	return true, nil
 }
 
-func (m *concurrencyCacheMock) DecrementAccountWaitCount(ctx context.Context, accountID int64) error {
+func (m *concurrencyCacheMock) DecrementAccountWaitCount(ctx context.Context, accountID int64, waiterID string) error {
 	return nil
 }
 
@@ -72,11 +72,11 @@ func (m *concurrencyCacheMock) GetUserConcurrency(ctx context.Context, userID in
 	return 0, nil
 }
 
-func (m *concurrencyCacheMock) IncrementWaitCount(ctx context.Context, userID int64, maxWait int) (bool, error) {
+func (m *concurrencyCacheMock) IncrementWaitCount(ctx context.Context, userID int64, maxWait int, waiterID string) (bool, error) {
 	return true, nil
 }
 
-func (m *concurrencyCacheMock) DecrementWaitCount(ctx context.Context, userID int64) error {
+func (m *concurrencyCacheMock) DecrementWaitCount(ctx context.Context, userID int64, waiterID string) error {
 	return nil
 }
 

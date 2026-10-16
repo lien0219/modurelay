@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -30,7 +31,6 @@ const (
 	opsMetricsCollectorTimeout = 10 * time.Second
 
 	opsMetricsCollectorLeaderLockKey = "ops:metrics:collector:leader"
-	opsMetricsCollectorLeaderLockTTL = 90 * time.Second
 
 	opsMetricsCollectorHeartbeatTimeout = 2 * time.Second
 
@@ -52,11 +52,15 @@ type OpsMetricsCollector struct {
 	concurrencyService *ConcurrencyService
 
 	db          *sql.DB
-	redisClient *redis.Client
+	redisClient redis.UniversalClient
 	instanceID  string
 
 	lastCgroupCPUUsageNanos uint64
 	lastCgroupCPUSampleAt   time.Time
+	systemStatsMu           sync.Mutex
+	runtimeSnapshotMu       sync.RWMutex
+	runtimeSnapshot         *OpsSystemMetricsSnapshot
+	runtimeDone             chan struct{}
 
 	stopCh    chan struct{}
 	startOnce sync.Once
@@ -72,7 +76,7 @@ func NewOpsMetricsCollector(
 	accountRepo AccountRepository,
 	concurrencyService *ConcurrencyService,
 	db *sql.DB,
-	redisClient *redis.Client,
+	redisClient redis.UniversalClient,
 	cfg *config.Config,
 ) *OpsMetricsCollector {
 	return &OpsMetricsCollector{
@@ -96,6 +100,8 @@ func (c *OpsMetricsCollector) Start() {
 			c.stopCh = make(chan struct{})
 		}
 		go c.run()
+		c.runtimeDone = make(chan struct{})
+		go c.runtimeLoop()
 	})
 }
 
@@ -106,6 +112,9 @@ func (c *OpsMetricsCollector) Stop() {
 	c.stopOnce.Do(func() {
 		if c.stopCh != nil {
 			close(c.stopCh)
+		}
+		if c.runtimeDone != nil {
+			<-c.runtimeDone
 		}
 	})
 }
@@ -187,9 +196,19 @@ func (c *OpsMetricsCollector) collectOnce() {
 	if release != nil {
 		defer release()
 	}
+	// A lock alone does not deduplicate staggered replicas: another pod can run
+	// immediately after release. Check the completed bucket while holding it.
+	windowEnd := time.Now().UTC().Truncate(time.Minute)
+	latest, err := c.opsRepo.GetLatestSystemMetrics(ctx, 1)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return
+	}
+	if latest != nil && !latest.CreatedAt.Before(windowEnd) {
+		return
+	}
 
 	startedAt := time.Now().UTC()
-	err := c.collectAndPersist(ctx)
+	err = c.collectAndPersist(ctx)
 	finishedAt := time.Now().UTC()
 
 	durationMs := finishedAt.Sub(startedAt).Milliseconds()
@@ -364,6 +383,24 @@ func (c *OpsMetricsCollector) collectAndPersist(ctx context.Context) error {
 		ConcurrencyQueueDepth: concurrencyQueueDepth,
 	}
 
+	if live, err := c.ClusterRuntimeSnapshot(ctx); err == nil {
+		input.CPUUsagePercent = live.CPUUsagePercent
+		input.MemoryUsedMB = live.MemoryUsedMB
+		input.MemoryTotalMB = live.MemoryTotalMB
+		input.MemoryUsagePercent = live.MemoryUsagePercent
+		input.DBConnActive, input.DBConnIdle = live.DBConnActive, live.DBConnIdle
+		input.RedisConnTotal, input.RedisConnIdle = live.RedisConnTotal, live.RedisConnIdle
+		input.GoroutineCount = live.GoroutineCount
+		input.DBOK, input.RedisOK = live.DBOK, live.RedisOK
+	} else if c.redisClient != nil {
+		// Never persist one pod's resources in the global row when aggregation
+		// is unavailable. Shared traffic counts remain valid independently.
+		input.CPUUsagePercent, input.MemoryUsagePercent = nil, nil
+		input.MemoryUsedMB, input.MemoryTotalMB = nil, nil
+		input.DBConnActive, input.DBConnIdle = nil, nil
+		input.RedisConnTotal, input.RedisConnIdle = nil, nil
+		input.GoroutineCount = nil
+	}
 	return c.opsRepo.InsertSystemMetrics(ctx, input)
 }
 
@@ -588,12 +625,16 @@ WHERE o.created_at >= $1 AND o.created_at < $2
 
 type opsCollectedSystemStats struct {
 	cpuUsagePercent    *float64
+	cpuResourceID      string
 	memoryUsedMB       *int64
 	memoryTotalMB      *int64
 	memoryUsagePercent *float64
+	memoryResourceID   string
 }
 
 func (c *OpsMetricsCollector) collectSystemStats(ctx context.Context) (*opsCollectedSystemStats, error) {
+	c.systemStatsMu.Lock()
+	defer c.systemStatsMu.Unlock()
 	out := &opsCollectedSystemStats{}
 	if ctx == nil {
 		ctx = context.Background()
@@ -605,11 +646,13 @@ func (c *OpsMetricsCollector) collectSystemStats(ctx context.Context) (*opsColle
 	// cgroup CPU accounting is unavailable.
 	if cpuPct := c.tryCgroupCPUPercent(sampleAt); cpuPct != nil {
 		out.cpuUsagePercent = cpuPct
+		out.cpuResourceID = "instance:" + c.instanceID
 	}
 	if out.cpuUsagePercent == nil {
 		if cpuPercents, err := cpu.PercentWithContext(ctx, 0, false); err == nil && len(cpuPercents) > 0 {
 			v := roundTo1DP(cpuPercents[0])
 			out.cpuUsagePercent = &v
+			out.cpuResourceID = opsHostResourceID()
 		}
 	}
 
@@ -626,6 +669,10 @@ func (c *OpsMetricsCollector) collectSystemStats(ctx context.Context) (*opsColle
 		}
 	}
 	out.memoryUsedMB, out.memoryTotalMB, out.memoryUsagePercent = resolveMemoryStats(cgroupUsed, cgroupTotal, cgroupOK, host)
+	out.memoryResourceID = opsHostResourceID()
+	if cgroupOK && cgroupTotal > 0 {
+		out.memoryResourceID = "instance:" + c.instanceID
+	}
 
 	return out, nil
 }
@@ -877,43 +924,17 @@ func (c *OpsMetricsCollector) dbPoolStats() (active int, idle int) {
 	return stats.InUse, stats.Idle
 }
 
-var opsMetricsCollectorReleaseScript = redis.NewScript(`
-if redis.call("GET", KEYS[1]) == ARGV[1] then
-  return redis.call("DEL", KEYS[1])
-end
-return 0
-`)
-
+// Use one lock authority even during a partial Redis outage. Switching between
+// Redis and PostgreSQL locks lets healthy and degraded pods both become leader.
 func (c *OpsMetricsCollector) tryAcquireLeaderLock(ctx context.Context) (func(), bool) {
-	if c == nil || c.redisClient == nil {
-		return nil, true
-	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
-	ok, err := c.redisClient.SetNX(ctx, opsMetricsCollectorLeaderLockKey, c.instanceID, opsMetricsCollectorLeaderLockTTL).Result()
-	if err != nil {
-		// Prefer fail-closed to avoid stampeding the database when Redis is flaky.
-		// Fallback to a DB advisory lock when Redis is present but unavailable.
-		release, ok := tryAcquireDBAdvisoryLock(ctx, c.db, opsMetricsCollectorAdvisoryLockID)
-		if !ok {
-			c.maybeLogSkip()
-			return nil, false
-		}
-		return release, true
-	}
-	if !ok {
-		c.maybeLogSkip()
+	if c == nil {
 		return nil, false
 	}
-
-	release := func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		_, _ = opsMetricsCollectorReleaseScript.Run(ctx, c.redisClient, []string{opsMetricsCollectorLeaderLockKey}, c.instanceID).Result()
+	release, ok := tryAcquireDBAdvisoryLock(ctx, c.db, opsMetricsCollectorAdvisoryLockID)
+	if !ok {
+		c.maybeLogSkip()
 	}
-	return release, true
+	return release, ok
 }
 
 func (c *OpsMetricsCollector) maybeLogSkip() {
@@ -967,4 +988,50 @@ func intPtr(v int) *int {
 func float64Ptr(v float64) *float64 {
 	out := v
 	return &out
+}
+
+// Redis server time avoids clock skew between pods expiring healthy peers.
+var opsRuntimePublishScript = redis.NewScript(`
+local now = tonumber(redis.call('TIME')[1])
+local expired = redis.call('ZRANGEBYSCORE', KEYS[1], '-inf', now - tonumber(ARGV[3]))
+for _, id in ipairs(expired) do redis.call('HDEL', KEYS[2], id) end
+redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', now - tonumber(ARGV[3]))
+redis.call('HSET', KEYS[2], ARGV[1], ARGV[2])
+redis.call('ZADD', KEYS[1], now, ARGV[1])
+redis.call('EXPIRE', KEYS[1], ARGV[3])
+redis.call('EXPIRE', KEYS[2], ARGV[3])
+return 1
+`)
+
+var opsRuntimeReadScript = redis.NewScript(`
+local now = tonumber(redis.call('TIME')[1])
+local members = redis.call('ZRANGEBYSCORE', KEYS[1], '(' .. (now - tonumber(ARGV[1])), '+inf')
+local result = {}
+for _, id in ipairs(members) do
+  local sample = redis.call('HGET', KEYS[2], id)
+  if sample then table.insert(result, sample) end
+end
+return result
+`)
+
+var opsRuntimeRemoveScript = redis.NewScript(`
+redis.call('ZREM', KEYS[1], ARGV[1])
+redis.call('HDEL', KEYS[2], ARGV[1])
+return 1
+`)
+
+func (c *OpsMetricsCollector) redisPoolCapacity(ctx context.Context) *int {
+	switch client := c.redisClient.(type) {
+	case *redis.Client:
+		return intPtr(client.Options().PoolSize)
+	case *redis.ClusterClient:
+		var total atomic.Int64
+		if err := client.ForEachShard(ctx, func(_ context.Context, shard *redis.Client) error {
+			total.Add(int64(shard.Options().PoolSize))
+			return nil
+		}); err == nil {
+			return intPtr(int(total.Load()))
+		}
+	}
+	return nil
 }

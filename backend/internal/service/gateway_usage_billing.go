@@ -414,7 +414,13 @@ func finalizePostUsageBilling(ctx context.Context, p *postUsageBillingParams, de
 			deps.billingCacheService.QueueUpdateSubscriptionUsage(p.User.ID, *p.APIKey.GroupID, p.Cost.ActualCost)
 		}
 	} else if p.Cost.ActualCost > 0 && p.User != nil {
-		syncBalanceCacheAfterDeduction(ctx, p, deps, result)
+		if err := syncBalanceCacheAfterDeduction(ctx, p, deps, result); err != nil {
+			// The debit has committed: reporting a failed debit would zero the
+			// usage record (or invite another charge). The cache service retains
+			// the unconfirmed invalidation and blocks this user's cache reads;
+			// all pods use the primary for subsequent balance admission.
+			slog.Error("committed balance cache invalidation unconfirmed", "user_id", p.User.ID, "error", err)
+		}
 	}
 
 	if p.Cost.ActualCost > 0 && p.APIKey != nil && p.APIKey.HasRateLimits() && deps.billingCacheService != nil {
@@ -463,9 +469,16 @@ func finalizePostUsageBilling(ctx context.Context, p *postUsageBillingParams, de
 	go notifyAccountQuota(p, deps, result)
 }
 
-func syncBalanceCacheAfterDeduction(ctx context.Context, p *postUsageBillingParams, deps *billingDeps, result *UsageBillingApplyResult) {
+func syncBalanceCacheAfterDeduction(ctx context.Context, p *postUsageBillingParams, deps *billingDeps, result *UsageBillingApplyResult) error {
 	if p == nil || p.Cost == nil || p.User == nil || deps == nil || deps.billingCacheService == nil {
-		return
+		return nil
+	}
+	if _, ok := deps.billingCacheService.cache.(FencedBalanceCache); ok {
+		// A fresh fill may already include this committed debit. Subtracting it
+		// again would double-charge the cache; asynchronous subtraction can also
+		// admit another request after releasing its in-flight reservation. A
+		// synchronous, fenced invalidation handles either commit/fill ordering.
+		return invalidateUserBalanceCache(ctx, deps.billingCacheService, p.User.ID)
 	}
 	if result != nil && result.NewBalance != nil && deps.billingCacheService.balanceBelowEligibilityThreshold(*result.NewBalance) {
 		if err := deps.billingCacheService.InvalidateUserBalance(ctx, p.User.ID); err != nil {
@@ -475,8 +488,9 @@ func syncBalanceCacheAfterDeduction(ctx context.Context, p *postUsageBillingPara
 				"balance_overdrafted", result.BalanceOverdrafted,
 				"error", err,
 			)
+			return err
 		}
-		return
+		return nil
 	}
 	if deps.billingCacheService.InflightReservationEnabled() {
 		// 在途预留开启时同步扣减余额缓存：计费任务结束后才会释放预留，
@@ -484,11 +498,12 @@ func syncBalanceCacheAfterDeduction(ctx context.Context, p *postUsageBillingPara
 		// 仍存在「在途=0 且余额未扣」的窗口。本函数运行在计费 worker 中，不在请求热路径。
 		err := deps.billingCacheService.DeductBalanceCache(ctx, p.User.ID, p.Cost.ActualCost)
 		if err == nil {
-			return
+			return nil
 		}
 		logger.LegacyPrintf("service.gateway", "Warning: sync deduct balance cache failed for user %d, falling back to queue: %v", p.User.ID, err)
 	}
 	deps.billingCacheService.QueueDeductBalance(p.User.ID, p.Cost.ActualCost)
+	return nil
 }
 
 // notifyBalanceLow sends balance low notification after deduction.

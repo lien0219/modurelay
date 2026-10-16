@@ -2,10 +2,13 @@ package service
 
 import (
 	"context"
+	"errors"
+	"regexp"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -75,15 +78,68 @@ func TestTryAcquireSingletonLeaderLock_ContendedThenReleased(t *testing.T) {
 	releaseB()
 }
 
-// When the cache errors, the helper must fall through rather than acquire via the
-// cache. With no DB configured it runs ungated so the job is never starved by a
-// flaky Redis.
-func TestTryAcquireSingletonLeaderLock_CacheErrorFallsThrough(t *testing.T) {
+func TestTryAcquireSingletonLeaderLock_CacheErrorFailsClosed(t *testing.T) {
 	cache := &fakeLeaderLockCache{acquireErr: context.DeadlineExceeded}
 	release, ok := tryAcquireSingletonLeaderLock(context.Background(), cache, nil, "k", "inst", time.Minute)
-	require.True(t, ok, "cache error with no DB must run ungated, not skip")
-	require.NotNil(t, release)
-	require.NotPanics(t, release)
+	require.False(t, ok, "a failed configured backend must not run every pod's job")
+	require.Nil(t, release)
+}
+
+func TestTryAcquireSingletonLeaderLock_DatabaseIsAuthoritative(t *testing.T) {
+	for _, cacheErr := range []error{nil, context.DeadlineExceeded} {
+		t.Run(fmtErrorName(cacheErr), func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			require.NoError(t, err)
+			defer func() { _ = db.Close() }()
+			cache := &fakeLeaderLockCache{acquireErr: cacheErr}
+			mock.ExpectQuery(regexp.QuoteMeta("SELECT pg_try_advisory_lock($1)")).
+				WithArgs(hashAdvisoryLockID("job")).WillReturnRows(sqlmock.NewRows([]string{"acquired"}).AddRow(false))
+			release, acquired := tryAcquireSingletonLeaderLock(context.Background(), cache, db, "job", "pod", time.Minute)
+			require.False(t, acquired)
+			require.Nil(t, release)
+			require.Empty(t, cache.heldBy("job"), "Redis availability must never elect a second leader")
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}
+
+func fmtErrorName(err error) string {
+	if err != nil {
+		return "redis_unavailable"
+	}
+	return "redis_available"
+}
+
+func TestAdvisoryLockReleaseDiscardsSessionAfterUnlockFailure(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT pg_try_advisory_lock($1)")).WithArgs(int64(7)).
+		WillReturnRows(sqlmock.NewRows([]string{"acquired"}).AddRow(true))
+	mock.ExpectExec(regexp.QuoteMeta("SELECT pg_advisory_unlock($1)")).WithArgs(int64(7)).
+		WillReturnError(errors.New("connection interrupted"))
+	mock.ExpectClose()
+	release, acquired := tryAcquireDBAdvisoryLock(context.Background(), db, 7)
+	require.True(t, acquired)
+	release()
+	release() // Releasing twice must not unlock a later owner's session.
+	require.Zero(t, db.Stats().OpenConnections)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestAdvisoryLockAcquisitionErrorDiscardsUncertainSession(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT pg_try_advisory_lock($1)")).WithArgs(int64(7)).
+		WillReturnError(errors.New("result read failed"))
+	mock.ExpectClose()
+	release, acquired, err := tryAcquireDBAdvisoryLockWithError(context.Background(), db, 7)
+	require.Error(t, err)
+	require.False(t, acquired)
+	require.Nil(t, release)
+	require.Zero(t, db.Stats().OpenConnections)
+	require.NoError(t, mock.ExpectationsWereMet())
 }
 
 func TestSubscriptionExpiryService_ReminderSkipsScanWhenNotLeader(t *testing.T) {

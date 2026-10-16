@@ -142,6 +142,8 @@ type usageLogRepository struct {
 	client *dbent.Client
 	sql    sqlExecutor
 	db     *sql.DB
+	// reporting is opt-in; sql/db always retain the primary for writes and quotas.
+	reporting sqlQueryer
 
 	createBatchOnce     sync.Once
 	createBatchCh       chan usageLogCreateRequest
@@ -151,7 +153,13 @@ type usageLogRepository struct {
 }
 
 func NewUsageLogRepository(client *dbent.Client, sqlDB *sql.DB) service.UsageLogRepository {
-	return newUsageLogRepositoryWithSQL(client, sqlDB)
+	repo := newUsageLogRepositoryWithSQL(client, sqlDB)
+	if client != nil {
+		if driver, ok := client.Driver().(*primaryWithReadReplicaDriver); ok && driver.reporting != nil {
+			repo.reporting = driver.reporting
+		}
+	}
+	return repo
 }
 
 func newUsageLogRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor) *usageLogRepository {

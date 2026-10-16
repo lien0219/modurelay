@@ -423,7 +423,8 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					return
 				}
 				accountWaitCounted := false
-				canWait, err := h.concurrencyHelper.IncrementAccountWaitCount(c.Request.Context(), account.ID, selection.WaitPlan.MaxWaiting)
+				waiterID := service.NewWaiterID()
+				canWait, err := h.concurrencyHelper.IncrementAccountWaitCount(c.Request.Context(), account.ID, selection.WaitPlan.MaxWaiting, waiterID)
 				if err != nil {
 					reqLog.Warn("gateway.account_wait_counter_increment_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 				} else if !canWait {
@@ -439,7 +440,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				}
 				releaseWait := func() {
 					if accountWaitCounted {
-						h.concurrencyHelper.DecrementAccountWaitCount(c.Request.Context(), account.ID)
+						h.concurrencyHelper.DecrementAccountWaitCount(c.Request.Context(), account.ID, waiterID)
 						accountWaitCounted = false
 					}
 				}
@@ -770,7 +771,8 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					return
 				}
 				accountWaitCounted := false
-				canWait, err := h.concurrencyHelper.IncrementAccountWaitCount(c.Request.Context(), account.ID, selection.WaitPlan.MaxWaiting)
+				waiterID := service.NewWaiterID()
+				canWait, err := h.concurrencyHelper.IncrementAccountWaitCount(c.Request.Context(), account.ID, selection.WaitPlan.MaxWaiting, waiterID)
 				if err != nil {
 					reqLog.Warn("gateway.account_wait_counter_increment_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 				} else if !canWait {
@@ -786,7 +788,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				}
 				releaseWait := func() {
 					if accountWaitCounted {
-						h.concurrencyHelper.DecrementAccountWaitCount(c.Request.Context(), account.ID)
+						h.concurrencyHelper.DecrementAccountWaitCount(c.Request.Context(), account.ID, waiterID)
 						accountWaitCounted = false
 					}
 				}

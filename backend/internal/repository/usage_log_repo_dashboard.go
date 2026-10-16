@@ -28,7 +28,7 @@ func (r *usageLogRepository) getPerformanceStats(ctx context.Context, userID int
 
 	var requestCount int64
 	var tokenCount int64
-	if err := scanSingleRow(ctx, r.sql, query, args, &requestCount, &tokenCount); err != nil {
+	if err := scanSingleRow(ctx, r.reportingSQL(), query, args, &requestCount, &tokenCount); err != nil {
 		return 0, 0, err
 	}
 	return requestCount / 5, tokenCount / 5, nil
@@ -60,7 +60,7 @@ func (r *usageLogRepository) GetUserStats(ctx context.Context, userID int64, sta
 	stats := &UserStats{}
 	if err := scanSingleRow(
 		ctx,
-		r.sql,
+		r.reportingSQL(),
 		query,
 		[]any{userID, startTime, endTime},
 		&stats.TotalRequests,
@@ -138,7 +138,7 @@ func (r *usageLogRepository) fillDashboardEntityStats(ctx context.Context, stats
 	`
 	if err := scanSingleRow(
 		ctx,
-		r.sql,
+		r.reportingSQL(),
 		userStatsQuery,
 		[]any{todayUTC},
 		&stats.TotalUsers,
@@ -156,7 +156,7 @@ func (r *usageLogRepository) fillDashboardEntityStats(ctx context.Context, stats
 	`
 	if err := scanSingleRow(
 		ctx,
-		r.sql,
+		r.reportingSQL(),
 		apiKeyStatsQuery,
 		[]any{service.StatusActive},
 		&stats.TotalAPIKeys,
@@ -177,7 +177,7 @@ func (r *usageLogRepository) fillDashboardEntityStats(ctx context.Context, stats
 	`
 	if err := scanSingleRow(
 		ctx,
-		r.sql,
+		r.reportingSQL(),
 		accountStatsQuery,
 		[]any{service.StatusActive, service.StatusError, now, now},
 		&stats.TotalAccounts,
@@ -209,7 +209,7 @@ func (r *usageLogRepository) fillDashboardUsageStatsAggregated(ctx context.Conte
 	var totalDurationMs int64
 	if err := scanSingleRow(
 		ctx,
-		r.sql,
+		r.reportingSQL(),
 		totalStatsQuery,
 		nil,
 		&stats.TotalRequests,
@@ -245,7 +245,7 @@ func (r *usageLogRepository) fillDashboardUsageStatsAggregated(ctx context.Conte
 	`
 	if err := scanSingleRow(
 		ctx,
-		r.sql,
+		r.reportingSQL(),
 		todayStatsQuery,
 		[]any{todayUTC},
 		&stats.TodayRequests,
@@ -270,7 +270,7 @@ func (r *usageLogRepository) fillDashboardUsageStatsAggregated(ctx context.Conte
 		WHERE bucket_start = $1
 	`
 	hourStart := now.In(timezone.Location()).Truncate(time.Hour)
-	if err := scanSingleRow(ctx, r.sql, hourlyActiveQuery, []any{hourStart}, &stats.HourlyActiveUsers); err != nil {
+	if err := scanSingleRow(ctx, r.reportingSQL(), hourlyActiveQuery, []any{hourStart}, &stats.HourlyActiveUsers); err != nil {
 		if err != sql.ErrNoRows {
 			return err
 		}
@@ -320,7 +320,7 @@ func (r *usageLogRepository) fillDashboardUsageStatsFromUsageLogs(ctx context.Co
 	var totalDurationMs int64
 	if err := scanSingleRow(
 		ctx,
-		r.sql,
+		r.reportingSQL(),
 		combinedStatsQuery,
 		[]any{startUTC, endUTC, todayUTC, todayEnd},
 		&stats.TotalRequests,
@@ -364,7 +364,7 @@ func (r *usageLogRepository) fillDashboardUsageStatsFromUsageLogs(ctx context.Co
 			COUNT(DISTINCT CASE WHEN created_at >= $3::timestamptz AND created_at < $4::timestamptz THEN user_id END) AS hourly_active_users
 		FROM scoped
 	`
-	if err := scanSingleRow(ctx, r.sql, activeUsersQuery, []any{todayUTC, todayEnd, hourStart, hourEnd}, &stats.ActiveUsers, &stats.HourlyActiveUsers); err != nil {
+	if err := scanSingleRow(ctx, r.reportingSQL(), activeUsersQuery, []any{todayUTC, todayEnd, hourStart, hourEnd}, &stats.ActiveUsers, &stats.HourlyActiveUsers); err != nil {
 		return err
 	}
 
@@ -385,7 +385,7 @@ func (r *usageLogRepository) GetUserDashboardStats(ctx context.Context, userID i
 	// API Key 统计
 	if err := scanSingleRow(
 		ctx,
-		r.sql,
+		r.reportingSQL(),
 		"SELECT COUNT(*) FROM api_keys WHERE user_id = $1 AND deleted_at IS NULL",
 		[]any{userID},
 		&stats.TotalAPIKeys,
@@ -394,7 +394,7 @@ func (r *usageLogRepository) GetUserDashboardStats(ctx context.Context, userID i
 	}
 	if err := scanSingleRow(
 		ctx,
-		r.sql,
+		r.reportingSQL(),
 		"SELECT COUNT(*) FROM api_keys WHERE user_id = $1 AND status = $2 AND deleted_at IS NULL",
 		[]any{userID, service.StatusActive},
 		&stats.ActiveAPIKeys,
@@ -418,7 +418,7 @@ func (r *usageLogRepository) GetUserDashboardStats(ctx context.Context, userID i
 	`
 	if err := scanSingleRow(
 		ctx,
-		r.sql,
+		r.reportingSQL(),
 		totalStatsQuery,
 		[]any{userID},
 		&stats.TotalRequests,
@@ -449,7 +449,7 @@ func (r *usageLogRepository) GetUserDashboardStats(ctx context.Context, userID i
 	`
 	if err := scanSingleRow(
 		ctx,
-		r.sql,
+		r.reportingSQL(),
 		todayStatsQuery,
 		[]any{userID, today},
 		&stats.TodayRequests,
@@ -496,7 +496,7 @@ func (r *usageLogRepository) GetUserDashboardStats(ctx context.Context, userID i
 		HAVING ` + usageLogEffectivePlatformExpr + ` IS NOT NULL AND ` + usageLogEffectivePlatformExpr + ` <> ''
 		ORDER BY total_actual_cost DESC
 	`
-	rows, err := r.sql.QueryContext(ctx, platformQuery, userID, today)
+	rows, err := r.reportingSQL().QueryContext(ctx, platformQuery, userID, today)
 	if err != nil {
 		return nil, err
 	}
@@ -539,7 +539,7 @@ func (r *usageLogRepository) getPerformanceStatsByAPIKey(ctx context.Context, ap
 
 	var requestCount int64
 	var tokenCount int64
-	if err := scanSingleRow(ctx, r.sql, query, args, &requestCount, &tokenCount); err != nil {
+	if err := scanSingleRow(ctx, r.reportingSQL(), query, args, &requestCount, &tokenCount); err != nil {
 		return 0, 0, err
 	}
 	return requestCount / 5, tokenCount / 5, nil
@@ -570,7 +570,7 @@ func (r *usageLogRepository) GetAPIKeyDashboardStats(ctx context.Context, apiKey
 	`
 	if err := scanSingleRow(
 		ctx,
-		r.sql,
+		r.reportingSQL(),
 		totalStatsQuery,
 		[]any{apiKeyID},
 		&stats.TotalRequests,
@@ -601,7 +601,7 @@ func (r *usageLogRepository) GetAPIKeyDashboardStats(ctx context.Context, apiKey
 	`
 	if err := scanSingleRow(
 		ctx,
-		r.sql,
+		r.reportingSQL(),
 		todayStatsQuery,
 		[]any{apiKeyID, today},
 		&stats.TodayRequests,

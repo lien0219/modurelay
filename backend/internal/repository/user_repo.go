@@ -990,6 +990,12 @@ func (r *userRepository) SetBalance(ctx context.Context, id int64, value float64
 	return change, nil
 }
 
+// GetBalance reads only the spendable balance from the primary connection.
+// Admission must not use a cached user or the optional read-replica client.
+func (r *userRepository) GetBalance(ctx context.Context, id int64) (float64, error) {
+	return r.currentBalance(ctx, id)
+}
+
 // currentBalance 读取用户当前余额，用户不存在时返回 ErrUserNotFound。
 func (r *userRepository) currentBalance(ctx context.Context, id int64) (balance float64, err error) {
 	rows, err := clientFromContext(ctx, r.client).QueryContext(ctx,

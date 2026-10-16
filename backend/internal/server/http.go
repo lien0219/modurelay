@@ -42,7 +42,7 @@ func ProvideRouter(
 	settingService *service.SettingService,
 	imageStorageSettingService *service.ImageStorageSettingService,
 	compositeResolver *service.CompositeRouteResolver,
-	redisClient *redis.Client,
+	redisClient redis.UniversalClient,
 ) *gin.Engine {
 	if cfg.Server.Mode == "release" {
 		gin.SetMode(gin.ReleaseMode)

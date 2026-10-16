@@ -292,7 +292,11 @@ func (s *PaymentService) deductAvailableBalance(ctx context.Context, userID int6
 	if !ok {
 		return 0, errors.New("user repository does not support available balance deduction")
 	}
-	return repo.DeductAvailableBalance(ctx, userID, amount)
+	deducted, err := repo.DeductAvailableBalance(ctx, userID, amount)
+	if err == nil && deducted > 0 {
+		invalidateUserBalanceCacheOnCommit(ctx, s.balanceCacheInvalidator, userID)
+	}
+	return deducted, err
 }
 
 func (s *PaymentService) ExecuteRefund(ctx context.Context, p *RefundPlan) (*RefundResult, error) {
@@ -717,6 +721,7 @@ func (s *PaymentService) RollbackRefund(ctx context.Context, p *RefundPlan, gErr
 			s.writeAuditLog(ctx, p.OrderID, "REFUND_ROLLBACK_FAILED", "admin", map[string]any{"gatewayError": psErrMsg(gErr), "rollbackError": psErrMsg(err), "balanceDeducted": p.BalanceToDeduct})
 			return false
 		}
+		invalidateUserBalanceCacheOnCommit(ctx, s.balanceCacheInvalidator, p.Order.UserID)
 	}
 	if p.DeductionType == payment.DeductionTypeSubscription && p.SubDaysToDeduct > 0 && p.SubscriptionID > 0 {
 		if _, err := s.subscriptionSvc.ExtendSubscription(ctx, p.SubscriptionID, p.SubDaysToDeduct); err != nil {

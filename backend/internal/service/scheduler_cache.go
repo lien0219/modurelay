@@ -119,3 +119,11 @@ type SchedulerCache interface {
 	// SetOutboxWatermark 保存 outbox 水位。
 	SetOutboxWatermark(ctx context.Context, id int64) error
 }
+
+// SchedulerBucketLeaseCache carries the per-acquisition owner through release.
+// Production Redis caches implement it so a timed-out rebuild cannot delete a
+// successor's lock. Kept separate from SchedulerCache for existing adapters.
+type SchedulerBucketLeaseCache interface {
+	TryAcquireBucketLease(ctx context.Context, bucket SchedulerBucket, ttl time.Duration) (owner string, acquired bool, err error)
+	ReleaseBucketLease(ctx context.Context, bucket SchedulerBucket, owner string) error
+}

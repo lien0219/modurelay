@@ -15,12 +15,12 @@ var ErrNotConfigured = errors.New("redis session store not configured")
 
 // Store persists JSON sessions and single-use markers under one namespace.
 type Store struct {
-	rdb    *redis.Client
+	rdb    redis.UniversalClient
 	prefix string
 	ttl    time.Duration
 }
 
-func New(rdb *redis.Client, prefix string, ttl time.Duration) *Store {
+func New(rdb redis.UniversalClient, prefix string, ttl time.Duration) *Store {
 	if ttl <= 0 {
 		ttl = 30 * time.Minute
 	}
@@ -90,7 +90,11 @@ func (s *Store) Delete(ctx context.Context, id string) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	return s.rdb.Del(ctx, s.dataKey(id), s.usedKey(id)).Err()
+	pipe := s.rdb.Pipeline()
+	pipe.Del(ctx, s.dataKey(id))
+	pipe.Del(ctx, s.usedKey(id))
+	_, err := pipe.Exec(ctx)
+	return err
 }
 
 // TryConsume returns true only for the first claim while the session exists.

@@ -164,6 +164,25 @@ func InitEnt(cfg *config.Config) (*ent.Client, *sql.DB, error) {
 		return nil, nil, err
 	}
 
+	// Install auxiliary pools after primary-only migrations and bootstrap.
+	// The managed driver owns their lifetimes; ordinary queries retain drv.DB().
+	managed := &primaryWithReadReplicaDriver{Driver: drv}
+	if cfg.Database.ReadReplica.Enabled {
+		var err error
+		managed, err = initReadReplica(drv, cfg)
+		if err != nil {
+			_ = client.Close()
+			return nil, nil, err
+		}
+	}
+	closeLocks, err := initAdvisoryLockPool(drv.DB(), cfg)
+	if err != nil {
+		_ = managed.Close()
+		return nil, nil, err
+	}
+	managed.closeLockPool = closeLocks
+	client = ent.NewClient(ent.Driver(managed))
+
 	return client, drv.DB(), nil
 }
 

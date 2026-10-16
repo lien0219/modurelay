@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/redisutil"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
 )
@@ -159,7 +160,7 @@ func (c *tempUnschedCache) GetBatch(ctx context.Context, accountIDs []int64) (ma
 	for i, accountID := range accountIDs {
 		keys[i] = accountHealthStateKey(accountID)
 	}
-	values, err := c.rdb.MGet(ctx, keys...).Result()
+	values, err := redisutil.MGet(ctx, c.rdb, keys...)
 	if err != nil {
 		return nil, fmt.Errorf("get account health batch: %w", err)
 	}

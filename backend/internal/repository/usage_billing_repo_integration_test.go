@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -14,6 +15,74 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
+
+// Separate repository instances model different pods: correctness must come
+// from the primary database transaction/unique key, not a process-local lock.
+func TestUsageBillingRepositoryApply_ConcurrentInstances(t *testing.T) {
+	for _, sameRequest := range []bool{true, false} {
+		name := "distinct_requests"
+		if sameRequest {
+			name = "duplicate_request"
+		}
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			client := testEntClient(t)
+			user := mustCreateUser(t, client, &service.User{
+				Email: "concurrent-billing-" + uuid.NewString() + "@example.com", PasswordHash: "hash", Balance: 100,
+			})
+			key := mustCreateApiKey(t, client, &service.APIKey{UserID: user.ID, Key: "sk-" + uuid.NewString(), Name: "concurrent-billing", Quota: 100})
+			const workers = 32
+			start := make(chan struct{})
+			results := make(chan *service.UsageBillingApplyResult, workers)
+			errs := make(chan error, workers)
+			requestID := uuid.NewString()
+			var wg sync.WaitGroup
+			for i := range workers {
+				wg.Add(1)
+				go func(index int) {
+					defer wg.Done()
+					id := requestID
+					if !sameRequest {
+						id = fmt.Sprintf("%s-%d", id, index)
+					}
+					repo := NewUsageBillingRepository(client, integrationDB)
+					<-start
+					result, err := repo.Apply(ctx, &service.UsageBillingCommand{
+						RequestID: id, APIKeyID: key.ID, UserID: user.ID, BalanceCost: 1.25, APIKeyQuotaCost: 1.25, APIKeyRateLimitCost: 1.25,
+					})
+					results <- result
+					errs <- err
+				}(i)
+			}
+			close(start)
+			wg.Wait()
+			close(results)
+			close(errs)
+			for err := range errs {
+				require.NoError(t, err)
+			}
+			applied := 0
+			for result := range results {
+				require.NotNil(t, result)
+				if result.Applied {
+					applied++
+				}
+			}
+			wantApplied := workers
+			if sameRequest {
+				wantApplied = 1
+			}
+			require.Equal(t, wantApplied, applied)
+			var balance, quota, usage5h float64
+			require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT balance FROM users WHERE id = $1", user.ID).Scan(&balance))
+			require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT quota_used, usage_5h FROM api_keys WHERE id = $1", key.ID).Scan(&quota, &usage5h))
+			expectedCost := float64(wantApplied) * 1.25
+			require.InDelta(t, 100-expectedCost, balance, 1e-8)
+			require.InDelta(t, expectedCost, quota, 1e-8)
+			require.InDelta(t, expectedCost, usage5h, 1e-8)
+		})
+	}
+}
 
 func TestUsageBillingRepositoryApply_DeduplicatesBalanceBilling(t *testing.T) {
 	ctx := context.Background()

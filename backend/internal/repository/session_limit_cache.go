@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/redisutil"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
 )
@@ -156,13 +157,13 @@ var (
 )
 
 type sessionLimitCache struct {
-	rdb                *redis.Client
+	rdb                redis.UniversalClient
 	defaultIdleTimeout time.Duration // 默认空闲超时（用于 GetActiveSessionCount）
 }
 
 // NewSessionLimitCache 创建会话限制缓存
 // defaultIdleTimeoutMinutes: 默认空闲超时时间（分钟），用于无参数查询
-func NewSessionLimitCache(rdb *redis.Client, defaultIdleTimeoutMinutes int) service.SessionLimitCache {
+func NewSessionLimitCache(rdb redis.UniversalClient, defaultIdleTimeoutMinutes int) service.SessionLimitCache {
 	if defaultIdleTimeoutMinutes <= 0 {
 		defaultIdleTimeoutMinutes = 5 // 默认 5 分钟
 	}
@@ -275,7 +276,9 @@ func (c *sessionLimitCache) GetActiveSessionCountBatch(ctx context.Context, acco
 			}
 		}
 		idleTimeoutSeconds := int(idleTimeout.Seconds())
-		cmds[accountID] = getActiveSessionCountScript.Run(ctx, pipe, []string{key}, idleTimeoutSeconds)
+		// EVALSHA fallback cannot run after a pipeline is queued. A newly
+		// discovered cluster primary may not have this script loaded yet.
+		cmds[accountID] = getActiveSessionCountScript.Eval(ctx, pipe, []string{key}, idleTimeoutSeconds)
 	}
 
 	// 执行 pipeline，即使部分失败也尝试获取成功的结果
@@ -340,7 +343,7 @@ func (c *sessionLimitCache) GetWindowCostBatch(ctx context.Context, accountIDs [
 	}
 
 	// 使用 MGET 批量获取
-	vals, err := c.rdb.MGet(ctx, keys...).Result()
+	vals, err := redisutil.MGet(ctx, c.rdb, keys...)
 	if err != nil {
 		return nil, err
 	}

@@ -112,7 +112,7 @@ func NewSessionStore() *SessionStore {
 	return store
 }
 
-func NewRedisSessionStore(rdb *redis.Client) *SessionStore {
+func NewRedisSessionStore(rdb redis.UniversalClient) *SessionStore {
 	store := NewSessionStore()
 	if rdb != nil {
 		store.remote = redissession.New(rdb, "oauth:session:xai", SessionTTL)
