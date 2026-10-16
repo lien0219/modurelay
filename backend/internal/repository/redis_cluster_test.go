@@ -91,8 +91,10 @@ func TestRedisClusterAtomicCaches(t *testing.T) {
 	client := newLocalRedisCluster(t)
 	ctx := context.Background()
 	t.Run("waiters expire independently across instances", func(t *testing.T) {
-		first := NewConcurrencyCache(client, 1, 60).(*concurrencyCache)
-		second := NewConcurrencyCache(client, 1, 60).(*concurrencyCache)
+		first, ok := NewConcurrencyCache(client, 1, 60).(*concurrencyCache)
+		require.True(t, ok)
+		second, ok := NewConcurrencyCache(client, 1, 60).(*concurrencyCache)
+		require.True(t, ok)
 		for _, scope := range []string{"account", "user"} {
 			queue := waitLeaseScope(first, scope, 991)
 			peer := waitLeaseScope(second, scope, 991)

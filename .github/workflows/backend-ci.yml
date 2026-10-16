@@ -23,6 +23,13 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # Test packages share a Ryuk session. Keep its idle cleanup outside the
+      # job lifetime so it cannot delete a later package's new container.
+      # Per-test cleanup still runs; the hosted runner removes any leftovers.
+      # This value must remain longer than timeout-minutes above.
+      RYUK_RECONNECTION_TIMEOUT: 35m
     steps:
       - uses: actions/checkout@v6
       - name: Check Docker Compose simple mode environment

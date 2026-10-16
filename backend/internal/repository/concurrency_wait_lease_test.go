@@ -57,7 +57,8 @@ func newWaitLeaseTestCache(t *testing.T) (*miniredis.Miniredis, *redis.Client, *
 	server.SetTime(now)
 	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
 	t.Cleanup(func() { _ = client.Close() })
-	cache := NewConcurrencyCache(client, 15, 10).(*concurrencyCache)
+	cache, ok := NewConcurrencyCache(client, 15, 10).(*concurrencyCache)
+	require.True(t, ok)
 	advance := func(d time.Duration) {
 		now = now.Add(d)
 		server.FastForward(d)
@@ -100,7 +101,8 @@ func TestWaitLeaseLateAndDuplicateReleasePreserveOtherInstance(t *testing.T) {
 	for _, scope := range []string{"account", "user"} {
 		t.Run(scope, func(t *testing.T) {
 			_, client, cache, advance := newWaitLeaseTestCache(t)
-			peer := NewConcurrencyCache(client, 15, 10).(*concurrencyCache)
+			peer, ok := NewConcurrencyCache(client, 15, 10).(*concurrencyCache)
+			require.True(t, ok)
 			ctx := context.Background()
 			queue := waitLeaseScope(cache, scope, 1)
 			other := waitLeaseScope(peer, scope, 1)
@@ -234,7 +236,8 @@ func TestWaitLeaseFactoryCoversHandlerDeadlines(t *testing.T) {
 			cfg := &config.Config{}
 			cfg.Gateway.Scheduling.StickySessionWaitTimeout = tc.sticky
 			cfg.Gateway.Scheduling.FallbackWaitTimeout = tc.fallback
-			cache := ProvideConcurrencyCache(nil, cfg).(*concurrencyCache)
+			cache, ok := ProvideConcurrencyCache(nil, cfg).(*concurrencyCache)
+			require.True(t, ok)
 			require.Equal(t, tc.wantSeconds, cache.waitQueueTTLSeconds)
 		})
 	}

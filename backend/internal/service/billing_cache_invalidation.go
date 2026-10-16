@@ -94,6 +94,8 @@ func invalidateUserBalanceCache(ctx context.Context, invalidator UserBalanceCach
 // invalidateUserBalanceCacheOnCommit must be called before a transaction is
 // committed. Invalidation before COMMIT would allow another pod to repopulate
 // the old balance while the writer is still uncommitted.
+// The helper logs cache failures, which must not turn a committed mutation
+// into an apparent transaction failure.
 func invalidateUserBalanceCacheOnCommit(ctx context.Context, invalidator UserBalanceCacheInvalidator, userID int64) {
 	if invalidator == nil || userID <= 0 {
 		return
@@ -107,11 +109,11 @@ func invalidateUserBalanceCacheOnCommit(ctx context.Context, invalidator UserBal
 				if err := next.Commit(commitCtx, tx); err != nil {
 					return err
 				}
-				invalidateUserBalanceCache(commitCtx, invalidator, userID)
+				_ = invalidateUserBalanceCache(commitCtx, invalidator, userID)
 				return nil
 			})
 		})
 		return
 	}
-	invalidateUserBalanceCache(ctx, invalidator, userID)
+	_ = invalidateUserBalanceCache(ctx, invalidator, userID)
 }
