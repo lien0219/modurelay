@@ -36,7 +36,7 @@ return 0
 // OpsCleanupService periodically deletes old ops data to prevent unbounded DB growth.
 //
 // - Scheduling: 5-field cron spec (minute hour dom month dow).
-// - Multi-instance: best-effort Redis leader lock so only one node runs cleanup.
+// - Multi-instance: a primary-database session lock coordinates cleanup.
 // - Safety: deletes in batches to avoid long transactions.
 //
 // 附带：在 runCleanupOnce 末尾调用 ChannelMonitorService.RunDailyMaintenance，
@@ -44,7 +44,7 @@ return 0
 type OpsCleanupService struct {
 	opsRepo           OpsRepository
 	db                *sql.DB
-	redisClient       *redis.Client
+	redisClient       redis.UniversalClient
 	cfg               *config.Config
 	channelMonitorSvc *ChannelMonitorService
 	settingRepo       SettingRepository
@@ -71,7 +71,7 @@ type opsCleanupEffectiveConfig struct {
 func NewOpsCleanupService(
 	opsRepo OpsRepository,
 	db *sql.DB,
-	redisClient *redis.Client,
+	redisClient redis.UniversalClient,
 	cfg *config.Config,
 	channelMonitorSvc *ChannelMonitorService,
 	settingRepo SettingRepository,
@@ -364,16 +364,14 @@ func (s *OpsCleanupService) tryAcquireLeaderLock(ctx context.Context) (func(), b
 	if s == nil {
 		return nil, false
 	}
-	// In simple run mode, assume single instance.
-	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
-		return nil, true
-	}
-
 	key := opsCleanupLeaderLockKeyDefault
 	ttl := opsCleanupLeaderLockTTLDefault
 
-	// Prefer Redis leader lock when available, but avoid stampeding the DB when Redis is flaky by
-	// falling back to a DB advisory lock.
+	// Simple mode may also run multiple pods. Keep every instance in the same
+	// lock domain regardless of its Redis connectivity or business mode.
+	if s.db != nil {
+		return tryAcquireDBAdvisoryLock(ctx, s.db, hashAdvisoryLockID(key))
+	}
 	if s.redisClient != nil {
 		ok, err := s.redisClient.SetNX(ctx, key, s.instanceID, ttl).Result()
 		if err == nil {
@@ -381,24 +379,21 @@ func (s *OpsCleanupService) tryAcquireLeaderLock(ctx context.Context) (func(), b
 				return nil, false
 			}
 			return func() {
-				_, _ = opsCleanupReleaseScript.Run(ctx, s.redisClient, []string{key}, s.instanceID).Result()
+				releaseCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+				defer cancel()
+				_, _ = opsCleanupReleaseScript.Run(releaseCtx, s.redisClient, []string{key}, s.instanceID).Result()
 			}, true
 		}
-		// Redis error: fall back to DB advisory lock.
 		s.warnNoRedisOnce.Do(func() {
-			logger.LegacyPrintf("service.ops_cleanup", "[OpsCleanup] leader lock SetNX failed; falling back to DB advisory lock: %v", err)
+			logger.LegacyPrintf("service.ops_cleanup", "[OpsCleanup] leader lock SetNX failed; skipping this cycle: %v", err)
 		})
 	} else {
 		s.warnNoRedisOnce.Do(func() {
-			logger.LegacyPrintf("service.ops_cleanup", "[OpsCleanup] redis not configured; using DB advisory lock")
+			logger.LegacyPrintf("service.ops_cleanup", "[OpsCleanup] coordination backend not configured; skipping this cycle")
 		})
 	}
 
-	release, ok := tryAcquireDBAdvisoryLock(ctx, s.db, hashAdvisoryLockID(key))
-	if !ok {
-		return nil, false
-	}
-	return release, true
+	return nil, false
 }
 
 func (s *OpsCleanupService) recordHeartbeatSuccess(runAt time.Time, duration time.Duration, counts opsCleanupDeletedCounts) {

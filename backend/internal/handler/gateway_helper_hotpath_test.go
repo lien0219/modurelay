@@ -28,6 +28,8 @@ type helperConcurrencyCacheStub struct {
 	waitAllowed         bool
 	waitIncrementCalls  int
 	waitDecrementCalls  int
+	waitIncrementIDs    []string
+	waitDecrementIDs    []string
 	waitMaxWait         int
 	waitIncrementHook   func()
 	apiKeyTrackCalls    int
@@ -66,11 +68,11 @@ func (s *helperConcurrencyCacheStub) GetAccountConcurrencyBatch(ctx context.Cont
 	return out, nil
 }
 
-func (s *helperConcurrencyCacheStub) IncrementAccountWaitCount(ctx context.Context, accountID int64, maxWait int) (bool, error) {
+func (s *helperConcurrencyCacheStub) IncrementAccountWaitCount(ctx context.Context, accountID int64, maxWait int, waiterID string) (bool, error) {
 	return true, nil
 }
 
-func (s *helperConcurrencyCacheStub) DecrementAccountWaitCount(ctx context.Context, accountID int64) error {
+func (s *helperConcurrencyCacheStub) DecrementAccountWaitCount(ctx context.Context, accountID int64, waiterID string) error {
 	return nil
 }
 
@@ -124,9 +126,10 @@ func (s *helperConcurrencyCacheStub) GetAPIKeyConcurrencyBatch(ctx context.Conte
 	return out, nil
 }
 
-func (s *helperConcurrencyCacheStub) IncrementWaitCount(ctx context.Context, userID int64, maxWait int) (bool, error) {
+func (s *helperConcurrencyCacheStub) IncrementWaitCount(ctx context.Context, userID int64, maxWait int, waiterID string) (bool, error) {
 	s.mu.Lock()
 	s.waitIncrementCalls++
+	s.waitIncrementIDs = append(s.waitIncrementIDs, waiterID)
 	s.waitMaxWait = maxWait
 	waitAllowed := s.waitAllowed
 	hook := s.waitIncrementHook
@@ -140,10 +143,11 @@ func (s *helperConcurrencyCacheStub) IncrementWaitCount(ctx context.Context, use
 	return true, nil
 }
 
-func (s *helperConcurrencyCacheStub) DecrementWaitCount(ctx context.Context, userID int64) error {
+func (s *helperConcurrencyCacheStub) DecrementWaitCount(ctx context.Context, userID int64, waiterID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.waitDecrementCalls++
+	s.waitDecrementIDs = append(s.waitDecrementIDs, waiterID)
 	return nil
 }
 
@@ -357,9 +361,35 @@ func TestAcquireUserSlotWithWait_WaitSuccessDecrementsBeforeReturn(t *testing.T)
 	require.Equal(t, 1, cache.waitIncrementCalls)
 	require.Equal(t, 20, cache.waitMaxWait)
 	require.Equal(t, 1, cache.waitDecrementCalls)
+	require.Len(t, cache.waitIncrementIDs, 1)
+	require.NotEmpty(t, cache.waitIncrementIDs[0])
+	require.Equal(t, cache.waitIncrementIDs, cache.waitDecrementIDs)
 
 	release()
 	require.Equal(t, 1, cache.userReleaseCalls)
+}
+
+func TestAcquireUserSlotWithWait_UsesDistinctWaiterForEachAttempt(t *testing.T) {
+	cache := &helperConcurrencyCacheStub{
+		userSeq:     []bool{false, true, false, true},
+		waitAllowed: true,
+	}
+	helper := NewConcurrencyHelper(service.NewConcurrencyService(cache), SSEPingFormatNone, 5*time.Millisecond)
+	c, _ := newHelperTestContext(http.MethodPost, "/v1/messages")
+	streamStarted := false
+
+	for range 2 {
+		release, err := helper.acquireUserSlotWithWaitTimeout(c, 202, 3, time.Second, false, &streamStarted)
+		require.NoError(t, err)
+		require.NotNil(t, release)
+		release()
+	}
+
+	require.Len(t, cache.waitIncrementIDs, 2)
+	require.NotEmpty(t, cache.waitIncrementIDs[0])
+	require.NotEmpty(t, cache.waitIncrementIDs[1])
+	require.NotEqual(t, cache.waitIncrementIDs[0], cache.waitIncrementIDs[1])
+	require.Equal(t, cache.waitIncrementIDs, cache.waitDecrementIDs)
 }
 
 func TestAcquireUserSlotWithWait_TimeoutDecrementsWaitQueue(t *testing.T) {
@@ -379,6 +409,9 @@ func TestAcquireUserSlotWithWait_TimeoutDecrementsWaitQueue(t *testing.T) {
 	require.True(t, cErr.IsTimeout)
 	require.Equal(t, 1, cache.waitIncrementCalls)
 	require.Equal(t, 1, cache.waitDecrementCalls)
+	require.Len(t, cache.waitIncrementIDs, 1)
+	require.NotEmpty(t, cache.waitIncrementIDs[0])
+	require.Equal(t, cache.waitIncrementIDs, cache.waitDecrementIDs)
 	require.Equal(t, 0, cache.userReleaseCalls)
 }
 
@@ -408,6 +441,9 @@ func TestAcquireUserSlotWithWait_RequestCancelDecrementsWaitQueue(t *testing.T) 
 	require.ErrorIs(t, err, context.Canceled)
 	require.Equal(t, 1, cache.waitIncrementCalls)
 	require.Equal(t, 1, cache.waitDecrementCalls)
+	require.Len(t, cache.waitIncrementIDs, 1)
+	require.NotEmpty(t, cache.waitIncrementIDs[0])
+	require.Equal(t, cache.waitIncrementIDs, cache.waitDecrementIDs)
 	require.Equal(t, 0, cache.userReleaseCalls)
 }
 

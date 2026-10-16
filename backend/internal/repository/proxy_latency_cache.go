@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/redisutil"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
 )
@@ -16,10 +17,10 @@ func proxyLatencyKey(proxyID int64) string {
 }
 
 type proxyLatencyCache struct {
-	rdb *redis.Client
+	rdb redis.UniversalClient
 }
 
-func NewProxyLatencyCache(rdb *redis.Client) service.ProxyLatencyCache {
+func NewProxyLatencyCache(rdb redis.UniversalClient) service.ProxyLatencyCache {
 	return &proxyLatencyCache{rdb: rdb}
 }
 
@@ -34,7 +35,7 @@ func (c *proxyLatencyCache) GetProxyLatencies(ctx context.Context, proxyIDs []in
 		keys = append(keys, proxyLatencyKey(id))
 	}
 
-	values, err := c.rdb.MGet(ctx, keys...).Result()
+	values, err := redisutil.MGet(ctx, c.rdb, keys...)
 	if err != nil {
 		return results, err
 	}

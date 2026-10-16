@@ -903,12 +903,30 @@ database:
   # Connection max idle time (minutes)
   # 空闲连接最大存活时间（分钟）
   conn_max_idle_time_minutes: 5
+  # Optional reporting-only replica. Billing, quotas, auth and all writes stay on primary.
+  # 副本只用于明确允许的报表查询；不把任意 SELECT 自动分流。
+  read_replica:
+    enabled: false
+    host: ""
+    port: 0 # 0 inherits primary port
+    user: ""
+    password: ""
+    dbname: ""
+    sslmode: ""
+    max_open_conns: 64
+    max_idle_conns: 16
+    connect_timeout_seconds: 3
 
 # =============================================================================
 # Redis Configuration
 # Redis 配置
 # =============================================================================
 redis:
+  # REDIS_MODE=standalone|cluster; default preserves existing standalone behavior.
+  mode: "standalone"
+  # REDIS_CLUSTER_ADDRS accepts comma-separated bootstrap host:port addresses.
+  # Cluster requires DB 0; all advertised node addresses must be reachable by every pod.
+  cluster_addrs: []
   # Redis host address
   # Redis 主机地址
   host: "localhost"
@@ -946,6 +964,11 @@ ops:
   # Other detailed settings (cleanup, aggregation, etc.) are configured in ops settings dialog
   # 其他详细设置（数据清理、预聚合等）在运维监控设置对话框中配置
   enabled: true
+  # Cluster-wide Prometheus gauges, served by any pod at /metrics.
+  # Enable explicitly and send Authorization: Bearer <token> when scraping.
+  metrics:
+    enabled: false
+    token: ""
 
 # =============================================================================
 # JWT Configuration

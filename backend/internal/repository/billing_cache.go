@@ -10,7 +10,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/redisutil"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -44,6 +46,12 @@ func billingBalanceKey(userID int64) string {
 	return fmt.Sprintf("%s%d", billingBalanceKeyPrefix, userID)
 }
 
+// The tag is the entire legacy balance key: both keys therefore hash to the
+// same Cluster slot without changing existing single-node or cluster keys.
+func billingBalanceFenceKey(userID int64) string {
+	return "{" + billingBalanceKey(userID) + "}:fill-fence"
+}
+
 // billingSubKey generates the Redis key for subscription cache.
 func billingSubKey(userID, groupID int64) string {
 	return fmt.Sprintf("%s%d:%d", billingSubKeyPrefix, userID, groupID)
@@ -73,7 +81,30 @@ const (
 )
 
 var (
+	beginBalanceLoadScript = redis.NewScript(`
+		local token = redis.call('GET', KEYS[1])
+		if token == false then
+			token = ARGV[1]
+			redis.call('SET', KEYS[1], token, 'PX', ARGV[2])
+		end
+		return token
+	`)
+	setFencedBalanceScript = redis.NewScript(`
+		if redis.call('GET', KEYS[2]) ~= ARGV[2] then return 0 end
+		redis.call('SET', KEYS[1], ARGV[1], 'PX', ARGV[3])
+		return 1
+	`)
+	setBalanceScript = redis.NewScript(`
+		redis.call('SET', KEYS[2], ARGV[2], 'PX', ARGV[3])
+		redis.call('SET', KEYS[1], ARGV[1], 'PX', ARGV[3])
+		return 1
+	`)
+	invalidateBalanceScript = redis.NewScript(`
+		redis.call('SET', KEYS[2], ARGV[1], 'PX', ARGV[2])
+		return redis.call('DEL', KEYS[1])
+	`)
 	deductBalanceScript = redis.NewScript(`
+		redis.call('SET', KEYS[2], ARGV[3], 'EX', ARGV[2])
 		local current = redis.call('GET', KEYS[1])
 		if current == false then
 			return 0
@@ -137,10 +168,10 @@ var (
 )
 
 type billingCache struct {
-	rdb *redis.Client
+	rdb redis.UniversalClient
 }
 
-func NewBillingCache(rdb *redis.Client) service.BillingCache {
+func NewBillingCache(rdb redis.UniversalClient) service.BillingCache {
 	return &billingCache{rdb: rdb}
 }
 
@@ -155,12 +186,23 @@ func (c *billingCache) GetUserBalance(ctx context.Context, userID int64) (float6
 
 func (c *billingCache) SetUserBalance(ctx context.Context, userID int64, balance float64) error {
 	key := billingBalanceKey(userID)
-	return c.rdb.Set(ctx, key, balance, jitteredTTL()).Err()
+	return setBalanceScript.Run(ctx, c.rdb, []string{key, billingBalanceFenceKey(userID)}, balance, uuid.NewString(), jitteredTTL().Milliseconds()).Err()
+}
+
+func (c *billingCache) BeginUserBalanceLoad(ctx context.Context, userID int64) (string, error) {
+	return beginBalanceLoadScript.Run(ctx, c.rdb, []string{billingBalanceFenceKey(userID)}, uuid.NewString(), billingCacheTTL.Milliseconds()).Text()
+}
+
+func (c *billingCache) SetUserBalanceIfUnchanged(ctx context.Context, userID int64, balance float64, token string) error {
+	if token == "" {
+		return nil
+	}
+	return setFencedBalanceScript.Run(ctx, c.rdb, []string{billingBalanceKey(userID), billingBalanceFenceKey(userID)}, balance, token, jitteredTTL().Milliseconds()).Err()
 }
 
 func (c *billingCache) DeductUserBalance(ctx context.Context, userID int64, amount float64) error {
 	key := billingBalanceKey(userID)
-	_, err := deductBalanceScript.Run(ctx, c.rdb, []string{key}, amount, int(jitteredTTL().Seconds())).Result()
+	_, err := deductBalanceScript.Run(ctx, c.rdb, []string{key, billingBalanceFenceKey(userID)}, amount, int(jitteredTTL().Seconds()), uuid.NewString()).Result()
 	if err != nil && !errors.Is(err, redis.Nil) {
 		log.Printf("Warning: deduct balance cache failed for user %d: %v", userID, err)
 		return err
@@ -170,7 +212,7 @@ func (c *billingCache) DeductUserBalance(ctx context.Context, userID int64, amou
 
 func (c *billingCache) InvalidateUserBalance(ctx context.Context, userID int64) error {
 	key := billingBalanceKey(userID)
-	return c.rdb.Del(ctx, key).Err()
+	return invalidateBalanceScript.Run(ctx, c.rdb, []string{key, billingBalanceFenceKey(userID)}, uuid.NewString(), billingCacheTTL.Milliseconds()).Err()
 }
 
 func (c *billingCache) GetSubscriptionCache(ctx context.Context, userID, groupID int64) (*service.SubscriptionCacheData, error) {
@@ -438,7 +480,7 @@ func parseUserPlatformQuotaHash(m map[string]string) *service.UserPlatformQuotaC
 }
 
 func (c *billingCache) GetUserPlatformQuotaCache(ctx context.Context, userID int64, platform string) (*service.UserPlatformQuotaCacheEntry, bool, error) {
-	key := userPlatformQuotaCacheKey(userID, platform)
+	key := c.userPlatformQuotaCacheKey(userID, platform)
 	m, err := c.rdb.HGetAll(ctx, key).Result()
 	if err != nil {
 		return nil, false, err
@@ -455,7 +497,7 @@ func (c *billingCache) SetUserPlatformQuotaCache(ctx context.Context, userID int
 	if entry == nil {
 		return nil
 	}
-	key := userPlatformQuotaCacheKey(userID, platform)
+	key := c.userPlatformQuotaCacheKey(userID, platform)
 	pipe := c.rdb.TxPipeline()
 
 	// 浮点可空字段：nil → 空字符串（读取时 parseFloatPtr 返回 nil，表示无限额）
@@ -492,7 +534,7 @@ func (c *billingCache) SetUserPlatformQuotaCache(ctx context.Context, userID int
 }
 
 func (c *billingCache) DeleteUserPlatformQuotaCache(ctx context.Context, userID int64, platform string) error {
-	return c.rdb.Del(ctx, userPlatformQuotaCacheKey(userID, platform)).Err()
+	return c.rdb.Del(ctx, c.userPlatformQuotaCacheKey(userID, platform)).Err()
 }
 
 // updateUserPlatformQuotaUsageScript 缓存累加：EXISTS + schema_version 双重守卫。
@@ -545,7 +587,7 @@ func (c *billingCache) IncrUserPlatformQuotaUsageCache(ctx context.Context, user
 		member = userPlatformQuotaDirtyMember(userID, platform)
 	}
 	_, err := c.rdb.Eval(ctx, updateUserPlatformQuotaUsageScript,
-		[]string{userPlatformQuotaCacheKey(userID, platform), userPlatformQuotaDirtySetKey()},
+		[]string{c.userPlatformQuotaCacheKey(userID, platform), c.userPlatformQuotaDirtySetKey()},
 		strconv.FormatFloat(cost, 'f', -1, 64),
 		int(ttl.Seconds()),
 		service.UserPlatformQuotaCacheSchemaV1,
@@ -575,7 +617,7 @@ func parseUserPlatformQuotaDirtyMember(m string) (service.UserPlatformQuotaKey, 
 // PopDirtyUserPlatformQuotaKeys 从脏集随机弹出最多 n 个 key。
 // 脏集为空时返回 (nil, nil)。
 func (c *billingCache) PopDirtyUserPlatformQuotaKeys(ctx context.Context, n int) ([]service.UserPlatformQuotaKey, error) {
-	members, err := c.rdb.SPopN(ctx, userPlatformQuotaDirtySetKey(), int64(n)).Result()
+	members, err := c.rdb.SPopN(ctx, c.userPlatformQuotaDirtySetKey(), int64(n)).Result()
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
 			return nil, nil
@@ -601,7 +643,7 @@ func (c *billingCache) ReaddDirtyUserPlatformQuotaKeys(ctx context.Context, keys
 	if len(keys) == 0 {
 		return nil
 	}
-	dirtyKey := userPlatformQuotaDirtySetKey()
+	dirtyKey := c.userPlatformQuotaDirtySetKey()
 	members := make([]any, len(keys))
 	for i, k := range keys {
 		members[i] = userPlatformQuotaDirtyMember(k.UserID, k.Platform)
@@ -622,7 +664,7 @@ func (c *billingCache) BatchGetUserPlatformQuotaCache(ctx context.Context, keys 
 	pipe := c.rdb.Pipeline()
 	cmds := make([]*redis.MapStringStringCmd, len(keys))
 	for i, k := range keys {
-		cmds[i] = pipe.HGetAll(ctx, userPlatformQuotaCacheKey(k.UserID, k.Platform))
+		cmds[i] = pipe.HGetAll(ctx, c.userPlatformQuotaCacheKey(k.UserID, k.Platform))
 	}
 	if _, err := pipe.Exec(ctx); err != nil && !errors.Is(err, redis.Nil) {
 		return nil, err
@@ -640,4 +682,13 @@ func (c *billingCache) BatchGetUserPlatformQuotaCache(ctx context.Context, keys 
 		results[i] = parseUserPlatformQuotaHash(m)
 	}
 	return results, nil
+}
+
+// Quota updates and their global dirty index are a single atomic consistency
+// domain. Never split the increment from enqueueing persistence work.
+func (c *billingCache) userPlatformQuotaCacheKey(userID int64, platform string) string {
+	return redisutil.TaggedKey(c.rdb, "billing-quota", userPlatformQuotaCacheKey(userID, platform))
+}
+func (c *billingCache) userPlatformQuotaDirtySetKey() string {
+	return redisutil.TaggedKey(c.rdb, "billing-quota", userPlatformQuotaDirtySetKey())
 }

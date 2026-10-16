@@ -2,6 +2,7 @@ package repository
 
 import (
 	"crypto/tls"
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -20,8 +21,13 @@ import (
 // 1. PoolSize: 控制最大并发连接数（默认 128）
 // 2. MinIdleConns: 保持最小空闲连接，减少冷启动延迟（默认 10）
 // 3. DialTimeout/ReadTimeout/WriteTimeout: 精确控制各阶段超时
-func InitRedis(cfg *config.Config) *redis.Client {
-	client := redis.NewClient(buildRedisOptions(cfg))
+func InitRedis(cfg *config.Config) redis.UniversalClient {
+	var client redis.UniversalClient
+	if cfg.Redis.IsCluster() {
+		client = redis.NewClusterClient(buildRedisClusterOptions(cfg))
+	} else {
+		client = redis.NewClient(buildRedisOptions(cfg))
+	}
 	if cfg.Server.EnableServerTiming {
 		client.AddHook(serverTimingRedisHook{})
 	}
@@ -51,4 +57,26 @@ func buildRedisOptions(cfg *config.Config) *redis.Options {
 	}
 
 	return opts
+}
+
+// Cluster reads stay on primaries: balances, admission, leases and token use must
+// never observe a lagging replica. PoolSize and MinIdleConns apply per node.
+func buildRedisClusterOptions(cfg *config.Config) *redis.ClusterOptions {
+	base := buildRedisOptions(cfg)
+	addresses := make([]string, len(cfg.Redis.ClusterAddrs))
+	for i, address := range cfg.Redis.ClusterAddrs {
+		addresses[i] = strings.TrimSpace(address)
+	}
+	options := &redis.ClusterOptions{
+		Addrs: addresses, Username: base.Username, Password: base.Password,
+		DialTimeout: base.DialTimeout, ReadTimeout: base.ReadTimeout,
+		WriteTimeout: base.WriteTimeout, PoolSize: base.PoolSize,
+		MinIdleConns: base.MinIdleConns, TLSConfig: base.TLSConfig,
+		ReadOnly: false, RouteByLatency: false, RouteRandomly: false,
+	}
+	if options.TLSConfig != nil {
+		// Let TLS derive ServerName from each discovered node's address.
+		options.TLSConfig.ServerName = ""
+	}
+	return options
 }

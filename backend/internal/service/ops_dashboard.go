@@ -46,7 +46,7 @@ func (s *OpsService) GetDashboardOverview(ctx context.Context, filter *OpsDashbo
 	if metrics, err := s.opsRepo.GetLatestSystemMetrics(ctx, 1); err == nil {
 		// Attach config-derived limits so the UI can show "current / max" for connection pools.
 		// These are best-effort and should never block the dashboard rendering.
-		if s != nil && s.cfg != nil {
+		if s.cfg != nil && s.metricsCollector == nil {
 			if s.cfg.Database.MaxOpenConns > 0 {
 				metrics.DBMaxOpenConns = intPtr(s.cfg.Database.MaxOpenConns)
 			}
@@ -57,6 +57,21 @@ func (s *OpsService) GetDashboardOverview(ctx context.Context, filter *OpsDashbo
 		overview.SystemMetrics = metrics
 	} else if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		log.Printf("[Ops] GetLatestSystemMetrics failed: %v", err)
+	}
+	if s.metricsCollector != nil {
+		if live, err := s.metricsCollector.ClusterRuntimeSnapshot(ctx); err == nil {
+			// Queue depth and switches already count shared requests/accounts.
+			// Preserve them once; only runtime resource samples are additive.
+			if previous := overview.SystemMetrics; previous != nil {
+				live.ID = previous.ID
+				live.WindowMinutes = previous.WindowMinutes
+				live.ConcurrencyQueueDepth = previous.ConcurrencyQueueDepth
+				live.AccountSwitchCount = previous.AccountSwitchCount
+			}
+			overview.SystemMetrics = live
+		} else if overview.SystemMetrics != nil {
+			overview.SystemMetrics.Scope = "stale"
+		}
 	}
 
 	if heartbeats, err := s.opsRepo.ListJobHeartbeats(ctx); err == nil {

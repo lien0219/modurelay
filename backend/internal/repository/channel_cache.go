@@ -11,11 +11,11 @@ import (
 const channelCachePubSubKey = "channel_cache_updated"
 
 type channelCache struct {
-	rdb *redis.Client
+	rdb redis.UniversalClient
 }
 
 // NewChannelCache creates the Redis-backed channel cache invalidation bus.
-func NewChannelCache(rdb *redis.Client) service.ChannelCachePubSub {
+func NewChannelCache(rdb redis.UniversalClient) service.ChannelCachePubSub {
 	return &channelCache{rdb: rdb}
 }
 

@@ -1,0 +1,15 @@
+# Apply in the application's namespace; adapt selector to your Deployment labels.
+# All pods must set OPS_METRICS_ENABLED=true and share OPS_METRICS_TOKEN from a Secret.
+apiVersion: v1
+kind: Service
+metadata:
+  name: modurelay-metrics
+spec:
+  type: ClusterIP
+  selector:
+    app: modurelay
+  ports:
+    - name: metrics
+      port: 8080
+      targetPort: 8080
+      protocol: TCP

@@ -130,19 +130,37 @@ func (s *UsageService) Create(ctx context.Context, req CreateUsageLogRequest) (*
 		balanceUpdated = true
 	}
 
+	invalidationCtx := ctx
 	if tx != nil {
 		if err := tx.Commit(); err != nil {
 			return nil, fmt.Errorf("commit transaction: %w", err)
 		}
+		// This method has committed its own transaction; do not accidentally
+		// attach invalidation to an unrelated transaction carried by the caller.
+		invalidationCtx = dbent.NewTxContext(ctx, nil)
 	}
 
-	s.invalidateUsageCaches(ctx, req.UserID, balanceUpdated)
+	s.invalidateUsageCaches(invalidationCtx, req.UserID, balanceUpdated)
 
 	return usageLog, nil
 }
 
 func (s *UsageService) invalidateUsageCaches(ctx context.Context, userID int64, balanceUpdated bool) {
 	if !balanceUpdated || s.authCacheInvalidator == nil {
+		return
+	}
+	// Callers using an outer Ent transaction must not expose a fresh cache
+	// generation until that transaction commits successfully.
+	if tx := dbent.TxFromContext(ctx); tx != nil {
+		tx.OnCommit(func(next dbent.Committer) dbent.Committer {
+			return dbent.CommitFunc(func(commitCtx context.Context, tx *dbent.Tx) error {
+				if err := next.Commit(commitCtx, tx); err != nil {
+					return err
+				}
+				s.authCacheInvalidator.InvalidateAuthCacheByUserID(context.WithoutCancel(commitCtx), userID)
+				return nil
+			})
+		})
 		return
 	}
 	s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, userID)

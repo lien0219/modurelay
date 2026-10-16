@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"net"
 	"net/textproto"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -1571,6 +1573,9 @@ type DatabaseConfig struct {
 	Password string `mapstructure:"password"`
 	DBName   string `mapstructure:"dbname"`
 	SSLMode  string `mapstructure:"sslmode"`
+	// ReadReplica is opt-in and only serves explicitly selected reporting reads.
+	// Authentication, billing, quotas, transactions and all writes always use Host.
+	ReadReplica DatabaseReadReplicaConfig `mapstructure:"read_replica"`
 	// 连接池配置（性能优化：可配置化连接池参数）
 	// MaxOpenConns: 最大打开连接数，控制数据库连接上限，防止资源耗尽
 	MaxOpenConns int `mapstructure:"max_open_conns"`
@@ -1587,6 +1592,52 @@ type DatabaseConfig struct {
 	// UserPlatformQuotaFlushBatchSize: flusher 单批最大条数
 	// 建议 ≤ 6000（单条 UPSERT 原子上限）
 	UserPlatformQuotaFlushBatchSize int `mapstructure:"user_platform_quota_flush_batch_size"`
+}
+
+// DatabaseReadReplicaConfig configures one read endpoint (which may itself be a
+// load-balanced service). Empty credentials/database/SSL mode inherit the primary.
+type DatabaseReadReplicaConfig struct {
+	Enabled               bool   `mapstructure:"enabled"`
+	Host                  string `mapstructure:"host"`
+	Port                  int    `mapstructure:"port"`
+	User                  string `mapstructure:"user"`
+	Password              string `mapstructure:"password"`
+	DBName                string `mapstructure:"dbname"`
+	SSLMode               string `mapstructure:"sslmode"`
+	MaxOpenConns          int    `mapstructure:"max_open_conns"`
+	MaxIdleConns          int    `mapstructure:"max_idle_conns"`
+	ConnectTimeoutSeconds int    `mapstructure:"connect_timeout_seconds"`
+}
+
+// ReadReplicaDatabase returns a separate connection/pool configuration, leaving
+// the primary configuration unchanged. It must only be used for reporting reads.
+func (d *DatabaseConfig) ReadReplicaDatabase() DatabaseConfig {
+	replica := *d
+	r := d.ReadReplica
+	replica.Host = r.Host
+	if r.Port > 0 {
+		replica.Port = r.Port
+	}
+	if r.User != "" {
+		replica.User = r.User
+	}
+	if r.Password != "" {
+		replica.Password = r.Password
+	}
+	if r.DBName != "" {
+		replica.DBName = r.DBName
+	}
+	if r.SSLMode != "" {
+		replica.SSLMode = r.SSLMode
+	}
+	replica.MaxOpenConns = r.MaxOpenConns
+	replica.MaxIdleConns = r.MaxIdleConns
+	return replica
+}
+
+func (d *DatabaseConfig) ReadReplicaDSNWithTimezone(tz string) string {
+	replica := d.ReadReplicaDatabase()
+	return fmt.Sprintf("%s default_transaction_read_only=on connect_timeout=%d", replica.DSNWithTimezone(tz), d.ReadReplica.ConnectTimeoutSeconds)
 }
 
 func (d *DatabaseConfig) DSN() string {
@@ -1624,11 +1675,15 @@ func (d *DatabaseConfig) DSNWithTimezone(tz string) string {
 // RedisConfig Redis 连接配置
 // 性能优化：新增连接池和超时参数，提升高并发场景下的吞吐量
 type RedisConfig struct {
-	Host     string `mapstructure:"host"`
-	Port     int    `mapstructure:"port"`
-	Username string `mapstructure:"username"`
-	Password string `mapstructure:"password"`
-	DB       int    `mapstructure:"db"`
+	// Mode is standalone (default) or cluster. Cluster requires DB 0.
+	Mode string `mapstructure:"mode"`
+	// ClusterAddrs contains bootstrap host:port addresses; all discovered nodes must be reachable.
+	ClusterAddrs []string `mapstructure:"cluster_addrs"`
+	Host         string   `mapstructure:"host"`
+	Port         int      `mapstructure:"port"`
+	Username     string   `mapstructure:"username"`
+	Password     string   `mapstructure:"password"`
+	DB           int      `mapstructure:"db"`
 	// 连接池与超时配置（性能优化：可配置化连接池参数）
 	// DialTimeoutSeconds: 建立连接超时，防止慢连接阻塞
 	DialTimeoutSeconds int `mapstructure:"dial_timeout_seconds"`
@@ -1648,12 +1703,48 @@ func (r *RedisConfig) Address() string {
 	return fmt.Sprintf("%s:%d", r.Host, r.Port)
 }
 
+// IsCluster deliberately does not infer mode from address count: a cluster may
+// have one bootstrap address, while standalone deployments keep their old defaults.
+func (r *RedisConfig) IsCluster() bool {
+	return strings.EqualFold(strings.TrimSpace(r.Mode), "cluster")
+}
+
+func (r *RedisConfig) ValidateMode() error {
+	mode := strings.ToLower(strings.TrimSpace(r.Mode))
+	if mode != "" && mode != "standalone" && mode != "cluster" {
+		return fmt.Errorf("redis.mode must be standalone or cluster")
+	}
+	if !r.IsCluster() {
+		return nil
+	}
+	if r.DB != 0 {
+		return fmt.Errorf("redis.db must be 0 in cluster mode")
+	}
+	if len(r.ClusterAddrs) == 0 {
+		return fmt.Errorf("redis.cluster_addrs is required in cluster mode")
+	}
+	for _, address := range r.ClusterAddrs {
+		host, port, err := net.SplitHostPort(strings.TrimSpace(address))
+		if err != nil || strings.TrimSpace(host) == "" {
+			return fmt.Errorf("redis.cluster_addrs contains invalid host:port address %q", address)
+		}
+		portNumber, err := strconv.Atoi(port)
+		if err != nil || portNumber < 1 || portNumber > 65535 {
+			return fmt.Errorf("redis.cluster_addrs contains invalid port in %q", address)
+		}
+	}
+	return nil
+}
+
 type OpsConfig struct {
 	// Enabled controls whether ops features should run.
 	//
 	// NOTE: vNext still has a DB-backed feature flag (ops_monitoring_enabled) for runtime on/off.
 	// This config flag is the "hard switch" for deployments that want to disable ops completely.
 	Enabled bool `mapstructure:"enabled"`
+
+	// Metrics exposes cluster-wide Prometheus gauges on /metrics when enabled.
+	Metrics OpsMetricsConfig `mapstructure:"metrics"`
 
 	// UsePreaggregatedTables prefers ops_metrics_hourly/daily for long-window dashboard queries.
 	UsePreaggregatedTables bool `mapstructure:"use_preaggregated_tables"`
@@ -1666,6 +1757,11 @@ type OpsConfig struct {
 
 	// Pre-aggregation configuration.
 	Aggregation OpsAggregationConfig `mapstructure:"aggregation"`
+}
+
+type OpsMetricsConfig struct {
+	Enabled bool   `mapstructure:"enabled"`
+	Token   string `mapstructure:"token"`
 }
 
 type OpsCleanupConfig struct {
@@ -2248,11 +2344,23 @@ func setDefaults() {
 	viper.SetDefault("database.max_idle_conns", 128)
 	viper.SetDefault("database.conn_max_lifetime_minutes", 30)
 	viper.SetDefault("database.conn_max_idle_time_minutes", 5)
+	viper.SetDefault("database.read_replica.enabled", false)
+	viper.SetDefault("database.read_replica.host", "")
+	viper.SetDefault("database.read_replica.port", 0)
+	viper.SetDefault("database.read_replica.user", "")
+	viper.SetDefault("database.read_replica.password", "")
+	viper.SetDefault("database.read_replica.dbname", "")
+	viper.SetDefault("database.read_replica.sslmode", "")
+	viper.SetDefault("database.read_replica.max_open_conns", 64)
+	viper.SetDefault("database.read_replica.max_idle_conns", 16)
+	viper.SetDefault("database.read_replica.connect_timeout_seconds", 3)
 	viper.SetDefault("database.user_platform_quota_flusher_enabled", false)
 	viper.SetDefault("database.user_platform_quota_flush_interval_ms", 2000)
 	viper.SetDefault("database.user_platform_quota_flush_batch_size", 1000)
 
 	// Redis
+	viper.SetDefault("redis.mode", "standalone")
+	viper.SetDefault("redis.cluster_addrs", []string{})
 	viper.SetDefault("redis.host", "localhost")
 	viper.SetDefault("redis.port", 6379)
 	viper.SetDefault("redis.username", "")
@@ -2332,6 +2440,8 @@ func setDefaults() {
 
 	// Ops (vNext)
 	viper.SetDefault("ops.enabled", true)
+	viper.SetDefault("ops.metrics.enabled", false)
+	viper.SetDefault("ops.metrics.token", "")
 	viper.SetDefault("ops.use_preaggregated_tables", true)
 	viper.SetDefault("ops.cleanup.enabled", true)
 	viper.SetDefault("ops.cleanup.schedule", "0 2 * * *")
@@ -3172,6 +3282,24 @@ func (c *Config) Validate() error {
 	if c.Database.ConnMaxIdleTimeMinutes < 0 {
 		return fmt.Errorf("database.conn_max_idle_time_minutes must be non-negative")
 	}
+	if c.Database.ReadReplica.Enabled {
+		r := c.Database.ReadReplica
+		if strings.TrimSpace(r.Host) == "" {
+			return fmt.Errorf("database.read_replica.host must be set when read replica is enabled")
+		}
+		if r.Port < 0 || r.Port > 65535 {
+			return fmt.Errorf("database.read_replica.port must be between 0 (inherit primary) and 65535")
+		}
+		if r.MaxOpenConns <= 0 || r.MaxIdleConns < 0 || r.MaxIdleConns > r.MaxOpenConns {
+			return fmt.Errorf("database.read_replica pool requires positive max_open_conns and max_idle_conns between 0 and max_open_conns")
+		}
+		if r.ConnectTimeoutSeconds <= 0 {
+			return fmt.Errorf("database.read_replica.connect_timeout_seconds must be positive")
+		}
+	}
+	if err := c.Redis.ValidateMode(); err != nil {
+		return err
+	}
 	if c.Redis.DialTimeoutSeconds <= 0 {
 		return fmt.Errorf("redis.dial_timeout_seconds must be positive")
 	}
@@ -3779,6 +3907,9 @@ func (c *Config) Validate() error {
 		c.Gateway.Scheduling.OutboxLagRebuildSeconds > 0 &&
 		c.Gateway.Scheduling.OutboxLagRebuildSeconds < c.Gateway.Scheduling.OutboxLagWarnSeconds {
 		return fmt.Errorf("gateway.scheduling.outbox_lag_rebuild_seconds must be >= outbox_lag_warn_seconds")
+	}
+	if c.Ops.Metrics.Enabled && strings.TrimSpace(c.Ops.Metrics.Token) == "" {
+		return fmt.Errorf("ops.metrics.token is required when ops.metrics.enabled is true")
 	}
 	if c.Ops.MetricsCollectorCache.TTL < 0 {
 		return fmt.Errorf("ops.metrics_collector_cache.ttl must be non-negative")

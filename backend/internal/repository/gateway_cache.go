@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/redisutil"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
 )
@@ -19,10 +20,10 @@ const openAIResponsesSessionWindowPrefix = "openai_responses_session_window:"
 const liveCallPrefix = "live:call:"
 
 type gatewayCache struct {
-	rdb *redis.Client
+	rdb redis.UniversalClient
 }
 
-func NewGatewayCache(rdb *redis.Client) service.GatewayCache {
+func NewGatewayCache(rdb redis.UniversalClient) service.GatewayCache {
 	return &gatewayCache{rdb: rdb}
 }
 
@@ -339,7 +340,7 @@ func (c *gatewayCache) SetCyberSessionBlocked(ctx context.Context, scopeKey stri
 		if len(exactKeys) == 0 {
 			return nil
 		}
-		pipe := c.rdb.TxPipeline()
+		pipe := c.rdb.Pipeline()
 		for _, key := range exactKeys {
 			pipe.Set(ctx, cyberSessionBlockPrefix+key, "1", ttl)
 		}
@@ -389,7 +390,7 @@ func (c *gatewayCache) FindCyberSessionBlocked(ctx context.Context, keys []strin
 		for i, key := range keys[start:end] {
 			redisKeys[i] = cyberSessionBlockPrefix + key
 		}
-		values, err := c.rdb.MGet(ctx, redisKeys...).Result()
+		values, err := redisutil.MGet(ctx, c.rdb, redisKeys...)
 		if err != nil {
 			return "", err
 		}

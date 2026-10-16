@@ -30,6 +30,7 @@ type grokMediaSlotsCache struct {
 	users                                          map[string]int64
 	acquired, released, userAcquired, userReleased int
 	waiting, denied                                int
+	waitIncrementIDs, waitDecrementIDs             []string
 	full                                           bool
 	queueFull                                      bool
 	onWait                                         func()
@@ -84,13 +85,14 @@ func (s *grokMediaSlotsCache) ReleaseUserSlot(_ context.Context, _ int64, reques
 	return nil
 }
 
-func (s *grokMediaSlotsCache) IncrementAccountWaitCount(context.Context, int64, int) (bool, error) {
+func (s *grokMediaSlotsCache) IncrementAccountWaitCount(_ context.Context, _ int64, _ int, waiterID string) (bool, error) {
 	s.mu.Lock()
 	if s.queueFull {
 		s.mu.Unlock()
 		return false, nil
 	}
 	s.waiting++
+	s.waitIncrementIDs = append(s.waitIncrementIDs, waiterID)
 	onWait := s.onWait
 	s.mu.Unlock()
 	if onWait != nil {
@@ -99,10 +101,11 @@ func (s *grokMediaSlotsCache) IncrementAccountWaitCount(context.Context, int64, 
 	return true, nil
 }
 
-func (s *grokMediaSlotsCache) DecrementAccountWaitCount(context.Context, int64) error {
+func (s *grokMediaSlotsCache) DecrementAccountWaitCount(_ context.Context, _ int64, waiterID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.waiting--
+	s.waitDecrementIDs = append(s.waitDecrementIDs, waiterID)
 	return nil
 }
 
@@ -116,6 +119,10 @@ func (s *grokMediaSlotsCache) assertReleased(t *testing.T) {
 	require.Equal(t, s.userAcquired, s.userReleased)
 	require.False(t, s.duplicateRelease)
 	require.Zero(t, s.waiting)
+	for _, waiterID := range s.waitIncrementIDs {
+		require.NotEmpty(t, waiterID)
+	}
+	require.ElementsMatch(t, s.waitIncrementIDs, s.waitDecrementIDs)
 }
 
 type grokMediaSlotBindings struct {

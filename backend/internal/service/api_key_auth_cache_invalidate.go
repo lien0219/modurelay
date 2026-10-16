@@ -16,6 +16,11 @@ func (s *APIKeyService) InvalidateAuthCacheByUserID(ctx context.Context, userID 
 	if userID <= 0 {
 		return
 	}
+	// Batch-image holds/captures/releases and UsageService already invalidate
+	// auth after committing funds. Invalidate the shared balance fence first,
+	// including users without API keys and failures while listing their keys.
+	// The helper logs failures; still clear the API key auth caches below.
+	_ = invalidateUserBalanceCache(ctx, s.balanceCacheInvalid, userID)
 	keys, err := s.apiKeyRepo.ListKeysByUserID(ctx, userID)
 	if err != nil {
 		return

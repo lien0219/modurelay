@@ -94,6 +94,14 @@ type BillingCache interface {
 	BatchGetUserPlatformQuotaCache(ctx context.Context, keys []UserPlatformQuotaKey) ([]*UserPlatformQuotaCacheEntry, error)
 }
 
+// FencedBalanceCache prevents a delayed database read from overwriting balance
+// changes made by another instance. Obtain the token before reading the primary.
+// A missing/expired token must reject the fill, never recreate the old value.
+type FencedBalanceCache interface {
+	BeginUserBalanceLoad(ctx context.Context, userID int64) (string, error)
+	SetUserBalanceIfUnchanged(ctx context.Context, userID int64, balance float64, token string) error
+}
+
 // ModelPricing 模型价格配置（per-token价格，与LiteLLM格式一致）
 type ModelPricing struct {
 	// UltrafastMultiplier is model-owned and independent of operator Fast pricing.

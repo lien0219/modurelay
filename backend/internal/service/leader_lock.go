@@ -19,10 +19,11 @@ type LeaderLockCache interface {
 }
 
 // tryAcquireSingletonLeaderLock provides best-effort single-flight execution of a
-// periodic background job across multiple instances. It prefers the Redis-backed
-// LeaderLockCache and falls back to a Postgres advisory lock when the cache is
-// unavailable or errors, mirroring the approach used by the Ops background
-// services.
+// periodic background job across multiple instances. When a DB is configured,
+// every instance uses the same Postgres advisory lock. Switching between Redis
+// and Postgres based on per-instance connectivity can elect two leaders during
+// a partial Redis outage. A session lock also cannot expire mid-job.
+// Redis is used only when no DB has been configured.
 //
 // Semantics:
 //   - acquired      -> returns a non-nil release func and true; callers should
@@ -33,13 +34,16 @@ type LeaderLockCache interface {
 //     gating, returning a no-op release and true, so the job is never silently
 //     starved.
 //
-// The TTL is purely a crash-safety bound: callers release the lock as soon as the
+// On the Redis-only path, TTL is a crash-safety bound: callers release the lock as soon as the
 // job completes, so leadership is re-contested every cycle rather than pinned to
 // one instance. The TTL must therefore be larger than the job's worst-case
 // runtime so the lock does not expire mid-run.
 func tryAcquireSingletonLeaderLock(ctx context.Context, cache LeaderLockCache, db *sql.DB, key, owner string, ttl time.Duration) (func(), bool) {
 	if ctx == nil {
 		ctx = context.Background()
+	}
+	if db != nil {
+		return tryAcquireDBAdvisoryLock(ctx, db, hashAdvisoryLockID(key))
 	}
 
 	if cache != nil {
@@ -55,12 +59,9 @@ func tryAcquireSingletonLeaderLock(ctx context.Context, cache LeaderLockCache, d
 			}
 			return release, true
 		}
-		// Cache error: fall through to the DB advisory lock so a flaky Redis does
-		// not stampede the job across every instance.
-	}
-
-	if db != nil {
-		return tryAcquireDBAdvisoryLock(ctx, db, hashAdvisoryLockID(key))
+		// A configured coordination backend failing is not a single-instance
+		// deployment: skip this cycle instead of letting every instance run.
+		return nil, false
 	}
 
 	// No coordination backend available: run without gating.

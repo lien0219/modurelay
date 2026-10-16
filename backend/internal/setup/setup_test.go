@@ -522,6 +522,9 @@ func TestPrepareAdminCredentialsAcceptsBcryptMaxLengthPassword(t *testing.T) {
 }
 
 func expectAdminBootstrapCounts(mock sqlmock.Sqlmock, totalUsers, adminUsers int64) {
+	mock.ExpectBegin()
+	mock.ExpectExec(regexp.QuoteMeta("SELECT pg_advisory_xact_lock($1)")).
+		WithArgs(adminBootstrapLockID).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(1) FROM users")).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(totalUsers))
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(1) FROM users WHERE role = $1")).
@@ -552,6 +555,7 @@ func TestBootstrapAdminUserSkipsValidationWhenNotCreating(t *testing.T) {
 			}
 			defer func() { _ = db.Close() }()
 			expectAdminBootstrapCounts(mock, tt.totalUsers, tt.adminUsers)
+			mock.ExpectRollback()
 
 			// 已有部署里遗留的弱密码/非法邮箱不能阻断启动。
 			cfg := &SetupConfig{Admin: AdminConfig{Email: "admin", Password: "123456"}}
@@ -575,6 +579,7 @@ func TestBootstrapAdminUserRejectsWeakPasswordWithoutInsert(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 	expectAdminBootstrapCounts(mock, 0, 0)
+	mock.ExpectRollback()
 
 	cfg := &SetupConfig{Admin: AdminConfig{Password: "123456"}}
 	created, _, err := bootstrapAdminUser(context.Background(), db, cfg)
@@ -602,6 +607,7 @@ func TestBootstrapAdminUserCreatesAdminWithGeneratedCredentials(t *testing.T) {
 			sqlmock.AnyArg(), service.StatusActive, sqlmock.AnyArg(), sqlmock.AnyArg(),
 		).
 		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectCommit()
 
 	cfg := &SetupConfig{}
 	created, reason, err := bootstrapAdminUser(context.Background(), db, cfg)

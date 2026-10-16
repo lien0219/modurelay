@@ -200,6 +200,7 @@ type PaymentService struct {
 	affiliateService         *AffiliateService
 	notificationEmailService *NotificationEmailService
 	activityService          paymentActivityService
+	balanceCacheInvalidator  UserBalanceCacheInvalidator
 }
 
 type paymentActivityService interface {
@@ -219,6 +220,10 @@ func (s *PaymentService) SetNotificationEmailService(notificationEmailService *N
 
 func (s *PaymentService) SetActivityService(activityService paymentActivityService) {
 	s.activityService = activityService
+}
+
+func (s *PaymentService) SetBalanceCacheInvalidator(invalidator UserBalanceCacheInvalidator) {
+	s.balanceCacheInvalidator = invalidator
 }
 
 // --- Provider Registry ---

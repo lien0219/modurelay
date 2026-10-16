@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/redisutil"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
 )
@@ -220,16 +221,16 @@ return 1
 )
 
 type schedulerCache struct {
-	rdb            *redis.Client
+	rdb            redis.UniversalClient
 	mgetChunkSize  int
 	writeChunkSize int
 }
 
-func NewSchedulerCache(rdb *redis.Client) service.SchedulerCache {
+func NewSchedulerCache(rdb redis.UniversalClient) service.SchedulerCache {
 	return newSchedulerCacheWithChunkSizes(rdb, defaultSchedulerSnapshotMGetChunkSize, defaultSchedulerSnapshotWriteChunkSize)
 }
 
-func newSchedulerCacheWithChunkSizes(rdb *redis.Client, mgetChunkSize, writeChunkSize int) service.SchedulerCache {
+func newSchedulerCacheWithChunkSizes(rdb redis.UniversalClient, mgetChunkSize, writeChunkSize int) service.SchedulerCache {
 	if mgetChunkSize <= 0 {
 		mgetChunkSize = defaultSchedulerSnapshotMGetChunkSize
 	}
@@ -244,7 +245,7 @@ func newSchedulerCacheWithChunkSizes(rdb *redis.Client, mgetChunkSize, writeChun
 }
 
 func (c *schedulerCache) GetSnapshot(ctx context.Context, bucket service.SchedulerBucket) ([]*service.Account, bool, error) {
-	readyKey := schedulerBucketKey(schedulerReadyPrefix, bucket)
+	readyKey := c.schedulerBucketKey(schedulerReadyPrefix, bucket)
 	readyVal, err := c.rdb.Get(ctx, readyKey).Result()
 	if err == redis.Nil {
 		return nil, false, nil
@@ -256,7 +257,7 @@ func (c *schedulerCache) GetSnapshot(ctx context.Context, bucket service.Schedul
 		return nil, false, nil
 	}
 
-	activeKey := schedulerBucketKey(schedulerActivePrefix, bucket)
+	activeKey := c.schedulerBucketKey(schedulerActivePrefix, bucket)
 	activeVal, err := c.rdb.Get(ctx, activeKey).Result()
 	if err == redis.Nil {
 		return nil, false, nil
@@ -265,7 +266,7 @@ func (c *schedulerCache) GetSnapshot(ctx context.Context, bucket service.Schedul
 		return nil, false, err
 	}
 
-	snapshotKey := schedulerSnapshotKey(bucket, activeVal)
+	snapshotKey := c.schedulerSnapshotKey(bucket, activeVal)
 	ids, err := c.rdb.ZRange(ctx, snapshotKey, 0, -1).Result()
 	if err != nil {
 		return nil, false, err
@@ -279,8 +280,8 @@ func (c *schedulerCache) GetSnapshot(ctx context.Context, bucket service.Schedul
 	keys := make([]string, 0, len(ids))
 	lastUsedKeys := make([]string, 0, len(ids))
 	for _, id := range ids {
-		keys = append(keys, schedulerAccountMetaKey(id))
-		lastUsedKeys = append(lastUsedKeys, schedulerLastUsedKey(id))
+		keys = append(keys, c.schedulerAccountMetaKey(id))
+		lastUsedKeys = append(lastUsedKeys, c.schedulerLastUsedKey(id))
 	}
 	values, err := c.mgetChunked(ctx, keys)
 	if err != nil {
@@ -311,8 +312,8 @@ func (c *schedulerCache) GetSnapshot(ctx context.Context, bucket service.Schedul
 
 func (c *schedulerCache) CaptureBucketWriteToken(ctx context.Context, bucket service.SchedulerBucket) (service.SchedulerBucketWriteToken, error) {
 	result, err := captureBucketWriteTokenScript.Run(ctx, c.rdb, []string{
-		schedulerBucketKey(schedulerEpochPrefix, bucket),
-		schedulerBucketKey(schedulerRetiredPrefix, bucket),
+		c.schedulerBucketKey(schedulerEpochPrefix, bucket),
+		c.schedulerBucketKey(schedulerRetiredPrefix, bucket),
 	}).Int64()
 	if err != nil {
 		return service.SchedulerBucketWriteToken{}, err
@@ -324,13 +325,13 @@ func (c *schedulerCache) CaptureBucketWriteToken(ctx context.Context, bucket ser
 }
 
 func (c *schedulerCache) RetireBucket(ctx context.Context, bucket service.SchedulerBucket) error {
-	snapshotKeyPrefix := fmt.Sprintf("%s%d:%s:%s:v", schedulerSnapshotPrefix, bucket.GroupID, bucket.Platform, bucket.Mode)
+	snapshotKeyPrefix := c.controlKey(fmt.Sprintf("%s%d:%s:%s:v", schedulerSnapshotPrefix, bucket.GroupID, bucket.Platform, bucket.Mode))
 	result, err := retireBucketScript.Run(ctx, c.rdb, []string{
-		schedulerBucketKey(schedulerEpochPrefix, bucket),
-		schedulerBucketKey(schedulerRetiredPrefix, bucket),
-		schedulerBucketSetKey,
-		schedulerBucketKey(schedulerReadyPrefix, bucket),
-		schedulerBucketKey(schedulerActivePrefix, bucket),
+		c.schedulerBucketKey(schedulerEpochPrefix, bucket),
+		c.schedulerBucketKey(schedulerRetiredPrefix, bucket),
+		c.controlKey(schedulerBucketSetKey),
+		c.schedulerBucketKey(schedulerReadyPrefix, bucket),
+		c.schedulerBucketKey(schedulerActivePrefix, bucket),
 	}, bucket.String(), snapshotKeyPrefix, snapshotGraceTTLSeconds).Int64()
 	if err != nil {
 		return err
@@ -342,13 +343,13 @@ func (c *schedulerCache) RetireBucket(ctx context.Context, bucket service.Schedu
 }
 
 func (c *schedulerCache) ReopenBucket(ctx context.Context, bucket service.SchedulerBucket) (service.SchedulerBucketWriteToken, error) {
-	snapshotKeyPrefix := fmt.Sprintf("%s%d:%s:%s:v", schedulerSnapshotPrefix, bucket.GroupID, bucket.Platform, bucket.Mode)
+	snapshotKeyPrefix := c.controlKey(fmt.Sprintf("%s%d:%s:%s:v", schedulerSnapshotPrefix, bucket.GroupID, bucket.Platform, bucket.Mode))
 	result, err := reopenBucketScript.Run(ctx, c.rdb, []string{
-		schedulerBucketKey(schedulerEpochPrefix, bucket),
-		schedulerBucketKey(schedulerRetiredPrefix, bucket),
-		schedulerBucketSetKey,
-		schedulerBucketKey(schedulerReadyPrefix, bucket),
-		schedulerBucketKey(schedulerActivePrefix, bucket),
+		c.schedulerBucketKey(schedulerEpochPrefix, bucket),
+		c.schedulerBucketKey(schedulerRetiredPrefix, bucket),
+		c.controlKey(schedulerBucketSetKey),
+		c.schedulerBucketKey(schedulerReadyPrefix, bucket),
+		c.schedulerBucketKey(schedulerActivePrefix, bucket),
 	}, bucket.String(), snapshotKeyPrefix, snapshotGraceTTLSeconds).Int64()
 	if err != nil {
 		return service.SchedulerBucketWriteToken{}, err
@@ -466,9 +467,9 @@ func (c *schedulerCache) SetSnapshotByAccountIDs(ctx context.Context, bucket ser
 
 func (c *schedulerCache) allocateSnapshotVersion(ctx context.Context, bucket service.SchedulerBucket, token service.SchedulerBucketWriteToken) (string, error) {
 	result, err := allocateSnapshotVersionScript.Run(ctx, c.rdb, []string{
-		schedulerBucketKey(schedulerEpochPrefix, bucket),
-		schedulerBucketKey(schedulerRetiredPrefix, bucket),
-		schedulerBucketKey(schedulerVersionPrefix, bucket),
+		c.schedulerBucketKey(schedulerEpochPrefix, bucket),
+		c.schedulerBucketKey(schedulerRetiredPrefix, bucket),
+		c.schedulerBucketKey(schedulerVersionPrefix, bucket),
 	}, token.Epoch).Int64()
 	if err != nil {
 		return "", err
@@ -515,7 +516,7 @@ func (c *schedulerCache) writeSnapshotMembers(ctx context.Context, bucket servic
 	if len(members) == 0 {
 		return nil
 	}
-	snapshotKey := schedulerSnapshotKey(bucket, version)
+	snapshotKey := c.schedulerSnapshotKey(bucket, version)
 	pipe := c.rdb.Pipeline()
 	for start := 0; start < len(members); start += c.writeChunkSize {
 		end := start + c.writeChunkSize
@@ -529,22 +530,22 @@ func (c *schedulerCache) writeSnapshotMembers(ctx context.Context, bucket servic
 }
 
 func (c *schedulerCache) activateSnapshotVersion(ctx context.Context, bucket service.SchedulerBucket, token service.SchedulerBucketWriteToken, version string) error {
-	snapshotKey := schedulerSnapshotKey(bucket, version)
+	snapshotKey := c.schedulerSnapshotKey(bucket, version)
 	// Phase 2: 原子 CAS 切换版本，同时再次校验退休状态与 writer epoch。
 	// Lua 脚本保证：仅当新版本 >= 当前激活版本时才切换 active 指针，
 	// 防止并发写入导致版本回滚。
 	// 旧快照使用 EXPIRE 宽限期而非立即 DEL，避免 reader 竞态。
-	activeKey := schedulerBucketKey(schedulerActivePrefix, bucket)
-	readyKey := schedulerBucketKey(schedulerReadyPrefix, bucket)
-	snapshotKeyPrefix := fmt.Sprintf("%s%d:%s:%s:v", schedulerSnapshotPrefix, bucket.GroupID, bucket.Platform, bucket.Mode)
+	activeKey := c.schedulerBucketKey(schedulerActivePrefix, bucket)
+	readyKey := c.schedulerBucketKey(schedulerReadyPrefix, bucket)
+	snapshotKeyPrefix := c.controlKey(fmt.Sprintf("%s%d:%s:%s:v", schedulerSnapshotPrefix, bucket.GroupID, bucket.Platform, bucket.Mode))
 
 	keys := []string{
 		activeKey,
 		readyKey,
-		schedulerBucketSetKey,
+		c.controlKey(schedulerBucketSetKey),
 		snapshotKey,
-		schedulerBucketKey(schedulerEpochPrefix, bucket),
-		schedulerBucketKey(schedulerRetiredPrefix, bucket),
+		c.schedulerBucketKey(schedulerEpochPrefix, bucket),
+		c.schedulerBucketKey(schedulerRetiredPrefix, bucket),
 	}
 	args := []any{version, bucket.String(), snapshotKeyPrefix, snapshotGraceTTLSeconds, token.Epoch}
 
@@ -568,7 +569,7 @@ func schedulerBucketWriteResultError(result int64, bucket service.SchedulerBucke
 
 func (c *schedulerCache) GetAccount(ctx context.Context, accountID int64) (*service.Account, error) {
 	id := strconv.FormatInt(accountID, 10)
-	values, err := c.rdb.MGet(ctx, schedulerAccountKey(id), schedulerLastUsedKey(id)).Result()
+	values, err := redisutil.MGet(ctx, c.rdb, c.schedulerAccountKey(id), c.schedulerLastUsedKey(id))
 	if err != nil {
 		return nil, err
 	}
@@ -604,7 +605,7 @@ func (c *schedulerCache) DeleteAccount(ctx context.Context, accountID int64) err
 		return nil
 	}
 	id := strconv.FormatInt(accountID, 10)
-	return c.rdb.Del(ctx, schedulerAccountKey(id), schedulerAccountMetaKey(id), schedulerLastUsedKey(id)).Err()
+	return c.rdb.Del(ctx, c.schedulerAccountKey(id), c.schedulerAccountMetaKey(id), c.schedulerLastUsedKey(id)).Err()
 }
 
 func (c *schedulerCache) UpdateLastUsed(ctx context.Context, updates map[int64]time.Time) error {
@@ -636,14 +637,14 @@ func (c *schedulerCache) UpdateLastUsed(ctx context.Context, updates map[int64]t
 				"error", err,
 			)
 			idText := strconv.FormatInt(id, 10)
-			pipe.Del(ctx, schedulerAccountKey(idText), schedulerAccountMetaKey(idText), schedulerLastUsedKey(idText))
+			pipe.Del(ctx, c.schedulerAccountKey(idText), c.schedulerAccountMetaKey(idText), c.schedulerLastUsedKey(idText))
 			queued++
 			continue
 		}
 		idText := strconv.FormatInt(id, 10)
-		keys = append(keys, schedulerAccountKey(idText), schedulerLastUsedKey(idText))
+		keys = append(keys, c.schedulerAccountKey(idText), c.schedulerLastUsedKey(idText))
 		args = append(args, millis)
-		if len(args) >= schedulerLastUsedUpdateChunkSize {
+		if redisutil.IsCluster(c.rdb) || len(args) >= schedulerLastUsedUpdateChunkSize {
 			queueBatch()
 		}
 	}
@@ -656,17 +657,17 @@ func (c *schedulerCache) UpdateLastUsed(ctx context.Context, updates map[int64]t
 }
 
 func (c *schedulerCache) TryLockBucket(ctx context.Context, bucket service.SchedulerBucket, ttl time.Duration) (bool, error) {
-	key := schedulerBucketKey(schedulerLockPrefix, bucket)
+	key := c.schedulerBucketKey(schedulerLockPrefix, bucket)
 	return c.rdb.SetNX(ctx, key, time.Now().UnixNano(), ttl).Result()
 }
 
 func (c *schedulerCache) UnlockBucket(ctx context.Context, bucket service.SchedulerBucket) error {
-	key := schedulerBucketKey(schedulerLockPrefix, bucket)
+	key := c.schedulerBucketKey(schedulerLockPrefix, bucket)
 	return c.rdb.Del(ctx, key).Err()
 }
 
 func (c *schedulerCache) ListBuckets(ctx context.Context) ([]service.SchedulerBucket, error) {
-	raw, err := c.rdb.SMembers(ctx, schedulerBucketSetKey).Result()
+	raw, err := c.rdb.SMembers(ctx, c.controlKey(schedulerBucketSetKey)).Result()
 	if err != nil {
 		return nil, err
 	}
@@ -807,8 +808,8 @@ func (c *schedulerCache) writeAccountIDs(ctx context.Context, accounts []service
 		}
 
 		id := strconv.FormatInt(account.ID, 10)
-		pipe.Set(ctx, schedulerAccountKey(id), fullPayload, 0)
-		pipe.Set(ctx, schedulerAccountMetaKey(id), metaPayload, 0)
+		pipe.Set(ctx, c.schedulerAccountKey(id), fullPayload, 0)
+		pipe.Set(ctx, c.schedulerAccountMetaKey(id), metaPayload, 0)
 		// Keep the hot LastUsedAt side key untouched: a lagging snapshot rebuild
 		// must not overwrite a newer scheduler update.
 		accountIDs = append(accountIDs, account.ID)
@@ -853,7 +854,7 @@ func (c *schedulerCache) mgetChunked(ctx context.Context, keys []string) ([]any,
 		if end > len(keys) {
 			end = len(keys)
 		}
-		part, err := c.rdb.MGet(ctx, keys[start:end]...).Result()
+		part, err := redisutil.MGet(ctx, c.rdb, keys[start:end]...)
 		if err != nil {
 			return nil, err
 		}
@@ -1108,3 +1109,48 @@ func filterSchedulerUpstreamBillingProbe(value any) map[string]any {
 	}
 	return filtered
 }
+
+// Bucket publication, retirement and the registry form one atomic control domain.
+// Account payloads are tagged per account and spread over the cluster.
+func (c *schedulerCache) controlKey(key string) string {
+	return redisutil.TaggedKey(c.rdb, "scheduler", key)
+}
+func (c *schedulerCache) schedulerBucketKey(prefix string, bucket service.SchedulerBucket) string {
+	return c.controlKey(schedulerBucketKey(prefix, bucket))
+}
+func (c *schedulerCache) schedulerSnapshotKey(bucket service.SchedulerBucket, version string) string {
+	return c.controlKey(schedulerSnapshotKey(bucket, version))
+}
+func (c *schedulerCache) schedulerAccountKey(id string) string {
+	return redisutil.TaggedKey(c.rdb, "scheduler-account:"+id, schedulerAccountKey(id))
+}
+func (c *schedulerCache) schedulerAccountMetaKey(id string) string {
+	return redisutil.TaggedKey(c.rdb, "scheduler-account:"+id, schedulerAccountMetaKey(id))
+}
+func (c *schedulerCache) schedulerLastUsedKey(id string) string {
+	return redisutil.TaggedKey(c.rdb, "scheduler-account:"+id, schedulerLastUsedKey(id))
+}
+
+func (c *schedulerCache) TryAcquireBucketLease(ctx context.Context, bucket service.SchedulerBucket, ttl time.Duration) (string, bool, error) {
+	if ttl <= 0 {
+		return "", false, fmt.Errorf("scheduler bucket lease TTL must be positive")
+	}
+	owner, err := newSchedulerGroupLifecycleOwnerToken()
+	if err != nil {
+		return "", false, err
+	}
+	acquired, err := c.rdb.SetNX(ctx, c.schedulerBucketKey(schedulerLockPrefix, bucket), owner, ttl).Result()
+	if err != nil || !acquired {
+		return "", false, err
+	}
+	return owner, true, nil
+}
+
+func (c *schedulerCache) ReleaseBucketLease(ctx context.Context, bucket service.SchedulerBucket, owner string) error {
+	if owner == "" {
+		return nil
+	}
+	return releaseGroupLifecycleLeaseScript.Run(ctx, c.rdb, []string{c.schedulerBucketKey(schedulerLockPrefix, bucket)}, owner).Err()
+}
+
+var _ service.SchedulerBucketLeaseCache = (*schedulerCache)(nil)

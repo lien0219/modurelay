@@ -53,7 +53,7 @@ func (r *usageLogRepository) GetAPIKeyUsageTrend(ctx context.Context, startTime,
 		ORDER BY date ASC, tokens DESC
 	`, dateFormat)
 
-	rows, err := r.sql.QueryContext(ctx, query, startTime, endTime, limit, startTime, endTime)
+	rows, err := r.reportingSQL().QueryContext(ctx, query, startTime, endTime, limit, startTime, endTime)
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +115,7 @@ func (r *usageLogRepository) GetUserUsageTrend(ctx context.Context, startTime, e
 		ORDER BY date ASC, tokens DESC
 	`, rankExpr, dateFormat)
 
-	rows, err := r.sql.QueryContext(ctx, query, startTime, endTime, limit, startTime, endTime)
+	rows, err := r.reportingSQL().QueryContext(ctx, query, startTime, endTime, limit, startTime, endTime)
 	if err != nil {
 		return nil, err
 	}
@@ -192,7 +192,7 @@ func (r *usageLogRepository) GetUserSpendingRanking(ctx context.Context, startTi
 		ORDER BY actual_cost DESC, tokens DESC, user_id ASC
 	`
 
-	rows, err := r.sql.QueryContext(ctx, query, startTime, endTime, limit)
+	rows, err := r.reportingSQL().QueryContext(ctx, query, startTime, endTime, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -247,7 +247,7 @@ func (r *usageLogRepository) GetUserUsageTrendByUserID(ctx context.Context, user
 		ORDER BY date ASC
 	`, dateFormat)
 
-	rows, err := r.sql.QueryContext(ctx, query, userID, startTime, endTime)
+	rows, err := r.reportingSQL().QueryContext(ctx, query, userID, startTime, endTime)
 	if err != nil {
 		return nil, err
 	}
@@ -336,7 +336,7 @@ func (r *usageLogRepository) getUsageTrendWithFilters(ctx context.Context, start
 	}
 	query += " GROUP BY date ORDER BY date ASC"
 
-	rows, err := r.sql.QueryContext(ctx, query, args...)
+	rows, err := r.reportingSQL().QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -415,7 +415,7 @@ func (r *usageLogRepository) getUsageTrendFromAggregates(ctx context.Context, st
 		return nil, nil
 	}
 
-	rows, err := r.sql.QueryContext(ctx, query, args...)
+	rows, err := r.reportingSQL().QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -506,7 +506,7 @@ func (r *usageLogRepository) getModelStatsWithFiltersBySource(ctx context.Contex
 	}
 	query += fmt.Sprintf(" GROUP BY %s ORDER BY total_tokens DESC", modelExpr)
 
-	rows, err := r.sql.QueryContext(ctx, query, args...)
+	rows, err := r.reportingSQL().QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -584,7 +584,7 @@ func (r *usageLogRepository) getGroupStatsWithFilters(ctx context.Context, start
 	}
 	query += " GROUP BY ul.group_id, g.name ORDER BY total_tokens DESC"
 
-	rows, err := r.sql.QueryContext(ctx, query, args...)
+	rows, err := r.reportingSQL().QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -688,7 +688,7 @@ func (r *usageLogRepository) GetUserBreakdownStats(ctx context.Context, startTim
 		query += fmt.Sprintf(" LIMIT %d", limit)
 	}
 
-	rows, err := r.sql.QueryContext(ctx, query, args...)
+	rows, err := r.reportingSQL().QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

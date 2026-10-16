@@ -305,6 +305,7 @@ type APIKeyService struct {
 	userGroupRateRepo         UserGroupRateRepository
 	cache                     APIKeyCache
 	rateLimitCacheInvalid     RateLimitCacheInvalidator // optional: invalidate Redis rate limit cache
+	balanceCacheInvalid       UserBalanceCacheInvalidator
 	concurrencyService        *ConcurrencyService
 	cfg                       *config.Config
 	authCacheL1               *ristretto.Cache
@@ -378,6 +379,10 @@ func NewAPIKeyService(
 // Called after construction (e.g. in wire) to avoid circular dependencies.
 func (s *APIKeyService) SetRateLimitCacheInvalidator(inv RateLimitCacheInvalidator) {
 	s.rateLimitCacheInvalid = inv
+}
+
+func (s *APIKeyService) SetBalanceCacheInvalidator(inv UserBalanceCacheInvalidator) {
+	s.balanceCacheInvalid = inv
 }
 
 func (s *APIKeyService) SetConcurrencyService(concurrencyService *ConcurrencyService) {

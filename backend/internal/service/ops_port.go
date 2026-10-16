@@ -249,9 +249,16 @@ type OpsSystemLogCleanupAudit struct {
 }
 
 type OpsSystemMetricsSnapshot struct {
-	ID            int64     `json:"id"`
-	CreatedAt     time.Time `json:"created_at"`
-	WindowMinutes int       `json:"window_minutes"`
+	// Scope distinguishes a live cluster aggregate from the historical snapshot.
+	Scope         string `json:"scope,omitempty"`
+	InstanceCount int    `json:"instance_count,omitempty"`
+	// Internal heartbeat identities deduplicate host fallbacks when multiple
+	// processes or unlimited containers share a host. Aggregates omit them.
+	CPUResourceID    string    `json:"cpu_resource_id,omitempty"`
+	MemoryResourceID string    `json:"memory_resource_id,omitempty"`
+	ID               int64     `json:"id"`
+	CreatedAt        time.Time `json:"created_at"`
+	WindowMinutes    int       `json:"window_minutes"`
 
 	CPUUsagePercent    *float64 `json:"cpu_usage_percent"`
 	MemoryUsedMB       *int64   `json:"memory_used_mb"`

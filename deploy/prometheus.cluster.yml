@@ -1,0 +1,15 @@
+# Add this job to Prometheus. Adapt the namespace and mount the matching token Secret.
+# A single Service target is intentional: every pod returns cluster-wide gauges.
+scrape_configs:
+  - job_name: modurelay-cluster
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    metrics_path: /metrics
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/secrets/modurelay-metrics-token
+    static_configs:
+      - targets:
+          - modurelay-metrics.default.svc.cluster.local:8080
+        labels:
+          cluster: modurelay

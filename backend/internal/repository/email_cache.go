@@ -2,11 +2,14 @@ package repository
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/redisutil"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
 )
@@ -77,14 +80,15 @@ func passwordResetSentAtKey(email string) string {
 }
 
 type emailCache struct {
-	rdb *redis.Client
+	rdb redis.UniversalClient
 }
 
-func NewEmailCache(rdb *redis.Client) service.EmailCache {
+func NewEmailCache(rdb redis.UniversalClient) service.EmailCache {
 	return &emailCache{rdb: rdb}
 }
 
 func (c *emailCache) getCode(ctx context.Context, key string) (*service.VerificationCodeData, error) {
+	key = redisutil.TaggedKey(c.rdb, "email:"+hex.EncodeToString(sha256Sum(key)), key)
 	val, err := c.rdb.Get(ctx, key).Result()
 	if err != nil {
 		return nil, err
@@ -100,6 +104,7 @@ func (c *emailCache) getCode(ctx context.Context, key string) (*service.Verifica
 }
 
 func (c *emailCache) setCode(ctx context.Context, key string, data *service.VerificationCodeData, ttl time.Duration) error {
+	key = redisutil.TaggedKey(c.rdb, "email:"+hex.EncodeToString(sha256Sum(key)), key)
 	val, err := json.Marshal(data)
 	if err != nil {
 		return err
@@ -115,6 +120,7 @@ func (c *emailCache) setCode(ctx context.Context, key string, data *service.Veri
 }
 
 func (c *emailCache) incrCodeAttempts(ctx context.Context, key string) (int, error) {
+	key = redisutil.TaggedKey(c.rdb, "email:"+hex.EncodeToString(sha256Sum(key)), key)
 	n, err := incrAttemptsScript.Run(ctx, c.rdb, []string{key, key + attemptsKeySuffix}).Int()
 	if err != nil {
 		return 0, err
@@ -126,6 +132,7 @@ func (c *emailCache) incrCodeAttempts(ctx context.Context, key string) (int, err
 }
 
 func (c *emailCache) deleteCode(ctx context.Context, key string) error {
+	key = redisutil.TaggedKey(c.rdb, "email:"+hex.EncodeToString(sha256Sum(key)), key)
 	return c.rdb.Del(ctx, key, key+attemptsKeySuffix).Err()
 }
 
@@ -241,4 +248,9 @@ func (c *emailCache) GetNotifyCodeUserRate(ctx context.Context, userID int64) (i
 		return 0, err
 	}
 	return count, nil
+}
+
+func sha256Sum(value string) []byte {
+	sum := sha256.Sum256([]byte(value))
+	return sum[:]
 }

@@ -89,6 +89,15 @@ type handlerInflightCache struct {
 	res     map[string]float64
 }
 
+type handlerInflightUserRepo struct {
+	service.UserRepository
+	balance float64
+}
+
+func (r *handlerInflightUserRepo) GetBalance(context.Context, int64) (float64, error) {
+	return r.balance, nil
+}
+
 func newHandlerInflightCache(balance float64) *handlerInflightCache {
 	return &handlerInflightCache{balance: balance, res: map[string]float64{}}
 }
@@ -132,9 +141,10 @@ func (m *handlerInflightCache) count() int {
 
 func TestWrapUsageRecordTaskContext_HandsReservationToBillingTask(t *testing.T) {
 	cache := newHandlerInflightCache(1)
+	primary := &handlerInflightUserRepo{balance: 1}
 	cfg := &config.Config{}
 	cfg.Billing.InflightReservation = config.InflightReservationConfig{Enabled: true, TTLSeconds: 60}
-	billing := service.NewBillingCacheService(cache, nil, nil, nil, nil, nil, cfg, nil)
+	billing := service.NewBillingCacheService(cache, primary, nil, nil, nil, nil, cfg, nil)
 	t.Cleanup(billing.Stop)
 	apiKey := &service.APIKey{User: &service.User{ID: 5}}
 
@@ -166,9 +176,10 @@ func TestWrapUsageRecordTaskContext_HandsReservationToBillingTask(t *testing.T) 
 // 新接入的端点（独立 web_search）：在途预留超过余额时拒绝，且不残留预留。
 func TestWebSearch_RejectsWhenInflightExceedsBalance(t *testing.T) {
 	cache := newHandlerInflightCache(1.5)
+	primary := &handlerInflightUserRepo{balance: 1.5}
 	cfg := &config.Config{}
 	cfg.Billing.InflightReservation = config.InflightReservationConfig{Enabled: true, TTLSeconds: 60}
-	billingCache := service.NewBillingCacheService(cache, nil, nil, nil, nil, nil, cfg, nil)
+	billingCache := service.NewBillingCacheService(cache, primary, nil, nil, nil, nil, cfg, nil)
 	t.Cleanup(billingCache.Stop)
 	billing := service.NewBillingService(cfg, nil)
 	gw := service.NewGatewayService(

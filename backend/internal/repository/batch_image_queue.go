@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/redisutil"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
 )
@@ -82,7 +83,7 @@ return 0
 `)
 
 type batchImageQueue struct {
-	rdb            *redis.Client
+	rdb            redis.UniversalClient
 	readyKey       string
 	delayedKey     string
 	activeKey      string
@@ -92,7 +93,7 @@ type batchImageQueue struct {
 	lockTTL        time.Duration
 }
 
-func NewBatchImageQueue(rdb *redis.Client, cfg *config.Config) service.BatchImageQueue {
+func NewBatchImageQueue(rdb redis.UniversalClient, cfg *config.Config) service.BatchImageQueue {
 	return newBatchImageQueueWithOptions(rdb, batchImageQueueOptionsFromConfig(cfg))
 }
 
@@ -106,15 +107,15 @@ type batchImageQueueOptions struct {
 	LockTTL        time.Duration
 }
 
-func newBatchImageQueueWithOptions(rdb *redis.Client, opts batchImageQueueOptions) *batchImageQueue {
+func newBatchImageQueueWithOptions(rdb redis.UniversalClient, opts batchImageQueueOptions) *batchImageQueue {
 	opts = normalizeBatchImageQueueOptions(opts)
 	return &batchImageQueue{
 		rdb:            rdb,
-		readyKey:       opts.ReadyKey,
-		delayedKey:     opts.DelayedKey,
-		activeKey:      opts.ActiveKey,
-		inflightPrefix: opts.InflightPrefix,
-		lockPrefix:     opts.LockPrefix,
+		readyKey:       redisutil.TaggedKey(rdb, "batch-image", opts.ReadyKey),
+		delayedKey:     redisutil.TaggedKey(rdb, "batch-image", opts.DelayedKey),
+		activeKey:      redisutil.TaggedKey(rdb, "batch-image", opts.ActiveKey),
+		inflightPrefix: redisutil.TaggedKey(rdb, "batch-image", opts.InflightPrefix),
+		lockPrefix:     redisutil.TaggedKey(rdb, "batch-image", opts.LockPrefix),
 		inflightTTL:    opts.InflightTTL,
 		lockTTL:        opts.LockTTL,
 	}
@@ -318,7 +319,7 @@ func (q *batchImageQueue) lockKey(batchID string) string {
 }
 
 type batchImageRedisJobLock struct {
-	rdb   *redis.Client
+	rdb   redis.UniversalClient
 	key   string
 	token string
 }

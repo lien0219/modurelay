@@ -30,10 +30,10 @@ func (c StubConcurrencyCache) ReleaseAccountSlot(_ context.Context, _ int64, _ s
 func (c StubConcurrencyCache) GetAccountConcurrency(_ context.Context, _ int64) (int, error) {
 	return 0, nil
 }
-func (c StubConcurrencyCache) IncrementAccountWaitCount(_ context.Context, _ int64, _ int) (bool, error) {
+func (c StubConcurrencyCache) IncrementAccountWaitCount(_ context.Context, _ int64, _ int, _ string) (bool, error) {
 	return true, nil
 }
-func (c StubConcurrencyCache) DecrementAccountWaitCount(_ context.Context, _ int64) error {
+func (c StubConcurrencyCache) DecrementAccountWaitCount(_ context.Context, _ int64, _ string) error {
 	return nil
 }
 func (c StubConcurrencyCache) GetAccountWaitingCount(_ context.Context, _ int64) (int, error) {
@@ -48,10 +48,12 @@ func (c StubConcurrencyCache) ReleaseUserSlot(_ context.Context, _ int64, _ stri
 func (c StubConcurrencyCache) GetUserConcurrency(_ context.Context, _ int64) (int, error) {
 	return 0, nil
 }
-func (c StubConcurrencyCache) IncrementWaitCount(_ context.Context, _ int64, _ int) (bool, error) {
+func (c StubConcurrencyCache) IncrementWaitCount(_ context.Context, _ int64, _ int, _ string) (bool, error) {
 	return true, nil
 }
-func (c StubConcurrencyCache) DecrementWaitCount(_ context.Context, _ int64) error { return nil }
+func (c StubConcurrencyCache) DecrementWaitCount(_ context.Context, _ int64, _ string) error {
+	return nil
+}
 func (c StubConcurrencyCache) GetAccountsLoadBatch(_ context.Context, accounts []service.AccountWithConcurrency) (map[int64]*service.AccountLoadInfo, error) {
 	result := make(map[int64]*service.AccountLoadInfo, len(accounts))
 	for _, acc := range accounts {

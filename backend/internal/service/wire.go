@@ -18,7 +18,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func ProvideGrokOAuthService(proxyRepo ProxyRepository, oauthClient GrokOAuthClient, cfg *config.Config, redisClient *redis.Client) *GrokOAuthService {
+func ProvideGrokOAuthService(proxyRepo ProxyRepository, oauthClient GrokOAuthClient, cfg *config.Config, redisClient redis.UniversalClient) *GrokOAuthService {
 	svc := NewGrokOAuthService(proxyRepo, oauthClient, cfg)
 	// wire.go is depguard-exempt for redis; construct the Redis session store here.
 	if redisClient != nil {
@@ -533,10 +533,12 @@ func ProvideOpsMetricsCollector(
 	accountRepo AccountRepository,
 	concurrencyService *ConcurrencyService,
 	db *sql.DB,
-	redisClient *redis.Client,
+	redisClient redis.UniversalClient,
 	cfg *config.Config,
+	opsService *OpsService,
 ) *OpsMetricsCollector {
 	collector := NewOpsMetricsCollector(opsRepo, settingRepo, accountRepo, concurrencyService, db, redisClient, cfg)
+	opsService.SetMetricsCollector(collector)
 	collector.Start()
 	return collector
 }
@@ -546,7 +548,7 @@ func ProvideOpsAggregationService(
 	opsRepo OpsRepository,
 	settingRepo SettingRepository,
 	db *sql.DB,
-	redisClient *redis.Client,
+	redisClient redis.UniversalClient,
 	cfg *config.Config,
 ) *OpsAggregationService {
 	svc := NewOpsAggregationService(opsRepo, settingRepo, db, redisClient, cfg)
@@ -559,7 +561,7 @@ func ProvideOpsAlertEvaluatorService(
 	opsService *OpsService,
 	opsRepo OpsRepository,
 	emailService *EmailService,
-	redisClient *redis.Client,
+	redisClient redis.UniversalClient,
 	cfg *config.Config,
 	proxyRepo ProxyRepository,
 ) *OpsAlertEvaluatorService {
@@ -576,7 +578,7 @@ func ProvideOpsAlertEvaluatorService(
 func ProvideOpsCleanupService(
 	opsRepo OpsRepository,
 	db *sql.DB,
-	redisClient *redis.Client,
+	redisClient redis.UniversalClient,
 	cfg *config.Config,
 	channelMonitorSvc *ChannelMonitorService,
 	settingRepo SettingRepository,
@@ -666,8 +668,11 @@ func ProvideScheduledTestRunnerService(
 	accountTestSvc *AccountTestService,
 	rateLimitSvc *RateLimitService,
 	cfg *config.Config,
+	lockCache LeaderLockCache,
+	db *sql.DB,
 ) *ScheduledTestRunnerService {
 	svc := NewScheduledTestRunnerService(planRepo, scheduledSvc, accountTestSvc, rateLimitSvc, cfg)
+	svc.SetLeaderLock(lockCache, db)
 	svc.Start()
 	return svc
 }
@@ -677,7 +682,7 @@ func ProvideOpsScheduledReportService(
 	opsService *OpsService,
 	userService *UserService,
 	emailService *EmailService,
-	redisClient *redis.Client,
+	redisClient redis.UniversalClient,
 	cfg *config.Config,
 ) *OpsScheduledReportService {
 	svc := NewOpsScheduledReportService(opsService, userService, emailService, redisClient, cfg)
@@ -867,6 +872,7 @@ func ProvideAPIKeyService(
 ) *APIKeyService {
 	svc := NewAPIKeyService(apiKeyRepo, userRepo, groupRepo, userSubRepo, userGroupRateRepo, cache, cfg)
 	svc.SetRateLimitCacheInvalidator(billingCacheService)
+	svc.SetBalanceCacheInvalidator(billingCacheService)
 	svc.SetConcurrencyService(concurrencyService)
 	return svc
 }
@@ -1045,10 +1051,11 @@ func ProvideBalanceNotifyService(emailService *EmailService, settingRepo Setting
 }
 
 // ProvidePaymentService creates PaymentService and attaches notification email delivery.
-func ProvidePaymentService(entClient *dbent.Client, registry *payment.Registry, loadBalancer payment.LoadBalancer, redeemService *RedeemService, subscriptionSvc *SubscriptionService, configService *PaymentConfigService, userRepo UserRepository, groupRepo GroupRepository, affiliateService *AffiliateService, notificationEmailService *NotificationEmailService, activityService *ActivityService) *PaymentService {
+func ProvidePaymentService(entClient *dbent.Client, registry *payment.Registry, loadBalancer payment.LoadBalancer, redeemService *RedeemService, subscriptionSvc *SubscriptionService, configService *PaymentConfigService, userRepo UserRepository, groupRepo GroupRepository, affiliateService *AffiliateService, notificationEmailService *NotificationEmailService, activityService *ActivityService, billingCacheService *BillingCacheService) *PaymentService {
 	svc := NewPaymentService(entClient, registry, loadBalancer, redeemService, subscriptionSvc, configService, userRepo, groupRepo, affiliateService)
 	svc.SetNotificationEmailService(notificationEmailService)
 	svc.SetActivityService(activityService)
+	svc.SetBalanceCacheInvalidator(billingCacheService)
 	return svc
 }
 

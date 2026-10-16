@@ -3,7 +3,6 @@ package setup
 import (
 	"context"
 	"crypto/rand"
-	"crypto/tls"
 	"database/sql"
 	"encoding/hex"
 	"errors"
@@ -19,7 +18,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/lib/pq"
-	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
 )
@@ -97,12 +95,14 @@ type DatabaseConfig struct {
 }
 
 type RedisConfig struct {
-	Host      string `json:"host" yaml:"host"`
-	Port      int    `json:"port" yaml:"port"`
-	Username  string `json:"username" yaml:"username"`
-	Password  string `json:"password" yaml:"password"`
-	DB        int    `json:"db" yaml:"db"`
-	EnableTLS bool   `json:"enable_tls" yaml:"enable_tls"`
+	Mode         string   `json:"mode" yaml:"mode"`
+	ClusterAddrs []string `json:"cluster_addrs" yaml:"cluster_addrs"`
+	Host         string   `json:"host" yaml:"host"`
+	Port         int      `json:"port" yaml:"port"`
+	Username     string   `json:"username" yaml:"username"`
+	Password     string   `json:"password" yaml:"password"`
+	DB           int      `json:"db" yaml:"db"`
+	EnableTLS    bool     `json:"enable_tls" yaml:"enable_tls"`
 }
 
 type AdminConfig struct {
@@ -279,21 +279,16 @@ func testDatabaseConnection(cfg *DatabaseConfig, openDatabase postgresDatabaseOp
 
 // TestRedisConnection tests the Redis connection
 func TestRedisConnection(cfg *RedisConfig) error {
-	opts := &redis.Options{
-		Addr:     fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),
-		Username: cfg.Username,
-		Password: cfg.Password,
-		DB:       cfg.DB,
+	redisConfig := config.RedisConfig{
+		Mode: cfg.Mode, ClusterAddrs: cfg.ClusterAddrs,
+		Host: cfg.Host, Port: cfg.Port, Username: cfg.Username,
+		Password: cfg.Password, DB: cfg.DB, EnableTLS: cfg.EnableTLS,
+		DialTimeoutSeconds: 5, ReadTimeoutSeconds: 3, WriteTimeoutSeconds: 3,
 	}
-
-	if cfg.EnableTLS {
-		opts.TLSConfig = &tls.Config{
-			MinVersion: tls.VersionTLS12,
-			ServerName: cfg.Host,
-		}
+	if err := redisConfig.ValidateMode(); err != nil {
+		return err
 	}
-
-	rdb := redis.NewClient(opts)
+	rdb := repository.InitRedis(&config.Config{Redis: redisConfig})
 	defer func() {
 		if err := rdb.Close(); err != nil {
 			logger.LegacyPrintf("setup", "failed to close redis client: %v", err)
@@ -421,12 +416,23 @@ func createAdminUser(cfg *SetupConfig) (bool, string, error) {
 }
 
 func bootstrapAdminUser(ctx context.Context, db *sql.DB, cfg *SetupConfig) (bool, string, error) {
+	// Every pod may auto-setup an empty database at the same time. Serialize
+	// the empty-database check and insert on the primary; a process mutex or
+	// each pod's local .installed file cannot protect this decision.
+	tx, err := db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	if err != nil {
+		return false, "", err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock($1)", adminBootstrapLockID); err != nil {
+		return false, "", err
+	}
 	var totalUsers int64
-	if err := db.QueryRowContext(ctx, "SELECT COUNT(1) FROM users").Scan(&totalUsers); err != nil {
+	if err := tx.QueryRowContext(ctx, "SELECT COUNT(1) FROM users").Scan(&totalUsers); err != nil {
 		return false, "", err
 	}
 	var adminUsers int64
-	if err := db.QueryRowContext(ctx, "SELECT COUNT(1) FROM users WHERE role = $1", service.RoleAdmin).Scan(&adminUsers); err != nil {
+	if err := tx.QueryRowContext(ctx, "SELECT COUNT(1) FROM users WHERE role = $1", service.RoleAdmin).Scan(&adminUsers); err != nil {
 		return false, "", err
 	}
 	decision := decideAdminBootstrap(totalUsers, adminUsers)
@@ -460,7 +466,7 @@ func bootstrapAdminUser(ctx context.Context, db *sql.DB, cfg *SetupConfig) (bool
 		return false, "", err
 	}
 
-	_, err = db.ExecContext(
+	_, err = tx.ExecContext(
 		ctx,
 		`INSERT INTO users (email, password_hash, role, balance, concurrency, status, created_at, updated_at)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
@@ -476,8 +482,14 @@ func bootstrapAdminUser(ctx context.Context, db *sql.DB, cfg *SetupConfig) (bool
 	if err != nil {
 		return false, "", err
 	}
+	if err := tx.Commit(); err != nil {
+		return false, "", err
+	}
 	return true, decision.reason, nil
 }
+
+// Stable, application-specific lock ID; distinct from schema migration locks.
+const adminBootstrapLockID int64 = 0x4d6f647541646d69
 
 // prepareAdminCredentials fills in missing admin credentials with random values
 // and rejects invalid user-supplied emails and weak passwords. It only runs
@@ -635,12 +647,14 @@ func AutoSetupFromEnv() error {
 			SSLMode:  getEnvOrDefault("DATABASE_SSLMODE", "disable"),
 		},
 		Redis: RedisConfig{
-			Host:      getEnvOrDefault("REDIS_HOST", "localhost"),
-			Port:      getEnvIntOrDefault("REDIS_PORT", 6379),
-			Username:  getEnvOrDefault("REDIS_USERNAME", ""),
-			Password:  getEnvOrDefault("REDIS_PASSWORD", ""),
-			DB:        getEnvIntOrDefault("REDIS_DB", 0),
-			EnableTLS: getEnvOrDefault("REDIS_ENABLE_TLS", "false") == "true",
+			Mode:         getEnvOrDefault("REDIS_MODE", "standalone"),
+			ClusterAddrs: splitRedisClusterAddrs(os.Getenv("REDIS_CLUSTER_ADDRS")),
+			Host:         getEnvOrDefault("REDIS_HOST", "localhost"),
+			Port:         getEnvIntOrDefault("REDIS_PORT", 6379),
+			Username:     getEnvOrDefault("REDIS_USERNAME", ""),
+			Password:     getEnvOrDefault("REDIS_PASSWORD", ""),
+			DB:           getEnvIntOrDefault("REDIS_DB", 0),
+			EnableTLS:    getEnvOrDefault("REDIS_ENABLE_TLS", "false") == "true",
 		},
 		Admin: AdminConfig{
 			Email:    getEnvOrDefault("ADMIN_EMAIL", ""),
@@ -724,4 +738,14 @@ func AutoSetupFromEnv() error {
 
 	logger.LegacyPrintf("setup", "%s", "Auto setup completed successfully!")
 	return nil
+}
+
+func splitRedisClusterAddrs(raw string) []string {
+	var addresses []string
+	for _, address := range strings.Split(raw, ",") {
+		if address = strings.TrimSpace(address); address != "" {
+			addresses = append(addresses, address)
+		}
+	}
+	return addresses
 }

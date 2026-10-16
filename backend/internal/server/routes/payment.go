@@ -34,7 +34,7 @@ func RegisterPaymentRoutes(
 	auditLog middleware.AuditLogMiddleware,
 	settingService *service.SettingService,
 	panelRateLimiter *middleware.PanelRateLimiter,
-	redisClient *redis.Client,
+	redisClient redis.UniversalClient,
 ) {
 	// --- User-facing payment endpoints (authenticated) ---
 	authenticated := v1.Group("/payment")

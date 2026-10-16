@@ -88,6 +88,7 @@ type cacheWriteTask struct {
 	groupID          int64
 	apiKeyID         int64
 	balance          float64
+	balanceFillToken string
 	amount           float64
 	subscriptionData *subscriptionCacheData
 }
@@ -121,7 +122,12 @@ type BillingCacheService struct {
 	cacheWriteMu       sync.RWMutex
 	stopped            atomic.Bool
 	balanceLoadSF      singleflight.Group
-	quotaLoadSF        singleflight.Group
+	// A failed committed invalidation must be confirmed before this instance
+	// trusts or serves this user's cached balance again. Admission on other
+	// instances reads the primary, since Redis cannot publish a failure while
+	// it is unavailable.
+	balanceInvalidations sync.Map // userID -> *balanceInvalidation
+	quotaLoadSF          singleflight.Group
 	// 丢弃日志节流计数器（减少高负载下日志噪音）
 	cacheWriteDropFullCount     uint64
 	cacheWriteDropFullLastLog   int64
@@ -220,7 +226,13 @@ func (s *BillingCacheService) cacheWriteWorker(ch <-chan cacheWriteTask) {
 		ctx, cancel := context.WithTimeout(context.Background(), cacheWriteTimeout)
 		switch task.kind {
 		case cacheWriteSetBalance:
-			s.setBalanceCache(ctx, task.userID, task.balance)
+			if fenced, ok := s.cache.(FencedBalanceCache); ok {
+				if err := fenced.SetUserBalanceIfUnchanged(ctx, task.userID, task.balance, task.balanceFillToken); err != nil {
+					logger.LegacyPrintf("service.billing_cache", "Warning: fenced balance cache fill failed for user %d: %v", task.userID, err)
+				}
+			} else {
+				s.setBalanceCache(ctx, task.userID, task.balance)
+			}
 		case cacheWriteSetSubscription:
 			s.setSubscriptionCache(ctx, task.userID, task.groupID, task.subscriptionData)
 		case cacheWriteUpdateSubscriptionUsage:
@@ -310,6 +322,9 @@ func (s *BillingCacheService) logCacheWriteDrop(task cacheWriteTask, reason stri
 
 // GetUserBalance 获取用户余额（优先从缓存读取）
 func (s *BillingCacheService) GetUserBalance(ctx context.Context, userID int64) (float64, error) {
+	if err := s.confirmPendingBalanceInvalidation(ctx, userID); err != nil {
+		return 0, err
+	}
 	if s.cache == nil {
 		// Redis不可用，直接查询数据库
 		return s.getUserBalanceFromDB(ctx, userID)
@@ -326,6 +341,14 @@ func (s *BillingCacheService) GetUserBalance(ctx context.Context, userID int64) 
 		loadCtx, cancel := context.WithTimeout(context.Background(), balanceLoadTimeout)
 		defer cancel()
 
+		// Capture a distributed generation before querying the primary. If another
+		// pod deducts/invalidates while this read or queued fill is pending, its
+		// generation change makes the delayed fill a no-op.
+		var fillToken string
+		if fenced, ok := s.cache.(FencedBalanceCache); ok {
+			fillToken, _ = fenced.BeginUserBalanceLoad(loadCtx, userID)
+		}
+
 		balance, err := s.getUserBalanceFromDB(loadCtx, userID)
 		if err != nil {
 			return nil, err
@@ -333,9 +356,10 @@ func (s *BillingCacheService) GetUserBalance(ctx context.Context, userID int64) 
 
 		// 异步建立缓存
 		_ = s.enqueueCacheWrite(cacheWriteTask{
-			kind:    cacheWriteSetBalance,
-			userID:  userID,
-			balance: balance,
+			kind:             cacheWriteSetBalance,
+			userID:           userID,
+			balance:          balance,
+			balanceFillToken: fillToken,
 		})
 		return balance, nil
 	})
@@ -351,11 +375,51 @@ func (s *BillingCacheService) GetUserBalance(ctx context.Context, userID int64) 
 
 // getUserBalanceFromDB 从数据库获取用户余额
 func (s *BillingCacheService) getUserBalanceFromDB(ctx context.Context, userID int64) (float64, error) {
+	if s.userRepo == nil {
+		return 0, fmt.Errorf("user balance repository unavailable")
+	}
+	if reader, ok := s.userRepo.(userBalanceReader); ok {
+		return reader.GetBalance(ctx, userID)
+	}
 	user, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
 		return 0, fmt.Errorf("get user balance: %w", err)
 	}
+	if user == nil {
+		return 0, ErrUserNotFound
+	}
 	return user.Balance, nil
+}
+
+// userBalanceReader avoids loading the full user and its relationships on the
+// admission path. Implementations must read the primary, never a read replica.
+type userBalanceReader interface {
+	GetBalance(context.Context, int64) (float64, error)
+}
+
+// getUserBalanceForAdmission never uses Redis as the authority for spending.
+// A committed debit and a failed Redis write cannot atomically communicate a
+// dirty flag to another pod. Reading the primary closes that failure window,
+// including after the writer crashes. Do not singleflight these reads across
+// requests: a read started before a commit may return the pre-debit balance.
+func (s *BillingCacheService) getUserBalanceForAdmission(ctx context.Context, userID int64) (float64, error) {
+	if err := s.confirmPendingBalanceInvalidation(ctx, userID); err != nil {
+		return 0, err
+	}
+	return s.readPrimaryBalance(ctx, userID)
+}
+
+func (s *BillingCacheService) readPrimaryBalance(ctx context.Context, userID int64) (float64, error) {
+	loadCtx, cancel := context.WithTimeout(ctx, balanceLoadTimeout)
+	defer cancel()
+	balance, err := s.getUserBalanceFromDB(loadCtx, userID)
+	if err != nil {
+		return 0, err
+	}
+	if math.IsNaN(balance) || math.IsInf(balance, 0) {
+		return 0, fmt.Errorf("invalid user balance")
+	}
+	return balance, nil
 }
 
 // setBalanceCache 设置余额缓存
@@ -398,13 +462,17 @@ func (s *BillingCacheService) QueueDeductBalance(userID int64, amount float64) {
 
 // InvalidateUserBalance 失效用户余额缓存
 func (s *BillingCacheService) InvalidateUserBalance(ctx context.Context, userID int64) error {
-	if s.cache == nil {
+	if s.cache == nil || userID <= 0 {
 		return nil
 	}
-	if err := s.cache.InvalidateUserBalance(ctx, userID); err != nil {
-		logger.LegacyPrintf("service.billing_cache", "Warning: invalidate balance cache failed for user %d: %v", userID, err)
+	// Keep a distinct attempt identity so an earlier successful operation cannot
+	// clear a newer failed invalidation for the same user.
+	attempt := &balanceInvalidation{userID: userID}
+	s.balanceInvalidations.Store(userID, attempt)
+	if err := retryUserBalanceCacheInvalidation(ctx, s.cache, userID); err != nil {
 		return err
 	}
+	s.balanceInvalidations.CompareAndDelete(userID, attempt)
 	return nil
 }
 
@@ -738,7 +806,7 @@ func (s *BillingCacheService) IncrementUserPlatformQuotaUsage(userID int64, plat
 // ============================================
 
 // CheckBillingEligibility 检查用户是否有资格发起请求
-// 余额模式：检查缓存余额 > 0
+// 余额模式：检查主库余额满足最低余额要求
 // 订阅模式：检查缓存用量未超过限额（Group限额从参数传入）
 // platform 为请求的目标平台（如 "anthropic"），传空串 "" 时跳过 user × platform quota 检查。
 func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user *User, apiKey *APIKey, group *Group, subscription *UserSubscription, platform string) error {
@@ -751,10 +819,6 @@ func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user 
 		}
 		return nil
 	}
-	if s.circuitBreaker != nil && !s.circuitBreaker.Allow() {
-		return ErrBillingServiceUnavailable
-	}
-
 	// 判断计费模式
 	isSubscriptionMode := group != nil && group.IsSubscriptionType() && subscription != nil
 
@@ -792,7 +856,7 @@ func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user 
 
 // ReserveFixedCharge 为扣费前即可确定金额的费用（倍率后 USD，如显式缓存存储费）做准入并登记在途预留。
 //
-// 余额模式要求缓存余额覆盖 amount 及用户的其他在途预留；订阅模式要求日 / 周 / 月剩余额度覆盖 amount；
+// 余额模式要求主库余额覆盖 amount 及用户的其他在途预留；订阅模式要求日 / 周 / 月剩余额度覆盖 amount；
 // API Key 总额度与限速窗口同样叠加 amount。订阅与 API Key 的用量取库中权威值，并叠加同一订阅 / Key 上其他
 // 在途预留：先登记本次预留再读用量，并发的两笔费用中后读用量的一方必然看到另一方（预留或已落库的扣费）。
 // 返回的句柄可能为 nil（未登记任何预留）；调用方须在 handler 结束时调用 HandlerDone，预留在计费任务落库后释放。
@@ -806,7 +870,7 @@ func (s *BillingCacheService) ReserveFixedCharge(ctx context.Context, user *User
 	}
 	subscriptionBill := group != nil && group.IsSubscriptionType() && subscription != nil
 	if !subscriptionBill {
-		balance, err := s.GetUserBalance(ctx, user.ID)
+		balance, err := s.getUserBalanceForAdmission(ctx, user.ID)
 		if err != nil {
 			return nil, ErrBillingServiceUnavailable.WithCause(err)
 		}
@@ -1023,7 +1087,15 @@ func (s *BillingCacheService) balanceBelowEligibilityThreshold(balance float64) 
 
 // checkBalanceEligibility 检查余额模式资格
 func (s *BillingCacheService) checkBalanceEligibility(ctx context.Context, userID int64) error {
-	balance, err := s.GetUserBalance(ctx, userID)
+	// A per-user invalidation failure must not trip the shared dependency
+	// breaker or consume its limited half-open probes for other users.
+	if err := s.confirmPendingBalanceInvalidation(ctx, userID); err != nil {
+		return ErrBillingServiceUnavailable.WithCause(err)
+	}
+	if s.circuitBreaker != nil && !s.circuitBreaker.Allow() {
+		return ErrBillingServiceUnavailable
+	}
+	balance, err := s.readPrimaryBalance(ctx, userID)
 	if err != nil {
 		if s.circuitBreaker != nil {
 			s.circuitBreaker.OnFailure(err)
@@ -1044,6 +1116,9 @@ func (s *BillingCacheService) checkBalanceEligibility(ctx context.Context, userI
 
 // checkSubscriptionEligibility 检查订阅模式资格
 func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, userID int64, group *Group, subscription *UserSubscription) error {
+	if s.circuitBreaker != nil && !s.circuitBreaker.Allow() {
+		return ErrBillingServiceUnavailable
+	}
 	// 获取订阅缓存数据
 	subData, err := s.GetSubscriptionStatus(ctx, userID, group.ID)
 	if err != nil {

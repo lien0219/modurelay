@@ -2132,11 +2132,11 @@ func (m *mockConcurrencyCache) GetAccountConcurrencyBatch(ctx context.Context, a
 	return result, nil
 }
 
-func (m *mockConcurrencyCache) IncrementAccountWaitCount(ctx context.Context, accountID int64, maxWait int) (bool, error) {
+func (m *mockConcurrencyCache) IncrementAccountWaitCount(ctx context.Context, accountID int64, maxWait int, waiterID string) (bool, error) {
 	return true, nil
 }
 
-func (m *mockConcurrencyCache) DecrementAccountWaitCount(ctx context.Context, accountID int64) error {
+func (m *mockConcurrencyCache) DecrementAccountWaitCount(ctx context.Context, accountID int64, waiterID string) error {
 	return nil
 }
 
@@ -2161,11 +2161,11 @@ func (m *mockConcurrencyCache) GetUserConcurrency(ctx context.Context, userID in
 	return 0, nil
 }
 
-func (m *mockConcurrencyCache) IncrementWaitCount(ctx context.Context, userID int64, maxWait int) (bool, error) {
+func (m *mockConcurrencyCache) IncrementWaitCount(ctx context.Context, userID int64, maxWait int, waiterID string) (bool, error) {
 	return true, nil
 }
 
-func (m *mockConcurrencyCache) DecrementWaitCount(ctx context.Context, userID int64) error {
+func (m *mockConcurrencyCache) DecrementWaitCount(ctx context.Context, userID int64, waiterID string) error {
 	return nil
 }
 
