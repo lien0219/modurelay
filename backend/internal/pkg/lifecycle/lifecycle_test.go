@@ -72,6 +72,77 @@ func TestReadinessAndAdmissionDuringDrain(t *testing.T) {
 	}
 }
 
+func TestObservabilityRequestsDrainWithoutChangingBusinessCounters(t *testing.T) {
+	for _, path := range []string{"/health", "/metrics", "/metrics/instance"} {
+		t.Run(path, func(t *testing.T) {
+			manager := lifecycle.New()
+			manager.BeginDrain()
+			manager.StopAdmission()
+			entered := make(chan struct{})
+			canceled := make(chan error, 1)
+			finish := make(chan struct{})
+			var release sync.Once
+			unblock := func() { release.Do(func() { close(finish) }) }
+			defer unblock()
+			handler := manager.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if lifecycle.FromContext(r.Context()) != nil || lifecycle.ManagerFromContext(r.Context()) != manager {
+					t.Error("probe must expose only manager context")
+				}
+				close(entered)
+				select {
+				case <-r.Context().Done():
+					canceled <- context.Cause(r.Context())
+				case <-finish:
+					return
+				}
+				<-finish // A canceled dependency operation still needs to return.
+			}))
+			go handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, path, nil))
+			<-entered
+			if got := manager.Snapshot(); got.ActiveHTTP != 0 || got.ActiveWebSockets != 0 || got.ActiveTurns != 0 {
+				t.Fatalf("probe changed business counters: %+v", got)
+			}
+			if got := manager.Snapshot().ActiveObservability; got != 1 {
+				t.Fatalf("active probe is missing from shutdown diagnostics: %d", got)
+			}
+			waitCtx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+			defer cancel()
+			if err := manager.Wait(waitCtx); !errors.Is(err, context.DeadlineExceeded) {
+				t.Fatalf("drain skipped an active observability handler: %v", err)
+			}
+			manager.ForceClose()
+			select {
+			case cause := <-canceled:
+				if !errors.Is(cause, lifecycle.ErrForcedShutdown) {
+					t.Fatalf("probe did not receive forced cancellation: %v", cause)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("probe context was not canceled")
+			}
+			forceCtx, cancelForce := context.WithTimeout(context.Background(), 20*time.Millisecond)
+			defer cancelForce()
+			if err := manager.Wait(forceCtx); !errors.Is(err, context.DeadlineExceeded) {
+				t.Fatalf("drain skipped probe finalization after cancellation: %v", err)
+			}
+			if got := manager.Snapshot().ActiveObservability; got != 1 {
+				t.Fatalf("canceled probe stopped counting before return: %d", got)
+			}
+			// ForceClose has already snapshotted cancellation; no downstream
+			// handler may enter after it, including otherwise exempt probes.
+			rejected := httptest.NewRecorder()
+			handler.ServeHTTP(rejected, httptest.NewRequest(http.MethodGet, path, nil))
+			if rejected.Code != http.StatusServiceUnavailable {
+				t.Fatalf("probe admitted after forced shutdown: %d", rejected.Code)
+			}
+			unblock()
+			waitForDrain(t, manager)
+			if got := manager.Snapshot().ActiveObservability; got != 0 {
+				t.Fatalf("completed probe remains in shutdown diagnostics: %d", got)
+			}
+		})
+	}
+}
+
 func TestDrainingLetsActiveSSEFinish(t *testing.T) {
 	manager := lifecycle.New()
 	finish := make(chan struct{})

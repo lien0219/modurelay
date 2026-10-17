@@ -170,6 +170,37 @@ func TestShutdownDoesNotCloseDependenciesOfUncooperativeHandler(t *testing.T) {
 	<-clientDone
 }
 
+func TestShutdownDoesNotCloseDependenciesOfCanceledMetricsHandler(t *testing.T) {
+	entered, canceled, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	srv, m, url := startShutdownTestServer(t, http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		close(entered)
+		<-r.Context().Done()
+		close(canceled)
+		<-release // Simulate a DB/Redis operation still unwinding after cancel.
+	}))
+	clientDone := make(chan struct{})
+	go func() {
+		defer close(clientDone)
+		resp, err := http.Get(url + "/metrics")
+		if err == nil {
+			_ = resp.Body.Close()
+		}
+	}()
+	<-entered
+	require.Zero(t, m.Snapshot().ActiveHTTP, "metrics must remain outside business traffic counts")
+	require.Equal(t, 1, m.Snapshot().ActiveObservability)
+	opts := testShutdownOptions()
+	opts.requestTimeout = 20 * time.Millisecond
+	opts.forceCloseTimeout = 20 * time.Millisecond
+	cleaned := false
+	err := shutdownServer(srv, func(context.Context) error { cleaned = true; return nil }, opts)
+	close(release)
+	<-canceled
+	<-clientDone
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.False(t, cleaned, "cleanup closed dependencies before the metrics handler returned")
+}
+
 func TestShutdownBoundsLegacyCleanup(t *testing.T) {
 	srv, _, _ := startShutdownTestServer(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	release := make(chan struct{})

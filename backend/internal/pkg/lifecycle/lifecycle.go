@@ -14,10 +14,11 @@ import (
 
 // Snapshot reports work that must finish before application resources can stop.
 type Snapshot struct {
-	Draining         bool
-	ActiveHTTP       int
-	ActiveWebSockets int
-	ActiveTurns      int
+	Draining            bool
+	ActiveHTTP          int
+	ActiveWebSockets    int
+	ActiveTurns         int
+	ActiveObservability int // Probe and metrics handlers; excluded from business gauges.
 }
 
 // Manager belongs to one HTTP server. Wrap its outermost handler before serving.
@@ -51,6 +52,7 @@ type Request struct {
 	drainNotified   bool
 	handlerFinished bool
 	hijacked        bool
+	observability   bool
 	connections     map[*trackedConn]struct{}
 }
 
@@ -61,7 +63,7 @@ func FromContext(ctx context.Context) *Request {
 }
 
 // ManagerFromContext returns the server lifecycle, including for health and
-// metrics requests which are deliberately excluded from the drain wait.
+// metrics requests which are deliberately excluded from business gauges.
 func ManagerFromContext(ctx context.Context) *Manager {
 	manager, _ := ctx.Value(managerContextKey{}).(*Manager)
 	return manager
@@ -101,19 +103,16 @@ func (h *wrappedHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"status":"ready"}`))
 		return
 	}
-	if r.URL.Path == "/health" || r.URL.Path == "/metrics" || r.URL.Path == "/metrics/instance" {
-		h.next.ServeHTTP(w, r)
-		return
-	}
+	observability := r.URL.Path == "/health" || r.URL.Path == "/metrics" || r.URL.Path == "/metrics/instance"
 	m.mu.Lock()
-	if m.admissionClosed {
+	if m.forced || (m.admissionClosed && !observability) {
 		m.mu.Unlock()
 		w.Header().Set("Retry-After", "1")
 		http.Error(w, "server is draining", http.StatusServiceUnavailable)
 		return
 	}
 	ctx, cancel := context.WithCancelCause(r.Context())
-	request := &Request{manager: m, cancel: cancel}
+	request := &Request{manager: m, cancel: cancel, observability: observability}
 	m.requests[request] = struct{}{}
 	m.mu.Unlock()
 	defer func() {
@@ -146,7 +145,10 @@ func (h *wrappedHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return tracked, buffer, nil
 		}
 	}})
-	h.next.ServeHTTP(writer, r.WithContext(context.WithValue(ctx, contextKey{}, request)))
+	if !observability {
+		ctx = context.WithValue(ctx, contextKey{}, request)
+	}
+	h.next.ServeHTTP(writer, r.WithContext(ctx))
 }
 
 // BeginDrain makes readiness fail. Call StopAdmission after the routing
@@ -179,6 +181,10 @@ func (m *Manager) Snapshot() Snapshot {
 	defer m.mu.Unlock()
 	snapshot := Snapshot{Draining: m.draining}
 	for request := range m.requests {
+		if request.observability {
+			snapshot.ActiveObservability++
+			continue
+		}
 		if request.hijacked {
 			// Count a session until both its transport and handler accounting
 			// finish, whichever completes last.
