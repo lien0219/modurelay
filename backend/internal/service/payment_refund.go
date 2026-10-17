@@ -572,14 +572,21 @@ func (s *PaymentService) finishRefund(ctx context.Context, p *RefundPlan, resp *
 	if resp == nil {
 		return s.markRefundPending(ctx, p, &payment.RefundResponse{Status: payment.ProviderStatusPending})
 	}
-	switch strings.TrimSpace(resp.Status) {
+	status := strings.TrimSpace(resp.Status)
+	if err := validateRefundProviderResponse(resp); err != nil {
+		if status == payment.ProviderStatusFailed {
+			return s.handleGwFail(ctx, p, err)
+		}
+		// An unrecognized provider result remains pending until reconciliation
+		// confirms a terminal state; never submit a second refund here.
+		return s.markRefundPending(ctx, p, resp)
+	}
+	switch status {
 	case payment.ProviderStatusSuccess, payment.ProviderStatusRefunded:
 		p.RefundID = refundResponseID(resp)
 		return s.markRefundOk(ctx, p)
 	case payment.ProviderStatusPending:
 		return s.markRefundPending(ctx, p, resp)
-	case payment.ProviderStatusFailed:
-		return s.handleGwFail(ctx, p, fmt.Errorf("payment refund failed: status %s", strings.TrimSpace(resp.Status)))
 	default:
 		return s.markRefundPending(ctx, p, &payment.RefundResponse{RefundID: resp.RefundID, Status: payment.ProviderStatusPending})
 	}
@@ -623,6 +630,7 @@ func (s *PaymentService) QueryAndFinalizeRefund(ctx context.Context, oid int64) 
 	if resp == nil {
 		return nil, fmt.Errorf("query refund returned no status; reconciliation required")
 	}
+	status := strings.TrimSpace(resp.Status)
 	persistCtx, persistCancel := detachedRefundContext(ctx)
 	defer persistCancel()
 	plan := s.refundFinalizePlan(o)
@@ -637,14 +645,18 @@ func (s *PaymentService) QueryAndFinalizeRefund(ctx context.Context, oid int64) 
 			return early, nil
 		}
 	}
-	switch strings.TrimSpace(resp.Status) {
+	if err := validateRefundProviderResponse(resp); err != nil {
+		if status == payment.ProviderStatusFailed {
+			return s.finalizeRefundFailed(persistCtx, plan, err)
+		}
+		return nil, fmt.Errorf("query refund returned unknown status %q; reconciliation required", status)
+	}
+	switch status {
 	case payment.ProviderStatusSuccess, payment.ProviderStatusRefunded:
 		return s.finalizePendingRefundSuccess(persistCtx, plan)
 	case payment.ProviderStatusPending:
 		s.writeAuditLog(persistCtx, oid, "REFUND_QUERY_PENDING", "admin", map[string]any{"refundID": resp.RefundID})
 		return &RefundResult{Success: false, Warning: "gateway refund is still pending confirmation"}, nil
-	case payment.ProviderStatusFailed:
-		return s.finalizeRefundFailed(persistCtx, plan, fmt.Errorf("payment refund failed: status %s", strings.TrimSpace(resp.Status)))
 	default:
 		return nil, fmt.Errorf("query refund returned unknown status %q; reconciliation required", strings.TrimSpace(resp.Status))
 	}
