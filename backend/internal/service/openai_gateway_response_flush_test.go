@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -371,7 +372,7 @@ func TestOpenAIResponseFlush_KeepaliveDoesNotSplitOpenEvent(t *testing.T) {
 func TestOpenAIResponseFlush_FailedAndErrorEventsFlushAtBoundaries(t *testing.T) {
 	t.Run("failed at EOF", func(t *testing.T) {
 		body := "data: {\"type\":\"response.output_text.delta\",\"delta\":\"a\"}\n\n" +
-			"data: {\"type\":\"response.failed\",\"response\":{\"error\":{\"code\":\"safety_error\",\"message\":\"blocked\"},\"usage\":{\"input_tokens\":3,\"output_tokens\":1}}}\n"
+			"data: {\"type\":\"response.failed\",\"response\":{\"created_at\":1700000000,\"error\":{\"code\":\"safety_error\",\"message\":\"blocked\"},\"usage\":{\"input_tokens\":3,\"output_tokens\":1}}}\n"
 		recorder := newOpenAIResponseFlushRecorder()
 
 		result, err := runOpenAIResponseFlushTest(recorder, io.NopCloser(strings.NewReader(body)), config.GatewayConfig{})
@@ -381,7 +382,7 @@ func TestOpenAIResponseFlush_FailedAndErrorEventsFlushAtBoundaries(t *testing.T)
 		require.Equal(t, 3, result.usage.InputTokens)
 		gotBody, flushes := recorder.snapshot()
 		expectedBody := "data: {\"type\":\"response.output_text.delta\",\"delta\":\"a\"}\n\n" +
-			"data: {\"type\":\"response.failed\",\"response\":{\"error\":{\"code\":\"safety_error\",\"message\":\"blocked\"}}}\n"
+			"data: {\"type\":\"response.failed\",\"response\":{\"created_at\":1700000000,\"error\":{\"code\":\"safety_error\",\"message\":\"blocked\"}}}\n"
 		require.Equal(t, expectedBody, gotBody)
 		require.Len(t, flushes, 2)
 		require.Contains(t, flushes[1], "response.failed")
@@ -473,28 +474,77 @@ func TestOpenAIResponseFlush_CompatibleAPIKeyDoesNotUseCodexBareErrorSynthesis(t
 }
 
 func TestOpenAIResponseFlush_RecentBareErrorAllowsCompletedBeforeIdleTimeout(t *testing.T) {
-	reader, writer := io.Pipe()
-	defer func() { _ = writer.Close() }()
-	recorder := newOpenAIResponseFlushRecorder()
-	resultCh, errCh := runOpenAIResponseFlushTestAsync(recorder, reader, config.GatewayConfig{StreamDataIntervalTimeout: 1})
+	synctest.Test(t, func(t *testing.T) {
+		reader, writer := newOpenAIResponseFlushTestPipe(t)
+		recorder := newOpenAIResponseFlushRecorder()
+		resultCh, errCh := runOpenAIResponseFlushTestAsync(recorder, reader, config.GatewayConfig{StreamDataIntervalTimeout: 1})
+		// Start the real handler/ticker before advancing the bubble's clock.
+		synctest.Wait()
+		started := time.Now()
 
-	// Place the bare error shortly before the first ticker firing. It is fresh
-	// data, so the ticker must leave the stream open for an authoritative event.
-	time.Sleep(700 * time.Millisecond)
-	_, err := io.WriteString(writer, "data: {\"type\":\"error\",\"error\":{\"code\":\"transient\",\"message\":\"retrying\"}}\n\n")
-	require.NoError(t, err)
-	time.Sleep(500 * time.Millisecond)
-	_, err = io.WriteString(writer, "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_late\",\"status\":\"completed\",\"output\":[],\"usage\":{\"input_tokens\":5,\"output_tokens\":1}}}\n\n")
-	require.NoError(t, err)
-	require.NoError(t, writer.Close())
+		// Virtual time preserves the original ordering without scheduler jitter:
+		// bare error at 700ms, idle tick at 1s, completed at 1200ms.
+		time.Sleep(700 * time.Millisecond)
+		writeOpenAIResponseFlushFrame(t, writer, "data: {\"type\":\"error\",\"error\":{\"code\":\"transient\",\"message\":\"retrying\"}}\n\n")
+		synctest.Wait()
+		time.Sleep(500 * time.Millisecond)
+		synctest.Wait()
+		require.Empty(t, errCh, "the idle tick must leave a recently active stream open")
+		gotBody, flushes := recorder.snapshot()
+		require.Empty(t, gotBody)
+		require.Empty(t, flushes)
 
-	require.NoError(t, <-errCh)
-	result := <-resultCh
-	require.NotNil(t, result)
-	require.Equal(t, 5, result.usage.InputTokens)
-	gotBody, _ := recorder.snapshot()
-	require.Contains(t, gotBody, `"type":"response.completed"`)
-	require.NotContains(t, gotBody, `"type":"response.failed"`)
+		writeOpenAIResponseFlushFrame(t, writer, "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_late\",\"status\":\"completed\",\"output\":[],\"usage\":{\"input_tokens\":5,\"output_tokens\":1}}}\n\n")
+		synctest.Wait()
+		// Do not send EOF: only the completed event may finish this stream.
+		require.Len(t, errCh, 1, "completed must finish the handler without EOF")
+		require.NoError(t, <-errCh)
+		result := <-resultCh
+		require.NotNil(t, result)
+		require.Equal(t, 5, result.usage.InputTokens)
+		require.Equal(t, 1, result.usage.OutputTokens)
+		require.Equal(t, 1200*time.Millisecond, time.Since(started))
+		gotBody, flushes = recorder.snapshot()
+		require.Equal(t, 1, strings.Count(gotBody, `"type":"response.completed"`))
+		require.NotContains(t, gotBody, `"type":"response.failed"`)
+		require.NotContains(t, gotBody, `"type":"error"`)
+		require.Len(t, flushes, 1)
+	})
+}
+
+func TestOpenAIResponseFlush_IdleTimeoutReleasesLateWriter(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		reader, writer := newOpenAIResponseFlushTestPipe(t)
+		recorder := newOpenAIResponseFlushRecorder()
+		resultCh, errCh := runOpenAIResponseFlushTestAsync(recorder, reader, config.GatewayConfig{StreamDataIntervalTimeout: 1})
+		synctest.Wait()
+
+		// Model a producer descheduled until after the idle timeout. The caller
+		// must close the body even when no terminal event has been received.
+		time.Sleep(2 * time.Second)
+		synctest.Wait()
+		require.Len(t, errCh, 1, "idle timeout must finish the handler")
+		require.ErrorContains(t, <-errCh, "stream data interval timeout")
+		require.NotNil(t, <-resultCh)
+
+		writeErrors := make(chan error, 2)
+		go func() {
+			for _, frame := range []string{
+				"data: {\"type\":\"error\",\"error\":{\"code\":\"transient\",\"message\":\"retrying\"}}\n\n",
+				"data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\"}}\n\n",
+			} {
+				_, err := io.WriteString(writer, frame)
+				writeErrors <- err
+			}
+		}()
+		synctest.Wait()
+		require.Len(t, writeErrors, 2, "late writes must not wait on an abandoned reader")
+		require.ErrorIs(t, <-writeErrors, io.ErrClosedPipe)
+		require.ErrorIs(t, <-writeErrors, io.ErrClosedPipe)
+		body, _ := recorder.snapshot()
+		require.Contains(t, body, "stream_timeout")
+		require.NotContains(t, body, `"type":"response.completed"`)
+	})
 }
 
 func TestOpenAIResponseFlush_BareErrorTimeoutSynthesizesFailed(t *testing.T) {
@@ -514,26 +564,25 @@ func TestOpenAIResponseFlush_BareErrorTimeoutSynthesizesFailed(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			reader, writer := io.Pipe()
-			defer func() { _ = writer.Close() }()
-			recorder := newOpenAIResponseFlushRecorder()
-			resultCh, errCh := runOpenAIResponseFlushTestAsync(recorder, reader, tt.cfg)
+			synctest.Test(t, func(t *testing.T) {
+				reader, writer := newOpenAIResponseFlushTestPipe(t)
+				recorder := newOpenAIResponseFlushRecorder()
+				resultCh, errCh := runOpenAIResponseFlushTestAsync(recorder, reader, tt.cfg)
+				synctest.Wait()
+				writeOpenAIResponseFlushFrame(t, writer, "data: {\"type\":\"error\",\"error\":{\"code\":\"invalid_request\",\"message\":\"bad request\"}}\n\n")
+				synctest.Wait()
+				require.Empty(t, errCh, "a bare error must wait for the terminal or timeout")
 
-			_, writeErr := io.WriteString(writer, "data: {\"type\":\"error\",\"error\":{\"code\":\"invalid_request\",\"message\":\"bad request\"}}\n\n")
-			require.NoError(t, writeErr)
-
-			select {
-			case err := <-errCh:
-				require.Error(t, err)
-				require.Contains(t, err.Error(), "upstream response failed")
-			case <-time.After(3 * time.Second):
-				t.Fatal("timed out waiting for bare error terminal synthesis")
-			}
-			require.NotNil(t, <-resultCh)
-			body, flushes := recorder.snapshot()
-			require.NotContains(t, body, `"type":"error"`)
-			require.Equal(t, 1, strings.Count(body, `"type":"response.failed"`))
-			require.Len(t, flushes, 1)
+				time.Sleep(time.Second) // Advance only virtual time, with the pipe still open.
+				synctest.Wait()
+				require.Len(t, errCh, 1, "the configured timeout must synthesize the terminal")
+				require.ErrorContains(t, <-errCh, "upstream response failed")
+				require.NotNil(t, <-resultCh)
+				body, flushes := recorder.snapshot()
+				require.NotContains(t, body, `"type":"error"`)
+				require.Equal(t, 1, strings.Count(body, `"type":"response.failed"`))
+				require.Len(t, flushes, 1)
+			})
 		})
 	}
 }
@@ -594,7 +643,9 @@ func runOpenAIResponseFlushTest(recorder *openAIResponseFlushRecorder, body io.R
 }
 
 func runOpenAIResponseFlushTestWithAccount(recorder *openAIResponseFlushRecorder, body io.ReadCloser, gatewayCfg config.GatewayConfig, account *Account) (*openaiStreamingResult, error) {
-	gin.SetMode(gin.TestMode)
+	// Match Forward's ownership of the upstream body on every return path,
+	// including idle timeouts and failover before a terminal event arrives.
+	defer func() { _ = body.Close() }()
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
 	svc := &OpenAIGatewayService{
@@ -618,6 +669,43 @@ func runOpenAIResponseFlushTestAsync(recorder *openAIResponseFlushRecorder, body
 		errCh <- err
 	}()
 	return resultCh, errCh
+}
+
+// Use inside synctest.Test so cleanup also waits for all scanner/handler
+// goroutines to exit, including when an assertion aborts the test.
+func newOpenAIResponseFlushTestPipe(t *testing.T) (*io.PipeReader, *io.PipeWriter) {
+	t.Helper()
+	reader, writer := io.Pipe()
+	t.Cleanup(func() {
+		_ = reader.Close()
+		_ = writer.Close()
+		synctest.Wait()
+	})
+	return reader, writer
+}
+
+func writeOpenAIResponseFlushFrame(t *testing.T, writer *io.PipeWriter, frame string) {
+	t.Helper()
+	type writeResult struct {
+		n   int
+		err error
+	}
+	written := make(chan writeResult, 1)
+	go func() {
+		n, err := io.WriteString(writer, frame)
+		written <- writeResult{n: n, err: err}
+	}()
+	timer := time.NewTimer(3 * time.Second)
+	defer timer.Stop()
+	select {
+	case result := <-written:
+		require.NoError(t, result.err)
+		require.Equal(t, len(frame), result.n)
+	case <-timer.C:
+		_ = writer.CloseWithError(context.DeadlineExceeded)
+		result := <-written // Closing the pipe releases the blocked writer.
+		t.Fatalf("SSE write timed out after %d bytes: %v", result.n, result.err)
+	}
 }
 
 func waitOpenAIResponseFlushCount(t *testing.T, recorder *openAIResponseFlushRecorder, want int) {
@@ -669,7 +757,7 @@ func (r *hangingOpenAISSEAfterTerminal) Close() error {
 }
 
 func TestOpenAIResponseFlush_TerminalEventEndsStreamWithoutEOF(t *testing.T) {
-	body := "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"output\":[],\"usage\":{\"input_tokens\":7,\"output_tokens\":5}}}\n\n"
+	body := "data: {\"type\":\"response.completed\",\"response\":{\"created_at\":1700000000,\"status\":\"completed\",\"output\":[],\"usage\":{\"input_tokens\":7,\"output_tokens\":5}}}\n\n"
 	reader := &hangingOpenAISSEAfterTerminal{payload: []byte(body), release: make(chan struct{})}
 	recorder := newOpenAIResponseFlushRecorder()
 	resultCh, errCh := runOpenAIResponseFlushTestAsync(recorder, reader, config.GatewayConfig{StreamKeepaliveInterval: 1, StreamDataIntervalTimeout: 30})

@@ -16,6 +16,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/Wei-Shaw/sub2api/internal/payment/provider"
+	"github.com/google/uuid"
 )
 
 // --- Order Status Constants ---
@@ -134,6 +135,11 @@ type RefundPlan struct {
 	BalanceToDeduct float64
 	SubDaysToDeduct int
 	SubscriptionID  int64
+	RequestID       string
+	RefundID        string // Legacy alias for callers that supplied a request ID here.
+	OriginalStatus  string
+	// deductionHeld 表示扣减已在进入 REFUND_PENDING 前执行并保留，终态收敛时不再重复扣减。
+	deductionHeld bool
 }
 
 type RefundResult struct {
@@ -201,6 +207,7 @@ type PaymentService struct {
 	notificationEmailService *NotificationEmailService
 	activityService          paymentActivityService
 	balanceCacheInvalidator  UserBalanceCacheInvalidator
+	refundRecoveryOwner      string
 }
 
 type paymentActivityService interface {
@@ -209,7 +216,7 @@ type paymentActivityService interface {
 }
 
 func NewPaymentService(entClient *dbent.Client, registry *payment.Registry, loadBalancer payment.LoadBalancer, redeemService *RedeemService, subscriptionSvc *SubscriptionService, configService *PaymentConfigService, userRepo UserRepository, groupRepo GroupRepository, affiliateService *AffiliateService) *PaymentService {
-	svc := &PaymentService{entClient: entClient, registry: registry, loadBalancer: newVisibleMethodLoadBalancer(loadBalancer, configService), redeemService: redeemService, subscriptionSvc: subscriptionSvc, configService: configService, userRepo: userRepo, groupRepo: groupRepo, affiliateService: affiliateService}
+	svc := &PaymentService{entClient: entClient, registry: registry, loadBalancer: newVisibleMethodLoadBalancer(loadBalancer, configService), redeemService: redeemService, subscriptionSvc: subscriptionSvc, configService: configService, userRepo: userRepo, groupRepo: groupRepo, affiliateService: affiliateService, refundRecoveryOwner: uuid.NewString()}
 	svc.resumeService = psNewPaymentResumeService(configService)
 	return svc
 }
