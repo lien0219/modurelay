@@ -719,6 +719,9 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			if result == nil {
 				return errors.New("websocket http bridge turn result is nil")
 			}
+			if hooks != nil && hooks.AfterTurnForwarded != nil {
+				hooks.AfterTurnForwarded(turn)
+			}
 			// turnReplayInput/turnAccountFailoverInput 可能共享同一头数组（转移自
 			// bridgeCurrentItems），保存历史必须经 combine 新建头，禁止就地 append。
 			bridgeReplayInput = turnReplayInput
@@ -1847,6 +1850,9 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		}
 		if result == nil {
 			return errors.New("websocket turn result is nil")
+		}
+		if hooks != nil && hooks.AfterTurnForwarded != nil {
+			hooks.AfterTurnForwarded(turn)
 		}
 		responseID := strings.TrimSpace(result.RequestID)
 		lastTurnResponseID = responseID

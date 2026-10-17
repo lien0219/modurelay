@@ -60,9 +60,11 @@ type OpsAggregationService struct {
 	redisClient redis.UniversalClient
 	instanceID  string
 
-	stopCh    chan struct{}
-	startOnce sync.Once
-	stopOnce  sync.Once
+	stopCh      chan struct{}
+	startOnce   sync.Once
+	lifecycleMu sync.Mutex
+	stopped     bool
+	workers     sync.WaitGroup
 
 	hourlyMu sync.Mutex
 	dailyMu  sync.Mutex
@@ -93,11 +95,17 @@ func (s *OpsAggregationService) Start() {
 		return
 	}
 	s.startOnce.Do(func() {
+		s.lifecycleMu.Lock()
+		defer s.lifecycleMu.Unlock()
+		if s.stopped {
+			return
+		}
 		if s.stopCh == nil {
 			s.stopCh = make(chan struct{})
 		}
-		go s.hourlyLoop()
-		go s.dailyLoop()
+		s.workers.Add(2)
+		go func() { defer s.workers.Done(); s.hourlyLoop() }()
+		go func() { defer s.workers.Done(); s.dailyLoop() }()
 	})
 }
 
@@ -105,11 +113,17 @@ func (s *OpsAggregationService) Stop() {
 	if s == nil {
 		return
 	}
-	s.stopOnce.Do(func() {
+	s.lifecycleMu.Lock()
+	if !s.stopped {
+		s.stopped = true
 		if s.stopCh != nil {
 			close(s.stopCh)
 		}
-	})
+	}
+	s.lifecycleMu.Unlock()
+	// Closing stopCh only stops future ticks; an in-progress aggregation still
+	// uses the database and must be included in the application's cleanup wait.
+	s.workers.Wait()
 }
 
 func (s *OpsAggregationService) hourlyLoop() {

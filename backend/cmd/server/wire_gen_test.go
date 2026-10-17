@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -108,6 +109,6 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 	)
 
 	require.NotPanics(t, func() {
-		cleanup()
+		require.NoError(t, cleanup(context.Background()))
 	})
 }

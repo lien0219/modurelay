@@ -103,7 +103,10 @@ Apple-specific image overrides are available:
 APPLE_CONTAINER_SUB2API_IMAGE=weishaw/sub2api:latest
 APPLE_CONTAINER_POSTGRES_IMAGE=postgres:18-alpine
 APPLE_CONTAINER_REDIS_IMAGE=redis:8-alpine
+APPLE_CONTAINER_STOP_TIMEOUT_SECONDS=960
 ```
+
+The application stop timeout covers the default 945-second graceful shutdown budget with 15 seconds of margin. Increase it when increasing the `SERVER_*` shutdown budgets; PostgreSQL and Redis retain their 30-second stop timeout. See [GRACEFUL_SHUTDOWN.md](GRACEFUL_SHUTDOWN.md).
 
 By default, Apple `container` selects the private IPv4 subnet for the managed
 network. Set `APPLE_CONTAINER_NETWORK_SUBNET` only when host-side tooling needs

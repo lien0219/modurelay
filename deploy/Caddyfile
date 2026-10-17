@@ -28,10 +28,11 @@ api.sub2api.com {
 	# 反向代理配置
 	# =========================================================================
 	reverse_proxy localhost:8080 {
-		# 健康检查
-		health_uri /health
-		health_interval 30s
-		health_timeout 10s
+		# 摘流检查；2s 周期 + 1s 超时须小于默认 5s 传播窗口。
+		# /health 保留给存活检查，不能用于流量准入。
+		health_uri /ready
+		health_interval 2s
+		health_timeout 1s
 		health_status 200
 
 		# 负载均衡策略（单节点可忽略，多节点时有用）

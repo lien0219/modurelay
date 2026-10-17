@@ -60,6 +60,14 @@ if printf '%s\n' "$normalized_config" | grep -Eiq '^flush_interval([[:space:]]|$
 	exit 1
 fi
 
+# Readiness must be detected inside the application's default 5s propagation window.
+for required_health_line in 'health_uri /ready' 'health_interval 2s' 'health_timeout 1s'; do
+	if ! printf '%s\n' "$normalized_config" | grep -Fxq "$required_health_line"; then
+		echo "Caddyfile must contain: $required_health_line" >&2
+		exit 1
+	fi
+done
+
 encode_directive_count=$(printf '%s\n' "$normalized_config" | awk '$1 == "encode" { count++ } END { print count + 0 }')
 if [ "$encode_directive_count" -ne 1 ]; then
 	echo "Caddyfile must contain exactly one explicit encode block" >&2
@@ -82,4 +90,4 @@ if [ "$actual_encode_block" != "$expected_encode_block" ]; then
 	exit 1
 fi
 
-echo "Caddyfile preserves backend cache policy, SSE streaming, and non-SSE compression"
+echo "Caddyfile preserves readiness draining, backend cache policy, SSE streaming, and non-SSE compression"

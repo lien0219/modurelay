@@ -36,6 +36,13 @@ server:
   # Keep-alive idle timeout in seconds.
   # Keep-Alive 空闲连接超时（秒）。
   idle_timeout: 120
+  # SIGTERM: readiness delay, request draining, cancellation, then cleanup.
+  # 各阶段独立预算（秒）；容器/服务停止宽限必须覆盖总和并留余量。
+  # See / 参阅 GRACEFUL_SHUTDOWN.md. Defaults total 945s; outer grace is 960s.
+  shutdown_timeout_seconds: 900  # 1..86400, includes HTTP/SSE and WebSocket work
+  drain_delay_seconds: 5        # 0..300, readiness propagation before admission closes
+  cleanup_timeout_seconds: 30   # 1..300, persistence queues and resources
+  force_close_timeout_seconds: 10 # 1..300, cancelled request handlers finishing
   # Trusted proxies used when security.trust_forwarded_ip_for_api_key_acl is false.
   # List only the exact proxy addresses that connect directly to Sub2API.
   # Set [] explicitly to disable forwarded-IP trust in high-security mode.

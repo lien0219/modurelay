@@ -21,6 +21,7 @@ LOCK_DIR="${TMPDIR:-/tmp}/sub2api-apple-container.lock"
 LOCK_ACQUIRED=false
 
 APP_IMAGE=""
+APP_STOP_TIMEOUT_SECONDS=960
 POSTGRES_IMAGE=""
 REDIS_IMAGE=""
 BIND_HOST=""
@@ -415,6 +416,7 @@ prepare_environment() {
     validate_env_file_security
 
     APP_IMAGE="$(read_env_value APPLE_CONTAINER_SUB2API_IMAGE weishaw/sub2api:latest)"
+    prepare_stop_timeout
     POSTGRES_IMAGE="$(read_env_value APPLE_CONTAINER_POSTGRES_IMAGE postgres:18-alpine)"
     REDIS_IMAGE="$(read_env_value APPLE_CONTAINER_REDIS_IMAGE redis:8-alpine)"
     BIND_HOST="$(read_env_value BIND_HOST 0.0.0.0)"
@@ -612,6 +614,24 @@ start_container_if_needed() {
     container start "${container_name}" >/dev/null
 }
 
+prepare_stop_timeout() {
+    APP_STOP_TIMEOUT_SECONDS=960
+    # down/destroy also work if the deployment env file has already been removed.
+    if [[ -f "${ENV_FILE}" ]]; then
+        APP_STOP_TIMEOUT_SECONDS="$(read_env_value APPLE_CONTAINER_STOP_TIMEOUT_SECONDS 960)"
+    fi
+    [[ "${APP_STOP_TIMEOUT_SECONDS}" =~ ^[1-9][0-9]{0,5}$ ]] || \
+        die "APPLE_CONTAINER_STOP_TIMEOUT_SECONDS must be a positive integer up to 999999."
+}
+
+container_stop_timeout() {
+    if [[ "$1" == "${APP_CONTAINER}" ]]; then
+        printf '%s\n' "${APP_STOP_TIMEOUT_SECONDS}"
+    else
+        printf '%s\n' 30
+    fi
+}
+
 stop_container_if_running() {
     local container_name=$1
 
@@ -621,7 +641,7 @@ stop_container_if_running() {
     assert_resource_owned container "${container_name}"
     if container_is_running "${container_name}"; then
         info "Stopping ${container_name}..."
-        container stop --time 30 "${container_name}" >/dev/null
+        container stop --time "$(container_stop_timeout "${container_name}")" "${container_name}" >/dev/null
     fi
 }
 
@@ -633,7 +653,7 @@ delete_container_if_present() {
     fi
     assert_resource_owned container "${container_name}"
     if container_is_running "${container_name}"; then
-        container stop --time 30 "${container_name}" >/dev/null
+        container stop --time "$(container_stop_timeout "${container_name}")" "${container_name}" >/dev/null
     fi
     info "Deleting ${container_name}..."
     container delete "${container_name}" >/dev/null
@@ -757,6 +777,7 @@ cmd_up() {
 }
 
 cmd_down() {
+    prepare_stop_timeout
     require_container_version
     if ! system_is_running; then
         info "Apple container services are already stopped."
@@ -920,6 +941,7 @@ cmd_destroy() {
         return
     fi
 
+    prepare_stop_timeout
     delete_container_if_present "${APP_CONTAINER}"
     delete_container_if_present "${REDIS_CONTAINER}"
     delete_container_if_present "${POSTGRES_CONTAINER}"

@@ -5,7 +5,8 @@ services:
     image: "${MODURELAY_IMAGE:-ghcr.io/lien0219/modurelay:main}"
     container_name: modurelay
     restart: unless-stopped
-    stop_grace_period: 30s
+    # Request drain + cancellation + cleanup + safety margin; see GRACEFUL_SHUTDOWN.md.
+    stop_grace_period: ${APP_STOP_GRACE_PERIOD:-16m}
 
     security_opt:
       - no-new-privileges:true
@@ -29,6 +30,10 @@ services:
 
       SERVER_HOST: "0.0.0.0"
       SERVER_PORT: "8080"
+      SERVER_SHUTDOWN_TIMEOUT_SECONDS: "${SERVER_SHUTDOWN_TIMEOUT_SECONDS:-900}"
+      SERVER_DRAIN_DELAY_SECONDS: "${SERVER_DRAIN_DELAY_SECONDS:-5}"
+      SERVER_CLEANUP_TIMEOUT_SECONDS: "${SERVER_CLEANUP_TIMEOUT_SECONDS:-30}"
+      SERVER_FORCE_CLOSE_TIMEOUT_SECONDS: "${SERVER_FORCE_CLOSE_TIMEOUT_SECONDS:-10}"
       SERVER_MODE: "release"
       SERVER_FRONTEND_URL: "${SERVER_FRONTEND_URL:?SERVER_FRONTEND_URL is required}"
       RUN_MODE: "${RUN_MODE:-standard}"

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/lifecycle"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 )
@@ -26,6 +27,37 @@ func RegisterMetricsRoutes(r *gin.Engine, cfg *config.Config, source clusterMetr
 	}
 	token := strings.TrimSpace(cfg.Ops.Metrics.Token)
 	expected := sha256.Sum256([]byte(token))
+	// This endpoint is local to the scraped instance; it deliberately does not
+	// query Redis/DB or change the cluster-wide semantics of /metrics.
+	r.GET("/metrics/instance", func(c *gin.Context) {
+		provided, valid := strings.CutPrefix(c.GetHeader("Authorization"), "Bearer ")
+		actual := sha256.Sum256([]byte(provided))
+		if token == "" || !valid || subtle.ConstantTimeCompare(actual[:], expected[:]) != 1 {
+			c.Header("WWW-Authenticate", "Bearer")
+			c.AbortWithStatus(http.StatusUnauthorized)
+			return
+		}
+		manager := lifecycle.ManagerFromContext(c.Request.Context())
+		if manager == nil {
+			c.AbortWithStatus(http.StatusServiceUnavailable)
+			return
+		}
+		snapshot := manager.Snapshot()
+		draining := 0
+		if snapshot.Draining {
+			draining = 1
+		}
+		var out strings.Builder
+		gauge := func(name, help string, value int) {
+			fmt.Fprintf(&out, "# HELP %s %s\n# TYPE %s gauge\n%s %d\n", name, help, name, name, value)
+		}
+		gauge("modurelay_instance_draining", "Whether this instance is draining (1) or accepting traffic (0).", draining)
+		gauge("modurelay_instance_active_http_requests", "HTTP handlers still running on this instance, excluding probes and metrics.", snapshot.ActiveHTTP)
+		gauge("modurelay_instance_active_websocket_sessions", "Upgraded sessions still running or finalizing on this instance.", snapshot.ActiveWebSockets)
+		gauge("modurelay_instance_active_websocket_turns", "Admitted Responses WebSocket turns still running on this instance.", snapshot.ActiveTurns)
+		c.Header("Cache-Control", "no-store")
+		c.Data(http.StatusOK, "text/plain; version=0.0.4; charset=utf-8", []byte(out.String()))
+	})
 	r.GET("/metrics", func(c *gin.Context) {
 		provided, valid := strings.CutPrefix(c.GetHeader("Authorization"), "Bearer ")
 		actual := sha256.Sum256([]byte(provided))

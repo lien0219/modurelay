@@ -62,9 +62,11 @@ type OpsMetricsCollector struct {
 	runtimeSnapshot         *OpsSystemMetricsSnapshot
 	runtimeDone             chan struct{}
 
-	stopCh    chan struct{}
-	startOnce sync.Once
-	stopOnce  sync.Once
+	stopCh      chan struct{}
+	startOnce   sync.Once
+	lifecycleMu sync.Mutex
+	stopped     bool
+	workers     sync.WaitGroup
 
 	skipLogMu sync.Mutex
 	skipLogAt time.Time
@@ -96,12 +98,18 @@ func (c *OpsMetricsCollector) Start() {
 		return
 	}
 	c.startOnce.Do(func() {
+		c.lifecycleMu.Lock()
+		defer c.lifecycleMu.Unlock()
+		if c.stopped {
+			return
+		}
 		if c.stopCh == nil {
 			c.stopCh = make(chan struct{})
 		}
-		go c.run()
 		c.runtimeDone = make(chan struct{})
-		go c.runtimeLoop()
+		c.workers.Add(2)
+		go func() { defer c.workers.Done(); c.run() }()
+		go func() { defer c.workers.Done(); c.runtimeLoop() }()
 	})
 }
 
@@ -109,14 +117,17 @@ func (c *OpsMetricsCollector) Stop() {
 	if c == nil {
 		return
 	}
-	c.stopOnce.Do(func() {
+	c.lifecycleMu.Lock()
+	if !c.stopped {
+		c.stopped = true
 		if c.stopCh != nil {
 			close(c.stopCh)
 		}
-		if c.runtimeDone != nil {
-			<-c.runtimeDone
-		}
-	})
+	}
+	c.lifecycleMu.Unlock()
+	// Both the DB collector and runtime publisher must finish before their
+	// Redis/database dependencies can close. Start cannot add work after Stop.
+	c.workers.Wait()
 }
 
 func (c *OpsMetricsCollector) run() {

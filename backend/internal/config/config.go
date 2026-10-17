@@ -689,6 +689,12 @@ type PricingConfig struct {
 }
 
 type ServerConfig struct {
+	// Shutdown phases have separate budgets so request draining cannot consume
+	// the time reserved for cancellation and persistence/log cleanup.
+	ShutdownTimeoutSeconds   int       `mapstructure:"shutdown_timeout_seconds"`
+	DrainDelaySeconds        int       `mapstructure:"drain_delay_seconds"`
+	CleanupTimeoutSeconds    int       `mapstructure:"cleanup_timeout_seconds"`
+	ForceCloseTimeoutSeconds int       `mapstructure:"force_close_timeout_seconds"`
 	Host                     string    `mapstructure:"host"`
 	Port                     int       `mapstructure:"port"`
 	Mode                     string    `mapstructure:"mode"`                  // debug/release
@@ -2170,6 +2176,10 @@ func setDefaults() {
 	viper.SetDefault("server.read_header_timeout", 10) // 10秒读取请求头
 	viper.SetDefault("server.max_header_bytes", 64*1024)
 	viper.SetDefault("server.idle_timeout", 120) // 120秒空闲超时
+	viper.SetDefault("server.shutdown_timeout_seconds", 900)
+	viper.SetDefault("server.drain_delay_seconds", 5)
+	viper.SetDefault("server.cleanup_timeout_seconds", 30)
+	viper.SetDefault("server.force_close_timeout_seconds", 10)
 	viper.SetDefault("server.max_request_body_size", int64(256*1024*1024))
 	// H2C 默认配置
 	viper.SetDefault("server.h2c.enabled", false)
@@ -2882,6 +2892,18 @@ func (c *Config) Validate() error {
 	}
 	if c.Plugins.StartTimeoutSeconds < 1 || c.Plugins.StartTimeoutSeconds > 120 {
 		return fmt.Errorf("plugins.start_timeout_seconds must be between 1 and 120")
+	}
+	if c.Server.ShutdownTimeoutSeconds < 1 || c.Server.ShutdownTimeoutSeconds > 86400 {
+		return fmt.Errorf("server.shutdown_timeout_seconds must be between 1 and 86400 seconds")
+	}
+	if c.Server.DrainDelaySeconds < 0 || c.Server.DrainDelaySeconds > 300 {
+		return fmt.Errorf("server.drain_delay_seconds must be between 0 and 300 seconds")
+	}
+	if c.Server.CleanupTimeoutSeconds < 1 || c.Server.CleanupTimeoutSeconds > 300 {
+		return fmt.Errorf("server.cleanup_timeout_seconds must be between 1 and 300 seconds")
+	}
+	if c.Server.ForceCloseTimeoutSeconds < 1 || c.Server.ForceCloseTimeoutSeconds > 300 {
+		return fmt.Errorf("server.force_close_timeout_seconds must be between 1 and 300 seconds")
 	}
 	if c.Server.ReadHeaderTimeout < 1 || c.Server.ReadHeaderTimeout > 60 {
 		return fmt.Errorf("server.read_header_timeout must be between 1 and 60 seconds")

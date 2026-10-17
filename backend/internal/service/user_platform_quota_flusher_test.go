@@ -3,11 +3,169 @@ package service
 import (
 	"context"
 	"errors"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/stretchr/testify/require"
 )
+
+// blockingQuotaFlusherStore models SPOP ownership: while a batch is blocked,
+// another flush sees an empty dirty set. A failed owner must re-add its keys
+// before the shutdown flush can retry them and dependencies can safely close.
+type blockingQuotaFlusherStore struct {
+	mu         sync.Mutex
+	dirty      []UserPlatformQuotaKey
+	stage      string
+	blockOnce  sync.Once
+	entered    chan struct{}
+	release    chan struct{}
+	closed     atomic.Bool
+	afterClose atomic.Int64
+	popCalls   atomic.Int64
+	writeOK    atomic.Int64
+}
+
+func (s *blockingQuotaFlusherStore) checkOpen() error {
+	if s.closed.Load() {
+		s.afterClose.Add(1)
+		return errors.New("flusher dependencies already closed")
+	}
+	return nil
+}
+
+func (s *blockingQuotaFlusherStore) failBlockedStage(stage string) error {
+	if s.stage != stage {
+		return nil
+	}
+	blocked := false
+	s.blockOnce.Do(func() {
+		blocked = true
+		close(s.entered)
+		<-s.release
+	})
+	if blocked {
+		return errors.New("in-flight batch failed")
+	}
+	return nil
+}
+
+func (s *blockingQuotaFlusherStore) PopDirtyUserPlatformQuotaKeys(context.Context, int) ([]UserPlatformQuotaKey, error) {
+	s.popCalls.Add(1)
+	if err := s.checkOpen(); err != nil {
+		return nil, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	keys := s.dirty
+	s.dirty = nil
+	return keys, nil
+}
+
+func (s *blockingQuotaFlusherStore) ReaddDirtyUserPlatformQuotaKeys(_ context.Context, keys []UserPlatformQuotaKey) error {
+	if err := s.checkOpen(); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	s.dirty = append(s.dirty, keys...)
+	s.mu.Unlock()
+	return nil
+}
+
+func (s *blockingQuotaFlusherStore) BatchGetUserPlatformQuotaCache(context.Context, []UserPlatformQuotaKey) ([]*UserPlatformQuotaCacheEntry, error) {
+	if err := s.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := s.failBlockedStage("batch_get"); err != nil {
+		return nil, err
+	}
+	return []*UserPlatformQuotaCacheEntry{makeEntry(1, 2, 3)}, nil
+}
+
+func (s *blockingQuotaFlusherStore) BatchSnapshotUsage(context.Context, []UserPlatformQuotaSnapshot, time.Time) error {
+	if err := s.checkOpen(); err != nil {
+		return err
+	}
+	if err := s.failBlockedStage("db_write"); err != nil {
+		return err
+	}
+	s.writeOK.Add(1)
+	return nil
+}
+
+func TestFlusher_StopWaitsForInflightBatchAndRetriesBeforeDependenciesClose(t *testing.T) {
+	for _, stage := range []string{"batch_get", "db_write"} {
+		t.Run(stage, func(t *testing.T) {
+			store := &blockingQuotaFlusherStore{
+				dirty: []UserPlatformQuotaKey{{UserID: 1, Platform: "openai"}},
+				stage: stage, entered: make(chan struct{}), release: make(chan struct{}),
+			}
+			var releaseOnce sync.Once
+			release := func() { releaseOnce.Do(func() { close(store.release) }) }
+			t.Cleanup(release)
+			f := newTestFlusher(store, store)
+			timingWheel, err := NewTimingWheelService()
+			require.NoError(t, err)
+			t.Cleanup(timingWheel.Stop)
+			f.timingWheel = timingWheel
+			tickDone := make(chan struct{})
+			go func() { defer close(tickDone); f.tick() }()
+			select {
+			case <-store.entered:
+			case <-time.After(time.Second):
+				t.Fatal("tick did not reach the blocking dependency")
+			}
+			var queuedTicks sync.WaitGroup
+			queuedTicks.Add(8)
+			for range 8 {
+				go func() { defer queuedTicks.Done(); f.tick() }()
+			}
+			stopDone := make(chan struct{})
+			go func() {
+				f.Stop()
+				store.closed.Store(true) // Simulate the next application cleanup phase.
+				close(stopDone)
+			}()
+			require.Eventually(t, f.stopped.Load, time.Second, time.Millisecond)
+			secondStopDone := make(chan struct{})
+			go func() { f.Stop(); close(secondStopDone) }()
+			select {
+			case <-stopDone:
+				t.Error("Stop returned while its previously popped batch was still in flight")
+			case <-time.After(20 * time.Millisecond):
+			}
+			select {
+			case <-secondStopDone:
+				t.Error("concurrent Stop did not wait for the same final flush")
+			case <-time.After(20 * time.Millisecond):
+			}
+			// Even an already-dispatched timer callback must not pop another batch
+			// after Stop begins, or race the recovery/final flush below.
+			lateTickDone := make(chan struct{})
+			go func() { f.tick(); close(lateTickDone) }()
+			require.EqualValues(t, 1, store.popCalls.Load())
+			release()
+			for _, done := range []chan struct{}{tickDone, stopDone, secondStopDone, lateTickDone} {
+				select {
+				case <-done:
+				case <-time.After(time.Second):
+					t.Fatal("flusher shutdown did not finish after the dependency unblocked")
+				}
+			}
+			queuedTicks.Wait()
+			require.Zero(t, store.afterClose.Load(), "dependency cleanup must follow all in-flight and final flush work")
+			require.EqualValues(t, 1, store.writeOK.Load(), "final flush must persist the recovered dirty key")
+			require.EqualValues(t, 1, f.metrics.DirtyReaddTotal.Load())
+			require.Zero(t, f.metrics.DirtyLostTotal.Load())
+			require.EqualValues(t, 2, store.popCalls.Load(), "one running batch and exactly one final flush")
+			f.Stop()
+			f.tick()
+			require.EqualValues(t, 2, store.popCalls.Load(), "Stop must stay idempotent and ticks must stay stopped")
+		})
+	}
+}
 
 // ---------------------------------------------------------------------------
 // Mock: quotaDirtyCache

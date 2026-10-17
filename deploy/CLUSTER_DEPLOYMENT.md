@@ -36,6 +36,10 @@ OPS_METRICS_ENABLED=true
 
 Redis ACL、密码、TLS 继续使用 `REDIS_USERNAME`、`REDIS_PASSWORD`、`REDIS_ENABLE_TLS`。Cluster 只支持 DB 0，种子节点可以只有一个，但应用必须能访问 Redis 发现到的所有节点地址，不能只暴露一个随机转发到 Redis 节点的普通 Service。连接池参数在 Cluster 中按节点计算，应相应降低原单节点环境里过大的 pool/idle 配置。计费、锁和限流不从 Redis 副本读取。
 
+## 滚动更新与缩容
+
+应用使用 `/ready` 表示是否接流，`/health` 保留存活语义。SIGTERM 先摘流，再等待 HTTP/SSE 与 WebSocket 请求收尾，并预留计费及日志清理预算。默认应用各阶段最多 945 秒，外层停止宽限设为 960 秒；完整参数、边界和 Kubernetes 补丁见 [GRACEFUL_SHUTDOWN.md](GRACEFUL_SHUTDOWN.md)。本实例排空状态由鉴权的 `/metrics/instance` 提供，不能用已完成请求的全局 QPS 代替在途请求数。
+
 ## 一致性边界
 
 | 数据路径 | 读取位置 | 写入位置 |
