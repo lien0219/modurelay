@@ -2,7 +2,10 @@
 // registry, load balancing, and shared utilities for the payment subsystem.
 package payment
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // PaymentType represents a supported payment method.
 type PaymentType = string
@@ -179,19 +182,24 @@ type PaymentNotification struct {
 
 // RefundRequest contains the parameters for requesting a refund.
 type RefundRequest struct {
-	TradeNo string
-	OrderID string
-	Amount  string // Refund amount formatted to 2 decimal places
-	Reason  string
+	TradeNo   string
+	OrderID   string
+	RequestID string // Stable merchant request ID persisted before provider submission.
+	RefundID  string // Legacy alias for callers that supplied a request ID here.
+	Amount    string // Refund amount formatted to 2 decimal places
+	Reason    string
 }
 
 // RefundQueryRequest contains identifiers needed to query a previously
 // requested refund.
 type RefundQueryRequest struct {
-	TradeNo  string
-	OrderID  string
-	RefundID string
-	Amount   string
+	TradeNo   string
+	OrderID   string
+	RequestID string // Stable merchant request ID for provider-specific reconciliation.
+	RefundID  string // Provider-issued refund resource ID, when available.
+	Amount    string
+	// RequestedAt 为退款进入 pending 的时间；零值表示未知。
+	RequestedAt time.Time
 }
 
 // RefundResponse is returned after a refund request.
@@ -232,6 +240,16 @@ type Provider interface {
 type RefundQueryProvider interface {
 	Provider
 	QueryRefund(ctx context.Context, req RefundQueryRequest) (*RefundResponse, error)
+}
+
+// NotificationConfirmer extends Provider for gateways whose verified
+// notifications are not sufficient proof of payment on their own. The webhook
+// path calls ConfirmNotification on the instance that verified the
+// notification before fulfillment; implementations query the upstream order
+// and may fill in missing notification fields (e.g. TradeNo) from it.
+type NotificationConfirmer interface {
+	Provider
+	ConfirmNotification(ctx context.Context, n *PaymentNotification) error
 }
 
 // CancelableProvider extends Provider with the ability to cancel pending payments.

@@ -92,6 +92,17 @@ func TestMapWxState(t *testing.T) {
 	}
 }
 
+func TestWxpayRefundIDForRequestPrefersAttemptID(t *testing.T) {
+	t.Parallel()
+
+	if got := wxpayRefundIDForRequest("sub2_order", "12.34", "mr-refund-attempt-2"); got != "mr-refund-attempt-2" {
+		t.Fatalf("wxpayRefundIDForRequest() = %q, want supplied attempt ID", got)
+	}
+	if got := wxpayRefundIDForRequest("sub2_order", "12.34", ""); got != "sub2_order-refund-1234" {
+		t.Fatalf("legacy refund ID = %q, want order-and-amount fallback", got)
+	}
+}
+
 func TestWxSV(t *testing.T) {
 	t.Parallel()
 

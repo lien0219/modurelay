@@ -273,8 +273,18 @@ func (a *Airwallex) Refund(ctx context.Context, req payment.RefundRequest) (*pay
 		return nil, fmt.Errorf("airwallex auth: %w", err)
 	}
 
+	requestID := strings.TrimSpace(req.RequestID)
+	if requestID == "" {
+		requestID = airwallexDeterministicRequestID("refund", intentID, req.Amount)
+	} else {
+		// Airwallex requires a UUID-shaped request_id; keep the service-level
+		// merchant attempt ID in metadata/audit while deriving a valid provider key.
+		if _, err := uuid.Parse(requestID); err != nil {
+			requestID = airwallexDeterministicRequestID("refund-attempt", requestID)
+		}
+	}
 	payload := airwallexCreateRefundRequest{
-		RequestID:       airwallexDeterministicRequestID("refund", intentID, req.Amount),
+		RequestID:       requestID,
 		PaymentIntentID: intentID,
 		Amount:          newAirwallexRequestAmount(amount),
 		Reason:          strings.TrimSpace(req.Reason),
@@ -304,6 +314,9 @@ func (a *Airwallex) QueryRefund(ctx context.Context, req payment.RefundQueryRequ
 	refundID := strings.TrimSpace(req.RefundID)
 	if refundID == "" {
 		return nil, fmt.Errorf("airwallex query refund: missing refund id")
+	}
+	if !strings.HasPrefix(refundID, "ref_") {
+		return nil, fmt.Errorf("airwallex query refund: provider refund ID is unavailable; verify manually")
 	}
 	token, err := a.accessToken(ctx)
 	if err != nil {

@@ -239,6 +239,54 @@ func TestAirwallexRefundRejectsUnsettledStatus(t *testing.T) {
 	}
 }
 
+func TestAirwallexRefundUsesAttemptRequestID(t *testing.T) {
+	t.Parallel()
+
+	var payload airwallexCreateRefundRequest
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/authentication/login":
+			_, _ = w.Write([]byte(`{"token":"token-1","expires_at":"2099-01-01T00:00:00Z"}`))
+		case "/api/v1/pa/refunds/create":
+			body, err := io.ReadAll(r.Body)
+			require.NoError(t, err)
+			require.NoError(t, json.Unmarshal(body, &payload))
+			_, _ = w.Write([]byte(`{"id":"ref_123","payment_intent_id":"int_123","amount":12.34,"currency":"CNY","status":"SETTLED"}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	prov := mustTestAirwallexProvider(t, server)
+	_, err := prov.Refund(context.Background(), payment.RefundRequest{
+		TradeNo:   "int_123",
+		RequestID: "mr-refund-attempt-2",
+		Amount:    "12.34",
+	})
+	require.NoError(t, err)
+	require.Equal(t, airwallexDeterministicRequestID("refund-attempt", "mr-refund-attempt-2"), payload.RequestID)
+}
+
+func TestAirwallexQueryRefundRejectsSyntheticRequestID(t *testing.T) {
+	t.Parallel()
+
+	requestCount := 0
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+		http.Error(w, "unexpected request", http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	prov := mustTestAirwallexProvider(t, server)
+	_, err := prov.QueryRefund(context.Background(), payment.RefundQueryRequest{
+		RefundID: "sub2_order-refund-12.34",
+	})
+
+	require.ErrorContains(t, err, "provider refund ID is unavailable")
+	require.Zero(t, requestCount)
+}
+
 func TestAirwallexAuthErrorIncludesCredentialGuidance(t *testing.T) {
 	t.Parallel()
 

@@ -470,7 +470,7 @@ func (w *Wxpay) Refund(ctx context.Context, req payment.RefundRequest) (*payment
 	}
 	rs := refunddomestic.RefundsApiService{Client: c}
 	cur := wxpayCurrency
-	outRefundNo := wxpayRefundID(req.OrderID, req.Amount)
+	outRefundNo := wxpayRefundIDForRequest(req.OrderID, req.Amount, req.RequestID)
 	res, _, err := rs.Create(ctx, refunddomestic.CreateRequest{
 		OutTradeNo:  core.String(req.OrderID),
 		OutRefundNo: core.String(outRefundNo),
@@ -494,7 +494,7 @@ func (w *Wxpay) QueryRefund(ctx context.Context, req payment.RefundQueryRequest)
 	}
 	outRefundNo := strings.TrimSpace(req.RefundID)
 	if outRefundNo == "" {
-		outRefundNo = wxpayRefundID(req.OrderID, req.Amount)
+		outRefundNo = wxpayRefundIDForRequest(req.OrderID, req.Amount, req.RequestID)
 	}
 	if outRefundNo == "" {
 		return nil, fmt.Errorf("wxpay query refund: missing refund id")
@@ -530,6 +530,24 @@ func wxpayRefundID(orderID, amount string) string {
 		return orderID + "-refund"
 	}
 	return orderID + "-refund-" + amount
+}
+
+func wxpayRefundIDForRequest(orderID, amount, requestID string) string {
+	requestID = strings.TrimSpace(requestID)
+	if requestID != "" {
+		requestID = strings.Map(func(r rune) rune {
+			switch {
+			case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_':
+				return r
+			default:
+				return -1
+			}
+		}, requestID)
+		if requestID != "" {
+			return requestID
+		}
+	}
+	return wxpayRefundID(orderID, amount)
 }
 
 func (w *Wxpay) queryOrderTotalFen(ctx context.Context, c *core.Client, orderID string) (int64, error) {

@@ -5,6 +5,7 @@ import AccountTableFilters from '../AccountTableFilters.vue'
 import Select from '@/components/common/Select.vue'
 import SearchInput from '@/components/common/SearchInput.vue'
 import { CONCRETE_PLATFORM_OPTIONS } from '@/constants/platforms'
+import { BUILTIN_PLATFORM_CATALOG, resetPlatformCatalog, setPlatformCatalog } from '@/constants/platformCatalog'
 import type { AdminGroup } from '@/types'
 
 vi.mock('vue-i18n', async () => {
@@ -36,10 +37,35 @@ function mountFilters(filters: Record<string, unknown> = defaultFilters()) {
 enableAutoUnmount(afterEach)
 afterEach(() => {
   vi.useRealTimers()
+  resetPlatformCatalog()
   document.body.innerHTML = ''
 })
 
 describe('AccountTableFilters', () => {
+  it('reacts to newly registered platforms and emits their account filter without losing other values', async () => {
+    const filters = { ...defaultFilters(), status: 'active', group: '42' }
+    const wrapper = mountFilters(filters)
+    const platformSelect = wrapper.findAllComponents(Select)[0]
+
+    expect(platformSelect.props('options').some(option => option.value === 'acme_router')).toBe(false)
+    setPlatformCatalog({
+      ...BUILTIN_PLATFORM_CATALOG,
+      platforms: [
+        ...BUILTIN_PLATFORM_CATALOG.platforms,
+        { id: 'acme_router', display_name: 'Acme Router', gateway: 'openai', cn_provider: false }
+      ]
+    })
+    await wrapper.vm.$nextTick()
+
+    await platformSelect.get('button').trigger('click')
+    const option = platformSelect.findAll('[role="option"]').find(item => item.text() === 'Acme Router')
+    expect(option).toBeDefined()
+    await option!.trigger('click')
+    expect(wrapper.emitted('update:filters')).toEqual([[{ ...filters, platform: 'acme_router' }]])
+    expect(wrapper.emitted('change')).toEqual([[]])
+    expect(wrapper.props('filters')).toEqual(filters)
+  })
+
   it('toggles an accessible secondary panel without emitting changes or clearing filters', async () => {
     const filters = { ...defaultFilters(), type: 'bedrock', privacy_mode: '__unset__', group: 'ungrouped' }
     const wrapper = mountFilters(filters)

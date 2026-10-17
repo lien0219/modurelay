@@ -230,7 +230,13 @@ func (s *Stripe) Refund(ctx context.Context, req payment.RefundRequest) (*paymen
 		Amount:        stripe.Int64(amountInMinorUnit),
 		Reason:        stripe.String(string(stripe.RefundReasonRequestedByCustomer)),
 	}
-	params.SetIdempotencyKey(fmt.Sprintf("re-%s-%d", req.OrderID, amountInMinorUnit))
+	requestID := strings.TrimSpace(req.RequestID)
+	if requestID != "" {
+		params.SetIdempotencyKey("modurelay-refund-" + requestID)
+		params.AddMetadata("modurelay_request_id", requestID)
+	} else {
+		params.SetIdempotencyKey(fmt.Sprintf("re-%s-%d", req.OrderID, amountInMinorUnit))
+	}
 	params.Context = ctx
 
 	r, err := s.sc.V1Refunds.Create(ctx, params)
@@ -256,27 +262,39 @@ func (s *Stripe) QueryRefund(ctx context.Context, req payment.RefundQueryRequest
 
 	var r *stripe.Refund
 	var err error
-	if refundID := strings.TrimSpace(req.RefundID); refundID != "" {
+	if refundID := strings.TrimSpace(req.RefundID); strings.HasPrefix(refundID, "re_") {
 		r, err = s.sc.V1Refunds.Retrieve(ctx, refundID, nil)
 		if err != nil {
 			return nil, fmt.Errorf("stripe query refund: %w", err)
 		}
 	} else {
+		requestID := strings.TrimSpace(req.RequestID)
+		if refundID != "" && requestID == "" {
+			return nil, fmt.Errorf("stripe query refund: provider refund ID is unavailable; verify manually")
+		}
 		tradeNo := strings.TrimSpace(req.TradeNo)
 		if tradeNo == "" {
 			return nil, fmt.Errorf("stripe query refund: missing payment intent id")
 		}
+		if requestID == "" {
+			return nil, fmt.Errorf("stripe query refund: provider refund ID is unavailable; verify manually")
+		}
 		params := &stripe.RefundListParams{PaymentIntent: stripe.String(tradeNo)}
-		params.Limit = stripe.Int64(1)
+		params.Limit = stripe.Int64(100)
 		list := s.sc.V1Refunds.List(ctx, params)
 		if list.Err() != nil {
 			return nil, fmt.Errorf("stripe query refund: %w", list.Err())
 		}
 		refunds := list.Data()
-		if len(refunds) == 0 {
-			return nil, fmt.Errorf("stripe query refund: no refund found")
+		for _, refund := range refunds {
+			if refund.Metadata["modurelay_request_id"] == requestID {
+				r = refund
+				break
+			}
 		}
-		r = refunds[0]
+		if r == nil {
+			return &payment.RefundResponse{Status: payment.ProviderStatusPending}, nil
+		}
 	}
 
 	return &payment.RefundResponse{RefundID: r.ID, Status: stripeRefundProviderStatus(r.Status)}, nil
