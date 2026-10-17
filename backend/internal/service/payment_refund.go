@@ -28,7 +28,14 @@ import (
 
 var createPaymentProviderFromInstance = provider.CreateProvider
 
-const refundPersistenceTimeout = 10 * time.Second
+const (
+	refundPersistenceTimeout = 10 * time.Second
+	// A refund can legitimately spend time in the provider, so recovery only
+	// claims rows that have been untouched for several scheduler cycles. The
+	// claim timestamp is persisted in PostgreSQL and acts as the lease.
+	refundRecoveryStaleAfter = 5 * time.Minute
+	refundRecoveryBatchSize  = 100
+)
 
 // refundOutcomeUnknownError marks a provider call whose result cannot be
 // classified as a confirmed rejection. The request may have reached the
@@ -567,6 +574,7 @@ func (s *PaymentService) finishRefund(ctx context.Context, p *RefundPlan, resp *
 	}
 	switch strings.TrimSpace(resp.Status) {
 	case payment.ProviderStatusSuccess, payment.ProviderStatusRefunded:
+		p.RefundID = refundResponseID(resp)
 		return s.markRefundOk(ctx, p)
 	case payment.ProviderStatusPending:
 		return s.markRefundPending(ctx, p, resp)
@@ -640,6 +648,318 @@ func (s *PaymentService) QueryAndFinalizeRefund(ctx context.Context, oid int64) 
 	default:
 		return nil, fmt.Errorf("query refund returned unknown status %q; reconciliation required", strings.TrimSpace(resp.Status))
 	}
+}
+
+type refundRecoveryClaim struct {
+	order     *dbent.PaymentOrder
+	detail    refundPendingAuditDetail
+	detailErr error
+}
+
+// RecoverStaleRefunds reconciles refund attempts that were durably marked as
+// REFUNDING before a process stopped. The order row and audit trail are the
+// durable state machine; this method never creates a new provider refund.
+func (s *PaymentService) RecoverStaleRefunds(ctx context.Context) (int, error) {
+	if s == nil || s.entClient == nil {
+		return 0, nil
+	}
+	cutoff := time.Now().Add(-refundRecoveryStaleAfter)
+	orders, err := s.entClient.PaymentOrder.Query().
+		Where(paymentorder.StatusEQ(OrderStatusRefunding), paymentorder.UpdatedAtLT(cutoff)).
+		Order(paymentorder.ByUpdatedAt()).
+		Limit(refundRecoveryBatchSize).
+		All(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("query stale refunds: %w", err)
+	}
+
+	recovered := 0
+	var firstErr error
+	for _, candidate := range orders {
+		claim, claimed, claimErr := s.claimStaleRefundWithRetry(ctx, candidate)
+		if claimErr != nil {
+			if firstErr == nil {
+				firstErr = claimErr
+			}
+			continue
+		}
+		if !claimed {
+			continue
+		}
+		recovered++
+		if claim.detailErr != nil {
+			s.recordRefundRecoveryUnknown(ctx, claim.order.ID, "", claim.detailErr)
+			continue
+		}
+		if err := s.reconcileClaimedRefund(ctx, claim); err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+		}
+	}
+	return recovered, firstErr
+}
+
+func (s *PaymentService) claimStaleRefundWithRetry(ctx context.Context, candidate *dbent.PaymentOrder) (*refundRecoveryClaim, bool, error) {
+	const maxAttempts = 4
+	for attempt := 0; ; attempt++ {
+		claim, claimed, err := s.claimStaleRefund(ctx, candidate)
+		if err == nil || attempt >= maxAttempts-1 || !isRetryableRefundRecoveryClaimError(err) {
+			return claim, claimed, err
+		}
+		delay := time.Duration(attempt+1) * 10 * time.Millisecond
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			if !timer.Stop() {
+				<-timer.C
+			}
+			return nil, false, ctx.Err()
+		case <-timer.C:
+		}
+	}
+}
+
+func isRetryableRefundRecoveryClaimError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "database is locked") ||
+		strings.Contains(msg, "database is deadlocked") ||
+		strings.Contains(msg, "deadlock detected") ||
+		strings.Contains(msg, "serialization failure")
+}
+
+func (s *PaymentService) claimStaleRefund(ctx context.Context, candidate *dbent.PaymentOrder) (*refundRecoveryClaim, bool, error) {
+	tx, err := s.entClient.Tx(ctx)
+	if err != nil {
+		return nil, false, fmt.Errorf("begin refund recovery claim: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+	txCtx := dbent.NewTxContext(ctx, tx)
+	query := tx.PaymentOrder.Query().Where(paymentorder.IDEQ(candidate.ID))
+	if tx.Client().Driver().Dialect() != dialect.SQLite {
+		query.ForUpdate()
+	}
+	current, err := query.Only(txCtx)
+	if err != nil {
+		if dbent.IsNotFound(err) {
+			return nil, false, nil
+		}
+		return nil, false, fmt.Errorf("load refund recovery claim: %w", err)
+	}
+	if current.Status != OrderStatusRefunding || !current.UpdatedAt.Equal(candidate.UpdatedAt) || !current.UpdatedAt.Before(time.Now().Add(-refundRecoveryStaleAfter)) {
+		return nil, false, nil
+	}
+	claimedAt := time.Now()
+	updated, err := tx.PaymentOrder.Update().
+		Where(paymentorder.IDEQ(candidate.ID), paymentorder.StatusEQ(OrderStatusRefunding)).
+		SetUpdatedAt(claimedAt).
+		Save(txCtx)
+	if err != nil {
+		return nil, false, fmt.Errorf("claim stale refund: %w", err)
+	}
+	if updated == 0 {
+		return nil, false, nil
+	}
+
+	detail, detailErr := loadRefundSubmittingDetailTx(txCtx, tx.Client(), candidate.ID)
+	worker := strings.TrimSpace(s.refundRecoveryOwner)
+	if worker == "" {
+		worker = "refund-recovery"
+	}
+	claimDetail := map[string]any{
+		"worker":    worker,
+		"claimedAt": claimedAt,
+		"requestID": detail.RequestID,
+	}
+	if detailErr != nil {
+		claimDetail["error"] = detailErr.Error()
+	}
+	if err := createPaymentAuditLogTx(txCtx, tx.Client(), candidate.ID, "REFUND_RECOVERY_CLAIMED", claimDetail); err != nil {
+		return nil, false, err
+	}
+	current, err = tx.PaymentOrder.Get(txCtx, candidate.ID)
+	if err != nil {
+		return nil, false, fmt.Errorf("reload refund recovery claim: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, false, fmt.Errorf("commit refund recovery claim: %w", err)
+	}
+	committed = true
+	return &refundRecoveryClaim{order: current, detail: detail, detailErr: detailErr}, true, nil
+}
+
+func loadRefundSubmittingDetailTx(ctx context.Context, client *dbent.Client, oid int64) (refundPendingAuditDetail, error) {
+	entry, err := client.PaymentAuditLog.Query().
+		Where(paymentauditlog.OrderIDEQ(strconv.FormatInt(oid, 10)), paymentauditlog.ActionEQ("REFUND_SUBMITTING")).
+		Order(paymentauditlog.ByCreatedAt(sql.OrderDesc()), paymentauditlog.ByID(sql.OrderDesc())).
+		First(ctx)
+	if err != nil {
+		if dbent.IsNotFound(err) {
+			return refundPendingAuditDetail{}, fmt.Errorf("refund submitting audit is missing")
+		}
+		return refundPendingAuditDetail{}, fmt.Errorf("load refund submitting audit: %w", err)
+	}
+	var detail refundPendingAuditDetail
+	if err := json.Unmarshal([]byte(entry.Detail), &detail); err != nil {
+		return refundPendingAuditDetail{}, fmt.Errorf("parse refund submitting audit: %w", err)
+	}
+	detail.RefundID = strings.TrimSpace(detail.RefundID)
+	detail.RequestID = strings.TrimSpace(detail.RequestID)
+	if detail.RequestID == "" {
+		return detail, fmt.Errorf("refund submitting audit has no request ID")
+	}
+	detail.requestedAt = entry.CreatedAt
+	return detail, nil
+}
+
+func (s *PaymentService) reconcileClaimedRefund(ctx context.Context, claim *refundRecoveryClaim) error {
+	if claim == nil || claim.order == nil {
+		return errors.New("refund recovery claim is empty")
+	}
+	p := s.refundFinalizePlan(claim.order)
+	p.Order = claim.order
+	p.OrderID = claim.order.ID
+	p.RefundAmount = claim.detail.RefundAmount
+	if p.RefundAmount <= 0 {
+		p.RefundAmount = claim.order.RefundAmount
+	}
+	p.GatewayAmount = calculateGatewayRefundAmount(claim.order.Amount, claim.order.PayAmount, p.RefundAmount, PaymentOrderCurrency(claim.order))
+	if strings.TrimSpace(claim.detail.Reason) != "" {
+		p.Reason = strings.TrimSpace(claim.detail.Reason)
+	}
+	p.Force = claim.detail.Force
+	claim.detail.applySubmittingTo(p)
+	if strings.TrimSpace(claim.order.PaymentTradeNo) == "" {
+		persistCtx, cancel := detachedRefundContext(ctx)
+		defer cancel()
+		_, err := s.finalizeRecoveredRefundSuccess(persistCtx, p)
+		return err
+	}
+
+	prov, err := s.getRefundProvider(ctx, claim.order)
+	if err != nil {
+		s.recordRefundRecoveryUnknown(ctx, claim.order.ID, p.RequestID, err)
+		return nil
+	}
+	if err := validateProviderSnapshotMetadata(claim.order, prov.ProviderKey(), providerMerchantIdentityMetadata(prov)); err != nil {
+		s.recordRefundRecoveryUnknown(ctx, claim.order.ID, p.RequestID, err)
+		return nil
+	}
+	queryProvider, ok := prov.(payment.RefundQueryProvider)
+	if !ok {
+		s.recordRefundRecoveryUnknown(ctx, claim.order.ID, p.RequestID, fmt.Errorf("provider %s does not support refund status query", prov.ProviderKey()))
+		return nil
+	}
+	finishProviderCall := servertiming.ObserveDependency(ctx, "payment")
+	resp, err := queryProvider.QueryRefund(ctx, payment.RefundQueryRequest{
+		TradeNo:     claim.order.PaymentTradeNo,
+		OrderID:     claim.order.OutTradeNo,
+		RequestID:   p.RequestID,
+		RefundID:    claim.detail.RefundID,
+		Amount:      formatGatewayRefundAmount(p.GatewayAmount, claim.order),
+		RequestedAt: claim.detail.requestedAt,
+	})
+	finishProviderCall()
+	if err != nil || resp == nil {
+		if err == nil {
+			err = errors.New("provider returned no refund status")
+		}
+		s.recordRefundRecoveryUnknown(ctx, claim.order.ID, p.RequestID, err)
+		return nil
+	}
+
+	persistCtx, cancel := detachedRefundContext(ctx)
+	defer cancel()
+	switch strings.TrimSpace(resp.Status) {
+	case payment.ProviderStatusSuccess, payment.ProviderStatusRefunded:
+		p.RefundID = strings.TrimSpace(resp.RefundID)
+		_, err = s.finalizeRecoveredRefundSuccess(persistCtx, p)
+	case payment.ProviderStatusPending:
+		_, err = s.markRefundPending(persistCtx, p, resp)
+	case payment.ProviderStatusFailed:
+		_, err = s.finalizeRecoveredRefundFailure(persistCtx, p, fmt.Errorf("payment refund failed: status %s", strings.TrimSpace(resp.Status)))
+	default:
+		s.recordRefundRecoveryUnknown(persistCtx, claim.order.ID, p.RequestID, fmt.Errorf("provider returned unknown refund status %q", strings.TrimSpace(resp.Status)))
+		return nil
+	}
+	return err
+}
+
+func (s *PaymentService) recordRefundRecoveryUnknown(ctx context.Context, orderID int64, requestID string, reason error) {
+	persistCtx, cancel := detachedRefundContext(ctx)
+	defer cancel()
+	detail := map[string]any{"requestID": strings.TrimSpace(requestID), "reason": psErrMsg(reason), "status": OrderStatusRefunding}
+	s.writeAuditLog(persistCtx, orderID, "REFUND_RECOVERY_UNKNOWN", "system", detail)
+}
+
+func (s *PaymentService) finalizeRecoveredRefundSuccess(ctx context.Context, p *RefundPlan) (_ *RefundResult, err error) {
+	tx, err := s.entClient.Tx(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin recovered refund finalization: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+	txCtx := dbent.NewTxContext(ctx, tx)
+	claimed, err := claimRefundOrderTransition(txCtx, tx, p.OrderID, OrderStatusRefunding, p.Order.UpdatedAt, OrderStatusRefunding)
+	if err != nil {
+		return nil, fmt.Errorf("claim recovered refund success: %w", err)
+	}
+	if claimed == 0 {
+		return nil, infraerrors.Conflict("CONFLICT", "refund recovery claim changed")
+	}
+	if err := s.applyRefundFinalDeduction(txCtx, p); err != nil {
+		return nil, err
+	}
+	result, err := s.markRefundOkTx(txCtx, tx.Client(), p)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit recovered refund success: %w", err)
+	}
+	if !p.deductionHeld && p.DeductionType == payment.DeductionTypeBalance && p.BalanceToDeduct > 0 {
+		s.invalidateRefundBalanceCache(ctx, p.Order.UserID)
+	}
+	return result, nil
+}
+
+func (s *PaymentService) finalizeRecoveredRefundFailure(ctx context.Context, p *RefundPlan, gErr error) (*RefundResult, error) {
+	warning := "gateway refund failed: " + psErrMsg(gErr)
+	returnErr, err := s.finalizeRefundFailedFromStatus(ctx, p, gErr, nil, OrderStatusRefunding)
+	if err != nil {
+		return nil, err
+	}
+	if returnErr == nil {
+		if p.deductionHeld && p.DeductionType == payment.DeductionTypeBalance && p.BalanceToDeduct > 0 {
+			s.invalidateRefundBalanceCache(ctx, p.Order.UserID)
+		}
+		return &RefundResult{Success: false, Warning: warning}, nil
+	}
+
+	// The first transaction rolled back when the held deduction could not be
+	// returned. Reload the pre-claim version before recording the durable
+	// rollback failure, otherwise the version guard would reject the second
+	// transaction and leave the order stranded in REFUNDING.
+	fresh, loadErr := s.entClient.PaymentOrder.Get(ctx, p.OrderID)
+	if loadErr != nil {
+		return nil, fmt.Errorf("reload refund after rollback failure: %w", loadErr)
+	}
+	p.Order = fresh
+	if _, err := s.finalizeRefundFailedFromStatus(ctx, p, gErr, returnErr, OrderStatusRefunding); err != nil {
+		return nil, err
+	}
+	return &RefundResult{Success: false, Warning: warning + "; refund deduction rollback failed"}, nil
 }
 
 func (s *PaymentService) finalizePendingRefundSuccess(ctx context.Context, p *RefundPlan) (_ *RefundResult, err error) {
@@ -754,7 +1074,7 @@ func (s *PaymentService) applyRefundFinalDeduction(ctx context.Context, p *Refun
 // 已失败但扣减未归还、且没有 REFUND_ROLLBACK_FAILED 标记的订单，重试退款会再扣一次。
 func (s *PaymentService) finalizeRefundFailed(ctx context.Context, p *RefundPlan, gErr error) (*RefundResult, error) {
 	warning := "gateway refund failed: " + psErrMsg(gErr)
-	returnErr, err := s.finalizeRefundFailedTx(ctx, p, gErr, nil)
+	returnErr, err := s.finalizeRefundFailedFromStatus(ctx, p, gErr, nil, OrderStatusRefundPending)
 	if err != nil {
 		return nil, err
 	}
@@ -768,7 +1088,7 @@ func (s *PaymentService) finalizeRefundFailed(ctx context.Context, p *RefundPlan
 	// 归还失败（整个事务已回滚，订单仍为 REFUND_PENDING）：仍收敛为 REFUND_FAILED，
 	// 并同事务写入 REFUND_ROLLBACK_FAILED，使重试退款跳过扣减，避免二次扣减。
 	slog.Error("[CRITICAL] refund failed but held deduction could not be returned", "orderID", p.OrderID, "error", returnErr)
-	if _, err := s.finalizeRefundFailedTx(ctx, p, gErr, returnErr); err != nil {
+	if _, err := s.finalizeRefundFailedFromStatus(ctx, p, gErr, returnErr, OrderStatusRefundPending); err != nil {
 		return nil, err
 	}
 	return &RefundResult{Success: false, Warning: warning + "; refund deduction rollback failed"}, nil
@@ -777,7 +1097,7 @@ func (s *PaymentService) finalizeRefundFailed(ctx context.Context, p *RefundPlan
 // finalizeRefundFailedTx 在单个事务内认领 REFUND_PENDING → REFUND_FAILED。rollbackErr 为 nil 时同事务
 // 归还保留的扣减，归还失败则回滚整个事务并通过 returnErr 返回；rollbackErr 非 nil 时不再归还，
 // 改为同事务记录 REFUND_ROLLBACK_FAILED。
-func (s *PaymentService) finalizeRefundFailedTx(ctx context.Context, p *RefundPlan, gErr, rollbackErr error) (returnErr error, err error) {
+func (s *PaymentService) finalizeRefundFailedFromStatus(ctx context.Context, p *RefundPlan, gErr, rollbackErr error, expectedStatus string) (returnErr error, err error) {
 	tx, err := s.entClient.Tx(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("begin refund failure finalization: %w", err)
@@ -790,7 +1110,7 @@ func (s *PaymentService) finalizeRefundFailedTx(ctx context.Context, p *RefundPl
 	}()
 	txCtx := dbent.NewTxContext(ctx, tx)
 
-	claimed, err := claimRefundOrderTransition(txCtx, tx, p.OrderID, OrderStatusRefundPending, p.Order.UpdatedAt, OrderStatusRefundFailed)
+	claimed, err := claimRefundOrderTransition(txCtx, tx, p.OrderID, expectedStatus, p.Order.UpdatedAt, OrderStatusRefundFailed)
 	if err != nil {
 		return nil, fmt.Errorf("mark refund failed: %w", err)
 	}
@@ -876,7 +1196,10 @@ type refundPendingAuditDetail struct {
 }
 
 func (d refundPendingAuditDetail) applyTo(p *RefundPlan) {
-	p.deductionHeld = true
+	p.deductionHeld = d.DeductionHeld
+	if refundID := strings.TrimSpace(d.RefundID); refundID != "" {
+		p.RefundID = refundID
+	}
 	if strings.TrimSpace(p.RequestID) == "" {
 		p.RequestID = d.RequestID
 		if p.RequestID == "" {
@@ -890,6 +1213,24 @@ func (d refundPendingAuditDetail) applyTo(p *RefundPlan) {
 	p.BalanceToDeduct = d.BalanceDeducted
 	p.SubDaysToDeduct = d.SubDaysDeducted
 	p.SubscriptionID = d.SubscriptionID
+}
+
+// applySubmittingTo restores the durable hold made before the provider call.
+// Older REFUND_SUBMITTING records did not persist deductionHeld, so a positive
+// recorded deduction is treated as held for crash recovery.
+func (d refundPendingAuditDetail) applySubmittingTo(p *RefundPlan) {
+	d.applyTo(p)
+	if p.DeductionType == payment.DeductionTypeNone {
+		switch {
+		case d.SubDaysDeducted > 0 || d.SubscriptionID > 0:
+			p.DeductionType = payment.DeductionTypeSubscription
+		case d.BalanceDeducted > 0:
+			p.DeductionType = payment.DeductionTypeBalance
+		}
+	}
+	if !p.deductionHeld && (d.BalanceDeducted > 0 || d.SubDaysDeducted > 0 || d.SubscriptionID > 0) {
+		p.deductionHeld = true
+	}
 }
 
 // latestRefundPendingDetail 读取最近一次 REFUND_PENDING 审计。没有记录视为旧订单（扣减已在
@@ -1000,7 +1341,7 @@ func (s *PaymentService) markRefundOkTx(ctx context.Context, client *dbent.Clien
 	if err != nil {
 		return nil, fmt.Errorf("mark refund: %w", err)
 	}
-	detail, err := json.Marshal(map[string]any{"refundAmount": p.RefundAmount, "reason": p.Reason, "balanceDeducted": p.BalanceToDeduct, "lotteryChancesRevoked": revokedDraws, "force": p.Force})
+	detail, err := json.Marshal(map[string]any{"refundID": p.RefundID, "refundAmount": p.RefundAmount, "reason": p.Reason, "balanceDeducted": p.BalanceToDeduct, "lotteryChancesRevoked": revokedDraws, "force": p.Force})
 	if err != nil {
 		return nil, fmt.Errorf("marshal refund audit: %w", err)
 	}

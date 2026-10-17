@@ -16,6 +16,11 @@ import (
 const (
 	stripeEventPaymentSuccess = "payment_intent.succeeded"
 	stripeEventPaymentFailed  = "payment_intent.payment_failed"
+	stripeRefundPageSize      = int64(100)
+	// A refund lookup should be bounded even if Stripe returns a malformed
+	// cursor chain. Hitting the bound is an unknown reconciliation outcome,
+	// never evidence that the refund does not exist.
+	stripeRefundMaxQueryPages = 100
 )
 
 // Stripe implements the payment.CancelableProvider interface for Stripe payments.
@@ -267,6 +272,19 @@ func (s *Stripe) QueryRefund(ctx context.Context, req payment.RefundQueryRequest
 		if err != nil {
 			return nil, fmt.Errorf("stripe query refund: %w", err)
 		}
+		if r == nil {
+			return nil, fmt.Errorf("stripe query refund: empty provider response")
+		}
+		if tradeNo := strings.TrimSpace(req.TradeNo); tradeNo != "" && r.PaymentIntent != nil {
+			if paymentIntentID := strings.TrimSpace(r.PaymentIntent.ID); paymentIntentID != "" && paymentIntentID != tradeNo {
+				return nil, fmt.Errorf("stripe query refund: refund %s belongs to payment intent %s, expected %s; reconciliation required", refundID, paymentIntentID, tradeNo)
+			}
+		}
+		if requestID := strings.TrimSpace(req.RequestID); requestID != "" {
+			if recordedRequestID := strings.TrimSpace(r.Metadata["modurelay_request_id"]); recordedRequestID != "" && recordedRequestID != requestID {
+				return nil, fmt.Errorf("stripe query refund: refund %s belongs to request %s, expected %s; reconciliation required", refundID, recordedRequestID, requestID)
+			}
+		}
 	} else {
 		requestID := strings.TrimSpace(req.RequestID)
 		if refundID != "" && requestID == "" {
@@ -280,21 +298,46 @@ func (s *Stripe) QueryRefund(ctx context.Context, req payment.RefundQueryRequest
 			return nil, fmt.Errorf("stripe query refund: provider refund ID is unavailable; verify manually")
 		}
 		params := &stripe.RefundListParams{PaymentIntent: stripe.String(tradeNo)}
-		params.Limit = stripe.Int64(100)
-		list := s.sc.V1Refunds.List(ctx, params)
-		if list.Err() != nil {
-			return nil, fmt.Errorf("stripe query refund: %w", list.Err())
-		}
-		refunds := list.Data()
-		for _, refund := range refunds {
-			if refund.Metadata["modurelay_request_id"] == requestID {
-				r = refund
+		params.Limit = stripe.Int64(stripeRefundPageSize)
+		var cursor string
+		for page := 0; page < stripeRefundMaxQueryPages; page++ {
+			list := s.sc.V1Refunds.List(ctx, params)
+			if list.Err() != nil {
+				return nil, fmt.Errorf("stripe query refund: %w", list.Err())
+			}
+			refunds := list.Data()
+			for _, refund := range refunds {
+				if refund != nil && refund.Metadata["modurelay_request_id"] == requestID {
+					r = refund
+					break
+				}
+			}
+			if r != nil {
 				break
 			}
+			if !list.Meta().HasMore {
+				return &payment.RefundResponse{Status: payment.ProviderStatusPending}, nil
+			}
+			if len(refunds) == 0 {
+				return nil, fmt.Errorf("stripe query refund: pagination made no progress; reconciliation required")
+			}
+			lastRefund := refunds[len(refunds)-1]
+			if lastRefund == nil {
+				return nil, fmt.Errorf("stripe query refund: pagination page ended with an empty refund; reconciliation required")
+			}
+			nextCursor := strings.TrimSpace(lastRefund.ID)
+			if nextCursor == "" || nextCursor == cursor {
+				return nil, fmt.Errorf("stripe query refund: pagination cursor did not advance; reconciliation required")
+			}
+			cursor = nextCursor
+			params.StartingAfter = stripe.String(cursor)
 		}
 		if r == nil {
-			return &payment.RefundResponse{Status: payment.ProviderStatusPending}, nil
+			return nil, fmt.Errorf("stripe query refund: pagination limit reached; reconciliation required")
 		}
+	}
+	if r == nil {
+		return nil, fmt.Errorf("stripe query refund: empty provider response")
 	}
 
 	return &payment.RefundResponse{RefundID: r.ID, Status: stripeRefundProviderStatus(r.Status)}, nil

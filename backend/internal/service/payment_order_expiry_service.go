@@ -97,6 +97,15 @@ func (s *PaymentOrderExpiryService) runOnce() {
 	}
 	defer release()
 
+	recoveryCtx, cancel := context.WithTimeout(context.Background(), expiryCheckTimeout)
+	recoveredRefunds, err := s.paymentSvc.RecoverStaleRefunds(recoveryCtx)
+	cancel()
+	if err != nil {
+		slog.Warn("[PaymentOrderExpiry] failed to recover stale refunds", "error", err)
+	} else if recoveredRefunds > 0 {
+		slog.Info("[PaymentOrderExpiry] recovered stale refunds", "count", recoveredRefunds)
+	}
+
 	reconcileCtx, cancel := context.WithTimeout(context.Background(), expiryCheckTimeout)
 	recovered, err := s.paymentSvc.ReconcilePendingPaymentOrders(reconcileCtx)
 	cancel()

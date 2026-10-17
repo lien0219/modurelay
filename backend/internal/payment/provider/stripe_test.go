@@ -6,6 +6,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"net/url"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/payment"
@@ -14,9 +17,12 @@ import (
 )
 
 type stripeRefundBackend struct {
-	params  []*stripe.RefundCreateParams
-	paths   []string
-	refunds []*stripe.Refund
+	params       []*stripe.RefundCreateParams
+	paths        []string
+	refunds      []*stripe.Refund
+	queries      []url.Values
+	listErr      error
+	emptyHasMore bool
 }
 
 func (b *stripeRefundBackend) Call(_ string, _ string, path string, params stripe.ParamsContainer, v stripe.LastResponseSetter) error {
@@ -34,12 +40,39 @@ func (*stripeRefundBackend) CallStreaming(string, string, string, stripe.ParamsC
 	return nil
 }
 
-func (b *stripeRefundBackend) CallRaw(_ string, path string, _ string, _ []byte, _ *stripe.Params, v stripe.LastResponseSetter) error {
+func (b *stripeRefundBackend) CallRaw(_ string, path string, _ string, body []byte, _ *stripe.Params, v stripe.LastResponseSetter) error {
 	b.paths = append(b.paths, path)
+	if b.listErr != nil {
+		return b.listErr
+	}
+	query, err := url.ParseQuery(string(body))
+	if err != nil {
+		return err
+	}
+	b.queries = append(b.queries, query)
+	start := 0
+	if cursor := query.Get("starting_after"); cursor != "" {
+		for i, refund := range b.refunds {
+			if refund != nil && refund.ID == cursor {
+				start = i + 1
+				break
+			}
+		}
+	}
+	end := start + 100
+	if end > len(b.refunds) {
+		end = len(b.refunds)
+	}
+	data := b.refunds[start:end]
+	hasMore := end < len(b.refunds)
+	if b.emptyHasMore {
+		data = nil
+		hasMore = true
+	}
 	raw, err := json.Marshal(map[string]any{
 		"object":   "list",
-		"has_more": false,
-		"data":     b.refunds,
+		"has_more": hasMore,
+		"data":     data,
 	})
 	if err != nil {
 		return err
@@ -149,4 +182,72 @@ func TestStripeQueryRefundFindsAttemptByRequestID(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "re_attempt_2", resp.RefundID)
 	require.Equal(t, payment.ProviderStatusSuccess, resp.Status)
+}
+
+func TestStripeQueryRefundFindsAttemptAfterFirstPage(t *testing.T) {
+	refunds := make([]*stripe.Refund, 0, 101)
+	for i := 0; i < 100; i++ {
+		refunds = append(refunds, &stripe.Refund{ID: fmt.Sprintf("re_page_%03d", i), Status: stripe.RefundStatusSucceeded})
+	}
+	refunds = append(refunds, &stripe.Refund{
+		ID:       "re_after_page_one",
+		Status:   stripe.RefundStatusSucceeded,
+		Metadata: map[string]string{"modurelay_request_id": "mr-after-page-one"},
+	})
+	backend := &stripeRefundBackend{refunds: refunds}
+	client := stripe.NewClient("sk_test", stripe.WithBackends(&stripe.Backends{API: backend}))
+	provider := &Stripe{
+		config:      map[string]string{"currency": "CNY"},
+		initialized: true,
+		sc:          client,
+	}
+
+	resp, err := provider.QueryRefund(context.Background(), payment.RefundQueryRequest{
+		TradeNo:   "pi_123",
+		RequestID: "mr-after-page-one",
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, "re_after_page_one", resp.RefundID)
+	require.Equal(t, payment.ProviderStatusSuccess, resp.Status)
+	require.Len(t, backend.queries, 2)
+	require.Equal(t, "100", backend.queries[0].Get("limit"))
+	require.Equal(t, "re_page_099", backend.queries[1].Get("starting_after"))
+}
+
+func TestStripeQueryRefundReturnsErrorForListFailure(t *testing.T) {
+	backend := &stripeRefundBackend{listErr: context.DeadlineExceeded}
+	client := stripe.NewClient("sk_test", stripe.WithBackends(&stripe.Backends{API: backend}))
+	provider := &Stripe{
+		config:      map[string]string{"currency": "CNY"},
+		initialized: true,
+		sc:          client,
+	}
+
+	_, err := provider.QueryRefund(context.Background(), payment.RefundQueryRequest{
+		TradeNo:   "pi_123",
+		RequestID: "mr-timeout",
+	})
+
+	require.Error(t, err)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+}
+
+func TestStripeQueryRefundRejectsNonAdvancingPagination(t *testing.T) {
+	backend := &stripeRefundBackend{emptyHasMore: true}
+	client := stripe.NewClient("sk_test", stripe.WithBackends(&stripe.Backends{API: backend}))
+	provider := &Stripe{
+		config:      map[string]string{"currency": "CNY"},
+		initialized: true,
+		sc:          client,
+	}
+
+	_, err := provider.QueryRefund(context.Background(), payment.RefundQueryRequest{
+		TradeNo:   "pi_123",
+		RequestID: "mr-malformed-page",
+	})
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "no progress")
+	require.False(t, errors.Is(err, context.DeadlineExceeded))
 }
