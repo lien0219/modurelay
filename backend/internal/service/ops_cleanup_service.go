@@ -52,13 +52,17 @@ type OpsCleanupService struct {
 	instanceID string
 
 	// mu 守护 cron 实例切换 + effective 配置切换。
-	// 这里不再用 startOnce/stopOnce，是因为 Reload 需要"停旧 cron 重启新 cron"，
-	// 而 Once 一旦触发就无法再次执行；改为 started/stopped 布尔配合 mu。
+	// Reload 通过 started/stopped 状态重建 cron；stopOnce 只用于最终退出，
+	// 让并发 Stop 都等待同一批已运行的任务结束。
 	mu        sync.Mutex
 	cron      *cron.Cron
 	started   bool
 	stopped   bool
 	effective opsCleanupEffectiveConfig
+	// Reload may stop a cron before its current job finishes. Keep that job's
+	// completion context so final shutdown cannot lose track of it.
+	retiredCrons []context.Context
+	stopOnce     sync.Once
 
 	warnNoRedisOnce sync.Once
 }
@@ -117,17 +121,36 @@ func (s *OpsCleanupService) Stop() {
 	if s == nil {
 		return
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.stopped {
-		return
-	}
-	s.stopped = true
-	s.stopCronLocked()
+	s.stopOnce.Do(func() {
+		s.mu.Lock()
+		s.stopped = true
+		pending := s.retiredCrons
+		s.retiredCrons = nil
+		if s.cron != nil {
+			pending = append(pending, s.cron.Stop())
+			s.cron = nil
+		}
+		s.mu.Unlock()
+		// Jobs read effective configuration under mu. Never hold that lock
+		// while waiting; the caller owns the overall shutdown deadline.
+		for _, stopped := range pending {
+			<-stopped.Done()
+		}
+	})
 }
 
-// stopCronLocked 停掉当前 cron 实例（带 3s 超时）。调用方持锁。
+// stopCronLocked bounds administrative Reload latency. Final Stop also waits
+// for any jobs still running after this timeout. The caller holds mu.
 func (s *OpsCleanupService) stopCronLocked() {
+	pending := s.retiredCrons[:0]
+	for _, stopped := range s.retiredCrons {
+		select {
+		case <-stopped.Done():
+		default:
+			pending = append(pending, stopped)
+		}
+	}
+	s.retiredCrons = pending
 	if s.cron == nil {
 		return
 	}
@@ -135,7 +158,8 @@ func (s *OpsCleanupService) stopCronLocked() {
 	select {
 	case <-ctx.Done():
 	case <-time.After(opsCleanupCronStopTimeout):
-		logger.LegacyPrintf("service.ops_cleanup", "[OpsCleanup] cron stop timed out")
+		s.retiredCrons = append(s.retiredCrons, ctx)
+		logger.LegacyPrintf("service.ops_cleanup", "[OpsCleanup] cron stop timed out; shutdown will wait for the active job")
 	}
 	s.cron = nil
 }

@@ -1257,7 +1257,12 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 					markOpenAIWSClientVisibleFailure(c, eventType, payload)
 				}
 				if msgType == coderws.MessageText && openAIWSPassthroughIsTerminalOutput(payload) {
-					turnLifecycle.finishTerminalWrite(writeErr == nil, clientFrameConn.markTurnCompleted)
+					turnLifecycle.finishTerminalWrite(writeErr == nil, func() {
+						clientFrameConn.markTurnCompleted()
+						if hooks != nil && hooks.AfterTurnForwarded != nil {
+							hooks.AfterTurnForwarded(int(completedTurns.Load()))
+						}
+					})
 				}
 			},
 			BeforeRelayCancel: func(exit openaiwsv2.RelayExit) {

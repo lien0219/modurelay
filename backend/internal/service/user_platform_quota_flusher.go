@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -60,6 +61,8 @@ type UserPlatformQuotaUsageFlusher struct {
 	flushTimeout time.Duration
 	metrics      *FlusherMetrics
 	stopped      atomic.Bool
+	flushMu      sync.Mutex
+	stopOnce     sync.Once
 }
 
 // NewUserPlatformQuotaUsageFlusher 创建 UserPlatformQuotaUsageFlusher。
@@ -222,9 +225,22 @@ func (s *UserPlatformQuotaUsageFlusher) flushOneBatch(parentCtx context.Context)
 
 // flush 执行一次完整的 flush，循环消费至脏集空或达到 maxBatchesPerTick。
 func (s *UserPlatformQuotaUsageFlusher) flush() {
-	if s == nil {
+	if s == nil || s.stopped.Load() {
 		return
 	}
+	s.flushMu.Lock()
+	defer s.flushMu.Unlock()
+	// A callback can pass the first check before Stop while another batch owns
+	// its popped keys. Recheck under the same lock as the final flush so queued
+	// callbacks never start new work after shutdown takes ownership.
+	if s.stopped.Load() {
+		return
+	}
+	s.flushLocked()
+}
+
+// flushLocked requires flushMu, including for Stop's final recovery pass.
+func (s *UserPlatformQuotaUsageFlusher) flushLocked() {
 	parentCtx := context.Background()
 	for b := 0; b < flusherMaxBatchesPerTick; b++ {
 		if !s.flushOneBatch(parentCtx) {
@@ -249,18 +265,26 @@ func (s *UserPlatformQuotaUsageFlusher) tick() {
 
 // Start 注册定时 tick。flusher_enabled=false 时直接返回，不注册定时器。
 func (s *UserPlatformQuotaUsageFlusher) Start() {
-	if s == nil || !s.enabled {
+	if s == nil || !s.enabled || s.stopped.Load() {
 		return
 	}
 	s.timingWheel.ScheduleRecurring("deferred:platform_quota", s.interval, s.tick)
 }
 
-// Stop 停止 flusher：标记 stopped → Cancel 定时器 → 执行最后一次 flush。
+// Stop prevents new ticks, waits for the current batch (including dirty-key
+// recovery), then performs one final flush. Every caller waits for that same
+// completion before Redis or the database can be closed by application cleanup.
 func (s *UserPlatformQuotaUsageFlusher) Stop() {
 	if s == nil {
 		return
 	}
-	s.stopped.Store(true)
-	s.timingWheel.Cancel("deferred:platform_quota")
-	s.flush()
+	s.stopOnce.Do(func() {
+		s.stopped.Store(true)
+		if s.timingWheel != nil {
+			s.timingWheel.Cancel("deferred:platform_quota")
+		}
+		s.flushMu.Lock()
+		defer s.flushMu.Unlock()
+		s.flushLocked()
+	})
 }

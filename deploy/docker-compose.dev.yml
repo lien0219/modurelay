@@ -17,6 +17,8 @@ services:
         NPM_CONFIG_REGISTRY: ${NPM_CONFIG_REGISTRY:-https://registry.npmmirror.com}
     container_name: sub2api-dev
     restart: unless-stopped
+    # Request drain + cancellation + cleanup + safety margin; see GRACEFUL_SHUTDOWN.md.
+    stop_grace_period: ${APP_STOP_GRACE_PERIOD:-16m}
     security_opt:
       - no-new-privileges:true
     ports:
@@ -27,6 +29,10 @@ services:
       - AUTO_SETUP=true
       - SERVER_HOST=0.0.0.0
       - SERVER_PORT=8080
+      - SERVER_SHUTDOWN_TIMEOUT_SECONDS=${SERVER_SHUTDOWN_TIMEOUT_SECONDS:-900}
+      - SERVER_DRAIN_DELAY_SECONDS=${SERVER_DRAIN_DELAY_SECONDS:-5}
+      - SERVER_CLEANUP_TIMEOUT_SECONDS=${SERVER_CLEANUP_TIMEOUT_SECONDS:-30}
+      - SERVER_FORCE_CLOSE_TIMEOUT_SECONDS=${SERVER_FORCE_CLOSE_TIMEOUT_SECONDS:-10}
       - SERVER_MODE=debug
       - ENABLE_SERVER_TIMING=${ENABLE_SERVER_TIMING:-false}
       - RUN_MODE=${RUN_MODE:-standard}

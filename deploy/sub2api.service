@@ -12,6 +12,9 @@ WorkingDirectory=/opt/sub2api
 ExecStart=/opt/sub2api/sub2api
 Restart=always
 RestartSec=5
+# Covers 5s readiness delay + 900s requests + 10s cancellation + 30s cleanup.
+# Increase this if overriding the SERVER_* shutdown budgets.
+TimeoutStopSec=960
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=sub2api

@@ -92,7 +92,11 @@ func main() {
 	}
 
 	// Normal server mode
-	runMainServer()
+	if err := runMainServer(); err != nil {
+		log.Printf("Server exited with error: %v", err)
+		logger.Sync()
+		os.Exit(1)
+	}
 }
 
 func runSetupServer() {
@@ -132,7 +136,7 @@ func runSetupServer() {
 	}
 }
 
-func runMainServer() {
+func runMainServer() error {
 	cfg, err := config.LoadForBootstrap()
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
@@ -154,7 +158,6 @@ func runMainServer() {
 	if err != nil {
 		log.Fatalf("Failed to initialize application: %v", err)
 	}
-	defer app.Cleanup()
 	if app.PluginManager != nil {
 		if err := app.PluginManager.Start(context.Background()); err != nil {
 			log.Printf("Plugin manager started in degraded state: %v", err)
@@ -170,28 +173,27 @@ func runMainServer() {
 		}
 	}
 
-	// 启动服务器
-	go func() {
-		if err := app.Server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("Failed to start server: %v", err)
-		}
-	}()
-
-	log.Printf("Server started on %s", app.Server.Addr)
-
-	// 等待中断信号
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
+	defer signal.Stop(quit)
 
-	log.Println("Shutting down server...")
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if err := app.Server.Shutdown(ctx); err != nil {
-		log.Printf("Server forced to shutdown: %v", err)
+	serverErrors := make(chan error, 1)
+	go func() { serverErrors <- app.Server.ListenAndServe() }()
+	log.Printf("Server started on %s", app.Server.Addr)
+	var serveErr error
+	select {
+	case received := <-quit:
+		log.Printf("Shutdown requested: signal=%s", received)
+	case err := <-serverErrors:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			serveErr = err
+			log.Printf("Server stopped unexpectedly: %v", err)
+		}
 	}
-
-	log.Println("Server exited")
+	shutdownErr := shutdownServer(app.Server, app.Cleanup, shutdownOptionsFromConfig(cfg.Server))
+	if err := errors.Join(serveErr, shutdownErr); err != nil {
+		return err
+	}
+	log.Println("Server exited cleanly")
+	return nil
 }

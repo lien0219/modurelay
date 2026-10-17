@@ -63,11 +63,28 @@ grep -q '^APPLE_CONTAINER_SUB2API_IMAGE_ID=fake-image-id$' "${STATE_DIR}/env-fil
 "${SCRIPT}" status >/dev/null
 
 "${SCRIPT}" up --recreate
+grep -q '^--time 960 sub2api-apple$' "${STATE_DIR}/stop-arguments" || \
+    fail "application recreate did not allow its default graceful shutdown budget"
 assert_exists "${STATE_DIR}/running/sub2api-apple"
 "${SCRIPT}" down
 assert_missing "${STATE_DIR}/running/sub2api-apple"
 assert_missing "${STATE_DIR}/running/sub2api-apple-postgres"
 assert_missing "${STATE_DIR}/running/sub2api-apple-redis"
+grep -q '^--time 30 sub2api-apple-postgres$' "${STATE_DIR}/stop-arguments" || \
+    fail "database stop timeout changed with the application timeout"
+grep -q '^--time 30 sub2api-apple-redis$' "${STATE_DIR}/stop-arguments" || \
+    fail "Redis stop timeout changed with the application timeout"
+
+printf '\nAPPLE_CONTAINER_STOP_TIMEOUT_SECONDS=1200\n' >>"${ENV_FILE}"
+"${SCRIPT}" up
+"${SCRIPT}" down
+grep -q '^--time 1200 sub2api-apple$' "${STATE_DIR}/stop-arguments" || \
+    fail "application stop did not honor the configured timeout"
+printf 'APPLE_CONTAINER_STOP_TIMEOUT_SECONDS=-1\n' >>"${ENV_FILE}"
+if "${SCRIPT}" up >/dev/null 2>&1; then
+    fail "up accepted an invalid application stop timeout"
+fi
+printf 'APPLE_CONTAINER_STOP_TIMEOUT_SECONDS=960\n' >>"${ENV_FILE}"
 
 "${SCRIPT}" destroy --yes
 assert_missing "${STATE_DIR}/containers/sub2api-apple"

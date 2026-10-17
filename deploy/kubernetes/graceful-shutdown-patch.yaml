@@ -1,0 +1,46 @@
+# Strategic merge patch for an EXISTING Deployment, not a complete deployment.
+# Replace both names with the real Deployment/container names before use:
+# kubectl patch deployment modurelay --type strategic --patch-file graceful-shutdown-patch.yaml
+# Existing image, secrets, database/Redis settings, volumes and resources are retained.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: modurelay
+spec:
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    spec:
+      # 5 + 900 + 10 + 30 seconds, plus 15 seconds of scheduling/runtime margin.
+      terminationGracePeriodSeconds: 960
+      containers:
+        - name: modurelay
+          env:
+            - name: SERVER_DRAIN_DELAY_SECONDS
+              value: "5"
+            - name: SERVER_SHUTDOWN_TIMEOUT_SECONDS
+              value: "900"
+            - name: SERVER_FORCE_CLOSE_TIMEOUT_SECONDS
+              value: "10"
+            - name: SERVER_CLEANUP_TIMEOUT_SECONDS
+              value: "30"
+          readinessProbe:
+            # Replace an existing exec/tcpSocket probe instead of merging two handlers.
+            $patch: replace
+            httpGet:
+              path: /ready
+              port: 8080
+            periodSeconds: 2
+            timeoutSeconds: 1
+            failureThreshold: 1
+          livenessProbe:
+            $patch: replace
+            httpGet:
+              path: /health
+              port: 8080
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3

@@ -730,6 +730,8 @@ WorkingDirectory=/opt/sub2api
 ExecStart=/opt/sub2api/sub2api
 Restart=always
 RestartSec=5
+# Covers the default 945s application shutdown budget plus runtime margin.
+TimeoutStopSec=960
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=sub2api

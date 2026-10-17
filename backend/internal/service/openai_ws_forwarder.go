@@ -267,6 +267,10 @@ type OpenAIWSIngressHooks struct {
 	// that must be written into the upstream response.create frame.
 	MapRequestModel func(turn int, originalModel string) (string, error)
 	AfterTurn       func(turn int, result *OpenAIForwardResult, turnErr error)
+	// AfterTurnForwarded runs after the terminal frame has reached the client
+	// and AfterTurn has submitted usage. Unlike AfterTurn, it never marks a
+	// retryable upstream failure as an idle boundary for graceful shutdown.
+	AfterTurnForwarded func(turn int)
 }
 
 func (s *OpenAIGatewayService) getOpenAIWSConnPool() *openAIWSConnPool {

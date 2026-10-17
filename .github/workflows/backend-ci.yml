@@ -36,6 +36,8 @@ jobs:
         run: /bin/sh deploy/tests/docker-compose-simple-mode-env-test.sh
       - name: Check Docker Compose cluster environment
         run: /bin/sh deploy/tests/docker-compose-cluster-env-test.sh
+      - name: Check graceful shutdown deployment budgets
+        run: /bin/sh deploy/tests/docker-compose-shutdown-test.sh
       - uses: actions/setup-go@v6
         with:
           go-version-file: backend/go.mod

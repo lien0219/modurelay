@@ -20,6 +20,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/lifecycle"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/requestmodel"
 	"github.com/Wei-Shaw/sub2api/internal/securityaudit"
@@ -2481,6 +2482,39 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		_ = wsConn.CloseNow()
 	}()
 	wsConn.SetReadLimit(service.ResolveOpenAIWSClientReadLimitBytes(h.cfg))
+	// A WebSocket request may contain many turns. Drain idle connections promptly,
+	// but keep an accepted turn alive through retries, its terminal frame, and the
+	// usage submission. The forwarders signal that boundary with AfterTurnForwarded.
+	drainRequest := lifecycle.FromContext(clientLifecycleCtx)
+	var drainClosed atomic.Bool
+	drainRequest.OnDrain(func() {
+		drainClosed.Store(true)
+		closeOpenAIClientWS(wsConn, coderws.StatusServiceRestart, "server restarting; please reconnect")
+	})
+	var drainTurnMu sync.Mutex
+	drainTurnActive := false
+	errWSDraining := errors.New("server restarting; please reconnect")
+	beginDrainTurn := func() error {
+		drainTurnMu.Lock()
+		defer drainTurnMu.Unlock()
+		if drainTurnActive {
+			return nil // An upstream retry still belongs to the admitted turn.
+		}
+		if !drainRequest.BeginTurn() {
+			return service.NewOpenAIWSClientCloseError(coderws.StatusServiceRestart, errWSDraining.Error(), errWSDraining)
+		}
+		drainTurnActive = true
+		return nil
+	}
+	finishDrainTurn := func() {
+		drainTurnMu.Lock()
+		defer drainTurnMu.Unlock()
+		if drainTurnActive {
+			drainTurnActive = false
+			drainRequest.EndTurn()
+		}
+	}
+	defer finishDrainTurn()
 
 	firstMessageTimeout := service.ResolveOpenAIWSClientFirstMessageTimeout(h.cfg)
 	msgType, firstMessage, err := service.ReadOpenAIWSClientMessage(
@@ -2491,6 +2525,10 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		"missing first response.create message",
 	)
 	if err != nil {
+		if drainClosed.Load() || errors.Is(context.Cause(ctx), lifecycle.ErrForcedShutdown) {
+			reqLog.Info("openai.websocket_ingress_shutdown_before_first_message")
+			return
+		}
 		if errors.Is(context.Cause(ctx), service.ErrOpenAIWSIngressLeaseLost) {
 			reqLog.Warn("openai.websocket_ingress_lease_lost_before_first_message", zap.Error(err))
 			closeOpenAIClientWS(wsConn, coderws.StatusTryAgainLater, "websocket ingress capacity lease lost; please reconnect")
@@ -2505,6 +2543,10 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			zap.Duration("read_timeout", firstMessageTimeout),
 		)
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "missing first response.create message")
+		return
+	}
+	if err := beginDrainTurn(); err != nil {
+		closeOpenAIClientWS(wsConn, coderws.StatusServiceRestart, errWSDraining.Error())
 		return
 	}
 	firstTurnStartedAt := time.Now()
@@ -2975,6 +3017,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			ReasoningEffortMappings:     reasoningEffortMappings,
 			TurnStarted:                 recordTurnStart,
 			BeforeRequest: func(turn int, payload []byte, originalModel string) error {
+				if err := beginDrainTurn(); err != nil {
+					return err
+				}
 				c.Set(securityAuditWSTurnContextKey, turn)
 				service.BeginOpsStreamTurn(c, turn)
 				setCyberTurnBody(turn, payload)
@@ -3041,6 +3086,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				return mapping.MappedModel, nil
 			},
 			BeforeTurn: func(turn int) error {
+				if err := beginDrainTurn(); err != nil {
+					return err
+				}
 				// turn==1 的会话屏蔽已由握手层检查覆盖；连接内 flag 只拦截后续 turn。
 				if cyberBlockedThisConn && !h.cyberPolicyLogOnly(c, apiKey) {
 					return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, cyberSessionBlockedClientMsg, nil)
@@ -3088,6 +3136,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				currentAccountRelease = wrapReleaseOnDone(ctx, accountReleaseFunc)
 				return checkSimpleModeTurnBilling()
 			},
+			AfterTurnForwarded: func(int) { finishDrainTurn() },
 			AfterTurn: func(turn int, result *service.OpenAIForwardResult, turnErr error) {
 				turnStart := getTurnStart(turn)
 				cyberBlockBody := takeCyberTurnBody(turn)
@@ -3218,6 +3267,11 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 
 		for {
 			err := h.gatewayService.ProxyResponsesWebSocketFromClient(ctx, c, wsConn, account, token, wsFirstMessage, hooks)
+			if drainClosed.Load() || errors.Is(err, errWSDraining) || errors.Is(context.Cause(ctx), lifecycle.ErrForcedShutdown) {
+				// A local restart must not count as an upstream account failure.
+				reqLog.Info("openai.websocket_ingress_shutdown", zap.Int64("account_id", account.ID))
+				return
+			}
 			if err == nil {
 				reqLog.Info("openai.websocket_ingress_closed", zap.Int64("account_id", account.ID))
 				return

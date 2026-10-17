@@ -172,6 +172,7 @@ case "${command}" in
         touch "${STATE_DIR}/running/${1}"
         ;;
     stop)
+        printf '%s\n' "$*" >>"${STATE_DIR}/stop-arguments"
         for argument in "$@"; do
             case "${argument}" in
                 --time|--signal) skip_next=true ;;
