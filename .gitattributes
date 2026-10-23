@@ -21,6 +21,9 @@ backend/migrations/*.sql text eol=lf
 # Dockerfile
 Dockerfile text eol=lf
 
+# PDF cross-reference offsets require byte-exact storage.
+*.pdf binary
+
 # Byte-exact vendored Sylva source and runtime assets
 frontend/public/threeui/sylva/inner-green-3d.html -text
 frontend/public/threeui/sylva/inner-green-assets/** -text
