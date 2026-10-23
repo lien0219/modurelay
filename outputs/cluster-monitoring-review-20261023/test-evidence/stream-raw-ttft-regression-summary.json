@@ -1,0 +1,14 @@
+{
+  "top_level": {
+    "pass": 38,
+    "fail": 0,
+    "skip": 0
+  },
+  "subtests": {
+    "pass": 41,
+    "fail": 0,
+    "skip": 0
+  },
+  "command": "go test -tags=unit ./internal/service -run 'Test(OpsChatCompletionsFirstOutput|OpsRawStreamsFirstOutput|OpenAIResponsesTTFT|ForwardAsRawChatCompletions|NativeAnthropic)' -count=1 -timeout=3m -json",
+  "cases": "Chat role-only/finish/usage/tool-id metadata; Anthropic message_start/ping/empty-block. Actual path synthetic120ms delayed text/tools/reasoning and metadata-only nilTTFT. Responses semantic+visible retained. Forwarded usage 7in/4out unchanged."
+}

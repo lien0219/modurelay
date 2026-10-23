@@ -13,3 +13,31 @@ scrape_configs:
           - modurelay-metrics.default.svc.cluster.local:8080
         labels:
           cluster: modurelay
+
+  # Per-Pod counters/histograms MUST use endpoint discovery, not the single
+  # load-balanced Service URL used above for shared cluster gauges.
+  - job_name: modurelay-instance
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    metrics_path: /metrics/instance
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/secrets/modurelay-metrics-token
+    kubernetes_sd_configs:
+      - role: endpoints
+        namespaces:
+          names: [default] # change to the application's namespace
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+        action: keep
+        regex: modurelay-metrics;metrics
+      - target_label: cluster
+        replacement: modurelay # same value on kube-state-metrics and cAdvisor
+      - source_labels: [__meta_kubernetes_namespace]
+        target_label: namespace
+      - source_labels: [__meta_kubernetes_service_name]
+        target_label: service
+      - source_labels: [__meta_kubernetes_pod_name]
+        target_label: pod
+      - source_labels: [__meta_kubernetes_pod_uid]
+        target_label: uid

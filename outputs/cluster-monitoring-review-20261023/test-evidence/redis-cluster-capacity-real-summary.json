@@ -1,0 +1,52 @@
+{
+  "result": "pass",
+  "test": "TestMonitoringRedisClusterCapacityReal",
+  "image": "redis:8.4-alpine",
+  "topology": "3 masters, no replicas",
+  "node_memory_limit_mb": 128,
+  "redis_maxmemory_mb": 64,
+  "hotspot": {
+    "node_used": 82,
+    "node_limit": 100,
+    "other_nodes": [
+      {
+        "used": 1,
+        "limit": 1000
+      },
+      {
+        "used": 1,
+        "limit": 1000
+      }
+    ],
+    "busiest_node_percent": 82,
+    "sum_percent": 4
+  },
+  "after_one_master_shutdown": {
+    "state": "Unknown",
+    "used": null,
+    "limit": null
+  },
+  "application_pools": [
+    {
+      "instance": "capacity-app-a",
+      "budget": 12,
+      "actual": 3,
+      "idle": 3
+    },
+    {
+      "instance": "capacity-app-b",
+      "budget": 12,
+      "actual": 3,
+      "idle": 3
+    }
+  ],
+  "duration_seconds": 1.32,
+  "evidence": "redis-cluster-capacity-real.log",
+  "scope": "Functional real-server acceptance only, not throughput/capacity load testing",
+  "reproduce": [
+    "CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go test -tags=unit -c ./internal/service -o /tmp/modurelay-redis-capacity-20261023/service.test",
+    "docker compose -f /tmp/modurelay-redis-capacity-20261023/compose.json up -d --wait redis-0 redis-1 redis-2",
+    "docker compose -f /tmp/modurelay-redis-capacity-20261023/compose.json exec -T redis-0 redis-cli --cluster create redis-0:6379 redis-1:6379 redis-2:6379 --cluster-replicas 0 --cluster-yes",
+    "docker compose -f /tmp/modurelay-redis-capacity-20261023/compose.json --profile test run --rm --no-deps probe"
+  ]
+}

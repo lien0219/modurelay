@@ -294,6 +294,9 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		} else {
 			result, err = h.gatewayService.ForwardAsResponses(requestCtx, c, account, forwardBody, parsedReq)
 		}
+		if result != nil {
+			service.SetOpsSuccessfulFirstToken(c, result.FirstTokenMs, err)
+		}
 
 		if accountReleaseFunc != nil {
 			accountReleaseFunc()

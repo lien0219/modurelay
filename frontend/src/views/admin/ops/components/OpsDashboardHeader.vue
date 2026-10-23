@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import OpsDatabaseCapacity from './OpsDatabaseCapacity.vue'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Select from '@/components/common/Select.vue'
@@ -1563,6 +1564,8 @@ function handleToolbarRefresh() {
         </div>
       </div>
     </div>
+
+    <OpsDatabaseCapacity v-if="overview && !props.fullscreen" :capacity="systemMetrics?.capacity" />
 
     <BaseDialog :show="showJobsDetails" :title="t('admin.ops.jobs')" width="wide" @close="showJobsDetails = false">
       <div v-if="!jobHeartbeats.length" class="text-sm text-gray-500 dark:text-gray-400">

@@ -1,0 +1,20 @@
+{
+  "project": "modurelay-log-test-cfae35c5",
+  "checks": [
+    {
+      "name": "same Request ID across two Pod UIDs",
+      "passed": true
+    },
+    {
+      "name": "archived log remains after source files are deleted",
+      "passed": true
+    },
+    {
+      "name": "synthetic records retain correlation fields without credentials",
+      "passed": true
+    }
+  ],
+  "started_at": "2026-10-23T06:38:55.466224+00:00",
+  "passed": true,
+  "cleaned_up": true
+}

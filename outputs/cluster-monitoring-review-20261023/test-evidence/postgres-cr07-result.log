@@ -1,0 +1,7 @@
+{"postgres_version" : "PostgreSQL 18.1 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit", "current_code_used" : 13, "current_code_limit" : 100, "client_backends" : 5, "other_backends" : 8, "backend_types" : [{"backend_type":"autovacuum launcher","processes":1}, 
+ {"backend_type":"background writer","processes":1}, 
+ {"backend_type":"checkpointer","processes":1}, 
+ {"backend_type":"client backend","processes":5}, 
+ {"backend_type":"io worker","processes":3}, 
+ {"backend_type":"logical replication launcher","processes":1}, 
+ {"backend_type":"walwriter","processes":1}]}

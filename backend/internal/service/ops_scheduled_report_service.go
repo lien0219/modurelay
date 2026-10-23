@@ -348,9 +348,14 @@ func (s *OpsScheduledReportService) runReport(ctx context.Context, report *opsSc
 			continue
 		}
 		attempts++
-		locale := ""
+		locale := notificationEmailLocaleChinese
+		if s.emailService != nil && s.emailService.notificationEmailService != nil {
+			locale = s.emailService.notificationEmailService.ResolveOpsEventMailLocale(ctx, addr, NotificationEmailEventOpsScheduledReport)
+		}
+		if s.emailService == nil {
+			continue
+		}
 		if s.emailService.notificationEmailService != nil {
-			locale = s.emailService.notificationEmailService.ResolveRecipientLocale(ctx, 0, addr)
 			templateVariables := opsScheduledReportLocalizedEmailVariables(report, now, locale)
 			rawHTMLVariables := map[string]string{"report_html": content.html}
 			if isOpsSummaryReport(report) {

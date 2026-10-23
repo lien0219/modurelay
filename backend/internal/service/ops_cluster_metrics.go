@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/billingobserve"
 	"os"
 	"runtime"
 	"strings"
@@ -22,6 +23,22 @@ func (s *OpsService) SetMetricsCollector(collector *OpsMetricsCollector) {
 	if s != nil {
 		s.metricsCollector = collector
 	}
+}
+
+// AlertClusterRuntimeSnapshot is the live application-pool sample used by alert
+// rules. It does not query usage logs. A missing collector is an error so a
+// rule does not treat one process config limit as the cluster limit.
+func (s *OpsService) AlertClusterRuntimeSnapshot(ctx context.Context) (*OpsSystemMetricsSnapshot, error) {
+	if s == nil {
+		return nil, fmt.Errorf("ops service unavailable")
+	}
+	if s.alertClusterRuntimeSnapshot != nil {
+		return s.alertClusterRuntimeSnapshot(ctx)
+	}
+	if s.metricsCollector == nil {
+		return nil, fmt.Errorf("metrics collector unavailable")
+	}
+	return s.metricsCollector.ClusterRuntimeSnapshot(ctx)
 }
 
 func (c *OpsMetricsCollector) runtimeLoop() {
@@ -50,6 +67,9 @@ func (c *OpsMetricsCollector) publishRuntimeSample() {
 	if !c.isMonitoringEnabled(ctx) {
 		return
 	}
+	if repo, ok := c.opsRepo.(OpsBillingGapFlusher); ok {
+		repo.FlushBillingRecordingGaps(ctx)
+	}
 	sys, _ := c.collectSystemStats(ctx)
 	active, idle := c.dbPoolStats()
 	snapshot := &OpsSystemMetricsSnapshot{
@@ -63,6 +83,8 @@ func (c *OpsMetricsCollector) publishRuntimeSample() {
 	if c.db != nil {
 		snapshot.DBMaxOpenConns = intPtr(c.db.Stats().MaxOpenConnections)
 	}
+	snapshot.DatabasePools = c.databasePoolStats()
+	snapshot.BillingObservationUnpersisted = billingobserve.Pending()
 	if total, idle, ok := c.redisPoolStats(); ok {
 		snapshot.RedisConnTotal, snapshot.RedisConnIdle = intPtr(total), intPtr(idle)
 	}
@@ -123,6 +145,8 @@ func aggregateOpsRuntimeSamples(samples []*OpsSystemMetricsSnapshot) *OpsSystemM
 	var cpuCount int
 	cpuResources, memoryResources := map[string]bool{}, map[string]bool{}
 	for i, sample := range samples {
+		out.DatabasePools = append(out.DatabasePools, sample.DatabasePools...)
+		out.BillingObservationUnpersisted += sample.BillingObservationUnpersisted
 		if sample.CreatedAt.After(out.CreatedAt) {
 			out.CreatedAt = sample.CreatedAt
 		}

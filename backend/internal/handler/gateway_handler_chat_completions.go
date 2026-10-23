@@ -312,6 +312,9 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		} else {
 			result, err = h.gatewayService.ForwardAsChatCompletions(c.Request.Context(), c, account, forwardBody, parsedReq)
 		}
+		if result != nil {
+			service.SetOpsSuccessfulFirstToken(c, result.FirstTokenMs, err)
+		}
 
 		if accountReleaseFunc != nil {
 			accountReleaseFunc()

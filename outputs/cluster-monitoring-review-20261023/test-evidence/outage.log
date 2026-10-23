@@ -1,0 +1,2 @@
+{"name": "Stopped Prometheus yields Unknown", "passed": true, "details": {"code": 0, "message": "success", "data": {"metric": "qps", "unit": "requests/s", "state": "Unknown", "reason": "prometheus_query_failed", "step_seconds": 0, "series": []}}}
+{"name": "Application remains ready during monitoring outage", "passed": true, "details": {"http": 200}}

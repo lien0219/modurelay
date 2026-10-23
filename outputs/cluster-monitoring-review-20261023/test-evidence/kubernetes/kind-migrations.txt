@@ -1,0 +1,8 @@
+                 filename                 |                             checksum                             
+------------------------------------------+------------------------------------------------------------------
+ 277_ops_kubernetes_resource_contract.sql | cb43a1abc8a471b0f8e737b008a2a3ea04e2e6bcf61a606211bbad308e49604d
+ 278_ops_billing_operations.sql           | c26e3ab655e93e5a837786895b8d1f4124d9416b862558949a977f65581bbcf2
+ 279_ops_account_ledger.sql               | 48448506e3f8e13ec453d03487768edb5b9c523f02d3b6db1ef1fe9bd7a7d5c7
+ 280_ops_account_projection_isolation.sql | 724c03136843262d26b380b995e0229a857c60d0e71ff68fe5f810757f7e1113
+(4 rows)
+

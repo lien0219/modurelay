@@ -1,0 +1,5 @@
+{"name": "25 authentication rejects recorded as ingress 401", "passed": true, "details": {"sent": 25, "counter_delta": 25.0, "http_codes": [401]}}
+{"name": "Real ingress 4xx query", "passed": true, "details": {"code": 0, "message": "success", "data": {"metric": "http_4xx_count", "unit": "requests", "state": "Available", "step_seconds": 0, "series": [{"labels": {"cluster": "standalone", "service": "modurelay", "source": "ingress"}, "points": [{"timestamp": "2026-10-23T06:06:46Z", "value": 44.42903828197946, "state": "Available"}]}]}}}
+{"name": "Invalid monitoring query rejected metric=not_a_metric", "passed": true, "details": {"http": 400, "message": "invalid monitoring query: unsupported metric"}}
+{"name": "Invalid monitoring query rejected metric=qps&namespace=forbidden_in_standalone", "passed": false, "details": {"http": 200, "message": "success"}}
+{"name": "Invalid monitoring query rejected metric=qps&cluster=x%22%7D%20or%20vector(1)", "passed": false, "details": {"http": 200, "message": "success"}}

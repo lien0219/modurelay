@@ -1,0 +1,27 @@
+{
+  "status": "success",
+  "data": {
+    "resultType": "vector",
+    "result": [
+      {
+        "metric": {
+          "pod": "oom-restart"
+        },
+        "value": [
+          1792740104.635,
+          "0"
+        ]
+      },
+      {
+        "metric": {
+          "container": "main",
+          "pod": "oom-restart"
+        },
+        "value": [
+          1792740104.635,
+          "0"
+        ]
+      }
+    ]
+  }
+}

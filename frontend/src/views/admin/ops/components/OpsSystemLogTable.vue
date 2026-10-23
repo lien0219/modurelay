@@ -404,6 +404,7 @@ onMounted(async () => {
       <div>
         <h3 class="text-sm font-bold text-gray-900 dark:text-white">{{ t('admin.ops.systemLogs.title') }}</h3>
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.ops.systemLogs.description') }}</p>
+        <p class="mt-2 text-sm text-[var(--color-text-secondary)]" role="status">{{ t(runtimeConfig.persist_access_logs ? 'admin.ops.monitoring.sharedLogsEnabled' : 'admin.ops.monitoring.sharedLogsLimited') }}</p>
       </div>
       <div class="flex flex-wrap items-center gap-2 text-xs">
         <span class="rounded-md bg-gray-100 px-2 py-1 text-gray-700 dark:bg-dark-700 dark:text-gray-200">{{ t('admin.ops.systemLogs.queue') }} {{ health.queue_depth }}/{{ health.queue_capacity }}</span>

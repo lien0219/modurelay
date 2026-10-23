@@ -50,7 +50,11 @@ func TestReadReplicaKeepsBillingAndQuotaReadsOnPrimary(t *testing.T) {
 	require.NoError(t, err)
 	require.EqualValues(t, 10, stats.Requests)
 
+	pm.ExpectQuery(`WITH gap AS`).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(10))
 	pm.ExpectBegin()
+	pm.ExpectExec(`SAVEPOINT billing_observation`).WillReturnResult(sqlmock.NewResult(0, 0))
+	pm.ExpectExec(`SELECT set_config`).WithArgs("10").WillReturnResult(sqlmock.NewResult(0, 0))
+	pm.ExpectExec(`RELEASE SAVEPOINT billing_observation`).WillReturnResult(sqlmock.NewResult(0, 0))
 	pm.ExpectQuery(`INSERT INTO usage_billing_dedup`).WithArgs("request-1", int64(9), sqlmock.AnyArg()).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
 	pm.ExpectQuery(`(?s)SELECT request_fingerprint.*FROM usage_billing_dedup_archive`).WithArgs("request-1", int64(9)).
@@ -58,6 +62,7 @@ func TestReadReplicaKeepsBillingAndQuotaReadsOnPrimary(t *testing.T) {
 	pm.ExpectQuery(conditionalBalanceDeductSQL).WithArgs(1.0, int64(42)).
 		WillReturnRows(sqlmock.NewRows([]string{"balance"}).AddRow(9.0))
 	pm.ExpectCommit()
+	pm.ExpectExec(`WITH changed AS`).WithArgs(int64(10), "committed", "").WillReturnResult(sqlmock.NewResult(0, 1))
 	result, err := NewUsageBillingRepository(client, injected).Apply(ctx, &service.UsageBillingCommand{
 		RequestID: "request-1", APIKeyID: 9, UserID: 42, BalanceCost: 1,
 	})

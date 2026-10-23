@@ -1,0 +1,11 @@
+{"Time":"2026-10-23T15:01:12.963404+08:00","Action":"start","Package":"github.com/Wei-Shaw/sub2api/internal/pkg/billingobserve"}
+{"Time":"2026-10-23T15:01:12.964376+08:00","Action":"start","Package":"github.com/Wei-Shaw/sub2api/internal/pkg/dbpoolstats"}
+{"Time":"2026-10-23T15:01:12.964494+08:00","Action":"output","Package":"github.com/Wei-Shaw/sub2api/internal/pkg/dbpoolstats","Output":"?   \tgithub.com/Wei-Shaw/sub2api/internal/pkg/dbpoolstats\t[no test files]\n"}
+{"Time":"2026-10-23T15:01:12.965012+08:00","Action":"skip","Package":"github.com/Wei-Shaw/sub2api/internal/pkg/dbpoolstats","Elapsed":0.001}
+{"Time":"2026-10-23T15:01:13.36848+08:00","Action":"run","Package":"github.com/Wei-Shaw/sub2api/internal/pkg/billingobserve","Test":"TestGapConcurrentPersistencePreservesNewFailures"}
+{"Time":"2026-10-23T15:01:13.368772+08:00","Action":"output","Package":"github.com/Wei-Shaw/sub2api/internal/pkg/billingobserve","Test":"TestGapConcurrentPersistencePreservesNewFailures","Output":"=== RUN   TestGapConcurrentPersistencePreservesNewFailures\n","OutputType":"frame"}
+{"Time":"2026-10-23T15:01:13.36906+08:00","Action":"output","Package":"github.com/Wei-Shaw/sub2api/internal/pkg/billingobserve","Test":"TestGapConcurrentPersistencePreservesNewFailures","Output":"--- PASS: TestGapConcurrentPersistencePreservesNewFailures (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-10-23T15:01:13.369079+08:00","Action":"pass","Package":"github.com/Wei-Shaw/sub2api/internal/pkg/billingobserve","Test":"TestGapConcurrentPersistencePreservesNewFailures","Elapsed":0}
+{"Time":"2026-10-23T15:01:13.369096+08:00","Action":"output","Package":"github.com/Wei-Shaw/sub2api/internal/pkg/billingobserve","Output":"PASS\n","OutputType":"frame"}
+{"Time":"2026-10-23T15:01:14.372834+08:00","Action":"output","Package":"github.com/Wei-Shaw/sub2api/internal/pkg/billingobserve","Output":"ok  \tgithub.com/Wei-Shaw/sub2api/internal/pkg/billingobserve\t1.408s\n"}
+{"Time":"2026-10-23T15:01:14.372904+08:00","Action":"pass","Package":"github.com/Wei-Shaw/sub2api/internal/pkg/billingobserve","Elapsed":1.409}

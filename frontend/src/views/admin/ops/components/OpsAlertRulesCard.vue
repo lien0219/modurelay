@@ -11,6 +11,7 @@ import { opsAPI } from '@/api/admin/ops'
 import type { AlertRule, MetricType, Operator } from '../types'
 import type { OpsSeverity } from '@/api/admin/ops'
 import { formatDateTime } from '../utils/opsFormatters'
+import { httpDimensionsFor, httpDimensionKeys, monitoringProtocols, monitoringRoutes, isHTTPMonitoringMetric } from '../monitoringFilters'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -20,6 +21,13 @@ const isDesktopViewport = useMediaQuery('(min-width: 768px)')
 
 const loading = ref(false)
 const rules = ref<AlertRule[]>([])
+const externalIngressAdapter = ref('nginx')
+async function loadMonitoringCapabilities() {
+  try {
+    const capabilities = await opsAPI.getMonitoringCapabilities()
+    externalIngressAdapter.value = capabilities.external_ingress_adapter || 'nginx'
+  } catch { /* Server validation remains authoritative when discovery is unavailable. */ }
+}
 
 async function load() {
   loading.value = true
@@ -37,6 +45,7 @@ async function load() {
 onMounted(() => {
   load()
   loadGroups()
+  loadMonitoringCapabilities()
 })
 
 const sortedRules = computed(() => {
@@ -48,7 +57,7 @@ const saving = ref(false)
 const editingId = ref<number | null>(null)
 const draft = ref<AlertRule | null>(null)
 
-type MetricGroup = 'system' | 'group' | 'account'
+type MetricGroup = 'system' | 'group' | 'account' | 'monitoring'
 
 interface MetricDefinition {
   type: MetricType
@@ -65,6 +74,69 @@ const groupMetricTypes = new Set<MetricType>([
   'group_available_ratio',
   'group_rate_limit_ratio'
 ])
+
+const monitoringMetricTypes: MetricType[] = [
+  'request_count_started', 'pod_oom_count', 'hpa_target_cpu_utilization_percent', 'hpa_target_memory_utilization_percent', 'deployment_cpu_usage_percent', 'deployment_memory_usage_percent', 'deployment_restarts', 'deployment_oom', 'deployment_oom_count',
+  'db_instance_connections', 'db_instance_limit', 'redis_instance_connections', 'redis_instance_limit', 'db_instance_usage_percent', 'redis_instance_usage_percent',
+  'qps_started', 'rpm_started',
+  'db_pool_wait_count', 'db_pool_wait_duration_ms', 'redis_pool_timeout_count',
+  'qps', 'rpm', 'request_count', 'pod_cpu_cores', 'pod_cpu_limit_cores', 'cluster_cpu_usage_percent', 'pod_memory_bytes', 'pod_memory_limit_bytes', 'pod_ready', 'pod_pending', 'pod_unschedulable', 'pod_crash_loop', 'pod_cpu_throttling_percent', 'hpa_current_replicas', 'hpa_desired_replicas', 'hpa_max_replicas', 'hpa_at_max', 'deployment_desired_replicas', 'deployment_available_replicas', 'deployment_ready_replicas', 'scrape_up', 'monitoring_source_unavailable',
+  'http_p95_ms', 'http_p99_ms', 'ttft_p95_ms', 'ttft_p99_ms',
+  'http_4xx_count', 'http_5xx_count', 'http_429_count', 'http_4xx_rate', 'http_5xx_rate',
+  'pod_cpu_usage_percent', 'pod_memory_usage_percent', 'pod_restarts', 'pod_oom'
+]
+const rateMetricTypes = new Set<MetricType>([
+  'success_rate', 'error_rate', 'upstream_error_rate',
+  ...monitoringMetricTypes.filter(metric => metric.startsWith('http_') || metric.startsWith('ttft_') || ['qps', 'rpm', 'qps_started', 'rpm_started', 'request_count', 'request_count_started'].includes(metric))
+])
+const resourceKeys = ['cluster', 'namespace', 'service', 'deployment', 'pod', 'uid', 'source', ...httpDimensionKeys] as const
+const visibleRuleResourceKeys = computed(() => {
+  const type = draft.value?.metric_type ?? ''
+  if (type === 'monitoring_source_unavailable') return []
+  if (type.startsWith('db_instance_') || type.startsWith('redis_instance_')) return ['cluster']
+  if (type.startsWith('hpa_')) return ['cluster', 'namespace']
+  if (type.startsWith('deployment_')) return ['cluster', 'namespace', 'deployment']
+  const dimensions = httpDimensionsFor(type, resourceValue('source'), externalIngressAdapter.value)
+  const allowed = resourceKeys.filter(key => !httpDimensionKeys.includes(key as typeof httpDimensionKeys[number]) || dimensions.includes(key as typeof httpDimensionKeys[number]))
+  if (type.endsWith('_started') || !isHTTPMonitoringMetric(type)) return allowed.filter(key => key !== 'source')
+  if (resourceValue('source') === 'external_ingress' && externalIngressAdapter.value === 'nginx') return allowed.filter(key => !['pod', 'uid', 'deployment'].includes(key))
+  return allowed
+})
+const silenceUntil = computed({
+  get() {
+    const raw = draft.value?.filters?.silenced_until
+    if (!raw) return ''
+    const date = new Date(String(raw))
+    return Number.isFinite(date.getTime()) ? new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16) : ''
+  },
+  set(value: string) { setResource('silenced_until', value ? new Date(value).toISOString() : '') }
+})
+const isGlobalInfrastructureMetric = computed(() => !!draft.value && (draft.value.metric_type.startsWith('billing_')))
+const isMonitoringMetric = computed(() => !!draft.value && monitoringMetricTypes.includes(draft.value.metric_type))
+const webhookText = ref('')
+const webhookTesting = ref(false)
+function resourceValue(key: string): string {
+  return String(draft.value?.filters?.[key] ?? '')
+}
+function setResource(key: string, value: string | number | boolean) {
+  if (!draft.value) return
+  draft.value.filters ??= {}
+  if (value === '') delete draft.value.filters[key]
+  else draft.value.filters[key] = value
+}
+async function testWebhook() {
+  const url = webhookText.value.split(/\r?\n/).map(value => value.trim()).find(Boolean)
+  if (!url) return
+  webhookTesting.value = true
+  try {
+    await opsAPI.testAlertWebhook(url)
+    appStore.showSuccess(t('admin.ops.monitoring.webhookTestSuccess'))
+  } catch {
+    appStore.showError(t('admin.ops.monitoring.webhookTestFailed'))
+  } finally {
+    webhookTesting.value = false
+  }
+}
 
 function parsePositiveInt(value: unknown): number | null {
   if (value == null) return null
@@ -116,6 +188,19 @@ const groupOptions = computed<SelectOption[]>(() => {
 
 const metricDefinitions = computed(() => {
   return [
+    ...monitoringMetricTypes.map(type => ({
+      type,
+      group: 'monitoring' as const,
+      label: t(`admin.ops.monitoring.metrics.${type}`),
+      description: t(type.startsWith('pod_') ? 'admin.ops.monitoring.podRuleHint' : rateMetricTypes.has(type) ? 'admin.ops.monitoring.httpRuleHint' : 'admin.ops.monitoring.infrastructureRuleHint'),
+      recommendedOperator: '>' as const,
+      recommendedThreshold: type.endsWith('_ms') ? 2000 : type.endsWith('_percent') ? 80 : 1,
+      unit: type.endsWith('_ms') ? 'ms' : type.endsWith('_percent') || type.endsWith('_rate') ? '%' : ''
+    })),
+    ...(['db_advisory_lock_pool_usage_percent', 'db_read_replica_pool_usage_percent', 'billing_missing_usage_logs', 'billing_amount_mismatches', 'billing_failed_settlements', 'billing_compensation_backlog', 'billing_ledger_mismatches'] as MetricType[]).map(type => ({
+      type, group: 'monitoring' as const, label: t(`admin.ops.monitoring.metrics.${type}`),
+      description: t(type.startsWith('billing_') ? 'admin.ops.monitoring.billing.description' : 'admin.ops.monitoring.capacity.description'), recommendedOperator: '>' as const, recommendedThreshold: type.endsWith('_percent') ? 80 : 0, unit: type.endsWith('_percent') ? '%' : ''
+    })),
     // System-level metrics
     {
       type: 'success_rate',
@@ -158,6 +243,24 @@ const metricDefinitions = computed(() => {
       group: 'system',
       label: t('admin.ops.alertRules.metrics.memory'),
       description: t('admin.ops.alertRules.metricDescriptions.memory'),
+      recommendedOperator: '>',
+      recommendedThreshold: 80,
+      unit: '%'
+    },
+    {
+      type: 'db_pool_usage_percent',
+      group: 'system',
+      label: t('admin.ops.alertRules.metrics.dbPool'),
+      description: t('admin.ops.alertRules.metricDescriptions.dbPool'),
+      recommendedOperator: '>',
+      recommendedThreshold: 80,
+      unit: '%'
+    },
+    {
+      type: 'redis_pool_usage_percent',
+      group: 'system',
+      label: t('admin.ops.alertRules.metrics.redisPool'),
+      description: t('admin.ops.alertRules.metricDescriptions.redisPool'),
       recommendedOperator: '>',
       recommendedThreshold: 80,
       unit: '%'
@@ -266,7 +369,7 @@ const metricOptions = computed(() => {
     ]
   }
 
-  return [...buildGroup('system'), ...buildGroup('group'), ...buildGroup('account')]
+  return [...buildGroup('system'), ...buildGroup('monitoring'), ...buildGroup('group'), ...buildGroup('account')]
 })
 
 const operatorOptions = computed(() => {
@@ -280,7 +383,7 @@ const severityOptions = computed(() => {
 })
 
 const windowOptions = computed(() => {
-  const windows = [1, 5, 60]
+  const windows = [1, 5, 15, 60]
   return windows.map((m) => ({ value: m, label: `${m}m` }))
 })
 
@@ -296,6 +399,7 @@ function newRuleDraft(): AlertRule {
     sustained_minutes: 2,
     severity: 'P1',
     cooldown_minutes: 10,
+    min_requests: 0,
     notify_email: true
   }
 }
@@ -303,12 +407,18 @@ function newRuleDraft(): AlertRule {
 function openCreate() {
   editingId.value = null
   draft.value = newRuleDraft()
+  webhookText.value = ''
   showEditor.value = true
 }
 
 function openEdit(rule: AlertRule) {
   editingId.value = rule.id ?? null
-  draft.value = JSON.parse(JSON.stringify(rule))
+  const next = JSON.parse(JSON.stringify(rule)) as AlertRule
+  if (!(typeof next.min_requests === 'number' && Number.isInteger(next.min_requests))) {
+    next.min_requests = 0
+  }
+  draft.value = next
+  webhookText.value = Array.isArray(next.filters?.webhook_urls) ? next.filters.webhook_urls.join('\n') : ''
   showEditor.value = true
 }
 
@@ -324,7 +434,7 @@ const editorValidation = computed(() => {
   if (!r.operator) errors.push(t('admin.ops.alertRules.validation.operatorRequired'))
   if (!(typeof r.threshold === 'number' && Number.isFinite(r.threshold)))
     errors.push(t('admin.ops.alertRules.validation.thresholdRequired'))
-  if (!(typeof r.window_minutes === 'number' && Number.isFinite(r.window_minutes) && [1, 5, 60].includes(r.window_minutes))) {
+  if (!(typeof r.window_minutes === 'number' && Number.isFinite(r.window_minutes) && [1, 5, 15, 60].includes(r.window_minutes))) {
     errors.push(t('admin.ops.alertRules.validation.windowRange'))
   }
   if (!(typeof r.sustained_minutes === 'number' && Number.isInteger(r.sustained_minutes) && r.sustained_minutes >= 1 && r.sustained_minutes <= 1440)) {
@@ -333,8 +443,38 @@ const editorValidation = computed(() => {
   if (!(typeof r.cooldown_minutes === 'number' && Number.isInteger(r.cooldown_minutes) && r.cooldown_minutes >= 0 && r.cooldown_minutes <= 1440)) {
     errors.push(t('admin.ops.alertRules.validation.cooldownRange'))
   }
+  if (rateMetricTypes.has(r.metric_type)) {
+    const minRequests = r.min_requests ?? 0
+    if (!(Number.isInteger(minRequests) && minRequests >= 0 && minRequests <= 1000000)) {
+      errors.push(t('admin.ops.alertRules.validation.minRequestsRange'))
+    }
+  }
+  if (webhookText.value.split(/\r?\n/).filter(value => value.trim()).some(value => {
+    try { const url = new URL(value.trim()); return url.protocol !== 'https:' || !!url.username || !!url.password } catch { return true }
+  })) errors.push(t('admin.ops.monitoring.webhookInvalid'))
+  const minErrors = r.filters?.min_errors
+  if (minErrors != null && (!Number.isInteger(minErrors) || minErrors < 0)) errors.push(t('admin.ops.monitoring.minErrorsInvalid'))
   return { valid: errors.length === 0, errors }
 })
+
+const minRequestsApplies = computed(() => (draft.value ? rateMetricTypes.has(draft.value.metric_type) : false))
+
+function rulePayload(rule: AlertRule): AlertRule {
+  const payload = { ...rule, filters: { ...rule.filters } }
+  if (payload.metric_type !== 'http_4xx_rate' && payload.metric_type !== 'http_4xx_count') delete payload.filters.exclude_429
+  if (!['http_4xx_rate', 'http_5xx_rate', 'http_4xx_count', 'http_5xx_count', 'http_429_count'].includes(payload.metric_type)) delete payload.filters.min_errors
+  if (monitoringMetricTypes.includes(payload.metric_type) || isGlobalInfrastructureMetric.value) { delete payload.filters.group_id; delete payload.filters.platform; delete payload.filters.region }
+  for (const key of resourceKeys) {
+    if (!monitoringMetricTypes.includes(payload.metric_type) || !visibleRuleResourceKeys.value.includes(key)) delete payload.filters[key]
+  }
+  const urls = webhookText.value.split(/\r?\n/).map(value => value.trim()).filter(Boolean)
+  if (urls.length) payload.filters.webhook_urls = urls
+  else delete payload.filters.webhook_urls
+  if (!rateMetricTypes.has(payload.metric_type)) {
+    payload.min_requests = 0
+  }
+  return payload
+}
 
 async function save() {
   if (!draft.value) return
@@ -344,10 +484,11 @@ async function save() {
   }
   saving.value = true
   try {
+    const payload = rulePayload(draft.value)
     if (editingId.value) {
-      await opsAPI.updateAlertRule(editingId.value, draft.value)
+      await opsAPI.updateAlertRule(editingId.value, payload)
     } else {
-      await opsAPI.createAlertRule(draft.value)
+      await opsAPI.createAlertRule(payload)
     }
     showEditor.value = false
     draft.value = null
@@ -429,7 +570,15 @@ function cancelDelete() {
           <div v-for="row in sortedRules" :key="row.id" class="space-y-2 p-4">
             <div class="flex items-start justify-between gap-2">
               <div class="min-w-0">
-                <div class="text-xs font-bold text-gray-900 dark:text-white">{{ row.name }}</div>
+                <div class="flex flex-wrap items-center gap-1">
+                  <div class="text-xs font-bold text-gray-900 dark:text-white">{{ row.name }}</div>
+                  <span
+                    v-if="row.data_status === 'insufficient_data' || row.data_status === 'unknown' || row.data_status === 'unavailable' || row.data_status === 'not_applicable' || row.data_status === 'invalid_rule'"
+                    class="inline-flex items-center gap-1 whitespace-nowrap rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                  >
+                    {{ row.data_status === 'insufficient_data' ? t('admin.ops.alertRules.insufficientData') : t(`admin.ops.monitoring.ruleStates.${row.data_status}`) }}
+                  </span>
+                </div>
                 <div v-if="row.description" class="mt-0.5 line-clamp-2 text-[11px] text-gray-500 dark:text-gray-400">
                   {{ row.description }}
                 </div>
@@ -478,7 +627,15 @@ function cancelDelete() {
           <tbody class="divide-y divide-gray-200 bg-white dark:divide-dark-700 dark:bg-dark-800">
             <tr v-for="row in sortedRules" :key="row.id" class="hover:bg-gray-50 dark:hover:bg-dark-700/50">
               <td class="px-4 py-3">
-                <div class="text-xs font-bold text-gray-900 dark:text-white">{{ row.name }}</div>
+                <div class="flex flex-wrap items-center gap-1">
+                  <div class="text-xs font-bold text-gray-900 dark:text-white">{{ row.name }}</div>
+                  <span
+                    v-if="row.data_status === 'insufficient_data' || row.data_status === 'unknown' || row.data_status === 'unavailable' || row.data_status === 'not_applicable' || row.data_status === 'invalid_rule'"
+                    class="inline-flex items-center gap-1 whitespace-nowrap rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                  >
+                    {{ row.data_status === 'insufficient_data' ? t('admin.ops.alertRules.insufficientData') : t(`admin.ops.monitoring.ruleStates.${row.data_status}`) }}
+                  </span>
+                </div>
                 <div v-if="row.description" class="mt-0.5 line-clamp-2 text-[11px] text-gray-500 dark:text-gray-400">
                   {{ row.description }}
                 </div>
@@ -554,7 +711,7 @@ function cancelDelete() {
             <Select v-model="draft!.operator" :options="operatorOptions" />
           </div>
 
-          <div class="md:col-span-2">
+          <div v-if="!isMonitoringMetric && !isGlobalInfrastructureMetric" class="md:col-span-2">
             <label class="input-label">
               {{ t('admin.ops.alertRules.form.groupId') }}
               <span v-if="isGroupMetricSelected" class="ml-1 text-red-500">*</span>
@@ -570,6 +727,29 @@ function cancelDelete() {
               {{ isGroupMetricSelected ? t('admin.ops.alertRules.hints.groupRequired') : t('admin.ops.alertRules.hints.groupOptional') }}
             </p>
           </div>
+
+          <fieldset v-if="isMonitoringMetric && visibleRuleResourceKeys.length" class="grid grid-cols-1 gap-3 rounded-xl border border-[var(--color-border)] p-4 md:col-span-2 md:grid-cols-2">
+            <legend class="px-1 text-sm font-semibold">{{ t('admin.ops.monitoring.resourceFilters') }}</legend>
+            <label v-for="key in visibleRuleResourceKeys" :key="key" class="block text-sm">
+              <span class="input-label">{{ t(`admin.ops.monitoring.filters.${key}`) }}</span>
+              <select v-if="key === 'source'" :value="resourceValue(key)" class="input" data-testid="rule-filter-source" @change="setResource(key, ($event.target as HTMLSelectElement).value)">
+                <option value="">{{ t('admin.ops.monitoring.appSource') }}</option><option value="app">{{ t('admin.ops.monitoring.appSource') }}</option><option value="ingress">{{ t('admin.ops.monitoring.ingressSource') }}</option><option v-if="!draft!.metric_type.startsWith('ttft_')" value="external_ingress">{{ t('admin.ops.monitoring.externalIngressSource') }}</option>
+              </select>
+              <select v-else-if="key === 'protocol' || key === 'route'" :value="resourceValue(key)" class="input" :data-testid="`rule-filter-${key}`" @change="setResource(key, ($event.target as HTMLSelectElement).value)">
+                <option value="">{{ t('admin.ops.monitoring.allValues') }}</option><option v-for="value in key === 'protocol' ? monitoringProtocols : monitoringRoutes" :key="value" :value="value">{{ value }}</option>
+              </select>
+              <input v-else :value="resourceValue(key)" :data-testid="`rule-filter-${key}`" class="input" @input="setResource(key, ($event.target as HTMLInputElement).value.trim())" />
+            </label>
+            <label v-if="draft!.metric_type === 'http_4xx_rate' || draft!.metric_type === 'http_4xx_count'" class="flex items-center gap-2 text-sm md:col-span-2">
+              <input type="checkbox" :checked="!!draft!.filters?.exclude_429" @change="setResource('exclude_429', ($event.target as HTMLInputElement).checked)" />
+              {{ t('admin.ops.monitoring.exclude429') }}
+            </label>
+            <label v-if="draft!.metric_type === 'http_4xx_rate' || draft!.metric_type === 'http_5xx_rate'" class="block text-sm md:col-span-2">
+              <span class="input-label">{{ t('admin.ops.monitoring.minErrors') }}</span>
+              <input class="input" type="number" min="0" step="1" :value="draft!.filters?.min_errors ?? 0" @input="setResource('min_errors', Number(($event.target as HTMLInputElement).value))" />
+            </label>
+            <p class="text-xs text-[var(--color-text-secondary)] md:col-span-2">{{ t('admin.ops.monitoring.resourceRuleHint') }}</p>
+          </fieldset>
 
           <div>
             <label class="input-label">{{ t('admin.ops.alertRules.form.threshold') }}</label>
@@ -596,9 +776,39 @@ function cancelDelete() {
             <input v-model.number="draft!.cooldown_minutes" class="input" type="number" min="0" max="1440" />
           </div>
 
+          <div>
+            <label class="input-label">{{ t('admin.ops.alertRules.form.minRequests') }}</label>
+            <input
+              v-model.number="draft!.min_requests"
+              class="input"
+              type="number"
+              min="0"
+              max="1000000"
+              :disabled="!minRequestsApplies"
+            />
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.ops.alertRules.hints.minRequests') }}</p>
+          </div>
+
           <div class="flex items-center justify-between rounded-xl bg-gray-50 px-4 py-3 dark:bg-dark-800/50 md:col-span-2">
             <span class="text-xs font-bold text-gray-700 dark:text-gray-200">{{ t('admin.ops.alertRules.form.enabled') }}</span>
             <input v-model="draft!.enabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+          </div>
+
+          <label class="block text-sm">
+            <span class="input-label">{{ t('admin.ops.monitoring.criticalThreshold') }}</span>
+            <input :value="draft!.filters?.critical_threshold ?? ''" type="number" min="0" step="any" class="input" @input="setResource('critical_threshold', ($event.target as HTMLInputElement).value === '' ? '' : Number(($event.target as HTMLInputElement).value))" />
+            <span class="mt-1 block text-xs text-[var(--color-text-secondary)]">{{ t('admin.ops.monitoring.criticalHint') }}</span>
+          </label>
+          <label class="block text-sm">
+            <span class="input-label">{{ t('admin.ops.monitoring.silenceUntil') }}</span>
+            <input v-model="silenceUntil" class="input" type="datetime-local" />
+          </label>
+
+          <div class="md:col-span-2">
+            <label for="rule-webhook-urls" class="input-label">{{ t('admin.ops.monitoring.webhookUrls') }}</label>
+            <textarea id="rule-webhook-urls" v-model="webhookText" rows="3" class="input font-mono text-sm" />
+            <p class="mt-1 text-xs text-[var(--color-text-secondary)]">{{ t('admin.ops.monitoring.webhookHint') }}</p>
+            <button class="btn btn-sm btn-secondary mt-2" :disabled="webhookTesting || !webhookText.trim()" @click="testWebhook">{{ t('admin.ops.monitoring.testWebhook') }}</button>
           </div>
 
           <div class="flex items-center justify-between rounded-xl bg-gray-50 px-4 py-3 dark:bg-dark-800/50 md:col-span-2">

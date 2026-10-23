@@ -1,0 +1,9 @@
+$ vite build --outDir ../../../backend/internal/web/dist/infinite-canvas --emptyOutDir
+vite v7.3.6 building client environment for production...
+<script src="/infinite-canvas/config.js"> in "/index.html" can't be bundled without type="module" attribute
+✓ 7749 modules transformed.
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 8.45s

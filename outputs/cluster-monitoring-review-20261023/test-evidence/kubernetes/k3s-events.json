@@ -1,0 +1,2741 @@
+{
+  "source": "kubectl get events -o json (selected fields)",
+  "items": [
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "name": "crash-recovery",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "616",
+        "uid": "7c35e980-f3de-4d4a-9840-b6b64282b904"
+      },
+      "reason": "Scheduled",
+      "message": "Successfully assigned monitoring-acceptance/crash-recovery to k3d-modurelay-monitoring-k3s-server-0",
+      "type": "Normal",
+      "firstTimestamp": null,
+      "lastTimestamp": null,
+      "source": {},
+      "reportingComponent": "default-scheduler"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{main}",
+        "kind": "Pod",
+        "name": "crash-recovery",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "617",
+        "uid": "7c35e980-f3de-4d4a-9840-b6b64282b904"
+      },
+      "reason": "Pulled",
+      "message": "Container image \"redis:7-alpine\" already present on machine and can be accessed by the pod",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T06:57:27Z",
+      "lastTimestamp": "2026-10-23T07:13:49Z",
+      "count": 9,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{main}",
+        "kind": "Pod",
+        "name": "crash-recovery",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "617",
+        "uid": "7c35e980-f3de-4d4a-9840-b6b64282b904"
+      },
+      "reason": "Created",
+      "message": "Container created",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T06:57:27Z",
+      "lastTimestamp": "2026-10-23T07:13:49Z",
+      "count": 9,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{main}",
+        "kind": "Pod",
+        "name": "crash-recovery",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "617",
+        "uid": "7c35e980-f3de-4d4a-9840-b6b64282b904"
+      },
+      "reason": "Started",
+      "message": "Container started",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T06:57:27Z",
+      "lastTimestamp": "2026-10-23T07:13:49Z",
+      "count": 9,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{main}",
+        "kind": "Pod",
+        "name": "crash-recovery",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "617",
+        "uid": "7c35e980-f3de-4d4a-9840-b6b64282b904"
+      },
+      "reason": "BackOff",
+      "message": "Back-off restarting failed container main in pod crash-recovery_monitoring-acceptance(7c35e980-f3de-4d4a-9840-b6b64282b904)",
+      "type": "Warning",
+      "firstTimestamp": "2026-10-23T06:57:28Z",
+      "lastTimestamp": "2026-10-23T07:12:24Z",
+      "count": 15,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "name": "init-sidecar",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "602",
+        "uid": "df7a8a4a-7747-4871-991e-93e728b25242"
+      },
+      "reason": "Scheduled",
+      "message": "Successfully assigned monitoring-acceptance/init-sidecar to k3d-modurelay-monitoring-k3s-server-0",
+      "type": "Normal",
+      "firstTimestamp": null,
+      "lastTimestamp": null,
+      "source": {},
+      "reportingComponent": "default-scheduler"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.initContainers{sidecar}",
+        "kind": "Pod",
+        "name": "init-sidecar",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "603",
+        "uid": "df7a8a4a-7747-4871-991e-93e728b25242"
+      },
+      "reason": "Pulled",
+      "message": "Container image \"redis:7-alpine\" already present on machine and can be accessed by the pod",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T06:57:27Z",
+      "lastTimestamp": "2026-10-23T06:57:27Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.initContainers{sidecar}",
+        "kind": "Pod",
+        "name": "init-sidecar",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "603",
+        "uid": "df7a8a4a-7747-4871-991e-93e728b25242"
+      },
+      "reason": "Created",
+      "message": "Container created",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T06:57:27Z",
+      "lastTimestamp": "2026-10-23T06:57:27Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.initContainers{sidecar}",
+        "kind": "Pod",
+        "name": "init-sidecar",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "603",
+        "uid": "df7a8a4a-7747-4871-991e-93e728b25242"
+      },
+      "reason": "Started",
+      "message": "Container started",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T06:57:27Z",
+      "lastTimestamp": "2026-10-23T06:57:27Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.initContainers{prepare}",
+        "kind": "Pod",
+        "name": "init-sidecar",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "603",
+        "uid": "df7a8a4a-7747-4871-991e-93e728b25242"
+      },
+      "reason": "Pulled",
+      "message": "Container image \"redis:7-alpine\" already present on machine and can be accessed by the pod",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T06:57:27Z",
+      "lastTimestamp": "2026-10-23T06:57:27Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.initContainers{prepare}",
+        "kind": "Pod",
+        "name": "init-sidecar",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "603",
+        "uid": "df7a8a4a-7747-4871-991e-93e728b25242"
+      },
+      "reason": "Created",
+      "message": "Container created",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T06:57:27Z",
+      "lastTimestamp": "2026-10-23T06:57:27Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.initContainers{prepare}",
+        "kind": "Pod",
+        "name": "init-sidecar",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "603",
+        "uid": "df7a8a4a-7747-4871-991e-93e728b25242"
+      },
+      "reason": "Started",
+      "message": "Container started",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T06:57:27Z",
+      "lastTimestamp": "2026-10-23T06:57:27Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{main}",
+        "kind": "Pod",
+        "name": "init-sidecar",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "603",
+        "uid": "df7a8a4a-7747-4871-991e-93e728b25242"
+      },
+      "reason": "Pulled",
+      "message": "Container image \"redis:7-alpine\" already present on machine and can be accessed by the pod",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T06:57:28Z",
+      "lastTimestamp": "2026-10-23T06:57:28Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{main}",
+        "kind": "Pod",
+        "name": "init-sidecar",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "603",
+        "uid": "df7a8a4a-7747-4871-991e-93e728b25242"
+      },
+      "reason": "Created",
+      "message": "Container created",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T06:57:28Z",
+      "lastTimestamp": "2026-10-23T06:57:28Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{main}",
+        "kind": "Pod",
+        "name": "init-sidecar",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "603",
+        "uid": "df7a8a4a-7747-4871-991e-93e728b25242"
+      },
+      "reason": "Started",
+      "message": "Container started",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T06:57:28Z",
+      "lastTimestamp": "2026-10-23T06:57:28Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "name": "kube-state-metrics-c49567f94-594zh",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "1329",
+        "uid": "82ae2ce9-e23d-4cea-a4ae-d6f8b26a152e"
+      },
+      "reason": "Scheduled",
+      "message": "Successfully assigned monitoring-acceptance/kube-state-metrics-c49567f94-594zh to k3d-modurelay-monitoring-k3s-server-0",
+      "type": "Normal",
+      "firstTimestamp": null,
+      "lastTimestamp": null,
+      "source": {},
+      "reportingComponent": "default-scheduler"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{kube-state-metrics}",
+        "kind": "Pod",
+        "name": "kube-state-metrics-c49567f94-594zh",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "1331",
+        "uid": "82ae2ce9-e23d-4cea-a4ae-d6f8b26a152e"
+      },
+      "reason": "Pulled",
+      "message": "Container image \"registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.20.0\" already present on machine and can be accessed by the pod",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:10:26Z",
+      "lastTimestamp": "2026-10-23T07:10:26Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{kube-state-metrics}",
+        "kind": "Pod",
+        "name": "kube-state-metrics-c49567f94-594zh",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "1331",
+        "uid": "82ae2ce9-e23d-4cea-a4ae-d6f8b26a152e"
+      },
+      "reason": "Created",
+      "message": "Container created",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:10:26Z",
+      "lastTimestamp": "2026-10-23T07:10:26Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{kube-state-metrics}",
+        "kind": "Pod",
+        "name": "kube-state-metrics-c49567f94-594zh",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "1331",
+        "uid": "82ae2ce9-e23d-4cea-a4ae-d6f8b26a152e"
+      },
+      "reason": "Started",
+      "message": "Container started",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:10:26Z",
+      "lastTimestamp": "2026-10-23T07:10:26Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "name": "kube-state-metrics-c49567f94-7969z",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "547",
+        "uid": "06a4c57a-7dd6-46ce-8dcc-f62e60647a25"
+      },
+      "reason": "Scheduled",
+      "message": "Successfully assigned monitoring-acceptance/kube-state-metrics-c49567f94-7969z to k3d-modurelay-monitoring-k3s-server-0",
+      "type": "Normal",
+      "firstTimestamp": null,
+      "lastTimestamp": null,
+      "source": {},
+      "reportingComponent": "default-scheduler"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{kube-state-metrics}",
+        "kind": "Pod",
+        "name": "kube-state-metrics-c49567f94-7969z",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "561",
+        "uid": "06a4c57a-7dd6-46ce-8dcc-f62e60647a25"
+      },
+      "reason": "Pulled",
+      "message": "Container image \"registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.20.0\" already present on machine and can be accessed by the pod",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T06:57:26Z",
+      "lastTimestamp": "2026-10-23T06:57:26Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{kube-state-metrics}",
+        "kind": "Pod",
+        "name": "kube-state-metrics-c49567f94-7969z",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "561",
+        "uid": "06a4c57a-7dd6-46ce-8dcc-f62e60647a25"
+      },
+      "reason": "Created",
+      "message": "Container created",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T06:57:26Z",
+      "lastTimestamp": "2026-10-23T06:57:26Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{kube-state-metrics}",
+        "kind": "Pod",
+        "name": "kube-state-metrics-c49567f94-7969z",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "561",
+        "uid": "06a4c57a-7dd6-46ce-8dcc-f62e60647a25"
+      },
+      "reason": "Started",
+      "message": "Container started",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T06:57:27Z",
+      "lastTimestamp": "2026-10-23T06:57:27Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{kube-state-metrics}",
+        "kind": "Pod",
+        "name": "kube-state-metrics-c49567f94-7969z",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "561",
+        "uid": "06a4c57a-7dd6-46ce-8dcc-f62e60647a25"
+      },
+      "reason": "Killing",
+      "message": "Stopping container kube-state-metrics",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:08:33Z",
+      "lastTimestamp": "2026-10-23T07:08:33Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "apps/v1",
+        "kind": "ReplicaSet",
+        "name": "kube-state-metrics-c49567f94",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "544",
+        "uid": "1799080b-59d9-487f-8095-c1c83e055a66"
+      },
+      "reason": "SuccessfulCreate",
+      "message": "Created pod: kube-state-metrics-c49567f94-7969z",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T06:57:26Z",
+      "lastTimestamp": "2026-10-23T06:57:26Z",
+      "count": 1,
+      "source": {
+        "component": "replicaset-controller"
+      },
+      "reportingComponent": "replicaset-controller"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "apps/v1",
+        "kind": "ReplicaSet",
+        "name": "kube-state-metrics-c49567f94",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "1145",
+        "uid": "1799080b-59d9-487f-8095-c1c83e055a66"
+      },
+      "reason": "SuccessfulDelete",
+      "message": "Deleted pod: kube-state-metrics-c49567f94-7969z",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:08:33Z",
+      "lastTimestamp": "2026-10-23T07:08:33Z",
+      "count": 1,
+      "source": {
+        "component": "replicaset-controller"
+      },
+      "reportingComponent": "replicaset-controller"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "apps/v1",
+        "kind": "ReplicaSet",
+        "name": "kube-state-metrics-c49567f94",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "1323",
+        "uid": "1799080b-59d9-487f-8095-c1c83e055a66"
+      },
+      "reason": "SuccessfulCreate",
+      "message": "Created pod: kube-state-metrics-c49567f94-594zh",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:10:25Z",
+      "lastTimestamp": "2026-10-23T07:10:25Z",
+      "count": 1,
+      "source": {
+        "component": "replicaset-controller"
+      },
+      "reportingComponent": "replicaset-controller"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "apps/v1",
+        "kind": "Deployment",
+        "name": "kube-state-metrics",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "543",
+        "uid": "3d434d69-8d0d-4374-a4c6-b901ca81e831"
+      },
+      "reason": "ScalingReplicaSet",
+      "message": "Scaled up replica set kube-state-metrics-c49567f94 from 0 to 1",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T06:57:26Z",
+      "lastTimestamp": "2026-10-23T07:10:25Z",
+      "count": 2,
+      "source": {
+        "component": "deployment-controller"
+      },
+      "reportingComponent": "deployment-controller"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "apps/v1",
+        "kind": "Deployment",
+        "name": "kube-state-metrics",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "1144",
+        "uid": "3d434d69-8d0d-4374-a4c6-b901ca81e831"
+      },
+      "reason": "ScalingReplicaSet",
+      "message": "Scaled down replica set kube-state-metrics-c49567f94 from 1 to 0",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:08:33Z",
+      "lastTimestamp": "2026-10-23T07:08:33Z",
+      "count": 1,
+      "source": {
+        "component": "deployment-controller"
+      },
+      "reportingComponent": "deployment-controller"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "name": "modurelay-6ccbf9f8b8-cxk7j",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "1209",
+        "uid": "c0462740-d524-4715-9c64-f87c0c81a318"
+      },
+      "reason": "Scheduled",
+      "message": "Successfully assigned monitoring-acceptance/modurelay-6ccbf9f8b8-cxk7j to k3d-modurelay-monitoring-k3s-server-0",
+      "type": "Normal",
+      "firstTimestamp": null,
+      "lastTimestamp": null,
+      "source": {},
+      "reportingComponent": "default-scheduler"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{modurelay}",
+        "kind": "Pod",
+        "name": "modurelay-6ccbf9f8b8-cxk7j",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "1211",
+        "uid": "c0462740-d524-4715-9c64-f87c0c81a318"
+      },
+      "reason": "Pulled",
+      "message": "Container image \"modurelay-monitoring-implementation:20261023\" already present on machine and can be accessed by the pod",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:09:50Z",
+      "lastTimestamp": "2026-10-23T07:09:50Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{modurelay}",
+        "kind": "Pod",
+        "name": "modurelay-6ccbf9f8b8-cxk7j",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "1211",
+        "uid": "c0462740-d524-4715-9c64-f87c0c81a318"
+      },
+      "reason": "Created",
+      "message": "Container created",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:09:50Z",
+      "lastTimestamp": "2026-10-23T07:09:50Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{modurelay}",
+        "kind": "Pod",
+        "name": "modurelay-6ccbf9f8b8-cxk7j",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "1211",
+        "uid": "c0462740-d524-4715-9c64-f87c0c81a318"
+      },
+      "reason": "Started",
+      "message": "Container started",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:09:50Z",
+      "lastTimestamp": "2026-10-23T07:09:50Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "name": "modurelay-6ccbf9f8b8-ldvsx",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "1242",
+        "uid": "e2e7d9a4-bd6c-4155-8913-74018bb038cb"
+      },
+      "reason": "Scheduled",
+      "message": "Successfully assigned monitoring-acceptance/modurelay-6ccbf9f8b8-ldvsx to k3d-modurelay-monitoring-k3s-server-0",
+      "type": "Normal",
+      "firstTimestamp": null,
+      "lastTimestamp": null,
+      "source": {},
+      "reportingComponent": "default-scheduler"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{modurelay}",
+        "kind": "Pod",
+        "name": "modurelay-6ccbf9f8b8-ldvsx",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "1246",
+        "uid": "e2e7d9a4-bd6c-4155-8913-74018bb038cb"
+      },
+      "reason": "Pulled",
+      "message": "Container image \"modurelay-monitoring-implementation:20261023\" already present on machine and can be accessed by the pod",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:10:02Z",
+      "lastTimestamp": "2026-10-23T07:10:02Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{modurelay}",
+        "kind": "Pod",
+        "name": "modurelay-6ccbf9f8b8-ldvsx",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "1246",
+        "uid": "e2e7d9a4-bd6c-4155-8913-74018bb038cb"
+      },
+      "reason": "Created",
+      "message": "Container created",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:10:02Z",
+      "lastTimestamp": "2026-10-23T07:10:02Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{modurelay}",
+        "kind": "Pod",
+        "name": "modurelay-6ccbf9f8b8-ldvsx",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "1246",
+        "uid": "e2e7d9a4-bd6c-4155-8913-74018bb038cb"
+      },
+      "reason": "Started",
+      "message": "Container started",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:10:02Z",
+      "lastTimestamp": "2026-10-23T07:10:02Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "name": "modurelay-6ccbf9f8b8-lsnrg",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "1297",
+        "uid": "c99fb9c8-fb6f-4b72-8a02-05d4fe33c4b2"
+      },
+      "reason": "Scheduled",
+      "message": "Successfully assigned monitoring-acceptance/modurelay-6ccbf9f8b8-lsnrg to k3d-modurelay-monitoring-k3s-server-0",
+      "type": "Normal",
+      "firstTimestamp": null,
+      "lastTimestamp": null,
+      "source": {},
+      "reportingComponent": "default-scheduler"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{modurelay}",
+        "kind": "Pod",
+        "name": "modurelay-6ccbf9f8b8-lsnrg",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "1301",
+        "uid": "c99fb9c8-fb6f-4b72-8a02-05d4fe33c4b2"
+      },
+      "reason": "Pulled",
+      "message": "Container image \"modurelay-monitoring-implementation:20261023\" already present on machine and can be accessed by the pod",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:10:14Z",
+      "lastTimestamp": "2026-10-23T07:10:14Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{modurelay}",
+        "kind": "Pod",
+        "name": "modurelay-6ccbf9f8b8-lsnrg",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "1301",
+        "uid": "c99fb9c8-fb6f-4b72-8a02-05d4fe33c4b2"
+      },
+      "reason": "Created",
+      "message": "Container created",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:10:14Z",
+      "lastTimestamp": "2026-10-23T07:10:14Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{modurelay}",
+        "kind": "Pod",
+        "name": "modurelay-6ccbf9f8b8-lsnrg",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "1301",
+        "uid": "c99fb9c8-fb6f-4b72-8a02-05d4fe33c4b2"
+      },
+      "reason": "Started",
+      "message": "Container started",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:10:14Z",
+      "lastTimestamp": "2026-10-23T07:10:14Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "apps/v1",
+        "kind": "ReplicaSet",
+        "name": "modurelay-6ccbf9f8b8",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "1205",
+        "uid": "4d5017d9-0cbc-47ec-848a-c19a1061980e"
+      },
+      "reason": "SuccessfulCreate",
+      "message": "Created pod: modurelay-6ccbf9f8b8-cxk7j",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:09:50Z",
+      "lastTimestamp": "2026-10-23T07:09:50Z",
+      "count": 1,
+      "source": {
+        "component": "replicaset-controller"
+      },
+      "reportingComponent": "replicaset-controller"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "apps/v1",
+        "kind": "ReplicaSet",
+        "name": "modurelay-6ccbf9f8b8",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "1240",
+        "uid": "4d5017d9-0cbc-47ec-848a-c19a1061980e"
+      },
+      "reason": "SuccessfulCreate",
+      "message": "Created pod: modurelay-6ccbf9f8b8-ldvsx",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:10:02Z",
+      "lastTimestamp": "2026-10-23T07:10:02Z",
+      "count": 1,
+      "source": {
+        "component": "replicaset-controller"
+      },
+      "reportingComponent": "replicaset-controller"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "apps/v1",
+        "kind": "ReplicaSet",
+        "name": "modurelay-6ccbf9f8b8",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "1293",
+        "uid": "4d5017d9-0cbc-47ec-848a-c19a1061980e"
+      },
+      "reason": "SuccessfulCreate",
+      "message": "Created pod: modurelay-6ccbf9f8b8-lsnrg",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:10:14Z",
+      "lastTimestamp": "2026-10-23T07:10:14Z",
+      "count": 1,
+      "source": {
+        "component": "replicaset-controller"
+      },
+      "reportingComponent": "replicaset-controller"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "name": "modurelay-7fcdfdf6c6-dqp4b",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "997",
+        "uid": "efb3fdfc-10ab-491c-ae19-6936b3beaa94"
+      },
+      "reason": "Scheduled",
+      "message": "Successfully assigned monitoring-acceptance/modurelay-7fcdfdf6c6-dqp4b to k3d-modurelay-monitoring-k3s-server-0",
+      "type": "Normal",
+      "firstTimestamp": null,
+      "lastTimestamp": null,
+      "source": {},
+      "reportingComponent": "default-scheduler"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{modurelay}",
+        "kind": "Pod",
+        "name": "modurelay-7fcdfdf6c6-dqp4b",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "999",
+        "uid": "efb3fdfc-10ab-491c-ae19-6936b3beaa94"
+      },
+      "reason": "Pulled",
+      "message": "Container image \"modurelay-monitoring-implementation:20261023\" already present on machine and can be accessed by the pod",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:04:43Z",
+      "lastTimestamp": "2026-10-23T07:04:43Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{modurelay}",
+        "kind": "Pod",
+        "name": "modurelay-7fcdfdf6c6-dqp4b",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "999",
+        "uid": "efb3fdfc-10ab-491c-ae19-6936b3beaa94"
+      },
+      "reason": "Created",
+      "message": "Container created",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:04:43Z",
+      "lastTimestamp": "2026-10-23T07:04:43Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{modurelay}",
+        "kind": "Pod",
+        "name": "modurelay-7fcdfdf6c6-dqp4b",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "999",
+        "uid": "efb3fdfc-10ab-491c-ae19-6936b3beaa94"
+      },
+      "reason": "Started",
+      "message": "Container started",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:04:44Z",
+      "lastTimestamp": "2026-10-23T07:04:44Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{modurelay}",
+        "kind": "Pod",
+        "name": "modurelay-7fcdfdf6c6-dqp4b",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "999",
+        "uid": "efb3fdfc-10ab-491c-ae19-6936b3beaa94"
+      },
+      "reason": "Killing",
+      "message": "Stopping container modurelay",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:10:26Z",
+      "lastTimestamp": "2026-10-23T07:10:26Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "name": "modurelay-7fcdfdf6c6-gh7gh",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "943",
+        "uid": "7ec1dec4-99d5-4c8d-860d-fb01e875b622"
+      },
+      "reason": "Scheduled",
+      "message": "Successfully assigned monitoring-acceptance/modurelay-7fcdfdf6c6-gh7gh to k3d-modurelay-monitoring-k3s-server-0",
+      "type": "Normal",
+      "firstTimestamp": null,
+      "lastTimestamp": null,
+      "source": {},
+      "reportingComponent": "default-scheduler"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{modurelay}",
+        "kind": "Pod",
+        "name": "modurelay-7fcdfdf6c6-gh7gh",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "945",
+        "uid": "7ec1dec4-99d5-4c8d-860d-fb01e875b622"
+      },
+      "reason": "Pulled",
+      "message": "Container image \"modurelay-monitoring-implementation:20261023\" already present on machine and can be accessed by the pod",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:03:48Z",
+      "lastTimestamp": "2026-10-23T07:03:48Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{modurelay}",
+        "kind": "Pod",
+        "name": "modurelay-7fcdfdf6c6-gh7gh",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "945",
+        "uid": "7ec1dec4-99d5-4c8d-860d-fb01e875b622"
+      },
+      "reason": "Created",
+      "message": "Container created",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:03:48Z",
+      "lastTimestamp": "2026-10-23T07:03:48Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{modurelay}",
+        "kind": "Pod",
+        "name": "modurelay-7fcdfdf6c6-gh7gh",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "945",
+        "uid": "7ec1dec4-99d5-4c8d-860d-fb01e875b622"
+      },
+      "reason": "Started",
+      "message": "Container started",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:03:48Z",
+      "lastTimestamp": "2026-10-23T07:03:48Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{modurelay}",
+        "kind": "Pod",
+        "name": "modurelay-7fcdfdf6c6-gh7gh",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "945",
+        "uid": "7ec1dec4-99d5-4c8d-860d-fb01e875b622"
+      },
+      "reason": "Killing",
+      "message": "Stopping container modurelay",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:10:14Z",
+      "lastTimestamp": "2026-10-23T07:10:14Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "name": "modurelay-7fcdfdf6c6-r26t7",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "1072",
+        "uid": "2723583f-d1f4-43d9-bcb3-e81e82a5a6b0"
+      },
+      "reason": "Scheduled",
+      "message": "Successfully assigned monitoring-acceptance/modurelay-7fcdfdf6c6-r26t7 to k3d-modurelay-monitoring-k3s-server-0",
+      "type": "Normal",
+      "firstTimestamp": null,
+      "lastTimestamp": null,
+      "source": {},
+      "reportingComponent": "default-scheduler"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{modurelay}",
+        "kind": "Pod",
+        "name": "modurelay-7fcdfdf6c6-r26t7",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "1074",
+        "uid": "2723583f-d1f4-43d9-bcb3-e81e82a5a6b0"
+      },
+      "reason": "Pulled",
+      "message": "Container image \"modurelay-monitoring-implementation:20261023\" already present on machine and can be accessed by the pod",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:06:43Z",
+      "lastTimestamp": "2026-10-23T07:06:43Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{modurelay}",
+        "kind": "Pod",
+        "name": "modurelay-7fcdfdf6c6-r26t7",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "1074",
+        "uid": "2723583f-d1f4-43d9-bcb3-e81e82a5a6b0"
+      },
+      "reason": "Created",
+      "message": "Container created",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:06:43Z",
+      "lastTimestamp": "2026-10-23T07:06:43Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{modurelay}",
+        "kind": "Pod",
+        "name": "modurelay-7fcdfdf6c6-r26t7",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "1074",
+        "uid": "2723583f-d1f4-43d9-bcb3-e81e82a5a6b0"
+      },
+      "reason": "Started",
+      "message": "Container started",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:06:43Z",
+      "lastTimestamp": "2026-10-23T07:06:43Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{modurelay}",
+        "kind": "Pod",
+        "name": "modurelay-7fcdfdf6c6-r26t7",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "1074",
+        "uid": "2723583f-d1f4-43d9-bcb3-e81e82a5a6b0"
+      },
+      "reason": "Killing",
+      "message": "Stopping container modurelay",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:10:02Z",
+      "lastTimestamp": "2026-10-23T07:10:02Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "apps/v1",
+        "kind": "ReplicaSet",
+        "name": "modurelay-7fcdfdf6c6",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "939",
+        "uid": "c9d67454-13fe-441f-bb31-e8013e9b4066"
+      },
+      "reason": "SuccessfulCreate",
+      "message": "Created pod: modurelay-7fcdfdf6c6-gh7gh",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:03:48Z",
+      "lastTimestamp": "2026-10-23T07:03:48Z",
+      "count": 1,
+      "source": {
+        "component": "replicaset-controller"
+      },
+      "reportingComponent": "replicaset-controller"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "apps/v1",
+        "kind": "ReplicaSet",
+        "name": "modurelay-7fcdfdf6c6",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "993",
+        "uid": "c9d67454-13fe-441f-bb31-e8013e9b4066"
+      },
+      "reason": "SuccessfulCreate",
+      "message": "Created pod: modurelay-7fcdfdf6c6-dqp4b",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:04:43Z",
+      "lastTimestamp": "2026-10-23T07:04:43Z",
+      "count": 1,
+      "source": {
+        "component": "replicaset-controller"
+      },
+      "reportingComponent": "replicaset-controller"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "apps/v1",
+        "kind": "ReplicaSet",
+        "name": "modurelay-7fcdfdf6c6",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "1068",
+        "uid": "c9d67454-13fe-441f-bb31-e8013e9b4066"
+      },
+      "reason": "SuccessfulCreate",
+      "message": "Created pod: modurelay-7fcdfdf6c6-r26t7",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:06:43Z",
+      "lastTimestamp": "2026-10-23T07:06:43Z",
+      "count": 1,
+      "source": {
+        "component": "replicaset-controller"
+      },
+      "reportingComponent": "replicaset-controller"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "apps/v1",
+        "kind": "ReplicaSet",
+        "name": "modurelay-7fcdfdf6c6",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "1231",
+        "uid": "c9d67454-13fe-441f-bb31-e8013e9b4066"
+      },
+      "reason": "SuccessfulDelete",
+      "message": "Deleted pod: modurelay-7fcdfdf6c6-r26t7",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:10:02Z",
+      "lastTimestamp": "2026-10-23T07:10:02Z",
+      "count": 1,
+      "source": {
+        "component": "replicaset-controller"
+      },
+      "reportingComponent": "replicaset-controller"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "apps/v1",
+        "kind": "ReplicaSet",
+        "name": "modurelay-7fcdfdf6c6",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "1285",
+        "uid": "c9d67454-13fe-441f-bb31-e8013e9b4066"
+      },
+      "reason": "SuccessfulDelete",
+      "message": "Deleted pod: modurelay-7fcdfdf6c6-gh7gh",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:10:14Z",
+      "lastTimestamp": "2026-10-23T07:10:14Z",
+      "count": 1,
+      "source": {
+        "component": "replicaset-controller"
+      },
+      "reportingComponent": "replicaset-controller"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "apps/v1",
+        "kind": "ReplicaSet",
+        "name": "modurelay-7fcdfdf6c6",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "1344",
+        "uid": "c9d67454-13fe-441f-bb31-e8013e9b4066"
+      },
+      "reason": "SuccessfulDelete",
+      "message": "Deleted pod: modurelay-7fcdfdf6c6-dqp4b",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:10:26Z",
+      "lastTimestamp": "2026-10-23T07:10:26Z",
+      "count": 1,
+      "source": {
+        "component": "replicaset-controller"
+      },
+      "reportingComponent": "replicaset-controller"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "autoscaling/v2",
+        "kind": "HorizontalPodAutoscaler",
+        "name": "modurelay",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "623",
+        "uid": "00fd92ff-5170-4c45-928c-217efcdebb77"
+      },
+      "reason": "FailedGetScale",
+      "message": "deployments.apps \"modurelay\" not found",
+      "type": "Warning",
+      "firstTimestamp": "2026-10-23T06:57:41Z",
+      "lastTimestamp": "2026-10-23T07:03:42Z",
+      "count": 25,
+      "source": {
+        "component": "horizontal-pod-autoscaler"
+      },
+      "reportingComponent": "horizontal-pod-autoscaler"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "apps/v1",
+        "kind": "Deployment",
+        "name": "modurelay",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "938",
+        "uid": "e34241d1-8ec3-4e07-9b23-da960816d344"
+      },
+      "reason": "ScalingReplicaSet",
+      "message": "Scaled up replica set modurelay-7fcdfdf6c6 from 0 to 1",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:03:47Z",
+      "lastTimestamp": "2026-10-23T07:03:47Z",
+      "count": 1,
+      "source": {
+        "component": "deployment-controller"
+      },
+      "reportingComponent": "deployment-controller"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "autoscaling/v2",
+        "kind": "HorizontalPodAutoscaler",
+        "name": "modurelay",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "726",
+        "uid": "00fd92ff-5170-4c45-928c-217efcdebb77"
+      },
+      "reason": "FailedGetResourceMetric",
+      "message": "failed to get cpu utilization: unable to get metrics for resource cpu: no metrics returned from resource metrics API",
+      "type": "Warning",
+      "firstTimestamp": "2026-10-23T07:03:57Z",
+      "lastTimestamp": "2026-10-23T07:03:57Z",
+      "count": 1,
+      "source": {
+        "component": "horizontal-pod-autoscaler"
+      },
+      "reportingComponent": "horizontal-pod-autoscaler"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "autoscaling/v2",
+        "kind": "HorizontalPodAutoscaler",
+        "name": "modurelay",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "1279",
+        "uid": "00fd92ff-5170-4c45-928c-217efcdebb77"
+      },
+      "reason": "FailedGetResourceMetric",
+      "message": "failed to get cpu utilization: did not receive metrics for targeted pods (pods might be unready)",
+      "type": "Warning",
+      "firstTimestamp": "2026-10-23T07:04:12Z",
+      "lastTimestamp": "2026-10-23T07:10:27Z",
+      "count": 2,
+      "source": {
+        "component": "horizontal-pod-autoscaler"
+      },
+      "reportingComponent": "horizontal-pod-autoscaler"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "autoscaling/v2",
+        "kind": "HorizontalPodAutoscaler",
+        "name": "modurelay",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "980",
+        "uid": "00fd92ff-5170-4c45-928c-217efcdebb77"
+      },
+      "reason": "SuccessfulRescale",
+      "message": "New size: 2; reason: cpu resource utilization (percentage of request) above target",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:04:42Z",
+      "lastTimestamp": "2026-10-23T07:04:42Z",
+      "count": 1,
+      "source": {
+        "component": "horizontal-pod-autoscaler"
+      },
+      "reportingComponent": "horizontal-pod-autoscaler"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "apps/v1",
+        "kind": "Deployment",
+        "name": "modurelay",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "990",
+        "uid": "e34241d1-8ec3-4e07-9b23-da960816d344"
+      },
+      "reason": "ScalingReplicaSet",
+      "message": "Scaled up replica set modurelay-7fcdfdf6c6 from 1 to 2",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:04:42Z",
+      "lastTimestamp": "2026-10-23T07:04:42Z",
+      "count": 1,
+      "source": {
+        "component": "deployment-controller"
+      },
+      "reportingComponent": "deployment-controller"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "autoscaling/v2",
+        "kind": "HorizontalPodAutoscaler",
+        "name": "modurelay",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "1061",
+        "uid": "00fd92ff-5170-4c45-928c-217efcdebb77"
+      },
+      "reason": "SuccessfulRescale",
+      "message": "New size: 3; reason: Current number of replicas below Spec.MinReplicas",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:06:42Z",
+      "lastTimestamp": "2026-10-23T07:06:42Z",
+      "count": 1,
+      "source": {
+        "component": "horizontal-pod-autoscaler"
+      },
+      "reportingComponent": "horizontal-pod-autoscaler"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "apps/v1",
+        "kind": "Deployment",
+        "name": "modurelay",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "1065",
+        "uid": "e34241d1-8ec3-4e07-9b23-da960816d344"
+      },
+      "reason": "ScalingReplicaSet",
+      "message": "Scaled up replica set modurelay-7fcdfdf6c6 from 2 to 3",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:06:42Z",
+      "lastTimestamp": "2026-10-23T07:06:42Z",
+      "count": 1,
+      "source": {
+        "component": "deployment-controller"
+      },
+      "reportingComponent": "deployment-controller"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "apps/v1",
+        "kind": "Deployment",
+        "name": "modurelay",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "1204",
+        "uid": "e34241d1-8ec3-4e07-9b23-da960816d344"
+      },
+      "reason": "ScalingReplicaSet",
+      "message": "Scaled up replica set modurelay-6ccbf9f8b8 from 0 to 1",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:09:49Z",
+      "lastTimestamp": "2026-10-23T07:09:49Z",
+      "count": 1,
+      "source": {
+        "component": "deployment-controller"
+      },
+      "reportingComponent": "deployment-controller"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "apps/v1",
+        "kind": "Deployment",
+        "name": "modurelay",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "1216",
+        "uid": "e34241d1-8ec3-4e07-9b23-da960816d344"
+      },
+      "reason": "ScalingReplicaSet",
+      "message": "Scaled down replica set modurelay-7fcdfdf6c6 from 3 to 2",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:10:02Z",
+      "lastTimestamp": "2026-10-23T07:10:02Z",
+      "count": 1,
+      "source": {
+        "component": "deployment-controller"
+      },
+      "reportingComponent": "deployment-controller"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "apps/v1",
+        "kind": "Deployment",
+        "name": "modurelay",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "1216",
+        "uid": "e34241d1-8ec3-4e07-9b23-da960816d344"
+      },
+      "reason": "ScalingReplicaSet",
+      "message": "Scaled up replica set modurelay-6ccbf9f8b8 from 1 to 2",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:10:02Z",
+      "lastTimestamp": "2026-10-23T07:10:02Z",
+      "count": 1,
+      "source": {
+        "component": "deployment-controller"
+      },
+      "reportingComponent": "deployment-controller"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "apps/v1",
+        "kind": "Deployment",
+        "name": "modurelay",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "1265",
+        "uid": "e34241d1-8ec3-4e07-9b23-da960816d344"
+      },
+      "reason": "ScalingReplicaSet",
+      "message": "Scaled down replica set modurelay-7fcdfdf6c6 from 2 to 1",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:10:14Z",
+      "lastTimestamp": "2026-10-23T07:10:14Z",
+      "count": 1,
+      "source": {
+        "component": "deployment-controller"
+      },
+      "reportingComponent": "deployment-controller"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "apps/v1",
+        "kind": "Deployment",
+        "name": "modurelay",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "1265",
+        "uid": "e34241d1-8ec3-4e07-9b23-da960816d344"
+      },
+      "reason": "ScalingReplicaSet",
+      "message": "Scaled up replica set modurelay-6ccbf9f8b8 from 2 to 3",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:10:14Z",
+      "lastTimestamp": "2026-10-23T07:10:14Z",
+      "count": 1,
+      "source": {
+        "component": "deployment-controller"
+      },
+      "reportingComponent": "deployment-controller"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "apps/v1",
+        "kind": "Deployment",
+        "name": "modurelay",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "1317",
+        "uid": "e34241d1-8ec3-4e07-9b23-da960816d344"
+      },
+      "reason": "ScalingReplicaSet",
+      "message": "Scaled down replica set modurelay-7fcdfdf6c6 from 1 to 0",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:10:26Z",
+      "lastTimestamp": "2026-10-23T07:10:26Z",
+      "count": 1,
+      "source": {
+        "component": "deployment-controller"
+      },
+      "reportingComponent": "deployment-controller"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "name": "oom-restart",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "619",
+        "uid": "340a5c92-5ac8-450b-8615-9e6744d5015c"
+      },
+      "reason": "Scheduled",
+      "message": "Successfully assigned monitoring-acceptance/oom-restart to k3d-modurelay-monitoring-k3s-server-0",
+      "type": "Normal",
+      "firstTimestamp": null,
+      "lastTimestamp": null,
+      "source": {},
+      "reportingComponent": "default-scheduler"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{main}",
+        "kind": "Pod",
+        "name": "oom-restart",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "620",
+        "uid": "340a5c92-5ac8-450b-8615-9e6744d5015c"
+      },
+      "reason": "Pulled",
+      "message": "Container image \"redis:7-alpine\" already present on machine and can be accessed by the pod",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T06:57:27Z",
+      "lastTimestamp": "2026-10-23T06:59:27Z",
+      "count": 4,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{main}",
+        "kind": "Pod",
+        "name": "oom-restart",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "620",
+        "uid": "340a5c92-5ac8-450b-8615-9e6744d5015c"
+      },
+      "reason": "Created",
+      "message": "Container created",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T06:57:27Z",
+      "lastTimestamp": "2026-10-23T06:59:27Z",
+      "count": 4,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{main}",
+        "kind": "Pod",
+        "name": "oom-restart",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "620",
+        "uid": "340a5c92-5ac8-450b-8615-9e6744d5015c"
+      },
+      "reason": "Started",
+      "message": "Container started",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T06:57:27Z",
+      "lastTimestamp": "2026-10-23T06:57:27Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{main}",
+        "kind": "Pod",
+        "name": "oom-restart",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "620",
+        "uid": "340a5c92-5ac8-450b-8615-9e6744d5015c"
+      },
+      "reason": "Failed",
+      "message": "Error: failed to create containerd task: failed to create shim task: OCI runtime create failed: runc create failed: unable to start container process: container init was OOM-killed (memory limit too low?)",
+      "type": "Warning",
+      "firstTimestamp": "2026-10-23T06:58:45Z",
+      "lastTimestamp": "2026-10-23T06:59:27Z",
+      "count": 3,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{main}",
+        "kind": "Pod",
+        "name": "oom-restart",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "620",
+        "uid": "340a5c92-5ac8-450b-8615-9e6744d5015c"
+      },
+      "reason": "BackOff",
+      "message": "Back-off restarting failed container main in pod oom-restart_monitoring-acceptance(340a5c92-5ac8-450b-8615-9e6744d5015c)",
+      "type": "Warning",
+      "firstTimestamp": "2026-10-23T06:58:45Z",
+      "lastTimestamp": "2026-10-23T06:59:28Z",
+      "count": 3,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "name": "oom-restart",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "821",
+        "uid": "7ff29929-2a62-4394-b921-50605de37004"
+      },
+      "reason": "Scheduled",
+      "message": "Successfully assigned monitoring-acceptance/oom-restart to k3d-modurelay-monitoring-k3s-server-0",
+      "type": "Normal",
+      "firstTimestamp": null,
+      "lastTimestamp": null,
+      "source": {},
+      "reportingComponent": "default-scheduler"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{main}",
+        "kind": "Pod",
+        "name": "oom-restart",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "822",
+        "uid": "7ff29929-2a62-4394-b921-50605de37004"
+      },
+      "reason": "Pulled",
+      "message": "Container image \"redis:7-alpine\" already present on machine and can be accessed by the pod",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:00:05Z",
+      "lastTimestamp": "2026-10-23T07:13:25Z",
+      "count": 7,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{main}",
+        "kind": "Pod",
+        "name": "oom-restart",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "822",
+        "uid": "7ff29929-2a62-4394-b921-50605de37004"
+      },
+      "reason": "Created",
+      "message": "Container created",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:00:05Z",
+      "lastTimestamp": "2026-10-23T07:13:25Z",
+      "count": 7,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{main}",
+        "kind": "Pod",
+        "name": "oom-restart",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "822",
+        "uid": "7ff29929-2a62-4394-b921-50605de37004"
+      },
+      "reason": "Started",
+      "message": "Container started",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:00:05Z",
+      "lastTimestamp": "2026-10-23T07:13:25Z",
+      "count": 7,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{main}",
+        "kind": "Pod",
+        "name": "oom-restart",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "822",
+        "uid": "7ff29929-2a62-4394-b921-50605de37004"
+      },
+      "reason": "BackOff",
+      "message": "Back-off restarting failed container main in pod oom-restart_monitoring-acceptance(7ff29929-2a62-4394-b921-50605de37004)",
+      "type": "Warning",
+      "firstTimestamp": "2026-10-23T07:02:37Z",
+      "lastTimestamp": "2026-10-23T07:14:41Z",
+      "count": 9,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "name": "ordinary",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "597",
+        "uid": "b9607586-4f87-4448-9e4c-c69a0dd2107b"
+      },
+      "reason": "Scheduled",
+      "message": "Successfully assigned monitoring-acceptance/ordinary to k3d-modurelay-monitoring-k3s-server-0",
+      "type": "Normal",
+      "firstTimestamp": null,
+      "lastTimestamp": null,
+      "source": {},
+      "reportingComponent": "default-scheduler"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{main}",
+        "kind": "Pod",
+        "name": "ordinary",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "599",
+        "uid": "b9607586-4f87-4448-9e4c-c69a0dd2107b"
+      },
+      "reason": "Pulled",
+      "message": "Container image \"redis:7-alpine\" already present on machine and can be accessed by the pod",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T06:57:27Z",
+      "lastTimestamp": "2026-10-23T06:57:27Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{main}",
+        "kind": "Pod",
+        "name": "ordinary",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "599",
+        "uid": "b9607586-4f87-4448-9e4c-c69a0dd2107b"
+      },
+      "reason": "Created",
+      "message": "Container created",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T06:57:27Z",
+      "lastTimestamp": "2026-10-23T06:57:27Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{main}",
+        "kind": "Pod",
+        "name": "ordinary",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "599",
+        "uid": "b9607586-4f87-4448-9e4c-c69a0dd2107b"
+      },
+      "reason": "Started",
+      "message": "Container started",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T06:57:27Z",
+      "lastTimestamp": "2026-10-23T06:57:27Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{main}",
+        "kind": "Pod",
+        "name": "ordinary",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "599",
+        "uid": "b9607586-4f87-4448-9e4c-c69a0dd2107b"
+      },
+      "reason": "Killing",
+      "message": "Stopping container main",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:09:40Z",
+      "lastTimestamp": "2026-10-23T07:09:40Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "name": "ordinary",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "1271",
+        "uid": "e53a65a9-50dc-4155-bd50-145996e7cbab"
+      },
+      "reason": "Scheduled",
+      "message": "Successfully assigned monitoring-acceptance/ordinary to k3d-modurelay-monitoring-k3s-server-0",
+      "type": "Normal",
+      "firstTimestamp": null,
+      "lastTimestamp": null,
+      "source": {},
+      "reportingComponent": "default-scheduler"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{main}",
+        "kind": "Pod",
+        "name": "ordinary",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "1272",
+        "uid": "e53a65a9-50dc-4155-bd50-145996e7cbab"
+      },
+      "reason": "Pulled",
+      "message": "Container image \"redis:7-alpine\" already present on machine and can be accessed by the pod",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:10:11Z",
+      "lastTimestamp": "2026-10-23T07:10:11Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{main}",
+        "kind": "Pod",
+        "name": "ordinary",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "1272",
+        "uid": "e53a65a9-50dc-4155-bd50-145996e7cbab"
+      },
+      "reason": "Created",
+      "message": "Container created",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:10:11Z",
+      "lastTimestamp": "2026-10-23T07:10:11Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{main}",
+        "kind": "Pod",
+        "name": "ordinary",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "1272",
+        "uid": "e53a65a9-50dc-4155-bd50-145996e7cbab"
+      },
+      "reason": "Started",
+      "message": "Container started",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T07:10:11Z",
+      "lastTimestamp": "2026-10-23T07:10:11Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "name": "pod-level",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "605",
+        "uid": "73823291-92f5-4287-a273-448bb51d2fb2"
+      },
+      "reason": "Scheduled",
+      "message": "Successfully assigned monitoring-acceptance/pod-level to k3d-modurelay-monitoring-k3s-server-0",
+      "type": "Normal",
+      "firstTimestamp": null,
+      "lastTimestamp": null,
+      "source": {},
+      "reportingComponent": "default-scheduler"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{main}",
+        "kind": "Pod",
+        "name": "pod-level",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "607",
+        "uid": "73823291-92f5-4287-a273-448bb51d2fb2"
+      },
+      "reason": "Pulled",
+      "message": "Container image \"redis:7-alpine\" already present on machine and can be accessed by the pod",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T06:57:27Z",
+      "lastTimestamp": "2026-10-23T06:57:27Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{main}",
+        "kind": "Pod",
+        "name": "pod-level",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "607",
+        "uid": "73823291-92f5-4287-a273-448bb51d2fb2"
+      },
+      "reason": "Created",
+      "message": "Container created",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T06:57:27Z",
+      "lastTimestamp": "2026-10-23T06:57:27Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{main}",
+        "kind": "Pod",
+        "name": "pod-level",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "607",
+        "uid": "73823291-92f5-4287-a273-448bb51d2fb2"
+      },
+      "reason": "Started",
+      "message": "Container started",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T06:57:27Z",
+      "lastTimestamp": "2026-10-23T06:57:27Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "name": "postgres-6c9df774b4-zgxvk",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "548",
+        "uid": "16943c32-4e3f-4fc6-a66f-f7ca644ad8da"
+      },
+      "reason": "Scheduled",
+      "message": "Successfully assigned monitoring-acceptance/postgres-6c9df774b4-zgxvk to k3d-modurelay-monitoring-k3s-server-0",
+      "type": "Normal",
+      "firstTimestamp": null,
+      "lastTimestamp": null,
+      "source": {},
+      "reportingComponent": "default-scheduler"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{postgres}",
+        "kind": "Pod",
+        "name": "postgres-6c9df774b4-zgxvk",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "555",
+        "uid": "16943c32-4e3f-4fc6-a66f-f7ca644ad8da"
+      },
+      "reason": "Pulled",
+      "message": "Container image \"postgres:18.1-alpine3.23\" already present on machine and can be accessed by the pod",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T06:57:26Z",
+      "lastTimestamp": "2026-10-23T06:57:26Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{postgres}",
+        "kind": "Pod",
+        "name": "postgres-6c9df774b4-zgxvk",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "555",
+        "uid": "16943c32-4e3f-4fc6-a66f-f7ca644ad8da"
+      },
+      "reason": "Created",
+      "message": "Container created",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T06:57:26Z",
+      "lastTimestamp": "2026-10-23T06:57:26Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{postgres}",
+        "kind": "Pod",
+        "name": "postgres-6c9df774b4-zgxvk",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "555",
+        "uid": "16943c32-4e3f-4fc6-a66f-f7ca644ad8da"
+      },
+      "reason": "Started",
+      "message": "Container started",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T06:57:27Z",
+      "lastTimestamp": "2026-10-23T06:57:27Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "apps/v1",
+        "kind": "ReplicaSet",
+        "name": "postgres-6c9df774b4",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "522",
+        "uid": "86f0baa7-98e9-4b0b-9a9a-af309f878930"
+      },
+      "reason": "SuccessfulCreate",
+      "message": "Created pod: postgres-6c9df774b4-zgxvk",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T06:57:26Z",
+      "lastTimestamp": "2026-10-23T06:57:26Z",
+      "count": 1,
+      "source": {
+        "component": "replicaset-controller"
+      },
+      "reportingComponent": "replicaset-controller"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "apps/v1",
+        "kind": "Deployment",
+        "name": "postgres",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "521",
+        "uid": "fc61ee7a-3a60-4240-9495-d23819c346b0"
+      },
+      "reason": "ScalingReplicaSet",
+      "message": "Scaled up replica set postgres-6c9df774b4 from 0 to 1",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T06:57:26Z",
+      "lastTimestamp": "2026-10-23T06:57:26Z",
+      "count": 1,
+      "source": {
+        "component": "deployment-controller"
+      },
+      "reportingComponent": "deployment-controller"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "name": "prometheus-5499bf5bfb-6866n",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "580",
+        "uid": "8c422f2a-fa43-476e-83cd-f21bc4221481"
+      },
+      "reason": "Scheduled",
+      "message": "Successfully assigned monitoring-acceptance/prometheus-5499bf5bfb-6866n to k3d-modurelay-monitoring-k3s-server-0",
+      "type": "Normal",
+      "firstTimestamp": null,
+      "lastTimestamp": null,
+      "source": {},
+      "reportingComponent": "default-scheduler"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{prometheus}",
+        "kind": "Pod",
+        "name": "prometheus-5499bf5bfb-6866n",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "583",
+        "uid": "8c422f2a-fa43-476e-83cd-f21bc4221481"
+      },
+      "reason": "Pulled",
+      "message": "Container image \"prom/prometheus:v3.5.0\" already present on machine and can be accessed by the pod",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T06:57:26Z",
+      "lastTimestamp": "2026-10-23T06:57:26Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{prometheus}",
+        "kind": "Pod",
+        "name": "prometheus-5499bf5bfb-6866n",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "583",
+        "uid": "8c422f2a-fa43-476e-83cd-f21bc4221481"
+      },
+      "reason": "Created",
+      "message": "Container created",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T06:57:27Z",
+      "lastTimestamp": "2026-10-23T06:57:27Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{prometheus}",
+        "kind": "Pod",
+        "name": "prometheus-5499bf5bfb-6866n",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "583",
+        "uid": "8c422f2a-fa43-476e-83cd-f21bc4221481"
+      },
+      "reason": "Started",
+      "message": "Container started",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T06:57:27Z",
+      "lastTimestamp": "2026-10-23T06:57:27Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "apps/v1",
+        "kind": "ReplicaSet",
+        "name": "prometheus-5499bf5bfb",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "577",
+        "uid": "807e2b73-b13e-43f6-bdac-4bbe32aaa0a9"
+      },
+      "reason": "SuccessfulCreate",
+      "message": "Created pod: prometheus-5499bf5bfb-6866n",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T06:57:26Z",
+      "lastTimestamp": "2026-10-23T06:57:26Z",
+      "count": 1,
+      "source": {
+        "component": "replicaset-controller"
+      },
+      "reportingComponent": "replicaset-controller"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "apps/v1",
+        "kind": "Deployment",
+        "name": "prometheus",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "576",
+        "uid": "bb2f9912-458a-4166-b811-a77bd209178f"
+      },
+      "reason": "ScalingReplicaSet",
+      "message": "Scaled up replica set prometheus-5499bf5bfb from 0 to 1",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T06:57:26Z",
+      "lastTimestamp": "2026-10-23T06:57:26Z",
+      "count": 1,
+      "source": {
+        "component": "deployment-controller"
+      },
+      "reportingComponent": "deployment-controller"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "name": "redis-857cbc8f8-ztth4",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "550",
+        "uid": "e0f69e26-14bb-4a94-9ebf-80fd839aef75"
+      },
+      "reason": "Scheduled",
+      "message": "Successfully assigned monitoring-acceptance/redis-857cbc8f8-ztth4 to k3d-modurelay-monitoring-k3s-server-0",
+      "type": "Normal",
+      "firstTimestamp": null,
+      "lastTimestamp": null,
+      "source": {},
+      "reportingComponent": "default-scheduler"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{redis}",
+        "kind": "Pod",
+        "name": "redis-857cbc8f8-ztth4",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "557",
+        "uid": "e0f69e26-14bb-4a94-9ebf-80fd839aef75"
+      },
+      "reason": "Pulled",
+      "message": "Container image \"redis:7-alpine\" already present on machine and can be accessed by the pod",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T06:57:26Z",
+      "lastTimestamp": "2026-10-23T06:57:26Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{redis}",
+        "kind": "Pod",
+        "name": "redis-857cbc8f8-ztth4",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "557",
+        "uid": "e0f69e26-14bb-4a94-9ebf-80fd839aef75"
+      },
+      "reason": "Created",
+      "message": "Container created",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T06:57:26Z",
+      "lastTimestamp": "2026-10-23T06:57:26Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{redis}",
+        "kind": "Pod",
+        "name": "redis-857cbc8f8-ztth4",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "557",
+        "uid": "e0f69e26-14bb-4a94-9ebf-80fd839aef75"
+      },
+      "reason": "Started",
+      "message": "Container started",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T06:57:27Z",
+      "lastTimestamp": "2026-10-23T06:57:27Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "apps/v1",
+        "kind": "ReplicaSet",
+        "name": "redis-857cbc8f8",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "531",
+        "uid": "d59b89b6-7abc-432f-b48d-d01cc68b438d"
+      },
+      "reason": "SuccessfulCreate",
+      "message": "Created pod: redis-857cbc8f8-ztth4",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T06:57:26Z",
+      "lastTimestamp": "2026-10-23T06:57:26Z",
+      "count": 1,
+      "source": {
+        "component": "replicaset-controller"
+      },
+      "reportingComponent": "replicaset-controller"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "apps/v1",
+        "kind": "Deployment",
+        "name": "redis",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "530",
+        "uid": "809c93c4-a48d-4392-92c1-72a820742d1e"
+      },
+      "reason": "ScalingReplicaSet",
+      "message": "Scaled up replica set redis-857cbc8f8 from 0 to 1",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T06:57:26Z",
+      "lastTimestamp": "2026-10-23T06:57:26Z",
+      "count": 1,
+      "source": {
+        "component": "deployment-controller"
+      },
+      "reportingComponent": "deployment-controller"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "name": "unlimited",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "594",
+        "uid": "882eff1a-c9ae-4762-bd7f-c27310338875"
+      },
+      "reason": "Scheduled",
+      "message": "Successfully assigned monitoring-acceptance/unlimited to k3d-modurelay-monitoring-k3s-server-0",
+      "type": "Normal",
+      "firstTimestamp": null,
+      "lastTimestamp": null,
+      "source": {},
+      "reportingComponent": "default-scheduler"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{main}",
+        "kind": "Pod",
+        "name": "unlimited",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "595",
+        "uid": "882eff1a-c9ae-4762-bd7f-c27310338875"
+      },
+      "reason": "Pulled",
+      "message": "Container image \"redis:7-alpine\" already present on machine and can be accessed by the pod",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T06:57:27Z",
+      "lastTimestamp": "2026-10-23T06:57:27Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{main}",
+        "kind": "Pod",
+        "name": "unlimited",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "595",
+        "uid": "882eff1a-c9ae-4762-bd7f-c27310338875"
+      },
+      "reason": "Created",
+      "message": "Container created",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T06:57:27Z",
+      "lastTimestamp": "2026-10-23T06:57:27Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{main}",
+        "kind": "Pod",
+        "name": "unlimited",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "595",
+        "uid": "882eff1a-c9ae-4762-bd7f-c27310338875"
+      },
+      "reason": "Started",
+      "message": "Container started",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T06:57:27Z",
+      "lastTimestamp": "2026-10-23T06:57:27Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "name": "with-overhead",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "611",
+        "uid": "93437032-7f20-48c6-8029-e07ca00b5a1c"
+      },
+      "reason": "Scheduled",
+      "message": "Successfully assigned monitoring-acceptance/with-overhead to k3d-modurelay-monitoring-k3s-server-0",
+      "type": "Normal",
+      "firstTimestamp": null,
+      "lastTimestamp": null,
+      "source": {},
+      "reportingComponent": "default-scheduler"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.initContainers{prepare}",
+        "kind": "Pod",
+        "name": "with-overhead",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "612",
+        "uid": "93437032-7f20-48c6-8029-e07ca00b5a1c"
+      },
+      "reason": "Pulled",
+      "message": "Container image \"redis:7-alpine\" already present on machine and can be accessed by the pod",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T06:57:27Z",
+      "lastTimestamp": "2026-10-23T06:57:27Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.initContainers{prepare}",
+        "kind": "Pod",
+        "name": "with-overhead",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "612",
+        "uid": "93437032-7f20-48c6-8029-e07ca00b5a1c"
+      },
+      "reason": "Created",
+      "message": "Container created",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T06:57:27Z",
+      "lastTimestamp": "2026-10-23T06:57:27Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.initContainers{prepare}",
+        "kind": "Pod",
+        "name": "with-overhead",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "612",
+        "uid": "93437032-7f20-48c6-8029-e07ca00b5a1c"
+      },
+      "reason": "Started",
+      "message": "Container started",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T06:57:27Z",
+      "lastTimestamp": "2026-10-23T06:57:27Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{main}",
+        "kind": "Pod",
+        "name": "with-overhead",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "612",
+        "uid": "93437032-7f20-48c6-8029-e07ca00b5a1c"
+      },
+      "reason": "Pulled",
+      "message": "Container image \"redis:7-alpine\" already present on machine and can be accessed by the pod",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T06:57:27Z",
+      "lastTimestamp": "2026-10-23T06:57:27Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{main}",
+        "kind": "Pod",
+        "name": "with-overhead",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "612",
+        "uid": "93437032-7f20-48c6-8029-e07ca00b5a1c"
+      },
+      "reason": "Created",
+      "message": "Container created",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T06:57:27Z",
+      "lastTimestamp": "2026-10-23T06:57:27Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    },
+    {
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{main}",
+        "kind": "Pod",
+        "name": "with-overhead",
+        "namespace": "monitoring-acceptance",
+        "resourceVersion": "612",
+        "uid": "93437032-7f20-48c6-8029-e07ca00b5a1c"
+      },
+      "reason": "Started",
+      "message": "Container started",
+      "type": "Normal",
+      "firstTimestamp": "2026-10-23T06:57:27Z",
+      "lastTimestamp": "2026-10-23T06:57:27Z",
+      "count": 1,
+      "source": {
+        "component": "kubelet",
+        "host": "k3d-modurelay-monitoring-k3s-server-0"
+      },
+      "reportingComponent": "kubelet"
+    }
+  ]
+}

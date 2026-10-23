@@ -1,0 +1,89 @@
+{
+  "source": "Prometheus /api/v1/targets (annotations and discovered labels excluded)",
+  "activeTargets": [
+    {
+      "labels": {
+        "cluster": "acceptance-k3s",
+        "instance": "k3d-modurelay-monitoring-k3s-server-0",
+        "job": "cadvisor"
+      },
+      "scrapeUrl": "https://kubernetes.default.svc:443/api/v1/nodes/k3d-modurelay-monitoring-k3s-server-0/proxy/metrics/cadvisor",
+      "health": "up",
+      "lastScrape": "2026-10-23T07:14:43.563032923Z",
+      "lastScrapeDuration": 0.070280292,
+      "lastError": ""
+    },
+    {
+      "labels": {
+        "cluster": "acceptance-k3s",
+        "instance": "kube-state-metrics:8080",
+        "job": "kube-state-metrics"
+      },
+      "scrapeUrl": "http://kube-state-metrics:8080/metrics",
+      "health": "up",
+      "lastScrape": "2026-10-23T07:14:41.12116063Z",
+      "lastScrapeDuration": 0.001374166,
+      "lastError": ""
+    },
+    {
+      "labels": {
+        "cluster": "acceptance-k3s",
+        "instance": "modurelay-metrics:8080",
+        "job": "modurelay-cluster"
+      },
+      "scrapeUrl": "http://modurelay-metrics:8080/metrics",
+      "health": "up",
+      "lastScrape": "2026-10-23T07:14:40.285867588Z",
+      "lastScrapeDuration": 0.01749075,
+      "lastError": ""
+    },
+    {
+      "labels": {
+        "cluster": "acceptance-k3s",
+        "instance": "10.42.0.23:8080",
+        "job": "modurelay-instance",
+        "namespace": "monitoring-acceptance",
+        "pod": "modurelay-6ccbf9f8b8-lsnrg",
+        "service": "modurelay-metrics",
+        "uid": "c99fb9c8-fb6f-4b72-8a02-05d4fe33c4b2"
+      },
+      "scrapeUrl": "http://10.42.0.23:8080/metrics/instance",
+      "health": "up",
+      "lastScrape": "2026-10-23T07:14:44.189574886Z",
+      "lastScrapeDuration": 0.001477834,
+      "lastError": ""
+    },
+    {
+      "labels": {
+        "cluster": "acceptance-k3s",
+        "instance": "10.42.0.20:8080",
+        "job": "modurelay-instance",
+        "namespace": "monitoring-acceptance",
+        "pod": "modurelay-6ccbf9f8b8-cxk7j",
+        "service": "modurelay-metrics",
+        "uid": "c0462740-d524-4715-9c64-f87c0c81a318"
+      },
+      "scrapeUrl": "http://10.42.0.20:8080/metrics/instance",
+      "health": "up",
+      "lastScrape": "2026-10-23T07:14:41.153514125Z",
+      "lastScrapeDuration": 0.000788667,
+      "lastError": ""
+    },
+    {
+      "labels": {
+        "cluster": "acceptance-k3s",
+        "instance": "10.42.0.21:8080",
+        "job": "modurelay-instance",
+        "namespace": "monitoring-acceptance",
+        "pod": "modurelay-6ccbf9f8b8-ldvsx",
+        "service": "modurelay-metrics",
+        "uid": "e2e7d9a4-bd6c-4155-8913-74018bb038cb"
+      },
+      "scrapeUrl": "http://10.42.0.21:8080/metrics/instance",
+      "health": "up",
+      "lastScrape": "2026-10-23T07:14:39.715602713Z",
+      "lastScrapeDuration": 0.000905292,
+      "lastError": ""
+    }
+  ]
+}

@@ -1,0 +1,118 @@
+{
+  "recorded_at": "2026-10-23T07:37:39.006527+00:00",
+  "source": "Live isolated Kubernetes/API/Prometheus verification on Docker Desktop Linux/arm64",
+  "isolation": "Independent temporary clusters, kubeconfigs, credentials, namespaces, databases. No customer business data. No customer cloud environment.",
+  "redaction": "No credentials, kubeconfig, Secret manifests or Pod specs/annotations/env exported. Credential values checked against both generated local test files.",
+  "files": [
+    {
+      "name": "cleanup.json",
+      "bytes": 1373,
+      "sha256": "0342d377175266249d1de9e075d7722cd24894d17a10d92229eda469ae0269dd"
+    },
+    {
+      "name": "k3s-acceptance.json",
+      "bytes": 49793,
+      "sha256": "7513ea702ca1fda5c1cf6d18d85de23cbe429765226d4aefbaa0a74c4450d9db"
+    },
+    {
+      "name": "k3s-cadvisor-oom-counter.json",
+      "bytes": 2099,
+      "sha256": "c5af5d396ef29678f1daeec12af90a57758c660d0610fea74797c426a4e638db"
+    },
+    {
+      "name": "k3s-cluster-create.txt",
+      "bytes": 1471,
+      "sha256": "82cf11da0020c958e0ede3f3cdda9afce89394cea40c330a97cfaa7a7a519131"
+    },
+    {
+      "name": "k3s-earlier-probe-results.json",
+      "bytes": 27181,
+      "sha256": "6d6d03571e8b15e9307108d2cd5954216f6b77b63363aa25ce1c36bdd5361af5"
+    },
+    {
+      "name": "k3s-event-archive-counts.txt",
+      "bytes": 210,
+      "sha256": "77cd4a8dc4de2b03a332e668551a858ffccd9aee5d73fa7361a34da8037a1ebd"
+    },
+    {
+      "name": "k3s-events.json",
+      "bytes": 89290,
+      "sha256": "3135aad61078c5906f44715f9bf4e693ce46e7a28f2bad557279ae89ffe72ba7"
+    },
+    {
+      "name": "k3s-image.json",
+      "bytes": 174,
+      "sha256": "ca27516e5e5a9a65eb0fe6e79db36e97804b4a5639192cf954a5e4551fb379aa"
+    },
+    {
+      "name": "k3s-pod-status.json",
+      "bytes": 55356,
+      "sha256": "1731e280126e627d3f8018ff805dacb55d6d04fe3fe1f8775e391c04ee5fd7e3"
+    },
+    {
+      "name": "k3s-targets.json",
+      "bytes": 2881,
+      "sha256": "fbec68e0027f0cc95db62034aaaa6d06a0bceadda3d5640889d624de099b9aae"
+    },
+    {
+      "name": "kind-acceptance.json",
+      "bytes": 44813,
+      "sha256": "9dddd2b6f503642476be3d42c32793a45868ba670dfd4ce98f10c5c265d5e2e6"
+    },
+    {
+      "name": "kind-cadvisor-oom-counter.json",
+      "bytes": 419,
+      "sha256": "dbf82da109a7eeec1e85826cc12fce42843e5b3372efb1c85137aa4d93f5f3e2"
+    },
+    {
+      "name": "kind-earlier-probe-results.json",
+      "bytes": 21632,
+      "sha256": "2e9b06eae661dabd04f809f154584dd190aa8618c1fd3beeea1fa2d5b02377da"
+    },
+    {
+      "name": "kind-event-archive-counts.txt",
+      "bytes": 59,
+      "sha256": "7777551fecb903ddb479286096fe9a6ca52f7a3856acc9cf06297aaf3efdb6b7"
+    },
+    {
+      "name": "kind-events.json",
+      "bytes": 78408,
+      "sha256": "94bdf5c134d268a94926145225d2094a0dcbf6e98657539f8f9525892011bd2d"
+    },
+    {
+      "name": "kind-http-dimension-filter-api.json",
+      "bytes": 2215,
+      "sha256": "b6a478a0ebd290b6843abaa5128544bfb1fdf0f108835af3be46e6ee9593cab7"
+    },
+    {
+      "name": "kind-image.json",
+      "bytes": 174,
+      "sha256": "dd4b474a55c02f33367d3a5320be733c6f70586bf6497bc00cacf08bc02d0698"
+    },
+    {
+      "name": "kind-metrics-auth.json",
+      "bytes": 154,
+      "sha256": "c10ac32659430ea2c9075ea2d547b7062e62d85804687a4c194160d0f109ee03"
+    },
+    {
+      "name": "kind-migrations.txt",
+      "bytes": 666,
+      "sha256": "de5a2978ba2474d455148794c34c398cc2e1e7904613161412eeb1042d613300"
+    },
+    {
+      "name": "kind-pod-status.json",
+      "bytes": 55400,
+      "sha256": "6fd2585a7524929feb8034a335b1f3306c39642fcda0e60acba1a67052a4c518"
+    },
+    {
+      "name": "kind-resource-metrics.txt",
+      "bytes": 178,
+      "sha256": "392af3d38e10b654042275e62949e7ba839d4459e733af6af4214e30c67e93d6"
+    },
+    {
+      "name": "kind-targets.json",
+      "bytes": 2894,
+      "sha256": "a666e0ca3ea5d1b7dd2833b230ab4a9d55ab769e668576d0a920c5359825dfd0"
+    }
+  ]
+}

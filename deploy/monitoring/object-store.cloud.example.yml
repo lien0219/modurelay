@@ -1,0 +1,9 @@
+# Copy outside the repository, restrict to mode 0600, and fill via your secret
+# manager. Prefer workload identity (empty access/secret keys) where supported.
+type: S3
+config:
+  bucket: REPLACE_WITH_DEDICATED_BUCKET
+  endpoint: s3.REGION.amazonaws.com
+  region: REGION
+  aws_sdk_auth: true
+  insecure: false

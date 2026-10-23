@@ -1,0 +1,2 @@
+NAME                                      CPU(cores)   CPU%   MEMORY(bytes)   MEMORY%   
+modurelay-monitoring-kind-control-plane   219m         2%     1464Mi          18%       

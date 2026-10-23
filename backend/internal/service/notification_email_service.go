@@ -444,6 +444,45 @@ func (s *NotificationEmailService) RememberRecipientLocale(ctx context.Context, 
 	}
 }
 
+// ResolveOpsMailLocale is the locale for ops alert and ops report mail.
+// A stored recipient preference wins. With no preference the default is Chinese,
+// which does not change the global notification default of English.
+func (s *NotificationEmailService) ResolveOpsMailLocale(ctx context.Context, email string) string {
+	if s == nil || s.settingRepo == nil {
+		return notificationEmailLocaleChinese
+	}
+	if emailHash := notificationEmailHash(email); emailHash != "" {
+		if locale, err := s.settingRepo.GetValue(ctx, notificationEmailLocaleEmailKeyPrefix+emailHash); err == nil && strings.TrimSpace(locale) != "" {
+			return normalizeNotificationLocale(locale)
+		}
+	}
+	return notificationEmailLocaleChinese
+}
+
+// ResolveOpsEventMailLocale keeps an administrator's existing English override
+// when the recipient has no explicit language preference and no Chinese override
+// exists. New installations still use Chinese by default.
+func (s *NotificationEmailService) ResolveOpsEventMailLocale(ctx context.Context, email, event string) string {
+	locale := s.ResolveOpsMailLocale(ctx, email)
+	if s == nil || s.settingRepo == nil {
+		return locale
+	}
+	if emailHash := notificationEmailHash(email); emailHash != "" {
+		if stored, err := s.settingRepo.GetValue(ctx, notificationEmailLocaleEmailKeyPrefix+emailHash); err == nil && strings.TrimSpace(stored) != "" {
+			return locale
+		}
+	}
+	chinese, err := s.GetTemplate(ctx, event, notificationEmailLocaleChinese)
+	if err != nil || chinese.IsCustom {
+		return locale
+	}
+	english, err := s.GetTemplate(ctx, event, notificationEmailDefaultLocale)
+	if err == nil && english.IsCustom {
+		return notificationEmailDefaultLocale
+	}
+	return locale
+}
+
 func (s *NotificationEmailService) ResolveRecipientLocale(ctx context.Context, userID int64, email string) string {
 	if s == nil || s.settingRepo == nil {
 		return notificationEmailDefaultLocale
@@ -931,6 +970,7 @@ func notificationEmailSampleVariables(locale string) map[string]string {
 			"rule_name":           "错误率过高",
 			"severity":            "critical",
 			"alert_status":        "firing",
+			"alert_headline":      "运维告警",
 			"metric_type":         "error_rate",
 			"operator":            ">=",
 			"metric_value":        "12.50",
@@ -979,6 +1019,7 @@ func notificationEmailSampleVariables(locale string) map[string]string {
 		"rule_name":           "High error rate",
 		"severity":            "critical",
 		"alert_status":        "firing",
+		"alert_headline":      "Ops Alert",
 		"metric_type":         "error_rate",
 		"operator":            ">=",
 		"metric_value":        "12.50",
@@ -1136,7 +1177,7 @@ var notificationEmailEventDefinitions = map[string]NotificationEmailEventInfo{
 		Category:    "ops",
 		Optional:    false,
 		Placeholders: append(append([]string{}, notificationEmailCommonPlaceholders...),
-			"rule_name", "severity", "alert_status", "metric_type", "operator", "metric_value", "threshold_value", "triggered_at", "alert_description"),
+			"rule_name", "severity", "alert_status", "alert_headline", "metric_type", "operator", "metric_value", "threshold_value", "triggered_at", "alert_description"),
 	},
 	NotificationEmailEventOpsScheduledReport: {
 		Event:       NotificationEmailEventOpsScheduledReport,
@@ -1406,8 +1447,8 @@ var notificationEmailOfficialTemplates = map[string]map[string]notificationEmail
 	},
 	NotificationEmailEventOpsAlert: {
 		notificationEmailDefaultLocale: {
-			Subject: "[Ops Alert][{{severity}}] {{rule_name}}",
-			HTML: notificationEmailCard("#ea580c", "Ops alert", `
+			Subject: "[{{alert_headline}}][{{severity}}] {{rule_name}}",
+			HTML: notificationEmailCard("#ea580c", "{{alert_headline}}", `
 <p><strong>Rule</strong>: {{rule_name}}</p>
 <p><strong>Severity</strong>: {{severity}}</p>
 <p><strong>Status</strong>: {{alert_status}}</p>
@@ -1416,8 +1457,8 @@ var notificationEmailOfficialTemplates = map[string]map[string]notificationEmail
 <p><strong>Description</strong>: {{alert_description}}</p>`),
 		},
 		notificationEmailLocaleChinese: {
-			Subject: "[运维告警][{{severity}}] {{rule_name}}",
-			HTML: notificationEmailCard("#ea580c", "运维告警", `
+			Subject: "[{{alert_headline}}][{{severity}}] {{rule_name}}",
+			HTML: notificationEmailCard("#ea580c", "{{alert_headline}}", `
 <p><strong>规则</strong>：{{rule_name}}</p>
 <p><strong>严重级别</strong>：{{severity}}</p>
 <p><strong>状态</strong>：{{alert_status}}</p>

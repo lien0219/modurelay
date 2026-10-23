@@ -137,10 +137,10 @@ func (s *OpsService) CreateAlertSilence(ctx context.Context, input *OpsAlertSile
 	if input.RuleID <= 0 {
 		return nil, infraerrors.BadRequest("INVALID_RULE_ID", "invalid rule id")
 	}
-	if strings.TrimSpace(input.Platform) == "" {
+	if strings.TrimSpace(input.Platform) == "" && strings.TrimSpace(input.ResourceKey) == "" {
 		return nil, infraerrors.BadRequest("INVALID_PLATFORM", "invalid platform")
 	}
-	if input.Until.IsZero() {
+	if input.Until.IsZero() || !input.Until.After(time.Now()) {
 		return nil, infraerrors.BadRequest("INVALID_UNTIL", "invalid until")
 	}
 

@@ -203,6 +203,38 @@ func TestOpsAlertRuleValidation(t *testing.T) {
 	validated, err := validateOpsAlertRulePayload(raw)
 	require.NoError(t, err)
 	require.Equal(t, "High error rate", validated.Name)
+	require.Equal(t, 0, validated.MinRequests)
+
+	raw["min_requests"] = json.RawMessage(`5`)
+	validated, err = validateOpsAlertRulePayload(raw)
+	require.NoError(t, err)
+	require.Equal(t, 5, validated.MinRequests)
+
+	raw["min_requests"] = json.RawMessage(`-1`)
+	_, err = validateOpsAlertRulePayload(raw)
+	require.Error(t, err)
+
+	raw["min_requests"] = json.RawMessage(`1000001`)
+	_, err = validateOpsAlertRulePayload(raw)
+	require.Error(t, err)
+
+	raw["min_requests"] = json.RawMessage(`1.5`)
+	_, err = validateOpsAlertRulePayload(raw)
+	require.Error(t, err)
+
+	raw["min_requests"] = json.RawMessage(`0`)
+	raw["metric_type"] = json.RawMessage(`"db_pool_usage_percent"`)
+	raw["threshold"] = json.RawMessage(`80`)
+	validated, err = validateOpsAlertRulePayload(raw)
+	require.NoError(t, err)
+	require.Equal(t, "db_pool_usage_percent", validated.MetricType)
+
+	raw["metric_type"] = json.RawMessage(`"redis_pool_usage_percent"`)
+	raw["threshold"] = json.RawMessage(`101`)
+	_, err = validateOpsAlertRulePayload(raw)
+	require.Error(t, err)
+	require.True(t, isPercentOrRateMetric("db_pool_usage_percent"))
+	require.True(t, isPercentOrRateMetric("redis_pool_usage_percent"))
 
 	_, err = validateOpsAlertRulePayload(map[string]json.RawMessage{})
 	require.Error(t, err)

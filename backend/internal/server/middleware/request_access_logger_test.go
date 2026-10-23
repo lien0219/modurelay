@@ -62,6 +62,70 @@ func initMiddlewareTestLoggerWithLevel(t *testing.T, level string) *testLogSink 
 	return sink
 }
 
+func TestRequestLoggerAddsInstanceAndPodFieldsWhenPresent(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	t.Setenv("POD_NAME", "api-0")
+	t.Setenv("POD_NAMESPACE", "modurelay")
+	sink := initMiddlewareTestLogger(t)
+	r := gin.New()
+	r.Use(RequestLogger())
+	r.GET("/t", func(c *gin.Context) {
+		logger.FromContext(c.Request.Context()).Info("request scope")
+		c.Status(http.StatusNoContent)
+	})
+	r.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/t", nil))
+
+	var matched *logger.LogEvent
+	for _, event := range sink.list() {
+		if event.Message == "request scope" {
+			matched = event
+			break
+		}
+	}
+	if matched == nil {
+		t.Fatal("request scope log missing")
+	}
+	if matched.Fields["request_id"] == "" {
+		t.Fatalf("request_id=%v", matched.Fields["request_id"])
+	}
+	if matched.Fields["instance"] == "" || matched.Fields["instance"] == nil {
+		t.Fatalf("instance=%v", matched.Fields["instance"])
+	}
+	if matched.Fields["pod"] != "api-0" || matched.Fields["namespace"] != "modurelay" {
+		t.Fatalf("pod/namespace = %v %v", matched.Fields["pod"], matched.Fields["namespace"])
+	}
+	if matched.Fields["service"] != "sub2api" {
+		t.Fatalf("request logger must not replace the process service label, got %v", matched.Fields["service"])
+	}
+}
+
+func TestRequestLoggerOmitsPodFieldsWithoutKubernetesEnv(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	t.Setenv("POD_NAME", "")
+	t.Setenv("POD_NAMESPACE", "")
+	sink := initMiddlewareTestLogger(t)
+	r := gin.New()
+	r.Use(RequestLogger())
+	r.GET("/t", func(c *gin.Context) {
+		logger.FromContext(c.Request.Context()).Info("request scope")
+		c.Status(http.StatusNoContent)
+	})
+	r.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/t", nil))
+	for _, event := range sink.list() {
+		if event.Message != "request scope" {
+			continue
+		}
+		if _, ok := event.Fields["pod"]; ok {
+			t.Fatal("pod field set without POD_NAME")
+		}
+		if _, ok := event.Fields["namespace"]; ok {
+			t.Fatal("namespace field set without POD_NAMESPACE")
+		}
+		return
+	}
+	t.Fatal("request scope log missing")
+}
+
 func TestRequestLogger_GenerateAndPropagateRequestID(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()

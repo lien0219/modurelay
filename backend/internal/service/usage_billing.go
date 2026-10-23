@@ -42,6 +42,12 @@ type UsageBillingCommand struct {
 	APIKeyQuotaCost     float64
 	APIKeyRateLimitCost float64
 	AccountQuotaCost    float64
+
+	// ExpectedUsageCost is audit evidence for the Usage Log written after commit.
+	// It is deliberately excluded from the billing fingerprint and calculations.
+	// nil identifies older callers and balance-hold operations that cannot be
+	// reconciled against a request Usage Log.
+	ExpectedUsageCost *float64
 }
 
 func (c *UsageBillingCommand) Normalize() {

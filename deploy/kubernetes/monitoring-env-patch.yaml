@@ -1,0 +1,51 @@
+# Strategic merge patch for an EXISTING Deployment; adjust both names first.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: modurelay
+spec:
+  template:
+    spec:
+      containers:
+        - name: modurelay
+          env:
+            - name: OPS_MONITORING_MODE
+              value: kubernetes
+            - name: OPS_MONITORING_CLUSTER_NAME
+              value: modurelay
+            - name: OPS_MONITORING_PROMETHEUS_URL
+              value: http://prometheus.monitoring.svc.cluster.local:9090
+            - name: OPS_METRICS_ENABLED
+              value: "true"
+            - name: OPS_METRICS_TOKEN
+              valueFrom:
+                secretKeyRef: { name: modurelay-monitoring, key: metrics-token }
+            - name: OPS_MONITORING_BEARER_TOKEN
+              valueFrom:
+                secretKeyRef: { name: modurelay-monitoring, key: prometheus-token, optional: true }
+            - name: OPS_ALERT_WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef: { name: modurelay-monitoring, key: webhook-secret, optional: true }
+            - name: POD_NAME
+              valueFrom:
+                fieldRef: { fieldPath: metadata.name }
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef: { fieldPath: metadata.namespace }
+            - name: POD_UID
+              valueFrom:
+                fieldRef: { fieldPath: metadata.uid }
+            - name: LOG_SERVICE_NAME
+              value: modurelay
+            # Opt in only after assigning the read-only events Role.
+            - name: OPS_MONITORING_KUBERNETES_EVENTS_ENABLED
+              value: "false"
+
+# Effective resource limits are separately opt-in after granting pods get/list:
+# - name: OPS_MONITORING_KUBERNETES_RESOURCES_ENABLED
+#   value: "true"
+# External ingress metrics remain distinct from app and admission-rejection data:
+# - name: OPS_MONITORING_EXTERNAL_INGRESS_ADAPTER
+#   value: nginx
+# - name: OPS_MONITORING_EXTERNAL_INGRESS_JOB
+#   value: ingress-nginx
