@@ -205,7 +205,7 @@ func (s *PaymentService) RequestRefund(ctx context.Context, oid, uid int64, reas
 	if err != nil {
 		return fmt.Errorf("begin refund request: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	txCtx := dbent.NewTxContext(ctx, tx)
 	if s.invoiceRepository != nil {
 		if err := s.invoiceRepository.BeforeRefund(txCtx, tx.Client(), o, o.Amount); err != nil {

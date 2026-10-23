@@ -55,7 +55,7 @@ func invoiceFunds(ctx context.Context, q invoiceQuerier, userID int64, excludeOr
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	result := &service.InvoiceEligibility{MinimumAmountCents: service.InvoiceMinimumAmountCents}
 	if !rows.Next() {
 		if err := rows.Err(); err != nil {
@@ -82,7 +82,7 @@ func (r *invoiceRepository) Create(ctx context.Context, userID int64, input serv
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if err := lockInvoiceUser(ctx, tx, userID); err != nil {
 		return nil, err
 	}
@@ -183,7 +183,7 @@ func (r *invoiceRepository) List(ctx context.Context, filter service.InvoiceFilt
 	if err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]*service.Invoice, 0)
 	for rows.Next() {
 		inv, err := scanInvoice(rows)
@@ -206,7 +206,7 @@ func (r *invoiceRepository) Update(ctx context.Context, id, userID int64, update
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	// Read owner without a row lock, then take the shared user lock before the row.
 	var owner int64
 	if err := tx.QueryRowContext(ctx, `SELECT user_id FROM invoice_applications WHERE id=$1 AND ($2::bigint=0 OR user_id=$2)`, id, userID).Scan(&owner); err != nil {
@@ -269,7 +269,7 @@ func (r *invoiceRepository) Export(ctx context.Context, filter service.InvoiceFi
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]*service.Invoice, 0)
 	for rows.Next() {
 		inv, err := scanInvoice(rows)
@@ -294,7 +294,7 @@ func (r *invoiceRepository) SaveDocument(ctx context.Context, id int64, document
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	var owner int64
 	if err := tx.QueryRowContext(ctx, `SELECT user_id FROM invoice_applications WHERE id=$1`, id).Scan(&owner); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

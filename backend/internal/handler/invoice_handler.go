@@ -211,14 +211,14 @@ func (h *InvoiceHandler) UploadDocument(c *gin.Context) {
 		return
 	}
 	if c.Request.MultipartForm != nil {
-		defer c.Request.MultipartForm.RemoveAll()
+		defer func() { _ = c.Request.MultipartForm.RemoveAll() }()
 	}
 	file, header, err := c.Request.FormFile("file")
 	if err != nil {
 		response.BadRequest(c, "请选择 PDF 电子发票")
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	content, err := io.ReadAll(io.LimitReader(file, service.InvoiceDocumentMaxBytes+1))
 	if err != nil {
 		response.BadRequest(c, "无法读取 PDF 文件")
