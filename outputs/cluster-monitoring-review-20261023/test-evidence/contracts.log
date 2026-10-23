@@ -1,0 +1,5 @@
+{"name": "Unmatched namespace remains Unknown", "passed": true, "details": {"code": 0, "message": "success", "data": {"metric": "qps", "unit": "requests/s", "state": "Unknown", "reason": "samples_unavailable", "step_seconds": 0, "series": []}}}
+{"name": "PromQL-looking cluster stays a literal empty filter", "passed": true, "details": {"code": 0, "message": "success", "data": {"metric": "qps", "unit": "requests/s", "state": "Unknown", "reason": "samples_unavailable", "step_seconds": 0, "series": []}}}
+{"name": "Unsupported query contract rejected metric=qps&source=bad", "passed": true, "details": {"http": 400, "message": "invalid monitoring query: unsupported source"}}
+{"name": "Unsupported query contract rejected metric=hpa_current_replicas&pod=not_supported", "passed": true, "details": {"http": 400, "message": "invalid monitoring query: HPA metrics support cluster and namespace filters"}}
+{"name": "Unsupported query contract rejected metric=qps&cluster=x%0Ay", "passed": true, "details": {"http": 400, "message": "invalid monitoring query: invalid resource filter"}}

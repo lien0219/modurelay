@@ -1,0 +1,19 @@
+[36mINFO[0m[0000] Prep: Network                                
+[36mINFO[0m[0000] Re-using existing network 'k3d-modurelay-monitoring-k3s' (bf28ade3a470a871c4e73372250115081d466e12467a3310186c44b542d3ce4c) 
+[36mINFO[0m[0000] Created image volume k3d-modurelay-monitoring-k3s-images 
+[36mINFO[0m[0000] Starting new tools node...                   
+[36mINFO[0m[0000] Starting node 'k3d-modurelay-monitoring-k3s-tools' 
+[36mINFO[0m[0001] Creating node 'k3d-modurelay-monitoring-k3s-server-0' 
+[36mINFO[0m[0001] Using the k3d-tools node to gather environment information 
+[36mINFO[0m[0001] Starting new tools node...                   
+[36mINFO[0m[0001] Starting node 'k3d-modurelay-monitoring-k3s-tools' 
+[36mINFO[0m[0002] Starting cluster 'modurelay-monitoring-k3s'  
+[36mINFO[0m[0002] Starting servers...                          
+[36mINFO[0m[0003] Starting node 'k3d-modurelay-monitoring-k3s-server-0' 
+[36mINFO[0m[0008] All agents already running.                  
+[36mINFO[0m[0008] All helpers already running.                 
+[36mINFO[0m[0008] Injecting records for hostAliases (incl. host.k3d.internal) and for 2 network members into CoreDNS configmap... 
+[36mINFO[0m[0010] Cluster 'modurelay-monitoring-k3s' created successfully! 
+[36mINFO[0m[0010] You can now use it like this:                
+export KUBECONFIG=$(/tmp/modurelay-monitoring-k3d/bin/k3d-darwin-arm64 kubeconfig write modurelay-monitoring-k3s)
+kubectl cluster-info

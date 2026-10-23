@@ -1,0 +1,75 @@
+{
+  "command": "go test -tags=unit ./internal/repository -run '^TestMonitoring.*Postgres$' -count=1 -timeout=5m -json",
+  "exit_code": 0,
+  "top_level_counts": {
+    "pass": 12,
+    "fail": 0,
+    "skip": 0
+  },
+  "tests": [
+    {
+      "name": "TestMonitoringBillingReconciliationPostgres",
+      "result": "pass",
+      "seconds": 0.04
+    },
+    {
+      "name": "TestMonitoringBillingBacklogAndPersistencePostgres",
+      "result": "pass",
+      "seconds": 0.11
+    },
+    {
+      "name": "TestMonitoringBillingEvidenceAtomicClaimPostgres",
+      "result": "pass",
+      "seconds": 0.03
+    },
+    {
+      "name": "TestMonitoringBillingOpenFindingSurvivesArchivePostgres",
+      "result": "pass",
+      "seconds": 0.04
+    },
+    {
+      "name": "TestMonitoringProductionMigrationsPostgres",
+      "result": "pass",
+      "seconds": 2.95
+    },
+    {
+      "name": "TestMonitoringAlertOutboxLifecyclePostgres",
+      "result": "pass",
+      "seconds": 0.1
+    },
+    {
+      "name": "TestMonitoringAlertOutboxAtomicRollbackPostgres",
+      "result": "pass",
+      "seconds": 0.07
+    },
+    {
+      "name": "TestMonitoringAlertOutboxConcurrentClaimsPostgres",
+      "result": "pass",
+      "seconds": 0.1
+    },
+    {
+      "name": "TestMonitoringDatabaseCapacityPersistencePostgres",
+      "result": "pass",
+      "seconds": 0.04
+    },
+    {
+      "name": "TestMonitoringResourceSilenceAndHistoryIsolationPostgres",
+      "result": "pass",
+      "seconds": 0.08
+    },
+    {
+      "name": "TestMonitoringRelatedRulesShareIncidentAndCloseOncePostgres",
+      "result": "pass",
+      "seconds": 0.1
+    },
+    {
+      "name": "TestMonitoringEventsPersistencePostgres",
+      "result": "pass",
+      "seconds": 0.04
+    }
+  ],
+  "log": "/Users/mac/code/work/muzi/modurelay/outputs/cluster-monitoring-review-20261023/test-evidence/postgres-tests.jsonl",
+  "isolated_postgres": true,
+  "mysql_used": false,
+  "dsn_format": "lib/pq key=value; secret omitted"
+}

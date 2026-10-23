@@ -1,0 +1,119 @@
+# HELP modurelay_instance_draining Whether this instance is draining (1) or accepting traffic (0).
+# TYPE modurelay_instance_draining gauge
+modurelay_instance_draining 0
+# HELP modurelay_instance_active_http_requests HTTP handlers still running on this instance, excluding probes and metrics.
+# TYPE modurelay_instance_active_http_requests gauge
+modurelay_instance_active_http_requests 0
+# HELP modurelay_instance_active_websocket_sessions Upgraded sessions still running or finalizing on this instance.
+# TYPE modurelay_instance_active_websocket_sessions gauge
+modurelay_instance_active_websocket_sessions 0
+# HELP modurelay_instance_active_websocket_turns Admitted Responses WebSocket turns still running on this instance.
+# TYPE modurelay_instance_active_websocket_turns gauge
+modurelay_instance_active_websocket_turns 0
+# HELP modurelay_http_requests_started_total HTTP arrivals before handler completion, excluding probes and scrapes.
+# TYPE modurelay_http_requests_started_total counter
+modurelay_http_requests_started_total{method="GET",source="app",route="other"} 327
+modurelay_http_requests_started_total{method="POST",source="app",route="messages"} 26
+modurelay_http_requests_started_total{method="POST",source="app",route="other"} 251
+# HELP modurelay_http_requests_total HTTP requests handled by this instance, excluding probes and metrics scrapes.
+# TYPE modurelay_http_requests_total counter
+modurelay_http_requests_total{method="GET",source="app",route="other",protocol="http",status_code="200"} 322
+modurelay_http_requests_total{method="GET",source="app",route="other",protocol="http",status_code="400"} 4
+modurelay_http_requests_total{method="GET",source="app",route="other",protocol="http",status_code="401"} 1
+modurelay_http_requests_total{method="POST",source="app",route="other",protocol="http",status_code="200"} 251
+modurelay_http_requests_total{method="POST",source="ingress",route="messages",protocol="http",status_code="401"} 26
+# HELP modurelay_http_request_duration_seconds HTTP request duration in seconds for this instance.
+# TYPE modurelay_http_request_duration_seconds histogram
+modurelay_http_request_duration_seconds_bucket{method="GET",source="app",route="other",protocol="http",le="0.05"} 315
+modurelay_http_request_duration_seconds_bucket{method="GET",source="app",route="other",protocol="http",le="0.1"} 325
+modurelay_http_request_duration_seconds_bucket{method="GET",source="app",route="other",protocol="http",le="0.25"} 326
+modurelay_http_request_duration_seconds_bucket{method="GET",source="app",route="other",protocol="http",le="0.5"} 326
+modurelay_http_request_duration_seconds_bucket{method="GET",source="app",route="other",protocol="http",le="1"} 326
+modurelay_http_request_duration_seconds_bucket{method="GET",source="app",route="other",protocol="http",le="2.5"} 327
+modurelay_http_request_duration_seconds_bucket{method="GET",source="app",route="other",protocol="http",le="5"} 327
+modurelay_http_request_duration_seconds_bucket{method="GET",source="app",route="other",protocol="http",le="10"} 327
+modurelay_http_request_duration_seconds_bucket{method="GET",source="app",route="other",protocol="http",le="30"} 327
+modurelay_http_request_duration_seconds_bucket{method="GET",source="app",route="other",protocol="http",le="60"} 327
+modurelay_http_request_duration_seconds_bucket{method="GET",source="app",route="other",protocol="http",le="120"} 327
+modurelay_http_request_duration_seconds_bucket{method="GET",source="app",route="other",protocol="http",le="300"} 327
+modurelay_http_request_duration_seconds_bucket{method="GET",source="app",route="other",protocol="http",le="+Inf"} 327
+modurelay_http_request_duration_seconds_sum{method="GET",source="app",route="other",protocol="http"} 3.6141938279999994
+modurelay_http_request_duration_seconds_count{method="GET",source="app",route="other",protocol="http"} 327
+modurelay_http_request_duration_seconds_bucket{method="POST",source="app",route="other",protocol="http",le="0.05"} 242
+modurelay_http_request_duration_seconds_bucket{method="POST",source="app",route="other",protocol="http",le="0.1"} 249
+modurelay_http_request_duration_seconds_bucket{method="POST",source="app",route="other",protocol="http",le="0.25"} 251
+modurelay_http_request_duration_seconds_bucket{method="POST",source="app",route="other",protocol="http",le="0.5"} 251
+modurelay_http_request_duration_seconds_bucket{method="POST",source="app",route="other",protocol="http",le="1"} 251
+modurelay_http_request_duration_seconds_bucket{method="POST",source="app",route="other",protocol="http",le="2.5"} 251
+modurelay_http_request_duration_seconds_bucket{method="POST",source="app",route="other",protocol="http",le="5"} 251
+modurelay_http_request_duration_seconds_bucket{method="POST",source="app",route="other",protocol="http",le="10"} 251
+modurelay_http_request_duration_seconds_bucket{method="POST",source="app",route="other",protocol="http",le="30"} 251
+modurelay_http_request_duration_seconds_bucket{method="POST",source="app",route="other",protocol="http",le="60"} 251
+modurelay_http_request_duration_seconds_bucket{method="POST",source="app",route="other",protocol="http",le="120"} 251
+modurelay_http_request_duration_seconds_bucket{method="POST",source="app",route="other",protocol="http",le="300"} 251
+modurelay_http_request_duration_seconds_bucket{method="POST",source="app",route="other",protocol="http",le="+Inf"} 251
+modurelay_http_request_duration_seconds_sum{method="POST",source="app",route="other",protocol="http"} 0.8573370090000003
+modurelay_http_request_duration_seconds_count{method="POST",source="app",route="other",protocol="http"} 251
+modurelay_http_request_duration_seconds_bucket{method="POST",source="ingress",route="messages",protocol="http",le="0.05"} 26
+modurelay_http_request_duration_seconds_bucket{method="POST",source="ingress",route="messages",protocol="http",le="0.1"} 26
+modurelay_http_request_duration_seconds_bucket{method="POST",source="ingress",route="messages",protocol="http",le="0.25"} 26
+modurelay_http_request_duration_seconds_bucket{method="POST",source="ingress",route="messages",protocol="http",le="0.5"} 26
+modurelay_http_request_duration_seconds_bucket{method="POST",source="ingress",route="messages",protocol="http",le="1"} 26
+modurelay_http_request_duration_seconds_bucket{method="POST",source="ingress",route="messages",protocol="http",le="2.5"} 26
+modurelay_http_request_duration_seconds_bucket{method="POST",source="ingress",route="messages",protocol="http",le="5"} 26
+modurelay_http_request_duration_seconds_bucket{method="POST",source="ingress",route="messages",protocol="http",le="10"} 26
+modurelay_http_request_duration_seconds_bucket{method="POST",source="ingress",route="messages",protocol="http",le="30"} 26
+modurelay_http_request_duration_seconds_bucket{method="POST",source="ingress",route="messages",protocol="http",le="60"} 26
+modurelay_http_request_duration_seconds_bucket{method="POST",source="ingress",route="messages",protocol="http",le="120"} 26
+modurelay_http_request_duration_seconds_bucket{method="POST",source="ingress",route="messages",protocol="http",le="300"} 26
+modurelay_http_request_duration_seconds_bucket{method="POST",source="ingress",route="messages",protocol="http",le="+Inf"} 26
+modurelay_http_request_duration_seconds_sum{method="POST",source="ingress",route="messages",protocol="http"} 0.004098457999999999
+modurelay_http_request_duration_seconds_count{method="POST",source="ingress",route="messages",protocol="http"} 26
+# HELP modurelay_http_ttft_seconds Time to the first output byte in seconds. Requests without a first output are omitted.
+# TYPE modurelay_http_ttft_seconds histogram
+# HELP modurelay_billing_observation_missed_total Billing observations missed on this instance; financial operations remain unaffected.
+# TYPE modurelay_billing_observation_missed_total counter
+modurelay_billing_observation_missed_total 0
+# HELP modurelay_billing_observation_unpersisted Missed observations on this instance awaiting durable gap recording.
+# TYPE modurelay_billing_observation_unpersisted gauge
+modurelay_billing_observation_unpersisted 0
+# HELP modurelay_billing_observation_last_failure_timestamp_seconds Unix timestamp of the latest missed billing observation on this instance.
+# TYPE modurelay_billing_observation_last_failure_timestamp_seconds gauge
+modurelay_billing_observation_last_failure_timestamp_seconds 0
+# HELP modurelay_database_pool_open_connections Local SQL pool open_connections; pool role is bounded.
+# TYPE modurelay_database_pool_open_connections gauge
+modurelay_database_pool_open_connections{pool="advisory_lock"} 2
+modurelay_database_pool_open_connections{pool="primary"} 2
+# HELP modurelay_database_pool_max_open_connections Local SQL pool max_open_connections; pool role is bounded.
+# TYPE modurelay_database_pool_max_open_connections gauge
+modurelay_database_pool_max_open_connections{pool="advisory_lock"} 16
+modurelay_database_pool_max_open_connections{pool="primary"} 10
+# HELP modurelay_database_pool_wait_total Local SQL pool wait_total; pool role is bounded.
+# TYPE modurelay_database_pool_wait_total counter
+modurelay_database_pool_wait_total{pool="advisory_lock"} 0
+modurelay_database_pool_wait_total{pool="primary"} 3
+# HELP modurelay_database_pool_wait_duration_seconds_total Local SQL pool wait_duration_seconds_total; pool role is bounded.
+# TYPE modurelay_database_pool_wait_duration_seconds_total counter
+modurelay_database_pool_wait_duration_seconds_total{pool="advisory_lock"} 0
+modurelay_database_pool_wait_duration_seconds_total{pool="primary"} 0.002576667
+# HELP modurelay_db_pool_wait_total Cumulative waits for this instance primary SQL pool.
+# TYPE modurelay_db_pool_wait_total counter
+modurelay_db_pool_wait_total 3
+# HELP modurelay_db_pool_wait_duration_seconds_total Cumulative seconds waiting for this instance primary SQL pool.
+# TYPE modurelay_db_pool_wait_duration_seconds_total counter
+modurelay_db_pool_wait_duration_seconds_total 0.002576667
+# HELP modurelay_redis_pool_timeout_total Cumulative Redis pool timeouts for this instance.
+# TYPE modurelay_redis_pool_timeout_total counter
+modurelay_redis_pool_timeout_total 0
+# HELP modurelay_db_pool_open_connections Open connections in this instance primary SQL pool.
+# TYPE modurelay_db_pool_open_connections gauge
+modurelay_db_pool_open_connections 2
+# HELP modurelay_db_pool_max_open_connections Configured maximum connections in this instance primary SQL pool; zero means unlimited.
+# TYPE modurelay_db_pool_max_open_connections gauge
+modurelay_db_pool_max_open_connections 10
+# HELP modurelay_redis_pool_connections Open Redis connections from this instance.
+# TYPE modurelay_redis_pool_connections gauge
+modurelay_redis_pool_connections 4
+# HELP modurelay_redis_pool_max_connections Configured Redis connection budget for this instance.
+# TYPE modurelay_redis_pool_max_connections gauge
+modurelay_redis_pool_max_connections 20

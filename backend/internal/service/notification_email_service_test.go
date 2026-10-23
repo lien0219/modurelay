@@ -358,6 +358,21 @@ func TestNotificationEmailUnsubscribeOnlyAllowsOptionalEvents(t *testing.T) {
 	require.Contains(t, err.Error(), "transactional")
 }
 
+func TestResolveOpsMailLocaleDefaultsToChineseWithoutChangingGlobalDefault(t *testing.T) {
+	ctx := context.Background()
+	svc := NewNotificationEmailService(newNotificationEmailMemorySettingRepo(), nil)
+
+	require.Equal(t, "zh", svc.ResolveOpsMailLocale(ctx, "ops@example.com"))
+	require.Equal(t, "en", svc.ResolveRecipientLocale(ctx, 0, "ops@example.com"))
+
+	svc.RememberRecipientLocale(ctx, 0, "ops@example.com", "en-US")
+	require.Equal(t, "en", svc.ResolveOpsMailLocale(ctx, "ops@example.com"))
+	require.Equal(t, "en", svc.ResolveRecipientLocale(ctx, 0, "ops@example.com"))
+
+	svc.RememberRecipientLocale(ctx, 0, "ops@example.com", "zh-CN")
+	require.Equal(t, "zh", svc.ResolveOpsMailLocale(ctx, "ops@example.com"))
+}
+
 func TestNotificationEmailLocaleMemoryNormalizesAcceptLanguage(t *testing.T) {
 	ctx := context.Background()
 	svc := NewNotificationEmailService(newNotificationEmailMemorySettingRepo(), nil)
@@ -701,4 +716,17 @@ func (s *notificationEmailTestSMTPServer) handleConn(conn net.Conn) {
 			}
 		}
 	}
+}
+
+func TestOpsMailDefaultPreservesCustomTemplateButHonorsRecipientPreference(t *testing.T) {
+	ctx := context.Background()
+	svc := NewNotificationEmailService(newNotificationEmailMemorySettingRepo(), nil)
+	_, err := svc.UpdateTemplate(ctx, NotificationEmailEventOpsAlert, "en", "Custom {{rule_name}}", "<p>{{rule_name}}</p>")
+	require.NoError(t, err)
+	require.Equal(t, "en", svc.ResolveOpsEventMailLocale(ctx, "ops@example.com", NotificationEmailEventOpsAlert))
+	// An explicit Chinese preference wins over the legacy English template.
+	svc.RememberRecipientLocale(ctx, 0, "ops@example.com", "zh-CN")
+	require.Equal(t, "zh", svc.ResolveOpsEventMailLocale(ctx, "ops@example.com", NotificationEmailEventOpsAlert))
+	// Uncustomized events still use the new default.
+	require.Equal(t, "zh", svc.ResolveOpsEventMailLocale(ctx, "another@example.com", NotificationEmailEventOpsScheduledReport))
 }

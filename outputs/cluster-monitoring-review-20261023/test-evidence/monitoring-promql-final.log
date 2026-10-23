@@ -1,0 +1,4 @@
+Parsed 156 fixed monitoring queries and 5 external watchdog rule expressions with Prometheus v0.315.1
+Executed 24 Prometheus engine metric contract cases
+PASS
+ok  	modurelay-monitoring-promql-contract	1.137s

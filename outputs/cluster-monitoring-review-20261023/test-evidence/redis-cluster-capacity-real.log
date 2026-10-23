@@ -1,0 +1,9 @@
+=== RUN   TestMonitoringRedisClusterCapacityReal
+    ops_redis_capacity_cluster_test.go:83: instance=capacity-app-a nodes=3 configured_pool_budget=12 actual_pool_connections=3 idle=3
+    ops_redis_capacity_cluster_test.go:83: instance=capacity-app-b nodes=3 configured_pool_budget=12 actual_pool_connections=3 idle=3
+    ops_redis_capacity_cluster_test.go:87: healthy_hotspot={"state":"Available","source":"Redis Cluster INFO clients; usage is busiest node, nodes include primaries and replicas","used":82,"limit":100,"node":"redis-79adaa1b9383","nodes":[{"state":"Available","source":"Redis INFO clients","used":82,"limit":100,"node":"redis-79adaa1b9383"},{"state":"Available","source":"Redis INFO clients","used":1,"limit":1000,"node":"redis-a6d90ba29137"},{"state":"Available","source":"Redis INFO clients","used":1,"limit":1000,"node":"redis-f6628ba253b0"}]}
+    ops_redis_capacity_cluster_test.go:97: one_master_unreachable={"state":"Unknown","source":"Redis Cluster INFO clients; usage is busiest node, nodes include primaries and replicas","used":null,"limit":null,"nodes":[{"state":"Available","source":"Redis INFO clients","used":83,"limit":100,"node":"redis-79adaa1b9383"},{"state":"Available","source":"Redis INFO clients","used":3,"limit":1000,"node":"redis-a6d90ba29137"},{"state":"Unknown","source":"Redis INFO clients","used":null,"limit":null,"node":"redis-f6628ba253b0"}]}
+--- PASS: TestMonitoringRedisClusterCapacityReal (1.32s)
+PASS
+2026/10/23 07:05:51 Timezone initialized: UTC (UTC offset: +00:00)
+redis: 2026/10/23 07:05:52 pool.go:762: redis: connection pool: failed to dial after 5 attempts: dial tcp 172.21.0.4:6379: i/o timeout

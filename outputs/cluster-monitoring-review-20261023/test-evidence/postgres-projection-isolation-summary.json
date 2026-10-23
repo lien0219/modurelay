@@ -1,0 +1,119 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-tags=unit",
+    "./internal/repository",
+    "-run",
+    "TestMonitoring(Billing|BrokenObservation|ProductionMigrations).*Postgres",
+    "-count=1",
+    "-timeout=4m",
+    "-json"
+  ],
+  "exit_code": 0,
+  "top_level": {
+    "pass": 15,
+    "fail": 0,
+    "skip": 0
+  },
+  "tests": [
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+      "Test": "TestMonitoringBillingFailedIntentSurvivesRollbackPostgres",
+      "Action": "pass",
+      "Elapsed": 0.67
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+      "Test": "TestMonitoringBillingLedgerCoversHoldRefundAndDirectSQLPostgres",
+      "Action": "pass",
+      "Elapsed": 1.12
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+      "Test": "TestMonitoringBrokenObservationDoesNotChangeBillingPostgres",
+      "Action": "pass",
+      "Elapsed": 0.81
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+      "Test": "TestMonitoringBillingCrashRecoveryDoesNotReplayPostgres",
+      "Action": "pass",
+      "Elapsed": 0.25
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+      "Test": "TestMonitoringBillingPanicNeverMarksCommittedPostgres",
+      "Action": "pass",
+      "Elapsed": 0.1
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+      "Test": "TestMonitoringBillingObservationTimeoutCircuitAndGapPostgres",
+      "Action": "pass",
+      "Elapsed": 0.2
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+      "Test": "TestMonitoringBillingObservationLatencyPostgres",
+      "Action": "pass",
+      "Elapsed": 0.39
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+      "Test": "TestMonitoringBillingProjectionIgnoresSlowAndLockedObserverPostgres",
+      "Action": "pass",
+      "Elapsed": 0.27
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+      "Test": "TestMonitoringBillingProjectionDeletionIsUnknownPostgres",
+      "Action": "pass",
+      "Elapsed": 0.18
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+      "Test": "TestMonitoringBillingProjectionConcurrentRecheckDoesNotBlockOrOverwritePostgres",
+      "Action": "pass",
+      "Elapsed": 0.3
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+      "Test": "TestMonitoringBillingReconciliationPostgres",
+      "Action": "pass",
+      "Elapsed": 0.08
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+      "Test": "TestMonitoringBillingBacklogAndPersistencePostgres",
+      "Action": "pass",
+      "Elapsed": 0.25
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+      "Test": "TestMonitoringBillingEvidenceAtomicClaimPostgres",
+      "Action": "pass",
+      "Elapsed": 0.06
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+      "Test": "TestMonitoringBillingOpenFindingSurvivesArchivePostgres",
+      "Action": "pass",
+      "Elapsed": 0.05
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+      "Test": "TestMonitoringProductionMigrationsPostgres",
+      "Action": "pass",
+      "Elapsed": 4.14
+    }
+  ],
+  "notes": [
+    "ops_billing_operations_postgres_test.go:256: 50ms observer budget: first failure=65.674875ms circuit-open replay=3.061125ms; balance deducted once",
+    "ops_billing_operations_postgres_test.go:275: local PG sequential sample, n=20 each: existing settlement+source projection=4.88956ms; settlement+source projection+intents=10.854818ms; incremental=5.965258ms",
+    "ops_billing_operations_postgres_test.go:300: observer INSERT trigger sleeps400ms: monetary commit under Go/server100ms deadlines=3.075083ms",
+    "ops_billing_operations_postgres_test.go:306: locked ops_account_ledger_entries: monetary commit under Go/server100ms deadlines=7.649625ms",
+    "ops_billing_operations_postgres_test.go:306: locked ops_account_ledger_heads: monetary commit under Go/server100ms deadlines=7.564333ms",
+    "ops_billing_operations_postgres_test.go:306: locked ops_billing_recording_gaps: monetary commit under Go/server100ms deadlines=8.584708ms"
+  ]
+}

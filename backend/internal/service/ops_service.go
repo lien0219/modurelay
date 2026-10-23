@@ -54,6 +54,9 @@ type OpsService struct {
 	// getAccountAvailability is a unit-test hook for overriding account availability lookup.
 	getAccountAvailability func(ctx context.Context, platformFilter string, groupIDFilter *int64) (*OpsAccountAvailability, error)
 
+	// alertClusterRuntimeSnapshot overrides the live collector in unit tests.
+	alertClusterRuntimeSnapshot func(ctx context.Context) (*OpsSystemMetricsSnapshot, error)
+
 	concurrencyService          *ConcurrencyService
 	gatewayService              *GatewayService
 	openAIGatewayService        *OpenAIGatewayService

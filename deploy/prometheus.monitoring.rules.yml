@@ -1,0 +1,43 @@
+# Merge this file into Prometheus rule_files and connect Alertmanager separately.
+# This watchdog runs OUTSIDE ModuRelay; application/evaluator failure must not
+# disable the only path that can report the failure.
+groups:
+  - name: modurelay-monitoring-health
+    interval: 15s
+    rules:
+      - alert: ModuRelayInstanceScrapeFailed
+        expr: up{job="modurelay-instance"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "ModuRelay 实例指标连续 2 分钟抓取失败"
+          description: "检查 Pod、指标令牌、网络与采集器；不要将该实例的缺失数据记为零。"
+      - alert: ModuRelayNoInstanceTargets
+        expr: absent(up{job="modurelay-instance"})
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "ModuRelay 实例指标目标全部消失"
+      - alert: ModuRelayMonitoringWatchdog
+        expr: vector(1)
+        labels:
+          severity: none
+        annotations:
+          summary: "监控心跳；由外部死信心跳服务检测持续缺失"
+      - alert: ModuRelayOpsJobStopped
+        expr: time() - max by (cluster, job_name) (modurelay_ops_job_last_success_timestamp_seconds) > 120
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "ModuRelay 后台监控任务成功心跳已过期"
+          description: "检查 collector/evaluator 和共享数据库；如更改评估间隔，请同步调整阈值。"
+      - alert: ModuRelayOpsHeartbeatMissing
+        expr: absent(modurelay_ops_job_last_success_timestamp_seconds{job_name="ops_metrics_collector"}) or absent(modurelay_ops_job_last_success_timestamp_seconds{job_name="ops_alert_evaluator"})
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "ModuRelay 后台监控任务心跳缺失"

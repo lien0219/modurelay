@@ -1,0 +1,89 @@
+{
+  "source": "Prometheus /api/v1/targets (annotations and discovered labels excluded)",
+  "activeTargets": [
+    {
+      "labels": {
+        "cluster": "acceptance-kind",
+        "instance": "modurelay-monitoring-kind-control-plane",
+        "job": "cadvisor"
+      },
+      "scrapeUrl": "https://kubernetes.default.svc:443/api/v1/nodes/modurelay-monitoring-kind-control-plane/proxy/metrics/cadvisor",
+      "health": "up",
+      "lastScrape": "2026-10-23T07:36:26.666866262Z",
+      "lastScrapeDuration": 0.073981083,
+      "lastError": ""
+    },
+    {
+      "labels": {
+        "cluster": "acceptance-kind",
+        "instance": "kube-state-metrics:8080",
+        "job": "kube-state-metrics"
+      },
+      "scrapeUrl": "http://kube-state-metrics:8080/metrics",
+      "health": "up",
+      "lastScrape": "2026-10-23T07:36:26.161637804Z",
+      "lastScrapeDuration": 0.005968,
+      "lastError": ""
+    },
+    {
+      "labels": {
+        "cluster": "acceptance-kind",
+        "instance": "modurelay-metrics:8080",
+        "job": "modurelay-cluster"
+      },
+      "scrapeUrl": "http://modurelay-metrics:8080/metrics",
+      "health": "up",
+      "lastScrape": "2026-10-23T07:36:18.841433592Z",
+      "lastScrapeDuration": 0.00799275,
+      "lastError": ""
+    },
+    {
+      "labels": {
+        "cluster": "acceptance-kind",
+        "instance": "10.244.0.17:8080",
+        "job": "modurelay-instance",
+        "namespace": "monitoring-acceptance",
+        "pod": "modurelay-59b788b779-dpgm8",
+        "service": "modurelay-metrics",
+        "uid": "d987720e-62e9-4337-a601-450cfaad09e8"
+      },
+      "scrapeUrl": "http://10.244.0.17:8080/metrics/instance",
+      "health": "up",
+      "lastScrape": "2026-10-23T07:36:24.938329053Z",
+      "lastScrapeDuration": 0.002621333,
+      "lastError": ""
+    },
+    {
+      "labels": {
+        "cluster": "acceptance-kind",
+        "instance": "10.244.0.18:8080",
+        "job": "modurelay-instance",
+        "namespace": "monitoring-acceptance",
+        "pod": "modurelay-59b788b779-lvdms",
+        "service": "modurelay-metrics",
+        "uid": "7b55e30e-c444-478b-b943-337fd4bcc4fa"
+      },
+      "scrapeUrl": "http://10.244.0.18:8080/metrics/instance",
+      "health": "up",
+      "lastScrape": "2026-10-23T07:36:24.794034511Z",
+      "lastScrapeDuration": 0.001056958,
+      "lastError": ""
+    },
+    {
+      "labels": {
+        "cluster": "acceptance-kind",
+        "instance": "10.244.0.19:8080",
+        "job": "modurelay-instance",
+        "namespace": "monitoring-acceptance",
+        "pod": "modurelay-59b788b779-pnjjv",
+        "service": "modurelay-metrics",
+        "uid": "e2119a68-6309-493b-8143-eb46907a757c"
+      },
+      "scrapeUrl": "http://10.244.0.19:8080/metrics/instance",
+      "health": "up",
+      "lastScrape": "2026-10-23T07:36:24.841962386Z",
+      "lastScrapeDuration": 0.00315325,
+      "lastError": ""
+    }
+  ]
+}

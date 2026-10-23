@@ -1,0 +1,1472 @@
+{
+  "environment": "Docker Desktop Linux/arm64, kind v0.33.0, Kubernetes v1.35.8",
+  "actual_live_kubernetes": true,
+  "cloud_managed_kubernetes": false,
+  "checks_total": 33,
+  "checks_passed": 32,
+  "checks_failed": 1,
+  "checks": [
+    {
+      "stage": "baseline",
+      "name": "kubernetes_capabilities",
+      "passed": true,
+      "observed_at": "2026-10-23T07:31:32Z",
+      "evidence": {
+        "sources": [
+          "app",
+          "ingress"
+        ],
+        "kubernetes_resources": true,
+        "mode": "kubernetes",
+        "prometheus_configured": true,
+        "kubernetes": true,
+        "history": true,
+        "max_range_seconds": 2678400,
+        "max_points_per_series": 11000,
+        "metrics": [
+          {
+            "id": "qps",
+            "unit": "requests/s",
+            "kubernetes_only": false
+          },
+          {
+            "id": "rpm",
+            "unit": "requests/min",
+            "kubernetes_only": false
+          },
+          {
+            "id": "request_count",
+            "unit": "requests",
+            "kubernetes_only": false
+          },
+          {
+            "id": "qps_started",
+            "unit": "requests/s",
+            "kubernetes_only": false
+          },
+          {
+            "id": "rpm_started",
+            "unit": "requests/min",
+            "kubernetes_only": false
+          },
+          {
+            "id": "request_count_started",
+            "unit": "requests",
+            "kubernetes_only": false
+          },
+          {
+            "id": "db_pool_wait_count",
+            "unit": "waits",
+            "kubernetes_only": false
+          },
+          {
+            "id": "db_pool_wait_duration_ms",
+            "unit": "ms",
+            "kubernetes_only": false
+          },
+          {
+            "id": "redis_pool_timeout_count",
+            "unit": "timeouts",
+            "kubernetes_only": false
+          },
+          {
+            "id": "db_instance_connections",
+            "unit": "connections",
+            "kubernetes_only": false
+          },
+          {
+            "id": "db_instance_limit",
+            "unit": "connections",
+            "kubernetes_only": false
+          },
+          {
+            "id": "db_instance_usage_percent",
+            "unit": "percent",
+            "kubernetes_only": false
+          },
+          {
+            "id": "redis_instance_connections",
+            "unit": "connections",
+            "kubernetes_only": false
+          },
+          {
+            "id": "redis_instance_limit",
+            "unit": "connections",
+            "kubernetes_only": false
+          },
+          {
+            "id": "redis_instance_usage_percent",
+            "unit": "percent",
+            "kubernetes_only": false
+          },
+          {
+            "id": "http_p95_ms",
+            "unit": "ms",
+            "kubernetes_only": false
+          },
+          {
+            "id": "http_p99_ms",
+            "unit": "ms",
+            "kubernetes_only": false
+          },
+          {
+            "id": "ttft_p95_ms",
+            "unit": "ms",
+            "kubernetes_only": false
+          },
+          {
+            "id": "ttft_p99_ms",
+            "unit": "ms",
+            "kubernetes_only": false
+          },
+          {
+            "id": "http_4xx_count",
+            "unit": "requests",
+            "kubernetes_only": false
+          },
+          {
+            "id": "http_5xx_count",
+            "unit": "requests",
+            "kubernetes_only": false
+          },
+          {
+            "id": "http_429_count",
+            "unit": "requests",
+            "kubernetes_only": false
+          },
+          {
+            "id": "http_4xx_rate",
+            "unit": "percent",
+            "kubernetes_only": false
+          },
+          {
+            "id": "http_5xx_rate",
+            "unit": "percent",
+            "kubernetes_only": false
+          },
+          {
+            "id": "pod_cpu_cores",
+            "unit": "cores",
+            "kubernetes_only": true
+          },
+          {
+            "id": "pod_cpu_limit_cores",
+            "unit": "cores",
+            "kubernetes_only": true
+          },
+          {
+            "id": "pod_cpu_usage_percent",
+            "unit": "percent",
+            "kubernetes_only": true
+          },
+          {
+            "id": "cluster_cpu_usage_percent",
+            "unit": "percent",
+            "kubernetes_only": true
+          },
+          {
+            "id": "pod_memory_bytes",
+            "unit": "bytes",
+            "kubernetes_only": true
+          },
+          {
+            "id": "pod_memory_limit_bytes",
+            "unit": "bytes",
+            "kubernetes_only": true
+          },
+          {
+            "id": "pod_memory_usage_percent",
+            "unit": "percent",
+            "kubernetes_only": true
+          },
+          {
+            "id": "pod_info",
+            "unit": "info",
+            "kubernetes_only": true
+          },
+          {
+            "id": "pod_ready",
+            "unit": "boolean",
+            "kubernetes_only": true
+          },
+          {
+            "id": "pod_restarts",
+            "unit": "restarts",
+            "kubernetes_only": true
+          },
+          {
+            "id": "pod_oom",
+            "unit": "containers",
+            "kubernetes_only": true
+          },
+          {
+            "id": "pod_oom_count",
+            "unit": "events",
+            "kubernetes_only": true
+          },
+          {
+            "id": "pod_pending",
+            "unit": "boolean",
+            "kubernetes_only": true
+          },
+          {
+            "id": "pod_unschedulable",
+            "unit": "boolean",
+            "kubernetes_only": true
+          },
+          {
+            "id": "pod_crash_loop",
+            "unit": "containers",
+            "kubernetes_only": true
+          },
+          {
+            "id": "pod_cpu_throttling_percent",
+            "unit": "percent",
+            "kubernetes_only": true
+          },
+          {
+            "id": "hpa_current_replicas",
+            "unit": "replicas",
+            "kubernetes_only": true
+          },
+          {
+            "id": "hpa_desired_replicas",
+            "unit": "replicas",
+            "kubernetes_only": true
+          },
+          {
+            "id": "hpa_max_replicas",
+            "unit": "replicas",
+            "kubernetes_only": true
+          },
+          {
+            "id": "hpa_at_max",
+            "unit": "boolean",
+            "kubernetes_only": true
+          },
+          {
+            "id": "deployment_cpu_usage_percent",
+            "unit": "percent",
+            "kubernetes_only": true
+          },
+          {
+            "id": "deployment_memory_usage_percent",
+            "unit": "percent",
+            "kubernetes_only": true
+          },
+          {
+            "id": "deployment_restarts",
+            "unit": "restarts",
+            "kubernetes_only": true
+          },
+          {
+            "id": "deployment_oom",
+            "unit": "containers",
+            "kubernetes_only": true
+          },
+          {
+            "id": "deployment_oom_count",
+            "unit": "events",
+            "kubernetes_only": true
+          },
+          {
+            "id": "hpa_target_cpu_utilization_percent",
+            "unit": "percent",
+            "kubernetes_only": true
+          },
+          {
+            "id": "hpa_target_memory_utilization_percent",
+            "unit": "percent",
+            "kubernetes_only": true
+          },
+          {
+            "id": "deployment_desired_replicas",
+            "unit": "replicas",
+            "kubernetes_only": true
+          },
+          {
+            "id": "deployment_available_replicas",
+            "unit": "replicas",
+            "kubernetes_only": true
+          },
+          {
+            "id": "deployment_ready_replicas",
+            "unit": "replicas",
+            "kubernetes_only": true
+          },
+          {
+            "id": "scrape_up",
+            "unit": "boolean",
+            "kubernetes_only": false
+          }
+        ],
+        "kubernetes_events": true,
+        "cluster_name": "acceptance-kind"
+      }
+    },
+    {
+      "stage": "baseline",
+      "name": "four_real_scrape_jobs_healthy",
+      "passed": true,
+      "observed_at": "2026-10-23T07:31:32Z",
+      "evidence": [
+        {
+          "metric": {
+            "job": "kube-state-metrics"
+          },
+          "value": [
+            1792740692.4,
+            "1"
+          ]
+        },
+        {
+          "metric": {
+            "job": "cadvisor"
+          },
+          "value": [
+            1792740692.4,
+            "1"
+          ]
+        },
+        {
+          "metric": {
+            "job": "modurelay-cluster"
+          },
+          "value": [
+            1792740692.4,
+            "1"
+          ]
+        },
+        {
+          "metric": {
+            "job": "modurelay-instance"
+          },
+          "value": [
+            1792740692.4,
+            "1"
+          ]
+        }
+      ]
+    },
+    {
+      "stage": "baseline",
+      "name": "ordinary_cpu_effective_limit",
+      "passed": true,
+      "observed_at": "2026-10-23T07:31:32Z",
+      "evidence": {
+        "metric": "pod_cpu_limit_cores",
+        "unit": "cores",
+        "state": "Available",
+        "step_seconds": 0,
+        "series": [
+          {
+            "labels": {
+              "cluster": "acceptance-kind",
+              "limit_source": "kubernetes_api",
+              "namespace": "monitoring-acceptance",
+              "pod": "ordinary",
+              "uid": "67c9053e-bc69-41b5-b0ee-453eace5655a"
+            },
+            "points": [
+              {
+                "timestamp": "2026-10-23T07:31:32Z",
+                "value": 0.25,
+                "state": "Available"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "stage": "baseline",
+      "name": "ordinary_memory_effective_limit",
+      "passed": true,
+      "observed_at": "2026-10-23T07:31:32Z",
+      "evidence": {
+        "metric": "pod_memory_limit_bytes",
+        "unit": "bytes",
+        "state": "Available",
+        "step_seconds": 0,
+        "series": [
+          {
+            "labels": {
+              "cluster": "acceptance-kind",
+              "limit_source": "kubernetes_api",
+              "namespace": "monitoring-acceptance",
+              "pod": "ordinary",
+              "uid": "67c9053e-bc69-41b5-b0ee-453eace5655a"
+            },
+            "points": [
+              {
+                "timestamp": "2026-10-23T07:31:32Z",
+                "value": 67108864,
+                "state": "Available"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "stage": "baseline",
+      "name": "init-sidecar_cpu_effective_limit",
+      "passed": true,
+      "observed_at": "2026-10-23T07:31:32Z",
+      "evidence": {
+        "metric": "pod_cpu_limit_cores",
+        "unit": "cores",
+        "state": "Available",
+        "step_seconds": 0,
+        "series": [
+          {
+            "labels": {
+              "cluster": "acceptance-kind",
+              "limit_source": "kubernetes_api",
+              "namespace": "monitoring-acceptance",
+              "pod": "init-sidecar",
+              "uid": "3aa75941-63bb-4bca-ae6e-04c55f34f8e7"
+            },
+            "points": [
+              {
+                "timestamp": "2026-10-23T07:31:32Z",
+                "value": 0.6,
+                "state": "Available"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "stage": "baseline",
+      "name": "init-sidecar_memory_effective_limit",
+      "passed": true,
+      "observed_at": "2026-10-23T07:31:32Z",
+      "evidence": {
+        "metric": "pod_memory_limit_bytes",
+        "unit": "bytes",
+        "state": "Available",
+        "step_seconds": 0,
+        "series": [
+          {
+            "labels": {
+              "cluster": "acceptance-kind",
+              "limit_source": "kubernetes_api",
+              "namespace": "monitoring-acceptance",
+              "pod": "init-sidecar",
+              "uid": "3aa75941-63bb-4bca-ae6e-04c55f34f8e7"
+            },
+            "points": [
+              {
+                "timestamp": "2026-10-23T07:31:32Z",
+                "value": 134217728,
+                "state": "Available"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "stage": "baseline",
+      "name": "pod-level_cpu_effective_limit",
+      "passed": true,
+      "observed_at": "2026-10-23T07:31:32Z",
+      "evidence": {
+        "metric": "pod_cpu_limit_cores",
+        "unit": "cores",
+        "state": "Available",
+        "step_seconds": 0,
+        "series": [
+          {
+            "labels": {
+              "cluster": "acceptance-kind",
+              "limit_source": "kubernetes_api",
+              "namespace": "monitoring-acceptance",
+              "pod": "pod-level",
+              "uid": "ff8516c4-551a-4bc9-b06a-dca4dd9dfddb"
+            },
+            "points": [
+              {
+                "timestamp": "2026-10-23T07:31:32Z",
+                "value": 1.2,
+                "state": "Available"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "stage": "baseline",
+      "name": "pod-level_memory_effective_limit",
+      "passed": true,
+      "observed_at": "2026-10-23T07:31:32Z",
+      "evidence": {
+        "metric": "pod_memory_limit_bytes",
+        "unit": "bytes",
+        "state": "Available",
+        "step_seconds": 0,
+        "series": [
+          {
+            "labels": {
+              "cluster": "acceptance-kind",
+              "limit_source": "kubernetes_api",
+              "namespace": "monitoring-acceptance",
+              "pod": "pod-level",
+              "uid": "ff8516c4-551a-4bc9-b06a-dca4dd9dfddb"
+            },
+            "points": [
+              {
+                "timestamp": "2026-10-23T07:31:32Z",
+                "value": 268435456,
+                "state": "Available"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "stage": "baseline",
+      "name": "with-overhead_cpu_effective_limit",
+      "passed": true,
+      "observed_at": "2026-10-23T07:31:32Z",
+      "evidence": {
+        "metric": "pod_cpu_limit_cores",
+        "unit": "cores",
+        "state": "Available",
+        "step_seconds": 0,
+        "series": [
+          {
+            "labels": {
+              "cluster": "acceptance-kind",
+              "limit_source": "kubernetes_api",
+              "namespace": "monitoring-acceptance",
+              "pod": "with-overhead",
+              "uid": "3c0008de-ce7d-4983-abc2-43f11b027075"
+            },
+            "points": [
+              {
+                "timestamp": "2026-10-23T07:31:32Z",
+                "value": 0.55,
+                "state": "Available"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "stage": "baseline",
+      "name": "with-overhead_memory_effective_limit",
+      "passed": true,
+      "observed_at": "2026-10-23T07:31:32Z",
+      "evidence": {
+        "metric": "pod_memory_limit_bytes",
+        "unit": "bytes",
+        "state": "Available",
+        "step_seconds": 0,
+        "series": [
+          {
+            "labels": {
+              "cluster": "acceptance-kind",
+              "limit_source": "kubernetes_api",
+              "namespace": "monitoring-acceptance",
+              "pod": "with-overhead",
+              "uid": "3c0008de-ce7d-4983-abc2-43f11b027075"
+            },
+            "points": [
+              {
+                "timestamp": "2026-10-23T07:31:32Z",
+                "value": 117440512,
+                "state": "Available"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "stage": "baseline",
+      "name": "unlimited_is_not_applicable",
+      "passed": true,
+      "observed_at": "2026-10-23T07:31:32Z",
+      "evidence": {
+        "metric": "pod_memory_limit_bytes",
+        "unit": "bytes",
+        "state": "NotApplicable",
+        "reason": "resource_unlimited",
+        "step_seconds": 0,
+        "series": [
+          {
+            "labels": {
+              "cluster": "acceptance-kind",
+              "limit_state": "unlimited",
+              "namespace": "monitoring-acceptance",
+              "pod": "unlimited",
+              "uid": "e8288b53-7455-4379-8fc5-bdbbffa6415a"
+            },
+            "points": [
+              {
+                "timestamp": "2026-10-23T07:31:32Z",
+                "value": null,
+                "state": "NotApplicable"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "stage": "baseline",
+      "name": "real_cadvisor_memory",
+      "passed": true,
+      "observed_at": "2026-10-23T07:31:32Z",
+      "evidence": {
+        "metric": "pod_memory_bytes",
+        "unit": "bytes",
+        "state": "Available",
+        "step_seconds": 0,
+        "series": [
+          {
+            "labels": {
+              "cluster": "acceptance-kind",
+              "namespace": "monitoring-acceptance",
+              "pod": "ordinary",
+              "uid": "67c9053e-bc69-41b5-b0ee-453eace5655a"
+            },
+            "points": [
+              {
+                "timestamp": "2026-10-23T07:31:32Z",
+                "value": 225280,
+                "state": "Available"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "stage": "baseline",
+      "name": "real_cadvisor_cpu",
+      "passed": true,
+      "observed_at": "2026-10-23T07:31:32Z",
+      "evidence": {
+        "metric": "pod_cpu_cores",
+        "unit": "cores",
+        "state": "Available",
+        "step_seconds": 0,
+        "series": [
+          {
+            "labels": {
+              "cluster": "acceptance-kind",
+              "namespace": "monitoring-acceptance",
+              "pod": "ordinary",
+              "uid": "67c9053e-bc69-41b5-b0ee-453eace5655a"
+            },
+            "points": [
+              {
+                "timestamp": "2026-10-23T07:31:32Z",
+                "value": 0,
+                "state": "Available"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "stage": "baseline",
+      "name": "hpa_target_cpu_utilization",
+      "passed": true,
+      "observed_at": "2026-10-23T07:31:32Z",
+      "evidence": {
+        "metric": "hpa_target_cpu_utilization_percent",
+        "unit": "percent",
+        "state": "Available",
+        "step_seconds": 0,
+        "series": [
+          {
+            "labels": {
+              "cluster": "acceptance-kind",
+              "horizontalpodautoscaler": "modurelay",
+              "namespace": "monitoring-acceptance"
+            },
+            "points": [
+              {
+                "timestamp": "2026-10-23T07:31:32Z",
+                "value": 50,
+                "state": "Available"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "stage": "baseline",
+      "name": "crash_loop_observed",
+      "passed": true,
+      "observed_at": "2026-10-23T07:31:32Z",
+      "evidence": {
+        "metric": "pod_crash_loop",
+        "unit": "containers",
+        "state": "Available",
+        "step_seconds": 0,
+        "series": [
+          {
+            "labels": {
+              "cluster": "acceptance-kind",
+              "namespace": "monitoring-acceptance",
+              "pod": "crash-recovery",
+              "uid": "9e2379f2-d723-4956-8e2c-dc18733ec09f"
+            },
+            "points": [
+              {
+                "timestamp": "2026-10-23T07:31:32Z",
+                "value": 0,
+                "state": "Available"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "stage": "scale",
+      "name": "deployment_scaled_to_three",
+      "passed": true,
+      "observed_at": "2026-10-23T07:22:08Z",
+      "evidence": {
+        "metric": "deployment_desired_replicas",
+        "unit": "replicas",
+        "state": "Available",
+        "step_seconds": 0,
+        "series": [
+          {
+            "labels": {
+              "cluster": "acceptance-kind",
+              "deployment": "modurelay",
+              "namespace": "monitoring-acceptance"
+            },
+            "points": [
+              {
+                "timestamp": "2026-10-23T07:22:08Z",
+                "value": 3,
+                "state": "Available"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "stage": "scale",
+      "name": "deployment_three_ready",
+      "passed": true,
+      "observed_at": "2026-10-23T07:22:18Z",
+      "evidence": {
+        "metric": "deployment_ready_replicas",
+        "unit": "replicas",
+        "state": "Available",
+        "step_seconds": 0,
+        "series": [
+          {
+            "labels": {
+              "cluster": "acceptance-kind",
+              "deployment": "modurelay",
+              "namespace": "monitoring-acceptance"
+            },
+            "points": [
+              {
+                "timestamp": "2026-10-23T07:22:18Z",
+                "value": 3,
+                "state": "Available"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "stage": "scale",
+      "name": "three_distinct_instance_targets",
+      "passed": true,
+      "observed_at": "2026-10-23T07:22:18Z",
+      "evidence": [
+        {
+          "metric": {},
+          "value": [
+            1792740138.543,
+            "3"
+          ]
+        }
+      ]
+    },
+    {
+      "stage": "scale",
+      "name": "Deployment_events_archived",
+      "passed": true,
+      "observed_at": "2026-10-23T07:22:18Z",
+      "evidence": {
+        "code": 0,
+        "message": "success",
+        "data": {
+          "state": "Available",
+          "last_collected_at": "2026-10-23T07:22:06.47339Z",
+          "events": [
+            {
+              "cluster": "acceptance-kind",
+              "namespace": "monitoring-acceptance",
+              "object_kind": "Deployment",
+              "object_name": "modurelay",
+              "object_uid": "dc5ab5c3-4ef7-4b78-81ce-4f162cc5b711",
+              "event_uid": "c25ae103-8501-4dfb-9d7a-677d0921c256",
+              "pod": "",
+              "pod_uid": "",
+              "reason": "ScalingReplicaSet",
+              "type": "Normal",
+              "message": "Scaled up replica set modurelay-59b788b779 from 1 to 3",
+              "source": "deployment-controller",
+              "first_seen_at": "2026-10-23T07:22:03Z",
+              "last_seen_at": "2026-10-23T07:22:03Z",
+              "count": 1
+            },
+            {
+              "cluster": "acceptance-kind",
+              "namespace": "monitoring-acceptance",
+              "object_kind": "Deployment",
+              "object_name": "modurelay",
+              "object_uid": "dc5ab5c3-4ef7-4b78-81ce-4f162cc5b711",
+              "event_uid": "d8a96607-b35d-4cba-a874-ccdb7b4c2f31",
+              "pod": "",
+              "pod_uid": "",
+              "reason": "ScalingReplicaSet",
+              "type": "Normal",
+              "message": "Scaled up replica set modurelay-59b788b779 from 0 to 1",
+              "source": "deployment-controller",
+              "first_seen_at": "2026-10-23T07:20:25Z",
+              "last_seen_at": "2026-10-23T07:20:25Z",
+              "count": 1
+            },
+            {
+              "cluster": "acceptance-kind",
+              "namespace": "monitoring-acceptance",
+              "object_kind": "Deployment",
+              "object_name": "prometheus",
+              "object_uid": "bc5b7ed7-2b53-4267-bfc5-bf74ccc17cdb",
+              "event_uid": "cba8305a-3866-4369-9a38-6b720f8066e3",
+              "pod": "",
+              "pod_uid": "",
+              "reason": "ScalingReplicaSet",
+              "type": "Normal",
+              "message": "Scaled up replica set prometheus-5499bf5bfb from 0 to 1",
+              "source": "deployment-controller",
+              "first_seen_at": "2026-10-23T07:18:32Z",
+              "last_seen_at": "2026-10-23T07:18:32Z",
+              "count": 1
+            },
+            {
+              "cluster": "acceptance-kind",
+              "namespace": "monitoring-acceptance",
+              "object_kind": "Deployment",
+              "object_name": "postgres",
+              "object_uid": "c22a95b0-2267-497a-ad58-9059b457457a",
+              "event_uid": "a8898443-3f1f-4042-a764-8cfa325a7ee8",
+              "pod": "",
+              "pod_uid": "",
+              "reason": "ScalingReplicaSet",
+              "type": "Normal",
+              "message": "Scaled up replica set postgres-6c9df774b4 from 0 to 1",
+              "source": "deployment-controller",
+              "first_seen_at": "2026-10-23T07:18:32Z",
+              "last_seen_at": "2026-10-23T07:18:32Z",
+              "count": 1
+            },
+            {
+              "cluster": "acceptance-kind",
+              "namespace": "monitoring-acceptance",
+              "object_kind": "Deployment",
+              "object_name": "kube-state-metrics",
+              "object_uid": "d6dd1f7c-5065-4a76-987b-19c5b4858b95",
+              "event_uid": "40b4ad0a-e85d-46c8-b038-aec23374ac44",
+              "pod": "",
+              "pod_uid": "",
+              "reason": "ScalingReplicaSet",
+              "type": "Normal",
+              "message": "Scaled up replica set kube-state-metrics-c49567f94 from 0 to 1",
+              "source": "deployment-controller",
+              "first_seen_at": "2026-10-23T07:18:32Z",
+              "last_seen_at": "2026-10-23T07:18:32Z",
+              "count": 1
+            },
+            {
+              "cluster": "acceptance-kind",
+              "namespace": "monitoring-acceptance",
+              "object_kind": "Deployment",
+              "object_name": "redis",
+              "object_uid": "e6001922-5e7b-4507-b82f-35e5957e5af0",
+              "event_uid": "0568f1f0-0937-43c7-8b4a-c47efe0e61ca",
+              "pod": "",
+              "pod_uid": "",
+              "reason": "ScalingReplicaSet",
+              "type": "Normal",
+              "message": "Scaled up replica set redis-857cbc8f8 from 0 to 1",
+              "source": "deployment-controller",
+              "first_seen_at": "2026-10-23T07:18:32Z",
+              "last_seen_at": "2026-10-23T07:18:32Z",
+              "count": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "stage": "scale",
+      "name": "HorizontalPodAutoscaler_events_archived",
+      "passed": true,
+      "observed_at": "2026-10-23T07:22:18Z",
+      "evidence": {
+        "code": 0,
+        "message": "success",
+        "data": {
+          "state": "Available",
+          "last_collected_at": "2026-10-23T07:22:06.47339Z",
+          "events": [
+            {
+              "cluster": "acceptance-kind",
+              "namespace": "monitoring-acceptance",
+              "object_kind": "HorizontalPodAutoscaler",
+              "object_name": "modurelay",
+              "object_uid": "820dc4fb-3a7d-43b2-9122-f9499486fc6d",
+              "event_uid": "ad7b0d66-3e1b-46b1-9d5f-fd66f33342fe",
+              "pod": "",
+              "pod_uid": "",
+              "reason": "SuccessfulRescale",
+              "type": "Normal",
+              "message": "New size: 3; reason: Current number of replicas below Spec.MinReplicas",
+              "source": "horizontal-pod-autoscaler",
+              "first_seen_at": "2026-10-23T07:22:03Z",
+              "last_seen_at": "2026-10-23T07:22:03Z",
+              "count": 1
+            },
+            {
+              "cluster": "acceptance-kind",
+              "namespace": "monitoring-acceptance",
+              "object_kind": "HorizontalPodAutoscaler",
+              "object_name": "modurelay",
+              "object_uid": "820dc4fb-3a7d-43b2-9122-f9499486fc6d",
+              "event_uid": "c9d5656d-587d-4dd8-bde5-78da037eb3b1",
+              "pod": "",
+              "pod_uid": "",
+              "reason": "FailedComputeMetricsReplicas",
+              "type": "Warning",
+              "message": "invalid metrics (1 invalid out of 1), first error is: failed to get cpu resource metric value: failed to get cpu utilization: did not receive metrics for targeted pods (pods might be unready)",
+              "source": "horizontal-pod-autoscaler",
+              "first_seen_at": "2026-10-23T07:20:48Z",
+              "last_seen_at": "2026-10-23T07:20:48Z",
+              "count": 1
+            },
+            {
+              "cluster": "acceptance-kind",
+              "namespace": "monitoring-acceptance",
+              "object_kind": "HorizontalPodAutoscaler",
+              "object_name": "modurelay",
+              "object_uid": "820dc4fb-3a7d-43b2-9122-f9499486fc6d",
+              "event_uid": "abdb11a0-c86f-4091-aa2e-015320ce88d0",
+              "pod": "",
+              "pod_uid": "",
+              "reason": "FailedGetResourceMetric",
+              "type": "Warning",
+              "message": "failed to get cpu utilization: did not receive metrics for targeted pods (pods might be unready)",
+              "source": "horizontal-pod-autoscaler",
+              "first_seen_at": "2026-10-23T07:20:48Z",
+              "last_seen_at": "2026-10-23T07:20:48Z",
+              "count": 1
+            },
+            {
+              "cluster": "acceptance-kind",
+              "namespace": "monitoring-acceptance",
+              "object_kind": "HorizontalPodAutoscaler",
+              "object_name": "modurelay",
+              "object_uid": "820dc4fb-3a7d-43b2-9122-f9499486fc6d",
+              "event_uid": "ca4caa2e-a61c-49f8-beee-78542385ea5d",
+              "pod": "",
+              "pod_uid": "",
+              "reason": "FailedGetResourceMetric",
+              "type": "Warning",
+              "message": "failed to get cpu utilization: unable to get metrics for resource cpu: no metrics returned from resource metrics API",
+              "source": "horizontal-pod-autoscaler",
+              "first_seen_at": "2026-10-23T07:20:32Z",
+              "last_seen_at": "2026-10-23T07:20:32Z",
+              "count": 1
+            },
+            {
+              "cluster": "acceptance-kind",
+              "namespace": "monitoring-acceptance",
+              "object_kind": "HorizontalPodAutoscaler",
+              "object_name": "modurelay",
+              "object_uid": "820dc4fb-3a7d-43b2-9122-f9499486fc6d",
+              "event_uid": "af360600-4eed-479c-b10e-e2b61ce52e9d",
+              "pod": "",
+              "pod_uid": "",
+              "reason": "FailedComputeMetricsReplicas",
+              "type": "Warning",
+              "message": "invalid metrics (1 invalid out of 1), first error is: failed to get cpu resource metric value: failed to get cpu utilization: unable to get metrics for resource cpu: no metrics returned from resource metrics API",
+              "source": "horizontal-pod-autoscaler",
+              "first_seen_at": "2026-10-23T07:20:32Z",
+              "last_seen_at": "2026-10-23T07:20:32Z",
+              "count": 1
+            },
+            {
+              "cluster": "acceptance-kind",
+              "namespace": "monitoring-acceptance",
+              "object_kind": "HorizontalPodAutoscaler",
+              "object_name": "modurelay",
+              "object_uid": "820dc4fb-3a7d-43b2-9122-f9499486fc6d",
+              "event_uid": "779b1cb9-a120-4706-9f1f-2283a24b9c6e",
+              "pod": "",
+              "pod_uid": "",
+              "reason": "FailedGetScale",
+              "type": "Warning",
+              "message": "deployments.apps \"modurelay\" not found",
+              "source": "horizontal-pod-autoscaler",
+              "first_seen_at": "2026-10-23T07:18:47Z",
+              "last_seen_at": "2026-10-23T07:20:17Z",
+              "count": 7
+            }
+          ]
+        }
+      }
+    },
+    {
+      "stage": "traffic",
+      "name": "ninety_requests_conserved_across_three_pods",
+      "passed": true,
+      "observed_at": "2026-10-23T07:24:37Z",
+      "evidence": {
+        "sent": 90,
+        "before": [
+          {
+            "metric": {},
+            "value": [
+              1792740266.632,
+              "8"
+            ]
+          }
+        ],
+        "after": [
+          {
+            "metric": {},
+            "value": [
+              1792740277.009,
+              "98"
+            ]
+          }
+        ],
+        "delta": 90.0,
+        "per_pod": [
+          {
+            "metric": {
+              "pod": "modurelay-59b788b779-dpgm8",
+              "uid": "d987720e-62e9-4337-a601-450cfaad09e8"
+            },
+            "value": [
+              1792740277.014,
+              "33"
+            ]
+          },
+          {
+            "metric": {
+              "pod": "modurelay-59b788b779-lvdms",
+              "uid": "7b55e30e-c444-478b-b943-337fd4bcc4fa"
+            },
+            "value": [
+              1792740277.014,
+              "30"
+            ]
+          },
+          {
+            "metric": {
+              "pod": "modurelay-59b788b779-pnjjv",
+              "uid": "e2119a68-6309-493b-8143-eb46907a757c"
+            },
+            "value": [
+              1792740277.014,
+              "35"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "stage": "uid",
+      "name": "old_uid_has_no_current_limit",
+      "passed": true,
+      "observed_at": "2026-10-23T07:24:11Z",
+      "evidence": {
+        "metric": "pod_cpu_limit_cores",
+        "unit": "cores",
+        "state": "Unknown",
+        "reason": "samples_unavailable",
+        "step_seconds": 0,
+        "series": []
+      }
+    },
+    {
+      "stage": "uid",
+      "name": "replacement_has_current_limit",
+      "passed": true,
+      "observed_at": "2026-10-23T07:24:11Z",
+      "evidence": {
+        "metric": "pod_cpu_limit_cores",
+        "unit": "cores",
+        "state": "Available",
+        "step_seconds": 0,
+        "series": [
+          {
+            "labels": {
+              "cluster": "acceptance-kind",
+              "limit_source": "kubernetes_api",
+              "namespace": "monitoring-acceptance",
+              "pod": "ordinary",
+              "uid": "67c9053e-bc69-41b5-b0ee-453eace5655a"
+            },
+            "points": [
+              {
+                "timestamp": "2026-10-23T07:24:11Z",
+                "value": 0.25,
+                "state": "Available"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "stage": "uid",
+      "name": "pod_uid_changed",
+      "passed": true,
+      "observed_at": "2026-10-23T07:24:11Z",
+      "evidence": {
+        "metric": "pod_info",
+        "unit": "info",
+        "state": "Available",
+        "step_seconds": 0,
+        "series": [
+          {
+            "labels": {
+              "cluster": "acceptance-kind",
+              "namespace": "monitoring-acceptance",
+              "pod": "ordinary",
+              "uid": "67c9053e-bc69-41b5-b0ee-453eace5655a"
+            },
+            "points": [
+              {
+                "timestamp": "2026-10-23T07:24:11Z",
+                "value": 1,
+                "state": "Available"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "stage": "oom",
+      "name": "real_oom_laststate",
+      "passed": true,
+      "observed_at": "2026-10-23T07:21:33Z",
+      "evidence": {
+        "metric": "pod_oom",
+        "unit": "containers",
+        "state": "Available",
+        "step_seconds": 0,
+        "series": [
+          {
+            "labels": {
+              "cluster": "acceptance-kind",
+              "namespace": "monitoring-acceptance",
+              "pod": "oom-restart",
+              "uid": "f07cfd30-5a21-4130-b694-37830b76bbe8"
+            },
+            "points": [
+              {
+                "timestamp": "2026-10-23T07:21:33Z",
+                "value": 1,
+                "state": "Available"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "stage": "oom",
+      "name": "real_restart_increase",
+      "passed": true,
+      "observed_at": "2026-10-23T07:21:33Z",
+      "evidence": {
+        "metric": "pod_restarts",
+        "unit": "restarts",
+        "state": "Available",
+        "step_seconds": 0,
+        "series": [
+          {
+            "labels": {
+              "cluster": "acceptance-kind",
+              "namespace": "monitoring-acceptance",
+              "pod": "oom-restart",
+              "uid": "f07cfd30-5a21-4130-b694-37830b76bbe8"
+            },
+            "points": [
+              {
+                "timestamp": "2026-10-23T07:21:33Z",
+                "value": 1.136990959276742,
+                "state": "Available"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "stage": "oom",
+      "name": "real_oom_counter_increase",
+      "passed": false,
+      "observed_at": "2026-10-23T07:21:58Z",
+      "evidence": {
+        "metric": "pod_oom_count",
+        "unit": "events",
+        "state": "Available",
+        "step_seconds": 0,
+        "series": [
+          {
+            "labels": {
+              "cluster": "acceptance-kind",
+              "namespace": "monitoring-acceptance",
+              "pod": "oom-restart",
+              "uid": "f07cfd30-5a21-4130-b694-37830b76bbe8"
+            },
+            "points": [
+              {
+                "timestamp": "2026-10-23T07:21:58Z",
+                "value": 0,
+                "state": "Available"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "stage": "unknown",
+      "name": "failed_ksm_cannot_manufacture_recovery",
+      "passed": true,
+      "observed_at": "2026-10-23T07:25:09Z",
+      "evidence": {
+        "metric": "pod_crash_loop",
+        "unit": "containers",
+        "state": "Unknown",
+        "reason": "samples_unavailable",
+        "step_seconds": 0,
+        "series": []
+      }
+    },
+    {
+      "stage": "recovered",
+      "name": "same_uid_crash_loop_recovers_zero",
+      "passed": true,
+      "observed_at": "2026-10-23T07:30:21Z",
+      "evidence": {
+        "metric": "pod_crash_loop",
+        "unit": "containers",
+        "state": "Available",
+        "step_seconds": 0,
+        "series": [
+          {
+            "labels": {
+              "cluster": "acceptance-kind",
+              "namespace": "monitoring-acceptance",
+              "pod": "crash-recovery",
+              "uid": "9e2379f2-d723-4956-8e2c-dc18733ec09f"
+            },
+            "points": [
+              {
+                "timestamp": "2026-10-23T07:30:21Z",
+                "value": 0,
+                "state": "Available"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "stage": "alert-create",
+      "name": "alert_rule_created",
+      "passed": true,
+      "observed_at": "2026-10-23T07:21:57Z",
+      "evidence": {
+        "evaluation_revision": 1,
+        "id": 10,
+        "name": "Disposable CrashLoop Acceptance",
+        "description": "Isolated local Kubernetes acceptance",
+        "enabled": true,
+        "severity": "P2",
+        "metric_type": "pod_crash_loop",
+        "operator": ">",
+        "threshold": 0,
+        "window_minutes": 1,
+        "sustained_minutes": 1,
+        "cooldown_minutes": 1,
+        "min_requests": 0,
+        "notify_email": false,
+        "filters": {
+          "cluster": "acceptance-kind",
+          "namespace": "monitoring-acceptance",
+          "pod": "crash-recovery"
+        },
+        "created_at": "2026-10-23T07:21:57.610453Z",
+        "updated_at": "2026-10-23T07:21:57.610453Z"
+      }
+    },
+    {
+      "stage": "alert-fired",
+      "name": "alert-fired",
+      "passed": true,
+      "observed_at": "2026-10-23T07:24:08Z",
+      "evidence": [
+        {
+          "id": 1,
+          "rule_id": 10,
+          "severity": "P2",
+          "status": "firing",
+          "title": "P2: Disposable CrashLoop Acceptance",
+          "description": "pod_crash_loop > 0.00 (current 1.00) over last 1m (overall)",
+          "metric_value": 1,
+          "threshold_value": 0,
+          "dimensions": {
+            "cluster": "acceptance-kind",
+            "fingerprint": "97d06606f715e90367bf19176fec0818b1e4983cbca29efacef0fffa975953cf",
+            "incident_id": 1,
+            "incident_key": "incident-1",
+            "namespace": "monitoring-acceptance",
+            "pod": "crash-recovery",
+            "resource_key": "{\"cluster\":\"acceptance-kind\",\"namespace\":\"monitoring-acceptance\",\"pod\":\"crash-recovery\",\"uid\":\"9e2379f2-d723-4956-8e2c-dc18733ec09f\"}",
+            "rule_revision": 1,
+            "uid": "9e2379f2-d723-4956-8e2c-dc18733ec09f",
+            "window_minutes": 1
+          },
+          "fired_at": "2026-10-23T07:24:06.02577Z",
+          "email_sent": false,
+          "created_at": "2026-10-23T07:24:06.034354Z"
+        }
+      ]
+    },
+    {
+      "stage": "alert-held",
+      "name": "alert-held",
+      "passed": true,
+      "observed_at": "2026-10-23T07:26:10Z",
+      "evidence": {
+        "events": [
+          {
+            "id": 1,
+            "rule_id": 10,
+            "severity": "P2",
+            "status": "firing",
+            "title": "P2: Disposable CrashLoop Acceptance",
+            "description": "pod_crash_loop > 0.00 (current 1.00) over last 1m (overall)",
+            "metric_value": 1,
+            "threshold_value": 0,
+            "dimensions": {
+              "cluster": "acceptance-kind",
+              "fingerprint": "97d06606f715e90367bf19176fec0818b1e4983cbca29efacef0fffa975953cf",
+              "incident_id": 1,
+              "incident_key": "incident-1",
+              "namespace": "monitoring-acceptance",
+              "pod": "crash-recovery",
+              "resource_key": "{\"cluster\":\"acceptance-kind\",\"namespace\":\"monitoring-acceptance\",\"pod\":\"crash-recovery\",\"uid\":\"9e2379f2-d723-4956-8e2c-dc18733ec09f\"}",
+              "rule_revision": 1,
+              "uid": "9e2379f2-d723-4956-8e2c-dc18733ec09f",
+              "window_minutes": 1
+            },
+            "fired_at": "2026-10-23T07:24:06.02577Z",
+            "email_sent": false,
+            "created_at": "2026-10-23T07:24:06.034354Z"
+          }
+        ],
+        "rule": {
+          "evaluation_revision": 1,
+          "id": 10,
+          "name": "Disposable CrashLoop Acceptance",
+          "description": "Isolated local Kubernetes acceptance",
+          "enabled": true,
+          "severity": "P2",
+          "metric_type": "pod_crash_loop",
+          "operator": ">",
+          "threshold": 0,
+          "window_minutes": 1,
+          "sustained_minutes": 1,
+          "cooldown_minutes": 1,
+          "min_requests": 0,
+          "notify_email": false,
+          "data_status": "unavailable",
+          "filters": {
+            "cluster": "acceptance-kind",
+            "namespace": "monitoring-acceptance",
+            "pod": "crash-recovery"
+          },
+          "last_triggered_at": "2026-10-23T07:24:06.02577Z",
+          "created_at": "2026-10-23T07:21:57.610453Z",
+          "updated_at": "2026-10-23T07:21:57.610453Z"
+        }
+      }
+    },
+    {
+      "stage": "alert-resolved",
+      "name": "alert-resolved",
+      "passed": true,
+      "observed_at": "2026-10-23T07:31:32Z",
+      "evidence": [
+        {
+          "id": 1,
+          "rule_id": 10,
+          "severity": "P2",
+          "status": "resolved",
+          "title": "P2: Disposable CrashLoop Acceptance",
+          "description": "pod_crash_loop > 0.00 (current 1.00) over last 1m (overall)",
+          "metric_value": 1,
+          "threshold_value": 0,
+          "dimensions": {
+            "cluster": "acceptance-kind",
+            "fingerprint": "97d06606f715e90367bf19176fec0818b1e4983cbca29efacef0fffa975953cf",
+            "incident_id": 1,
+            "incident_key": "incident-1",
+            "namespace": "monitoring-acceptance",
+            "pod": "crash-recovery",
+            "resource_key": "{\"cluster\":\"acceptance-kind\",\"namespace\":\"monitoring-acceptance\",\"pod\":\"crash-recovery\",\"uid\":\"9e2379f2-d723-4956-8e2c-dc18733ec09f\"}",
+            "rule_revision": 1,
+            "uid": "9e2379f2-d723-4956-8e2c-dc18733ec09f",
+            "window_minutes": 1
+          },
+          "fired_at": "2026-10-23T07:24:06.02577Z",
+          "resolved_at": "2026-10-23T07:31:31.505183Z",
+          "email_sent": false,
+          "created_at": "2026-10-23T07:24:06.034354Z"
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "Linuxkit/cAdvisor emitted container_oom_events_total=0 despite real OOMKilled and restart evidence; exact OOM-window count not validated.",
+    "This kind cluster and the separate k3s cluster share the Docker Desktop Linuxkit host; they are not two managed-cloud environments.",
+    "The initial 25-second CrashLoop observation timed out before the actual BackOff state; original evidence retained, followed by genuine firing, unavailable hold, same-UID recovery and resolution."
+  ],
+  "application_image": "sha256:06875c9425b160484d01d4109074f839500469a85724d0414d7ba91355dd2f10",
+  "recorded_at": "2026-10-23T07:36:28.367816+00:00",
+  "image_scope": "Final source, production frontend embed, migrations through 280, and cgroup OOM summation fix."
+}

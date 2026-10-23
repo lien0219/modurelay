@@ -1,0 +1,8 @@
+       object_kind       | count 
+-------------------------+-------
+ Deployment              |    14
+ HorizontalPodAutoscaler |     5
+ Pod                     |    98
+ ReplicaSet              |    15
+(4 rows)
+

@@ -51,6 +51,11 @@ type OpsAlertEvaluatorService struct {
 
 	emailLimiter *slidingWindowLimiter
 
+	// deliverOpsAlertEmail overrides SMTP delivery in unit tests.
+	// Production leaves it nil and uses the notification service.
+	deliverOpsAlertEmail   func(ctx context.Context, to, subject, body string) error
+	monitoringAlertSamples func(context.Context, string, map[string]any, time.Time, time.Time) ([]OpsMonitoringAlertSample, error)
+
 	skipLogMu sync.Mutex
 	skipLogAt time.Time
 
@@ -58,9 +63,19 @@ type OpsAlertEvaluatorService struct {
 }
 
 type opsAlertRuleState struct {
+	RuleRevision        int64
 	LastEvaluatedAt     time.Time
 	ConsecutiveBreaches int
+	DataStatus          string
 }
+
+type alertMetricStatus int
+
+const (
+	alertMetricUnavailable alertMetricStatus = iota
+	alertMetricOK
+	alertMetricInsufficient
+)
 
 func NewOpsAlertEvaluatorService(
 	opsService *OpsService,
@@ -91,8 +106,9 @@ func (s *OpsAlertEvaluatorService) Start() {
 		if s.stopCh == nil {
 			s.stopCh = make(chan struct{})
 		}
-		s.wg.Add(1)
+		s.wg.Add(2)
 		go s.run()
+		go s.runAlertDeliveryWorker()
 	})
 }
 
@@ -208,14 +224,24 @@ func (s *OpsAlertEvaluatorService) evaluateOnce(interval time.Duration) {
 
 	systemMetrics, _ := s.opsRepo.GetLatestSystemMetrics(ctx, 1)
 
-	// Cleanup stale state for removed rules.
-	s.pruneRuleStates(rules)
+	// Reload persisted progress on every leadership cycle; a former leader must
+	// not overwrite state advanced by another Pod while it was inactive.
+	s.mu.Lock()
+	s.ruleStates = map[int64]*opsAlertRuleState{}
+	s.mu.Unlock()
 
 	for _, rule := range rules {
 		if rule == nil || !rule.Enabled || rule.ID <= 0 {
 			continue
 		}
 		rulesEnabled++
+		if !s.prepareRuleEvaluationState(ctx, rule) {
+			continue
+		}
+		if err := ValidateOpsAlertFilters(rule.MetricType, rule.Filters); err != nil {
+			s.noteRuleSampleStatus(ctx, rule.ID, now, OpsAlertDataStatusInvalidRule)
+			continue
+		}
 
 		scopePlatform, scopeGroupID, scopeRegion := parseOpsAlertRuleScope(rule.Filters)
 
@@ -226,25 +252,45 @@ func (s *OpsAlertEvaluatorService) evaluateOnce(interval time.Duration) {
 		windowStart := safeEnd.Add(-time.Duration(windowMinutes) * time.Minute)
 		windowEnd := safeEnd
 
-		metricValue, ok := s.computeRuleMetric(ctx, rule, systemMetrics, windowStart, windowEnd, scopePlatform, scopeGroupID)
-		if !ok {
-			s.resetRuleState(rule.ID, now)
+		if isMonitoringAlertMetric(rule.MetricType) && !usesLocalDatabaseCapacity(rule) {
+			if s.evaluateMonitoringAlertRule(ctx, runtimeCfg, rule, windowStart, windowEnd, now, interval) {
+				rulesEvaluated++
+			}
+			continue
+		}
+		metricValue, status := s.computeRuleMetric(ctx, rule, systemMetrics, windowStart, windowEnd, scopePlatform, scopeGroupID)
+		switch status {
+		case alertMetricInsufficient:
+			// Insufficient samples break sustained evidence but never resolve an incident.
+			s.noteRuleSampleStatus(ctx, rule.ID, now, OpsAlertDataStatusInsufficient)
+			continue
+		case alertMetricOK:
+		default:
+			s.resetRuleState(ctx, rule.ID, now)
 			continue
 		}
 		rulesEvaluated++
 
 		breachedNow := compareMetric(metricValue, rule.Operator, rule.Threshold)
 		required := requiredSustainedBreaches(rule.SustainedMinutes, interval)
-		consecutive := s.updateRuleBreaches(rule.ID, now, interval, breachedNow)
+		consecutive, stateOK := s.updateRuleBreaches(ctx, rule.ID, now, interval, breachedNow)
+		if !stateOK {
+			continue
+		}
 
 		activeEvent, err := s.opsRepo.GetActiveAlertEvent(ctx, rule.ID)
 		if err != nil {
 			logger.LegacyPrintf("service.ops_alert_evaluator", "[OpsAlertEvaluator] get active event failed (rule=%d): %v", rule.ID, err)
 			continue
 		}
+		if activeEvent != nil && alertRuleRevision(activeEvent.RuleRevision) != alertRuleRevision(rule.EvaluationRevision) {
+			continue
+		}
 
 		if breachedNow && consecutive >= required {
 			if activeEvent != nil {
+				s.ensureFiringNotification(ctx, runtimeCfg, rule, activeEvent, now)
+				s.upgradeAlertEvent(ctx, runtimeCfg, rule, activeEvent, metricValue)
 				continue
 			}
 
@@ -264,7 +310,7 @@ func (s *OpsAlertEvaluatorService) evaluateOnce(interval time.Duration) {
 				logger.LegacyPrintf("service.ops_alert_evaluator", "[OpsAlertEvaluator] get latest event failed (rule=%d): %v", rule.ID, err)
 				continue
 			}
-			if latestEvent != nil && rule.CooldownMinutes > 0 {
+			if latestEvent != nil && alertRuleRevision(latestEvent.RuleRevision) == alertRuleRevision(rule.EvaluationRevision) && rule.CooldownMinutes > 0 {
 				cooldown := time.Duration(rule.CooldownMinutes) * time.Minute
 				if now.Sub(latestEvent.FiredAt) < cooldown {
 					continue
@@ -272,6 +318,7 @@ func (s *OpsAlertEvaluatorService) evaluateOnce(interval time.Duration) {
 			}
 
 			firedEvent := &OpsAlertEvent{
+				RuleRevision:   alertRuleRevision(rule.EvaluationRevision),
 				RuleID:         rule.ID,
 				Severity:       strings.TrimSpace(rule.Severity),
 				Status:         OpsAlertStatusFiring,
@@ -283,7 +330,17 @@ func (s *OpsAlertEvaluatorService) evaluateOnce(interval time.Duration) {
 				FiredAt:        now,
 				CreatedAt:      now,
 			}
+			firedEvent.Dimensions["rule_revision"] = alertRuleRevision(rule.EvaluationRevision)
+			firedEvent.Dimensions["window_minutes"] = windowMinutes
 
+			if critical, configured := alertCriticalThreshold(rule.Filters); configured && compareMetric(metricValue, rule.Operator, critical) {
+				firedEvent.Severity = "P0"
+				firedEvent.Title = "P0: " + rule.Name
+			}
+			firedEvent.Deliveries, err = s.prepareAlertDeliveries(ctx, runtimeCfg, rule, firedEvent, "firing")
+			if err != nil {
+				continue
+			}
 			created, err := s.opsRepo.CreateAlertEvent(ctx, firedEvent)
 			if err != nil {
 				logger.LegacyPrintf("service.ops_alert_evaluator", "[OpsAlertEvaluator] create event failed (rule=%d): %v", rule.ID, err)
@@ -291,7 +348,7 @@ func (s *OpsAlertEvaluatorService) evaluateOnce(interval time.Duration) {
 			}
 
 			eventsCreated++
-			if created != nil && created.ID > 0 {
+			if _, durable := s.opsRepo.(OpsAlertDeliveryRepository); !durable && created != nil && created.ID > 0 {
 				if s.maybeSendAlertEmail(ctx, runtimeCfg, rule, created) {
 					emailsSent++
 				}
@@ -300,12 +357,23 @@ func (s *OpsAlertEvaluatorService) evaluateOnce(interval time.Duration) {
 		}
 
 		// Not breached: resolve active event if present.
-		if activeEvent != nil {
+		if !breachedNow && activeEvent != nil {
+			if _, durable := s.opsRepo.(OpsAlertDeliveryRepository); durable {
+				if s.resolveAlertWithDeliveries(ctx, runtimeCfg, rule, activeEvent, now, metricValue) {
+					eventsResolved++
+				}
+				continue
+			}
 			resolvedAt := now
 			if err := s.opsRepo.UpdateAlertEventStatus(ctx, activeEvent.ID, OpsAlertStatusResolved, &resolvedAt); err != nil {
 				logger.LegacyPrintf("service.ops_alert_evaluator", "[OpsAlertEvaluator] resolve event failed (event=%d): %v", activeEvent.ID, err)
 			} else {
 				eventsResolved++
+				activeEvent.Status = OpsAlertStatusResolved
+				activeEvent.ResolvedAt = &resolvedAt
+				if s.maybeSendResolvedAlertEmail(ctx, runtimeCfg, rule, activeEvent) {
+					emailsSent++
+				}
 			}
 		}
 	}
@@ -314,64 +382,152 @@ func (s *OpsAlertEvaluatorService) evaluateOnce(interval time.Duration) {
 	s.recordHeartbeatSuccess(runAt, time.Since(startedAt), result)
 }
 
-func (s *OpsAlertEvaluatorService) pruneRuleStates(rules []*OpsAlertRule) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	live := map[int64]struct{}{}
-	for _, r := range rules {
-		if r != nil && r.ID > 0 {
-			live[r.ID] = struct{}{}
-		}
+func (s *OpsAlertEvaluatorService) resetRuleState(ctx context.Context, ruleID int64, now time.Time) {
+	if s == nil || ruleID <= 0 {
+		return
 	}
-	for id := range s.ruleStates {
-		if _, ok := live[id]; !ok {
-			delete(s.ruleStates, id)
-		}
-	}
-}
-
-func (s *OpsAlertEvaluatorService) resetRuleState(ruleID int64, now time.Time) {
-	if ruleID <= 0 {
+	state, ok := s.ruleState(ctx, ruleID)
+	if !ok {
 		return
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	state, ok := s.ruleStates[ruleID]
-	if !ok {
-		state = &opsAlertRuleState{}
-		s.ruleStates[ruleID] = state
-	}
 	state.LastEvaluatedAt = now
 	state.ConsecutiveBreaches = 0
+	state.DataStatus = OpsAlertDataStatusUnavailable
+	snapshot := *state
+	s.mu.Unlock()
+	s.persistRuleState(ctx, ruleID, snapshot)
 }
 
-func (s *OpsAlertEvaluatorService) updateRuleBreaches(ruleID int64, now time.Time, interval time.Duration, breached bool) int {
-	if ruleID <= 0 {
-		return 0
+func (s *OpsAlertEvaluatorService) noteRuleSampleStatus(ctx context.Context, ruleID int64, now time.Time, dataStatus string) {
+	if s == nil || ruleID <= 0 {
+		return
+	}
+	state, ok := s.ruleState(ctx, ruleID)
+	if !ok {
+		return
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	state.LastEvaluatedAt = now
+	state.DataStatus = dataStatus
+	if dataStatus != OpsAlertDataStatusOK {
+		state.ConsecutiveBreaches = 0
+	}
+	snapshot := *state
+	s.mu.Unlock()
+	s.persistRuleState(ctx, ruleID, snapshot)
+}
 
-	state, ok := s.ruleStates[ruleID]
+func (s *OpsAlertEvaluatorService) updateRuleBreaches(ctx context.Context, ruleID int64, now time.Time, interval time.Duration, breached bool) (int, bool) {
+	if s == nil || ruleID <= 0 {
+		return 0, false
+	}
+	state, ok := s.ruleState(ctx, ruleID)
 	if !ok {
-		state = &opsAlertRuleState{}
-		s.ruleStates[ruleID] = state
+		return 0, false
 	}
 
+	s.mu.Lock()
 	if !state.LastEvaluatedAt.IsZero() && interval > 0 {
-		if now.Sub(state.LastEvaluatedAt) > interval*2 {
+		if now.Sub(state.LastEvaluatedAt) < interval {
+			count := state.ConsecutiveBreaches
+			s.mu.Unlock()
+			return count, false
+		}
+		if now.Sub(state.LastEvaluatedAt) >= interval*2 {
 			state.ConsecutiveBreaches = 0
 		}
 	}
-
 	state.LastEvaluatedAt = now
+	state.DataStatus = OpsAlertDataStatusOK
 	if breached {
 		state.ConsecutiveBreaches++
 	} else {
 		state.ConsecutiveBreaches = 0
 	}
-	return state.ConsecutiveBreaches
+	count := state.ConsecutiveBreaches
+	snapshot := *state
+	s.mu.Unlock()
+	return count, s.persistRuleState(ctx, ruleID, snapshot)
+}
+
+// ruleState returns the in-memory progress for a rule. Database reads happen
+// outside s.mu so a slow query cannot block other rule-state updates.
+func (s *OpsAlertEvaluatorService) ruleState(ctx context.Context, ruleID int64) (*opsAlertRuleState, bool) {
+	s.mu.Lock()
+	if s.ruleStates == nil {
+		s.ruleStates = map[int64]*opsAlertRuleState{}
+	}
+	if state, ok := s.ruleStates[ruleID]; ok {
+		s.mu.Unlock()
+		return state, true
+	}
+	s.mu.Unlock()
+
+	loaded := opsAlertRuleState{}
+	if s.opsRepo != nil {
+		persisted, err := s.opsRepo.GetAlertRuleState(ctx, ruleID)
+		if err != nil {
+			logger.LegacyPrintf("service.ops_alert_evaluator", "[OpsAlertEvaluator] load rule state failed (rule=%d): %v", ruleID, err)
+			return nil, false
+		}
+		if persisted != nil {
+			loaded.RuleRevision = persisted.RuleRevision
+			loaded.ConsecutiveBreaches = persisted.ConsecutiveBreaches
+			loaded.LastEvaluatedAt = persisted.LastEvaluatedAt
+			loaded.DataStatus = persisted.DataStatus
+		}
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.ruleStates == nil {
+		s.ruleStates = map[int64]*opsAlertRuleState{}
+	}
+	if state, ok := s.ruleStates[ruleID]; ok {
+		return state, true
+	}
+	state := loaded
+	s.ruleStates[ruleID] = &state
+	return s.ruleStates[ruleID], true
+}
+
+func (s *OpsAlertEvaluatorService) persistRuleState(ctx context.Context, ruleID int64, state opsAlertRuleState) bool {
+	if s == nil || s.opsRepo == nil || ruleID <= 0 {
+		return s != nil && s.opsRepo == nil
+	}
+	err := s.opsRepo.UpsertAlertRuleState(ctx, &OpsAlertRuleState{
+		RuleRevision:        alertRuleRevision(state.RuleRevision),
+		RuleID:              ruleID,
+		ConsecutiveBreaches: state.ConsecutiveBreaches,
+		LastEvaluatedAt:     state.LastEvaluatedAt,
+		DataStatus:          state.DataStatus,
+	})
+	if err != nil {
+		logger.LegacyPrintf("service.ops_alert_evaluator", "[OpsAlertEvaluator] persist rule state failed (rule=%d): %v", ruleID, err)
+	}
+	return err == nil
+}
+
+func alertRuleRevision(revision int64) int64 {
+	if revision < 1 {
+		return 1
+	}
+	return revision
+}
+
+func (s *OpsAlertEvaluatorService) prepareRuleEvaluationState(ctx context.Context, rule *OpsAlertRule) bool {
+	state, ok := s.ruleState(ctx, rule.ID)
+	if !ok {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if alertRuleRevision(state.RuleRevision) != alertRuleRevision(rule.EvaluationRevision) {
+		*state = opsAlertRuleState{}
+	}
+	state.RuleRevision = alertRuleRevision(rule.EvaluationRevision)
+	return true
 }
 
 func requiredSustainedBreaches(sustainedMinutes int, interval time.Duration) int {
@@ -381,7 +537,8 @@ func requiredSustainedBreaches(sustainedMinutes int, interval time.Duration) int
 	if interval <= 0 {
 		return sustainedMinutes
 	}
-	required := int(math.Ceil(float64(sustainedMinutes*60) / interval.Seconds()))
+	// The first sample starts the interval; it does not prove an elapsed interval.
+	required := int(math.Ceil(float64(sustainedMinutes*60)/interval.Seconds())) + 1
 	if required < 1 {
 		return 1
 	}
@@ -440,147 +597,215 @@ func (s *OpsAlertEvaluatorService) computeRuleMetric(
 	end time.Time,
 	platform string,
 	groupID *int64,
-) (float64, bool) {
+) (float64, alertMetricStatus) {
 	if rule == nil {
-		return 0, false
+		return 0, alertMetricUnavailable
 	}
 	switch strings.TrimSpace(rule.MetricType) {
+	case "billing_failed_settlements", "billing_compensation_backlog", "billing_ledger_mismatches":
+		if s.opsService == nil {
+			return 0, alertMetricUnavailable
+		}
+		state, err := s.opsService.GetBillingReconciliation(ctx)
+		if err != nil || state == nil || state.OperationalState != "Available" {
+			return 0, alertMetricUnavailable
+		}
+		value := state.FailedSettlements
+		switch rule.MetricType {
+		case "billing_compensation_backlog":
+			value = state.CompensationBacklog
+		case "billing_ledger_mismatches":
+			value = state.LedgerMismatches
+		}
+		if value == nil {
+			return 0, alertMetricUnavailable
+		}
+		return float64(*value), alertMetricOK
+	case "billing_missing_usage_logs", "billing_amount_mismatches":
+		if s.opsService == nil {
+			return 0, alertMetricUnavailable
+		}
+		state, err := s.opsService.GetBillingReconciliation(ctx)
+		if err != nil || state == nil || state.State != "Available" {
+			return 0, alertMetricUnavailable
+		}
+		value := state.MissingUsageLogs
+		if rule.MetricType == "billing_amount_mismatches" {
+			value = state.AmountMismatches
+		}
+		if value == nil {
+			return 0, alertMetricUnavailable
+		}
+		return float64(*value), alertMetricOK
+	case "db_instance_usage_percent", "redis_instance_usage_percent":
+		if systemMetrics == nil || systemMetrics.Capacity == nil || time.Since(systemMetrics.CreatedAt) > 3*time.Minute {
+			return 0, alertMetricUnavailable
+		}
+		capacity := systemMetrics.Capacity.PostgreSQL
+		if rule.MetricType == "redis_instance_usage_percent" {
+			capacity = systemMetrics.Capacity.Redis
+		}
+		return databaseInstanceUsage(capacity)
 	case "cpu_usage_percent":
 		if systemMetrics != nil && systemMetrics.CPUUsagePercent != nil {
-			return *systemMetrics.CPUUsagePercent, true
+			return *systemMetrics.CPUUsagePercent, alertMetricOK
 		}
-		return 0, false
+		return 0, alertMetricUnavailable
 	case "memory_usage_percent":
 		if systemMetrics != nil && systemMetrics.MemoryUsagePercent != nil {
-			return *systemMetrics.MemoryUsagePercent, true
+			return *systemMetrics.MemoryUsagePercent, alertMetricOK
 		}
-		return 0, false
+		return 0, alertMetricUnavailable
+	case "db_pool_usage_percent":
+		// Historical rows omit pool limits. Do not divide a summed cluster
+		// count by this process's configured MaxOpenConns.
+		snap := s.applicationPoolSnapshot(ctx)
+		if snap == nil {
+			return 0, alertMetricUnavailable
+		}
+		return poolUsagePercent(sumOptionalInts(snap.DBConnActive, snap.DBConnIdle), snap.DBMaxOpenConns)
+	case "db_advisory_lock_pool_usage_percent", "db_read_replica_pool_usage_percent":
+		snap := s.applicationPoolSnapshot(ctx)
+		if snap == nil {
+			return 0, alertMetricUnavailable
+		}
+		role := "advisory_lock"
+		if rule.MetricType == "db_read_replica_pool_usage_percent" {
+			role = "read_replica"
+		}
+		return databaseRolePoolUsage(snap.DatabasePools, role)
+	case "redis_pool_usage_percent":
+		snap := s.applicationPoolSnapshot(ctx)
+		if snap == nil {
+			return 0, alertMetricUnavailable
+		}
+		return poolUsagePercent(snap.RedisConnTotal, snap.RedisPoolSize)
 	case "concurrency_queue_depth":
 		if systemMetrics != nil && systemMetrics.ConcurrencyQueueDepth != nil {
-			return float64(*systemMetrics.ConcurrencyQueueDepth), true
+			return float64(*systemMetrics.ConcurrencyQueueDepth), alertMetricOK
 		}
-		return 0, false
+		return 0, alertMetricUnavailable
 	case "group_available_accounts":
 		if groupID == nil || *groupID <= 0 {
-			return 0, false
+			return 0, alertMetricUnavailable
 		}
 		if s == nil || s.opsService == nil {
-			return 0, false
+			return 0, alertMetricUnavailable
 		}
 		availability, err := s.opsService.GetAccountAvailability(ctx, platform, groupID)
 		if err != nil || availability == nil {
-			return 0, false
+			return 0, alertMetricUnavailable
 		}
 		if availability.Group == nil {
-			return 0, true
+			return 0, alertMetricOK
 		}
-		return float64(availability.Group.AvailableCount), true
+		return float64(availability.Group.AvailableCount), alertMetricOK
 	case "group_available_ratio":
 		if groupID == nil || *groupID <= 0 {
-			return 0, false
+			return 0, alertMetricUnavailable
 		}
 		if s == nil || s.opsService == nil {
-			return 0, false
+			return 0, alertMetricUnavailable
 		}
 		availability, err := s.opsService.GetAccountAvailability(ctx, platform, groupID)
 		if err != nil || availability == nil {
-			return 0, false
+			return 0, alertMetricUnavailable
 		}
-		return computeGroupAvailableRatio(availability.Group), true
+		return computeGroupAvailableRatio(availability.Group), alertMetricOK
 	case "account_rate_limited_count":
 		if s == nil || s.opsService == nil {
-			return 0, false
+			return 0, alertMetricUnavailable
 		}
 		availability, err := s.opsService.GetAccountAvailability(ctx, platform, groupID)
 		if err != nil || availability == nil {
-			return 0, false
+			return 0, alertMetricUnavailable
 		}
 		return float64(countAccountsByCondition(availability.Accounts, func(acc *AccountAvailability) bool {
 			return acc.IsRateLimited
-		})), true
+		})), alertMetricOK
 	case "account_error_count":
 		if s == nil || s.opsService == nil {
-			return 0, false
+			return 0, alertMetricUnavailable
 		}
 		availability, err := s.opsService.GetAccountAvailability(ctx, platform, groupID)
 		if err != nil || availability == nil {
-			return 0, false
+			return 0, alertMetricUnavailable
 		}
 		return float64(countAccountsByCondition(availability.Accounts, func(acc *AccountAvailability) bool {
 			return acc.HasError && acc.TempUnschedulableUntil == nil
-		})), true
+		})), alertMetricOK
 	case "account_temp_unscheduled_count":
 		if s == nil || s.opsService == nil {
-			return 0, false
+			return 0, alertMetricUnavailable
 		}
 		availability, err := s.opsService.GetAccountAvailability(ctx, platform, groupID)
 		if err != nil || availability == nil {
-			return 0, false
+			return 0, alertMetricUnavailable
 		}
 		now := time.Now().UTC()
 		return float64(countAccountsByCondition(availability.Accounts, func(acc *AccountAvailability) bool {
 			return acc.TempUnschedulableUntil != nil && now.Before(*acc.TempUnschedulableUntil)
-		})), true
+		})), alertMetricOK
 	case "group_rate_limit_ratio":
 		if groupID == nil || *groupID <= 0 {
-			return 0, false
+			return 0, alertMetricUnavailable
 		}
 		if s == nil || s.opsService == nil {
-			return 0, false
+			return 0, alertMetricUnavailable
 		}
 		availability, err := s.opsService.GetAccountAvailability(ctx, platform, groupID)
 		if err != nil || availability == nil {
-			return 0, false
+			return 0, alertMetricUnavailable
 		}
 		if availability.Group == nil || availability.Group.TotalAccounts <= 0 {
-			return 0, true
+			return 0, alertMetricOK
 		}
-		return (float64(availability.Group.RateLimitCount) / float64(availability.Group.TotalAccounts)) * 100, true
+		return (float64(availability.Group.RateLimitCount) / float64(availability.Group.TotalAccounts)) * 100, alertMetricOK
 	case "account_error_ratio":
 		if s == nil || s.opsService == nil {
-			return 0, false
+			return 0, alertMetricUnavailable
 		}
 		availability, err := s.opsService.GetAccountAvailability(ctx, platform, groupID)
 		if err != nil || availability == nil {
-			return 0, false
+			return 0, alertMetricUnavailable
 		}
 		total := int64(len(availability.Accounts))
 		if total <= 0 {
-			return 0, true
+			return 0, alertMetricOK
 		}
 		errorCount := countAccountsByCondition(availability.Accounts, func(acc *AccountAvailability) bool {
 			return acc.HasError && acc.TempUnschedulableUntil == nil
 		})
-		return (float64(errorCount) / float64(total)) * 100, true
+		return (float64(errorCount) / float64(total)) * 100, alertMetricOK
 	case "overload_account_count":
 		if s == nil || s.opsService == nil {
-			return 0, false
+			return 0, alertMetricUnavailable
 		}
 		availability, err := s.opsService.GetAccountAvailability(ctx, platform, groupID)
 		if err != nil || availability == nil {
-			return 0, false
+			return 0, alertMetricUnavailable
 		}
 		return float64(countAccountsByCondition(availability.Accounts, func(acc *AccountAvailability) bool {
 			return acc.IsOverloaded
-		})), true
+		})), alertMetricOK
 	case "proxy_expired_count":
 		if s == nil || s.proxyRepo == nil {
-			return 0, false
+			return 0, alertMetricUnavailable
 		}
 		n, err := s.proxyRepo.CountExpired(ctx)
 		if err != nil {
-			return 0, false
+			return 0, alertMetricUnavailable
 		}
-		return float64(n), true
+		return float64(n), alertMetricOK
 	case "proxy_expiring_soon_count":
 		if s == nil || s.proxyRepo == nil {
-			return 0, false
+			return 0, alertMetricUnavailable
 		}
 		n, err := s.proxyRepo.CountExpiringSoon(ctx, time.Now())
 		if err != nil {
-			return 0, false
+			return 0, alertMetricUnavailable
 		}
-		return float64(n), true
+		return float64(n), alertMetricOK
 	}
 
 	overview, err := s.opsRepo.GetDashboardOverview(ctx, &OpsDashboardFilter{
@@ -591,31 +816,103 @@ func (s *OpsAlertEvaluatorService) computeRuleMetric(
 		QueryMode: OpsQueryModeRaw,
 	})
 	if err != nil {
-		return 0, false
+		return 0, alertMetricUnavailable
 	}
 	if overview == nil {
-		return 0, false
+		return 0, alertMetricUnavailable
 	}
 
 	switch strings.TrimSpace(rule.MetricType) {
 	case "success_rate":
-		if overview.RequestCountSLA <= 0 {
-			return 0, false
+		if status := requestSampleStatus(rule, overview.RequestCountSLA); status != alertMetricOK {
+			return 0, status
 		}
-		return overview.SLA * 100, true
+		return overview.SLA * 100, alertMetricOK
 	case "error_rate":
-		if overview.RequestCountSLA <= 0 {
-			return 0, false
+		if status := requestSampleStatus(rule, overview.RequestCountSLA); status != alertMetricOK {
+			return 0, status
 		}
-		return overview.ErrorRate * 100, true
+		return overview.ErrorRate * 100, alertMetricOK
 	case "upstream_error_rate":
-		if overview.RequestCountSLA <= 0 {
-			return 0, false
+		if status := requestSampleStatus(rule, overview.RequestCountSLA); status != alertMetricOK {
+			return 0, status
 		}
-		return overview.UpstreamErrorRate * 100, true
+		return overview.UpstreamErrorRate * 100, alertMetricOK
 	default:
-		return 0, false
+		return 0, alertMetricUnavailable
 	}
+}
+
+func (s *OpsAlertEvaluatorService) applicationPoolSnapshot(ctx context.Context) *OpsSystemMetricsSnapshot {
+	if s == nil || s.opsService == nil {
+		return nil
+	}
+	snap, err := s.opsService.AlertClusterRuntimeSnapshot(ctx)
+	if err != nil || snap == nil {
+		return nil
+	}
+	return snap
+}
+
+// sumOptionalInts adds every value. A missing or negative part makes the sum
+// unknown so an alert does not treat a partial pool reading as zero.
+func sumOptionalInts(parts ...*int) *int {
+	total := 0
+	for _, part := range parts {
+		if part == nil || *part < 0 {
+			return nil
+		}
+		total += *part
+	}
+	return &total
+}
+
+// poolUsagePercent matches the ops dashboard: open database connections
+// (active + idle) or current Redis connections, divided by the summed
+// application pool limit. A missing or non-positive limit is unavailable.
+// Values above 100 are reported as 100, the same cap as the dashboard.
+func poolUsagePercent(used, limit *int) (float64, alertMetricStatus) {
+	if used == nil || *used < 0 || limit == nil || *limit <= 0 {
+		return 0, alertMetricUnavailable
+	}
+	ratio := 100 * float64(*used) / float64(*limit)
+	if ratio > 100 {
+		ratio = 100
+	}
+	return roundTo1DP(ratio), alertMetricOK
+}
+
+func databaseRolePoolUsage(pools []OpsDatabasePoolStats, role string) (float64, alertMetricStatus) {
+	used, limit, samples := 0, 0, 0
+	for _, pool := range pools {
+		if pool.Role != role {
+			continue
+		}
+		if pool.Limit <= 0 || pool.Active < 0 || pool.Idle < 0 {
+			return 0, alertMetricUnavailable
+		}
+		samples++
+		used += pool.Active + pool.Idle
+		limit += pool.Limit
+	}
+	if samples == 0 {
+		return 0, alertMetricUnavailable
+	}
+	return poolUsagePercent(&used, &limit)
+}
+
+func requestSampleStatus(rule *OpsAlertRule, requestCount int64) alertMetricStatus {
+	minRequests := 0
+	if rule != nil {
+		minRequests = rule.MinRequests
+	}
+	if minRequests > 0 && requestCount < int64(minRequests) {
+		return alertMetricInsufficient
+	}
+	if requestCount <= 0 {
+		return alertMetricUnavailable
+	}
+	return alertMetricOK
 }
 
 func compareMetric(value float64, operator string, threshold float64) bool {
@@ -682,6 +979,19 @@ func (s *OpsAlertEvaluatorService) maybeSendAlertEmail(ctx context.Context, runt
 	if event.EmailSent {
 		return false
 	}
+	return s.sendOpsAlertEmail(ctx, runtimeCfg, rule, event, false)
+}
+
+func (s *OpsAlertEvaluatorService) maybeSendResolvedAlertEmail(ctx context.Context, runtimeCfg *OpsAlertRuntimeSettings, rule *OpsAlertRule, event *OpsAlertEvent) bool {
+	if s == nil || s.emailService == nil || s.opsService == nil || event == nil || rule == nil {
+		return false
+	}
+	// Firing already sets EmailSent. Recovery is a separate send and must not
+	// reuse that guard. It still happens only once, at the resolve write.
+	return s.sendOpsAlertEmail(ctx, runtimeCfg, rule, event, true)
+}
+
+func (s *OpsAlertEvaluatorService) sendOpsAlertEmail(ctx context.Context, runtimeCfg *OpsAlertRuntimeSettings, rule *OpsAlertRule, event *OpsAlertEvent, resolved bool) bool {
 	if !rule.NotifyEmail {
 		return false
 	}
@@ -690,7 +1000,9 @@ func (s *OpsAlertEvaluatorService) maybeSendAlertEmail(ctx context.Context, runt
 	if err != nil || emailCfg == nil || !emailCfg.Alert.Enabled {
 		return false
 	}
-
+	if resolved && !emailCfg.Alert.IncludeResolvedAlerts {
+		return false
+	}
 	if len(emailCfg.Alert.Recipients) == 0 {
 		return false
 	}
@@ -704,11 +1016,8 @@ func (s *OpsAlertEvaluatorService) maybeSendAlertEmail(ctx context.Context, runt
 		}
 	}
 
-	// Apply/update rate limiter.
+	// Apply/update rate limiter. Recovery shares the firing budget.
 	s.emailLimiter.SetLimit(emailCfg.Alert.RateLimitPerHour)
-
-	subject := fmt.Sprintf("[Ops Alert][%s] %s", strings.TrimSpace(rule.Severity), strings.TrimSpace(rule.Name))
-	body := buildOpsAlertEmailBody(rule, event)
 
 	anySent := false
 	for _, to := range emailCfg.Alert.Recipients {
@@ -719,14 +1028,28 @@ func (s *OpsAlertEvaluatorService) maybeSendAlertEmail(ctx context.Context, runt
 		if !s.emailLimiter.Allow(time.Now().UTC()) {
 			continue
 		}
+		locale := notificationEmailLocaleChinese
+		if s.emailService.notificationEmailService != nil {
+			locale = s.emailService.notificationEmailService.ResolveOpsEventMailLocale(ctx, addr, NotificationEmailEventOpsAlert)
+		}
+		subject := opsAlertEmailSubject(rule, event, locale)
+		body := buildOpsAlertEmailBody(rule, event, locale)
+		if s.deliverOpsAlertEmail != nil {
+			if err := s.deliverOpsAlertEmail(ctx, addr, subject, body); err != nil {
+				continue
+			}
+			anySent = true
+			continue
+		}
 		if s.emailService.notificationEmailService != nil {
 			if err := s.emailService.notificationEmailService.Send(ctx, NotificationEmailSendInput{
 				Event:          NotificationEmailEventOpsAlert,
+				Locale:         locale,
 				RecipientEmail: addr,
 				RecipientName:  emailRecipientName(addr),
 				SourceType:     "ops_alert",
 				SourceID:       fmt.Sprintf("%d", event.ID),
-				Variables:      opsAlertEmailVariables(rule, event),
+				Variables:      opsAlertEmailVariables(rule, event, locale),
 			}); err == nil {
 				anySent = true
 				continue
@@ -747,16 +1070,44 @@ func (s *OpsAlertEvaluatorService) maybeSendAlertEmail(ctx context.Context, runt
 	return anySent
 }
 
-func opsAlertEmailVariables(rule *OpsAlertRule, event *OpsAlertEvent) map[string]string {
+func opsAlertEmailHeadline(event *OpsAlertEvent, locale string) string {
+	resolved := event != nil && strings.TrimSpace(event.Status) == OpsAlertStatusResolved
+	if normalizeNotificationLocale(locale) == notificationEmailLocaleChinese {
+		if resolved {
+			return "运维恢复"
+		}
+		return "运维告警"
+	}
+	if resolved {
+		return "Ops Resolved"
+	}
+	return "Ops Alert"
+}
+
+func opsAlertEmailSubject(rule *OpsAlertRule, event *OpsAlertEvent, locale string) string {
+	severity := "-"
+	name := "-"
+	if rule != nil {
+		severity = strings.TrimSpace(rule.Severity)
+		name = strings.TrimSpace(rule.Name)
+	}
+	if event != nil && strings.TrimSpace(event.Severity) != "" {
+		severity = event.Severity
+	}
+	return fmt.Sprintf("[%s][%s] %s", opsAlertEmailHeadline(event, locale), severity, name)
+}
+
+func opsAlertEmailVariables(rule *OpsAlertRule, event *OpsAlertEvent, locale string) map[string]string {
 	variables := map[string]string{
 		"rule_name":         "-",
 		"severity":          "-",
 		"alert_status":      "-",
+		"alert_headline":    opsAlertEmailHeadline(event, locale),
 		"metric_type":       "-",
 		"operator":          "-",
 		"metric_value":      "-",
 		"threshold_value":   "-",
-		"triggered_at":      time.Now().UTC().Format(time.RFC3339),
+		"triggered_at":      formatOpsAlertTime(time.Now()),
 		"alert_description": "-",
 	}
 	if rule != nil {
@@ -771,6 +1122,9 @@ func opsAlertEmailVariables(rule *OpsAlertRule, event *OpsAlertEvent) map[string
 	}
 	if event != nil {
 		variables["alert_status"] = strings.TrimSpace(event.Status)
+		if event.Severity != "" {
+			variables["severity"] = event.Severity
+		}
 		if event.MetricValue != nil {
 			variables["metric_value"] = fmt.Sprintf("%.2f", *event.MetricValue)
 		}
@@ -778,7 +1132,9 @@ func opsAlertEmailVariables(rule *OpsAlertRule, event *OpsAlertEvent) map[string
 			variables["threshold_value"] = fmt.Sprintf("%.2f", *event.ThresholdValue)
 		}
 		if !event.FiredAt.IsZero() {
-			variables["triggered_at"] = event.FiredAt.UTC().Format(time.RFC3339)
+			variables["triggered_at"] = formatOpsAlertTime(event.FiredAt)
+		} else {
+			variables["triggered_at"] = formatOpsAlertTime(time.Now())
 		}
 		if strings.TrimSpace(event.Description) != "" {
 			variables["alert_description"] = strings.TrimSpace(event.Description)
@@ -787,7 +1143,18 @@ func opsAlertEmailVariables(rule *OpsAlertRule, event *OpsAlertEvent) map[string
 	return variables
 }
 
-func buildOpsAlertEmailBody(rule *OpsAlertRule, event *OpsAlertEvent) string {
+func formatOpsAlertTime(t time.Time) string {
+	if t.IsZero() {
+		t = time.Now()
+	}
+	loc, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		return t.UTC().Format(time.RFC3339) + " UTC"
+	}
+	return t.In(loc).Format("2006-01-02 15:04:05 -0700") + " Asia/Shanghai"
+}
+
+func buildOpsAlertEmailBody(rule *OpsAlertRule, event *OpsAlertEvent, locale string) string {
 	if rule == nil || event == nil {
 		return ""
 	}
@@ -800,8 +1167,35 @@ func buildOpsAlertEmailBody(rule *OpsAlertRule, event *OpsAlertEvent) string {
 	if event.ThresholdValue != nil {
 		threshold = fmt.Sprintf("%.2f", *event.ThresholdValue)
 	}
+	severity := event.Severity
+	if severity == "" {
+		severity = rule.Severity
+	}
+	firedAt := formatOpsAlertTime(event.FiredAt)
+	headline := htmlEscape(opsAlertEmailHeadline(event, locale))
+	if normalizeNotificationLocale(locale) == notificationEmailLocaleChinese {
+		return fmt.Sprintf(`
+<h2>%s</h2>
+<p><b>规则</b>：%s</p>
+<p><b>严重级别</b>：%s</p>
+<p><b>状态</b>：%s</p>
+<p><b>指标</b>：%s %s %s</p>
+<p><b>触发时间</b>：%s</p>
+<p><b>说明</b>：%s</p>
+`,
+			headline,
+			htmlEscape(rule.Name),
+			htmlEscape(severity),
+			htmlEscape(event.Status),
+			htmlEscape(metric),
+			htmlEscape(rule.Operator),
+			htmlEscape(fmt.Sprintf("%s（阈值 %s）", value, threshold)),
+			htmlEscape(firedAt),
+			htmlEscape(event.Description),
+		)
+	}
 	return fmt.Sprintf(`
-<h2>Ops Alert</h2>
+<h2>%s</h2>
 <p><b>Rule</b>: %s</p>
 <p><b>Severity</b>: %s</p>
 <p><b>Status</b>: %s</p>
@@ -809,13 +1203,14 @@ func buildOpsAlertEmailBody(rule *OpsAlertRule, event *OpsAlertEvent) string {
 <p><b>Fired at</b>: %s</p>
 <p><b>Description</b>: %s</p>
 `,
+		headline,
 		htmlEscape(rule.Name),
-		htmlEscape(rule.Severity),
+		htmlEscape(severity),
 		htmlEscape(event.Status),
 		htmlEscape(metric),
 		htmlEscape(rule.Operator),
 		htmlEscape(fmt.Sprintf("%s (threshold %s)", value, threshold)),
-		event.FiredAt.Format(time.RFC3339),
+		htmlEscape(firedAt),
 		htmlEscape(event.Description),
 	)
 }

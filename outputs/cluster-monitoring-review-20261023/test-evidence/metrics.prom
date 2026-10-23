@@ -1,0 +1,67 @@
+# HELP modurelay_cluster_qps Completed requests per second across the cluster over the last 60 seconds.
+# TYPE modurelay_cluster_qps gauge
+modurelay_cluster_qps 0
+# HELP modurelay_cluster_tps Input output and cache tokens per second across the cluster over the last 60 seconds.
+# TYPE modurelay_cluster_tps gauge
+modurelay_cluster_tps 0
+# HELP modurelay_cluster_requests_window Completed successful and failed requests across the cluster in the last 60 seconds.
+# TYPE modurelay_cluster_requests_window gauge
+modurelay_cluster_requests_window 0
+# HELP modurelay_cluster_errors_window Failed requests across the cluster in the last 60 seconds.
+# TYPE modurelay_cluster_errors_window gauge
+modurelay_cluster_errors_window 0
+# HELP modurelay_cluster_tokens_window Tokens across the cluster in the last 60 seconds.
+# TYPE modurelay_cluster_tokens_window gauge
+modurelay_cluster_tokens_window 0
+# HELP modurelay_cluster_window_end_timestamp_seconds End timestamp of the shared traffic measurement window.
+# TYPE modurelay_cluster_window_end_timestamp_seconds gauge
+modurelay_cluster_window_end_timestamp_seconds 1792740265
+# HELP modurelay_cluster_instances Instances with a fresh runtime heartbeat; expired instances are excluded after 45 seconds.
+# TYPE modurelay_cluster_instances gauge
+modurelay_cluster_instances 1
+# HELP modurelay_cluster_runtime_timestamp_seconds Newest runtime heartbeat timestamp.
+# TYPE modurelay_cluster_runtime_timestamp_seconds gauge
+modurelay_cluster_runtime_timestamp_seconds 1792740265
+# HELP modurelay_database_instance_connections Shared database-server connections; do not sum across application pods.
+# TYPE modurelay_database_instance_connections gauge
+modurelay_database_instance_connections 4
+# HELP modurelay_database_instance_max_connections Shared database-server connection capacity from standard server protocol.
+# TYPE modurelay_database_instance_max_connections gauge
+modurelay_database_instance_max_connections 100
+# HELP modurelay_redis_instance_connections Shared database-server connections; do not sum across application pods.
+# TYPE modurelay_redis_instance_connections gauge
+modurelay_redis_instance_connections 10
+# HELP modurelay_redis_instance_max_connections Shared database-server connection capacity from standard server protocol.
+# TYPE modurelay_redis_instance_max_connections gauge
+modurelay_redis_instance_max_connections 10000
+# HELP modurelay_ops_job_last_success_timestamp_seconds Last successful shared Ops background job.
+# TYPE modurelay_ops_job_last_success_timestamp_seconds gauge
+modurelay_ops_job_last_success_timestamp_seconds{job_name="ops_metrics_collector"} 1792740253
+modurelay_ops_job_last_success_timestamp_seconds{job_name="ops_alert_evaluator"} 1792740265
+# HELP modurelay_cluster_db_connections_active Sum of active primary database pool connections across live instances.
+# TYPE modurelay_cluster_db_connections_active gauge
+modurelay_cluster_db_connections_active 8
+# HELP modurelay_cluster_db_connections_idle Sum of idle primary database pool connections across live instances.
+# TYPE modurelay_cluster_db_connections_idle gauge
+modurelay_cluster_db_connections_idle 2
+# HELP modurelay_cluster_db_connections_limit Sum of configured primary database pool connection limits across live instances.
+# TYPE modurelay_cluster_db_connections_limit gauge
+modurelay_cluster_db_connections_limit 10
+# HELP modurelay_cluster_redis_connections Sum of Redis connections across live instances and Redis nodes.
+# TYPE modurelay_cluster_redis_connections gauge
+modurelay_cluster_redis_connections 4
+# HELP modurelay_cluster_redis_connections_idle Sum of idle Redis connections across live instances and Redis nodes.
+# TYPE modurelay_cluster_redis_connections_idle gauge
+modurelay_cluster_redis_connections_idle 4
+# HELP modurelay_cluster_goroutines Sum of goroutines across live instances.
+# TYPE modurelay_cluster_goroutines gauge
+modurelay_cluster_goroutines 146
+# HELP modurelay_cluster_cpu_usage_percent Mean CPU utilization percentage across live instances.
+# TYPE modurelay_cluster_cpu_usage_percent gauge
+modurelay_cluster_cpu_usage_percent 6.3
+# HELP modurelay_cluster_memory_used_bytes Sum of memory usage across live instances.
+# TYPE modurelay_cluster_memory_used_bytes gauge
+modurelay_cluster_memory_used_bytes 105906176
+# HELP modurelay_cluster_memory_limit_bytes Sum of reported memory capacity across live instances.
+# TYPE modurelay_cluster_memory_limit_bytes gauge
+modurelay_cluster_memory_limit_bytes 1073741824

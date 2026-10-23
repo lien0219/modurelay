@@ -39,6 +39,8 @@
         @exit-fullscreen="exitFullscreen"
       />
 
+      <OpsMonitoringPanel v-if="opsEnabled && !(loading && !hasLoadedOnce)" :refresh-token="dashboardRefreshToken" />
+
       <!-- Row: Concurrency + Throughput -->
       <div v-if="opsEnabled && !(loading && !hasLoadedOnce)" class="grid grid-cols-1 gap-6 lg:grid-cols-4">
         <div class="lg:col-span-1 min-h-[360px]">
@@ -157,6 +159,7 @@ import {
   type OpsMetricThresholds
 } from '@/api/admin/ops'
 import { useAdminSettingsStore, useAppStore } from '@/stores'
+import OpsMonitoringPanel from './components/OpsMonitoringPanel.vue'
 import OpsDashboardHeader from './components/OpsDashboardHeader.vue'
 import OpsDashboardSkeleton from './components/OpsDashboardSkeleton.vue'
 import OpsConcurrencyCard from './components/OpsConcurrencyCard.vue'

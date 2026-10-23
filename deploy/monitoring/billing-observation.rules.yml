@@ -1,0 +1,15 @@
+groups:
+  - name: modurelay-billing-observation-health
+    interval: 15s
+    rules:
+      - alert: ModuRelayBillingObservationGap
+        expr: >-
+          (max by (cluster,namespace,service,pod,uid,instance) (modurelay_billing_observation_unpersisted) > 0)
+          or
+          (sum by (cluster,namespace,service,pod,uid,instance) (increase(modurelay_billing_observation_missed_total[5m])) > 0)
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "计费观察记录存在未持久化缺口，财务状态应保持未知"
+          description: "检查数据库和结算证据，按管理员审计流程确认缺口；本告警不会重放结算或自动补扣款。"

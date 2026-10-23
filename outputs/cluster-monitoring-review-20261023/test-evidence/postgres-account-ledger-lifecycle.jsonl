@@ -1,0 +1,8 @@
+{"Time":"2026-10-23T14:59:10.957411+08:00","Action":"start","Package":"github.com/Wei-Shaw/sub2api/internal/repository"}
+{"Time":"2026-10-23T14:59:13.486744+08:00","Action":"run","Package":"github.com/Wei-Shaw/sub2api/internal/repository","Test":"TestMonitoringBillingLedgerCoversHoldRefundAndDirectSQLPostgres"}
+{"Time":"2026-10-23T14:59:13.490687+08:00","Action":"output","Package":"github.com/Wei-Shaw/sub2api/internal/repository","Test":"TestMonitoringBillingLedgerCoversHoldRefundAndDirectSQLPostgres","Output":"=== RUN   TestMonitoringBillingLedgerCoversHoldRefundAndDirectSQLPostgres\n","OutputType":"frame"}
+{"Time":"2026-10-23T14:59:15.609949+08:00","Action":"output","Package":"github.com/Wei-Shaw/sub2api/internal/repository","Test":"TestMonitoringBillingLedgerCoversHoldRefundAndDirectSQLPostgres","Output":"--- PASS: TestMonitoringBillingLedgerCoversHoldRefundAndDirectSQLPostgres (2.12s)\n","OutputType":"frame"}
+{"Time":"2026-10-23T14:59:15.610693+08:00","Action":"pass","Package":"github.com/Wei-Shaw/sub2api/internal/repository","Test":"TestMonitoringBillingLedgerCoversHoldRefundAndDirectSQLPostgres","Elapsed":2.12}
+{"Time":"2026-10-23T14:59:15.613133+08:00","Action":"output","Package":"github.com/Wei-Shaw/sub2api/internal/repository","Output":"PASS\n","OutputType":"frame"}
+{"Time":"2026-10-23T14:59:15.616909+08:00","Action":"output","Package":"github.com/Wei-Shaw/sub2api/internal/repository","Output":"ok  \tgithub.com/Wei-Shaw/sub2api/internal/repository\t4.656s\n"}
+{"Time":"2026-10-23T14:59:15.617041+08:00","Action":"pass","Package":"github.com/Wei-Shaw/sub2api/internal/repository","Elapsed":4.661}

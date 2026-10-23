@@ -1,0 +1,27 @@
+# Optional local/standalone log backend. All host listeners are loopback-only.
+# Feed JSON application logs through LOG_DIRECTORY (read-only), no Docker socket.
+services:
+  loki:
+    image: grafana/loki:3.7.9
+    command: ["-config.file=/etc/loki/local.yml"]
+    ports: ["127.0.0.1:${LOKI_PORT:-3100}:3100"]
+    volumes:
+      - ./loki.yml:/etc/loki/local.yml:ro
+      - loki-data:/loki
+    restart: unless-stopped
+  fluent-bit:
+    image: fluent/fluent-bit:5.1.5
+    command: ["-c", "/fluent-bit/etc/modurelay.conf"]
+    environment:
+      LOKI_HOST: loki
+      LOKI_PORT: "3100"
+    volumes:
+      - ./fluent-bit.conf:/fluent-bit/etc/modurelay.conf:ro
+      - ./parsers.conf:/fluent-bit/etc/modurelay-parsers.conf:ro
+      - ${LOG_DIRECTORY:?Set LOG_DIRECTORY to an absolute directory of ModuRelay JSON log files}:/logs:ro
+      - log-cursors:/state
+    depends_on: [loki]
+    restart: unless-stopped
+volumes:
+  loki-data:
+  log-cursors:

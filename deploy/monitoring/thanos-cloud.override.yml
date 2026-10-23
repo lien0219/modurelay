@@ -1,0 +1,5 @@
+# Merge after thanos-retention.compose.yml; omit --profile local-object-store.
+# This file is a secret containing the selected provider's Thanos object config.
+secrets:
+  object_store:
+    file: ${THANOS_OBJECT_STORE_CONFIG:?Set an absolute path to the approved cloud object-store secret}

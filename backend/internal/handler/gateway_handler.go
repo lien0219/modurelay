@@ -513,6 +513,9 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			} else {
 				result, err = h.geminiCompatService.Forward(requestCtx, c, account, body)
 			}
+			if result != nil {
+				service.SetOpsSuccessfulFirstToken(c, result.FirstTokenMs, err)
+			}
 			if accountReleaseFunc != nil {
 				accountReleaseFunc()
 			}
@@ -926,6 +929,9 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				result, err = h.antigravityGatewayService.Forward(requestCtx, c, account, attemptBody, hasBoundSession)
 			} else {
 				result, err = h.gatewayService.Forward(requestCtx, c, account, attemptParsedReq)
+			}
+			if result != nil {
+				service.SetOpsSuccessfulFirstToken(c, result.FirstTokenMs, err)
 			}
 
 			// 兜底释放串行锁（正常情况已通过回调提前释放）

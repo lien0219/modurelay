@@ -1,0 +1,390 @@
+{
+  "date": "2026-10-23",
+  "scope": "Local isolated Docker evidence; not production acceptance; no external notification sent",
+  "watchdog_unit_tests": {
+    "passed": 2,
+    "failed": 0
+  },
+  "billing_observation_promtool": {
+    "passed_scenarios": 3,
+    "failed": 0
+  },
+  "stack": {
+    "scope": "isolated local Docker evidence; no external notification sent",
+    "project": "modurelay-monitoring-test-45431",
+    "ports": {
+      "prometheus": 61937,
+      "query": 61938,
+      "alertmanager": 61939,
+      "receiver": 61940
+    },
+    "live_thanos_series": 1,
+    "healthy_thanos_components": 4,
+    "object_store_historical_query": true,
+    "watchdog_received": true,
+    "alertmanager_test_received": true,
+    "receiver_persistence": true,
+    "missing_pipeline_detected": true,
+    "received_events": 2,
+    "image_versions": [
+      {
+        "ID": "sha256:a9e72a5032ccb84a8855186b34db4a68bf1f4983d915a14fa35b0bfe7ff1f56b",
+        "ContainerName": "modurelay-monitoring-test-45431-alertmanager-1",
+        "Repository": "prom/alertmanager",
+        "Tag": "v0.34.1",
+        "Size": 77408309
+      },
+      {
+        "ID": "sha256:8bb843a5681445294774322c697112e781a51d5c8ed24773f32254884a621b69",
+        "ContainerName": "modurelay-monitoring-test-45431-bucket-init-1",
+        "Repository": "python",
+        "Tag": "3.13.8-alpine3.22",
+        "Size": 48204161
+      },
+      {
+        "ID": "sha256:d05aff75043060461827996f8fd7f86712f16a379049f465fdf26c3f6fee8031",
+        "ContainerName": "modurelay-monitoring-test-45431-compact-1",
+        "Repository": "quay.io/thanos/thanos",
+        "Tag": "v0.42.4",
+        "Size": 259576075
+      },
+      {
+        "ID": "sha256:8f08aee614800a237906bd48114d733e5ac5bfac4ccdf731f141b0e880d7a253",
+        "ContainerName": "modurelay-monitoring-test-45431-minio-1",
+        "Repository": "minio/minio",
+        "Tag": "",
+        "Size": 167121998
+      },
+      {
+        "ID": "sha256:345c03f8738a25e86baee35b1ee84cf1007036cbe75f51a2fa8965dd91374b9a",
+        "ContainerName": "modurelay-monitoring-test-45431-prometheus-1",
+        "Repository": "prom/prometheus",
+        "Tag": "v3.15.1",
+        "Size": 250163419
+      },
+      {
+        "ID": "sha256:d05aff75043060461827996f8fd7f86712f16a379049f465fdf26c3f6fee8031",
+        "ContainerName": "modurelay-monitoring-test-45431-query-1",
+        "Repository": "quay.io/thanos/thanos",
+        "Tag": "v0.42.4",
+        "Size": 259576075
+      },
+      {
+        "ID": "sha256:d05aff75043060461827996f8fd7f86712f16a379049f465fdf26c3f6fee8031",
+        "ContainerName": "modurelay-monitoring-test-45431-sidecar-1",
+        "Repository": "quay.io/thanos/thanos",
+        "Tag": "v0.42.4",
+        "Size": 259576075
+      },
+      {
+        "ID": "sha256:d05aff75043060461827996f8fd7f86712f16a379049f465fdf26c3f6fee8031",
+        "ContainerName": "modurelay-monitoring-test-45431-store-1",
+        "Repository": "quay.io/thanos/thanos",
+        "Tag": "v0.42.4",
+        "Size": 259576075
+      },
+      {
+        "ID": "sha256:8bb843a5681445294774322c697112e781a51d5c8ed24773f32254884a621b69",
+        "ContainerName": "modurelay-monitoring-test-45431-volume-init-1",
+        "Repository": "python",
+        "Tag": "3.13.8-alpine3.22",
+        "Size": 48204161
+      },
+      {
+        "ID": "sha256:484d16361e85ecfef40d85d5e6ca70716bd872315673e1d182b0785f0e3b8199",
+        "ContainerName": "modurelay-monitoring-test-45431-watchdog-receiver-1",
+        "Repository": "modurelay-monitoring-receiver",
+        "Tag": "1",
+        "Size": 48212598
+      }
+    ]
+  },
+  "retention": {
+    "scope": "isolated real Thanos compactor; raw 31d retention only; downsample tier expiry not claimed",
+    "prometheus_version": "v3.15.1",
+    "thanos_version": "v0.42.4",
+    "before_blocks": [
+      "01M5KRTWD0B8P4QW3XBMP28YD1",
+      "01M5KRTY4VD1CNBTT4XE46S1ZC",
+      "01M5KRTYYM9AXB2RZS3A32E787"
+    ],
+    "after_blocks": [
+      "01M5KRTWD0B8P4QW3XBMP28YD1"
+    ],
+    "fixtures": {
+      "01M5KRTWD0B8P4QW3XBMP28YD1": {
+        "age_days": 5,
+        "should_retain": true
+      },
+      "01M5KRTY4VD1CNBTT4XE46S1ZC": {
+        "age_days": 40,
+        "should_retain": false
+      },
+      "01M5KRTYYM9AXB2RZS3A32E787": {
+        "age_days": 400,
+        "should_retain": false
+      }
+    },
+    "raw_older_than_31d_deleted": true,
+    "recent_raw_retained": true,
+    "production_delete_delay_unchanged": true
+  },
+  "history": {
+    "scope": "local synthetic baseline; not production acceptance or a production SLO",
+    "image": "prom/prometheus:v3.15.1",
+    "generated_days": 31,
+    "sampling_seconds": 60,
+    "pods": 3,
+    "input_series": 57,
+    "input_samples": 2544480,
+    "fixture_bytes": 595356112,
+    "tsdb_bytes": 7952370,
+    "free_bytes_before": 13262475264,
+    "free_bytes_after": 15779131392,
+    "local_target_p95_seconds": 2.0,
+    "runs": 5,
+    "queries": {
+      "http_5xx_rate": "100 * ((sum by (cluster,namespace,service,source) (max by (cluster,namespace,service,pod,uid,instance,source,method,route,protocol,status_code) (increase(modurelay_http_requests_total{status_code=~\"5..\",cluster=\"benchmark\",namespace=\"benchmark\",service=\"api\",source=\"app\"}[5m]) and (time() - timestamp(modurelay_http_requests_total{status_code=~\"5..\",cluster=\"benchmark\",namespace=\"benchmark\",service=\"api\",source=\"app\"}) <= 60)))) and on (cluster,namespace,service) ((min by (cluster,namespace,service) (up{job=\"modurelay-instance\",service=\"api\",cluster=\"benchmark\",namespace=\"benchmark\"}) == 1) and on (cluster,namespace,service) (max by (cluster,namespace,service) (time() - timestamp(up{job=\"modurelay-instance\",service=\"api\",cluster=\"benchmark\",namespace=\"benchmark\"})) <= 60)) or on (cluster,namespace,service,source) (0 * (sum by (cluster,namespace,service,source) (max by (cluster,namespace,service,pod,uid,instance,source,method,route,protocol,status_code) (increase(modurelay_http_requests_total{cluster=\"benchmark\",namespace=\"benchmark\",service=\"api\",source=\"app\"}[5m]) and (time() - timestamp(modurelay_http_requests_total{cluster=\"benchmark\",namespace=\"benchmark\",service=\"api\",source=\"app\"}) <= 60)))) and on (cluster,namespace,service) ((min by (cluster,namespace,service) (up{job=\"modurelay-instance\",service=\"api\",cluster=\"benchmark\",namespace=\"benchmark\"}) == 1) and on (cluster,namespace,service) (max by (cluster,namespace,service) (time() - timestamp(up{job=\"modurelay-instance\",service=\"api\",cluster=\"benchmark\",namespace=\"benchmark\"})) <= 60)))) / ((sum by (cluster,namespace,service,source) (max by (cluster,namespace,service,pod,uid,instance,source,method,route,protocol,status_code) (increase(modurelay_http_requests_total{cluster=\"benchmark\",namespace=\"benchmark\",service=\"api\",source=\"app\"}[5m]) and (time() - timestamp(modurelay_http_requests_total{cluster=\"benchmark\",namespace=\"benchmark\",service=\"api\",source=\"app\"}) <= 60)))) and on (cluster,namespace,service) ((min by (cluster,namespace,service) (up{job=\"modurelay-instance\",service=\"api\",cluster=\"benchmark\",namespace=\"benchmark\"}) == 1) and on (cluster,namespace,service) (max by (cluster,namespace,service) (time() - timestamp(up{job=\"modurelay-instance\",service=\"api\",cluster=\"benchmark\",namespace=\"benchmark\"})) <= 60)) > 0)",
+      "http_p95_ms": "1000 * histogram_quantile(0.95, (sum by (cluster,namespace,service,source,le) (max by (cluster,namespace,service,pod,uid,instance,source,method,route,protocol,le) (rate(modurelay_http_request_duration_seconds_bucket{cluster=\"benchmark\",namespace=\"benchmark\",service=\"api\",source=\"app\"}[5m]) and (time() - timestamp(modurelay_http_request_duration_seconds_bucket{cluster=\"benchmark\",namespace=\"benchmark\",service=\"api\",source=\"app\"}) <= 60)))) and on (cluster,namespace,service) ((min by (cluster,namespace,service) (up{job=\"modurelay-instance\",service=\"api\",cluster=\"benchmark\",namespace=\"benchmark\"}) == 1) and on (cluster,namespace,service) (max by (cluster,namespace,service) (time() - timestamp(up{job=\"modurelay-instance\",service=\"api\",cluster=\"benchmark\",namespace=\"benchmark\"})) <= 60)))",
+      "http_p99_ms": "1000 * histogram_quantile(0.99, (sum by (cluster,namespace,service,source,le) (max by (cluster,namespace,service,pod,uid,instance,source,method,route,protocol,le) (rate(modurelay_http_request_duration_seconds_bucket{cluster=\"benchmark\",namespace=\"benchmark\",service=\"api\",source=\"app\"}[5m]) and (time() - timestamp(modurelay_http_request_duration_seconds_bucket{cluster=\"benchmark\",namespace=\"benchmark\",service=\"api\",source=\"app\"}) <= 60)))) and on (cluster,namespace,service) ((min by (cluster,namespace,service) (up{job=\"modurelay-instance\",service=\"api\",cluster=\"benchmark\",namespace=\"benchmark\"}) == 1) and on (cluster,namespace,service) (max by (cluster,namespace,service) (time() - timestamp(up{job=\"modurelay-instance\",service=\"api\",cluster=\"benchmark\",namespace=\"benchmark\"})) <= 60)))",
+      "qps": "(sum by (cluster,namespace,service,source) (max by (cluster,namespace,service,pod,uid,instance,source,method,route,protocol,status_code) (rate(modurelay_http_requests_total{cluster=\"benchmark\",namespace=\"benchmark\",service=\"api\",source=\"app\"}[5m]) and (time() - timestamp(modurelay_http_requests_total{cluster=\"benchmark\",namespace=\"benchmark\",service=\"api\",source=\"app\"}) <= 60)))) and on (cluster,namespace,service) ((min by (cluster,namespace,service) (up{job=\"modurelay-instance\",service=\"api\",cluster=\"benchmark\",namespace=\"benchmark\"}) == 1) and on (cluster,namespace,service) (max by (cluster,namespace,service) (time() - timestamp(up{job=\"modurelay-instance\",service=\"api\",cluster=\"benchmark\",namespace=\"benchmark\"})) <= 60))",
+      "request_count": "(sum by (cluster,namespace,service,source) (max by (cluster,namespace,service,pod,uid,instance,source,method,route,protocol,status_code) (increase(modurelay_http_requests_total{cluster=\"benchmark\",namespace=\"benchmark\",service=\"api\",source=\"app\"}[5m]) and (time() - timestamp(modurelay_http_requests_total{cluster=\"benchmark\",namespace=\"benchmark\",service=\"api\",source=\"app\"}) <= 60)))) and on (cluster,namespace,service) ((min by (cluster,namespace,service) (up{job=\"modurelay-instance\",service=\"api\",cluster=\"benchmark\",namespace=\"benchmark\"}) == 1) and on (cluster,namespace,service) (max by (cluster,namespace,service) (time() - timestamp(up{job=\"modurelay-instance\",service=\"api\",cluster=\"benchmark\",namespace=\"benchmark\"})) <= 60))"
+    },
+    "results": [
+      {
+        "metric": "http_5xx_rate",
+        "days": 7,
+        "step_seconds": 300,
+        "returned_series": 1,
+        "points": 2017,
+        "p50_seconds": 0.3052055419975659,
+        "p95_seconds": 0.3946191249997355,
+        "max_seconds": 0.3946191249997355,
+        "local_target_met": true,
+        "durations_seconds": [
+          0.32150154099508654,
+          0.2916268749977462,
+          0.28692612500162795,
+          0.3052055419975659,
+          0.3946191249997355
+        ]
+      },
+      {
+        "metric": "http_p95_ms",
+        "days": 7,
+        "step_seconds": 300,
+        "returned_series": 1,
+        "points": 2017,
+        "p50_seconds": 0.2607419999985723,
+        "p95_seconds": 0.2872310410020873,
+        "max_seconds": 0.2872310410020873,
+        "local_target_met": true,
+        "durations_seconds": [
+          0.24061095900833607,
+          0.2423328339937143,
+          0.2607419999985723,
+          0.28028520799125545,
+          0.2872310410020873
+        ]
+      },
+      {
+        "metric": "http_p99_ms",
+        "days": 7,
+        "step_seconds": 300,
+        "returned_series": 1,
+        "points": 2017,
+        "p50_seconds": 0.5599751659901813,
+        "p95_seconds": 0.5932283749862108,
+        "max_seconds": 0.5932283749862108,
+        "local_target_met": true,
+        "durations_seconds": [
+          0.34299275001103524,
+          0.5621482909918996,
+          0.49234362499555573,
+          0.5932283749862108,
+          0.5599751659901813
+        ]
+      },
+      {
+        "metric": "qps",
+        "days": 7,
+        "step_seconds": 300,
+        "returned_series": 1,
+        "points": 2017,
+        "p50_seconds": 0.253149083990138,
+        "p95_seconds": 0.3483677920012269,
+        "max_seconds": 0.3483677920012269,
+        "local_target_met": true,
+        "durations_seconds": [
+          0.2449625840090448,
+          0.31831129200872965,
+          0.24823725000896957,
+          0.3483677920012269,
+          0.253149083990138
+        ]
+      },
+      {
+        "metric": "request_count",
+        "days": 7,
+        "step_seconds": 300,
+        "returned_series": 1,
+        "points": 2017,
+        "p50_seconds": 0.11049187500611879,
+        "p95_seconds": 0.2642386249935953,
+        "max_seconds": 0.2642386249935953,
+        "local_target_met": true,
+        "durations_seconds": [
+          0.2642386249935953,
+          0.1713240419921931,
+          0.11015199999383185,
+          0.11049187500611879,
+          0.1097092080017319
+        ]
+      },
+      {
+        "metric": "http_5xx_rate",
+        "days": 30,
+        "step_seconds": 900,
+        "returned_series": 1,
+        "points": 2881,
+        "p50_seconds": 2.708361208002316,
+        "p95_seconds": 3.658874583998113,
+        "max_seconds": 3.658874583998113,
+        "local_target_met": false,
+        "durations_seconds": [
+          2.708361208002316,
+          2.577872625013697,
+          2.597436916999868,
+          3.658874583998113,
+          3.4567821660020854
+        ]
+      },
+      {
+        "metric": "http_p95_ms",
+        "days": 30,
+        "step_seconds": 900,
+        "returned_series": 1,
+        "points": 2881,
+        "p50_seconds": 2.6555044170090696,
+        "p95_seconds": 3.7722209170024144,
+        "max_seconds": 3.7722209170024144,
+        "local_target_met": false,
+        "durations_seconds": [
+          2.6555044170090696,
+          2.3658222919912077,
+          3.7684762499993667,
+          3.7722209170024144,
+          2.465747166002984
+        ]
+      },
+      {
+        "metric": "http_p99_ms",
+        "days": 30,
+        "step_seconds": 900,
+        "returned_series": 1,
+        "points": 2881,
+        "p50_seconds": 2.3282849169918336,
+        "p95_seconds": 2.948573417001171,
+        "max_seconds": 2.948573417001171,
+        "local_target_met": false,
+        "durations_seconds": [
+          2.3631363329914166,
+          2.1347675410070224,
+          2.3282849169918336,
+          2.948573417001171,
+          2.1067591669998365
+        ]
+      },
+      {
+        "metric": "qps",
+        "days": 30,
+        "step_seconds": 900,
+        "returned_series": 1,
+        "points": 2881,
+        "p50_seconds": 1.040490499988664,
+        "p95_seconds": 1.241385999994236,
+        "max_seconds": 1.241385999994236,
+        "local_target_met": true,
+        "durations_seconds": [
+          1.040490499988664,
+          1.2033306669909507,
+          1.0247242920013377,
+          1.241385999994236,
+          0.9902349579933798
+        ]
+      },
+      {
+        "metric": "request_count",
+        "days": 30,
+        "step_seconds": 900,
+        "returned_series": 1,
+        "points": 2881,
+        "p50_seconds": 0.9841240420064423,
+        "p95_seconds": 0.9968395839969162,
+        "max_seconds": 0.9968395839969162,
+        "local_target_met": true,
+        "durations_seconds": [
+          0.9841240420064423,
+          0.9827473339973949,
+          0.9800312500010477,
+          0.9968395839969162,
+          0.9853983329958282
+        ]
+      }
+    ]
+  },
+  "downsampling": {
+    "scope": "isolated real Thanos compactor downsampling; one synthetic Counter, no production load claim",
+    "prometheus_module": "v0.315.1",
+    "thanos_image": "quay.io/thanos/thanos:v0.42.4",
+    "input_series": 1,
+    "input_samples": 3457,
+    "input_span_days": 12,
+    "compactor_iterations": 3,
+    "resolutions_ms": [
+      0,
+      300000,
+      3600000
+    ],
+    "blocks": [
+      {
+        "ulid": "01M5KSXX97CJNV4EK9HF8ZH9N1",
+        "resolution_ms": 0,
+        "min_time_ms": 1787554800000,
+        "max_time_ms": 1788591600001,
+        "stats": {
+          "numSamples": 3457,
+          "numFloatSamples": 3457,
+          "numSeries": 1,
+          "numChunks": 30
+        }
+      },
+      {
+        "ulid": "01M5KSXY6CZTBNKGWFM92BJTWA",
+        "resolution_ms": 300000,
+        "min_time_ms": 1787554800000,
+        "max_time_ms": 1788591600001,
+        "stats": {
+          "numSamples": 3457,
+          "numFloatSamples": 3457,
+          "numSeries": 1,
+          "numChunks": 5
+        }
+      },
+      {
+        "ulid": "01M5KSXYGG7VC77P5T2FYDXK3N",
+        "resolution_ms": 3600000,
+        "min_time_ms": 1787554800000,
+        "max_time_ms": 1788591600001,
+        "stats": {
+          "numSamples": 292,
+          "numFloatSamples": 3457,
+          "numSeries": 1,
+          "numChunks": 5
+        }
+      }
+    ],
+    "generated_5m": true,
+    "generated_1h": true
+  }
+}

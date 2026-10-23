@@ -253,7 +253,33 @@ export interface OpsOpenAITokenStatsParams {
   top_n?: number
 }
 
+export interface OpsDatabasePoolStats {
+  instance: string
+  role: 'primary' | 'advisory_lock' | 'read_replica'
+  active: number
+  idle: number
+  limit: number
+  wait_count: number
+  wait_seconds: number
+}
+export interface OpsDatabaseInstanceCapacity {
+  state: 'Available' | 'Unknown'
+  source: string
+  used: number | null
+  limit: number | null
+  node?: string
+  nodes?: OpsDatabaseInstanceCapacity[]
+}
+export interface OpsDatabaseCapacity {
+  database_pools?: OpsDatabasePoolStats[]
+  postgresql: OpsDatabaseInstanceCapacity
+  redis: OpsDatabaseInstanceCapacity
+  postgresql_pool_limit: number | null
+  redis_pool_limit: number | null
+}
+
 export interface OpsSystemMetricsSnapshot {
+  capacity?: OpsDatabaseCapacity | null
   id: number
   created_at: string
   window_minutes: number
@@ -683,11 +709,75 @@ export type OpsPhase = string
 export type AlertSeverity = 'critical' | 'warning' | 'info'
 export type ThresholdMode = 'count' | 'percentage' | 'both'
 export type MetricType =
+  | 'db_advisory_lock_pool_usage_percent'
+  | 'db_read_replica_pool_usage_percent'
+  | 'billing_ledger_mismatches'
+  | 'billing_compensation_backlog'
+  | 'billing_failed_settlements'
+  | 'request_count_started'
+  | 'pod_oom_count'
+  | 'hpa_target_cpu_utilization_percent'
+  | 'hpa_target_memory_utilization_percent'
+  | 'deployment_cpu_usage_percent'
+  | 'deployment_memory_usage_percent'
+  | 'deployment_restarts'
+  | 'deployment_oom'
+  | 'deployment_oom_count'
+  | 'db_instance_connections'
+  | 'db_instance_limit'
+  | 'redis_instance_connections'
+  | 'redis_instance_limit'
+  | 'qps_started'
+  | 'rpm_started'
+  | 'db_instance_usage_percent'
+  | 'redis_instance_usage_percent'
+  | 'db_pool_wait_count'
+  | 'db_pool_wait_duration_ms'
+  | 'redis_pool_timeout_count'
+  | 'qps'
+  | 'rpm'
+  | 'request_count'
+  | 'pod_cpu_cores'
+  | 'pod_cpu_limit_cores'
+  | 'cluster_cpu_usage_percent'
+  | 'pod_memory_bytes'
+  | 'pod_memory_limit_bytes'
+  | 'pod_ready'
+  | 'pod_pending'
+  | 'pod_unschedulable'
+  | 'pod_crash_loop'
+  | 'pod_cpu_throttling_percent'
+  | 'hpa_current_replicas'
+  | 'hpa_desired_replicas'
+  | 'hpa_max_replicas'
+  | 'hpa_at_max'
+  | 'deployment_desired_replicas'
+  | 'deployment_available_replicas'
+  | 'deployment_ready_replicas'
+  | 'scrape_up'
+  | 'monitoring_source_unavailable'
+  | 'billing_missing_usage_logs'
+  | 'billing_amount_mismatches'
+  | 'http_p95_ms'
+  | 'http_p99_ms'
+  | 'ttft_p95_ms'
+  | 'ttft_p99_ms'
+  | 'http_4xx_count'
+  | 'http_5xx_count'
+  | 'http_429_count'
+  | 'http_4xx_rate'
+  | 'http_5xx_rate'
+  | 'pod_cpu_usage_percent'
+  | 'pod_memory_usage_percent'
+  | 'pod_restarts'
+  | 'pod_oom'
   | 'success_rate'
   | 'error_rate'
   | 'upstream_error_rate'
   | 'cpu_usage_percent'
   | 'memory_usage_percent'
+  | 'db_pool_usage_percent'
+  | 'redis_pool_usage_percent'
   | 'concurrency_queue_depth'
   | 'group_available_accounts'
   | 'group_available_ratio'
@@ -711,7 +801,9 @@ export interface AlertRule {
   sustained_minutes: number
   severity: OpsSeverity
   cooldown_minutes: number
+  min_requests?: number
   notify_email: boolean
+  data_status?: string
   filters?: Record<string, any>
   created_at?: string
   updated_at?: string
@@ -1183,6 +1275,176 @@ export async function listRequestDetails(params: OpsRequestDetailsParams): Promi
   return data
 }
 
+export interface OpsBillingHealth {
+  recording_gaps?: Array<{ instance_id: string; missed_count: number; acknowledged_count: number; first_missed_at: string; last_missed_at: string }>
+  observation_unpersisted?: number
+  operational_state?: 'Available' | 'Unknown'
+  operational_checked_at?: string | null
+  failed_settlements?: number | null
+  compensation_backlog?: number | null
+  ledger_mismatches?: number | null
+  operations?: Array<{ id: number; intent_id: number; request_id: string; operation: string; state: string; error_code: string; attempts: number; created_at: string; checked_at: string | null }>
+  ledger_findings?: Array<{ account_type: string; account_id: number; field: string; opening_amount: string; expected_amount: string; actual_amount: string | null }>
+
+  state: 'Available' | 'Unknown'
+  checked_at: string | null
+  window_start: string | null
+  window_end: string | null
+  scanned?: number
+  missing_usage_logs: number | null
+  amount_mismatches: number | null
+  truncated: boolean
+  findings: Array<{
+    id: number
+    settlement_id: number
+    request_id: string
+    kind: string
+    expected_cost: string
+    actual_cost: string | null
+    first_seen_at: string
+    last_seen_at: string
+    resolved_at: string | null
+  }>
+}
+
+export async function recheckBillingOperation(id: number, note: string): Promise<void> {
+  await apiClient.post(`/admin/ops/monitoring/billing/operations/${id}/recheck`, { note })
+}
+
+export async function acknowledgeBillingRecordingGap(instanceId: string, note: string): Promise<void> {
+  await apiClient.post(`/admin/ops/monitoring/billing/recording-gaps/${encodeURIComponent(instanceId)}/acknowledge`, { note })
+}
+
+export async function getBillingHealth(options: OpsRequestOptions = {}): Promise<OpsBillingHealth> {
+  const { data } = await apiClient.get<OpsBillingHealth>('/admin/ops/monitoring/billing', options)
+  return data
+}
+
+export type OpsMonitoringState = 'Available' | 'Unknown' | 'InsufficientData' | 'NotApplicable'
+
+export interface OpsMonitoringMetric {
+  id: string
+  unit: string
+  kubernetes_only: boolean
+}
+
+export interface OpsMonitoringCapabilities {
+  sources?: string[]
+  external_ingress_adapter?: string
+  kubernetes_resources?: boolean
+  mode: 'standalone' | 'kubernetes'
+  prometheus_configured: boolean
+  kubernetes: boolean
+  kubernetes_events?: boolean
+  cluster_name?: string
+  history: boolean
+  max_range_seconds?: number
+  max_points_per_series?: number
+  metrics: OpsMonitoringMetric[]
+}
+
+export interface OpsMonitoringQuery {
+  protocol?: string
+  route?: string
+  status_code?: string
+  metric: string
+  cluster?: string
+  namespace?: string
+  deployment?: string
+  service?: string
+  pod?: string
+  uid?: string
+  source?: string
+  window?: '1m' | '5m' | '15m' | '60m'
+  start?: string
+  end?: string
+  step?: number
+  min_requests?: number
+}
+
+export interface OpsKubernetesEvent {
+  object_kind?: string
+  object_name?: string
+  object_uid?: string
+  cluster: string
+  namespace: string
+  event_uid: string
+  pod: string
+  pod_uid: string
+  reason: string
+  type: string
+  message: string
+  first_seen_at: string
+  last_seen_at: string
+  count: number
+  source: string
+}
+
+export interface OpsKubernetesEventsResult {
+  state: 'Available' | 'Unknown' | 'NotApplicable'
+  reason?: string
+  last_collected_at?: string
+  events: OpsKubernetesEvent[]
+}
+
+export async function getKubernetesEvents(params: Pick<OpsMonitoringQuery, 'cluster' | 'namespace' | 'pod' | 'uid' | 'start' | 'end'> & { limit?: number; object_kind?: string; object_name?: string; object_uid?: string }, options: OpsRequestOptions = {}): Promise<OpsKubernetesEventsResult> {
+  const { data } = await apiClient.get<OpsKubernetesEventsResult>('/admin/ops/monitoring/events', { params, signal: options.signal })
+  return data
+}
+
+export interface OpsMonitoringSeries {
+  labels: Record<string, string>
+  points: Array<{ timestamp: string; value: number | null; state?: OpsMonitoringState }>
+}
+
+export interface OpsMonitoringResult {
+  metric: string
+  state: OpsMonitoringState
+  unit: string
+  reason?: string
+  source?: string
+  step_seconds?: number
+  series: OpsMonitoringSeries[]
+}
+
+export async function getMonitoringCapabilities(options: OpsRequestOptions = {}): Promise<OpsMonitoringCapabilities> {
+  const { data } = await apiClient.get<OpsMonitoringCapabilities>('/admin/ops/monitoring/capabilities', options)
+  return data
+}
+
+export async function queryMonitoring(params: OpsMonitoringQuery, options: OpsRequestOptions = {}): Promise<OpsMonitoringResult> {
+  const { data } = await apiClient.get<OpsMonitoringResult>('/admin/ops/monitoring/query', { params, signal: options.signal })
+  return data
+}
+
+export interface OpsAlertDelivery {
+  id: number
+  event_id: number
+  channel: 'email' | 'webhook'
+  transition: 'firing' | 'upgrade' | 'resolved'
+  target: string
+  status: 'pending' | 'sending' | 'sent' | 'failed'
+  attempt_history?: Array<{ attempt: number; status: string; error?: string; completed_at: string }>
+  attempts: number
+  last_error?: string
+  next_attempt_at?: string
+  created_at: string
+  sent_at?: string
+}
+
+export async function listAlertDeliveries(eventId: number): Promise<OpsAlertDelivery[]> {
+  const { data } = await apiClient.get<OpsAlertDelivery[]>('/admin/ops/alert-deliveries', { params: { event_id: eventId } })
+  return data
+}
+
+export async function retryAlertDelivery(id: number): Promise<void> {
+  await apiClient.post(`/admin/ops/alert-deliveries/${id}/retry`)
+}
+
+export async function testAlertWebhook(url: string): Promise<void> {
+  await apiClient.post('/admin/ops/alert-webhooks/test', { url })
+}
+
 // Alert rules
 export async function listAlertRules(): Promise<AlertRule[]> {
   const { data } = await apiClient.get<AlertRule[]>('/admin/ops/alert-rules')
@@ -1204,6 +1466,8 @@ export async function deleteAlertRule(id: number): Promise<void> {
 }
 
 export interface AlertEventsQuery {
+  rule_id?: number
+  resource_key?: string
   limit?: number
   status?: string
   severity?: string
@@ -1233,6 +1497,7 @@ export async function updateAlertEventStatus(id: number, status: 'resolved' | 'm
 
 export async function createAlertSilence(payload: {
   rule_id: number
+  resource_key?: string
   platform: string
   group_id?: number | null
   region?: string | null
@@ -1317,6 +1582,12 @@ async function updateMetricThresholds(thresholds: OpsMetricThresholds): Promise<
 }
 
 export const opsAPI = {
+  getKubernetesEvents,
+  getBillingHealth,
+  recheckBillingOperation,
+  acknowledgeBillingRecordingGap,
+  getMonitoringCapabilities,
+  queryMonitoring,
   getDashboardSnapshotV2,
   getDashboardOverview,
   getThroughputTrend,
@@ -1346,6 +1617,9 @@ export const opsAPI = {
 
   listRequestDetails,
   listAlertRules,
+  listAlertDeliveries,
+  retryAlertDelivery,
+  testAlertWebhook,
   createAlertRule,
   updateAlertRule,
   deleteAlertRule,

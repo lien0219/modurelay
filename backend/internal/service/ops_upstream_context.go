@@ -88,6 +88,16 @@ func SetOpsLatencyMs(c *gin.Context, key string, value int64) {
 	c.Set(key, value)
 }
 
+// SetOpsSuccessfulFirstToken is the protocol-independent completion contract
+// consumed by the HTTP metrics middleware. Failed/empty attempts do not supply
+// samples, even when the wire status was already committed as SSE HTTP 200.
+func SetOpsSuccessfulFirstToken(c *gin.Context, firstTokenMs *int, forwardErr error) {
+	if c == nil || forwardErr != nil || firstTokenMs == nil || *firstTokenMs < 0 {
+		return
+	}
+	SetOpsLatencyMs(c, OpsTimeToFirstTokenMsKey, int64(*firstTokenMs))
+}
+
 // SetOpsUpstreamModel stores only the effective model slug for final Ops
 // attribution. Call it immediately before an upstream attempt is dispatched.
 func SetOpsUpstreamModel(c *gin.Context, model string) {

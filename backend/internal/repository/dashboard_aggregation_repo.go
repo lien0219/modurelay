@@ -350,13 +350,17 @@ func (r *dashboardAggregationRepository) CleanupUsageBillingDedup(ctx context.Co
 	for {
 		res, err := r.sql.ExecContext(ctx, `
 			WITH victims AS (
-				SELECT ctid, request_id, api_key_id, request_fingerprint, created_at
+				SELECT ctid, request_id, api_key_id, request_fingerprint, created_at, expected_usage_cost, balance_cost, subscription_cost
 				FROM usage_billing_dedup
 				WHERE created_at < $1
+				  AND NOT EXISTS (
+					SELECT 1 FROM ops_billing_reconciliation_findings finding
+					WHERE finding.settlement_id = usage_billing_dedup.id AND finding.resolved_at IS NULL
+				  )
 				LIMIT $2
 			), archived AS (
-				INSERT INTO usage_billing_dedup_archive (request_id, api_key_id, request_fingerprint, created_at)
-				SELECT request_id, api_key_id, request_fingerprint, created_at
+				INSERT INTO usage_billing_dedup_archive (request_id, api_key_id, request_fingerprint, created_at, expected_usage_cost, balance_cost, subscription_cost)
+				SELECT request_id, api_key_id, request_fingerprint, created_at, expected_usage_cost, balance_cost, subscription_cost
 				FROM victims
 				ON CONFLICT (request_id, api_key_id) DO NOTHING
 			)

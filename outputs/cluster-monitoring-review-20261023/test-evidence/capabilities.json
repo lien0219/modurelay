@@ -1,0 +1,296 @@
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "sources": [
+      "app",
+      "ingress"
+    ],
+    "kubernetes_resources": false,
+    "mode": "standalone",
+    "prometheus_configured": true,
+    "kubernetes": false,
+    "history": true,
+    "max_range_seconds": 2678400,
+    "max_points_per_series": 11000,
+    "metrics": [
+      {
+        "id": "qps",
+        "unit": "requests/s",
+        "kubernetes_only": false
+      },
+      {
+        "id": "rpm",
+        "unit": "requests/min",
+        "kubernetes_only": false
+      },
+      {
+        "id": "request_count",
+        "unit": "requests",
+        "kubernetes_only": false
+      },
+      {
+        "id": "qps_started",
+        "unit": "requests/s",
+        "kubernetes_only": false
+      },
+      {
+        "id": "rpm_started",
+        "unit": "requests/min",
+        "kubernetes_only": false
+      },
+      {
+        "id": "request_count_started",
+        "unit": "requests",
+        "kubernetes_only": false
+      },
+      {
+        "id": "db_pool_wait_count",
+        "unit": "waits",
+        "kubernetes_only": false
+      },
+      {
+        "id": "db_pool_wait_duration_ms",
+        "unit": "ms",
+        "kubernetes_only": false
+      },
+      {
+        "id": "redis_pool_timeout_count",
+        "unit": "timeouts",
+        "kubernetes_only": false
+      },
+      {
+        "id": "db_instance_connections",
+        "unit": "connections",
+        "kubernetes_only": false
+      },
+      {
+        "id": "db_instance_limit",
+        "unit": "connections",
+        "kubernetes_only": false
+      },
+      {
+        "id": "db_instance_usage_percent",
+        "unit": "percent",
+        "kubernetes_only": false
+      },
+      {
+        "id": "redis_instance_connections",
+        "unit": "connections",
+        "kubernetes_only": false
+      },
+      {
+        "id": "redis_instance_limit",
+        "unit": "connections",
+        "kubernetes_only": false
+      },
+      {
+        "id": "redis_instance_usage_percent",
+        "unit": "percent",
+        "kubernetes_only": false
+      },
+      {
+        "id": "http_p95_ms",
+        "unit": "ms",
+        "kubernetes_only": false
+      },
+      {
+        "id": "http_p99_ms",
+        "unit": "ms",
+        "kubernetes_only": false
+      },
+      {
+        "id": "ttft_p95_ms",
+        "unit": "ms",
+        "kubernetes_only": false
+      },
+      {
+        "id": "ttft_p99_ms",
+        "unit": "ms",
+        "kubernetes_only": false
+      },
+      {
+        "id": "http_4xx_count",
+        "unit": "requests",
+        "kubernetes_only": false
+      },
+      {
+        "id": "http_5xx_count",
+        "unit": "requests",
+        "kubernetes_only": false
+      },
+      {
+        "id": "http_429_count",
+        "unit": "requests",
+        "kubernetes_only": false
+      },
+      {
+        "id": "http_4xx_rate",
+        "unit": "percent",
+        "kubernetes_only": false
+      },
+      {
+        "id": "http_5xx_rate",
+        "unit": "percent",
+        "kubernetes_only": false
+      },
+      {
+        "id": "pod_cpu_cores",
+        "unit": "cores",
+        "kubernetes_only": true
+      },
+      {
+        "id": "pod_cpu_limit_cores",
+        "unit": "cores",
+        "kubernetes_only": true
+      },
+      {
+        "id": "pod_cpu_usage_percent",
+        "unit": "percent",
+        "kubernetes_only": true
+      },
+      {
+        "id": "cluster_cpu_usage_percent",
+        "unit": "percent",
+        "kubernetes_only": true
+      },
+      {
+        "id": "pod_memory_bytes",
+        "unit": "bytes",
+        "kubernetes_only": true
+      },
+      {
+        "id": "pod_memory_limit_bytes",
+        "unit": "bytes",
+        "kubernetes_only": true
+      },
+      {
+        "id": "pod_memory_usage_percent",
+        "unit": "percent",
+        "kubernetes_only": true
+      },
+      {
+        "id": "pod_info",
+        "unit": "info",
+        "kubernetes_only": true
+      },
+      {
+        "id": "pod_ready",
+        "unit": "boolean",
+        "kubernetes_only": true
+      },
+      {
+        "id": "pod_restarts",
+        "unit": "restarts",
+        "kubernetes_only": true
+      },
+      {
+        "id": "pod_oom",
+        "unit": "containers",
+        "kubernetes_only": true
+      },
+      {
+        "id": "pod_oom_count",
+        "unit": "events",
+        "kubernetes_only": true
+      },
+      {
+        "id": "pod_pending",
+        "unit": "boolean",
+        "kubernetes_only": true
+      },
+      {
+        "id": "pod_unschedulable",
+        "unit": "boolean",
+        "kubernetes_only": true
+      },
+      {
+        "id": "pod_crash_loop",
+        "unit": "containers",
+        "kubernetes_only": true
+      },
+      {
+        "id": "pod_cpu_throttling_percent",
+        "unit": "percent",
+        "kubernetes_only": true
+      },
+      {
+        "id": "hpa_current_replicas",
+        "unit": "replicas",
+        "kubernetes_only": true
+      },
+      {
+        "id": "hpa_desired_replicas",
+        "unit": "replicas",
+        "kubernetes_only": true
+      },
+      {
+        "id": "hpa_max_replicas",
+        "unit": "replicas",
+        "kubernetes_only": true
+      },
+      {
+        "id": "hpa_at_max",
+        "unit": "boolean",
+        "kubernetes_only": true
+      },
+      {
+        "id": "deployment_cpu_usage_percent",
+        "unit": "percent",
+        "kubernetes_only": true
+      },
+      {
+        "id": "deployment_memory_usage_percent",
+        "unit": "percent",
+        "kubernetes_only": true
+      },
+      {
+        "id": "deployment_restarts",
+        "unit": "restarts",
+        "kubernetes_only": true
+      },
+      {
+        "id": "deployment_oom",
+        "unit": "containers",
+        "kubernetes_only": true
+      },
+      {
+        "id": "deployment_oom_count",
+        "unit": "events",
+        "kubernetes_only": true
+      },
+      {
+        "id": "hpa_target_cpu_utilization_percent",
+        "unit": "percent",
+        "kubernetes_only": true
+      },
+      {
+        "id": "hpa_target_memory_utilization_percent",
+        "unit": "percent",
+        "kubernetes_only": true
+      },
+      {
+        "id": "deployment_desired_replicas",
+        "unit": "replicas",
+        "kubernetes_only": true
+      },
+      {
+        "id": "deployment_available_replicas",
+        "unit": "replicas",
+        "kubernetes_only": true
+      },
+      {
+        "id": "deployment_ready_replicas",
+        "unit": "replicas",
+        "kubernetes_only": true
+      },
+      {
+        "id": "scrape_up",
+        "unit": "boolean",
+        "kubernetes_only": false
+      }
+    ],
+    "kubernetes_events": false,
+    "cluster_name": "standalone"
+  }
+}

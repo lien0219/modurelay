@@ -49,6 +49,8 @@ type OpsRepository interface {
 	CreateAlertEvent(ctx context.Context, event *OpsAlertEvent) (*OpsAlertEvent, error)
 	UpdateAlertEventStatus(ctx context.Context, eventID int64, status string, resolvedAt *time.Time) error
 	UpdateAlertEventEmailSent(ctx context.Context, eventID int64, emailSent bool) error
+	GetAlertRuleState(ctx context.Context, ruleID int64) (*OpsAlertRuleState, error)
+	UpsertAlertRuleState(ctx context.Context, state *OpsAlertRuleState) error
 
 	// Alert silences
 	CreateAlertSilence(ctx context.Context, input *OpsAlertSilence) (*OpsAlertSilence, error)
@@ -125,6 +127,7 @@ type OpsInsertErrorLogInput struct {
 }
 
 type OpsInsertSystemMetricsInput struct {
+	Capacity      *OpsDatabaseCapacity
 	CreatedAt     time.Time
 	WindowMinutes int
 
@@ -249,6 +252,9 @@ type OpsSystemLogCleanupAudit struct {
 }
 
 type OpsSystemMetricsSnapshot struct {
+	Capacity                      *OpsDatabaseCapacity   `json:"capacity,omitempty"`
+	DatabasePools                 []OpsDatabasePoolStats `json:"database_pools,omitempty"`
+	BillingObservationUnpersisted int64                  `json:"billing_observation_unpersisted"`
 	// Scope distinguishes a live cluster aggregate from the historical snapshot.
 	Scope         string `json:"scope,omitempty"`
 	InstanceCount int    `json:"instance_count,omitempty"`
@@ -317,4 +323,22 @@ type OpsWindowStats struct {
 	SuccessCount    int64 `json:"success_count"`
 	ErrorCountTotal int64 `json:"error_count_total"`
 	TokenConsumed   int64 `json:"token_consumed"`
+}
+
+// OpsAlertDeliveryRepository is implemented by the SQL repository. Keeping the
+// outbox contract separate lets embedded/legacy repositories retain their API.
+type OpsAlertDeliveryRepository interface {
+	// EnsureFiringAlertDeliveries atomically inserts missing notification intents
+	// only while the event is still firing. Existing intents are never requeued.
+	EnsureFiringAlertDeliveries(ctx context.Context, eventID int64, deliveries []*OpsAlertDelivery) error
+	MarkMissingAlertResources(ctx context.Context, ruleID, ruleRevision int64, seen []string, now time.Time) (bool, error)
+	IsAlertResourceSilenced(ctx context.Context, ruleID int64, resourceKey string, now time.Time) (bool, error)
+	ClaimAlertDeliveries(ctx context.Context, now time.Time, limit int) ([]*OpsAlertDelivery, error)
+	CompleteAlertDelivery(ctx context.Context, delivery *OpsAlertDelivery, sendErr error, next time.Time) error
+	ListAlertDeliveries(ctx context.Context, eventID int64) ([]*OpsAlertDelivery, error)
+	RetryAlertDelivery(ctx context.Context, id int64) error
+	TransitionAlertEvent(ctx context.Context, event *OpsAlertEvent, deliveries []*OpsAlertDelivery) (bool, error)
+	GetAlertResourceState(ctx context.Context, ruleID int64, resourceKey string) (*OpsAlertRuleState, error)
+	UpsertAlertResourceState(ctx context.Context, resourceKey string, state *OpsAlertRuleState) error
+	GetResourceAlertEvent(ctx context.Context, ruleID int64, resourceKey string, activeOnly bool) (*OpsAlertEvent, error)
 }

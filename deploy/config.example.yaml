@@ -981,6 +981,21 @@ ops:
   metrics:
     enabled: false
     token: ""
+  # Optional fixed Prometheus-compatible read-only Query API. Never exposed to UI.
+  # Use a Secret for bearer_token; only the fixed metric catalog is queryable.
+  monitoring:
+    mode: auto # auto | standalone | kubernetes
+    cluster_name: modurelay
+    kubernetes_events_enabled: false
+    kubernetes_resources_enabled: false
+    external_ingress_adapter: "" # nginx or normalized; operator controlled
+    external_ingress_job: "ingress-nginx"
+    events_namespace: "" # default: Pod namespace; * requires explicit cluster-wide events RBAC
+    events_retention_days: 30
+    prometheus_url: ""
+    bearer_token: ""
+    timeout_seconds: 8
+    max_query_range_hours: 744
 
 # =============================================================================
 # JWT Configuration

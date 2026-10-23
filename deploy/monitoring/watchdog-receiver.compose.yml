@@ -1,0 +1,23 @@
+# Deploy on a DIFFERENT host/failure domain for production watchdog reception.
+# Put an authenticated TLS reverse proxy in front of the loopback listener.
+name: modurelay-watchdog-external
+services:
+  watchdog-receiver:
+    build: {context: ., dockerfile: watchdog-receiver.Dockerfile}
+    image: modurelay-monitoring-receiver:1
+    restart: unless-stopped
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    read_only: true
+    ports: ["127.0.0.1:${MONITORING_RECEIVER_PORT:-19094}:8080"]
+    environment: {WATCHDOG_TIMEOUT_SECONDS: "180"}
+    secrets: [receiver_token]
+    volumes: ["receiver-data:/state"]
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+secrets:
+  receiver_token:
+    file: ${MONITORING_SECRETS_DIR:-./secrets}/receiver-token
+volumes:
+  receiver-data:

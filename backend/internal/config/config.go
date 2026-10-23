@@ -1755,6 +1755,9 @@ type OpsConfig struct {
 	// Metrics exposes cluster-wide Prometheus gauges on /metrics when enabled.
 	Metrics OpsMetricsConfig `mapstructure:"metrics"`
 
+	// Monitoring reads a deployment-configured Prometheus compatible data source.
+	Monitoring OpsMonitoringConfig `mapstructure:"monitoring"`
+
 	// UsePreaggregatedTables prefers ops_metrics_hourly/daily for long-window dashboard queries.
 	UsePreaggregatedTables bool `mapstructure:"use_preaggregated_tables"`
 
@@ -2456,6 +2459,18 @@ func setDefaults() {
 	viper.SetDefault("ops.enabled", true)
 	viper.SetDefault("ops.metrics.enabled", false)
 	viper.SetDefault("ops.metrics.token", "")
+	viper.SetDefault("ops.monitoring.mode", "auto")
+	viper.SetDefault("ops.monitoring.prometheus_url", "")
+	viper.SetDefault("ops.monitoring.bearer_token", "")
+	viper.SetDefault("ops.monitoring.timeout_seconds", 8)
+	viper.SetDefault("ops.monitoring.max_query_range_hours", 744)
+	viper.SetDefault("ops.monitoring.cluster_name", "modurelay")
+	viper.SetDefault("ops.monitoring.kubernetes_events_enabled", false)
+	viper.SetDefault("ops.monitoring.kubernetes_resources_enabled", false)
+	viper.SetDefault("ops.monitoring.external_ingress_adapter", "")
+	viper.SetDefault("ops.monitoring.external_ingress_job", "ingress-nginx")
+	viper.SetDefault("ops.monitoring.events_namespace", "")
+	viper.SetDefault("ops.monitoring.events_retention_days", 30)
 	viper.SetDefault("ops.use_preaggregated_tables", true)
 	viper.SetDefault("ops.cleanup.enabled", true)
 	viper.SetDefault("ops.cleanup.schedule", "0 2 * * *")
@@ -3939,6 +3954,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Ops.Metrics.Enabled && strings.TrimSpace(c.Ops.Metrics.Token) == "" {
 		return fmt.Errorf("ops.metrics.token is required when ops.metrics.enabled is true")
+	}
+	if err := c.Ops.Monitoring.Validate(); err != nil {
+		return err
 	}
 	if c.Ops.MetricsCollectorCache.TTL < 0 {
 		return fmt.Errorf("ops.metrics_collector_cache.ttl must be non-negative")

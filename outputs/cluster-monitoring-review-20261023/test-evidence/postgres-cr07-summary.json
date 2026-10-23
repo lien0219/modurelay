@@ -1,0 +1,44 @@
+{
+  "postgres_version": "PostgreSQL 18.1 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit",
+  "current_code_used": 13,
+  "current_code_limit": 100,
+  "client_backends": 5,
+  "other_backends": 8,
+  "backend_types": [
+    {
+      "backend_type": "autovacuum launcher",
+      "processes": 1
+    },
+    {
+      "backend_type": "background writer",
+      "processes": 1
+    },
+    {
+      "backend_type": "checkpointer",
+      "processes": 1
+    },
+    {
+      "backend_type": "client backend",
+      "processes": 5
+    },
+    {
+      "backend_type": "io worker",
+      "processes": 3
+    },
+    {
+      "backend_type": "logical replication launcher",
+      "processes": 1
+    },
+    {
+      "backend_type": "walwriter",
+      "processes": 1
+    }
+  ],
+  "current_code_percent": 13.0,
+  "client_only_percent": 5.0,
+  "confirmed": true,
+  "status": "CR-07 仍复现，未修复",
+  "code_location": "backend/internal/service/ops_database_capacity.go:35",
+  "interpretation": "当前 COUNT(*) 把 pg_stat_activity 后台进程计入 max_connections 占用；真实修复仍需按连接槽口径定义特殊 backend 类型。",
+  "note": "仅对本轮隔离 PostgreSQL 查询；12项通过不覆盖真实采样口径；未停止或删除容器。"
+}

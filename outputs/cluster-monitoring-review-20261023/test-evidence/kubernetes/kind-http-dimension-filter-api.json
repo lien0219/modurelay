@@ -1,0 +1,93 @@
+[
+  {
+    "query": {
+      "metric": "request_count",
+      "cluster": "acceptance-kind",
+      "namespace": "monitoring-acceptance",
+      "service": "modurelay-metrics",
+      "source": "app",
+      "window": "5m",
+      "min_requests": 1,
+      "protocol": "http",
+      "route": "other",
+      "status_code": "200"
+    },
+    "result": {
+      "metric": "request_count",
+      "unit": "requests",
+      "state": "Available",
+      "step_seconds": 0,
+      "series": [
+        {
+          "labels": {
+            "cluster": "acceptance-kind",
+            "namespace": "monitoring-acceptance",
+            "service": "modurelay-metrics",
+            "source": "app"
+          },
+          "points": [
+            {
+              "timestamp": "2026-10-23T07:29:48Z",
+              "value": 66.20689655172414,
+              "state": "Available"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "query": {
+      "metric": "request_count_started",
+      "cluster": "acceptance-kind",
+      "namespace": "monitoring-acceptance",
+      "service": "modurelay-metrics",
+      "source": "app",
+      "window": "5m",
+      "min_requests": 1,
+      "route": "other"
+    },
+    "result": {
+      "metric": "request_count_started",
+      "unit": "requests",
+      "state": "Available",
+      "step_seconds": 0,
+      "series": [
+        {
+          "labels": {
+            "cluster": "acceptance-kind",
+            "namespace": "monitoring-acceptance",
+            "service": "modurelay-metrics",
+            "source": "app"
+          },
+          "points": [
+            {
+              "timestamp": "2026-10-23T07:29:48Z",
+              "value": 66.20689655172414,
+              "state": "Available"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "query": {
+      "metric": "qps",
+      "cluster": "acceptance-kind",
+      "namespace": "monitoring-acceptance",
+      "service": "modurelay-metrics",
+      "source": "external_ingress",
+      "window": "5m",
+      "min_requests": 1
+    },
+    "result": {
+      "metric": "qps",
+      "unit": "requests/s",
+      "state": "NotApplicable",
+      "reason": "external_ingress_not_configured",
+      "step_seconds": 0,
+      "series": []
+    }
+  }
+]

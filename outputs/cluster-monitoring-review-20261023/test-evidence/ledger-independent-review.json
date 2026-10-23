@@ -1,0 +1,35 @@
+{
+  "date": "2026-10-23",
+  "review": "independent read-only verification",
+  "original_p1": "closed",
+  "original_issue": "Synchronous writes to observation tables could delay a monetary statement until the application transaction deadline and cause rollback.",
+  "fix": "Migration280 updates only fixed-size expected amount and revision fields in the original account row. The background observer reads those projections and writes aggregate revision ranges without locking or updating account rows.",
+  "audit_semantics": "Aggregate account reconciliation, not a complete per-mutation audit journal. Per-request deduplication and intent evidence remain separate.",
+  "verified_boundary": "Unavailable, locked or slow observation tables do not block the original monetary transaction. Ordinary business failures and a driver-initiated cancellation of an already expired transaction are not claimed to be recoverable.",
+  "tests": {
+    "go_transaction_deadline_ms": 100,
+    "server_statement_timeout_ms": 100,
+    "observer_insert_delay_ms": 400,
+    "observed_table_lock_cases": [
+      {
+        "table": "ops_account_ledger_entries",
+        "elapsed_ms": 2.848042,
+        "exec_and_commit_succeeded": true
+      },
+      {
+        "table": "ops_account_ledger_heads",
+        "elapsed_ms": 0.251,
+        "exec_and_commit_succeeded": true
+      },
+      {
+        "table": "ops_billing_recording_gaps",
+        "elapsed_ms": 0.154416,
+        "exec_and_commit_succeeded": true
+      }
+    ],
+    "balance_change_applied_once_per_case": true,
+    "user_and_subscription_changes_with_slow_observer_passed": true,
+    "projection_updated_with_monetary_change": true
+  },
+  "new_severe_findings_in_reviewed_limits_crashloop_and_admin_api_scope": []
+}

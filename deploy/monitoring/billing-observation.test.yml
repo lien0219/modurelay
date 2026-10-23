@@ -1,0 +1,93 @@
+{
+  "rule_files": [
+    "billing-observation.rules.yml"
+  ],
+  "evaluation_interval": "15s",
+  "tests": [
+    {
+      "name": "unpersisted_gap",
+      "interval": "15s",
+      "input_series": [
+        {
+          "series": "modurelay_billing_observation_unpersisted{cluster=\"fixture\",service=\"api\",pod=\"api-1\",uid=\"uid-1\",instance=\"fixture:8080\"}",
+          "values": "1+0x12"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "2m",
+          "alertname": "ModuRelayBillingObservationGap",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "cluster": "fixture",
+                "service": "api",
+                "pod": "api-1",
+                "uid": "uid-1",
+                "instance": "fixture:8080",
+                "severity": "critical"
+              },
+              "exp_annotations": {
+                "summary": "计费观察记录存在未持久化缺口，财务状态应保持未知",
+                "description": "检查数据库和结算证据，按管理员审计流程确认缺口；本告警不会重放结算或自动补扣款。"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "counter_reports_missed",
+      "interval": "15s",
+      "input_series": [
+        {
+          "series": "modurelay_billing_observation_missed_total{cluster=\"fixture\",service=\"api\",pod=\"api-1\",uid=\"uid-1\",instance=\"fixture:8080\"}",
+          "values": "0 1+0x11"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "2m",
+          "alertname": "ModuRelayBillingObservationGap",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "cluster": "fixture",
+                "service": "api",
+                "pod": "api-1",
+                "uid": "uid-1",
+                "instance": "fixture:8080",
+                "severity": "critical"
+              },
+              "exp_annotations": {
+                "summary": "计费观察记录存在未持久化缺口，财务状态应保持未知",
+                "description": "检查数据库和结算证据，按管理员审计流程确认缺口；本告警不会重放结算或自动补扣款。"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "healthy_or_cleared_gap",
+      "interval": "15s",
+      "input_series": [
+        {
+          "series": "modurelay_billing_observation_unpersisted{cluster=\"fixture\",service=\"api\",pod=\"api-1\",uid=\"uid-1\",instance=\"fixture:8080\"}",
+          "values": "1 0+0x11"
+        },
+        {
+          "series": "modurelay_billing_observation_missed_total{cluster=\"fixture\",service=\"api\",pod=\"api-1\",uid=\"uid-1\",instance=\"fixture:8080\"}",
+          "values": "0+0x12"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "2m",
+          "alertname": "ModuRelayBillingObservationGap",
+          "exp_alerts": []
+        }
+      ]
+    }
+  ]
+}

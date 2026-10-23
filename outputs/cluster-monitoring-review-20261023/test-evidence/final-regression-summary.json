@@ -1,0 +1,743 @@
+{
+  "schema_version": 1,
+  "title": "集群监控本轮最终验证摘要（migration 280 后）",
+  "generated_at": "2026-10-23T15:33:58.989337+08:00",
+  "scope": {
+    "repository": "modurelay",
+    "production_source_frozen": true,
+    "summary_work": "只读取既有最终运行记录并归档安全摘录；本步骤未修改生产源码、文档、Excel 或既有证据。",
+    "migration_baseline": "through migration 280",
+    "release_claim": "本轮本地及独立容器功能回归；不等同目标企业生产环境验收或正式发布 Dockerfile 验证。"
+  },
+  "counting_policy": [
+    "按套件分别报告，不生成相加的跨套件总通过数；同一用例的父测试、子测试、专项重跑及 build 中 i18n 重跑可能重叠。",
+    "Go 19,386 = 9,866 顶层 pass + 9,520 子测试 pass，不能称为 19,386 个唯一顶层测试；本次终态记录中 (package,test) 无重复。",
+    "主 Go 套件的 skip 保持 skip；独立 PostgreSQL/Redis 环境通过记录单列映射，不改写主运行结果。",
+    "历史失败日志保留但不计入通过；280 前 21,737 记录不作为本轮最终通过基线。",
+    "内存专项 -count=3 是同一测试重复 3 次，不是 3 个独立测试。"
+  ],
+  "backend_post280": {
+    "result": "pass_with_conditional_skips",
+    "exit_code": 0,
+    "exit_code_source": "主执行 agent 报告；同时六个 package 终态均为 pass，记录无 fail。",
+    "build_tags": [
+      "unit",
+      "embed"
+    ],
+    "start_time": "2026-10-23T15:18:09.915782+08:00",
+    "end_time": "2026-10-23T15:22:35.421452+08:00",
+    "top_level": {
+      "pass": 9866,
+      "fail": 0,
+      "skip": 31
+    },
+    "subtests": {
+      "pass": 9520,
+      "fail": 0,
+      "skip": 0
+    },
+    "pass_events_including_subtests": 19386,
+    "unique_terminal_package_test_pairs": 19417,
+    "packages": [
+      {
+        "package": "github.com/Wei-Shaw/sub2api/internal/pkg/billingobserve",
+        "package_result": "pass",
+        "elapsed_seconds": 0.494,
+        "top_level": {
+          "pass": 1,
+          "fail": 0,
+          "skip": 0
+        },
+        "subtests": {
+          "pass": 0,
+          "fail": 0,
+          "skip": 0
+        }
+      },
+      {
+        "package": "github.com/Wei-Shaw/sub2api/internal/web",
+        "package_result": "pass",
+        "elapsed_seconds": 0.948,
+        "top_level": {
+          "pass": 19,
+          "fail": 0,
+          "skip": 0
+        },
+        "subtests": {
+          "pass": 125,
+          "fail": 0,
+          "skip": 0
+        }
+      },
+      {
+        "package": "github.com/Wei-Shaw/sub2api/internal/handler/admin",
+        "package_result": "pass",
+        "elapsed_seconds": 2.194,
+        "top_level": {
+          "pass": 505,
+          "fail": 0,
+          "skip": 0
+        },
+        "subtests": {
+          "pass": 278,
+          "fail": 0,
+          "skip": 0
+        }
+      },
+      {
+        "package": "github.com/Wei-Shaw/sub2api/internal/server/routes",
+        "package_result": "pass",
+        "elapsed_seconds": 12.741,
+        "top_level": {
+          "pass": 65,
+          "fail": 0,
+          "skip": 0
+        },
+        "subtests": {
+          "pass": 51,
+          "fail": 0,
+          "skip": 0
+        }
+      },
+      {
+        "package": "github.com/Wei-Shaw/sub2api/internal/repository",
+        "package_result": "pass",
+        "elapsed_seconds": 20.634,
+        "top_level": {
+          "pass": 647,
+          "fail": 0,
+          "skip": 25
+        },
+        "subtests": {
+          "pass": 524,
+          "fail": 0,
+          "skip": 0
+        }
+      },
+      {
+        "package": "github.com/Wei-Shaw/sub2api/internal/service",
+        "package_result": "pass",
+        "elapsed_seconds": 237.261,
+        "top_level": {
+          "pass": 8629,
+          "fail": 0,
+          "skip": 6
+        },
+        "subtests": {
+          "pass": 8542,
+          "fail": 0,
+          "skip": 0
+        }
+      }
+    ],
+    "skip_categories": {
+      "postgres_dsn_not_provided": 26,
+      "legacy_postgres_rows_not_supported_by_sqlite_fixture": 1,
+      "typesafe_live_opt_in_and_key_not_provided": 1,
+      "openai_api_key_not_provided": 1,
+      "redis_cluster_and_shutdown_opt_in_not_provided": 1,
+      "local_plugin_package_not_provided": 1
+    },
+    "skipped_tests": [
+      {
+        "package": "github.com/Wei-Shaw/sub2api/internal/repository",
+        "test": "TestMonitoringSilenceExpiryOutboxSupplementIsDurablePostgres",
+        "reason": "ops_alert_revision_postgres_test.go:14: set MODURELAY_MONITORING_TEST_DSN to run real PostgreSQL monitoring checks",
+        "category": "postgres_dsn_not_provided",
+        "main_run_result": "skip",
+        "separate_pass_evidence": null
+      },
+      {
+        "package": "github.com/Wei-Shaw/sub2api/internal/repository",
+        "test": "TestMonitoringRuleRevisionRetiresOldWindowAndFencesStaleEvaluatorPostgres",
+        "reason": "ops_alert_revision_postgres_test.go:63: set MODURELAY_MONITORING_TEST_DSN to run real PostgreSQL monitoring checks",
+        "category": "postgres_dsn_not_provided",
+        "main_run_result": "skip",
+        "separate_pass_evidence": null
+      },
+      {
+        "package": "github.com/Wei-Shaw/sub2api/internal/repository",
+        "test": "TestMonitoringBillingFailedIntentSurvivesRollbackPostgres",
+        "reason": "ops_billing_operations_postgres_test.go:36: set MODURELAY_MONITORING_TEST_DSN to run real PostgreSQL monitoring checks",
+        "category": "postgres_dsn_not_provided",
+        "main_run_result": "skip",
+        "separate_pass_evidence": "postgres-projection-isolation-summary.json"
+      },
+      {
+        "package": "github.com/Wei-Shaw/sub2api/internal/repository",
+        "test": "TestMonitoringBillingLedgerCoversHoldRefundAndDirectSQLPostgres",
+        "reason": "ops_billing_operations_postgres_test.go:77: set MODURELAY_MONITORING_TEST_DSN to run real PostgreSQL monitoring checks",
+        "category": "postgres_dsn_not_provided",
+        "main_run_result": "skip",
+        "separate_pass_evidence": "postgres-projection-isolation-summary.json"
+      },
+      {
+        "package": "github.com/Wei-Shaw/sub2api/internal/repository",
+        "test": "TestMonitoringBrokenObservationDoesNotChangeBillingPostgres",
+        "reason": "ops_billing_operations_postgres_test.go:126: set MODURELAY_MONITORING_TEST_DSN to run real PostgreSQL monitoring checks",
+        "category": "postgres_dsn_not_provided",
+        "main_run_result": "skip",
+        "separate_pass_evidence": "postgres-projection-isolation-summary.json"
+      },
+      {
+        "package": "github.com/Wei-Shaw/sub2api/internal/repository",
+        "test": "TestMonitoringBillingCrashRecoveryDoesNotReplayPostgres",
+        "reason": "ops_billing_operations_postgres_test.go:152: set MODURELAY_MONITORING_TEST_DSN to run real PostgreSQL monitoring checks",
+        "category": "postgres_dsn_not_provided",
+        "main_run_result": "skip",
+        "separate_pass_evidence": "postgres-projection-isolation-summary.json"
+      },
+      {
+        "package": "github.com/Wei-Shaw/sub2api/internal/repository",
+        "test": "TestMonitoringBillingPanicNeverMarksCommittedPostgres",
+        "reason": "ops_billing_operations_postgres_test.go:179: set MODURELAY_MONITORING_TEST_DSN to run real PostgreSQL monitoring checks",
+        "category": "postgres_dsn_not_provided",
+        "main_run_result": "skip",
+        "separate_pass_evidence": "postgres-projection-isolation-summary.json"
+      },
+      {
+        "package": "github.com/Wei-Shaw/sub2api/internal/repository",
+        "test": "TestMonitoringBillingObservationTimeoutCircuitAndGapPostgres",
+        "reason": "ops_billing_operations_postgres_test.go:202: set MODURELAY_MONITORING_TEST_DSN to run real PostgreSQL monitoring checks",
+        "category": "postgres_dsn_not_provided",
+        "main_run_result": "skip",
+        "separate_pass_evidence": "postgres-projection-isolation-summary.json"
+      },
+      {
+        "package": "github.com/Wei-Shaw/sub2api/internal/repository",
+        "test": "TestMonitoringBillingObservationLatencyPostgres",
+        "reason": "ops_billing_operations_postgres_test.go:260: set MODURELAY_MONITORING_TEST_DSN to run real PostgreSQL monitoring checks",
+        "category": "postgres_dsn_not_provided",
+        "main_run_result": "skip",
+        "separate_pass_evidence": "postgres-projection-isolation-summary.json"
+      },
+      {
+        "package": "github.com/Wei-Shaw/sub2api/internal/repository",
+        "test": "TestMonitoringBillingProjectionIgnoresSlowAndLockedObserverPostgres",
+        "reason": "ops_billing_operations_postgres_test.go:279: set MODURELAY_MONITORING_TEST_DSN to run real PostgreSQL monitoring checks",
+        "category": "postgres_dsn_not_provided",
+        "main_run_result": "skip",
+        "separate_pass_evidence": "postgres-projection-isolation-summary.json"
+      },
+      {
+        "package": "github.com/Wei-Shaw/sub2api/internal/repository",
+        "test": "TestMonitoringBillingProjectionDeletionIsUnknownPostgres",
+        "reason": "ops_billing_operations_postgres_test.go:336: set MODURELAY_MONITORING_TEST_DSN to run real PostgreSQL monitoring checks",
+        "category": "postgres_dsn_not_provided",
+        "main_run_result": "skip",
+        "separate_pass_evidence": "postgres-projection-isolation-summary.json"
+      },
+      {
+        "package": "github.com/Wei-Shaw/sub2api/internal/repository",
+        "test": "TestMonitoringBillingProjectionConcurrentRecheckDoesNotBlockOrOverwritePostgres",
+        "reason": "ops_billing_operations_postgres_test.go:358: set MODURELAY_MONITORING_TEST_DSN to run real PostgreSQL monitoring checks",
+        "category": "postgres_dsn_not_provided",
+        "main_run_result": "skip",
+        "separate_pass_evidence": "postgres-projection-isolation-summary.json"
+      },
+      {
+        "package": "github.com/Wei-Shaw/sub2api/internal/repository",
+        "test": "TestMonitoringBillingReconciliationPostgres",
+        "reason": "ops_billing_reconciliation_postgres_test.go:61: set MODURELAY_MONITORING_TEST_DSN to run real PostgreSQL monitoring checks",
+        "category": "postgres_dsn_not_provided",
+        "main_run_result": "skip",
+        "separate_pass_evidence": "postgres-projection-isolation-summary.json"
+      },
+      {
+        "package": "github.com/Wei-Shaw/sub2api/internal/repository",
+        "test": "TestMonitoringBillingBacklogAndPersistencePostgres",
+        "reason": "ops_billing_reconciliation_postgres_test.go:94: set MODURELAY_MONITORING_TEST_DSN to run real PostgreSQL monitoring checks",
+        "category": "postgres_dsn_not_provided",
+        "main_run_result": "skip",
+        "separate_pass_evidence": "postgres-projection-isolation-summary.json"
+      },
+      {
+        "package": "github.com/Wei-Shaw/sub2api/internal/repository",
+        "test": "TestMonitoringBillingEvidenceAtomicClaimPostgres",
+        "reason": "ops_billing_reconciliation_postgres_test.go:115: set MODURELAY_MONITORING_TEST_DSN to run real PostgreSQL monitoring checks",
+        "category": "postgres_dsn_not_provided",
+        "main_run_result": "skip",
+        "separate_pass_evidence": "postgres-projection-isolation-summary.json"
+      },
+      {
+        "package": "github.com/Wei-Shaw/sub2api/internal/repository",
+        "test": "TestMonitoringBillingOpenFindingSurvivesArchivePostgres",
+        "reason": "ops_billing_reconciliation_postgres_test.go:150: set MODURELAY_MONITORING_TEST_DSN to run real PostgreSQL monitoring checks",
+        "category": "postgres_dsn_not_provided",
+        "main_run_result": "skip",
+        "separate_pass_evidence": "postgres-projection-isolation-summary.json"
+      },
+      {
+        "package": "github.com/Wei-Shaw/sub2api/internal/repository",
+        "test": "TestMonitoringProductionMigrationsPostgres",
+        "reason": "ops_monitoring_migrations_postgres_test.go:22: set MODURELAY_MONITORING_TEST_DSN to a disposable PostgreSQL with CREATEDB privilege",
+        "category": "postgres_dsn_not_provided",
+        "main_run_result": "skip",
+        "separate_pass_evidence": "postgres-projection-isolation-summary.json"
+      },
+      {
+        "package": "github.com/Wei-Shaw/sub2api/internal/repository",
+        "test": "TestMonitoringAlertOutboxLifecyclePostgres",
+        "reason": "ops_repo_alerts_postgres_test.go:43: set MODURELAY_MONITORING_TEST_DSN to run real PostgreSQL monitoring checks",
+        "category": "postgres_dsn_not_provided",
+        "main_run_result": "skip",
+        "separate_pass_evidence": null
+      },
+      {
+        "package": "github.com/Wei-Shaw/sub2api/internal/repository",
+        "test": "TestMonitoringAlertOutboxAtomicRollbackPostgres",
+        "reason": "ops_repo_alerts_postgres_test.go:103: set MODURELAY_MONITORING_TEST_DSN to run real PostgreSQL monitoring checks",
+        "category": "postgres_dsn_not_provided",
+        "main_run_result": "skip",
+        "separate_pass_evidence": null
+      },
+      {
+        "package": "github.com/Wei-Shaw/sub2api/internal/repository",
+        "test": "TestMonitoringAlertOutboxConcurrentClaimsPostgres",
+        "reason": "ops_repo_alerts_postgres_test.go:114: set MODURELAY_MONITORING_TEST_DSN to run real PostgreSQL monitoring checks",
+        "category": "postgres_dsn_not_provided",
+        "main_run_result": "skip",
+        "separate_pass_evidence": null
+      },
+      {
+        "package": "github.com/Wei-Shaw/sub2api/internal/repository",
+        "test": "TestMonitoringDatabaseCapacityPersistencePostgres",
+        "reason": "ops_repo_alerts_postgres_test.go:157: set MODURELAY_MONITORING_TEST_DSN to run real PostgreSQL monitoring checks",
+        "category": "postgres_dsn_not_provided",
+        "main_run_result": "skip",
+        "separate_pass_evidence": null
+      },
+      {
+        "package": "github.com/Wei-Shaw/sub2api/internal/repository",
+        "test": "TestMonitoringResourceSilenceAndHistoryIsolationPostgres",
+        "reason": "ops_repo_alerts_postgres_test.go:184: set MODURELAY_MONITORING_TEST_DSN to run real PostgreSQL monitoring checks",
+        "category": "postgres_dsn_not_provided",
+        "main_run_result": "skip",
+        "separate_pass_evidence": null
+      },
+      {
+        "package": "github.com/Wei-Shaw/sub2api/internal/repository",
+        "test": "TestMonitoringRelatedRulesShareIncidentAndCloseOncePostgres",
+        "reason": "ops_repo_alerts_postgres_test.go:208: set MODURELAY_MONITORING_TEST_DSN to run real PostgreSQL monitoring checks",
+        "category": "postgres_dsn_not_provided",
+        "main_run_result": "skip",
+        "separate_pass_evidence": null
+      },
+      {
+        "package": "github.com/Wei-Shaw/sub2api/internal/repository",
+        "test": "TestMonitoringEventsPersistencePostgres",
+        "reason": "ops_repo_monitoring_events_test.go:15: set MODURELAY_MONITORING_TEST_DSN to run real PostgreSQL monitoring checks",
+        "category": "postgres_dsn_not_provided",
+        "main_run_result": "skip",
+        "separate_pass_evidence": null
+      },
+      {
+        "package": "github.com/Wei-Shaw/sub2api/internal/repository",
+        "test": "TestMonitoringKubernetesResourceContractPostgres",
+        "reason": "ops_repo_monitoring_limits_test.go:13: set MODURELAY_MONITORING_TEST_DSN to run real PostgreSQL monitoring checks",
+        "category": "postgres_dsn_not_provided",
+        "main_run_result": "skip",
+        "separate_pass_evidence": null
+      },
+      {
+        "package": "github.com/Wei-Shaw/sub2api/internal/service",
+        "test": "TestAuthPendingIdentityService_UpsertAdoptionDecision_ClearsLegacyNullSessionReference",
+        "reason": "auth_pending_identity_service_test.go:365: legacy NULL pending_auth_session_id rows only exist in production PostgreSQL history; sqlite unit schema rejects NULL",
+        "category": "legacy_postgres_rows_not_supported_by_sqlite_fixture",
+        "main_run_result": "skip",
+        "separate_pass_evidence": null
+      },
+      {
+        "package": "github.com/Wei-Shaw/sub2api/internal/service",
+        "test": "TestContentModerationTypeSafeLive",
+        "reason": "content_moderation_typesafe_live_test.go:17: requires explicit TYPESAFE_LIVE_TEST=1 and a new TYPESAFE_API_KEY",
+        "category": "typesafe_live_opt_in_and_key_not_provided",
+        "main_run_result": "skip",
+        "separate_pass_evidence": null
+      },
+      {
+        "package": "github.com/Wei-Shaw/sub2api/internal/service",
+        "test": "TestEstimateOpenAIInputTokens_CompareWithOpenAIAPI",
+        "reason": "openai_gateway_count_tokens_test.go:314: OPENAI_API_KEY not set",
+        "category": "openai_api_key_not_provided",
+        "main_run_result": "skip",
+        "separate_pass_evidence": null
+      },
+      {
+        "package": "github.com/Wei-Shaw/sub2api/internal/service",
+        "test": "TestMonitoringDatabaseCapacityConnectionSlotsPostgres",
+        "reason": "ops_database_capacity_test.go:42: set disposable PostgreSQL DSN",
+        "category": "postgres_dsn_not_provided",
+        "main_run_result": "skip",
+        "separate_pass_evidence": null
+      },
+      {
+        "package": "github.com/Wei-Shaw/sub2api/internal/service",
+        "test": "TestMonitoringRedisClusterCapacityReal",
+        "reason": "ops_redis_capacity_cluster_test.go:22: requires dedicated disposable Redis Cluster and explicit shutdown opt-in",
+        "category": "redis_cluster_and_shutdown_opt_in_not_provided",
+        "main_run_result": "skip",
+        "separate_pass_evidence": "redis-cluster-capacity-real-summary.json"
+      },
+      {
+        "package": "github.com/Wei-Shaw/sub2api/internal/service",
+        "test": "TestPluginRuntimeIntegration",
+        "reason": "plugin_runtime_integration_test.go:29: 未提供 SUB2API_TEST_PLUGIN_PACKAGE，跳过本地插件进程集成测试",
+        "category": "local_plugin_package_not_provided",
+        "main_run_result": "skip",
+        "separate_pass_evidence": null
+      }
+    ],
+    "separate_supplement_mapping": {
+      "postgres_matching_skips_with_post280_pass": 15,
+      "redis_matching_skips_with_real_server_pass": 1,
+      "remaining_skips_not_covered_by_these_two_supplements": 15,
+      "note": "仅统计本摘要明确引用的两份独立补证；其余专项历史证据不因此被断言不存在或失败。"
+    },
+    "evidence": "final-post280-test-results.jsonl"
+  },
+  "actual_notification_network": {
+    "result": "pass",
+    "included_in_backend_totals": true,
+    "tests": [
+      {
+        "Package": "github.com/Wei-Shaw/sub2api/internal/service",
+        "Test": "TestMonitoringAlertEmailActualSMTPFiringAndRecovery",
+        "Action": "pass",
+        "Elapsed": 0,
+        "Time": "2026-10-23T15:22:07.10812+08:00"
+      },
+      {
+        "Package": "github.com/Wei-Shaw/sub2api/internal/service",
+        "Test": "TestMonitoringWebhookActualTLSStatusSignatureAndDeadline",
+        "Action": "pass",
+        "Elapsed": 0.05,
+        "Time": "2026-10-23T15:22:07.162591+08:00"
+      }
+    ],
+    "scope": "实际 loopback SMTP 与 HTTPS/TLS fixture；覆盖 firing/recovery 邮件、SMTP 故障恢复、Webhook 429/500/200、签名与幂等头、50ms 超时。不宣称企业 SMTP 收件人或外部 Webhook 生产接入验收。",
+    "source": "backend/internal/service/ops_alert_delivery_network_test.go"
+  },
+  "postgres_post280": {
+    "result": "pass",
+    "environment": "专用 PostgreSQL 18.1 隔离容器；随机 schema / 迁移用临时数据库。",
+    "top_level": {
+      "pass": 15,
+      "fail": 0,
+      "skip": 0
+    },
+    "command": [
+      "go",
+      "test",
+      "-tags=unit",
+      "./internal/repository",
+      "-run",
+      "TestMonitoring(Billing|BrokenObservation|ProductionMigrations).*Postgres",
+      "-count=1",
+      "-timeout=4m",
+      "-json"
+    ],
+    "tests": [
+      {
+        "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+        "Test": "TestMonitoringBillingFailedIntentSurvivesRollbackPostgres",
+        "Action": "pass",
+        "Elapsed": 0.67
+      },
+      {
+        "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+        "Test": "TestMonitoringBillingLedgerCoversHoldRefundAndDirectSQLPostgres",
+        "Action": "pass",
+        "Elapsed": 1.12
+      },
+      {
+        "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+        "Test": "TestMonitoringBrokenObservationDoesNotChangeBillingPostgres",
+        "Action": "pass",
+        "Elapsed": 0.81
+      },
+      {
+        "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+        "Test": "TestMonitoringBillingCrashRecoveryDoesNotReplayPostgres",
+        "Action": "pass",
+        "Elapsed": 0.25
+      },
+      {
+        "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+        "Test": "TestMonitoringBillingPanicNeverMarksCommittedPostgres",
+        "Action": "pass",
+        "Elapsed": 0.1
+      },
+      {
+        "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+        "Test": "TestMonitoringBillingObservationTimeoutCircuitAndGapPostgres",
+        "Action": "pass",
+        "Elapsed": 0.2
+      },
+      {
+        "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+        "Test": "TestMonitoringBillingObservationLatencyPostgres",
+        "Action": "pass",
+        "Elapsed": 0.39
+      },
+      {
+        "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+        "Test": "TestMonitoringBillingProjectionIgnoresSlowAndLockedObserverPostgres",
+        "Action": "pass",
+        "Elapsed": 0.27
+      },
+      {
+        "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+        "Test": "TestMonitoringBillingProjectionDeletionIsUnknownPostgres",
+        "Action": "pass",
+        "Elapsed": 0.18
+      },
+      {
+        "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+        "Test": "TestMonitoringBillingProjectionConcurrentRecheckDoesNotBlockOrOverwritePostgres",
+        "Action": "pass",
+        "Elapsed": 0.3
+      },
+      {
+        "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+        "Test": "TestMonitoringBillingReconciliationPostgres",
+        "Action": "pass",
+        "Elapsed": 0.08
+      },
+      {
+        "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+        "Test": "TestMonitoringBillingBacklogAndPersistencePostgres",
+        "Action": "pass",
+        "Elapsed": 0.25
+      },
+      {
+        "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+        "Test": "TestMonitoringBillingEvidenceAtomicClaimPostgres",
+        "Action": "pass",
+        "Elapsed": 0.06
+      },
+      {
+        "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+        "Test": "TestMonitoringBillingOpenFindingSurvivesArchivePostgres",
+        "Action": "pass",
+        "Elapsed": 0.05
+      },
+      {
+        "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+        "Test": "TestMonitoringProductionMigrationsPostgres",
+        "Action": "pass",
+        "Elapsed": 4.14
+      }
+    ],
+    "evidence": [
+      "postgres-projection-isolation-summary.json",
+      "postgres-projection-isolation.jsonl",
+      "ledger-280-lock-probe.log",
+      "ledger-280-slow-probe.log"
+    ],
+    "observed_timing_notes": [
+      "ops_billing_operations_postgres_test.go:256: 50ms observer budget: first failure=65.674875ms circuit-open replay=3.061125ms; balance deducted once",
+      "ops_billing_operations_postgres_test.go:275: local PG sequential sample, n=20 each: existing settlement+source projection=4.88956ms; settlement+source projection+intents=10.854818ms; incremental=5.965258ms",
+      "ops_billing_operations_postgres_test.go:300: observer INSERT trigger sleeps400ms: monetary commit under Go/server100ms deadlines=3.075083ms",
+      "ops_billing_operations_postgres_test.go:306: locked ops_account_ledger_entries: monetary commit under Go/server100ms deadlines=7.649625ms",
+      "ops_billing_operations_postgres_test.go:306: locked ops_account_ledger_heads: monetary commit under Go/server100ms deadlines=7.564333ms",
+      "ops_billing_operations_postgres_test.go:306: locked ops_billing_recording_gaps: monetary commit under Go/server100ms deadlines=8.584708ms"
+    ],
+    "coverage": [
+      "失败事务之外持久意图、幂等证据重查、hold/capture/release、直接 SQL 与订阅窗口 reset",
+      "panic 不误标 committed；观测短预算/熔断/持久 gap 与管理员审计确认",
+      "migration 280 固定大小源行累计 projection；慢或锁定观测表不回滚/阻塞 100ms 预算内结算",
+      "重复与并发后台核对不覆盖更新的累计值；物理删除源行标 Unknown；全量生产 migrations"
+    ],
+    "limitations": [
+      "账户流水是 revision 区间汇总投影，不是完整逐笔交易审计。",
+      "本地少量样本延迟只作隔离行为证据，不是生产吞吐或延迟承诺。",
+      "未修改扣费策略，不自动重扣。"
+    ]
+  },
+  "redis_cluster_real": {
+    "result": "pass",
+    "top_level": {
+      "pass": 1,
+      "fail": 0,
+      "skip": 0
+    },
+    "evidence": [
+      "redis-cluster-capacity-real-summary.json",
+      "redis-cluster-capacity-real.log"
+    ],
+    "scope": "独立 Redis 8.4 三主节点功能验收：热点节点 82% 不被汇总 4% 稀释；一节点不可达返回 Unknown；每应用实例独立池统计。测试不是压力容量承诺，临时集群已清理。"
+  },
+  "frontend": {
+    "result": "pass",
+    "test_files": {
+      "pass": 435,
+      "total": 435
+    },
+    "tests": {
+      "pass": 3241,
+      "total": 3241
+    },
+    "duration_seconds": 74.47,
+    "evidence": "final-frontend-test-results.log",
+    "nonfatal_warnings": [
+      "Node --localstorage-file 未提供有效路径。"
+    ]
+  },
+  "vue_build": {
+    "result": "pass",
+    "pipeline": "pnpm run check:i18n && vue-tsc -b && vite build",
+    "vite_duration_seconds": 19.62,
+    "evidence": "final-vue-build-results.log",
+    "nonfatal_warnings": [
+      "部分 chunk 压缩前超过 700 kB。"
+    ],
+    "counting_note": "build 内 i18n 测试与前端套件重叠，不另加总。"
+  },
+  "canvas_build": {
+    "result": "pass",
+    "pipeline": "vite build --outDir ../../../backend/internal/web/dist/infinite-canvas --emptyOutDir",
+    "vite_duration_seconds": 8.45,
+    "evidence": "final-canvas-build-results.log",
+    "nonfatal_warnings": [
+      "runtime config.js 非 module，未被打包。",
+      "部分 chunk 压缩前超过 500 kB。"
+    ]
+  },
+  "isolated_memory_repeat": {
+    "result": "pass",
+    "unique_test_count": 1,
+    "repetitions": 3,
+    "test": "TestInflightEstimate_AccountMappingNoDBAndBoundedMemory",
+    "command": "go test -tags unit ./internal/service -run ^TestInflightEstimate_AccountMappingNoDBAndBoundedMemory$ -count=3",
+    "package_elapsed_seconds": 1.805,
+    "evidence": "final-memory-isolated.log",
+    "evidence_boundary": "日志仅有 package ok；执行命令和 3 次重复由主执行 agent 提供。"
+  },
+  "eslint": {
+    "result": "pass",
+    "exit_code": 0,
+    "evidence": "final-eslint.log",
+    "evidence_boundary": "空日志，无诊断；退出码由主执行 agent 报告。"
+  },
+  "compose_checks": [
+    {
+      "name": "cluster_environment",
+      "result": "pass",
+      "evidence": "final-compose-env.log"
+    },
+    {
+      "name": "security",
+      "result": "pass",
+      "evidence": "final-compose-security.log"
+    }
+  ],
+  "prometheus_engine": {
+    "result": "pass",
+    "fixed_monitoring_queries_parsed": 156,
+    "external_watchdog_expressions_parsed": 5,
+    "semantic_cases_executed": 24,
+    "version": "v0.315.1",
+    "evidence": "monitoring-promql-final.log",
+    "scope": "官方 Prometheus parser/engine 本地契约验证；不把查询解析数量计作业务用例通过总数。"
+  },
+  "related_targeted_evidence": [
+    {
+      "evidence": "stream-raw-ttft-regression-summary.json",
+      "scope": "TTFT 专项 38 顶层 + 41 子测试 pass；与主后端运行重叠，单列参考不累加。"
+    },
+    {
+      "evidence": "billing-observation-race.jsonl",
+      "scope": "billingobserve race 定向检查，单列参考不累加。"
+    }
+  ],
+  "final_test_image": {
+    "digest": "sha256:06875c9425b160484d01d4109074f839500469a85724d0414d7ba91355dd2f10",
+    "digest_source": "主执行 agent 提供",
+    "contents": "完整 Vue + Canvas 静态资源 embed 的测试运行镜像；migration 280 最终二进制。",
+    "boundary": "不是正式发布 Dockerfile 的验证结果。"
+  },
+  "archives": [
+    {
+      "path": "final-post280-test-results.jsonl",
+      "source_file": "modurelay-final-post280-tests.jsonl",
+      "source_sha256": "9b874dd9f015c1a5edf4b0bffd52fafa410b7dcce0e7f50e43d6f925f8ffab9a",
+      "source_bytes": 28206365,
+      "archived_sha256": "2f89bcfd335020b19a512ac137c89069f31ffe9cf0c5c0626f1ac67cf8d9b9aa",
+      "archived_bytes": 3938395,
+      "archive_policy": "仅保留 package start、test/subtest/package pass/fail/skip、跳过原因；省略常规运行输出，不改变测试名称或结果。"
+    },
+    {
+      "path": "final-frontend-test-results.log",
+      "source_file": "modurelay-final-frontend.log",
+      "source_sha256": "63d5cb12031fbe13e70c52f61522a9367397f6fa389e4bc5351d961a27eed969",
+      "source_bytes": 215570,
+      "archived_sha256": "edc569e37f852a0e71960fd38133d8cba49c3774b345fe0a40a488e6155f4cca",
+      "archived_bytes": 67393,
+      "archive_policy": "保留执行命令、测试文件结果、总计和 localstorage 非致命警告；省略测试 stdout/stderr 内容。"
+    },
+    {
+      "path": "final-vue-build-results.log",
+      "source_file": "modurelay-final-build.log",
+      "source_sha256": "d2eeebc451bd4da00a875bba6a96a0a4cbe23a827a1c141cc7ebc0a83a71033a",
+      "source_bytes": 88537,
+      "archived_sha256": "c6319016d52bb2e8db4b6324bb1d436f171a97d386ca3df67855fddf2e581bd0",
+      "archived_bytes": 14863,
+      "archive_policy": "保留命令、i18n 测试结果、构建完成标记和非致命警告；省略构建产物大小清单及常规测试输出。"
+    },
+    {
+      "path": "final-canvas-build-results.log",
+      "source_file": "modurelay-final-canvas-build.log",
+      "source_sha256": "b9a0657e898960e1659332f1f8008e1f6708eae8d17cf1414b45e1c958ccdd58",
+      "source_bytes": 10218,
+      "archived_sha256": "13449442dc1166cb8a802f6c79e5c528ba0c17a063c6cc2e2a160f3f82785c59",
+      "archived_bytes": 633,
+      "archive_policy": "保留命令、构建完成标记和非致命警告；省略构建产物大小清单。"
+    },
+    {
+      "path": "final-memory-isolated.log",
+      "source_file": "modurelay-final-memory-isolated.log",
+      "source_sha256": "3223cedd60818854c288bd0e2fcca93f96cec51eb1f56251b449e35778b86f0e",
+      "source_bytes": 57,
+      "archived_sha256": "3223cedd60818854c288bd0e2fcca93f96cec51eb1f56251b449e35778b86f0e",
+      "archived_bytes": 57,
+      "archive_policy": "完整日志；本地工作区路径替换为 <workspace>。"
+    },
+    {
+      "path": "final-eslint.log",
+      "source_file": "modurelay-final-eslint.log",
+      "source_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "source_bytes": 0,
+      "archived_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "archived_bytes": 0,
+      "archive_policy": "原始日志为空；无诊断输出。退出码 0 由主执行 agent 报告。"
+    },
+    {
+      "path": "final-compose-env.log",
+      "source_file": "modurelay-final-compose-env.log",
+      "source_sha256": "53372195df141fb7f6efa162bbc23a379c50295ef5620bf9586c1070b71840e2",
+      "source_bytes": 47,
+      "archived_sha256": "53372195df141fb7f6efa162bbc23a379c50295ef5620bf9586c1070b71840e2",
+      "archived_bytes": 47,
+      "archive_policy": "完整日志；本地工作区路径替换为 <workspace>。"
+    },
+    {
+      "path": "final-compose-security.log",
+      "source_file": "modurelay-final-compose-security.log",
+      "source_sha256": "924b47d7b8fe8dd92d3bc8d0308c3d558552ae918be938bc04f855f64ad2c2d0",
+      "source_bytes": 36,
+      "archived_sha256": "924b47d7b8fe8dd92d3bc8d0308c3d558552ae918be938bc04f855f64ad2c2d0",
+      "archived_bytes": 36,
+      "archive_policy": "完整日志；本地工作区路径替换为 <workspace>。"
+    },
+    {
+      "path": "monitoring-promql-final.log",
+      "source_file": "modurelay-final-review-promql.log",
+      "source_sha256": "44d8fe744bc8a7149adb42aba33d7e833d39ac6b169a2dea104a1939f704db09",
+      "source_bytes": 208,
+      "archived_sha256": "44d8fe744bc8a7149adb42aba33d7e833d39ac6b169a2dea104a1939f704db09",
+      "archived_bytes": 208,
+      "archive_policy": "完整日志；本地工作区路径替换为 <workspace>。"
+    }
+  ]
+}

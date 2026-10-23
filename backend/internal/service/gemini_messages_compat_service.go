@@ -2309,6 +2309,10 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 			}
 
 			if fc, ok := part["functionCall"].(map[string]any); ok && fc != nil {
+				if firstTokenMs == nil {
+					ms := int(time.Since(startTime).Milliseconds())
+					firstTokenMs = &ms
+				}
 				name, _ := fc["name"].(string)
 				args := fc["args"]
 				if strings.TrimSpace(name) == "" {
@@ -2883,7 +2887,7 @@ func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Conte
 					observer.ObserveGemini(rawBytes)
 					observeGeminiImageOutputs(c, rawBytes)
 
-					if firstTokenMs == nil {
+					if firstTokenMs == nil && geminiHasFirstOutput(rawBytes) {
 						ms := int(time.Since(startTime).Milliseconds())
 						firstTokenMs = &ms
 					}
