@@ -2487,10 +2487,16 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	// usage submission. The forwarders signal that boundary with AfterTurnForwarded.
 	drainRequest := lifecycle.FromContext(clientLifecycleCtx)
 	var drainClosed atomic.Bool
-	drainRequest.OnDrain(func() {
-		drainClosed.Store(true)
-		closeOpenAIClientWS(wsConn, coderws.StatusServiceRestart, "server restarting; please reconnect")
-	})
+	var drainCloseOnce sync.Once
+	closeForDrain := func() {
+		// A rejected follow-up turn can return before OnDrain's goroutine runs.
+		// Join the same close handshake before deferred CloseNow cleans up.
+		drainCloseOnce.Do(func() {
+			drainClosed.Store(true)
+			closeOpenAIClientWS(wsConn, coderws.StatusServiceRestart, "server restarting; please reconnect")
+		})
+	}
+	drainRequest.OnDrain(closeForDrain)
 	var drainTurnMu sync.Mutex
 	drainTurnActive := false
 	errWSDraining := errors.New("server restarting; please reconnect")
@@ -2526,6 +2532,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	)
 	if err != nil {
 		if drainClosed.Load() || errors.Is(context.Cause(ctx), lifecycle.ErrForcedShutdown) {
+			if !errors.Is(context.Cause(ctx), lifecycle.ErrForcedShutdown) {
+				closeForDrain()
+			}
 			reqLog.Info("openai.websocket_ingress_shutdown_before_first_message")
 			return
 		}
@@ -2546,7 +2555,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		return
 	}
 	if err := beginDrainTurn(); err != nil {
-		closeOpenAIClientWS(wsConn, coderws.StatusServiceRestart, errWSDraining.Error())
+		closeForDrain()
 		return
 	}
 	firstTurnStartedAt := time.Now()
@@ -3268,6 +3277,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		for {
 			err := h.gatewayService.ProxyResponsesWebSocketFromClient(ctx, c, wsConn, account, token, wsFirstMessage, hooks)
 			if drainClosed.Load() || errors.Is(err, errWSDraining) || errors.Is(context.Cause(ctx), lifecycle.ErrForcedShutdown) {
+				if !errors.Is(context.Cause(ctx), lifecycle.ErrForcedShutdown) {
+					closeForDrain()
+				}
 				// A local restart must not count as an upstream account failure.
 				reqLog.Info("openai.websocket_ingress_shutdown", zap.Int64("account_id", account.ID))
 				return
