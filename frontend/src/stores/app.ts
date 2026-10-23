@@ -473,6 +473,7 @@ export const useAppStore = defineStore('app', () => {
         activity_center_enabled: false,
         canvas_enabled: false,
         plan_catalog_enabled: false,
+        invoice_enabled: false,
         payment_enabled: false,
         table_default_page_size: 20,
         table_page_size_options: [10, 20, 50, 100],

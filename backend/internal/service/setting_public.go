@@ -220,6 +220,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyWeChatConnectFrontendRedirectURL,
 		SettingKeyBackendModeEnabled,
 		SettingPaymentEnabled,
+		SettingKeyInvoiceEnabled,
 		SettingBalancePayDisabled,
 		SettingKeyOIDCConnectEnabled,
 		SettingKeyOIDCConnectProviderName,
@@ -310,6 +311,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 	}
 
 	return &PublicSettings{
+		InvoiceEnabled:                      settings[SettingKeyInvoiceEnabled] == "true",
 		RegistrationEnabled:                 settings[SettingKeyRegistrationEnabled] == "true",
 		EmailVerifyEnabled:                  emailVerifyEnabled,
 		ForceEmailOnThirdPartySignup:        settings[SettingKeyForceEmailOnThirdPartySignup] == "true",
@@ -677,6 +679,7 @@ func (s *SettingService) GetUsageDetailVisibility(ctx context.Context) UsageDeta
 // A unit test diffs this struct's JSON keys against dto.PublicSettings to catch
 // drift automatically (see setting_service_injection_test.go).
 type PublicSettingsInjectionPayload struct {
+	InvoiceEnabled bool `json:"invoice_enabled"`
 	/*
 		RegistrationEnabled              bool                     `json:"registration_enabled"`
 		EmailVerifyEnabled               bool                     `json:"email_verify_enabled"`
@@ -881,6 +884,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 	}
 
 	return &PublicSettingsInjectionPayload{
+		InvoiceEnabled: settings.InvoiceEnabled,
 		/*
 				RegistrationEnabled:              settings.RegistrationEnabled,
 				EmailVerifyEnabled:               settings.EmailVerifyEnabled,

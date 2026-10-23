@@ -339,6 +339,7 @@ type DefaultSubscriptionSetting struct {
 }
 
 type PublicSettings struct {
+	InvoiceEnabled                      bool
 	RegistrationEnabled                 bool
 	EmailVerifyEnabled                  bool
 	ForceEmailOnThirdPartySignup        bool

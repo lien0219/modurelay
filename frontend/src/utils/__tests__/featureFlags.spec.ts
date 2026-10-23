@@ -63,3 +63,15 @@ describe('resolveFeatureFlag', () => {
     expect(isFeatureFlagEnabled(FeatureFlags.subscription)).toBe(false)
   })
 })
+
+describe('invoice navigation visibility', () => {
+  beforeEach(() => setActivePinia(createPinia()))
+
+  it('defaults to hidden and follows invoice_enabled independently of payments', () => {
+    const sidebarFlag = makeSidebarFlag(FeatureFlags.invoices)
+    expect(sidebarFlag()).toBe(false)
+    expect(resolveFeatureFlag({}, FeatureFlags.invoices)).toBe(false)
+    expect(resolveFeatureFlag({ invoice_enabled: false }, FeatureFlags.invoices)).toBe(false)
+    expect(resolveFeatureFlag({ invoice_enabled: true, payment_enabled: false }, FeatureFlags.invoices)).toBe(true)
+  })
+})

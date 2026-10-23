@@ -476,6 +476,12 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/invoices',
+    name: 'Invoices',
+    component: () => import('@/views/user/InvoicesView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: false, title: 'Invoices', titleKey: 'invoices.title', descriptionKey: 'invoices.description' }
+  },
+  {
     path: '/orders',
     name: 'OrderList',
     component: () => import('@/views/user/UserOrdersView.vue'),
@@ -959,6 +965,13 @@ const routes: RouteRecordRaw[] = [
     }
   },
 
+
+  {
+    path: '/admin/invoices',
+    name: 'AdminInvoices',
+    component: () => import('@/views/admin/InvoicesView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true, title: 'Invoice Management', titleKey: 'invoices.adminTitle', descriptionKey: 'invoices.adminDescription' }
+  },
 
   // ==================== Payment Admin Routes ====================
   {

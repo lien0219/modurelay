@@ -192,6 +192,7 @@ type TopUsersByCurrency map[string][]TopUserStat
 // --- Service ---
 
 type PaymentService struct {
+	invoiceRepository        InvoiceRepository
 	providerMu               sync.Mutex
 	providersLoaded          bool
 	entClient                *dbent.Client
