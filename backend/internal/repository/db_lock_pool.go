@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/dbpoolstats"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pglock"
 	"github.com/lib/pq"
 )
@@ -34,5 +35,6 @@ func initAdvisoryLockPool(primary *sql.DB, cfg *config.Config) (func() error, er
 		_ = lockPool.Close()
 		return nil, err
 	}
-	return cleanup, nil
+	unregister := dbpoolstats.Register(primary, "advisory_lock", lockPool)
+	return func() error { unregister(); return cleanup() }, nil
 }

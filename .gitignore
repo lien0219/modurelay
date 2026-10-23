@@ -196,3 +196,11 @@ issues/
 frontend/.cache-task4-*.json
 # 本地闭源插件开发目录及构建产物不进入 Sub2API 仓库
 /plugins/
+
+# Locally generated monitoring credentials and application targets.
+/deploy/monitoring/secrets/
+
+# Reviewed monitoring delivery documentation is part of the implementation.
+!docs/CLUSTER_MONITORING_REQUIREMENTS_AUDIT.md
+!docs/CLUSTER_MONITORING_CONFORMANCE_REVIEW.md
+!docs/CLUSTER_ALERT_SEMANTICS.md

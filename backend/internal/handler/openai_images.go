@@ -278,8 +278,8 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 			responseLatencyMs = forwardDurationMs - upstreamLatencyMs
 		}
 		service.SetOpsLatencyMs(c, service.OpsResponseLatencyMsKey, responseLatencyMs)
-		if result != nil && result.FirstTokenMs != nil {
-			service.SetOpsLatencyMs(c, service.OpsTimeToFirstTokenMsKey, int64(*result.FirstTokenMs))
+		if result != nil {
+			service.SetOpsSuccessfulFirstToken(c, result.FirstTokenMs, err)
 		}
 		if err != nil {
 			if result != nil && result.ImageCount > 0 {

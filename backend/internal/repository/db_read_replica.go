@@ -12,6 +12,7 @@ import (
 
 	entsql "entgo.io/ent/dialect/sql"
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/dbpoolstats"
 	"github.com/lib/pq"
 )
 
@@ -23,10 +24,11 @@ const readReplicaRetryInterval = 30 * time.Second
 // a default driver or an SQL router. A nil reporting field disables replica reads.
 type primaryWithReadReplicaDriver struct {
 	*entsql.Driver
-	reporting     *reportingQueryer
-	closeLockPool func() error
-	closeOnce     sync.Once
-	closeErr      error
+	reporting         *reportingQueryer
+	closeLockPool     func() error
+	closeOnce         sync.Once
+	closeErr          error
+	unregisterReplica func()
 }
 
 func (d *primaryWithReadReplicaDriver) Close() error {
@@ -36,6 +38,9 @@ func (d *primaryWithReadReplicaDriver) Close() error {
 			lockErr = d.closeLockPool()
 		}
 		if d.reporting != nil {
+			if d.unregisterReplica != nil {
+				d.unregisterReplica()
+			}
 			replicaErr = d.reporting.replica.Close()
 		}
 		d.closeErr = errors.Join(lockErr, replicaErr, d.Driver.Close())
@@ -89,7 +94,7 @@ func initReadReplica(primary *entsql.Driver, cfg *config.Config) (*primaryWithRe
 		reporting.retryAfter.Store(time.Now().Add(readReplicaRetryInterval).UnixNano())
 		slog.Warn("database reporting replica unavailable at startup; using primary until retry", "error", err)
 	}
-	return &primaryWithReadReplicaDriver{Driver: primary, reporting: reporting}, nil
+	return &primaryWithReadReplicaDriver{Driver: primary, reporting: reporting, unregisterReplica: dbpoolstats.Register(primary.DB(), "read_replica", replica)}, nil
 }
 
 // reportingSQL is used only by dashboard and trend methods. All usage log

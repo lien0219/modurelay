@@ -1,0 +1,25 @@
+{
+  "final_path": "/Users/mac/Documents/_work/木子/集群监控告警_最终需求表.xlsx",
+  "sha256": "033b4bf4e6ad372728c6da5cf4a25474c97fc790b3881a5c4dde7feaed33eca5",
+  "overview_cached_totals": [
+    32,
+    14,
+    15,
+    3,
+    28,
+    31,
+    1,
+    0
+  ],
+  "original_requirements_preserved": true,
+  "formula_errors": 0,
+  "native_table": "A5:P37",
+  "freeze_panes": "E6",
+  "backup_path": "/Users/mac/Documents/_work/木子/集群监控告警_最终需求表.xlsx.20261023-实现补齐前.bak",
+  "visual_review": [
+    "overview",
+    "fixes",
+    "requirement details",
+    "environment matrix"
+  ]
+}

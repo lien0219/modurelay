@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import Select from '@/components/common/Select.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import OpsAlertDeliveries from './OpsAlertDeliveries.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { opsAPI, type AlertEventsQuery } from '@/api/admin/ops'
 import type { AlertEvent } from '../types'
@@ -198,6 +199,10 @@ function formatDimensionsSummary(event: AlertEvent): string {
   if (groupId != null && groupId !== '') parts.push(`group_id=${String(groupId)}`)
   const region = getDimensionString(event, 'region')
   if (region) parts.push(`region=${region}`)
+  for (const key of ['cluster', 'namespace', 'service', 'deployment', 'pod', 'uid', 'source']) {
+    const value = getDimensionString(event, key)
+    if (value) parts.push(`${key}=${value}`)
+  }
   return parts.length ? parts.join(' ') : '-'
 }
 
@@ -242,6 +247,8 @@ async function loadHistory() {
 
     const items = await opsAPI.listAlertEvents({
       limit: 20,
+      rule_id: ev.rule_id,
+      resource_key: getDimensionString(ev, 'resource_key') || undefined,
       time_range: historyRange.value,
       platform: platform || undefined,
       group_id: groupId,
@@ -256,7 +263,8 @@ async function loadHistory() {
       if ((p1 || '') !== (p2 || '')) return false
       const g1 = it.dimensions?.group_id
       const g2 = ev.dimensions?.group_id
-      return (g1 ?? null) === (g2 ?? null)
+      if ((g1 ?? null) !== (g2 ?? null)) return false
+      return ['cluster', 'namespace', 'service', 'deployment', 'pod', 'uid', 'source', 'resource_key'].every(key => getDimensionString(it, key) === getDimensionString(ev, key))
     })
   } catch (err: any) {
     console.error('[OpsAlertEventsCard] Failed to load alert history', err)
@@ -287,6 +295,7 @@ async function silenceAlert() {
 
     await opsAPI.createAlertSilence({
       rule_id: ev.rule_id,
+      resource_key: getDimensionString(ev, 'resource_key') || undefined,
       platform: platform || '',
       group_id: groupId ?? undefined,
       region: region ?? undefined,
@@ -649,6 +658,9 @@ const empty = computed(() => events.value.length === 0 && !loading.value)
                 <div v-if="getDimensionString(selected, 'platform')">platform={{ getDimensionString(selected, 'platform') }}</div>
                 <div v-if="selected.dimensions?.group_id">group_id={{ selected.dimensions.group_id }}</div>
                 <div v-if="getDimensionString(selected, 'region')">region={{ getDimensionString(selected, 'region') }}</div>
+                <template v-for="key in ['cluster', 'namespace', 'service', 'deployment', 'pod', 'uid', 'source']" :key="key">
+                  <div v-if="getDimensionString(selected, key)" class="break-all">{{ key }}={{ getDimensionString(selected, key) }}</div>
+                </template>
               </div>
             </div>
           </div>
@@ -698,6 +710,7 @@ const empty = computed(() => events.value.length === 0 && !loading.value)
           </div>
         </div>
       </div>
+      <OpsAlertDeliveries v-if="showDetail && selected && !detailLoading" :event-id="selected.id" />
     </BaseDialog>
   </div>
 </template>

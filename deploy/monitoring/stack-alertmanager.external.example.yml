@@ -1,0 +1,17 @@
+# Example only. Copy to a private file and use MONITORING_ALERTMANAGER_CONFIG.
+# The endpoint must be operated independently of the monitored host/cluster.
+route:
+  receiver: external-deadman
+  group_by: [alertname, cluster, instance]
+  group_wait: 5s
+  group_interval: 15s
+  repeat_interval: 1m
+receivers:
+  - name: external-deadman
+    webhook_configs:
+      - url: https://watchdog.example.invalid/alerts
+        send_resolved: true
+        http_config:
+          authorization:
+            type: Bearer
+            credentials_file: /run/secrets/receiver_token

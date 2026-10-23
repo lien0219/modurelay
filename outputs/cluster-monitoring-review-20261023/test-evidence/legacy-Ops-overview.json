@@ -1,0 +1,179 @@
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "start_time": "2026-10-23T06:24:26.551048429Z",
+    "end_time": "2026-10-23T07:24:26.551048429Z",
+    "platform": "",
+    "group_id": null,
+    "health_score": 100,
+    "system_metrics": {
+      "capacity": {
+        "postgresql": {
+          "state": "Available",
+          "source": "PostgreSQL client backend slots / max_connections (includes reserved client slots)",
+          "used": 4,
+          "limit": 100
+        },
+        "redis": {
+          "state": "Available",
+          "source": "Redis INFO clients",
+          "used": 10,
+          "limit": 10000
+        },
+        "postgresql_pool_limit": 10,
+        "redis_pool_limit": 20,
+        "database_pools": [
+          {
+            "instance": "6d50869c-921f-4795-a74d-30fa3305ef3b",
+            "role": "advisory_lock",
+            "active": 1,
+            "idle": 1,
+            "limit": 16,
+            "wait_count": 0,
+            "wait_seconds": 0
+          },
+          {
+            "instance": "6d50869c-921f-4795-a74d-30fa3305ef3b",
+            "role": "primary",
+            "active": 1,
+            "idle": 2,
+            "limit": 10,
+            "wait_count": 6,
+            "wait_seconds": 0.005101125
+          }
+        ]
+      },
+      "database_pools": [
+        {
+          "instance": "649dfe67-d00a-471d-937b-69fede825c62",
+          "role": "advisory_lock",
+          "active": 5,
+          "idle": 0,
+          "limit": 16,
+          "wait_count": 0,
+          "wait_seconds": 0
+        },
+        {
+          "instance": "649dfe67-d00a-471d-937b-69fede825c62",
+          "role": "primary",
+          "active": 7,
+          "idle": 1,
+          "limit": 10,
+          "wait_count": 5,
+          "wait_seconds": 0.002800167
+        }
+      ],
+      "billing_observation_unpersisted": 0,
+      "scope": "cluster",
+      "instance_count": 1,
+      "id": 23,
+      "created_at": "2026-10-23T07:24:25.673534637Z",
+      "window_minutes": 1,
+      "cpu_usage_percent": 6.3,
+      "memory_used_mb": 101,
+      "memory_total_mb": 1024,
+      "memory_usage_percent": 9.9,
+      "db_ok": true,
+      "redis_ok": true,
+      "db_max_open_conns": 10,
+      "redis_pool_size": 20,
+      "redis_conn_total": 4,
+      "redis_conn_idle": 4,
+      "db_conn_active": 8,
+      "db_conn_idle": 2,
+      "db_conn_waiting": null,
+      "goroutine_count": 146,
+      "concurrency_queue_depth": 0,
+      "account_switch_count": 0
+    },
+    "job_heartbeats": [
+      {
+        "job_name": "ops_alert_evaluator",
+        "last_run_at": "2026-10-23T15:24:25.666344+08:00",
+        "last_success_at": "2026-10-23T15:24:25.727329+08:00",
+        "last_error_at": null,
+        "last_error": null,
+        "last_duration_ms": 60,
+        "last_result": "rules=9 enabled=9 evaluated=3 created=0 resolved=0 emails_sent=0",
+        "updated_at": "2026-10-23T15:24:25.72749+08:00"
+      },
+      {
+        "job_name": "ops_metrics_collector",
+        "last_run_at": "2026-10-23T15:24:13.207918+08:00",
+        "last_success_at": "2026-10-23T15:24:13.228258+08:00",
+        "last_error_at": null,
+        "last_error": null,
+        "last_duration_ms": 20,
+        "last_result": null,
+        "updated_at": "2026-10-23T15:24:13.228546+08:00"
+      },
+      {
+        "job_name": "ops_preaggregation_daily",
+        "last_run_at": "2026-10-23T15:24:25.689848+08:00",
+        "last_success_at": "2026-10-23T15:24:25.699645+08:00",
+        "last_error_at": null,
+        "last_error": null,
+        "last_duration_ms": 9,
+        "last_result": "window=2026-10-22T00:00:00Z..2026-10-23T00:00:00Z",
+        "updated_at": "2026-10-23T15:24:25.700075+08:00"
+      },
+      {
+        "job_name": "ops_preaggregation_hourly",
+        "last_run_at": "2026-10-23T15:24:25.665121+08:00",
+        "last_success_at": "2026-10-23T15:24:25.688723+08:00",
+        "last_error_at": null,
+        "last_error": null,
+        "last_duration_ms": 23,
+        "last_result": "window=2026-10-23T06:00:00Z..2026-10-23T07:00:00Z",
+        "updated_at": "2026-10-23T15:24:25.689561+08:00"
+      }
+    ],
+    "success_count": 0,
+    "error_count_total": 0,
+    "business_limited_count": 0,
+    "error_count_sla": 0,
+    "request_count_total": 0,
+    "request_count_sla": 0,
+    "token_consumed": 0,
+    "sla": 0,
+    "error_rate": 0,
+    "upstream_error_rate": 0,
+    "upstream_error_count_excl_429_529": 0,
+    "upstream_429_count": 0,
+    "upstream_529_count": 0,
+    "qps": {
+      "current": 0,
+      "peak": 0,
+      "avg": 0
+    },
+    "tps": {
+      "current": 0,
+      "peak": 0,
+      "avg": 0
+    },
+    "output_tps": {
+      "p5": null,
+      "p10": null,
+      "p50": null,
+      "avg": null,
+      "sample_count": 0
+    },
+    "duration": {
+      "p50_ms": null,
+      "p90_ms": null,
+      "p95_ms": null,
+      "p99_ms": null,
+      "avg_ms": null,
+      "max_ms": null
+    },
+    "ttft": {
+      "p50_ms": null,
+      "p90_ms": null,
+      "p95_ms": null,
+      "p99_ms": null,
+      "avg_ms": null,
+      "max_ms": null
+    }
+  }
+}

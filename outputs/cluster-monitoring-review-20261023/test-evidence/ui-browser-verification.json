@@ -1,0 +1,44 @@
+{
+  "tested_at": "2026-10-23T07:32:37.997Z",
+  "runtime": "real embedded frontend and isolated Docker API, current source",
+  "checks": [
+    {
+      "name": "desktop-light",
+      "viewport": 1440,
+      "body": 1440,
+      "document": 1440,
+      "panelTop": 0,
+      "noPageOverflow": true
+    },
+    {
+      "name": "desktop-dark",
+      "viewport": 1440,
+      "body": 1440,
+      "document": 1440,
+      "panelTop": 0,
+      "noPageOverflow": true
+    },
+    {
+      "name": "mobile-light",
+      "viewport": 390,
+      "body": 390,
+      "document": 390,
+      "panelTop": -0.5,
+      "noPageOverflow": true
+    },
+    {
+      "name": "mobile-dark",
+      "viewport": 390,
+      "body": 390,
+      "document": 390,
+      "panelTop": -0.5,
+      "noPageOverflow": true
+    }
+  ],
+  "keyboardNextControl": {
+    "control": "monitor-range",
+    "tag": "SELECT",
+    "text": "15m1h6h24h7d30d自定义"
+  },
+  "pageErrors": []
+}

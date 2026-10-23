@@ -1,0 +1,462 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-tags=unit",
+    "./internal/service",
+    "./internal/repository",
+    "./internal/pkg/dbpoolstats",
+    "./internal/pkg/billingobserve",
+    "-run",
+    "Test(Monitoring.*Postgres|DatabaseCapacity|RedisCapacity|RedisClusterCapacity|DatabasePoolStats|PoolCounters|OpsBillingReconciliation|OpsClusterRuntime|ReadReplica|Reporting|UsageBilling|DeductUsageBilling|ApplyUsageBilling|BuildUsageBilling|BatchImage.*Settlement|GapConcurrent)",
+    "-count=1",
+    "-timeout=5m",
+    "-json"
+  ],
+  "exit_code": 0,
+  "top_level": {
+    "pass": 72,
+    "fail": 0,
+    "skip": 0
+  },
+  "tests": [
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/pkg/billingobserve",
+      "Test": "TestGapConcurrentPersistencePreservesNewFailures",
+      "Action": "pass",
+      "Elapsed": 0
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/service",
+      "Test": "TestBatchImageSettlementOutputExpiration",
+      "Action": "pass",
+      "Elapsed": 0
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/service",
+      "Test": "TestBatchImageSettlementService_SettlesAndChargesSuccessfulImagesOnly",
+      "Action": "pass",
+      "Elapsed": 0
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/service",
+      "Test": "TestBatchImageSettlementService_ZeroSuccessCanComplete",
+      "Action": "pass",
+      "Elapsed": 0
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/service",
+      "Test": "TestBatchImageSettlementService_CompletedJobReturnsAlreadySettledWithoutBilling",
+      "Action": "pass",
+      "Elapsed": 0
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/service",
+      "Test": "TestBatchImageSettlementService_IdempotentAfterBillingCrash",
+      "Action": "pass",
+      "Elapsed": 0
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/service",
+      "Test": "TestBatchImageSettlementService_ValidationErrors",
+      "Action": "pass",
+      "Elapsed": 0
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/service",
+      "Test": "TestBatchImageSettlementService_CostExceedingHoldDoesNotCharge",
+      "Action": "pass",
+      "Elapsed": 0
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/service",
+      "Test": "TestBatchImageSettlementService_UsesSubmittedPricingSnapshot",
+      "Action": "pass",
+      "Elapsed": 0
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/service",
+      "Test": "TestBatchImageSettlementService_BillingFailureLeavesSettlingAndRecordsError",
+      "Action": "pass",
+      "Elapsed": 0
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/service",
+      "Test": "TestBatchImagePipelineProcessor_RequeuesTransientSettlementFailure",
+      "Action": "pass",
+      "Elapsed": 0
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/service",
+      "Test": "TestBatchImagePipelineProcessor_FailsAndReleasesAfterSettlementRetryLimit",
+      "Action": "pass",
+      "Elapsed": 0
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/service",
+      "Test": "TestBatchImageSettlementRetryExhaustedReleaseIsIdempotentAfterTransitionFailure",
+      "Action": "pass",
+      "Elapsed": 0
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/service",
+      "Test": "TestBatchImageSettlementService_CostExceedsHoldExhaustsAndReleases",
+      "Action": "pass",
+      "Elapsed": 0
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/service",
+      "Test": "TestBatchImageSettlementService_InvalidCountsExhaustsAndReleases",
+      "Action": "pass",
+      "Elapsed": 0
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/service",
+      "Test": "TestBatchImageSettlementManifestHash",
+      "Action": "pass",
+      "Elapsed": 0
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/service",
+      "Test": "TestBatchImageSettlementBillingRequestIDs",
+      "Action": "pass",
+      "Elapsed": 0
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/service",
+      "Test": "TestBuildUsageBillingCommandSimpleModeOnlyChargesAPIKeyWindows",
+      "Action": "pass",
+      "Elapsed": 0
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/service",
+      "Test": "TestApplyUsageBillingSimpleModeDeduplicatesWithoutBalanceEffects",
+      "Action": "pass",
+      "Elapsed": 0
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/service",
+      "Test": "TestApplyUsageBillingSimpleModeRejectsLegacyFallback",
+      "Action": "pass",
+      "Elapsed": 0
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/service",
+      "Test": "TestUsageBillingModelCandidates_BareGPT56IncludesSol",
+      "Action": "pass",
+      "Elapsed": 0
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/service",
+      "Test": "TestUsageBillingModelCandidatesPreserveCodexAutoReviewModel",
+      "Action": "pass",
+      "Elapsed": 0
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/service",
+      "Test": "TestUsageBillingModelCandidatesPreserveGPT55ProModel",
+      "Action": "pass",
+      "Elapsed": 0
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/service",
+      "Test": "TestOpsBillingReconciliationUnknownCannotReportZero",
+      "Action": "pass",
+      "Elapsed": 0
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/service",
+      "Test": "TestOpsBillingReconciliationOperationalCoverageRequiresFreshCompleteScan",
+      "Action": "pass",
+      "Elapsed": 0
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/service",
+      "Test": "TestOpsBillingReconciliationRemotePodObservationGapIsUnknown",
+      "Action": "pass",
+      "Elapsed": 0.01
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/service",
+      "Test": "TestOpsClusterRuntimeAggregatesPodsAndExpiresMissingMembers",
+      "Action": "pass",
+      "Elapsed": 0
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/service",
+      "Test": "TestOpsClusterRuntimeNoRedisSingleInstanceAndFailure",
+      "Action": "pass",
+      "Elapsed": 0
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/service",
+      "Test": "TestOpsClusterRuntimeDeduplicatesHostFallbacks",
+      "Action": "pass",
+      "Elapsed": 0
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/service",
+      "Test": "TestDatabaseCapacityStandardQueryAndUnavailable",
+      "Action": "pass",
+      "Elapsed": 0
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/service",
+      "Test": "TestMonitoringDatabaseCapacityConnectionSlotsPostgres",
+      "Action": "pass",
+      "Elapsed": 0.13
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/service",
+      "Test": "TestRedisClusterCapacityKeepsNodesAndDoesNotHideHotShard",
+      "Action": "pass",
+      "Elapsed": 0.03
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/service",
+      "Test": "TestDatabasePoolStatsIncludeAuxiliaryPoolsAndUnregister",
+      "Action": "pass",
+      "Elapsed": 0
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/service",
+      "Test": "TestRedisCapacityRequiresExplicitServerLimit",
+      "Action": "pass",
+      "Elapsed": 0
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/service",
+      "Test": "TestPoolCountersAreProcessOwnedAndDoNotQueryDatabase",
+      "Action": "pass",
+      "Elapsed": 0
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/service",
+      "Test": "TestDatabaseCapacityAlertsRejectStaleOrUnknownSnapshots",
+      "Action": "pass",
+      "Elapsed": 0
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/service",
+      "Test": "TestDatabaseCapacityAlertRecoveryWorksWithoutPrometheus",
+      "Action": "pass",
+      "Elapsed": 0
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/service",
+      "Test": "TestUsageBillingCommandQuantizesBalanceAndQuotaIdentically",
+      "Action": "pass",
+      "Elapsed": 0
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/service",
+      "Test": "TestBuildUsageBillingCommand_SubscriptionAppliesRateMultiplier",
+      "Action": "pass",
+      "Elapsed": 0
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+      "Test": "TestReadReplicaKeepsBillingAndQuotaReadsOnPrimary",
+      "Action": "pass",
+      "Elapsed": 0
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+      "Test": "TestReportingQueryerFallsBackAndBacksOff",
+      "Action": "pass",
+      "Elapsed": 0
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+      "Test": "TestReportingQueryerCanceledContextDoesNotRetryOnPrimary",
+      "Action": "pass",
+      "Elapsed": 0
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+      "Test": "TestReadReplicaDriverClosesBothPools",
+      "Action": "pass",
+      "Elapsed": 0
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+      "Test": "TestReportingDisabledUsesExistingPrimary",
+      "Action": "pass",
+      "Elapsed": 0
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+      "Test": "TestMonitoringSilenceExpiryOutboxSupplementIsDurablePostgres",
+      "Action": "pass",
+      "Elapsed": 0.29
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+      "Test": "TestMonitoringRuleRevisionRetiresOldWindowAndFencesStaleEvaluatorPostgres",
+      "Action": "pass",
+      "Elapsed": 0.17
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+      "Test": "TestMonitoringBillingFailedIntentSurvivesRollbackPostgres",
+      "Action": "pass",
+      "Elapsed": 0.13
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+      "Test": "TestMonitoringBillingLedgerCoversHoldRefundAndDirectSQLPostgres",
+      "Action": "pass",
+      "Elapsed": 0.15
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+      "Test": "TestMonitoringBrokenObservationDoesNotChangeBillingPostgres",
+      "Action": "pass",
+      "Elapsed": 0.11
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+      "Test": "TestMonitoringBillingCrashRecoveryDoesNotReplayPostgres",
+      "Action": "pass",
+      "Elapsed": 0.1
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+      "Test": "TestMonitoringBillingPanicNeverMarksCommittedPostgres",
+      "Action": "pass",
+      "Elapsed": 0.11
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+      "Test": "TestMonitoringBillingObservationTimeoutCircuitAndGapPostgres",
+      "Action": "pass",
+      "Elapsed": 0.23
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+      "Test": "TestMonitoringBillingObservationLatencyPostgres",
+      "Action": "pass",
+      "Elapsed": 0.39
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+      "Test": "TestMonitoringBillingReconciliationPostgres",
+      "Action": "pass",
+      "Elapsed": 0.05
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+      "Test": "TestMonitoringBillingBacklogAndPersistencePostgres",
+      "Action": "pass",
+      "Elapsed": 0.21
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+      "Test": "TestMonitoringBillingEvidenceAtomicClaimPostgres",
+      "Action": "pass",
+      "Elapsed": 0.05
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+      "Test": "TestMonitoringBillingOpenFindingSurvivesArchivePostgres",
+      "Action": "pass",
+      "Elapsed": 0.05
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+      "Test": "TestMonitoringProductionMigrationsPostgres",
+      "Action": "pass",
+      "Elapsed": 2.46
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+      "Test": "TestMonitoringAlertOutboxLifecyclePostgres",
+      "Action": "pass",
+      "Elapsed": 0.13
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+      "Test": "TestMonitoringAlertOutboxAtomicRollbackPostgres",
+      "Action": "pass",
+      "Elapsed": 0.09
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+      "Test": "TestMonitoringAlertOutboxConcurrentClaimsPostgres",
+      "Action": "pass",
+      "Elapsed": 0.13
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+      "Test": "TestMonitoringDatabaseCapacityPersistencePostgres",
+      "Action": "pass",
+      "Elapsed": 0.05
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+      "Test": "TestMonitoringResourceSilenceAndHistoryIsolationPostgres",
+      "Action": "pass",
+      "Elapsed": 0.13
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+      "Test": "TestMonitoringRelatedRulesShareIncidentAndCloseOncePostgres",
+      "Action": "pass",
+      "Elapsed": 0.14
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+      "Test": "TestMonitoringEventsPersistencePostgres",
+      "Action": "pass",
+      "Elapsed": 0.06
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+      "Test": "TestMonitoringKubernetesResourceContractPostgres",
+      "Action": "pass",
+      "Elapsed": 0.07
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+      "Test": "TestDeductUsageBillingBalance_UsesSufficientBalanceGuard",
+      "Action": "pass",
+      "Elapsed": 0
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+      "Test": "TestDeductUsageBillingBalance_RecordsOverdraftWhenGuardMisses",
+      "Action": "pass",
+      "Elapsed": 0
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+      "Test": "TestApplyUsageBillingEffects_FlagsBalanceOverdraft",
+      "Action": "pass",
+      "Elapsed": 0
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+      "Test": "TestApplyUsageBillingEffects_DeletedAPIKeyStillBillsBalance",
+      "Action": "pass",
+      "Elapsed": 0
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+      "Test": "TestApplyUsageBillingEffects_APIKeyCounterErrorStillFails",
+      "Action": "pass",
+      "Elapsed": 0
+    },
+    {
+      "Package": "github.com/Wei-Shaw/sub2api/internal/repository",
+      "Test": "TestDeductUsageBillingBalance_ReturnsUserNotFoundWhenNoUserUpdated",
+      "Action": "pass",
+      "Elapsed": 0
+    }
+  ],
+  "notes": [
+    "ops_billing_operations_postgres_test.go:249: 50ms observer budget: first failure=85.693459ms circuit-open replay=3.486084ms; balance deducted once",
+    "ops_billing_operations_postgres_test.go:268: local PG sequential sample, n=20 each: existing settlement+ledger=6.995727ms; settlement+ledger+intents=9.621931ms; incremental=2.626204ms"
+  ],
+  "environment": "Dedicated modurelay-audit-20261023 PostgreSQL18.1, random schema/database per test, no enterprise data",
+  "dsn_omitted": true
+}

@@ -282,6 +282,17 @@ func registerAdminAPIKeyRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 func registerOpsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	ops := admin.Group("/ops")
 	{
+		// Restricted Prometheus compatible queries (inherits admin authentication).
+		ops.GET("/monitoring/capabilities", h.Admin.Ops.GetMonitoringCapabilities)
+		ops.GET("/monitoring/query", h.Admin.Ops.QueryMonitoring)
+		ops.GET("/monitoring/events", h.Admin.Ops.ListMonitoringEvents)
+		ops.GET("/monitoring/billing", h.Admin.Ops.GetBillingReconciliation)
+		ops.POST("/monitoring/billing/operations/:id/recheck", h.Admin.Ops.RecheckBillingOperation)
+		ops.POST("/monitoring/billing/recording-gaps/:instanceId/acknowledge", h.Admin.Ops.AcknowledgeBillingRecordingGap)
+		ops.GET("/alert-deliveries", h.Admin.Ops.ListAlertDeliveries)
+		ops.POST("/alert-deliveries/:id/retry", h.Admin.Ops.RetryAlertDelivery)
+		ops.POST("/alert-webhooks/test", h.Admin.Ops.TestAlertWebhook)
+
 		// Realtime ops signals
 		ops.GET("/concurrency", h.Admin.Ops.GetConcurrencyStats)
 		ops.GET("/user-concurrency", h.Admin.Ops.GetUserConcurrencyStats)

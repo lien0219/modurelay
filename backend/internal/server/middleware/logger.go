@@ -1,11 +1,14 @@
 package middleware
 
 import (
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/httpmetrics"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
@@ -18,20 +21,37 @@ func Logger() gin.HandlerFunc {
 
 		// 请求路径
 		path := c.Request.URL.Path
+		if !httpmetrics.ExcludedPath(path) {
+			httpmetrics.ObserveStarted(c.Request.Method, c.FullPath())
+		}
 
 		// 处理请求
 		c.Next()
+
+		endTime := time.Now()
+		latency := endTime.Sub(startTime)
+		method := c.Request.Method
+		statusCode := c.Writer.Status()
+
+		if !httpmetrics.ExcludedPath(path) {
+			source := httpmetrics.SourceApp
+			if _, rejected := GetIngressRejectReason(c); rejected {
+				source = httpmetrics.SourceIngress
+			}
+			ttft, hasTTFT := requestTTFT(c, source)
+			protocol := "http"
+			if strings.HasPrefix(c.Writer.Header().Get("Content-Type"), "text/event-stream") {
+				protocol = "sse"
+			} else if statusCode == 101 {
+				protocol = "websocket"
+			}
+			httpmetrics.ObserveDimensions(method, statusCode, source, httpmetrics.Route(c.FullPath()), protocol, latency, ttft, hasTTFT)
+		}
 
 		// 跳过健康检查等高频探针路径的日志
 		if path == "/health" || path == "/setup/status" {
 			return
 		}
-
-		endTime := time.Now()
-		latency := endTime.Sub(startTime)
-
-		method := c.Request.Method
-		statusCode := c.Writer.Status()
 		clientIP := ip.GetClientIP(c)
 		protocol := c.Request.Proto
 		accountID, hasAccountID := c.Request.Context().Value(ctxkey.AccountID).(int64)
@@ -84,5 +104,32 @@ func Logger() gin.HandlerFunc {
 		if len(c.Errors) > 0 {
 			l.Warn("http request contains gin errors", zap.String("errors", c.Errors.String()))
 		}
+	}
+}
+
+func requestTTFT(c *gin.Context, source string) (time.Duration, bool) {
+	if c == nil || source != httpmetrics.SourceApp {
+		return 0, false
+	}
+	if _, failed := service.GetOpsStreamError(c); failed {
+		return 0, false
+	}
+	value, ok := c.Get(service.OpsTimeToFirstTokenMsKey)
+	if !ok || value == nil {
+		return 0, false
+	}
+	switch ms := value.(type) {
+	case int64:
+		if ms < 0 {
+			return 0, false
+		}
+		return time.Duration(ms) * time.Millisecond, true
+	case int:
+		if ms < 0 {
+			return 0, false
+		}
+		return time.Duration(ms) * time.Millisecond, true
+	default:
+		return 0, false
 	}
 }

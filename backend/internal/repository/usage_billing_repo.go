@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"strings"
+	"sync"
+	"sync/atomic"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -12,11 +14,15 @@ import (
 )
 
 type usageBillingRepository struct {
-	db *sql.DB
+	db                    *sql.DB
+	observeBilling        bool
+	observationRetryAfter atomic.Int64
+	observationIdentity   sync.Once
+	observationInstance   string
 }
 
 func NewUsageBillingRepository(_ *dbent.Client, sqlDB *sql.DB) service.UsageBillingRepository {
-	return &usageBillingRepository{db: sqlDB}
+	return &usageBillingRepository{db: sqlDB, observeBilling: true}
 }
 
 func (r *usageBillingRepository) Apply(ctx context.Context, cmd *service.UsageBillingCommand) (_ *service.UsageBillingApplyResult, err error) {
@@ -31,6 +37,13 @@ func (r *usageBillingRepository) Apply(ctx context.Context, cmd *service.UsageBi
 	if cmd.RequestID == "" {
 		return nil, service.ErrUsageBillingRequestIDRequired
 	}
+	intentID := r.beginBillingObservation(cmd.RequestID, cmd.APIKeyID, cmd.RequestFingerprint, "usage", cmd.UserID, cmd)
+	confirmed := false
+	defer func() {
+		if confirmed || err != nil {
+			r.finishBillingObservation(intentID, err)
+		}
+	}()
 
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -41,12 +54,14 @@ func (r *usageBillingRepository) Apply(ctx context.Context, cmd *service.UsageBi
 			_ = tx.Rollback()
 		}
 	}()
+	bindBillingObservation(ctx, tx, intentID)
 
 	applied, err := r.claimUsageBillingKey(ctx, tx, cmd)
 	if err != nil {
 		return nil, err
 	}
 	if !applied {
+		confirmed = true // the exact fingerprint was found in durable dedup evidence
 		return &service.UsageBillingApplyResult{Applied: false}, nil
 	}
 
@@ -59,21 +74,35 @@ func (r *usageBillingRepository) Apply(ctx context.Context, cmd *service.UsageBi
 		return nil, err
 	}
 	tx = nil
+	confirmed = true
 	return result, nil
 }
 
 func (r *usageBillingRepository) claimUsageBillingKey(ctx context.Context, tx *sql.Tx, cmd *service.UsageBillingCommand) (bool, error) {
-	return r.claimUsageBillingRequest(ctx, tx, cmd.RequestID, cmd.APIKeyID, cmd.RequestFingerprint)
+	return r.claimUsageBillingRequest(ctx, tx, cmd.RequestID, cmd.APIKeyID, cmd.RequestFingerprint, cmd)
 }
 
-func (r *usageBillingRepository) claimUsageBillingRequest(ctx context.Context, tx *sql.Tx, requestID string, apiKeyID int64, requestFingerprint string) (bool, error) {
+func (r *usageBillingRepository) claimUsageBillingRequest(ctx context.Context, tx *sql.Tx, requestID string, apiKeyID int64, requestFingerprint string, evidence ...*service.UsageBillingCommand) (bool, error) {
 	var id int64
-	err := tx.QueryRowContext(ctx, `
+	query := `
 		INSERT INTO usage_billing_dedup (request_id, api_key_id, request_fingerprint)
 		VALUES ($1, $2, $3)
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
 		RETURNING id
-	`, requestID, apiKeyID, requestFingerprint).Scan(&id)
+	`
+	args := []any{requestID, apiKeyID, requestFingerprint}
+	if len(evidence) > 0 && evidence[0] != nil && evidence[0].ExpectedUsageCost != nil {
+		cmd := evidence[0]
+		// Extend the existing atomic claim, without an additional write or a
+		// monitoring callback on the billing path. A committed row proves that
+		// the corresponding balance/subscription effects committed with it.
+		query = `INSERT INTO usage_billing_dedup
+			(request_id, api_key_id, request_fingerprint, expected_usage_cost, balance_cost, subscription_cost)
+			VALUES ($1, $2, $3, $4, $5, $6)
+			ON CONFLICT (request_id, api_key_id) DO NOTHING RETURNING id`
+		args = append(args, service.QuantizeUsageBillingAmount(*cmd.ExpectedUsageCost), cmd.BalanceCost, cmd.SubscriptionCost)
+	}
+	err := tx.QueryRowContext(ctx, query, args...).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		var existingFingerprint string
 		if err := tx.QueryRowContext(ctx, `
@@ -110,20 +139,21 @@ func (r *usageBillingRepository) claimUsageBillingRequest(ctx context.Context, t
 }
 
 func (r *usageBillingRepository) ReserveBatchImageBalance(ctx context.Context, cmd *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error) {
-	return r.applyBatchImageBalanceHold(ctx, cmd, reserveUsageBillingBatchImageBalance)
+	return r.applyBatchImageBalanceHold(ctx, cmd, "image_reserve", reserveUsageBillingBatchImageBalance)
 }
 
 func (r *usageBillingRepository) CaptureBatchImageBalance(ctx context.Context, cmd *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error) {
-	return r.applyBatchImageBalanceHold(ctx, cmd, captureUsageBillingBatchImageBalance)
+	return r.applyBatchImageBalanceHold(ctx, cmd, "image_capture", captureUsageBillingBatchImageBalance)
 }
 
 func (r *usageBillingRepository) ReleaseBatchImageBalance(ctx context.Context, cmd *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error) {
-	return r.applyBatchImageBalanceHold(ctx, cmd, releaseUsageBillingBatchImageBalance)
+	return r.applyBatchImageBalanceHold(ctx, cmd, "image_release", releaseUsageBillingBatchImageBalance)
 }
 
 func (r *usageBillingRepository) applyBatchImageBalanceHold(
 	ctx context.Context,
 	cmd *service.BatchImageBalanceHoldCommand,
+	operation string,
 	apply func(context.Context, *sql.Tx, *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error),
 ) (_ *service.BatchImageBalanceHoldResult, err error) {
 	if cmd == nil {
@@ -136,6 +166,13 @@ func (r *usageBillingRepository) applyBatchImageBalanceHold(
 	if cmd.RequestID == "" {
 		return nil, service.ErrUsageBillingRequestIDRequired
 	}
+	intentID := r.beginBillingObservation(cmd.RequestID, cmd.APIKeyID, cmd.RequestFingerprint, operation, cmd.UserID, cmd)
+	confirmed := false
+	defer func() {
+		if confirmed || err != nil {
+			r.finishBillingObservation(intentID, err)
+		}
+	}()
 
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -146,12 +183,21 @@ func (r *usageBillingRepository) applyBatchImageBalanceHold(
 			_ = tx.Rollback()
 		}
 	}()
+	bindBillingObservation(ctx, tx, intentID)
 
-	applied, err := r.claimUsageBillingRequest(ctx, tx, cmd.RequestID, cmd.APIKeyID, cmd.RequestFingerprint)
+	var evidence []*service.UsageBillingCommand
+	if operation == "image_capture" && r.observeBilling {
+		// Batch settlement writes its Usage Log with this same capture request ID.
+		// Reserve/release have no Usage Log and must not produce false missing-log findings.
+		actual := cmd.ActualAmount
+		evidence = append(evidence, &service.UsageBillingCommand{ExpectedUsageCost: &actual, BalanceCost: actual})
+	}
+	applied, err := r.claimUsageBillingRequest(ctx, tx, cmd.RequestID, cmd.APIKeyID, cmd.RequestFingerprint, evidence...)
 	if err != nil {
 		return nil, err
 	}
 	if !applied {
+		confirmed = true
 		return &service.BatchImageBalanceHoldResult{Applied: false}, nil
 	}
 
@@ -168,6 +214,7 @@ func (r *usageBillingRepository) applyBatchImageBalanceHold(
 		return nil, err
 	}
 	tx = nil
+	confirmed = true
 	return result, nil
 }
 

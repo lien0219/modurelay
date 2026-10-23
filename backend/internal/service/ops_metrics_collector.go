@@ -220,6 +220,9 @@ func (c *OpsMetricsCollector) collectOnce() {
 
 	startedAt := time.Now().UTC()
 	err = c.collectAndPersist(ctx)
+	c.reconcileBillingUsage()
+	c.collectMonitoringEvents()
+	c.collectMonitoringPodLimits()
 	finishedAt := time.Now().UTC()
 
 	durationMs := finishedAt.Sub(startedAt).Milliseconds()
@@ -394,11 +397,14 @@ func (c *OpsMetricsCollector) collectAndPersist(ctx context.Context) error {
 		ConcurrencyQueueDepth: concurrencyQueueDepth,
 	}
 
+	input.Capacity = c.collectDatabaseCapacity(ctx)
 	if live, err := c.ClusterRuntimeSnapshot(ctx); err == nil {
 		input.CPUUsagePercent = live.CPUUsagePercent
 		input.MemoryUsedMB = live.MemoryUsedMB
 		input.MemoryTotalMB = live.MemoryTotalMB
 		input.MemoryUsagePercent = live.MemoryUsagePercent
+		input.Capacity.PostgreSQLPoolLimit, input.Capacity.RedisPoolLimit = live.DBMaxOpenConns, live.RedisPoolSize
+		input.Capacity.DatabasePools = live.DatabasePools
 		input.DBConnActive, input.DBConnIdle = live.DBConnActive, live.DBConnIdle
 		input.RedisConnTotal, input.RedisConnIdle = live.RedisConnTotal, live.RedisConnIdle
 		input.GoroutineCount = live.GoroutineCount

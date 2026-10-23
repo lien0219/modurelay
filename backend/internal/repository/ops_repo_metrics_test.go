@@ -31,7 +31,7 @@ func TestInsertSystemMetricsNullableIntegerMetrics(t *testing.T) {
 			}
 			t.Cleanup(func() { _ = db.Close() })
 
-			args := make([]driver.Value, 40)
+			args := make([]driver.Value, 41)
 			args[0] = createdAt
 			args[1] = int64(1)
 			for i := 4; i <= 12; i++ {

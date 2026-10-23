@@ -16,12 +16,16 @@ import (
 	"github.com/gin-gonic/gin/binding"
 )
 
-var validOpsAlertMetricTypes = []string{
+var validOpsAlertMetricTypes = append([]string{
 	"success_rate",
 	"error_rate",
 	"upstream_error_rate",
 	"cpu_usage_percent",
 	"memory_usage_percent",
+	"db_pool_usage_percent",
+	"db_advisory_lock_pool_usage_percent",
+	"db_read_replica_pool_usage_percent",
+	"redis_pool_usage_percent",
 	"concurrency_queue_depth",
 	"group_available_accounts",
 	"group_available_ratio",
@@ -33,7 +37,14 @@ var validOpsAlertMetricTypes = []string{
 	"overload_account_count",
 	"proxy_expired_count",
 	"proxy_expiring_soon_count",
-}
+	"billing_missing_usage_logs",
+	"billing_amount_mismatches",
+	"billing_failed_settlements",
+	"billing_compensation_backlog",
+	"billing_ledger_mismatches",
+	"db_instance_usage_percent",
+	"redis_instance_usage_percent",
+}, service.OpsMonitoringAlertMetricTypes()...)
 
 var validOpsAlertMetricTypeSet = func() map[string]struct{} {
 	set := make(map[string]struct{}, len(validOpsAlertMetricTypes))
@@ -74,6 +85,7 @@ type opsAlertRuleValidatedInput struct {
 	WindowMinutes    int
 	SustainedMinutes int
 	CooldownMinutes  int
+	MinRequests      int
 
 	Enabled     bool
 	NotifyEmail bool
@@ -88,17 +100,21 @@ type opsAlertRuleValidatedInput struct {
 
 func isPercentOrRateMetric(metricType string) bool {
 	switch metricType {
-	case "success_rate",
+	case "db_instance_usage_percent", "redis_instance_usage_percent", "http_4xx_rate", "http_5xx_rate", "pod_cpu_usage_percent", "pod_memory_usage_percent", "pod_cpu_throttling_percent", "success_rate",
 		"error_rate",
 		"upstream_error_rate",
 		"cpu_usage_percent",
 		"memory_usage_percent",
+		"db_pool_usage_percent",
+		"db_advisory_lock_pool_usage_percent",
+		"db_read_replica_pool_usage_percent",
+		"redis_pool_usage_percent",
 		"group_available_ratio",
 		"group_rate_limit_ratio",
 		"account_error_ratio":
 		return true
 	default:
-		return false
+		return service.OpsMonitoringAlertMetricIsPercentage(metricType)
 	}
 }
 
@@ -109,7 +125,7 @@ func validateOpsAlertRulePayload(raw map[string]json.RawMessage) (*opsAlertRuleV
 
 	requiredFields := []string{"name", "metric_type", "operator", "threshold"}
 	for _, field := range requiredFields {
-		if _, ok := raw[field]; !ok {
+		if value, ok := raw[field]; !ok || string(value) == "null" {
 			return nil, fmt.Errorf("%s is required", field)
 		}
 	}
@@ -119,6 +135,9 @@ func validateOpsAlertRulePayload(raw map[string]json.RawMessage) (*opsAlertRuleV
 		return nil, fmt.Errorf("name is required")
 	}
 	name = strings.TrimSpace(name)
+	if len(name) > 128 {
+		return nil, fmt.Errorf("name must not exceed 128 bytes")
+	}
 
 	var metricType string
 	if err := json.Unmarshal(raw["metric_type"], &metricType); err != nil || strings.TrimSpace(metricType) == "" {
@@ -202,9 +221,9 @@ func validateOpsAlertRulePayload(raw map[string]json.RawMessage) (*opsAlertRuleV
 			return nil, fmt.Errorf("window_minutes must be an integer")
 		}
 		switch validated.WindowMinutes {
-		case 1, 5, 60:
+		case 1, 5, 15, 60:
 		default:
-			return nil, fmt.Errorf("window_minutes must be one of: 1, 5, 60")
+			return nil, fmt.Errorf("window_minutes must be one of: 1, 5, 15, 60")
 		}
 	} else {
 		validated.WindowMinutes = 1
@@ -234,6 +253,35 @@ func validateOpsAlertRulePayload(raw map[string]json.RawMessage) (*opsAlertRuleV
 		validated.CooldownMinutes = 0
 	}
 
+	if v, ok := raw["min_requests"]; ok {
+		if err := json.Unmarshal(v, &validated.MinRequests); err != nil {
+			return nil, fmt.Errorf("min_requests must be an integer")
+		}
+		if validated.MinRequests < 0 || validated.MinRequests > 1000000 {
+			return nil, fmt.Errorf("min_requests must be between 0 and 1000000")
+		}
+	}
+
+	if rawFilters, ok := raw["filters"]; ok {
+		var filters map[string]any
+		if err := json.Unmarshal(rawFilters, &filters); err != nil {
+			return nil, fmt.Errorf("filters must be an object")
+		}
+		if err := service.ValidateOpsAlertFilters(metricType, filters); err != nil {
+			return nil, err
+		}
+		if critical, ok := filters["critical_threshold"].(float64); ok {
+			if (operator == ">" || operator == ">=") && critical <= threshold {
+				return nil, fmt.Errorf("critical_threshold must exceed threshold")
+			}
+			if (operator == "<" || operator == "<=") && critical >= threshold {
+				return nil, fmt.Errorf("critical_threshold must be below threshold")
+			}
+			if operator == "==" || operator == "!=" {
+				return nil, fmt.Errorf("critical_threshold requires an ordered operator")
+			}
+		}
+	}
 	return validated, nil
 }
 
@@ -296,6 +344,7 @@ func (h *OpsHandler) CreateAlertRule(c *gin.Context) {
 	rule.Severity = validated.Severity
 	rule.Enabled = validated.Enabled
 	rule.NotifyEmail = validated.NotifyEmail
+	rule.MinRequests = validated.MinRequests
 
 	created, err := h.opsService.CreateAlertRule(c.Request.Context(), &rule)
 	if err != nil {
@@ -351,6 +400,7 @@ func (h *OpsHandler) UpdateAlertRule(c *gin.Context) {
 	rule.Severity = validated.Severity
 	rule.Enabled = validated.Enabled
 	rule.NotifyEmail = validated.NotifyEmail
+	rule.MinRequests = validated.MinRequests
 
 	updated, err := h.opsService.UpdateAlertRule(c.Request.Context(), &rule)
 	if err != nil {
@@ -473,15 +523,20 @@ func (h *OpsHandler) CreateAlertSilence(c *gin.Context) {
 	}
 
 	var payload struct {
-		RuleID   int64   `json:"rule_id"`
-		Platform string  `json:"platform"`
-		GroupID  *int64  `json:"group_id"`
-		Region   *string `json:"region"`
-		Until    string  `json:"until"`
-		Reason   string  `json:"reason"`
+		ResourceKey string  `json:"resource_key"`
+		RuleID      int64   `json:"rule_id"`
+		Platform    string  `json:"platform"`
+		GroupID     *int64  `json:"group_id"`
+		Region      *string `json:"region"`
+		Until       string  `json:"until"`
+		Reason      string  `json:"reason"`
 	}
 	if err := c.ShouldBindJSON(&payload); err != nil {
 		response.BadRequest(c, "Invalid request body")
+		return
+	}
+	if len(payload.ResourceKey) > 2048 {
+		response.BadRequest(c, "Invalid resource key")
 		return
 	}
 	until, err := time.Parse(time.RFC3339, strings.TrimSpace(payload.Until))
@@ -497,13 +552,14 @@ func (h *OpsHandler) CreateAlertSilence(c *gin.Context) {
 	}
 
 	silence := &service.OpsAlertSilence{
-		RuleID:    payload.RuleID,
-		Platform:  strings.TrimSpace(payload.Platform),
-		GroupID:   payload.GroupID,
-		Region:    payload.Region,
-		Until:     until,
-		Reason:    strings.TrimSpace(payload.Reason),
-		CreatedBy: createdBy,
+		ResourceKey: strings.TrimSpace(payload.ResourceKey),
+		RuleID:      payload.RuleID,
+		Platform:    strings.TrimSpace(payload.Platform),
+		GroupID:     payload.GroupID,
+		Region:      payload.Region,
+		Until:       until,
+		Reason:      strings.TrimSpace(payload.Reason),
+		CreatedBy:   createdBy,
 	}
 
 	created, err := h.opsService.CreateAlertSilence(c.Request.Context(), silence)
@@ -535,11 +591,24 @@ func (h *OpsHandler) ListAlertEvents(c *gin.Context) {
 	}
 
 	filter := &service.OpsAlertEventFilter{
-		Limit:    limit,
-		Status:   strings.TrimSpace(c.Query("status")),
-		Severity: strings.TrimSpace(c.Query("severity")),
+		ResourceKey: strings.TrimSpace(c.Query("resource_key")),
+		Limit:       limit,
+		Status:      strings.TrimSpace(c.Query("status")),
+		Severity:    strings.TrimSpace(c.Query("severity")),
 	}
 
+	if v := strings.TrimSpace(c.Query("rule_id")); v != "" {
+		id, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || id <= 0 {
+			response.BadRequest(c, "Invalid rule ID")
+			return
+		}
+		filter.RuleID = id
+	}
+	if len(filter.ResourceKey) > 2048 {
+		response.BadRequest(c, "Invalid resource key")
+		return
+	}
 	if v := strings.TrimSpace(c.Query("email_sent")); v != "" {
 		vv := strings.ToLower(v)
 		switch vv {
@@ -612,4 +681,72 @@ func (h *OpsHandler) ListAlertEvents(c *gin.Context) {
 		return
 	}
 	response.Success(c, events)
+}
+
+func (h *OpsHandler) ListAlertDeliveries(c *gin.Context) {
+	if h.opsService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Ops service not available")
+		return
+	}
+	if err := h.opsService.RequireMonitoringEnabled(c.Request.Context()); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	var eventID int64
+	if raw := c.Query("event_id"); raw != "" {
+		id, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || id < 1 {
+			response.BadRequest(c, "Invalid event ID")
+			return
+		}
+		eventID = id
+	}
+	rows, err := h.opsService.ListAlertDeliveries(c.Request.Context(), eventID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, rows)
+}
+func (h *OpsHandler) RetryAlertDelivery(c *gin.Context) {
+	if h.opsService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Ops service not available")
+		return
+	}
+	if err := h.opsService.RequireMonitoringEnabled(c.Request.Context()); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id < 1 {
+		response.BadRequest(c, "Invalid delivery ID")
+		return
+	}
+	if err := h.opsService.RetryAlertDelivery(c.Request.Context(), id); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	response.Success(c, gin.H{"updated": true})
+}
+func (h *OpsHandler) TestAlertWebhook(c *gin.Context) {
+	if h.opsService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Ops service not available")
+		return
+	}
+	if err := h.opsService.RequireMonitoringEnabled(c.Request.Context()); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	var payload struct {
+		URL string `json:"url"`
+	}
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		response.BadRequest(c, "Invalid request body")
+		return
+	}
+	if err := h.opsService.TestAlertWebhook(c.Request.Context(), strings.TrimSpace(payload.URL)); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	response.Success(c, gin.H{"sent": true})
 }

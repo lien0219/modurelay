@@ -1,0 +1,112 @@
+# Optional standard CRI stdout collector. Review namespace, app Pod name glob and
+# LOKI_HOST before applying. Reads only node logs and Pod/Namespace metadata.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: modurelay-observability
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: modurelay-logs
+  namespace: modurelay-observability
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: modurelay-logs-reader
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "namespaces"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: modurelay-logs-reader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: modurelay-logs-reader
+subjects:
+  - kind: ServiceAccount
+    name: modurelay-logs
+    namespace: modurelay-observability
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: modurelay-logs
+  namespace: modurelay-observability
+data:
+  fluent-bit.conf: |
+    [SERVICE]
+        Flush 1
+        Parsers_File /fluent-bit/etc/parsers.conf
+        storage.path /state/buffer
+        storage.backlog.mem_limit 16M
+    [INPUT]
+        Name tail
+        Tag kube.*
+        Path /var/log/containers/modurelay-*.log
+        multiline.parser docker, cri
+        DB /state/tail.db
+        Mem_Buf_Limit 16M
+        Skip_Long_Lines On
+        storage.type filesystem
+    [FILTER]
+        Name kubernetes
+        Match kube.*
+        Kube_Tag_Prefix kube.var.log.containers.
+        Merge_Log On
+        Keep_Log Off
+        Labels Off
+        Annotations Off
+    [OUTPUT]
+        Name loki
+        Match kube.*
+        Host ${LOKI_HOST}
+        Port 3100
+        Labels job=modurelay,service=$service,cluster=$cluster,namespace=$kubernetes['namespace_name']
+        Line_Format json
+        Retry_Limit False
+        storage.total_limit_size 256M
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: modurelay-logs
+  namespace: modurelay-observability
+spec:
+  selector:
+    matchLabels: { app: modurelay-logs }
+  template:
+    metadata:
+      labels: { app: modurelay-logs }
+    spec:
+      serviceAccountName: modurelay-logs
+      containers:
+        - name: fluent-bit
+          image: fluent/fluent-bit:5.1.5
+          args: ["-c", "/config/fluent-bit.conf"]
+          env:
+            - name: LOKI_HOST
+              value: loki.modurelay-observability.svc
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 200m, memory: 192Mi }
+          volumeMounts:
+            - { name: config, mountPath: /config, readOnly: true }
+            - { name: logs, mountPath: /var/log, readOnly: true }
+            - { name: state, mountPath: /state }
+      volumes:
+        - name: config
+          configMap: { name: modurelay-logs }
+        - name: logs
+          hostPath: { path: /var/log, type: Directory }
+        - name: state
+          hostPath: { path: /var/lib/modurelay-log-cursors, type: DirectoryOrCreate }

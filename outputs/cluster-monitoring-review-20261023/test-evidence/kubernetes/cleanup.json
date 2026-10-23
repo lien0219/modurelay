@@ -1,0 +1,21 @@
+{
+  "recorded_at": "2026-10-23T07:40:05.090232+00:00",
+  "owned_clusters_deleted": [
+    "modurelay-monitoring-k3s",
+    "modurelay-monitoring-kind"
+  ],
+  "owned_networks_deleted": [
+    "k3d-modurelay-monitoring-k3s",
+    "kind"
+  ],
+  "owned_port_forwards_stopped": true,
+  "remaining_owned_cluster_containers": [],
+  "remaining_user_containers_count": 5,
+  "user_business_containers_untouched": true,
+  "default_kubeconfig_absent": true,
+  "final_application_image_preserved": true,
+  "owned_kubernetes_node_and_support_images_removed": true,
+  "global_prune_used": false,
+  "kind_cleanup_log": "Deleting cluster \"modurelay-monitoring-kind\" ...\nDeleted nodes: [\"modurelay-monitoring-kind-control-plane\"]\n",
+  "k3s_cleanup_log": "\u001b[36mINFO\u001b[0m[0000] Deleting cluster 'modurelay-monitoring-k3s'  \n\u001b[36mINFO\u001b[0m[0000] Deleting 1 attached volumes...               \n\u001b[36mINFO\u001b[0m[0000] Removing cluster details from default kubeconfig... \n\u001b[33mWARN\u001b[0m[0000] Failed to remove cluster details from default kubeconfig \n\u001b[33mWARN\u001b[0m[0000] failed to get default kubeconfig file: open /Users/mac/.kube/config: no such file or directory \n\u001b[36mINFO\u001b[0m[0000] Removing standalone kubeconfig file (if there is one)... \n\u001b[36mINFO\u001b[0m[0000] Successfully deleted cluster modurelay-monitoring-k3s! \n"
+}

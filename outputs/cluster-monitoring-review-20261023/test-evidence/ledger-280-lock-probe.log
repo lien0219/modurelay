@@ -1,0 +1,3 @@
+table=ops_account_ledger_entries Exec=<nil> Commit=<nil> Before=6.00000000 After=4.00000000 Elapsed=2.848042ms
+table=ops_account_ledger_heads Exec=<nil> Commit=<nil> Before=4.00000000 After=2.00000000 Elapsed=251µs
+table=ops_billing_recording_gaps Exec=<nil> Commit=<nil> Before=2.00000000 After=0.00000000 Elapsed=154.416µs

@@ -198,6 +198,9 @@ func (h *GatewayHandler) SystemOne(c *gin.Context) {
 
 		forwardStart := time.Now()
 		result, forwardErr := h.gatewayService.ForwardSystemOne(c.Request.Context(), c, account, body)
+		if result != nil {
+			service.SetOpsSuccessfulFirstToken(c, result.FirstTokenMs, forwardErr)
+		}
 		if accountRelease != nil {
 			accountRelease()
 		}

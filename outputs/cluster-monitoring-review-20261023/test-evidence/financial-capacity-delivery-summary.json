@@ -1,0 +1,75 @@
+{
+  "scope": [
+    "MON-15 durable settlement observation/recheck/account ledger",
+    "MON-18 PostgreSQL client slots, Redis per-shard capacity, primary/advisory/read-replica pools",
+    "TTFT metadata corrections in raw Chat Completions and native Anthropic"
+  ],
+  "financial_capacity_tests": {
+    "top_level_pass": 72,
+    "fail": 0,
+    "skip": 0,
+    "real_postgres_tests": 23,
+    "evidence": "postgres-financial-capacity-implementation-summary.json",
+    "stage": "Before migration280; financial subset superseded by postgres-projection-isolation-summary.json"
+  },
+  "extra_postgres_checks": {
+    "ledger_lifecycle": "postgres-account-ledger-lifecycle.jsonl",
+    "gap_unicode_boundary": "postgres-billing-gap-unicode.jsonl",
+    "covers": [
+      "daily/weekly/monthly subscription usage resets",
+      "user/subscription insertion and deletion",
+      "1000 Chinese characters accepted and 1001 rejected"
+    ]
+  },
+  "ttft_tests": {
+    "top_level_pass": 38,
+    "subtests_pass": 41,
+    "fail": 0,
+    "skip": 0,
+    "evidence": "stream-raw-ttft-regression-summary.json"
+  },
+  "cr07_readonly_probe": {
+    "client_backend": 1,
+    "all_pg_stat_activity": 9,
+    "max_connections": 100,
+    "background_rows": 8
+  },
+  "observation_budget": {
+    "default_per_write_ms": 50,
+    "maximum_per_write_ms": 200,
+    "normal_path_writes": 2,
+    "circuit_breaker_seconds": 30,
+    "per_pod_gap_flush_seconds": 15,
+    "normal_sequential_n_per_mode": 20,
+    "normal_with_intents_ms": 10.854818,
+    "latest_timeout_request_ms": 65.674875,
+    "latest_open_circuit_replay_ms": 3.061125,
+    "normal_baseline_with_source_projection_ms": 4.88956
+  },
+  "design_bounds": [
+    "No stored billing command is executed by compensation/recheck. Monetary transactions maintain only fixed-size source-row numeric projections and a revision; no observer-table I/O occurs in that trigger. Background ledger entries describe aggregate revision ranges, not individual monetary events.",
+    "Persistent gap acknowledgement requires administrator identity and explanation; cumulative missed_count is never cleared, and new gaps make health Unknown again.",
+    "Operational totals become Unknown if the audit is stale, incomplete, lacks account ledger coverage, or any pod has unpersisted observation gaps.",
+    "Financial compensation_backlog counts settlement observation outbox queued/manual_required entries; it does not claim to count pre-billing media generation/polling business jobs.",
+    "Normal soft deletion preserves account projections. Physically deleted accounts previously observed by the reconciler become missing-source/Unknown findings; a source created and physically deleted entirely between observations has no complete per-event audit guarantee."
+  ],
+  "deployment_risks": [
+    "Migrations279/280 seed and transfer opening balances/projections under table locks and update source rows. Schedule upgrade for real account volume; historical account events are not reconstructed.",
+    "Each monetary update performs bounded fixed numeric/revision work in its own source row. Observer table slowness/locks cannot block it; backend tests and independent review proved Go/server100ms monetary commits while observer INSERT sleeps400ms or observer tables hold ACCESS EXCLUSIVE locks. Local sequential timing is not production load acceptance.",
+    "Observer writes use the business pool with two bounded independent deadlines. Nominal added wait is <=100ms default or <=400ms configured cap; actual driver cancellation/connection establishment has scheduling overhead.",
+    "A process crash before gap flush can lose an unpersisted interval; export process counters and structured failure logs to independent monitoring. Root added Prometheus missing-observation rules.",
+    "Real isolated Redis8.4 three-master validation passed hotspot82/100 versus1/1000 and1/1000, failed-nodeUnknown, and per-instance poolbudget12/actual3. This is functional coverage, not a capacity stress benchmark."
+  ],
+  "final_financial_tests": {
+    "top_level_pass": 15,
+    "fail": 0,
+    "skip": 0,
+    "evidence": "postgres-projection-isolation-summary.json"
+  },
+  "independent_P1_validation": [
+    "ledger-280-lock-probe.log",
+    "ledger-280-slow-probe.log"
+  ],
+  "redis_cluster_real": "redis-cluster-capacity-real-summary.json",
+  "migration_280_required": true
+}

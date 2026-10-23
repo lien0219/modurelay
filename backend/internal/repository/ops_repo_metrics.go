@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -77,7 +78,8 @@ INSERT INTO ops_system_metrics (
   db_conn_waiting,
 
   goroutine_count,
-  concurrency_queue_depth
+  concurrency_queue_depth,
+  capacity
 ) VALUES (
   $1,$2,$3,$4,
   $5,$6,$7,$8,
@@ -89,9 +91,17 @@ INSERT INTO ops_system_metrics (
   $32,$33,
   $34,$35,
   $36,$37,$38,
-  $39,$40
+  $39,$40,$41
 )`
 
+	var capacity any
+	if input.Capacity != nil {
+		raw, err := json.Marshal(input.Capacity)
+		if err != nil {
+			return err
+		}
+		capacity = string(raw)
+	}
 	_, err := r.db.ExecContext(
 		ctx,
 		q,
@@ -145,6 +155,7 @@ INSERT INTO ops_system_metrics (
 
 		opsNullMetricInt(input.GoroutineCount),
 		opsNullMetricInt(input.ConcurrencyQueueDepth),
+		capacity,
 	)
 	return err
 }
@@ -180,7 +191,8 @@ SELECT
 
   goroutine_count,
   concurrency_queue_depth,
-  account_switch_count
+  account_switch_count,
+  capacity
 FROM ops_system_metrics
 WHERE window_minutes = $1
   AND platform IS NULL
@@ -203,6 +215,7 @@ LIMIT 1`
 	var goroutines sql.NullInt64
 	var queueDepth sql.NullInt64
 	var accountSwitchCount sql.NullInt64
+	var capacity []byte
 
 	if err := r.db.QueryRowContext(ctx, q, windowMinutes).Scan(
 		&out.ID,
@@ -222,6 +235,7 @@ LIMIT 1`
 		&goroutines,
 		&queueDepth,
 		&accountSwitchCount,
+		&capacity,
 	); err != nil {
 		return nil, err
 	}
@@ -283,6 +297,11 @@ LIMIT 1`
 		out.AccountSwitchCount = &v
 	}
 
+	if len(capacity) > 0 {
+		if err := json.Unmarshal(capacity, &out.Capacity); err != nil {
+			return nil, err
+		}
+	}
 	return &out, nil
 }
 

@@ -44,6 +44,9 @@ func (s *OpsService) GetDashboardOverview(ctx context.Context, filter *OpsDashbo
 
 	// Best-effort system health + jobs; dashboard metrics should still render if these are missing.
 	if metrics, err := s.opsRepo.GetLatestSystemMetrics(ctx, 1); err == nil {
+		if metrics != nil && time.Since(metrics.CreatedAt) > 3*time.Minute {
+			metrics.Capacity = nil
+		}
 		// Attach config-derived limits so the UI can show "current / max" for connection pools.
 		// These are best-effort and should never block the dashboard rendering.
 		if s.cfg != nil && s.metricsCollector == nil {
@@ -67,6 +70,9 @@ func (s *OpsService) GetDashboardOverview(ctx context.Context, filter *OpsDashbo
 				live.WindowMinutes = previous.WindowMinutes
 				live.ConcurrencyQueueDepth = previous.ConcurrencyQueueDepth
 				live.AccountSwitchCount = previous.AccountSwitchCount
+				if time.Since(previous.CreatedAt) <= 3*time.Minute {
+					live.Capacity = previous.Capacity
+				}
 			}
 			overview.SystemMetrics = live
 		} else if overview.SystemMetrics != nil {

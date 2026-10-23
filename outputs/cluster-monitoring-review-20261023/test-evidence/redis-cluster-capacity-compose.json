@@ -1,0 +1,138 @@
+{
+  "name": "modurelay-monitoring-capacity-20261023",
+  "services": {
+    "redis-0": {
+      "image": "redis:8.4-alpine",
+      "mem_limit": "128m",
+      "command": [
+        "redis-server",
+        "--bind",
+        "0.0.0.0",
+        "--port",
+        "6379",
+        "--protected-mode",
+        "no",
+        "--cluster-enabled",
+        "yes",
+        "--cluster-config-file",
+        "nodes.conf",
+        "--cluster-node-timeout",
+        "1000",
+        "--appendonly",
+        "no",
+        "--save",
+        "",
+        "--maxmemory",
+        "64mb",
+        "--maxclients",
+        "100"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "redis-cli",
+          "ping"
+        ],
+        "interval": "1s",
+        "timeout": "1s",
+        "retries": 20
+      }
+    },
+    "redis-1": {
+      "image": "redis:8.4-alpine",
+      "mem_limit": "128m",
+      "command": [
+        "redis-server",
+        "--bind",
+        "0.0.0.0",
+        "--port",
+        "6379",
+        "--protected-mode",
+        "no",
+        "--cluster-enabled",
+        "yes",
+        "--cluster-config-file",
+        "nodes.conf",
+        "--cluster-node-timeout",
+        "1000",
+        "--appendonly",
+        "no",
+        "--save",
+        "",
+        "--maxmemory",
+        "64mb",
+        "--maxclients",
+        "1000"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "redis-cli",
+          "ping"
+        ],
+        "interval": "1s",
+        "timeout": "1s",
+        "retries": 20
+      }
+    },
+    "redis-2": {
+      "image": "redis:8.4-alpine",
+      "mem_limit": "128m",
+      "command": [
+        "redis-server",
+        "--bind",
+        "0.0.0.0",
+        "--port",
+        "6379",
+        "--protected-mode",
+        "no",
+        "--cluster-enabled",
+        "yes",
+        "--cluster-config-file",
+        "nodes.conf",
+        "--cluster-node-timeout",
+        "1000",
+        "--appendonly",
+        "no",
+        "--save",
+        "",
+        "--maxmemory",
+        "64mb",
+        "--maxclients",
+        "1000"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "redis-cli",
+          "ping"
+        ],
+        "interval": "1s",
+        "timeout": "1s",
+        "retries": 20
+      }
+    },
+    "probe": {
+      "image": "redis:8.4-alpine",
+      "mem_limit": "128m",
+      "profiles": [
+        "test"
+      ],
+      "volumes": [
+        "/tmp/modurelay-redis-capacity-20261023:/audit:ro"
+      ],
+      "entrypoint": [
+        "/audit/service.test"
+      ],
+      "command": [
+        "-test.run=^TestMonitoringRedisClusterCapacityReal$",
+        "-test.v",
+        "-test.timeout=45s"
+      ],
+      "environment": {
+        "MODURELAY_MONITORING_REDIS_CLUSTER_TEST_ADDRS": "redis-0:6379,redis-1:6379,redis-2:6379",
+        "MODURELAY_MONITORING_REDIS_CLUSTER_ALLOW_SHUTDOWN": "1"
+      }
+    }
+  }
+}

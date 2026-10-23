@@ -1,0 +1,2135 @@
+{
+  "tested_at": "2026-10-23T07:28:51.797147+00:00",
+  "runtime": "Docker Desktop Linux arm64; final current-source Go with full Vue+Canvas embedded; isolated runtime test image, not repository release Dockerfile",
+  "binary_sha256": "3439f2f813b5629f9a788263a9f9afdabc87df9147f7ddbeee52087cf400686a",
+  "checks": [
+    {
+      "name": "25 authentication rejects recorded as ingress 401",
+      "passed": true,
+      "details": {
+        "sent": 25,
+        "counter_delta": 25.0,
+        "http_codes": [
+          401
+        ]
+      }
+    },
+    {
+      "name": "Real ingress 4xx query",
+      "passed": true,
+      "details": {
+        "code": 0,
+        "message": "success",
+        "data": {
+          "metric": "http_4xx_count",
+          "unit": "requests",
+          "state": "Available",
+          "step_seconds": 0,
+          "series": [
+            {
+              "labels": {
+                "cluster": "standalone",
+                "service": "modurelay",
+                "source": "ingress"
+              },
+              "points": [
+                {
+                  "timestamp": "2026-10-23T07:12:50Z",
+                  "value": 31.97525181775732,
+                  "state": "Available"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Invalid monitoring query rejected metric=not_a_metric",
+      "passed": true,
+      "details": {
+        "http": 400,
+        "message": "invalid monitoring query: unsupported metric"
+      }
+    },
+    {
+      "name": "Unmatched namespace remains Unknown",
+      "passed": true,
+      "details": {
+        "code": 0,
+        "message": "success",
+        "data": {
+          "metric": "qps",
+          "unit": "requests/s",
+          "state": "Unknown",
+          "reason": "samples_unavailable",
+          "step_seconds": 0,
+          "series": []
+        }
+      }
+    },
+    {
+      "name": "PromQL-looking cluster stays a literal empty filter",
+      "passed": true,
+      "details": {
+        "code": 0,
+        "message": "success",
+        "data": {
+          "metric": "qps",
+          "unit": "requests/s",
+          "state": "Unknown",
+          "reason": "samples_unavailable",
+          "step_seconds": 0,
+          "series": []
+        }
+      }
+    },
+    {
+      "name": "Unsupported query contract rejected metric=qps&source=bad",
+      "passed": true,
+      "details": {
+        "http": 400,
+        "message": "invalid monitoring query: unsupported source"
+      }
+    },
+    {
+      "name": "Unsupported query contract rejected metric=hpa_current_replicas&pod=not_supported",
+      "passed": true,
+      "details": {
+        "http": 400,
+        "message": "invalid monitoring query: HPA metrics support cluster and namespace filters"
+      }
+    },
+    {
+      "name": "Unsupported query contract rejected metric=qps&cluster=x%0Ay",
+      "passed": true,
+      "details": {
+        "http": 400,
+        "message": "invalid monitoring query: invalid resource filter"
+      }
+    },
+    {
+      "name": "Prometheus real scrape targets",
+      "passed": true,
+      "details": [
+        {
+          "job": "modurelay-cluster",
+          "health": "up",
+          "error": ""
+        },
+        {
+          "job": "modurelay-instance",
+          "health": "up",
+          "error": ""
+        }
+      ]
+    },
+    {
+      "name": "Probes and scrapes excluded from counters",
+      "passed": true,
+      "details": {}
+    },
+    {
+      "name": "120 real HTTP requests match Counter and Histogram",
+      "passed": true,
+      "details": {
+        "sent": 120,
+        "counter_delta": 120.0,
+        "histogram_count_delta": 120.0,
+        "elapsed_seconds": 61.6
+      }
+    },
+    {
+      "name": "Real monitoring query qps",
+      "passed": true,
+      "details": {
+        "code": 0,
+        "message": "success",
+        "data": {
+          "metric": "qps",
+          "unit": "requests/s",
+          "state": "Available",
+          "step_seconds": 0,
+          "series": [
+            {
+              "labels": {
+                "cluster": "standalone",
+                "service": "modurelay",
+                "source": "app"
+              },
+              "points": [
+                {
+                  "timestamp": "2026-10-23T07:15:03Z",
+                  "value": 1.955425193875964,
+                  "state": "Available"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Real monitoring query rpm",
+      "passed": true,
+      "details": {
+        "code": 0,
+        "message": "success",
+        "data": {
+          "metric": "rpm",
+          "unit": "requests/min",
+          "state": "Available",
+          "step_seconds": 0,
+          "series": [
+            {
+              "labels": {
+                "cluster": "standalone",
+                "service": "modurelay",
+                "source": "app"
+              },
+              "points": [
+                {
+                  "timestamp": "2026-10-23T07:15:03Z",
+                  "value": 117.32551163255783,
+                  "state": "Available"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Real monitoring query http_p95_ms",
+      "passed": true,
+      "details": {
+        "code": 0,
+        "message": "success",
+        "data": {
+          "metric": "http_p95_ms",
+          "unit": "ms",
+          "state": "Available",
+          "step_seconds": 0,
+          "series": [
+            {
+              "labels": {
+                "cluster": "standalone",
+                "service": "modurelay",
+                "source": "app"
+              },
+              "points": [
+                {
+                  "timestamp": "2026-10-23T07:15:03Z",
+                  "value": 47.5,
+                  "state": "Available",
+                  "sample_count": 117.32551163255783
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Real monitoring query http_p99_ms",
+      "passed": true,
+      "details": {
+        "code": 0,
+        "message": "success",
+        "data": {
+          "metric": "http_p99_ms",
+          "unit": "ms",
+          "state": "Available",
+          "step_seconds": 0,
+          "series": [
+            {
+              "labels": {
+                "cluster": "standalone",
+                "service": "modurelay",
+                "source": "app"
+              },
+              "points": [
+                {
+                  "timestamp": "2026-10-23T07:15:03Z",
+                  "value": 49.5,
+                  "state": "Available",
+                  "sample_count": 117.32551163255783
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Direct Prometheus workload rate",
+      "passed": true,
+      "details": {
+        "status": "success",
+        "data": {
+          "resultType": "vector",
+          "result": [
+            {
+              "metric": {},
+              "value": [
+                1792739703.972,
+                "1.955425193875964"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Stopped Prometheus yields Unknown",
+      "passed": true,
+      "details": {
+        "code": 0,
+        "message": "success",
+        "data": {
+          "metric": "qps",
+          "unit": "requests/s",
+          "state": "Unknown",
+          "reason": "prometheus_query_failed",
+          "step_seconds": 0,
+          "series": []
+        }
+      }
+    },
+    {
+      "name": "Application remains ready during monitoring outage",
+      "passed": true,
+      "details": {
+        "http": 200
+      }
+    },
+    {
+      "name": "Prometheus restored yields Available",
+      "passed": true,
+      "details": {
+        "code": 0,
+        "message": "success",
+        "data": {
+          "metric": "qps",
+          "unit": "requests/s",
+          "state": "Available",
+          "step_seconds": 0,
+          "series": [
+            {
+              "labels": {
+                "cluster": "standalone",
+                "service": "modurelay",
+                "source": "app"
+              },
+              "points": [
+                {
+                  "timestamp": "2026-10-23T07:19:18Z",
+                  "value": 0.7757008774852827,
+                  "state": "Available"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Application readiness with isolated PostgreSQL/Redis",
+      "passed": true,
+      "details": {
+        "http": 200
+      }
+    },
+    {
+      "name": "Admin auto-setup and login",
+      "passed": true,
+      "details": {
+        "database": "isolated fresh PostgreSQL 18.1"
+      }
+    },
+    {
+      "name": "health",
+      "passed": true,
+      "details": {
+        "http": 200,
+        "data": {
+          "status": "ok"
+        }
+      }
+    },
+    {
+      "name": "capabilities",
+      "passed": true,
+      "details": {
+        "http": 200,
+        "data": {
+          "code": 0,
+          "message": "success",
+          "data": {
+            "sources": [
+              "app",
+              "ingress"
+            ],
+            "kubernetes_resources": false,
+            "mode": "standalone",
+            "prometheus_configured": true,
+            "kubernetes": false,
+            "history": true,
+            "max_range_seconds": 2678400,
+            "max_points_per_series": 11000,
+            "metrics": [
+              {
+                "id": "qps",
+                "unit": "requests/s",
+                "kubernetes_only": false
+              },
+              {
+                "id": "rpm",
+                "unit": "requests/min",
+                "kubernetes_only": false
+              },
+              {
+                "id": "request_count",
+                "unit": "requests",
+                "kubernetes_only": false
+              },
+              {
+                "id": "qps_started",
+                "unit": "requests/s",
+                "kubernetes_only": false
+              },
+              {
+                "id": "rpm_started",
+                "unit": "requests/min",
+                "kubernetes_only": false
+              },
+              {
+                "id": "request_count_started",
+                "unit": "requests",
+                "kubernetes_only": false
+              },
+              {
+                "id": "db_pool_wait_count",
+                "unit": "waits",
+                "kubernetes_only": false
+              },
+              {
+                "id": "db_pool_wait_duration_ms",
+                "unit": "ms",
+                "kubernetes_only": false
+              },
+              {
+                "id": "redis_pool_timeout_count",
+                "unit": "timeouts",
+                "kubernetes_only": false
+              },
+              {
+                "id": "db_instance_connections",
+                "unit": "connections",
+                "kubernetes_only": false
+              },
+              {
+                "id": "db_instance_limit",
+                "unit": "connections",
+                "kubernetes_only": false
+              },
+              {
+                "id": "db_instance_usage_percent",
+                "unit": "percent",
+                "kubernetes_only": false
+              },
+              {
+                "id": "redis_instance_connections",
+                "unit": "connections",
+                "kubernetes_only": false
+              },
+              {
+                "id": "redis_instance_limit",
+                "unit": "connections",
+                "kubernetes_only": false
+              },
+              {
+                "id": "redis_instance_usage_percent",
+                "unit": "percent",
+                "kubernetes_only": false
+              },
+              {
+                "id": "http_p95_ms",
+                "unit": "ms",
+                "kubernetes_only": false
+              },
+              {
+                "id": "http_p99_ms",
+                "unit": "ms",
+                "kubernetes_only": false
+              },
+              {
+                "id": "ttft_p95_ms",
+                "unit": "ms",
+                "kubernetes_only": false
+              },
+              {
+                "id": "ttft_p99_ms",
+                "unit": "ms",
+                "kubernetes_only": false
+              },
+              {
+                "id": "http_4xx_count",
+                "unit": "requests",
+                "kubernetes_only": false
+              },
+              {
+                "id": "http_5xx_count",
+                "unit": "requests",
+                "kubernetes_only": false
+              },
+              {
+                "id": "http_429_count",
+                "unit": "requests",
+                "kubernetes_only": false
+              },
+              {
+                "id": "http_4xx_rate",
+                "unit": "percent",
+                "kubernetes_only": false
+              },
+              {
+                "id": "http_5xx_rate",
+                "unit": "percent",
+                "kubernetes_only": false
+              },
+              {
+                "id": "pod_cpu_cores",
+                "unit": "cores",
+                "kubernetes_only": true
+              },
+              {
+                "id": "pod_cpu_limit_cores",
+                "unit": "cores",
+                "kubernetes_only": true
+              },
+              {
+                "id": "pod_cpu_usage_percent",
+                "unit": "percent",
+                "kubernetes_only": true
+              },
+              {
+                "id": "cluster_cpu_usage_percent",
+                "unit": "percent",
+                "kubernetes_only": true
+              },
+              {
+                "id": "pod_memory_bytes",
+                "unit": "bytes",
+                "kubernetes_only": true
+              },
+              {
+                "id": "pod_memory_limit_bytes",
+                "unit": "bytes",
+                "kubernetes_only": true
+              },
+              {
+                "id": "pod_memory_usage_percent",
+                "unit": "percent",
+                "kubernetes_only": true
+              },
+              {
+                "id": "pod_info",
+                "unit": "info",
+                "kubernetes_only": true
+              },
+              {
+                "id": "pod_ready",
+                "unit": "boolean",
+                "kubernetes_only": true
+              },
+              {
+                "id": "pod_restarts",
+                "unit": "restarts",
+                "kubernetes_only": true
+              },
+              {
+                "id": "pod_oom",
+                "unit": "containers",
+                "kubernetes_only": true
+              },
+              {
+                "id": "pod_oom_count",
+                "unit": "events",
+                "kubernetes_only": true
+              },
+              {
+                "id": "pod_pending",
+                "unit": "boolean",
+                "kubernetes_only": true
+              },
+              {
+                "id": "pod_unschedulable",
+                "unit": "boolean",
+                "kubernetes_only": true
+              },
+              {
+                "id": "pod_crash_loop",
+                "unit": "containers",
+                "kubernetes_only": true
+              },
+              {
+                "id": "pod_cpu_throttling_percent",
+                "unit": "percent",
+                "kubernetes_only": true
+              },
+              {
+                "id": "hpa_current_replicas",
+                "unit": "replicas",
+                "kubernetes_only": true
+              },
+              {
+                "id": "hpa_desired_replicas",
+                "unit": "replicas",
+                "kubernetes_only": true
+              },
+              {
+                "id": "hpa_max_replicas",
+                "unit": "replicas",
+                "kubernetes_only": true
+              },
+              {
+                "id": "hpa_at_max",
+                "unit": "boolean",
+                "kubernetes_only": true
+              },
+              {
+                "id": "deployment_cpu_usage_percent",
+                "unit": "percent",
+                "kubernetes_only": true
+              },
+              {
+                "id": "deployment_memory_usage_percent",
+                "unit": "percent",
+                "kubernetes_only": true
+              },
+              {
+                "id": "deployment_restarts",
+                "unit": "restarts",
+                "kubernetes_only": true
+              },
+              {
+                "id": "deployment_oom",
+                "unit": "containers",
+                "kubernetes_only": true
+              },
+              {
+                "id": "deployment_oom_count",
+                "unit": "events",
+                "kubernetes_only": true
+              },
+              {
+                "id": "hpa_target_cpu_utilization_percent",
+                "unit": "percent",
+                "kubernetes_only": true
+              },
+              {
+                "id": "hpa_target_memory_utilization_percent",
+                "unit": "percent",
+                "kubernetes_only": true
+              },
+              {
+                "id": "deployment_desired_replicas",
+                "unit": "replicas",
+                "kubernetes_only": true
+              },
+              {
+                "id": "deployment_available_replicas",
+                "unit": "replicas",
+                "kubernetes_only": true
+              },
+              {
+                "id": "deployment_ready_replicas",
+                "unit": "replicas",
+                "kubernetes_only": true
+              },
+              {
+                "id": "scrape_up",
+                "unit": "boolean",
+                "kubernetes_only": false
+              }
+            ],
+            "kubernetes_events": false,
+            "cluster_name": "standalone"
+          }
+        }
+      }
+    },
+    {
+      "name": "legacy Ops overview",
+      "passed": true,
+      "details": {
+        "http": 200,
+        "data": {
+          "code": 0,
+          "message": "success",
+          "data": {
+            "start_time": "2026-10-23T06:24:26.551048429Z",
+            "end_time": "2026-10-23T07:24:26.551048429Z",
+            "platform": "",
+            "group_id": null,
+            "health_score": 100,
+            "system_metrics": {
+              "capacity": {
+                "postgresql": {
+                  "state": "Available",
+                  "source": "PostgreSQL client backend slots / max_connections (includes reserved client slots)",
+                  "used": 4,
+                  "limit": 100
+                },
+                "redis": {
+                  "state": "Available",
+                  "source": "Redis INFO clients",
+                  "used": 10,
+                  "limit": 10000
+                },
+                "postgresql_pool_limit": 10,
+                "redis_pool_limit": 20,
+                "database_pools": [
+                  {
+                    "instance": "6d50869c-921f-4795-a74d-30fa3305ef3b",
+                    "role": "advisory_lock",
+                    "active": 1,
+                    "idle": 1,
+                    "limit": 16,
+                    "wait_count": 0,
+                    "wait_seconds": 0
+                  },
+                  {
+                    "instance": "6d50869c-921f-4795-a74d-30fa3305ef3b",
+                    "role": "primary",
+                    "active": 1,
+                    "idle": 2,
+                    "limit": 10,
+                    "wait_count": 6,
+                    "wait_seconds": 0.005101125
+                  }
+                ]
+              },
+              "database_pools": [
+                {
+                  "instance": "649dfe67-d00a-471d-937b-69fede825c62",
+                  "role": "advisory_lock",
+                  "active": 5,
+                  "idle": 0,
+                  "limit": 16,
+                  "wait_count": 0,
+                  "wait_seconds": 0
+                },
+                {
+                  "instance": "649dfe67-d00a-471d-937b-69fede825c62",
+                  "role": "primary",
+                  "active": 7,
+                  "idle": 1,
+                  "limit": 10,
+                  "wait_count": 5,
+                  "wait_seconds": 0.002800167
+                }
+              ],
+              "billing_observation_unpersisted": 0,
+              "scope": "cluster",
+              "instance_count": 1,
+              "id": 23,
+              "created_at": "2026-10-23T07:24:25.673534637Z",
+              "window_minutes": 1,
+              "cpu_usage_percent": 6.3,
+              "memory_used_mb": 101,
+              "memory_total_mb": 1024,
+              "memory_usage_percent": 9.9,
+              "db_ok": true,
+              "redis_ok": true,
+              "db_max_open_conns": 10,
+              "redis_pool_size": 20,
+              "redis_conn_total": 4,
+              "redis_conn_idle": 4,
+              "db_conn_active": 8,
+              "db_conn_idle": 2,
+              "db_conn_waiting": null,
+              "goroutine_count": 146,
+              "concurrency_queue_depth": 0,
+              "account_switch_count": 0
+            },
+            "job_heartbeats": [
+              {
+                "job_name": "ops_alert_evaluator",
+                "last_run_at": "2026-10-23T15:24:25.666344+08:00",
+                "last_success_at": "2026-10-23T15:24:25.727329+08:00",
+                "last_error_at": null,
+                "last_error": null,
+                "last_duration_ms": 60,
+                "last_result": "rules=9 enabled=9 evaluated=3 created=0 resolved=0 emails_sent=0",
+                "updated_at": "2026-10-23T15:24:25.72749+08:00"
+              },
+              {
+                "job_name": "ops_metrics_collector",
+                "last_run_at": "2026-10-23T15:24:13.207918+08:00",
+                "last_success_at": "2026-10-23T15:24:13.228258+08:00",
+                "last_error_at": null,
+                "last_error": null,
+                "last_duration_ms": 20,
+                "last_result": null,
+                "updated_at": "2026-10-23T15:24:13.228546+08:00"
+              },
+              {
+                "job_name": "ops_preaggregation_daily",
+                "last_run_at": "2026-10-23T15:24:25.689848+08:00",
+                "last_success_at": "2026-10-23T15:24:25.699645+08:00",
+                "last_error_at": null,
+                "last_error": null,
+                "last_duration_ms": 9,
+                "last_result": "window=2026-10-22T00:00:00Z..2026-10-23T00:00:00Z",
+                "updated_at": "2026-10-23T15:24:25.700075+08:00"
+              },
+              {
+                "job_name": "ops_preaggregation_hourly",
+                "last_run_at": "2026-10-23T15:24:25.665121+08:00",
+                "last_success_at": "2026-10-23T15:24:25.688723+08:00",
+                "last_error_at": null,
+                "last_error": null,
+                "last_duration_ms": 23,
+                "last_result": "window=2026-10-23T06:00:00Z..2026-10-23T07:00:00Z",
+                "updated_at": "2026-10-23T15:24:25.689561+08:00"
+              }
+            ],
+            "success_count": 0,
+            "error_count_total": 0,
+            "business_limited_count": 0,
+            "error_count_sla": 0,
+            "request_count_total": 0,
+            "request_count_sla": 0,
+            "token_consumed": 0,
+            "sla": 0,
+            "error_rate": 0,
+            "upstream_error_rate": 0,
+            "upstream_error_count_excl_429_529": 0,
+            "upstream_429_count": 0,
+            "upstream_529_count": 0,
+            "qps": {
+              "current": 0,
+              "peak": 0,
+              "avg": 0
+            },
+            "tps": {
+              "current": 0,
+              "peak": 0,
+              "avg": 0
+            },
+            "output_tps": {
+              "p5": null,
+              "p10": null,
+              "p50": null,
+              "avg": null,
+              "sample_count": 0
+            },
+            "duration": {
+              "p50_ms": null,
+              "p90_ms": null,
+              "p95_ms": null,
+              "p99_ms": null,
+              "avg_ms": null,
+              "max_ms": null
+            },
+            "ttft": {
+              "p50_ms": null,
+              "p90_ms": null,
+              "p95_ms": null,
+              "p99_ms": null,
+              "avg_ms": null,
+              "max_ms": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "billing snapshot",
+      "passed": true,
+      "details": {
+        "http": 200,
+        "data": {
+          "code": 0,
+          "message": "success",
+          "data": {
+            "state": "Available",
+            "checked_at": "2026-10-23T15:24:13.215357+08:00",
+            "window_start": "2026-10-22T15:00:48.118661+08:00",
+            "window_end": "2026-10-23T15:22:13.215357+08:00",
+            "missing_usage_logs": 0,
+            "amount_mismatches": 0,
+            "scanned": 0,
+            "truncated": false,
+            "findings": [],
+            "operational_state": "Available",
+            "operational_checked_at": "2026-10-23T15:24:13.215357+08:00",
+            "failed_settlements": 0,
+            "compensation_backlog": 0,
+            "ledger_mismatches": 0,
+            "operations": [],
+            "ledger_findings": [],
+            "recording_gaps": [],
+            "observation_unpersisted": 0
+          }
+        }
+      }
+    },
+    {
+      "name": "/metrics/instance token protection",
+      "passed": true,
+      "details": {
+        "unauthenticated": 401,
+        "authenticated": 200
+      }
+    },
+    {
+      "name": "/metrics token protection",
+      "passed": true,
+      "details": {
+        "unauthenticated": 401,
+        "authenticated": 200
+      }
+    },
+    {
+      "name": "Standalone Pod metric NotApplicable",
+      "passed": true,
+      "details": {
+        "code": 0,
+        "message": "success",
+        "data": {
+          "metric": "pod_cpu_cores",
+          "unit": "cores",
+          "state": "NotApplicable",
+          "reason": "kubernetes_unavailable",
+          "step_seconds": 0,
+          "series": []
+        }
+      }
+    },
+    {
+      "name": "Admin monitoring rejects unauthenticated",
+      "passed": true,
+      "details": {
+        "http": 401
+      }
+    },
+    {
+      "name": "Application restart resets process Counter",
+      "passed": true,
+      "details": {
+        "before": 604.0,
+        "after": 7.0
+      }
+    },
+    {
+      "name": "Scrape recovers after application restart",
+      "passed": true,
+      "details": [
+        {
+          "job": "modurelay-cluster",
+          "health": "up"
+        },
+        {
+          "job": "modurelay-instance",
+          "health": "up"
+        }
+      ]
+    },
+    {
+      "name": "Legacy Ops recovers after restart",
+      "passed": true,
+      "details": {
+        "code": 0,
+        "message": "success",
+        "data": {
+          "start_time": "2026-10-23T06:24:42.30486288Z",
+          "end_time": "2026-10-23T07:24:42.30486288Z",
+          "platform": "",
+          "group_id": null,
+          "health_score": 100,
+          "system_metrics": {
+            "capacity": {
+              "postgresql": {
+                "state": "Available",
+                "source": "PostgreSQL client backend slots / max_connections (includes reserved client slots)",
+                "used": 4,
+                "limit": 100
+              },
+              "redis": {
+                "state": "Available",
+                "source": "Redis INFO clients",
+                "used": 10,
+                "limit": 10000
+              },
+              "postgresql_pool_limit": 10,
+              "redis_pool_limit": 20,
+              "database_pools": [
+                {
+                  "instance": "6d50869c-921f-4795-a74d-30fa3305ef3b",
+                  "role": "advisory_lock",
+                  "active": 1,
+                  "idle": 1,
+                  "limit": 16,
+                  "wait_count": 0,
+                  "wait_seconds": 0
+                },
+                {
+                  "instance": "6d50869c-921f-4795-a74d-30fa3305ef3b",
+                  "role": "primary",
+                  "active": 1,
+                  "idle": 2,
+                  "limit": 10,
+                  "wait_count": 6,
+                  "wait_seconds": 0.005101125
+                }
+              ]
+            },
+            "database_pools": [
+              {
+                "instance": "649dfe67-d00a-471d-937b-69fede825c62",
+                "role": "advisory_lock",
+                "active": 0,
+                "idle": 2,
+                "limit": 16,
+                "wait_count": 0,
+                "wait_seconds": 0
+              },
+              {
+                "instance": "649dfe67-d00a-471d-937b-69fede825c62",
+                "role": "primary",
+                "active": 1,
+                "idle": 2,
+                "limit": 10,
+                "wait_count": 5,
+                "wait_seconds": 0.002800167
+              }
+            ],
+            "billing_observation_unpersisted": 0,
+            "scope": "cluster",
+            "instance_count": 1,
+            "id": 23,
+            "created_at": "2026-10-23T07:24:40.685392421Z",
+            "window_minutes": 1,
+            "cpu_usage_percent": 4.4,
+            "memory_used_mb": 107,
+            "memory_total_mb": 1024,
+            "memory_usage_percent": 10.4,
+            "db_ok": true,
+            "redis_ok": true,
+            "db_max_open_conns": 10,
+            "redis_pool_size": 20,
+            "redis_conn_total": 4,
+            "redis_conn_idle": 4,
+            "db_conn_active": 2,
+            "db_conn_idle": 1,
+            "db_conn_waiting": null,
+            "goroutine_count": 185,
+            "concurrency_queue_depth": 0,
+            "account_switch_count": 0
+          },
+          "job_heartbeats": [
+            {
+              "job_name": "ops_alert_evaluator",
+              "last_run_at": "2026-10-23T15:24:25.666344+08:00",
+              "last_success_at": "2026-10-23T15:24:25.727329+08:00",
+              "last_error_at": null,
+              "last_error": null,
+              "last_duration_ms": 60,
+              "last_result": "rules=9 enabled=9 evaluated=3 created=0 resolved=0 emails_sent=0",
+              "updated_at": "2026-10-23T15:24:25.72749+08:00"
+            },
+            {
+              "job_name": "ops_metrics_collector",
+              "last_run_at": "2026-10-23T15:24:13.207918+08:00",
+              "last_success_at": "2026-10-23T15:24:13.228258+08:00",
+              "last_error_at": null,
+              "last_error": null,
+              "last_duration_ms": 20,
+              "last_result": null,
+              "updated_at": "2026-10-23T15:24:13.228546+08:00"
+            },
+            {
+              "job_name": "ops_preaggregation_daily",
+              "last_run_at": "2026-10-23T15:24:25.689848+08:00",
+              "last_success_at": "2026-10-23T15:24:25.699645+08:00",
+              "last_error_at": null,
+              "last_error": null,
+              "last_duration_ms": 9,
+              "last_result": "window=2026-10-22T00:00:00Z..2026-10-23T00:00:00Z",
+              "updated_at": "2026-10-23T15:24:25.700075+08:00"
+            },
+            {
+              "job_name": "ops_preaggregation_hourly",
+              "last_run_at": "2026-10-23T15:24:25.665121+08:00",
+              "last_success_at": "2026-10-23T15:24:25.688723+08:00",
+              "last_error_at": null,
+              "last_error": null,
+              "last_duration_ms": 23,
+              "last_result": "window=2026-10-23T06:00:00Z..2026-10-23T07:00:00Z",
+              "updated_at": "2026-10-23T15:24:25.689561+08:00"
+            }
+          ],
+          "success_count": 0,
+          "error_count_total": 0,
+          "business_limited_count": 0,
+          "error_count_sla": 0,
+          "request_count_total": 0,
+          "request_count_sla": 0,
+          "token_consumed": 0,
+          "sla": 0,
+          "error_rate": 0,
+          "upstream_error_rate": 0,
+          "upstream_error_count_excl_429_529": 0,
+          "upstream_429_count": 0,
+          "upstream_529_count": 0,
+          "qps": {
+            "current": 0,
+            "peak": 0,
+            "avg": 0
+          },
+          "tps": {
+            "current": 0,
+            "peak": 0,
+            "avg": 0
+          },
+          "output_tps": {
+            "p5": null,
+            "p10": null,
+            "p50": null,
+            "avg": null,
+            "sample_count": 0
+          },
+          "duration": {
+            "p50_ms": null,
+            "p90_ms": null,
+            "p95_ms": null,
+            "p99_ms": null,
+            "avg_ms": null,
+            "max_ms": null
+          },
+          "ttft": {
+            "p50_ms": null,
+            "p90_ms": null,
+            "p95_ms": null,
+            "p99_ms": null,
+            "avg_ms": null,
+            "max_ms": null
+          }
+        }
+      }
+    }
+  ],
+  "limitations": [
+    "No actual upstream AI provider/SSE/TTFT workload",
+    "Current frontend embed built; Linux container uses test image, not full release Dockerfile",
+    "Kubernetes, protocol receivers, finance and retention are validated by separate evidence files"
+  ],
+  "pre_restart_counter": 604.0,
+  "previous_attempts": [
+    {
+      "name": "Application readiness with isolated PostgreSQL/Redis",
+      "passed": true,
+      "details": {
+        "http": 200
+      }
+    },
+    {
+      "name": "Admin auto-setup and login",
+      "passed": true,
+      "details": {
+        "database": "isolated fresh PostgreSQL 18.1"
+      }
+    },
+    {
+      "name": "health",
+      "passed": true,
+      "details": {
+        "http": 200,
+        "data": {
+          "status": "ok"
+        }
+      }
+    },
+    {
+      "name": "capabilities",
+      "passed": false,
+      "details": {
+        "http": 423,
+        "data": {
+          "code": "ADMIN_COMPLIANCE_ACK_REQUIRED",
+          "message": "administrator compliance acknowledgement is required",
+          "metadata": {
+            "document_path_en": "docs/legal/admin-compliance.en.md",
+            "document_path_zh": "docs/legal/admin-compliance.zh.md",
+            "document_url_en": "https://github.com/lien0219/modurelay/blob/main/docs/legal/admin-compliance.en.md",
+            "document_url_zh": "https://github.com/lien0219/modurelay/blob/main/docs/legal/admin-compliance.zh.md",
+            "version": "v2026.06.10"
+          }
+        }
+      }
+    },
+    {
+      "name": "legacy Ops overview",
+      "passed": false,
+      "details": {
+        "http": 423,
+        "data": {
+          "code": "ADMIN_COMPLIANCE_ACK_REQUIRED",
+          "message": "administrator compliance acknowledgement is required",
+          "metadata": {
+            "document_path_en": "docs/legal/admin-compliance.en.md",
+            "document_path_zh": "docs/legal/admin-compliance.zh.md",
+            "document_url_en": "https://github.com/lien0219/modurelay/blob/main/docs/legal/admin-compliance.en.md",
+            "document_url_zh": "https://github.com/lien0219/modurelay/blob/main/docs/legal/admin-compliance.zh.md",
+            "version": "v2026.06.10"
+          }
+        }
+      }
+    },
+    {
+      "name": "billing snapshot",
+      "passed": false,
+      "details": {
+        "http": 423,
+        "data": {
+          "code": "ADMIN_COMPLIANCE_ACK_REQUIRED",
+          "message": "administrator compliance acknowledgement is required",
+          "metadata": {
+            "document_path_en": "docs/legal/admin-compliance.en.md",
+            "document_path_zh": "docs/legal/admin-compliance.zh.md",
+            "document_url_en": "https://github.com/lien0219/modurelay/blob/main/docs/legal/admin-compliance.en.md",
+            "document_url_zh": "https://github.com/lien0219/modurelay/blob/main/docs/legal/admin-compliance.zh.md",
+            "version": "v2026.06.10"
+          }
+        }
+      }
+    },
+    {
+      "name": "/metrics/instance token protection",
+      "passed": false,
+      "details": {
+        "unauthenticated": 200,
+        "authenticated": 200
+      }
+    },
+    {
+      "name": "/metrics token protection",
+      "passed": true,
+      "details": {
+        "unauthenticated": 401,
+        "authenticated": 200
+      }
+    },
+    {
+      "name": "Standalone Pod metric NotApplicable",
+      "passed": false,
+      "details": {
+        "code": "ADMIN_COMPLIANCE_ACK_REQUIRED",
+        "message": "administrator compliance acknowledgement is required",
+        "metadata": {
+          "document_path_en": "docs/legal/admin-compliance.en.md",
+          "document_path_zh": "docs/legal/admin-compliance.zh.md",
+          "document_url_en": "https://github.com/lien0219/modurelay/blob/main/docs/legal/admin-compliance.en.md",
+          "document_url_zh": "https://github.com/lien0219/modurelay/blob/main/docs/legal/admin-compliance.zh.md",
+          "version": "v2026.06.10"
+        }
+      }
+    },
+    {
+      "name": "Admin monitoring rejects unauthenticated",
+      "passed": true,
+      "details": {
+        "http": 401
+      }
+    },
+    {
+      "name": "Prometheus real scrape targets",
+      "passed": false,
+      "details": [
+        {
+          "job": "modurelay-cluster",
+          "health": "up",
+          "error": ""
+        },
+        {
+          "job": "modurelay-instance",
+          "health": "down",
+          "error": "received unsupported Content-Type \"text/html; charset=utf-8\" and no fallback_scrape_protocol specified for target"
+        }
+      ]
+    },
+    {
+      "name": "Probes and scrapes excluded from counters",
+      "passed": true,
+      "details": {}
+    },
+    {
+      "name": "120 real HTTP requests match Counter and Histogram",
+      "passed": false,
+      "details": {
+        "sent": 120,
+        "counter_delta": 0.0,
+        "histogram_count_delta": 0.0,
+        "elapsed_seconds": 61.1
+      }
+    },
+    {
+      "name": "Real monitoring query qps",
+      "passed": false,
+      "details": {
+        "code": 0,
+        "message": "success",
+        "data": {
+          "metric": "qps",
+          "unit": "requests/s",
+          "state": "Unknown",
+          "reason": "samples_unavailable",
+          "step_seconds": 0,
+          "series": []
+        }
+      }
+    },
+    {
+      "name": "Real monitoring query rpm",
+      "passed": false,
+      "details": {
+        "code": 0,
+        "message": "success",
+        "data": {
+          "metric": "rpm",
+          "unit": "requests/min",
+          "state": "Unknown",
+          "reason": "samples_unavailable",
+          "step_seconds": 0,
+          "series": []
+        }
+      }
+    },
+    {
+      "name": "Real monitoring query http_p95_ms",
+      "passed": false,
+      "details": {
+        "code": 0,
+        "message": "success",
+        "data": {
+          "metric": "http_p95_ms",
+          "unit": "ms",
+          "state": "Unknown",
+          "reason": "samples_unavailable",
+          "step_seconds": 0,
+          "series": []
+        }
+      }
+    },
+    {
+      "name": "Real monitoring query http_p99_ms",
+      "passed": false,
+      "details": {
+        "code": 0,
+        "message": "success",
+        "data": {
+          "metric": "http_p99_ms",
+          "unit": "ms",
+          "state": "Unknown",
+          "reason": "samples_unavailable",
+          "step_seconds": 0,
+          "series": []
+        }
+      }
+    },
+    {
+      "name": "Direct Prometheus workload rate",
+      "passed": true,
+      "details": {
+        "status": "success",
+        "data": {
+          "resultType": "vector",
+          "result": []
+        }
+      }
+    },
+    {
+      "name": "Invalid monitoring query rejected metric=qps&namespace=forbidden_in_standalone",
+      "passed": false,
+      "details": {
+        "http": 200,
+        "message": "success"
+      },
+      "harness_correction": "Initial smoke assumption expected HTTP 400 for valid literal labels; source contract permits quoted exact-match filters. Replaced by checks of Unknown/empty result and truly unsupported metric combinations."
+    },
+    {
+      "name": "Invalid monitoring query rejected metric=qps&cluster=x%22%7D%20or%20vector(1)",
+      "passed": false,
+      "details": {
+        "http": 200,
+        "message": "success"
+      },
+      "harness_correction": "Initial smoke assumption expected HTTP 400 for valid literal labels; source contract permits quoted exact-match filters. Replaced by checks of Unknown/empty result and truly unsupported metric combinations."
+    },
+    {
+      "name": "Prometheus real scrape targets",
+      "passed": true,
+      "details": [
+        {
+          "job": "modurelay-cluster",
+          "health": "up",
+          "error": ""
+        },
+        {
+          "job": "modurelay-instance",
+          "health": "up",
+          "error": ""
+        }
+      ]
+    },
+    {
+      "name": "Probes and scrapes excluded from counters",
+      "passed": true,
+      "details": {}
+    },
+    {
+      "name": "120 real HTTP requests match Counter and Histogram",
+      "passed": false,
+      "details": {
+        "sent": 120,
+        "counter_delta": 122.0,
+        "histogram_count_delta": 122.0,
+        "elapsed_seconds": 61.26
+      }
+    },
+    {
+      "name": "Real monitoring query qps",
+      "passed": true,
+      "details": {
+        "code": 0,
+        "message": "success",
+        "data": {
+          "metric": "qps",
+          "unit": "requests/s",
+          "state": "Available",
+          "step_seconds": 0,
+          "series": [
+            {
+              "labels": {
+                "cluster": "standalone",
+                "service": "modurelay",
+                "source": "app"
+              },
+              "points": [
+                {
+                  "timestamp": "2026-10-23T07:11:39Z",
+                  "value": 4.050362600650385,
+                  "state": "Available"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Real monitoring query rpm",
+      "passed": true,
+      "details": {
+        "code": 0,
+        "message": "success",
+        "data": {
+          "metric": "rpm",
+          "unit": "requests/min",
+          "state": "Available",
+          "step_seconds": 0,
+          "series": [
+            {
+              "labels": {
+                "cluster": "standalone",
+                "service": "modurelay",
+                "source": "app"
+              },
+              "points": [
+                {
+                  "timestamp": "2026-10-23T07:11:39Z",
+                  "value": 243.0217560390231,
+                  "state": "Available"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Real monitoring query http_p95_ms",
+      "passed": true,
+      "details": {
+        "code": 0,
+        "message": "success",
+        "data": {
+          "metric": "http_p95_ms",
+          "unit": "ms",
+          "state": "Available",
+          "step_seconds": 0,
+          "series": [
+            {
+              "labels": {
+                "cluster": "standalone",
+                "service": "modurelay",
+                "source": "app"
+              },
+              "points": [
+                {
+                  "timestamp": "2026-10-23T07:11:39Z",
+                  "value": 48.22535209639801,
+                  "state": "Available",
+                  "sample_count": 244.0217560390231
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Real monitoring query http_p99_ms",
+      "passed": true,
+      "details": {
+        "code": 0,
+        "message": "success",
+        "data": {
+          "metric": "http_p99_ms",
+          "unit": "ms",
+          "state": "Available",
+          "step_seconds": 0,
+          "series": [
+            {
+              "labels": {
+                "cluster": "standalone",
+                "service": "modurelay",
+                "source": "app"
+              },
+              "points": [
+                {
+                  "timestamp": "2026-10-23T07:11:39Z",
+                  "value": 74.5836960383724,
+                  "state": "Available",
+                  "sample_count": 244.0217560390231
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Direct Prometheus workload rate",
+      "passed": true,
+      "details": {
+        "status": "success",
+        "data": {
+          "resultType": "vector",
+          "result": [
+            {
+              "metric": {},
+              "value": [
+                1792739499.462,
+                "1.9778217293717637"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Application readiness with isolated PostgreSQL/Redis",
+      "passed": true,
+      "details": {
+        "http": 200
+      }
+    },
+    {
+      "name": "Admin auto-setup and login",
+      "passed": true,
+      "details": {
+        "database": "isolated fresh PostgreSQL 18.1"
+      }
+    },
+    {
+      "name": "health",
+      "passed": true,
+      "details": {
+        "http": 200,
+        "data": {
+          "status": "ok"
+        }
+      }
+    },
+    {
+      "name": "capabilities",
+      "passed": true,
+      "details": {
+        "http": 200,
+        "data": {
+          "code": 0,
+          "message": "success",
+          "data": {
+            "sources": [
+              "app",
+              "ingress"
+            ],
+            "kubernetes_resources": false,
+            "mode": "standalone",
+            "prometheus_configured": true,
+            "kubernetes": false,
+            "history": true,
+            "max_range_seconds": 2678400,
+            "max_points_per_series": 11000,
+            "metrics": [
+              {
+                "id": "qps",
+                "unit": "requests/s",
+                "kubernetes_only": false
+              },
+              {
+                "id": "rpm",
+                "unit": "requests/min",
+                "kubernetes_only": false
+              },
+              {
+                "id": "request_count",
+                "unit": "requests",
+                "kubernetes_only": false
+              },
+              {
+                "id": "qps_started",
+                "unit": "requests/s",
+                "kubernetes_only": false
+              },
+              {
+                "id": "rpm_started",
+                "unit": "requests/min",
+                "kubernetes_only": false
+              },
+              {
+                "id": "request_count_started",
+                "unit": "requests",
+                "kubernetes_only": false
+              },
+              {
+                "id": "db_pool_wait_count",
+                "unit": "waits",
+                "kubernetes_only": false
+              },
+              {
+                "id": "db_pool_wait_duration_ms",
+                "unit": "ms",
+                "kubernetes_only": false
+              },
+              {
+                "id": "redis_pool_timeout_count",
+                "unit": "timeouts",
+                "kubernetes_only": false
+              },
+              {
+                "id": "db_instance_connections",
+                "unit": "connections",
+                "kubernetes_only": false
+              },
+              {
+                "id": "db_instance_limit",
+                "unit": "connections",
+                "kubernetes_only": false
+              },
+              {
+                "id": "db_instance_usage_percent",
+                "unit": "percent",
+                "kubernetes_only": false
+              },
+              {
+                "id": "redis_instance_connections",
+                "unit": "connections",
+                "kubernetes_only": false
+              },
+              {
+                "id": "redis_instance_limit",
+                "unit": "connections",
+                "kubernetes_only": false
+              },
+              {
+                "id": "redis_instance_usage_percent",
+                "unit": "percent",
+                "kubernetes_only": false
+              },
+              {
+                "id": "http_p95_ms",
+                "unit": "ms",
+                "kubernetes_only": false
+              },
+              {
+                "id": "http_p99_ms",
+                "unit": "ms",
+                "kubernetes_only": false
+              },
+              {
+                "id": "ttft_p95_ms",
+                "unit": "ms",
+                "kubernetes_only": false
+              },
+              {
+                "id": "ttft_p99_ms",
+                "unit": "ms",
+                "kubernetes_only": false
+              },
+              {
+                "id": "http_4xx_count",
+                "unit": "requests",
+                "kubernetes_only": false
+              },
+              {
+                "id": "http_5xx_count",
+                "unit": "requests",
+                "kubernetes_only": false
+              },
+              {
+                "id": "http_429_count",
+                "unit": "requests",
+                "kubernetes_only": false
+              },
+              {
+                "id": "http_4xx_rate",
+                "unit": "percent",
+                "kubernetes_only": false
+              },
+              {
+                "id": "http_5xx_rate",
+                "unit": "percent",
+                "kubernetes_only": false
+              },
+              {
+                "id": "pod_cpu_cores",
+                "unit": "cores",
+                "kubernetes_only": true
+              },
+              {
+                "id": "pod_cpu_limit_cores",
+                "unit": "cores",
+                "kubernetes_only": true
+              },
+              {
+                "id": "pod_cpu_usage_percent",
+                "unit": "percent",
+                "kubernetes_only": true
+              },
+              {
+                "id": "cluster_cpu_usage_percent",
+                "unit": "percent",
+                "kubernetes_only": true
+              },
+              {
+                "id": "pod_memory_bytes",
+                "unit": "bytes",
+                "kubernetes_only": true
+              },
+              {
+                "id": "pod_memory_limit_bytes",
+                "unit": "bytes",
+                "kubernetes_only": true
+              },
+              {
+                "id": "pod_memory_usage_percent",
+                "unit": "percent",
+                "kubernetes_only": true
+              },
+              {
+                "id": "pod_info",
+                "unit": "info",
+                "kubernetes_only": true
+              },
+              {
+                "id": "pod_ready",
+                "unit": "boolean",
+                "kubernetes_only": true
+              },
+              {
+                "id": "pod_restarts",
+                "unit": "restarts",
+                "kubernetes_only": true
+              },
+              {
+                "id": "pod_oom",
+                "unit": "containers",
+                "kubernetes_only": true
+              },
+              {
+                "id": "pod_oom_count",
+                "unit": "events",
+                "kubernetes_only": true
+              },
+              {
+                "id": "pod_pending",
+                "unit": "boolean",
+                "kubernetes_only": true
+              },
+              {
+                "id": "pod_unschedulable",
+                "unit": "boolean",
+                "kubernetes_only": true
+              },
+              {
+                "id": "pod_crash_loop",
+                "unit": "containers",
+                "kubernetes_only": true
+              },
+              {
+                "id": "pod_cpu_throttling_percent",
+                "unit": "percent",
+                "kubernetes_only": true
+              },
+              {
+                "id": "hpa_current_replicas",
+                "unit": "replicas",
+                "kubernetes_only": true
+              },
+              {
+                "id": "hpa_desired_replicas",
+                "unit": "replicas",
+                "kubernetes_only": true
+              },
+              {
+                "id": "hpa_max_replicas",
+                "unit": "replicas",
+                "kubernetes_only": true
+              },
+              {
+                "id": "hpa_at_max",
+                "unit": "boolean",
+                "kubernetes_only": true
+              },
+              {
+                "id": "deployment_cpu_usage_percent",
+                "unit": "percent",
+                "kubernetes_only": true
+              },
+              {
+                "id": "deployment_memory_usage_percent",
+                "unit": "percent",
+                "kubernetes_only": true
+              },
+              {
+                "id": "deployment_restarts",
+                "unit": "restarts",
+                "kubernetes_only": true
+              },
+              {
+                "id": "deployment_oom",
+                "unit": "containers",
+                "kubernetes_only": true
+              },
+              {
+                "id": "deployment_oom_count",
+                "unit": "events",
+                "kubernetes_only": true
+              },
+              {
+                "id": "hpa_target_cpu_utilization_percent",
+                "unit": "percent",
+                "kubernetes_only": true
+              },
+              {
+                "id": "hpa_target_memory_utilization_percent",
+                "unit": "percent",
+                "kubernetes_only": true
+              },
+              {
+                "id": "deployment_desired_replicas",
+                "unit": "replicas",
+                "kubernetes_only": true
+              },
+              {
+                "id": "deployment_available_replicas",
+                "unit": "replicas",
+                "kubernetes_only": true
+              },
+              {
+                "id": "deployment_ready_replicas",
+                "unit": "replicas",
+                "kubernetes_only": true
+              },
+              {
+                "id": "scrape_up",
+                "unit": "boolean",
+                "kubernetes_only": false
+              }
+            ],
+            "kubernetes_events": false,
+            "cluster_name": "standalone"
+          }
+        }
+      }
+    },
+    {
+      "name": "legacy Ops overview",
+      "passed": true,
+      "details": {
+        "http": 200,
+        "data": {
+          "code": 0,
+          "message": "success",
+          "data": {
+            "start_time": "2026-10-23T06:10:08.998632254Z",
+            "end_time": "2026-10-23T07:10:08.998632254Z",
+            "platform": "",
+            "group_id": null,
+            "health_score": 100,
+            "system_metrics": {
+              "capacity": {
+                "postgresql": {
+                  "state": "Available",
+                  "source": "PostgreSQL client backend slots / max_connections (includes reserved client slots)",
+                  "used": 7,
+                  "limit": 100
+                },
+                "redis": {
+                  "state": "Available",
+                  "source": "Redis INFO clients",
+                  "used": 10,
+                  "limit": 10000
+                },
+                "postgresql_pool_limit": 10,
+                "redis_pool_limit": 20,
+                "database_pools": [
+                  {
+                    "instance": "6d50869c-921f-4795-a74d-30fa3305ef3b",
+                    "role": "advisory_lock",
+                    "active": 5,
+                    "idle": 0,
+                    "limit": 16,
+                    "wait_count": 0,
+                    "wait_seconds": 0
+                  },
+                  {
+                    "instance": "6d50869c-921f-4795-a74d-30fa3305ef3b",
+                    "role": "primary",
+                    "active": 10,
+                    "idle": 0,
+                    "limit": 10,
+                    "wait_count": 3,
+                    "wait_seconds": 0.002576667
+                  }
+                ]
+              },
+              "database_pools": [
+                {
+                  "instance": "6d50869c-921f-4795-a74d-30fa3305ef3b",
+                  "role": "advisory_lock",
+                  "active": 0,
+                  "idle": 2,
+                  "limit": 16,
+                  "wait_count": 0,
+                  "wait_seconds": 0
+                },
+                {
+                  "instance": "6d50869c-921f-4795-a74d-30fa3305ef3b",
+                  "role": "primary",
+                  "active": 0,
+                  "idle": 2,
+                  "limit": 10,
+                  "wait_count": 3,
+                  "wait_seconds": 0.002576667
+                }
+              ],
+              "billing_observation_unpersisted": 0,
+              "scope": "cluster",
+              "instance_count": 1,
+              "id": 8,
+              "created_at": "2026-10-23T07:09:57.511071346Z",
+              "window_minutes": 1,
+              "cpu_usage_percent": 9.3,
+              "memory_used_mb": 103,
+              "memory_total_mb": 1024,
+              "memory_usage_percent": 10.1,
+              "db_ok": true,
+              "redis_ok": true,
+              "db_max_open_conns": 10,
+              "redis_pool_size": 20,
+              "redis_conn_total": 4,
+              "redis_conn_idle": 4,
+              "db_conn_active": 0,
+              "db_conn_idle": 2,
+              "db_conn_waiting": null,
+              "goroutine_count": 178,
+              "concurrency_queue_depth": 0,
+              "account_switch_count": 0
+            },
+            "job_heartbeats": [
+              {
+                "job_name": "ops_alert_evaluator",
+                "last_run_at": "2026-10-23T15:09:12.508938+08:00",
+                "last_success_at": "2026-10-23T15:09:12.544915+08:00",
+                "last_error_at": null,
+                "last_error": null,
+                "last_duration_ms": 35,
+                "last_result": "rules=9 enabled=9 evaluated=3 created=0 resolved=0 emails_sent=0",
+                "updated_at": "2026-10-23T15:09:12.545066+08:00"
+              },
+              {
+                "job_name": "ops_metrics_collector",
+                "last_run_at": "2026-10-23T15:09:12.51427+08:00",
+                "last_success_at": "2026-10-23T15:09:12.540845+08:00",
+                "last_error_at": null,
+                "last_error": null,
+                "last_duration_ms": 26,
+                "last_result": null,
+                "updated_at": "2026-10-23T15:09:12.541077+08:00"
+              },
+              {
+                "job_name": "ops_preaggregation_daily",
+                "last_run_at": "2026-10-23T15:09:12.513473+08:00",
+                "last_success_at": "2026-10-23T15:09:12.52051+08:00",
+                "last_error_at": null,
+                "last_error": null,
+                "last_duration_ms": 7,
+                "last_result": "window=2026-10-22T00:00:00Z..2026-10-23T00:00:00Z",
+                "updated_at": "2026-10-23T15:09:12.521013+08:00"
+              },
+              {
+                "job_name": "ops_preaggregation_hourly",
+                "last_run_at": "2026-10-23T15:09:12.514932+08:00",
+                "last_success_at": "2026-10-23T15:09:12.523005+08:00",
+                "last_error_at": null,
+                "last_error": null,
+                "last_duration_ms": 8,
+                "last_result": "window=2026-10-23T06:00:00Z..2026-10-23T07:00:00Z",
+                "updated_at": "2026-10-23T15:09:12.523319+08:00"
+              }
+            ],
+            "success_count": 0,
+            "error_count_total": 0,
+            "business_limited_count": 0,
+            "error_count_sla": 0,
+            "request_count_total": 0,
+            "request_count_sla": 0,
+            "token_consumed": 0,
+            "sla": 0,
+            "error_rate": 0,
+            "upstream_error_rate": 0,
+            "upstream_error_count_excl_429_529": 0,
+            "upstream_429_count": 0,
+            "upstream_529_count": 0,
+            "qps": {
+              "current": 0,
+              "peak": 0,
+              "avg": 0
+            },
+            "tps": {
+              "current": 0,
+              "peak": 0,
+              "avg": 0
+            },
+            "output_tps": {
+              "p5": null,
+              "p10": null,
+              "p50": null,
+              "avg": null,
+              "sample_count": 0
+            },
+            "duration": {
+              "p50_ms": null,
+              "p90_ms": null,
+              "p95_ms": null,
+              "p99_ms": null,
+              "avg_ms": null,
+              "max_ms": null
+            },
+            "ttft": {
+              "p50_ms": null,
+              "p90_ms": null,
+              "p95_ms": null,
+              "p99_ms": null,
+              "avg_ms": null,
+              "max_ms": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "billing snapshot",
+      "passed": true,
+      "details": {
+        "http": 200,
+        "data": {
+          "code": 0,
+          "message": "success",
+          "data": {
+            "state": "Available",
+            "checked_at": "2026-10-23T15:09:12.530369+08:00",
+            "window_start": "2026-10-22T15:00:48.118661+08:00",
+            "window_end": "2026-10-23T15:07:12.530369+08:00",
+            "missing_usage_logs": 0,
+            "amount_mismatches": 0,
+            "scanned": 0,
+            "truncated": false,
+            "findings": [],
+            "operational_state": "Available",
+            "operational_checked_at": "2026-10-23T15:09:12.530369+08:00",
+            "failed_settlements": 0,
+            "compensation_backlog": 0,
+            "ledger_mismatches": 0,
+            "operations": [],
+            "ledger_findings": [],
+            "recording_gaps": [],
+            "observation_unpersisted": 0
+          }
+        }
+      }
+    },
+    {
+      "name": "/metrics/instance token protection",
+      "passed": true,
+      "details": {
+        "unauthenticated": 401,
+        "authenticated": 200
+      }
+    },
+    {
+      "name": "/metrics token protection",
+      "passed": true,
+      "details": {
+        "unauthenticated": 401,
+        "authenticated": 200
+      }
+    },
+    {
+      "name": "Standalone Pod metric NotApplicable",
+      "passed": true,
+      "details": {
+        "code": 0,
+        "message": "success",
+        "data": {
+          "metric": "pod_cpu_cores",
+          "unit": "cores",
+          "state": "NotApplicable",
+          "reason": "kubernetes_unavailable",
+          "step_seconds": 0,
+          "series": []
+        }
+      }
+    },
+    {
+      "name": "Admin monitoring rejects unauthenticated",
+      "passed": true,
+      "details": {
+        "http": 401
+      }
+    }
+  ],
+  "final_source_migration": 280,
+  "final_image_digest": "sha256:06875c9425b160484d01d4109074f839500469a85724d0414d7ba91355dd2f10",
+  "previous_attempts_notes": [
+    "Initial HTTP harness included 2 parallel browser login requests; quiet rerun proves 120/120 conservation.",
+    "Initial literal label expectation incorrectly assumed HTTP400; corrected contract verifies safely quoted unmatched label gives Unknown.",
+    "Old binary SPA /metrics/instance bug is fixed and final binary auth/scrape checks pass."
+  ]
+}

@@ -14,12 +14,13 @@ function deferred<T>() {
   return { promise, resolve, reject }
 }
 
+import type { AlertEvent } from '@/api/admin/ops'
 import OpsAlertEventsCard from '../OpsAlertEventsCard.vue'
 import { ref } from 'vue'
-const { listAlertEvents, showError } = vi.hoisted(() => ({ listAlertEvents: vi.fn(), showError: vi.fn() }))
+const { listAlertEvents, createAlertSilence, showError, showSuccess } = vi.hoisted(() => ({ listAlertEvents: vi.fn(), createAlertSilence: vi.fn(), showError: vi.fn(), showSuccess: vi.fn() }))
 vi.mock('@vueuse/core', () => ({ useMediaQuery: () => ref(true) }))
-vi.mock('@/api/admin/ops', () => ({ opsAPI: { listAlertEvents } }))
-vi.mock('@/stores/app', () => ({ useAppStore: () => ({ showError }) }))
+vi.mock('@/api/admin/ops', () => ({ opsAPI: { listAlertEvents, createAlertSilence } }))
+vi.mock('@/stores/app', () => ({ useAppStore: () => ({ showError, showSuccess }) }))
 const rows = (first: number, count = 10) => Array.from({ length: count }, (_, i) => ({
   id: first + i, severity: 'P1', status: 'firing', created_at: '2026-10-03T00:00:00Z',
 }))
@@ -68,5 +69,30 @@ describe('alert events filtered pagination', () => {
     await nextLoad
     expect(vm.events.map(row => row.id)).toEqual([...rows(100), ...rows(110, 1)].map(row => row.id))
     expect(vm.hasMore).toBe(false)
+  })
+})
+
+
+describe('resource alert isolation', () => {
+  beforeEach(() => { vi.resetAllMocks(); listAlertEvents.mockResolvedValue([]); createAlertSilence.mockResolvedValue(undefined) })
+  function event(id: number, uid: string): AlertEvent {
+    return { id, rule_id: 8, severity: 'P1', status: 'firing', email_sent: false, fired_at: '2026-10-22T01:00:00Z', created_at: '2026-10-22T01:00:00Z', dimensions: { namespace: 'prod', pod: 'relay', uid, resource_key: `resource-${uid}` } }
+  }
+  it('silences only the selected resource identity', async () => {
+    const { wrapper } = mountCard()
+    await flushPromises()
+    const vm = wrapper.vm as unknown as { selected: AlertEvent; silenceAlert: () => Promise<void> }
+    vm.selected = event(1, 'pod-uid-1')
+    await vm.silenceAlert()
+    expect(createAlertSilence).toHaveBeenCalledWith(expect.objectContaining({ rule_id: 8, resource_key: 'resource-pod-uid-1' }))
+  })
+  it('does not show an earlier Pod incarnation as the current resource history', async () => {
+    const { wrapper } = mountCard()
+    await flushPromises()
+    const vm = wrapper.vm as unknown as { selected: AlertEvent; loadHistory: () => Promise<void>; history: AlertEvent[] }
+    vm.selected = event(1, 'pod-uid-1')
+    listAlertEvents.mockResolvedValue([event(2, 'pod-uid-2'), event(3, 'pod-uid-1')])
+    await vm.loadHistory()
+    expect(vm.history.map(item => item.id)).toEqual([3])
   })
 })
