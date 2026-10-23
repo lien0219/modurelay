@@ -430,6 +430,67 @@ func TestEvaluateOnceUnavailableResetsBreachesWithoutResolving(t *testing.T) {
 	require.Equal(t, OpsAlertDataStatusUnavailable, last.DataStatus)
 }
 
+type firingAlertTestRepo struct {
+	*stubOpsRepo
+	created []*OpsAlertEvent
+}
+
+func (r *firingAlertTestRepo) GetLatestAlertEvent(context.Context, int64) (*OpsAlertEvent, error) {
+	return nil, nil
+}
+
+func (r *firingAlertTestRepo) CreateAlertEvent(_ context.Context, event *OpsAlertEvent) (*OpsAlertEvent, error) {
+	event.ID = int64(len(r.created) + 1)
+	r.created = append(r.created, event)
+	r.activeEvent = event
+	return event, nil
+}
+
+func TestEvaluateOnceCreatesAlertAfterPersistedGlobalOrScopedBreach(t *testing.T) {
+	t.Parallel()
+	for _, scoped := range []bool{false, true} {
+		name := "global"
+		if scoped {
+			name = "scoped"
+		}
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			rule := &OpsAlertRule{
+				ID: 12, EvaluationRevision: 2, Name: "error rate", Enabled: true,
+				MetricType: "error_rate", Operator: ">", Threshold: 50, Severity: "P1",
+				WindowMinutes: 5, SustainedMinutes: 1, MinRequests: 20,
+			}
+			expectedDimensions := map[string]any{"rule_revision": int64(2), "window_minutes": 5}
+			if scoped {
+				rule.Filters = map[string]any{"platform": "openai", "group_id": float64(42)}
+				expectedDimensions["platform"] = "openai"
+				expectedDimensions["group_id"] = int64(42)
+			}
+			repo := &firingAlertTestRepo{stubOpsRepo: &stubOpsRepo{
+				overview: &OpsDashboardOverview{RequestCountSLA: 100, ErrorRate: 0.8},
+				rules:    []*OpsAlertRule{rule},
+				states: map[int64]*OpsAlertRuleState{
+					rule.ID: {RuleID: rule.ID, RuleRevision: 2, ConsecutiveBreaches: 1, LastEvaluatedAt: time.Now().UTC().Add(-61 * time.Second)},
+				},
+			}}
+			svc := &OpsAlertEvaluatorService{opsRepo: repo}
+			svc.evaluateOnce(time.Minute)
+
+			require.Len(t, repo.created, 1)
+			event := repo.created[0]
+			require.Equal(t, rule.ID, event.RuleID)
+			require.EqualValues(t, 2, event.RuleRevision)
+			require.Equal(t, OpsAlertStatusFiring, event.Status)
+			require.Equal(t, "P1", event.Severity)
+			require.Equal(t, "P1: error rate", event.Title)
+			require.Equal(t, float64Ptr(80), event.MetricValue)
+			require.Equal(t, float64Ptr(50), event.ThresholdValue)
+			require.Equal(t, expectedDimensions, event.Dimensions)
+			require.Equal(t, 2, repo.states[rule.ID].ConsecutiveBreaches)
+		})
+	}
+}
+
 func TestUpdateRuleBreachesContinuesPersistedCount(t *testing.T) {
 	t.Parallel()
 

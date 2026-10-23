@@ -13,7 +13,12 @@ docker compose -f deploy/monitoring/thanos-retention.compose.yml --profile local
 
 `deploy/monitoring/secrets/` 已被 Git 忽略。初始化程序不覆盖已有文件、不输出凭据：父目录权限为 `0700`，文件为 `0644`，使 Compose 绑定挂载后的非 root 进程可读各自被授权的文件。应限制宿主机和 Docker 管理权限，不将该目录放到共享位置。正式部署可由秘密管理系统生成对应文件。
 
-应用设置 `OPS_METRICS_ENABLED=true`、`OPS_METRICS_TOKEN`；把相同 token 写入 `secrets/app-metrics-token`，按 `application-targets.example.json` 填写 `secrets/application-targets.json`。每个实例有独立抓取目标和稳定标签；目标应为 `/metrics/instance`，不能多次抓取同一个全局聚合端点。默认 `host.docker.internal:8080` 只是示例，需要根据真实实例地址修改。变更 token 后重新创建 Prometheus 容器，目标文件由 file-SD 定期读取。
+应用设置 `OPS_METRICS_ENABLED=true`、`OPS_METRICS_TOKEN`；把相同 token 写入 `secrets/app-metrics-token`，并配置两组抓取目标：
+
+- 按 `application-targets.example.json` 填写 `secrets/application-targets.json`，列出每个实例的独立地址和稳定标签，用于抓取 `/metrics/instance` 的 Counter/Histogram。
+- 按 `cluster-targets.example.json` 填写 `secrets/cluster-targets.json`，每个逻辑集群只配置一个地址（Kubernetes 可使用 Service 地址），用于抓取 `/metrics` 的共享 Gauge 和后台任务心跳。两组目标的 `cluster` 标签必须一致；缺少这一组目标会持续触发后台任务心跳缺失告警。
+
+单实例部署的两组目标可使用相同地址；默认 `host.docker.internal:8080` 只是示例，需要根据真实地址修改。已有部署升级时，重新运行初始化命令以补齐 `cluster-targets.json`（不会覆盖已有凭据或目标），填写后重新创建 Prometheus 容器以挂载新文件。变更 token 后也需重新创建容器，目标文件由 file-SD 定期读取。
 
 默认仅发布宿主回环端口：Prometheus `19090`、Thanos Query `10902`、Alertmanager `19093`、Watchdog `19094`。应用本地运行时可设置 `OPS_MONITORING_MODE=standalone` 和 `OPS_MONITORING_PROMETHEUS_URL=http://127.0.0.1:10902`；Kubernetes 使用 `kubernetes` 或 `auto` 模式。容器内应用应使用可达的内部网络地址或受控代理，不能把自身容器的 `127.0.0.1` 当作宿主。Query 提供 Prometheus API，配置中的 `OPS_MONITORING_BEARER_TOKEN` 用于需要鉴权的代理。
 

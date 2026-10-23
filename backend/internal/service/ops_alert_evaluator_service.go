@@ -330,6 +330,9 @@ func (s *OpsAlertEvaluatorService) evaluateOnce(interval time.Duration) {
 				FiredAt:        now,
 				CreatedAt:      now,
 			}
+			if firedEvent.Dimensions == nil {
+				firedEvent.Dimensions = make(map[string]any)
+			}
 			firedEvent.Dimensions["rule_revision"] = alertRuleRevision(rule.EvaluationRevision)
 			firedEvent.Dimensions["window_minutes"] = windowMinutes
 

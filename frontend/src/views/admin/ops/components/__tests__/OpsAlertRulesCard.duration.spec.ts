@@ -10,10 +10,10 @@ enableAutoUnmount(afterEach)
 
 import OpsAlertRulesCard from '../OpsAlertRulesCard.vue'
 import { ref } from 'vue'
-const { createAlertRule } = vi.hoisted(() => ({ createAlertRule: vi.fn() }))
+const { createAlertRule, getMonitoringCapabilities } = vi.hoisted(() => ({ createAlertRule: vi.fn(), getMonitoringCapabilities: vi.fn() }))
 vi.mock('@vueuse/core', () => ({ useMediaQuery: () => ref(true) }))
 vi.mock('@/api', () => ({ adminAPI: { groups: { getAll: vi.fn().mockResolvedValue([]) } } }))
-vi.mock('@/api/admin/ops', () => ({ opsAPI: { listAlertRules: vi.fn().mockResolvedValue([]), createAlertRule } }))
+vi.mock('@/api/admin/ops', () => ({ opsAPI: { listAlertRules: vi.fn().mockResolvedValue([]), createAlertRule, getMonitoringCapabilities } }))
 vi.mock('@/stores/app', () => ({ useAppStore: () => ({ showError: vi.fn(), showSuccess: vi.fn() }) }))
 
 async function openRule() {
@@ -26,7 +26,10 @@ async function openRule() {
   return wrapper
 }
 describe('alert rule integer durations', () => {
-  beforeEach(() => { vi.clearAllMocks() })
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getMonitoringCapabilities.mockResolvedValue({ external_ingress_adapter: 'nginx' })
+  })
   it.each(['1.5', '0.5'])('rejects fractional duration %s before submitting', async value => {
     const wrapper = await openRule()
     const input = wrapper.find(value === '1.5' ? 'input[min="1"][max="1440"]' : 'input[min="0"][max="1440"]')
@@ -88,6 +91,35 @@ describe('alert rule integer durations', () => {
     await wrapper.findAll('button').find(b => b.text() === 'common.save')!.trigger('click')
     await flushPromises()
     expect(createAlertRule).toHaveBeenCalledWith(expect.objectContaining({ metric_type: 'hpa_at_max', filters: { cluster: 'west', namespace: 'production' } }))
+  })
+  it.each(['normalized', 'nginx'])('removes Pod filters when switching an app rule to %s external ingress', async adapter => {
+    getMonitoringCapabilities.mockResolvedValue({ external_ingress_adapter: adapter })
+    const wrapper = await openRule()
+    const draft = (wrapper.vm as unknown as { draft: { metric_type: string; filters: Record<string, unknown> } }).draft
+    draft.metric_type = 'http_5xx_count'
+    draft.filters = {
+      cluster: 'west', namespace: 'production', service: 'relay', source: 'app',
+      deployment: 'relay', pod: 'relay-1', uid: 'pod-uid',
+      protocol: 'sse', route: 'responses', status_code: '502',
+    }
+    await flushPromises()
+    expect(wrapper.find('[data-testid="rule-filter-pod"]').exists()).toBe(true)
+    await wrapper.get('[data-testid="rule-filter-source"]').setValue('external_ingress')
+    for (const key of ['pod', 'uid', 'deployment']) {
+      expect(wrapper.find(`[data-testid="rule-filter-${key}"]`).exists()).toBe(false)
+    }
+    for (const key of ['protocol', 'route']) {
+      expect(wrapper.find(`[data-testid="rule-filter-${key}"]`).exists()).toBe(adapter === 'normalized')
+    }
+    await wrapper.findAll('button').find(b => b.text() === 'common.save')!.trigger('click')
+    await flushPromises()
+    expect(createAlertRule).toHaveBeenCalledWith(expect.objectContaining({
+      metric_type: 'http_5xx_count',
+      filters: {
+        cluster: 'west', namespace: 'production', service: 'relay', source: 'external_ingress', status_code: '502',
+        ...(adapter === 'normalized' ? { protocol: 'sse', route: 'responses' } : {}),
+      },
+    }))
   })
   it('rejects invalid webhook schemes without losing the draft', async () => {
     const wrapper = await openRule()
