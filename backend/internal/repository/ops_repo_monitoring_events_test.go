@@ -26,7 +26,8 @@ func TestMonitoringEventsPersistencePostgres(t *testing.T) {
 	require.NoError(t, err)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	repo := NewOpsRepository(db).(*opsRepository)
+	repo, ok := NewOpsRepository(db).(*opsRepository)
+	require.True(t, ok)
 	now := time.Now().UTC().Truncate(time.Second)
 	cluster := "events-test-" + time.Now().UTC().Format("20060102T150405.000000000")
 	defer func() {

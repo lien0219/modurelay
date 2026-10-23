@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"math"
 	"os"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -931,6 +933,75 @@ func (c *OpsMetricsCollector) redisPoolStats() (total int, idle int, ok bool) {
 		return 0, 0, false
 	}
 	return int(stats.TotalConns), int(stats.IdleConns), true
+}
+
+func (c *OpsMetricsCollector) collectRedisInstanceCapacity(ctx context.Context) OpsDatabaseInstanceCapacity {
+	out := OpsDatabaseInstanceCapacity{State: "Unknown", Source: "Redis INFO clients"}
+	if c == nil || c.redisClient == nil {
+		return out
+	}
+	queryCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	if cluster, ok := c.redisClient.(*redis.ClusterClient); ok {
+		return collectRedisShardCapacity(queryCtx, cluster.ForEachShard)
+	}
+	raw, err := c.redisClient.Info(queryCtx, "clients").Result()
+	if err != nil {
+		return out
+	}
+	return parseRedisInstanceCapacity(raw)
+}
+
+func collectRedisShardCapacity(ctx context.Context, each func(context.Context, func(context.Context, *redis.Client) error) error) OpsDatabaseInstanceCapacity {
+	out := OpsDatabaseInstanceCapacity{State: "Unknown", Source: "Redis Cluster INFO clients; usage is busiest node, nodes include primaries and replicas"}
+	var mu sync.Mutex
+	err := each(ctx, func(ctx context.Context, client *redis.Client) error {
+		raw, err := client.Info(ctx, "clients").Result()
+		node := parseRedisInstanceCapacity(raw)
+		// A stable opaque node ID keeps topology available without publishing endpoints.
+		node.Node = fmt.Sprintf("redis-%x", sha256.Sum256([]byte(client.Options().Addr)))[:18]
+		mu.Lock()
+		out.Nodes = append(out.Nodes, node)
+		mu.Unlock()
+		return err
+	})
+	sort.Slice(out.Nodes, func(i, j int) bool { return out.Nodes[i].Node < out.Nodes[j].Node })
+	if err != nil || len(out.Nodes) == 0 {
+		return out
+	}
+	for _, node := range out.Nodes {
+		if node.State != "Available" {
+			return out
+		}
+	}
+	for _, node := range out.Nodes {
+		if out.Used == nil || float64(*node.Used)/float64(*node.Limit) > float64(*out.Used)/float64(*out.Limit) {
+			out.Used, out.Limit, out.Node = node.Used, node.Limit, node.Node
+		}
+	}
+	out.State = "Available"
+	return out
+}
+
+func (c *OpsMetricsCollector) appendRedisPoolCounters(out map[string]float64) {
+	if c == nil || c.redisClient == nil {
+		return
+	}
+	if stats := c.redisClient.PoolStats(); stats != nil {
+		out["modurelay_redis_pool_timeout_total"] = float64(stats.Timeouts)
+		out["modurelay_redis_pool_connections"] = float64(stats.TotalConns)
+	}
+	if client, ok := c.redisClient.(*redis.Client); ok {
+		if n := client.Options().PoolSize; n > 0 {
+			out["modurelay_redis_pool_max_connections"] = float64(n)
+		}
+	} else {
+		c.runtimeSnapshotMu.RLock()
+		defer c.runtimeSnapshotMu.RUnlock()
+		if c.runtimeSnapshot != nil && time.Since(c.runtimeSnapshot.CreatedAt) < opsRuntimeTTL && c.runtimeSnapshot.RedisPoolSize != nil {
+			out["modurelay_redis_pool_max_connections"] = float64(*c.runtimeSnapshot.RedisPoolSize)
+		}
+	}
 }
 
 func (c *OpsMetricsCollector) dbPoolStats() (active int, idle int) {

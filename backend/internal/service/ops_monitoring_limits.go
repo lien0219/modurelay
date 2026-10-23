@@ -217,9 +217,9 @@ func fetchMonitoringPodLimits(ctx context.Context, client *http.Client, endpoint
 			return nil, err
 		}
 		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 8*1024*1024+1))
-		resp.Body.Close()
+		_ = resp.Body.Close() // The status and complete body read determine validity below.
 		if resp.StatusCode != http.StatusOK || readErr != nil || len(body) > 8*1024*1024 {
-			return nil, errors.New("Kubernetes resource response unavailable")
+			return nil, errors.New("kubernetes resource response unavailable")
 		}
 		var list struct {
 			Metadata struct {
@@ -249,7 +249,7 @@ func fetchMonitoringPodLimits(ctx context.Context, client *http.Client, endpoint
 			return out, nil
 		}
 	}
-	return nil, errors.New("Kubernetes resource page limit exceeded")
+	return nil, errors.New("kubernetes resource page limit exceeded")
 }
 
 func monitoringLimitsJobName(c config.OpsMonitoringConfig) string {

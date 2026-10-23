@@ -21,7 +21,7 @@ with tempfile.TemporaryDirectory(prefix='modurelay-downsample-test-') as tempora
     # The official BlockWriter writes real chunk/index/meta files. A 12-day
     # block is old and long enough for both downsampling levels, while one
     # five-minute Counter series needs only 3,457 samples.
-    (root / 'go.mod').write_text('module monitoring-downsample-fixture\n\ngo 1.27.2\n\nrequire github.com/prometheus/prometheus v0.315.1\n')
+    (root / 'go.mod').write_text('module monitoring-downsample-fixture\n\ngo 1.27.3\n\nrequire github.com/prometheus/prometheus v0.315.1\n')
     (root / 'main.go').write_text('''package main
 import("context";"fmt";"log/slog";"os";"time";"github.com/prometheus/prometheus/model/labels";"github.com/prometheus/prometheus/storage";"github.com/prometheus/prometheus/tsdb")
 func main(){ctx:=context.Background();w,err:=tsdb.NewBlockWriter(slog.Default(),os.Args[1],int64(20*24*time.Hour/time.Millisecond));if err!=nil{panic(err)};defer w.Close();a:=w.Appender(ctx);var ref storage.SeriesRef;start:=time.Now().Add(-60*24*time.Hour).Truncate(time.Hour).UnixMilli();for i:=0;i<=12*24*12;i++{ref,err=a.Append(ref,labels.FromStrings("__name__","modurelay_downsample_fixture_total","job","fixture"),start+int64(i)*300000,float64(i*10));if err!=nil{panic(err)}};if err=a.Commit();err!=nil{panic(err)};id,err:=w.Flush(ctx);if err!=nil{panic(err)};fmt.Println(id)}

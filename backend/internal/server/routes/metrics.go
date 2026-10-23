@@ -58,7 +58,7 @@ func RegisterMetricsRoutes(r *gin.Engine, cfg *config.Config, source clusterMetr
 		gauge("modurelay_instance_active_websocket_turns", "Admitted Responses WebSocket turns still running on this instance.", snapshot.ActiveTurns)
 		// Instance counters and histograms. Do not copy these onto /metrics;
 		// that endpoint returns cluster gauges which must not be summed per pod.
-		out.WriteString(httpmetrics.Render())
+		_, _ = out.WriteString(httpmetrics.Render())
 		if observation, ok := source.(interface{ BillingObservationCounters() map[string]float64 }); ok {
 			values := observation.BillingObservationCounters()
 			for _, metric := range []struct{ name, kind, help string }{
@@ -163,13 +163,13 @@ func RegisterMetricsRoutes(r *gin.Engine, cfg *config.Config, source clusterMetr
 			}
 		}
 		if limits, ok := source.(interface{ MonitoringPodLimitMetrics(context.Context) string }); ok {
-			out.WriteString(limits.MonitoringPodLimitMetrics(ctx))
+			_, _ = out.WriteString(limits.MonitoringPodLimitMetrics(ctx))
 		}
 		if jobs, ok := source.(interface {
 			MonitoringJobHeartbeats(context.Context) (map[string]float64, error)
 		}); ok {
 			if heartbeats, err := jobs.MonitoringJobHeartbeats(ctx); err == nil {
-				out.WriteString("# HELP modurelay_ops_job_last_success_timestamp_seconds Last successful shared Ops background job.\n# TYPE modurelay_ops_job_last_success_timestamp_seconds gauge\n")
+				_, _ = out.WriteString("# HELP modurelay_ops_job_last_success_timestamp_seconds Last successful shared Ops background job.\n# TYPE modurelay_ops_job_last_success_timestamp_seconds gauge\n")
 				for _, job := range []string{"ops_metrics_collector", "ops_alert_evaluator"} {
 					if timestamp, present := heartbeats[job]; present {
 						fmt.Fprintf(&out, "modurelay_ops_job_last_success_timestamp_seconds{job_name=%q} %.12g\n", job, timestamp)

@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -33,7 +34,7 @@ func (r *opsRepository) EnsureFiringAlertDeliveries(ctx context.Context, eventID
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	var status string
 	if err := tx.QueryRowContext(ctx, `SELECT status FROM ops_alert_events WHERE id=$1 FOR UPDATE`, eventID).Scan(&status); err != nil {
 		return err
@@ -80,7 +81,7 @@ func (r *opsRepository) ClaimAlertDeliveries(ctx context.Context, now time.Time,
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := []*service.OpsAlertDelivery{}
 	for rows.Next() {
 		d, err := scanAlertDelivery(rows)
@@ -89,7 +90,7 @@ func (r *opsRepository) ClaimAlertDeliveries(ctx context.Context, now time.Time,
 		}
 		out = append(out, d)
 	}
-	return out, rows.Err()
+	return out, errors.Join(rows.Err(), rows.Close())
 }
 
 func (r *opsRepository) CompleteAlertDelivery(ctx context.Context, d *service.OpsAlertDelivery, sendErr error, next time.Time) error {
@@ -111,7 +112,7 @@ func (r *opsRepository) CompleteAlertDelivery(ctx context.Context, d *service.Op
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	res, err := tx.ExecContext(ctx, `UPDATE ops_alert_deliveries SET status=$3,last_error=$4,next_attempt_at=$5,sent_at=$6,lease_token=''
  WHERE id=$1 AND lease_token=$2 AND status='sending'`, d.ID, d.LeaseToken, status, message, next, sent)
 	if err != nil {
@@ -141,7 +142,7 @@ func (r *opsRepository) ListAlertDeliveries(ctx context.Context, eventID int64) 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := []*service.OpsAlertDelivery{}
 	for rows.Next() {
 		d, err := scanAlertDelivery(rows)
@@ -170,7 +171,7 @@ func (r *opsRepository) ListAlertDeliveries(ctx context.Context, eventID int64) 
 	if err != nil {
 		return nil, err
 	}
-	defer history.Close()
+	defer func() { _ = history.Close() }()
 	for history.Next() {
 		var id int64
 		var attempt service.OpsAlertDeliveryAttempt
@@ -181,7 +182,7 @@ func (r *opsRepository) ListAlertDeliveries(ctx context.Context, eventID int64) 
 			d.AttemptHistory = append(d.AttemptHistory, attempt)
 		}
 	}
-	return out, history.Err()
+	return out, errors.Join(history.Err(), history.Close())
 }
 func (r *opsRepository) RetryAlertDelivery(ctx context.Context, id int64) error {
 	res, err := r.db.ExecContext(ctx, `UPDATE ops_alert_deliveries SET status='pending',attempts=0,last_error='',next_attempt_at=NOW(),lease_token='' WHERE id=$1 AND status='failed'`, id)
@@ -203,7 +204,7 @@ func (r *opsRepository) TransitionAlertEvent(ctx context.Context, event *service
 	if err != nil {
 		return false, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	// Match creation's lock order (incident before event) so concurrent firing
 	// and recovery on the same resource cannot deadlock each other.
 	var lockedIncident int64

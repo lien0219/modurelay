@@ -372,7 +372,8 @@ func fetchMonitoringSeries(ctx context.Context, c config.OpsMonitoringConfig, q 
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	// A cleanup error does not invalidate a completely read and validated response.
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return nil, errors.New("monitoring upstream failed")
 	}

@@ -248,13 +248,11 @@ func (r *opsRepository) readBillingOperations(ctx context.Context, result *servi
 	for rows.Next() {
 		var item service.OpsBillingOperation
 		if err = rows.Scan(&item.ID, &item.IntentID, &item.RequestID, &item.Operation, &item.State, &item.ErrorCode, &item.Attempts, &item.CreatedAt, &item.CheckedAt); err != nil {
-			rows.Close()
-			return err
+			return errors.Join(err, rows.Close())
 		}
 		result.Operations = append(result.Operations, item)
 	}
-	err = rows.Err()
-	rows.Close()
+	err = errors.Join(rows.Err(), rows.Close())
 	if err != nil {
 		return err
 	}
@@ -265,13 +263,11 @@ func (r *opsRepository) readBillingOperations(ctx context.Context, result *servi
 	for rows.Next() {
 		var item service.OpsAccountLedgerFinding
 		if err = rows.Scan(&item.AccountType, &item.AccountID, &item.Field, &item.OpeningAmount, &item.ExpectedAmount, &item.ActualAmount); err != nil {
-			rows.Close()
-			return err
+			return errors.Join(err, rows.Close())
 		}
 		result.LedgerFindings = append(result.LedgerFindings, item)
 	}
-	err = rows.Err()
-	rows.Close()
+	err = errors.Join(rows.Err(), rows.Close())
 	if err != nil {
 		return err
 	}
@@ -279,7 +275,7 @@ func (r *opsRepository) readBillingOperations(ctx context.Context, result *servi
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var gap service.OpsBillingRecordingGap
 		if err = rows.Scan(&gap.InstanceID, &gap.MissedCount, &gap.AcknowledgedCount, &gap.FirstMissedAt, &gap.LastMissedAt); err != nil {
@@ -290,7 +286,7 @@ func (r *opsRepository) readBillingOperations(ctx context.Context, result *servi
 			result.OperationalState = "Unknown"
 		}
 	}
-	return rows.Err()
+	return errors.Join(rows.Err(), rows.Close())
 }
 
 // Flush from the periodic reconciler as well as from a recovered billing path;

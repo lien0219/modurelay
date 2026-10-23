@@ -17,7 +17,8 @@ func TestMonitoringKubernetesResourceContractPostgres(t *testing.T) {
 		_, err = db.Exec(string(sql))
 		require.NoError(t, err)
 	}
-	repo := NewOpsRepository(db).(*opsRepository)
+	repo, ok := NewOpsRepository(db).(*opsRepository)
+	require.True(t, ok)
 	ctx := context.Background()
 	now := time.Now().UTC()
 	value := 2.5

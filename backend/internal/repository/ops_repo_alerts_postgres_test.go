@@ -112,16 +112,15 @@ func TestMonitoringAlertOutboxAtomicRollbackPostgres(t *testing.T) {
 }
 func TestMonitoringAlertOutboxConcurrentClaimsPostgres(t *testing.T) {
 	db := monitoringAlertTestDB(t)
-	repo := &opsRepository{db: db}
 	ctx := context.Background()
 	// Use separate backend connections sharing this test's isolated schema.
 	var schema string
 	require.NoError(t, db.QueryRow("SELECT current_schema()").Scan(&schema))
 	parallelDB, err := sql.Open("postgres", os.Getenv("MODURELAY_MONITORING_TEST_DSN")+" search_path="+schema)
 	require.NoError(t, err)
-	defer parallelDB.Close()
+	t.Cleanup(func() { require.NoError(t, parallelDB.Close()) })
 	parallelDB.SetMaxOpenConns(4)
-	repo = &opsRepository{db: parallelDB}
+	repo := &opsRepository{db: parallelDB}
 	for _, key := range []string{"a", "b", "c"} {
 		_, err := repo.CreateAlertEvent(ctx, &service.OpsAlertEvent{RuleID: 1, Severity: "P1", Status: service.OpsAlertStatusFiring, FiredAt: time.Now(), Dimensions: map[string]any{"resource_key": key}, Deliveries: []*service.OpsAlertDelivery{{Channel: "email", Transition: "firing", Target: "ops@example.com", Payload: []byte(`{}`)}}})
 		require.NoError(t, err)

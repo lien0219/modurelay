@@ -276,7 +276,7 @@ RETURNING
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if err := tx.QueryRowContext(
 		ctx,
 		q,
@@ -346,12 +346,12 @@ RETURNING
 	for rows.Next() {
 		var id int64
 		if err := rows.Scan(&id); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return nil, err
 		}
 	}
 	if err := rows.Err(); err != nil {
-		rows.Close()
+		_ = rows.Close()
 		return nil, err
 	}
 	if err := rows.Close(); err != nil {
@@ -735,7 +735,7 @@ RETURNING
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	var currentRevision int64
 	if err := tx.QueryRowContext(ctx, `SELECT evaluation_revision FROM ops_alert_rules WHERE id=$1 FOR SHARE`, event.RuleID).Scan(&currentRevision); err != nil {
 		return nil, err

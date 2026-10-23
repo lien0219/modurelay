@@ -19,7 +19,7 @@ func (s *OpsService) EvaluateMonitoringAlertMetric(ctx context.Context, metric s
 		return s.evaluateMonitoringSourceHealth(ctx)
 	}
 	text := func(key string) string { value, _ := filters[key].(string); return value }
-	window := "5m"
+	var window string
 	switch duration := end.Sub(start); {
 	case duration <= time.Minute:
 		window = "1m"

@@ -15,7 +15,7 @@ func (r *opsRepository) ReplaceMonitoringPodLimits(ctx context.Context, cluster,
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	// Scope deletion by the collector's namespace; never merge two Pod UIDs.
 	if namespace == "*" {
 		_, err = tx.ExecContext(ctx, "DELETE FROM ops_kubernetes_pod_limits WHERE cluster=$1", cluster)
@@ -46,7 +46,7 @@ func (r *opsRepository) ListMonitoringPodLimits(ctx context.Context, cluster str
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := []service.OpsMonitoringPodLimit{}
 	for rows.Next() {
 		var row service.OpsMonitoringPodLimit
@@ -55,7 +55,7 @@ func (r *opsRepository) ListMonitoringPodLimits(ctx context.Context, cluster str
 		}
 		out = append(out, row)
 	}
-	return out, rows.Err()
+	return out, errors.Join(rows.Err(), rows.Close())
 }
 
 var _ service.OpsMonitoringLimitsRepository = (*opsRepository)(nil)

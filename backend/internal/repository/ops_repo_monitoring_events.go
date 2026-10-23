@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -36,7 +37,7 @@ func (r *opsRepository) UpsertMonitoringEvents(ctx context.Context, events []ser
 	if err != nil {
 		return err
 	}
-	defer stmt.Close()
+	defer func() { _ = stmt.Close() }()
 	for _, event := range events {
 		if event.ObjectKind == "" {
 			event.ObjectKind, event.ObjectName, event.ObjectUID = "Pod", event.Pod, event.PodUID
@@ -48,6 +49,9 @@ func (r *opsRepository) UpsertMonitoringEvents(ctx context.Context, events []ser
 		if _, err := stmt.ExecContext(ctx, event.Cluster, event.Namespace, event.EventUID, event.Pod, event.PodUID, event.Reason, event.Type, event.Message, event.Source, event.FirstSeenAt, event.LastSeenAt, event.Count, event.ObjectKind, event.ObjectName, event.ObjectUID); err != nil {
 			return err
 		}
+	}
+	if err := stmt.Close(); err != nil {
+		return err
 	}
 	return tx.Commit()
 }
@@ -70,7 +74,7 @@ func (r *opsRepository) ListMonitoringEvents(ctx context.Context, f service.OpsM
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := []service.OpsKubernetesEvent{}
 	for rows.Next() {
 		var event service.OpsKubernetesEvent
@@ -79,7 +83,7 @@ func (r *opsRepository) ListMonitoringEvents(ctx context.Context, f service.OpsM
 		}
 		out = append(out, event)
 	}
-	return out, rows.Err()
+	return out, errors.Join(rows.Err(), rows.Close())
 }
 
 func (r *opsRepository) DeleteExpiredMonitoringEvents(ctx context.Context, cluster string, before time.Time) error {

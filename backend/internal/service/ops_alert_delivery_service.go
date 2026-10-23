@@ -39,7 +39,8 @@ func (s *OpsAlertEvaluatorService) prepareAlertDeliveries(ctx context.Context, c
 }
 
 func (s *OpsAlertEvaluatorService) prepareAlertDeliveriesAt(ctx context.Context, cfg *OpsAlertRuntimeSettings, rule *OpsAlertRule, event *OpsAlertEvent, transition string, now time.Time) ([]*OpsAlertDelivery, error) {
-	if _, ok := s.opsRepo.(OpsAlertDeliveryRepository); !ok {
+	deliveryRepo, ok := s.opsRepo.(OpsAlertDeliveryRepository)
+	if !ok {
 		return nil, nil
 	}
 	if raw, ok := rule.Filters["silenced_until"].(string); ok {
@@ -51,7 +52,7 @@ func (s *OpsAlertEvaluatorService) prepareAlertDeliveriesAt(ctx context.Context,
 		return nil, nil
 	}
 	if key, ok := event.Dimensions["resource_key"].(string); ok && key != "" {
-		silenced, err := s.opsRepo.(OpsAlertDeliveryRepository).IsAlertResourceSilenced(ctx, rule.ID, key, now)
+		silenced, err := deliveryRepo.IsAlertResourceSilenced(ctx, rule.ID, key, now)
 		if err != nil {
 			return nil, err
 		}
@@ -373,7 +374,8 @@ func sendOpsAlertWebhookWithClient(ctx context.Context, target string, payload [
 	if err != nil {
 		return fmt.Errorf("webhook delivery failed")
 	}
-	defer resp.Body.Close()
+	// A response body cleanup error must not retry an already accepted webhook.
+	defer func() { _ = resp.Body.Close() }()
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("webhook HTTP %d", resp.StatusCode)

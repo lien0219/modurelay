@@ -55,7 +55,7 @@ func (r *opsRepository) ReconcileBillingUsage(ctx context.Context, now time.Time
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	// Serialize the checkpoint even when a maintenance call overlaps the leader.
 	var locked bool
 	if err = tx.QueryRowContext(ctx, "SELECT pg_try_advisory_xact_lock(273002)").Scan(&locked); err != nil {
@@ -136,7 +136,7 @@ func (r *opsRepository) GetBillingReconciliation(ctx context.Context) (*service.
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var finding service.OpsBillingFinding
 		if err = rows.Scan(&finding.ID, &finding.SettlementID, &finding.RequestID, &finding.Kind,

@@ -142,8 +142,8 @@ func (r *registry) render() string {
 }
 
 func writeCounter(out *strings.Builder, name, help string, series map[seriesKey]*counterSeries) {
-	out.WriteString("# HELP " + name + " " + help + "\n")
-	out.WriteString("# TYPE " + name + " counter\n")
+	_, _ = out.WriteString("# HELP " + name + " " + help + "\n")
+	_, _ = out.WriteString("# TYPE " + name + " counter\n")
 	keys := make([]seriesKey, 0, len(series))
 	for key := range series {
 		keys = append(keys, key)
@@ -168,30 +168,30 @@ func writeCounter(out *strings.Builder, name, help string, series map[seriesKey]
 		if item == nil {
 			continue
 		}
-		out.WriteString(name)
-		out.WriteString(`{method="`)
-		out.WriteString(escapeLabel(key.method))
-		out.WriteString(`",source="`)
-		out.WriteString(escapeLabel(key.source))
-		out.WriteString(`",route="`)
-		out.WriteString(escapeLabel(key.route))
+		_, _ = out.WriteString(name)
+		_, _ = out.WriteString(`{method="`)
+		_, _ = out.WriteString(escapeLabel(key.method))
+		_, _ = out.WriteString(`",source="`)
+		_, _ = out.WriteString(escapeLabel(key.source))
+		_, _ = out.WriteString(`",route="`)
+		_, _ = out.WriteString(escapeLabel(key.route))
 		if key.protocol != "" {
-			out.WriteString(`",protocol="`)
-			out.WriteString(escapeLabel(key.protocol))
+			_, _ = out.WriteString(`",protocol="`)
+			_, _ = out.WriteString(escapeLabel(key.protocol))
 		}
 		if key.status != "" {
-			out.WriteString(`",status_code="`)
-			out.WriteString(escapeLabel(key.status))
+			_, _ = out.WriteString(`",status_code="`)
+			_, _ = out.WriteString(escapeLabel(key.status))
 		}
-		out.WriteString(`"} `)
-		out.WriteString(strconv.FormatUint(item.value, 10))
-		out.WriteByte('\n')
+		_, _ = out.WriteString(`"} `)
+		_, _ = out.WriteString(strconv.FormatUint(item.value, 10))
+		_ = out.WriteByte('\n')
 	}
 }
 
 func writeHistogram(out *strings.Builder, name, help string, series map[histogramKey]*histogramSeries) {
-	out.WriteString("# HELP " + name + " " + help + "\n")
-	out.WriteString("# TYPE " + name + " histogram\n")
+	_, _ = out.WriteString("# HELP " + name + " " + help + "\n")
+	_, _ = out.WriteString("# TYPE " + name + " histogram\n")
 	keys := make([]histogramKey, 0, len(series))
 	for key := range series {
 		keys = append(keys, key)
@@ -215,15 +215,15 @@ func writeHistogram(out *strings.Builder, name, help string, series map[histogra
 		}
 		labels := `method="` + escapeLabel(key.method) + `",source="` + escapeLabel(key.source) + `",route="` + escapeLabel(key.route) + `",protocol="` + escapeLabel(key.protocol) + `"`
 		for i, bound := range histogramBounds {
-			out.WriteString(name + "_bucket{" + labels + `,le="` + formatBound(bound) + `"} `)
-			out.WriteString(strconv.FormatUint(item.buckets[i], 10))
-			out.WriteByte('\n')
+			_, _ = out.WriteString(name + "_bucket{" + labels + `,le="` + formatBound(bound) + `"} `)
+			_, _ = out.WriteString(strconv.FormatUint(item.buckets[i], 10))
+			_ = out.WriteByte('\n')
 		}
-		out.WriteString(name + "_bucket{" + labels + `,le="+Inf"} `)
-		out.WriteString(strconv.FormatUint(item.buckets[len(histogramBounds)], 10))
-		out.WriteByte('\n')
-		out.WriteString(name + "_sum{" + labels + "} " + strconv.FormatFloat(item.sum, 'f', -1, 64) + "\n")
-		out.WriteString(name + "_count{" + labels + "} " + strconv.FormatUint(item.count, 10) + "\n")
+		_, _ = out.WriteString(name + "_bucket{" + labels + `,le="+Inf"} `)
+		_, _ = out.WriteString(strconv.FormatUint(item.buckets[len(histogramBounds)], 10))
+		_ = out.WriteByte('\n')
+		_, _ = out.WriteString(name + "_sum{" + labels + "} " + strconv.FormatFloat(item.sum, 'f', -1, 64) + "\n")
+		_, _ = out.WriteString(name + "_count{" + labels + "} " + strconv.FormatUint(item.count, 10) + "\n")
 	}
 }
 

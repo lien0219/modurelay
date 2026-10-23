@@ -382,23 +382,6 @@ func (s *OpsAlertEvaluatorService) evaluateOnce(interval time.Duration) {
 	s.recordHeartbeatSuccess(runAt, time.Since(startedAt), result)
 }
 
-func (s *OpsAlertEvaluatorService) pruneRuleStates(rules []*OpsAlertRule) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	live := map[int64]struct{}{}
-	for _, r := range rules {
-		if r != nil && r.ID > 0 {
-			live[r.ID] = struct{}{}
-		}
-	}
-	for id := range s.ruleStates {
-		if _, ok := live[id]; !ok {
-			delete(s.ruleStates, id)
-		}
-	}
-}
-
 func (s *OpsAlertEvaluatorService) resetRuleState(ctx context.Context, ruleID int64, now time.Time) {
 	if s == nil || ruleID <= 0 {
 		return
@@ -628,9 +611,10 @@ func (s *OpsAlertEvaluatorService) computeRuleMetric(
 			return 0, alertMetricUnavailable
 		}
 		value := state.FailedSettlements
-		if rule.MetricType == "billing_compensation_backlog" {
+		switch rule.MetricType {
+		case "billing_compensation_backlog":
 			value = state.CompensationBacklog
-		} else if rule.MetricType == "billing_ledger_mismatches" {
+		case "billing_ledger_mismatches":
 			value = state.LedgerMismatches
 		}
 		if value == nil {

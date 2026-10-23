@@ -177,7 +177,8 @@ func TestMonitoringBillingCrashRecoveryDoesNotReplayPostgres(t *testing.T) {
 
 func TestMonitoringBillingPanicNeverMarksCommittedPostgres(t *testing.T) {
 	db := monitoringFinancialTestDB(t)
-	repo := NewUsageBillingRepository(nil, db).(*usageBillingRepository)
+	repo, ok := NewUsageBillingRepository(nil, db).(*usageBillingRepository)
+	require.True(t, ok)
 	cmd := &service.BatchImageBalanceHoldCommand{RequestID: "panic-in-transaction", BatchID: "panic", APIKeyID: 1, UserID: 1, HoldAmount: 2}
 	require.Panics(t, func() {
 		_, _ = repo.applyBatchImageBalanceHold(context.Background(), cmd, "image_reserve", func(ctx context.Context, tx *sql.Tx, cmd *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error) {
@@ -200,7 +201,8 @@ func TestMonitoringBillingPanicNeverMarksCommittedPostgres(t *testing.T) {
 
 func TestMonitoringBillingObservationTimeoutCircuitAndGapPostgres(t *testing.T) {
 	db := monitoringFinancialTestDB(t)
-	repo := NewUsageBillingRepository(nil, db).(*usageBillingRepository)
+	repo, ok := NewUsageBillingRepository(nil, db).(*usageBillingRepository)
+	require.True(t, ok)
 	ops := &opsRepository{db: db}
 	t.Setenv("OPS_BILLING_OBSERVATION_TIMEOUT_MS", "50")
 	_, err := db.Exec(`CREATE FUNCTION slow_observation() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN PERFORM pg_sleep(0.4);RETURN NEW;END $$;CREATE TRIGGER slow_observation BEFORE INSERT ON ops_billing_intents FOR EACH ROW EXECUTE FUNCTION slow_observation()`)
@@ -258,7 +260,8 @@ func TestMonitoringBillingObservationTimeoutCircuitAndGapPostgres(t *testing.T) 
 
 func TestMonitoringBillingObservationLatencyPostgres(t *testing.T) {
 	db := monitoringFinancialTestDB(t)
-	repo := NewUsageBillingRepository(nil, db).(*usageBillingRepository)
+	repo, ok := NewUsageBillingRepository(nil, db).(*usageBillingRepository)
+	require.True(t, ok)
 	const count = 20
 	elapsed := func(observe bool, prefix string) time.Duration {
 		repo.observeBilling = observe
@@ -289,7 +292,7 @@ func TestMonitoringBillingProjectionIgnoresSlowAndLockedObserverPostgres(t *test
 		started := time.Now()
 		tx, err := db.BeginTx(requestCtx, nil)
 		require.NoError(t, err)
-		defer tx.Rollback()
+		defer func() { _ = tx.Rollback() }()
 		_, err = tx.ExecContext(requestCtx, `SET LOCAL statement_timeout='100ms'`)
 		require.NoError(t, err)
 		_, err = tx.ExecContext(requestCtx, `UPDATE users SET balance=balance-1 WHERE id=1;UPDATE user_subscriptions SET daily_usage_usd=daily_usage_usd+1,weekly_usage_usd=weekly_usage_usd+1,monthly_usage_usd=monthly_usage_usd+1 WHERE id=1`)

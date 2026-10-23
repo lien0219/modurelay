@@ -236,7 +236,7 @@ func monitoringKubernetesAPI(c config.OpsMonitoringConfig) (*http.Client, string
 	}
 	transport := monitoringTransport.Clone()
 	transport.TLSClientConfig = &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12}
-	client := &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return errors.New("Kubernetes redirects disabled") }}
+	client := &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return errors.New("kubernetes redirects disabled") }}
 	base := "https://" + net.JoinHostPort(host, port) + "/api/v1"
 	if namespace != "*" {
 		base += "/namespaces/" + url.PathEscape(namespace)
@@ -301,16 +301,16 @@ func fetchKubernetesMonitoringEvents(ctx context.Context, client *http.Client, e
 			return nil, err
 		}
 		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 4*1024*1024+1))
-		resp.Body.Close()
+		_ = resp.Body.Close() // The status and complete body read determine validity below.
 		if resp.StatusCode != http.StatusOK || readErr != nil || len(body) > 4*1024*1024 {
-			return nil, errors.New("Kubernetes event response unavailable")
+			return nil, errors.New("kubernetes event response unavailable")
 		}
 		var list monitoringKubernetesEventList
 		if err := json.Unmarshal(body, &list); err != nil {
-			return nil, errors.New("Kubernetes event response invalid")
+			return nil, errors.New("kubernetes event response invalid")
 		}
 		if len(list.Items) > 500 {
-			return nil, errors.New("Kubernetes event page too large")
+			return nil, errors.New("kubernetes event page too large")
 		}
 		for _, item := range list.Items {
 			if (item.InvolvedObject.Kind != "Pod" && item.InvolvedObject.Kind != "Deployment" && item.InvolvedObject.Kind != "HorizontalPodAutoscaler" && item.InvolvedObject.Kind != "ReplicaSet") || item.InvolvedObject.UID == "" || item.Metadata.UID == "" {
@@ -365,5 +365,5 @@ func fetchKubernetesMonitoringEvents(ctx context.Context, client *http.Client, e
 			return out, nil
 		}
 	}
-	return nil, errors.New("Kubernetes event page limit exceeded")
+	return nil, errors.New("kubernetes event page limit exceeded")
 }

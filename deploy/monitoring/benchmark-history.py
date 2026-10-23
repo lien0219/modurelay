@@ -108,7 +108,7 @@ with tempfile.TemporaryDirectory(prefix='modurelay-history-benchmark-') as tempo
     for filename in ['ops_monitoring_models.go', 'ops_monitoring_promql.go']:
         source = (repo / 'backend/internal/service' / filename).read_text()
         (query_dir / filename).write_text(source.replace('package service', 'package main', 1))
-    (query_dir / 'go.mod').write_text('module monitoring-benchmark-queries\n\ngo 1.27.2\n')
+    (query_dir / 'go.mod').write_text('module monitoring-benchmark-queries\n\ngo 1.27.3\n')
     (query_dir / 'main.go').write_text('''package main
 import ("encoding/json"; "os")
 func monitoringWindowSeconds(s string)(int,error){return map[string]int{"1m":60,"5m":300,"15m":900,"60m":3600}[s],nil}

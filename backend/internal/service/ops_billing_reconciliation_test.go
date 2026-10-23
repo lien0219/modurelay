@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/testutil"
 	miniredis "github.com/alicebob/miniredis/v2"
-	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 )
 
@@ -81,8 +81,7 @@ func TestOpsBillingReconciliationOperationalCoverageRequiresFreshCompleteScan(t 
 
 func TestOpsBillingReconciliationRemotePodObservationGapIsUnknown(t *testing.T) {
 	mr := miniredis.RunT(t)
-	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	t.Cleanup(func() { _ = client.Close() })
+	client := testutil.NewRedisClient(t, mr.Addr())
 	a := &OpsMetricsCollector{redisClient: client, instanceID: "pod-a"}
 	b := &OpsMetricsCollector{redisClient: client, instanceID: "pod-b"}
 	now := time.Now()

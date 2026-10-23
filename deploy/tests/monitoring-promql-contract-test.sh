@@ -18,7 +18,7 @@ cp "$monitoring_fixture_dir/main.go" "$monitoring_fixture_dir/semantics_test.go"
 cat > "$monitoring_temp_dir/go.mod" <<'MODULE'
 module modurelay-monitoring-promql-contract
 
-go 1.27.2
+go 1.27.3
 
 require (
     github.com/prometheus/prometheus v0.315.1
