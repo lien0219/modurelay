@@ -99,7 +99,7 @@ const visibleRuleResourceKeys = computed(() => {
   const dimensions = httpDimensionsFor(type, resourceValue('source'), externalIngressAdapter.value)
   const allowed = resourceKeys.filter(key => !httpDimensionKeys.includes(key as typeof httpDimensionKeys[number]) || dimensions.includes(key as typeof httpDimensionKeys[number]))
   if (type.endsWith('_started') || !isHTTPMonitoringMetric(type)) return allowed.filter(key => key !== 'source')
-  if (resourceValue('source') === 'external_ingress' && externalIngressAdapter.value === 'nginx') return allowed.filter(key => !['pod', 'uid', 'deployment'].includes(key))
+  if (resourceValue('source') === 'external_ingress') return allowed.filter(key => !['pod', 'uid', 'deployment'].includes(key))
   return allowed
 })
 const silenceUntil = computed({

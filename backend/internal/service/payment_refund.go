@@ -201,12 +201,26 @@ func (s *PaymentService) RequestRefund(ctx context.Context, oid, uid int64, reas
 	nr := strings.TrimSpace(reason)
 	now := time.Now()
 	by := fmt.Sprintf("%d", uid)
-	c, err := s.entClient.PaymentOrder.Update().Where(paymentorder.IDEQ(oid), paymentorder.UserIDEQ(uid), paymentorder.StatusEQ(OrderStatusCompleted), paymentorder.OrderTypeEQ(payment.OrderTypeBalance)).SetStatus(OrderStatusRefundRequested).SetRefundRequestedAt(now).SetRefundRequestReason(nr).SetRefundRequestedBy(by).SetRefundAmount(o.Amount).Save(ctx)
+	tx, err := s.entClient.Tx(ctx)
+	if err != nil {
+		return fmt.Errorf("begin refund request: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	txCtx := dbent.NewTxContext(ctx, tx)
+	if s.invoiceRepository != nil {
+		if err := s.invoiceRepository.BeforeRefund(txCtx, tx.Client(), o, o.Amount); err != nil {
+			return err
+		}
+	}
+	c, err := tx.PaymentOrder.Update().Where(paymentorder.IDEQ(oid), paymentorder.UserIDEQ(uid), paymentorder.StatusEQ(OrderStatusCompleted), paymentorder.OrderTypeEQ(payment.OrderTypeBalance)).SetStatus(OrderStatusRefundRequested).SetRefundRequestedAt(now).SetRefundRequestReason(nr).SetRefundRequestedBy(by).SetRefundAmount(o.Amount).Save(txCtx)
 	if err != nil {
 		return fmt.Errorf("update: %w", err)
 	}
 	if c == 0 {
 		return infraerrors.Conflict("CONFLICT", "order status changed")
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit refund request: %w", err)
 	}
 	s.writeAuditLog(ctx, oid, "REFUND_REQUESTED", fmt.Sprintf("user:%d", uid), map[string]any{"amount": o.Amount, "reason": nr})
 	return nil
@@ -260,7 +274,7 @@ func (s *PaymentService) PrepareRefund(ctx context.Context, oid int64, amt float
 	if !inst.RefundEnabled {
 		return nil, nil, infraerrors.Forbidden("REFUND_DISABLED", "refund is not enabled for this provider")
 	}
-	if math.IsNaN(amt) || math.IsInf(amt, 0) {
+	if math.IsNaN(amt) || math.IsInf(amt, 0) || !refundAmountFitsStorage(amt) {
 		return nil, nil, infraerrors.BadRequest("INVALID_AMOUNT", "invalid refund amount")
 	}
 	if amt <= 0 {
@@ -385,8 +399,14 @@ func (s *PaymentService) beginRefundAttempt(ctx context.Context, p *RefundPlan) 
 			return err
 		}
 	}
+	if s.invoiceRepository != nil {
+		if err := s.invoiceRepository.BeforeRefund(txCtx, tx.Client(), p.Order, p.RefundAmount); err != nil {
+			return err
+		}
+	}
 	claimed, err := tx.PaymentOrder.Update().
 		Where(paymentorder.IDEQ(p.OrderID), paymentorder.StatusIn(OrderStatusCompleted, OrderStatusRefundRequested, OrderStatusRefundFailed)).
+		SetRefundAmount(p.RefundAmount).
 		SetStatus(OrderStatusRefunding).
 		Save(txCtx)
 	if err != nil {

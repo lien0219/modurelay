@@ -800,6 +800,7 @@ const ChevronDownIcon = {
 // yet. Admin-only flags (not in public settings) stay inline below.
 const flagChannelMonitor = makeSidebarFlag(FeatureFlags.channelMonitor)
 const flagPayment = makeSidebarFlag(FeatureFlags.payment)
+const flagInvoices = makeSidebarFlag(FeatureFlags.invoices)
 const flagRechargeCenter = makeSidebarFlag(FeatureFlags.rechargeCenter)
 const flagAvailableChannels = makeSidebarFlag(FeatureFlags.availableChannels)
 const flagSmsService = makeSidebarFlag(FeatureFlags.smsService)
@@ -863,6 +864,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/purchase', label: purchaseNavLabel.value, icon: RechargeSubscriptionIcon, hideInSimpleMode: true, featureFlag: flagPayment },
     { path: '/recharge', label: t('nav.rechargeCenter'), icon: RechargeSubscriptionIcon, featureFlag: flagRechargeCenter },
     { path: '/orders', label: t('nav.myOrders'), icon: OrderListIcon, hideInSimpleMode: true, featureFlag: flagPayment },
+    { path: '/invoices', label: t('invoices.title'), icon: OrderIcon, featureFlag: flagInvoices },
     { path: '/activities', label: t('nav.activityCenter'), icon: CalendarIcon, featureFlag: flagActivityCenter },
     { path: '/resource-center', label: t('nav.resourceCenter'), icon: ResourceCenterIcon, featureFlag: flagResourceCenter },
     { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true },
@@ -945,6 +947,7 @@ const adminNavItems = computed((): NavItem[] => {
         { path: '/admin/orders/plans', label: t('nav.paymentPlans'), icon: CreditCardIcon },
       ],
     },
+    { path: '/admin/invoices', label: t('invoices.adminTitle'), icon: OrderIcon },
     { path: '/admin/sms', label: t('nav.smsManagement'), icon: MessageIcon, hideInSimpleMode: true },
     { path: '/admin/email', label: t('nav.emailManagement'), icon: MessageIcon, hideInSimpleMode: true },
     { path: '/admin/verification-records', label: t('nav.verificationRecords'), icon: OrderIcon, hideInSimpleMode: true },

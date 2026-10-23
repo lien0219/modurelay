@@ -11,6 +11,16 @@ const styleSource = readFileSync(stylePath, 'utf8')
 const versionBadgePath = resolve(dirname(fileURLToPath(import.meta.url)), '../../common/VersionBadge.vue')
 const versionBadgeSource = readFileSync(versionBadgePath, 'utf8')
 
+describe('AppSidebar invoice navigation', () => {
+  it('gates the user entry on its own opt-in switch while keeping administration reachable', () => {
+    expect(componentSource).toContain('const flagInvoices = makeSidebarFlag(FeatureFlags.invoices)')
+    expect(componentSource).toMatch(/path: '\/invoices'[^\n]*featureFlag: flagInvoices/)
+    const adminEntry = componentSource.split('\n').find(line => line.includes("path: '/admin/invoices'"))
+    expect(adminEntry).toContain("t('invoices.adminTitle')")
+    expect(adminEntry).not.toContain('featureFlag')
+  })
+})
+
 describe('AppSidebar custom SVG styles', () => {
   it('does not override uploaded SVG fill or stroke colors', () => {
     expect(componentSource).toContain('.sidebar-svg-icon {')

@@ -46,3 +46,13 @@ func calculateGatewayRefundAmount(orderAmount, payAmount, refundAmount float64, 
 		Round(fractionDigits).
 		InexactFloat64()
 }
+
+// refund_amount is DECIMAL(20,2). Extra precision would charge a different cash
+// refund at the gateway than the value retained for financial reconciliation.
+func refundAmountFitsStorage(amount float64) bool {
+	if math.IsNaN(amount) || math.IsInf(amount, 0) {
+		return false
+	}
+	value := decimal.NewFromFloat(amount)
+	return value.Equal(value.Round(2))
+}

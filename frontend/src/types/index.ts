@@ -209,6 +209,7 @@ export interface LoginAgreementDocument {
 }
 
 export interface PublicSettings {
+  invoice_enabled?: boolean
   tool_center_enabled?: boolean
   plan_catalog_enabled?: boolean
   canvas_enabled?: boolean

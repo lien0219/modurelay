@@ -1,0 +1,6 @@
+[
+  {
+    "targets": ["host.docker.internal:8080"],
+    "labels": {"cluster": "local"}
+  }
+]

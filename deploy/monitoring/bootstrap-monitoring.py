@@ -31,6 +31,7 @@ password = ensure('minio-root-password', secrets.token_hex(32))
 ensure('receiver-token', secrets.token_hex(32))
 ensure('app-metrics-token', secrets.token_hex(32))
 ensure('application-targets.json', '[]')
+ensure('cluster-targets.json', '[]')
 ensure('object-store.yml', '\n'.join([
     'type: S3', 'config:', '  bucket: modurelay-metrics',
     '  endpoint: minio:9000', '  insecure: true',

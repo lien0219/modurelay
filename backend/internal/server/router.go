@@ -78,6 +78,9 @@ func SetupRouter(
 		if handlers != nil && handlers.ResourceCenter != nil {
 			handlers.ResourceCenter.SetOnUpdateCallback(callback)
 		}
+		if handlers != nil && handlers.Invoice != nil {
+			handlers.Invoice.SetOnUpdateCallback(callback)
+		}
 		if handlers != nil && handlers.Admin != nil && handlers.Admin.Payment != nil {
 			handlers.Admin.Payment.SetOnUpdateCallback(callback)
 		}
@@ -149,6 +152,7 @@ func registerRoutes(
 	routes.RegisterModelPlazaRoutes(v1, h, optionalJWTAuth, settingService, panelRateLimiter)
 	routes.RegisterAdminRoutes(v1, h, adminAuth, auditLog, stepUpAuth, settingService, panelRateLimiter)
 	routes.RegisterGatewayRoutes(r, h, apiKeyAuth, apiKeyService, subscriptionService, opsService, settingService, compositeResolver, cfg)
+	routes.RegisterInvoiceRoutes(v1, h.Invoice, jwtAuth, adminAuth, auditLog, settingService, panelRateLimiter)
 	routes.RegisterPaymentRoutes(v1, h.Payment, h.PaymentWebhook, h.Admin.Payment, jwtAuth, adminAuth, auditLog, settingService, panelRateLimiter, redisClient)
 
 	handler.RegisterPageRoutes(v1, cfg.Pricing.DataDir, gin.HandlerFunc(jwtAuth), gin.HandlerFunc(adminAuth), settingService)

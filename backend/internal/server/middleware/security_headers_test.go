@@ -17,6 +17,21 @@ func init() {
 	gin.SetMode(gin.TestMode)
 }
 
+func TestInvoicePDFPreviewAllowsFramesWithoutAllowingBlobScripts(t *testing.T) {
+	for _, page := range []string{"/dashboard", "/invoices", "/admin/invoices"} {
+		t.Run(page, func(t *testing.T) {
+			writer := httptest.NewRecorder()
+			context, _ := gin.CreateTestContext(writer)
+			context.Request = httptest.NewRequest(http.MethodGet, page, nil)
+			SecurityHeaders(config.CSPConfig{Enabled: true, Policy: "default-src 'self'; script-src 'self' __CSP_NONCE__; frame-src 'self'"}, nil)(context)
+			policy := writer.Header().Get("Content-Security-Policy")
+			assert.Equal(t, 1, countDirectiveValue(policy, "frame-src", "blob:"), "PDF preview must also work after SPA navigation from dashboard")
+			assert.Zero(t, countDirectiveValue(policy, "script-src", "blob:"))
+			assert.Equal(t, "DENY", writer.Header().Get("X-Frame-Options"))
+		})
+	}
+}
+
 func TestGenerateNonce(t *testing.T) {
 	t.Run("generates_valid_base64_string", func(t *testing.T) {
 		nonce, err := GenerateNonce()

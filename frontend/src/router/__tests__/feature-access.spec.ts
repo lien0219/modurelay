@@ -30,6 +30,7 @@ const appStore = vi.hoisted(() => ({
     activity_center_enabled?: boolean
     canvas_enabled?: boolean
     subscription_enabled?: boolean
+    invoice_enabled?: boolean
     custom_menu_items?: []
   },
   fetchPublicSettings: vi.fn(),
@@ -125,6 +126,24 @@ describe('feature route guard', () => {
     appStore.publicSettingsLoaded = false
     appStore.cachedPublicSettings = null
     appStore.fetchPublicSettings.mockReset()
+  })
+
+  it('keeps invoice history reachable when new applications and payments are disabled', async () => {
+    appStore.cachedPublicSettings = { invoice_enabled: false, payment_enabled: false }
+    appStore.publicSettingsLoaded = true
+    const route = routerHarness.routes.find(item => item.path === '/invoices')
+    expect(route?.meta.requiresAuth).toBe(true)
+    const { navigation, next } = runGuard({ ...route?.meta, titleKey: undefined }, '/invoices')
+    await navigation
+    expect(next).toHaveBeenCalledWith()
+  })
+
+  it('requires administrator access for invoice management', async () => {
+    const route = routerHarness.routes.find(item => item.path === '/admin/invoices')
+    expect(route?.meta.requiresAdmin).toBe(true)
+    const { navigation, next } = runGuard({ ...route?.meta, titleKey: undefined }, '/admin/invoices')
+    await navigation
+    expect(next).toHaveBeenCalledWith('/dashboard')
   })
 
   it('waits for the first public-settings request before deciding payment access', async () => {

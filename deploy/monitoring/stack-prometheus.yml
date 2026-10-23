@@ -26,3 +26,12 @@ scrape_configs:
     file_sd_configs:
       - files: [/run/secrets/application-targets.json]
         refresh_interval: 30s
+  # One target per logical cluster: /metrics contains shared gauges and job heartbeats.
+  - job_name: modurelay-cluster
+    metrics_path: /metrics
+    authorization:
+      type: Bearer
+      credentials_file: /run/secrets/app_metrics_token
+    file_sd_configs:
+      - files: [/run/secrets/cluster-targets.json]
+        refresh_interval: 30s

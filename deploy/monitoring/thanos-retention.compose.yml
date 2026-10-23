@@ -32,6 +32,8 @@ services:
       - app_metrics_token
       - source: application_targets
         target: application-targets.json
+      - source: cluster_targets
+        target: cluster-targets.json
     networks: [monitoring]
   sidecar:
     <<: *hardening
@@ -170,6 +172,8 @@ secrets:
     file: ${MONITORING_SECRETS_DIR:-./secrets}/app-metrics-token
   application_targets:
     file: ${MONITORING_SECRETS_DIR:-./secrets}/application-targets.json
+  cluster_targets:
+    file: ${MONITORING_SECRETS_DIR:-./secrets}/cluster-targets.json
   minio_root_user:
     file: ${MONITORING_SECRETS_DIR:-./secrets}/minio-root-user
   minio_root_password:

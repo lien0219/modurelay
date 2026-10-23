@@ -9,6 +9,7 @@ import activity from './activity'
 import distribution from './distribution'
 import canvas from './canvas'
 import tools from './tools'
+import invoices from './invoices'
 
 export default {
   ...landing,
@@ -22,6 +23,7 @@ export default {
   ...distribution,
   ...canvas,
   ...tools,
+  invoices,
   nav: {
     ...common.nav,
     ...tools.nav,
