@@ -175,6 +175,9 @@ func TestInvoiceFlowReviewReleasesRejectedAndPreservesIssuedQuota(t *testing.T) 
 	require.NoError(t, err)
 	inv, err = svc.Create(ctx, userID, invoiceFlowInput(30000))
 	require.NoError(t, err)
+	_, err = svc.Update(ctx, inv.ID, service.InvoiceUpdate{Status: "issued", InvoiceNumber: "00012345678901234567"})
+	require.ErrorIs(t, err, service.ErrInvoiceDocumentRequired)
+	invoiceFlowDocument(t, svc, inv.ID)
 	issued, err := svc.Update(ctx, inv.ID, service.InvoiceUpdate{Status: "issued", InvoiceNumber: "00012345678901234567"})
 	require.NoError(t, err)
 	require.NotNil(t, issued.ProcessedAt)
@@ -281,5 +284,142 @@ func TestInvoiceFlowConcurrentRefundAndApplicationCannotSpendSameCash(t *testing
 	} else {
 		require.ErrorIs(t, applicationErr, service.ErrInvoiceFunds)
 		require.NoError(t, refundErr)
+	}
+}
+
+func invoiceFlowDocument(t *testing.T, svc *service.InvoiceService, id int64) *service.Invoice {
+	t.Helper()
+	inv, err := svc.UploadDocument(context.Background(), id, "electronic-invoice.pdf", "application/pdf", []byte("%PDF-1.4\n1 0 obj<</Type /Catalog>>endobj\n%%EOF\n"))
+	require.NoError(t, err)
+	require.NotNil(t, inv.Document)
+	return inv
+}
+
+func TestInvoiceFlowPreviouslyIssuedQuotaCannotBeInvoicedAgain(t *testing.T) {
+	svc := invoiceFlowService(t)
+	ctx := context.Background()
+	userID := invoiceFlowUser(t)
+	invoiceFlowPayment(t, userID, "300", "30", "0", "CNY", "COMPLETED", "balance")
+	input := invoiceFlowInput(30000)
+	input.Contact = "测试联系人13800000000"
+	input.RequestedIssueDate = "2026-10-23"
+	inv, err := svc.Create(ctx, userID, input)
+	require.NoError(t, err)
+	require.Equal(t, input.Contact, inv.Contact)
+	require.Equal(t, input.RequestedIssueDate, inv.RequestedIssueDate)
+	invoiceFlowDocument(t, svc, inv.ID)
+	_, err = svc.Update(ctx, inv.ID, service.InvoiceUpdate{Status: "issued", InvoiceNumber: "00001"})
+	require.NoError(t, err)
+	invoiceFlowPayment(t, userID, "200", "20", "0", "CNY", "COMPLETED", "balance")
+	quota, err := svc.Eligibility(ctx, userID)
+	require.NoError(t, err)
+	require.Equal(t, int64(50000), quota.TotalRechargedCents)
+	require.Equal(t, int64(30000), quota.ReservedAmountCents)
+	require.Equal(t, int64(20000), quota.AvailableAmountCents)
+	_, err = svc.Create(ctx, userID, invoiceFlowInput(50000))
+	require.ErrorIs(t, err, service.ErrInvoiceFunds)
+	_, err = svc.Create(ctx, userID, invoiceFlowInput(20000))
+	require.ErrorIs(t, err, service.ErrInvoiceAmount)
+	invoiceFlowPayment(t, userID, "100", "10", "0", "CNY", "COMPLETED", "balance")
+	next, err := svc.Create(ctx, userID, invoiceFlowInput(30000))
+	require.NoError(t, err)
+	require.Equal(t, int64(30000), next.AmountCents)
+}
+
+func TestInvoiceFlowDocumentOwnershipVisibilityAndIssuedImmutability(t *testing.T) {
+	svc := invoiceFlowService(t)
+	ctx := context.Background()
+	userID := invoiceFlowUser(t)
+	otherID := invoiceFlowUser(t)
+	invoiceFlowPayment(t, userID, "600", "60", "0", "CNY", "COMPLETED", "balance")
+	inv, err := svc.Create(ctx, userID, invoiceFlowInput(30000))
+	require.NoError(t, err)
+	inv = invoiceFlowDocument(t, svc, inv.ID)
+	document, err := svc.GetDocument(ctx, inv.ID, 0)
+	require.NoError(t, err)
+	require.Equal(t, inv.Document.SHA256, document.SHA256)
+	_, err = svc.GetDocument(ctx, inv.ID, userID)
+	require.ErrorIs(t, err, service.ErrInvoiceDocumentNotFound)
+	// A draft PDF may be corrected while the application is awaiting finance.
+	invoiceFlowDocument(t, svc, inv.ID)
+	_, err = svc.Update(ctx, inv.ID, service.InvoiceUpdate{Status: "issued", InvoiceNumber: "issued-0001"})
+	require.NoError(t, err)
+	document, err = svc.GetDocument(ctx, inv.ID, userID)
+	require.NoError(t, err)
+	require.NotEmpty(t, document.Content)
+	_, err = svc.GetDocument(ctx, inv.ID, otherID)
+	require.ErrorIs(t, err, service.ErrInvoiceDocumentNotFound)
+	_, err = svc.UploadDocument(ctx, inv.ID, "replacement.pdf", "application/pdf", document.Content)
+	require.ErrorIs(t, err, service.ErrInvoiceStatus)
+	// Lists expose safe metadata and never include the PDF bytes.
+	items, total, err := svc.List(ctx, service.InvoiceFilter{UserID: userID, Page: 1, PageSize: 20})
+	require.NoError(t, err)
+	require.Equal(t, int64(1), total)
+	require.NotNil(t, items[0].Document)
+	exported, err := svc.Export(ctx, service.InvoiceFilter{IDs: []int64{inv.ID}})
+	require.NoError(t, err)
+	require.Len(t, exported, 1)
+	require.Equal(t, inv.ID, exported[0].ID)
+}
+
+func TestInvoiceFlowLegacyIssuedPDFCanBeBackfilledWithoutReopening(t *testing.T) {
+	svc := invoiceFlowService(t)
+	ctx := context.Background()
+	userID := invoiceFlowUser(t)
+	invoiceFlowPayment(t, userID, "300", "30", "0", "CNY", "COMPLETED", "balance")
+	inv, err := svc.Create(ctx, userID, invoiceFlowInput(30000))
+	require.NoError(t, err)
+	// Simulate an invoice issued before the PDF feature was introduced.
+	_, err = integrationDB.Exec(`UPDATE invoice_applications SET status='issued',invoice_number='legacy-001' WHERE id=$1`, inv.ID)
+	require.NoError(t, err)
+	existing, err := svc.Get(ctx, inv.ID, userID)
+	require.NoError(t, err)
+	require.Nil(t, existing.Document)
+	backfilled := invoiceFlowDocument(t, svc, inv.ID)
+	require.Equal(t, "issued", backfilled.Status)
+	require.Equal(t, "legacy-001", backfilled.InvoiceNumber)
+	_, err = svc.GetDocument(ctx, inv.ID, userID)
+	require.NoError(t, err)
+}
+
+func TestInvoiceFlowConcurrentPDFReplacementAndIssueAreConsistent(t *testing.T) {
+	svc := invoiceFlowService(t)
+	ctx := context.Background()
+	userID := invoiceFlowUser(t)
+	invoiceFlowPayment(t, userID, "1200", "120", "0", "CNY", "COMPLETED", "balance")
+	for index := 0; index < 4; index++ {
+		inv, err := svc.Create(ctx, userID, invoiceFlowInput(30000))
+		require.NoError(t, err)
+		invoiceFlowDocument(t, svc, inv.ID)
+		replacement := []byte(fmt.Sprintf("%%PDF-1.4\nreplacement %d\n%%%%EOF\n", index))
+		start := make(chan struct{})
+		var uploaded *service.Invoice
+		var uploadErr, issueErr error
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			<-start
+			uploaded, uploadErr = svc.UploadDocument(ctx, inv.ID, "corrected.pdf", "application/pdf", replacement)
+		}()
+		go func() {
+			defer wg.Done()
+			<-start
+			_, issueErr = svc.Update(ctx, inv.ID, service.InvoiceUpdate{Status: "issued", InvoiceNumber: fmt.Sprintf("issue-%d", index)})
+		}()
+		close(start)
+		wg.Wait()
+		require.NoError(t, issueErr)
+		final, err := svc.Get(ctx, inv.ID, userID)
+		require.NoError(t, err)
+		require.Equal(t, "issued", final.Status)
+		require.NotNil(t, final.Document)
+		if uploadErr == nil {
+			require.Equal(t, uploaded.Document.SHA256, final.Document.SHA256)
+		} else {
+			require.ErrorIs(t, uploadErr, service.ErrInvoiceStatus)
+		}
+		_, err = svc.UploadDocument(ctx, inv.ID, "too-late.pdf", "application/pdf", replacement)
+		require.ErrorIs(t, err, service.ErrInvoiceStatus)
 	}
 }

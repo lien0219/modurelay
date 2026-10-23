@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -100,9 +101,9 @@ func (r *invoiceRepository) Create(ctx context.Context, userID int64, input serv
 		return nil, service.ErrInvoiceFunds
 	}
 	inv, err := scanInvoice(tx.QueryRowContext(ctx, `INSERT INTO invoice_applications
- (application_no,user_id,user_email,user_name,amount_cents,invoice_type,title_type,title,tax_number,email,address,phone,bank_name,bank_account,remark)
- SELECT $1,id,email,username,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13 FROM users WHERE id = $2 AND deleted_at IS NULL
- RETURNING `+invoiceColumns, "INV"+strings.ReplaceAll(uuid.NewString(), "-", ""), userID, input.AmountCents, input.InvoiceType, input.TitleType, input.Title, input.TaxNumber, input.Email, input.Address, input.Phone, input.BankName, input.BankAccount, input.Remark))
+ (application_no,user_id,user_email,user_name,amount_cents,invoice_type,title_type,title,tax_number,email,address,phone,bank_name,bank_account,remark,contact,requested_issue_date)
+ SELECT $1,id,email,username,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NULLIF($15,'')::date FROM users WHERE id = $2 AND deleted_at IS NULL
+ RETURNING `+invoiceColumns, "INV"+strings.ReplaceAll(uuid.NewString(), "-", ""), userID, input.AmountCents, input.InvoiceType, input.TitleType, input.Title, input.TaxNumber, input.Email, input.Address, input.Phone, input.BankName, input.BankAccount, input.Remark, input.Contact, input.RequestedIssueDate))
 	if err != nil {
 		return nil, err
 	}
@@ -112,13 +113,20 @@ func (r *invoiceRepository) Create(ctx context.Context, userID int64, input serv
 	return inv, nil
 }
 
-const invoiceColumns = `id,application_no,user_id,user_email,user_name,amount_cents,invoice_type,title_type,title,tax_number,email,address,phone,bank_name,bank_account,remark,status,admin_remark,invoice_number,created_at,updated_at,processed_at`
+const invoiceColumns = `id,application_no,user_id,user_email,user_name,amount_cents,invoice_type,title_type,title,tax_number,email,address,phone,bank_name,bank_account,remark,status,admin_remark,invoice_number,created_at,updated_at,processed_at,contact,COALESCE(requested_issue_date::text,''),
+ (SELECT jsonb_build_object('filename',d.filename,'size_bytes',d.size_bytes,'uploaded_at',d.uploaded_at,'sha256',d.sha256)
+ FROM invoice_documents d WHERE d.invoice_id=invoice_applications.id)`
 
 func scanInvoice(row interface{ Scan(...any) error }) (*service.Invoice, error) {
 	i := &service.Invoice{}
-	err := row.Scan(&i.ID, &i.ApplicationNo, &i.UserID, &i.UserEmail, &i.UserName, &i.AmountCents, &i.InvoiceType, &i.TitleType, &i.Title, &i.TaxNumber, &i.Email, &i.Address, &i.Phone, &i.BankName, &i.BankAccount, &i.Remark, &i.Status, &i.AdminRemark, &i.InvoiceNumber, &i.CreatedAt, &i.UpdatedAt, &i.ProcessedAt)
+	var metadata []byte
+	err := row.Scan(&i.ID, &i.ApplicationNo, &i.UserID, &i.UserEmail, &i.UserName, &i.AmountCents, &i.InvoiceType, &i.TitleType, &i.Title, &i.TaxNumber, &i.Email, &i.Address, &i.Phone, &i.BankName, &i.BankAccount, &i.Remark, &i.Status, &i.AdminRemark, &i.InvoiceNumber, &i.CreatedAt, &i.UpdatedAt, &i.ProcessedAt, &i.Contact, &i.RequestedIssueDate, &metadata)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, service.ErrInvoiceNotFound
+	}
+	if err == nil && len(metadata) > 0 {
+		i.Document = &service.InvoiceDocumentMetadata{}
+		err = json.Unmarshal(metadata, i.Document)
 	}
 	return i, err
 }
@@ -134,6 +142,14 @@ func invoiceWhere(filter service.InvoiceFilter) (string, []any) {
 		args = append(args, value)
 		where += fmt.Sprintf(condition, len(args))
 	}
+	if len(filter.IDs) > 0 {
+		placeholders := make([]string, len(filter.IDs))
+		for i, id := range filter.IDs {
+			args = append(args, id)
+			placeholders[i] = "$" + strconv.Itoa(len(args))
+		}
+		where += " AND id IN (" + strings.Join(placeholders, ",") + ")"
+	}
 	if filter.UserID > 0 {
 		add(" AND user_id = $%d", filter.UserID)
 	}
@@ -143,7 +159,7 @@ func invoiceWhere(filter service.InvoiceFilter) (string, []any) {
 	if filter.Search != "" {
 		args = append(args, "%"+strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`).Replace(filter.Search)+"%")
 		p := strconv.Itoa(len(args))
-		where += " AND (application_no ILIKE $" + p + " OR user_email ILIKE $" + p + " OR user_name ILIKE $" + p + " OR title ILIKE $" + p + " OR tax_number ILIKE $" + p + ")"
+		where += " AND (application_no ILIKE $" + p + " OR user_email ILIKE $" + p + " OR user_name ILIKE $" + p + " OR title ILIKE $" + p + " OR tax_number ILIKE $" + p + " OR contact ILIKE $" + p + ")"
 	}
 	return where, args
 }
@@ -180,6 +196,12 @@ func (r *invoiceRepository) List(ctx context.Context, filter service.InvoiceFilt
 }
 
 func (r *invoiceRepository) Update(ctx context.Context, id, userID int64, update service.InvoiceUpdate) (*service.Invoice, error) {
+	if update.Status == "rejected" && strings.TrimSpace(update.AdminRemark) == "" {
+		return nil, infraerrors.BadRequest("INVOICE_INVALID_INPUT", "拒绝申请必须填写原因")
+	}
+	if update.Status == "issued" && strings.TrimSpace(update.InvoiceNumber) == "" {
+		return nil, infraerrors.BadRequest("INVOICE_INVALID_INPUT", "已开票必须填写发票号码")
+	}
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -202,6 +224,9 @@ func (r *invoiceRepository) Update(ctx context.Context, id, userID int64, update
 	}
 	if !service.CanTransitionInvoice(current.Status, update.Status, userID > 0) {
 		return nil, service.ErrInvoiceStatus
+	}
+	if update.Status == "issued" && current.Document == nil {
+		return nil, service.ErrInvoiceDocumentRequired
 	}
 	if update.Status == "processing" || update.Status == "issued" {
 		funds, err := invoiceFunds(ctx, tx, owner, 0)
@@ -260,4 +285,55 @@ func (r *invoiceRepository) Export(ctx context.Context, filter service.InvoiceFi
 		return nil, infraerrors.BadRequest("INVOICE_EXPORT_TOO_LARGE", "单次最多导出 50000 条，请使用状态或搜索条件缩小范围")
 	}
 	return items, nil
+}
+
+// SaveDocument and Update use the same lock order so a PDF cannot race an issued
+// transition. An already issued PDF is immutable; legacy issued rows may be backfilled.
+func (r *invoiceRepository) SaveDocument(ctx context.Context, id int64, document *service.InvoiceDocument) (*service.Invoice, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	var owner int64
+	if err := tx.QueryRowContext(ctx, `SELECT user_id FROM invoice_applications WHERE id=$1`, id).Scan(&owner); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, service.ErrInvoiceNotFound
+		}
+		return nil, err
+	}
+	if err := lockInvoiceUser(ctx, tx, owner); err != nil {
+		return nil, err
+	}
+	current, err := scanInvoice(tx.QueryRowContext(ctx, `SELECT `+invoiceColumns+` FROM invoice_applications WHERE id=$1 FOR UPDATE`, id))
+	if err != nil {
+		return nil, err
+	}
+	if current.Status == "rejected" || current.Status == "cancelled" || (current.Status == "issued" && current.Document != nil) {
+		return nil, service.ErrInvoiceStatus
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO invoice_documents(invoice_id,filename,size_bytes,sha256,content)
+ VALUES($1,$2,$3,$4,$5) ON CONFLICT(invoice_id) DO UPDATE SET filename=EXCLUDED.filename,size_bytes=EXCLUDED.size_bytes,sha256=EXCLUDED.sha256,content=EXCLUDED.content,uploaded_at=NOW()`, id, document.Filename, document.SizeBytes, document.SHA256, document.Content); err != nil {
+		return nil, err
+	}
+	inv, err := scanInvoice(tx.QueryRowContext(ctx, `UPDATE invoice_applications SET updated_at=NOW() WHERE id=$1 RETURNING `+invoiceColumns, id))
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return inv, nil
+}
+
+func (r *invoiceRepository) GetDocument(ctx context.Context, id, userID int64) (*service.InvoiceDocument, error) {
+	document := &service.InvoiceDocument{}
+	err := r.db.QueryRowContext(ctx, `SELECT d.filename,d.size_bytes,d.uploaded_at,d.sha256,d.content
+ FROM invoice_documents d JOIN invoice_applications i ON i.id=d.invoice_id
+ WHERE i.id=$1 AND ($2::bigint=0 OR (i.user_id=$2 AND i.status='issued'))`, id, userID).
+		Scan(&document.Filename, &document.SizeBytes, &document.UploadedAt, &document.SHA256, &document.Content)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, service.ErrInvoiceDocumentNotFound
+	}
+	return document, err
 }

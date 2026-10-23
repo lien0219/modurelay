@@ -1,12 +1,18 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/csv"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
+	"mime"
+	"net/http"
 	"net/mail"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -20,43 +26,61 @@ import (
 
 const SettingKeyInvoiceEnabled = "invoice_enabled"
 const InvoiceMinimumAmountCents int64 = 30000
+const InvoiceDocumentMaxBytes int64 = 10 * 1024 * 1024
 
 var (
-	ErrInvoiceDisabled = infraerrors.Forbidden("INVOICE_DISABLED", "发票申请功能暂未开放")
-	ErrInvoiceNotFound = infraerrors.NotFound("INVOICE_NOT_FOUND", "发票申请不存在")
-	ErrInvoiceAmount   = infraerrors.BadRequest("INVOICE_AMOUNT_INVALID", "单次开票金额最低为人民币 300 元")
-	ErrInvoiceFunds    = infraerrors.BadRequest("INVOICE_INSUFFICIENT_AMOUNT", "累计净实付人民币充值或剩余可开票金额不足（最低 300 元）")
-	ErrInvoiceStatus   = infraerrors.Conflict("INVOICE_STATUS_CONFLICT", "申请状态已变化或不允许此操作，请刷新后重试")
-	ErrInvoiceRefund   = infraerrors.Conflict("INVOICE_REFUND_CONFLICT", "退款后充值金额不足以覆盖发票申请，请先取消待处理申请；已开票记录请联系财务处理")
+	ErrInvoiceDocumentRequired = infraerrors.BadRequest("INVOICE_DOCUMENT_REQUIRED", "标记已开票前请先上传 PDF 电子发票")
+	ErrInvoiceDocumentNotFound = infraerrors.NotFound("INVOICE_DOCUMENT_NOT_FOUND", "电子发票不存在或尚未开票")
+	ErrInvoiceDisabled         = infraerrors.Forbidden("INVOICE_DISABLED", "发票申请功能暂未开放")
+	ErrInvoiceNotFound         = infraerrors.NotFound("INVOICE_NOT_FOUND", "发票申请不存在")
+	ErrInvoiceAmount           = infraerrors.BadRequest("INVOICE_AMOUNT_INVALID", "单次开票金额最低为人民币 300 元")
+	ErrInvoiceFunds            = infraerrors.BadRequest("INVOICE_INSUFFICIENT_AMOUNT", "累计净实付人民币充值或剩余可开票金额不足（最低 300 元）")
+	ErrInvoiceStatus           = infraerrors.Conflict("INVOICE_STATUS_CONFLICT", "申请状态已变化或不允许此操作，请刷新后重试")
+	ErrInvoiceRefund           = infraerrors.Conflict("INVOICE_REFUND_CONFLICT", "退款后充值金额不足以覆盖发票申请，请先取消待处理申请；已开票记录请联系财务处理")
 )
 
 type InvoiceInput struct {
-	AmountCents int64  `json:"amount_cents"`
-	InvoiceType string `json:"invoice_type"`
-	TitleType   string `json:"title_type"`
-	Title       string `json:"title"`
-	TaxNumber   string `json:"tax_number"`
-	Email       string `json:"email"`
-	Address     string `json:"address"`
-	Phone       string `json:"phone"`
-	BankName    string `json:"bank_name"`
-	BankAccount string `json:"bank_account"`
-	Remark      string `json:"remark"`
+	Contact            string `json:"contact"`
+	RequestedIssueDate string `json:"requested_issue_date"`
+	AmountCents        int64  `json:"amount_cents"`
+	InvoiceType        string `json:"invoice_type"`
+	TitleType          string `json:"title_type"`
+	Title              string `json:"title"`
+	TaxNumber          string `json:"tax_number"`
+	Email              string `json:"email"`
+	Address            string `json:"address"`
+	Phone              string `json:"phone"`
+	BankName           string `json:"bank_name"`
+	BankAccount        string `json:"bank_account"`
+	Remark             string `json:"remark"`
 }
 
 type Invoice struct {
 	InvoiceInput
-	ID            int64      `json:"id"`
-	ApplicationNo string     `json:"application_no"`
-	UserID        int64      `json:"user_id"`
-	UserEmail     string     `json:"user_email"`
-	UserName      string     `json:"user_name"`
-	Status        string     `json:"status"`
-	AdminRemark   string     `json:"admin_remark"`
-	InvoiceNumber string     `json:"invoice_number"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
-	ProcessedAt   *time.Time `json:"processed_at"`
+	ID            int64                    `json:"id"`
+	ApplicationNo string                   `json:"application_no"`
+	UserID        int64                    `json:"user_id"`
+	UserEmail     string                   `json:"user_email"`
+	UserName      string                   `json:"user_name"`
+	Status        string                   `json:"status"`
+	AdminRemark   string                   `json:"admin_remark"`
+	InvoiceNumber string                   `json:"invoice_number"`
+	CreatedAt     time.Time                `json:"created_at"`
+	UpdatedAt     time.Time                `json:"updated_at"`
+	ProcessedAt   *time.Time               `json:"processed_at"`
+	Document      *InvoiceDocumentMetadata `json:"document"`
+}
+
+type InvoiceDocumentMetadata struct {
+	Filename   string    `json:"filename"`
+	SizeBytes  int64     `json:"size_bytes"`
+	UploadedAt time.Time `json:"uploaded_at"`
+	SHA256     string    `json:"sha256"`
+}
+
+type InvoiceDocument struct {
+	InvoiceDocumentMetadata
+	Content []byte `json:"-"`
 }
 
 type InvoiceEligibility struct {
@@ -74,6 +98,7 @@ type InvoiceUpdate struct {
 }
 
 type InvoiceFilter struct {
+	IDs      []int64
 	UserID   int64
 	Status   string
 	Search   string
@@ -82,6 +107,8 @@ type InvoiceFilter struct {
 }
 
 type InvoiceRepository interface {
+	SaveDocument(context.Context, int64, *InvoiceDocument) (*Invoice, error)
+	GetDocument(context.Context, int64, int64) (*InvoiceDocument, error)
 	Eligibility(context.Context, int64) (*InvoiceEligibility, error)
 	Create(context.Context, int64, InvoiceInput) (*Invoice, error)
 	Get(context.Context, int64, int64) (*Invoice, error)
@@ -197,11 +224,16 @@ func ValidateInvoiceInput(input *InvoiceInput) error {
 	fields := []struct {
 		value *string
 		limit int
-	}{{&input.Title, 200}, {&input.TaxNumber, 32}, {&input.Email, 254}, {&input.Address, 500}, {&input.Phone, 50}, {&input.BankName, 200}, {&input.BankAccount, 100}, {&input.Remark, 1000}}
+	}{{&input.Contact, 200}, {&input.RequestedIssueDate, 10}, {&input.Title, 200}, {&input.TaxNumber, 32}, {&input.Email, 254}, {&input.Address, 500}, {&input.Phone, 50}, {&input.BankName, 200}, {&input.BankAccount, 100}, {&input.Remark, 1000}}
 	for _, field := range fields {
 		*field.value = strings.TrimSpace(*field.value)
 		if utf8.RuneCountInString(*field.value) > field.limit || strings.ContainsRune(*field.value, '\x00') {
 			return invoiceInvalid("申请信息过长或包含无效字符")
+		}
+	}
+	if input.RequestedIssueDate != "" {
+		if parsed, err := time.Parse("2006-01-02", input.RequestedIssueDate); err != nil || parsed.Format("2006-01-02") != input.RequestedIssueDate {
+			return invoiceInvalid("期望开票日期格式必须为 YYYY-MM-DD")
 		}
 	}
 	if input.InvoiceType != "vat_normal" && input.InvoiceType != "vat_special" {
@@ -275,12 +307,65 @@ func invoiceCSVLabel(value string) string {
 	}
 }
 
+// InvoiceExportColumn is a fixed allowlist; arbitrary field paths are never evaluated.
+type InvoiceExportColumn struct {
+	Key   string `json:"key"`
+	Label string `json:"label"`
+}
+
+var InvoiceExportColumns = []InvoiceExportColumn{
+	{"application_no", "申请编号"}, {"user_id", "用户ID"}, {"user_email", "用户账号"}, {"user_name", "昵称"},
+	{"amount", "金额（人民币元）"}, {"invoice_type", "发票类型"}, {"title_type", "抬头类型"}, {"title", "抬头"},
+	{"tax_number", "税号"}, {"email", "收票邮箱"}, {"address", "地址"}, {"phone", "电话"},
+	{"bank_name", "开户银行"}, {"bank_account", "银行账号"}, {"remark", "申请备注"}, {"status", "状态"},
+	{"admin_remark", "审核备注"}, {"invoice_number", "发票号码"}, {"created_at", "申请时间"}, {"processed_at", "处理时间"},
+	{"contact", "联系方式"}, {"requested_issue_date", "期望开票日期"},
+}
+
+func ValidateInvoiceExportColumns(columns []string) ([]string, error) {
+	if len(columns) == 0 {
+		result := make([]string, len(InvoiceExportColumns))
+		for i, column := range InvoiceExportColumns {
+			result[i] = column.Key
+		}
+		return result, nil
+	}
+	allowed := make(map[string]bool, len(InvoiceExportColumns))
+	for _, column := range InvoiceExportColumns {
+		allowed[column.Key] = true
+	}
+	seen := make(map[string]bool, len(columns))
+	for _, key := range columns {
+		if !allowed[key] || seen[key] {
+			return nil, invoiceInvalid("导出列无效或重复")
+		}
+		seen[key] = true
+	}
+	return columns, nil
+}
+
 func WriteInvoiceCSV(w io.Writer, invoices []*Invoice) error {
+	return WriteInvoiceCSVColumns(w, invoices, nil)
+}
+
+func WriteInvoiceCSVColumns(w io.Writer, invoices []*Invoice, columns []string) error {
+	columns, err := ValidateInvoiceExportColumns(columns)
+	if err != nil {
+		return err
+	}
 	if _, err := io.WriteString(w, "\xef\xbb\xbf"); err != nil {
 		return err
 	}
+	labels := make(map[string]string, len(InvoiceExportColumns))
+	for _, column := range InvoiceExportColumns {
+		labels[column.Key] = column.Label
+	}
+	header := make([]string, len(columns))
+	for i, key := range columns {
+		header[i] = labels[key]
+	}
 	csvWriter := csv.NewWriter(w)
-	if err := csvWriter.Write([]string{"申请编号", "用户ID", "用户邮箱", "用户名", "金额（人民币元）", "发票类型", "抬头类型", "抬头", "税号", "收票邮箱", "地址", "电话", "开户银行", "银行账号", "申请备注", "状态", "审核备注", "发票号码", "申请时间", "处理时间"}); err != nil {
+	if err := csvWriter.Write(header); err != nil {
 		return err
 	}
 	for _, inv := range invoices {
@@ -288,14 +373,23 @@ func WriteInvoiceCSV(w io.Writer, invoices []*Invoice) error {
 		if inv.ProcessedAt != nil {
 			processed = inv.ProcessedAt.UTC().Format(time.RFC3339)
 		}
-		row := []string{inv.ApplicationNo, strconv.FormatInt(inv.UserID, 10), inv.UserEmail, inv.UserName, fmt.Sprintf("%d.%02d", inv.AmountCents/100, inv.AmountCents%100), invoiceCSVLabel(inv.InvoiceType), invoiceCSVLabel(inv.TitleType), inv.Title, inv.TaxNumber, inv.Email, inv.Address, inv.Phone, inv.BankName, inv.BankAccount, inv.Remark, invoiceCSVLabel(inv.Status), inv.AdminRemark, inv.InvoiceNumber, inv.CreatedAt.UTC().Format(time.RFC3339), processed}
-		for i := range row {
-			row[i] = InvoiceCSVText(row[i])
+		values := map[string]string{
+			"application_no": inv.ApplicationNo, "user_id": strconv.FormatInt(inv.UserID, 10), "user_email": inv.UserEmail, "user_name": inv.UserName,
+			"contact": inv.Contact, "requested_issue_date": inv.RequestedIssueDate, "amount": fmt.Sprintf("%d.%02d", inv.AmountCents/100, inv.AmountCents%100),
+			"invoice_type": invoiceCSVLabel(inv.InvoiceType), "title_type": invoiceCSVLabel(inv.TitleType), "title": inv.Title, "tax_number": inv.TaxNumber,
+			"email": inv.Email, "address": inv.Address, "phone": inv.Phone, "bank_name": inv.BankName, "bank_account": inv.BankAccount,
+			"remark": inv.Remark, "status": invoiceCSVLabel(inv.Status), "admin_remark": inv.AdminRemark, "invoice_number": inv.InvoiceNumber,
+			"created_at": inv.CreatedAt.UTC().Format(time.RFC3339), "processed_at": processed,
 		}
-		// Preserve long IDs, account numbers and leading zeroes in spreadsheet apps.
-		for _, i := range []int{8, 11, 13, 17} {
-			if row[i] != "" && !strings.HasPrefix(row[i], "'") {
-				row[i] = "'" + row[i]
+		row := make([]string, len(columns))
+		for i, key := range columns {
+			row[i] = InvoiceCSVText(values[key])
+			// Preserve financial identifiers, leading zeroes and long numeric contact details.
+			switch key {
+			case "tax_number", "phone", "bank_account", "invoice_number", "contact":
+				if row[i] != "" && !strings.HasPrefix(row[i], "'") {
+					row[i] = "'" + row[i]
+				}
 			}
 		}
 		if err := csvWriter.Write(row); err != nil {
@@ -304,6 +398,48 @@ func WriteInvoiceCSV(w io.Writer, invoices []*Invoice) error {
 	}
 	csvWriter.Flush()
 	return csvWriter.Error()
+}
+
+// ValidateInvoiceDocument accepts a bounded PDF payload and stores a safe filename.
+// The media type is checked against the bytes, never trusted from the extension alone.
+func ValidateInvoiceDocument(filename, contentType string, content []byte) (*InvoiceDocument, error) {
+	if int64(len(content)) > InvoiceDocumentMaxBytes || len(content) < 16 {
+		return nil, invoiceInvalid("电子发票必须为不超过 10 MiB 的 PDF 文件")
+	}
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil || (mediaType != "application/pdf" && mediaType != "application/octet-stream") || http.DetectContentType(content) != "application/pdf" {
+		return nil, invoiceInvalid("电子发票只支持 PDF 文件")
+	}
+	if !bytes.HasPrefix(content, []byte("%PDF-")) || !bytes.HasSuffix(bytes.TrimSpace(content), []byte("%%EOF")) {
+		return nil, invoiceInvalid("PDF 文件无效或不完整")
+	}
+	filename = path.Base(strings.ReplaceAll(filename, "\\", "/"))
+	filename = strings.TrimSpace(strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, filename))
+	if filename == "" || filename == "." || filename == "/" || !strings.EqualFold(path.Ext(filename), ".pdf") {
+		return nil, invoiceInvalid("电子发票文件名必须以 .pdf 结尾")
+	}
+	if utf8.RuneCountInString(filename) > 200 {
+		return nil, invoiceInvalid("PDF 文件名不能超过 200 字")
+	}
+	digest := sha256.Sum256(content)
+	return &InvoiceDocument{InvoiceDocumentMetadata: InvoiceDocumentMetadata{Filename: filename, SizeBytes: int64(len(content)), SHA256: hex.EncodeToString(digest[:])}, Content: content}, nil
+}
+
+func (s *InvoiceService) UploadDocument(ctx context.Context, id int64, filename, contentType string, content []byte) (*Invoice, error) {
+	document, err := ValidateInvoiceDocument(filename, contentType, content)
+	if err != nil {
+		return nil, err
+	}
+	return s.repo.SaveDocument(ctx, id, document)
+}
+
+func (s *InvoiceService) GetDocument(ctx context.Context, id, userID int64) (*InvoiceDocument, error) {
+	return s.repo.GetDocument(ctx, id, userID)
 }
 
 // InvoicePaymentRemainderCents converts refund wallet units back into historical
@@ -341,6 +477,16 @@ func (s *InvoiceService) Export(ctx context.Context, filter InvoiceFilter) ([]*I
 	filter.Search = strings.TrimSpace(filter.Search)
 	if utf8.RuneCountInString(filter.Search) > 200 {
 		return nil, invoiceInvalid("搜索内容不能超过 200 字")
+	}
+	if len(filter.IDs) > 1000 {
+		return nil, invoiceInvalid("单次最多选择 1000 条申请")
+	}
+	seen := make(map[int64]bool, len(filter.IDs))
+	for _, id := range filter.IDs {
+		if id <= 0 || seen[id] {
+			return nil, invoiceInvalid("申请编号无效或重复")
+		}
+		seen[id] = true
 	}
 	return s.repo.Export(ctx, filter)
 }

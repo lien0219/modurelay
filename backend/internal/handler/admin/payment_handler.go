@@ -169,6 +169,12 @@ type AdminPaymentOrderResult struct {
 	UpdatedAt           time.Time  `json:"updated_at"`
 }
 
+// SanitizePaymentOrdersForResponse shares the admin order DTO with account audits.
+// Provider snapshots and sensitive gateway credentials are intentionally excluded.
+func SanitizePaymentOrdersForResponse(orders []*dbent.PaymentOrder) []*AdminPaymentOrderResult {
+	return sanitizeAdminPaymentOrdersForResponse(orders)
+}
+
 func sanitizeAdminPaymentOrdersForResponse(orders []*dbent.PaymentOrder) []*AdminPaymentOrderResult {
 	out := make([]*AdminPaymentOrderResult, 0, len(orders))
 	for _, order := range orders {

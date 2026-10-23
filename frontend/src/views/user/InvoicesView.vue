@@ -33,7 +33,7 @@
           <button class="btn btn-secondary" :disabled="loading || eligibilityLoading" @click="refresh">{{ t('common.refresh') }}</button>
         </div>
         <p v-if="listError" class="text-sm text-[var(--color-danger)]" role="alert">{{ listError }}</p>
-        <InvoiceTable :items="items" :loading="loading">
+        <InvoiceTable :items="items" :loading="loading" @detail="openDetails">
           <template #actions="{ row }">
             <div class="flex items-center gap-2 whitespace-nowrap">
               <button class="btn btn-secondary btn-sm" :disabled="detailLoading" @click="openDetails(row.id)">{{ t('invoices.details') }}</button>
@@ -82,6 +82,15 @@
             <label for="invoice-email" class="input-label">{{ t('invoices.fields.email') }} <span aria-hidden="true">*</span></label>
             <input id="invoice-email" v-model="form.email" type="email" class="input mt-1" maxlength="254" required data-testid="invoice-email" />
           </div>
+          <div>
+            <label for="invoice-contact" class="input-label">{{ t('invoices.fields.contact') }} <span aria-hidden="true">*</span></label>
+            <input id="invoice-contact" v-model="form.contact" class="input mt-1" maxlength="200" required :placeholder="t('invoices.contactPlaceholder')" data-testid="invoice-contact" />
+          </div>
+          <div>
+            <label for="invoice-requested-date" class="input-label">{{ t('invoices.fields.requested_issue_date') }}</label>
+            <input id="invoice-requested-date" v-model="form.requested_issue_date" type="date" class="input mt-1" aria-describedby="invoice-date-help" data-testid="invoice-requested-date" />
+            <p id="invoice-date-help" class="mt-1 text-xs text-[var(--color-text-muted)]">{{ t('invoices.requestedDateHelp') }}</p>
+          </div>
           <template v-if="form.title_type === 'enterprise'">
             <div v-for="field in enterpriseFields" :key="field.key" :class="field.key === 'address' ? 'sm:col-span-2' : ''">
               <label :for="`invoice-${field.key}`" class="input-label">{{ t(`invoices.fields.${field.key}`) }} <span v-if="isSpecial" aria-hidden="true">*</span></label>
@@ -104,7 +113,11 @@
     </BaseDialog>
 
     <BaseDialog :show="!!selected" :title="t('invoices.details')" width="wide" @close="selected = null">
-      <InvoiceDetails v-if="selected" :invoice="selected" />
+      <div v-if="selected" class="space-y-5">
+        <InvoiceDetails :invoice="selected" />
+        <InvoiceDocument v-if="selected.status === 'issued' && selected.document" :key="selected.document.sha256" :document="selected.document" :load-document="loadDocument" />
+        <p v-else-if="selected.status === 'issued'" class="text-sm text-[var(--color-text-secondary)]">{{ t('invoices.documentPending') }}</p>
+      </div>
     </BaseDialog>
 
     <BaseDialog :show="!!cancelTarget" :title="t('invoices.cancel')" width="narrow" :show-close-button="!cancelling" :close-on-escape="!cancelling" @close="cancelTarget = null">
@@ -126,6 +139,7 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import InvoiceDetails from '@/components/invoices/InvoiceDetails.vue'
+import InvoiceDocument from '@/components/invoices/InvoiceDocument.vue'
 import InvoiceTable from '@/components/invoices/InvoiceTable.vue'
 import { invoicesAPI } from '@/api/invoices'
 import { useAppStore } from '@/stores/app'
@@ -155,7 +169,7 @@ const formError = ref('')
 const formErrorElement = ref<HTMLElement | null>(null)
 const amount = ref('')
 const amountError = ref('')
-const freshForm = (): InvoiceApplicationInput => ({ amount_cents: 0, invoice_type: 'vat_normal', title_type: 'enterprise', title: '', tax_number: '', email: '', address: '', phone: '', bank_name: '', bank_account: '', remark: '' })
+const freshForm = (): InvoiceApplicationInput => ({ amount_cents: 0, invoice_type: 'vat_normal', title_type: 'enterprise', title: '', tax_number: '', email: '', address: '', phone: '', bank_name: '', bank_account: '', remark: '', contact: '', requested_issue_date: '' })
 const form = reactive(freshForm())
 const enterpriseFields = [{ key: 'address', max: 500 }, { key: 'phone', max: 50 }, { key: 'bank_name', max: 200 }, { key: 'bank_account', max: 100 }] as const
 const minimum = computed(() => eligibility.value?.minimum_amount_cents ?? 30000)
@@ -221,11 +235,17 @@ async function submitApplication() {
     document.getElementById('invoice-amount')?.focus()
     return
   }
+  if (!form.contact.trim()) {
+    formError.value = t('invoices.contactRequired')
+    await nextTick()
+    document.getElementById('invoice-contact')?.focus()
+    return
+  }
   submitting.value = true
   formError.value = ''
   try {
     const payload: InvoiceApplicationInput = { ...form, amount_cents: cents }
-    for (const key of ['title', 'tax_number', 'email', 'address', 'phone', 'bank_name', 'bank_account', 'remark'] as const) payload[key] = payload[key].trim()
+    for (const key of ['title', 'tax_number', 'email', 'address', 'phone', 'bank_name', 'bank_account', 'remark', 'contact'] as const) payload[key] = payload[key].trim()
     if (payload.title_type === 'personal') {
       payload.tax_number = ''; payload.address = ''; payload.phone = ''; payload.bank_name = ''; payload.bank_account = ''
     }
@@ -248,6 +268,11 @@ async function openDetails(id: number) {
   try { selected.value = (await invoicesAPI.detail(id)).data }
   catch (error) { appStore.showError(extractI18nErrorMessage(error, t, 'invoices.errors', t('invoices.loadFailed'))) }
   finally { detailLoading.value = false }
+}
+
+function loadDocument(download = false) {
+  if (!selected.value) return Promise.reject(new Error(t('invoices.documentLoadFailed')))
+  return invoicesAPI.document(selected.value.id, download)
 }
 
 async function cancelApplication() {

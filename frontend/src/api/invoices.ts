@@ -3,6 +3,7 @@ import type { BasePaginationResponse } from '@/types'
 import type {
   InvoiceApplication, InvoiceApplicationInput, InvoiceEligibility,
   InvoiceListParams, InvoiceUpdateInput,
+  InvoiceAccount, InvoiceExportInput,
 } from '@/types/invoice'
 
 export const invoicesAPI = {
@@ -12,6 +13,7 @@ export const invoicesAPI = {
   create: (data: InvoiceApplicationInput) => apiClient.post<InvoiceApplication>('/invoices', data),
   detail: (id: number) => apiClient.get<InvoiceApplication>(`/invoices/${id}`),
   cancel: (id: number) => apiClient.post<InvoiceApplication>(`/invoices/${id}/cancel`),
+  document: (id: number, download = false) => apiClient.get<Blob>(`/invoices/${id}/document`, { responseType: 'blob', params: download ? { download: 1 } : undefined }),
 }
 
 export const adminInvoicesAPI = {
@@ -20,9 +22,15 @@ export const adminInvoicesAPI = {
   list: (params: InvoiceListParams) => apiClient.get<BasePaginationResponse<InvoiceApplication>>('/admin/invoices', { params }),
   detail: (id: number) => apiClient.get<InvoiceApplication>(`/admin/invoices/${id}`),
   update: (id: number, data: InvoiceUpdateInput) => apiClient.patch<InvoiceApplication>(`/admin/invoices/${id}`, data),
-  async export(params: Pick<InvoiceListParams, 'status' | 'search'>) {
-    const response = await apiClient.get<Blob>('/admin/invoices/export', {
-      params,
+  account: (id: number, params: { page: number; page_size: number }) => apiClient.get<InvoiceAccount>(`/admin/invoices/${id}/account`, { params }),
+  document: (id: number, download = false) => apiClient.get<Blob>(`/admin/invoices/${id}/document`, { responseType: 'blob', params: download ? { download: 1 } : undefined }),
+  uploadDocument: (id: number, file: File) => {
+    const data = new FormData()
+    data.append('file', file)
+    return apiClient.post<InvoiceApplication>(`/admin/invoices/${id}/document`, data, { headers: { 'Content-Type': 'multipart/form-data' } })
+  },
+  async export(params: InvoiceExportInput) {
+    const response = await apiClient.post<Blob>('/admin/invoices/export', params, {
       responseType: 'blob',
       // Decode export-limit JSON ourselves; keep authentication and other failures
       // on the shared client's normal error/refresh path.

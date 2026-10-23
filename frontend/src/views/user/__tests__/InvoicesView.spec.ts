@@ -4,7 +4,7 @@ import InvoicesView from '../InvoicesView.vue'
 import type { InvoiceApplication, InvoiceEligibility } from '@/types/invoice'
 
 const { api, showSuccess, showError } = vi.hoisted(() => ({
-  api: { eligibility: vi.fn(), list: vi.fn(), create: vi.fn(), detail: vi.fn(), cancel: vi.fn() },
+  api: { eligibility: vi.fn(), list: vi.fn(), create: vi.fn(), detail: vi.fn(), cancel: vi.fn(), document: vi.fn() },
   showSuccess: vi.fn(), showError: vi.fn(),
 }))
 vi.mock('@/api/invoices', () => ({ invoicesAPI: api }))
@@ -20,6 +20,7 @@ const application: InvoiceApplication = {
   amount_cents: 30000, invoice_type: 'vat_normal', title_type: 'enterprise', title: 'Example Enterprise',
   tax_number: '91310000123456789A', email: 'finance@example.test', address: '', phone: '', bank_name: '', bank_account: '', remark: 'Finance note',
   status: 'pending', admin_remark: '', invoice_number: '', created_at: '2026-10-23T04:00:00Z', updated_at: '2026-10-23T04:00:00Z', processed_at: null,
+  contact: 'wechat-finance', requested_issue_date: '2026-10-25', document: null,
 }
 
 function render() {
@@ -40,6 +41,8 @@ async function fillForm(wrapper: Wrapper, value = '300.01') {
   await wrapper.get('#invoice-title').setValue(' Example Enterprise ')
   await wrapper.get('#invoice-tax').setValue('91310000123456789A')
   await wrapper.get('#invoice-email').setValue('finance@example.test')
+  await wrapper.get('#invoice-contact').setValue(' wechat-finance ')
+  await wrapper.get('#invoice-requested-date').setValue('2026-10-25')
 }
 
 describe('user invoice workflow', () => {
@@ -95,10 +98,20 @@ describe('user invoice workflow', () => {
     await fillForm(wrapper)
     await wrapper.get('#invoice-application').trigger('submit')
     await flushPromises()
-    expect(api.create).toHaveBeenCalledWith(expect.objectContaining({ amount_cents: 30001, title: 'Example Enterprise', email: 'finance@example.test' }))
+    expect(api.create).toHaveBeenCalledWith(expect.objectContaining({ amount_cents: 30001, title: 'Example Enterprise', email: 'finance@example.test', contact: 'wechat-finance', requested_issue_date: '2026-10-25' }))
     expect(api.eligibility).toHaveBeenCalledTimes(2)
     expect(api.list).toHaveBeenCalledTimes(2)
     expect(wrapper.find('#invoice-application').exists()).toBe(false)
+  })
+
+  it('requires nonblank contact details on the new application form', async () => {
+    const wrapper = await setup()
+    await fillForm(wrapper)
+    await wrapper.get('#invoice-contact').setValue('   ')
+    await wrapper.get('#invoice-application').trigger('submit')
+    await flushPromises()
+    expect(api.create).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('invoices.contactRequired')
   })
 
   it('requires enterprise tax and bank details for special VAT invoices', async () => {
@@ -137,6 +150,7 @@ describe('user invoice workflow', () => {
     const wrapper = await setup()
     await button(wrapper, 'invoices.cancel').trigger('click')
     expect(api.cancel).not.toHaveBeenCalled()
+    expect(api.detail).not.toHaveBeenCalled()
     await wrapper.get('[data-testid="confirm-cancel-invoice"]').trigger('click')
     await flushPromises()
     expect(api.cancel).toHaveBeenCalledWith(5)
@@ -153,5 +167,26 @@ describe('user invoice workflow', () => {
     await button(wrapper, 'pagination.next').trigger('click')
     await flushPromises()
     expect(api.list).toHaveBeenLastCalledWith({ page: 2, page_size: 20 })
+  })
+
+  it('opens details from a record row and shows the administrator rejection reason', async () => {
+    api.detail.mockResolvedValue({ data: { ...application, status: 'rejected', admin_remark: 'Please correct the tax number' } })
+    const wrapper = await setup()
+    await wrapper.findComponent({ name: 'DataTable' }).vm.$emit('rowClick', application)
+    await flushPromises()
+    expect(api.detail).toHaveBeenCalledWith(5)
+    expect(wrapper.text()).toContain('invoices.rejectionReason')
+    expect(wrapper.text()).toContain('Please correct the tax number')
+    expect(wrapper.text()).toContain('wechat-finance')
+    expect(wrapper.text()).toContain('2026-10-25')
+  })
+
+  it('offers PDF preview and download only for an issued invoice with a document', async () => {
+    api.detail.mockResolvedValue({ data: { ...application, status: 'issued', document: { filename: 'invoice.pdf', size_bytes: 1024, uploaded_at: application.created_at, sha256: 'pdf-hash' } } })
+    const wrapper = await setup()
+    await button(wrapper, 'invoices.details').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-testid="preview-invoice-pdf"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="download-invoice-pdf"]').exists()).toBe(true)
   })
 })

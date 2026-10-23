@@ -13,6 +13,10 @@
         <dd class="mt-1 whitespace-pre-wrap break-words text-[var(--color-text-primary)] [overflow-wrap:anywhere]">{{ field.value || '—' }}</dd>
       </div>
     </dl>
+    <div v-if="invoice.status === 'rejected'" class="rounded-lg border border-[var(--color-danger)] p-4 text-sm" role="status">
+      <p class="font-semibold text-[var(--color-danger)]">{{ t('invoices.rejectionReason') }}</p>
+      <p class="mt-2 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{{ invoice.admin_remark || '—' }}</p>
+    </div>
   </div>
 </template>
 
@@ -30,7 +34,7 @@ const details = computed(() => [
   ...(props.showUser ? [{ key: 'user', value: [props.invoice.user_name, props.invoice.user_email, `#${props.invoice.user_id}`].filter(Boolean).join(' · '), wide: true }] : []),
   { key: 'invoice_type', value: t(`invoices.types.${props.invoice.invoice_type}`) },
   { key: 'title_type', value: t(`invoices.titleTypes.${props.invoice.title_type}`) },
-  ...(['title', 'tax_number', 'email', 'address', 'phone', 'bank_name', 'bank_account', 'remark', 'invoice_number', 'admin_remark'] as const).map(key => ({
+  ...(['title', 'tax_number', 'email', 'contact', 'requested_issue_date', 'address', 'phone', 'bank_name', 'bank_account', 'remark', 'invoice_number', 'admin_remark'] as const).map(key => ({
     key, value: props.invoice[key], wide: key === 'remark' || key === 'admin_remark' || key === 'address',
   })),
   { key: 'created_at', value: formatDateTime(props.invoice.created_at) },

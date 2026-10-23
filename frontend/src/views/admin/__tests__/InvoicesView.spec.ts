@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import InvoicesView from '../InvoicesView.vue'
-import type { InvoiceApplication } from '@/types/invoice'
+import { INVOICE_EXPORT_COLUMNS, type InvoiceApplication } from '@/types/invoice'
 
 const { api, appStore, saveAs } = vi.hoisted(() => ({
-  api: { config: vi.fn(), updateConfig: vi.fn(), list: vi.fn(), detail: vi.fn(), update: vi.fn(), export: vi.fn() },
+  api: { config: vi.fn(), updateConfig: vi.fn(), list: vi.fn(), detail: vi.fn(), update: vi.fn(), export: vi.fn(), account: vi.fn(), uploadDocument: vi.fn(), document: vi.fn() },
   appStore: { showSuccess: vi.fn(), showError: vi.fn(), fetchPublicSettings: vi.fn(), cachedPublicSettings: { invoice_enabled: false } },
   saveAs: vi.fn(),
 }))
@@ -21,7 +21,9 @@ const application: InvoiceApplication = {
   amount_cents: 30000, invoice_type: 'vat_special', title_type: 'enterprise', title: 'Example Enterprise',
   tax_number: '91310000123456789A', email: 'finance@example.test', address: 'Example address', phone: '01012345678', bank_name: 'Example Bank', bank_account: '123456789012345678', remark: 'Finance note',
   status: 'pending', admin_remark: '', invoice_number: '', created_at: '2026-10-23T04:00:00Z', updated_at: '2026-10-23T04:00:00Z', processed_at: null,
+  contact: 'wechat-finance', requested_issue_date: '2026-10-25', document: null,
 }
+const document = { filename: 'invoice.pdf', size_bytes: 2048, uploaded_at: '2026-10-23T04:00:00Z', sha256: 'invoice-hash' }
 
 function render() {
   return mount(InvoicesView, {
@@ -35,6 +37,10 @@ type Wrapper = ReturnType<typeof render>
 const wrappers: Wrapper[] = []
 async function setup() { const wrapper = render(); wrappers.push(wrapper); await flushPromises(); return wrapper }
 function button(wrapper: Wrapper, text: string) { return wrapper.findAll('button').find(item => item.text() === text)! }
+async function chooseFile(wrapper: Wrapper, file: File) {
+  Object.defineProperty(wrapper.get('#invoice-pdf-file').element, 'files', { value: [file], configurable: true })
+  await wrapper.get('#invoice-pdf-file').trigger('change')
+}
 
 describe('administrator invoice workflow', () => {
   beforeEach(() => {
@@ -47,6 +53,8 @@ describe('administrator invoice workflow', () => {
     api.detail.mockResolvedValue({ data: application })
     api.update.mockResolvedValue({ data: { ...application, status: 'issued', invoice_number: 'INV-123' } })
     api.export.mockResolvedValue({ data: new Blob(['\uFEFFApplication,Amount\nINV,300'], { type: 'text/csv' }) })
+    api.uploadDocument.mockResolvedValue({ data: { ...application, document } })
+    api.account.mockResolvedValue({ data: { user: { id: 9, email: 'user@example.test', username: 'Alice', balance: 42.5 }, orders: { items: [], total: 0, page: 1, page_size: 10, pages: 0 } } })
   })
   afterEach(() => { wrappers.splice(0).forEach(wrapper => wrapper.unmount()) })
 
@@ -95,12 +103,14 @@ describe('administrator invoice workflow', () => {
     await flushPromises()
     expect(api.list).toHaveBeenLastCalledWith({ search: 'Example Enterprise', status: 'pending', page: 2, page_size: 20 })
     await wrapper.get('[data-testid="export-invoices"]').trigger('click')
+    await wrapper.get('#invoice-export').trigger('submit')
     await flushPromises()
-    expect(api.export).toHaveBeenCalledWith({ search: 'Example Enterprise', status: 'pending' })
+    expect(api.export).toHaveBeenCalledWith({ search: 'Example Enterprise', status: 'pending', columns: [...INVOICE_EXPORT_COLUMNS] })
     expect(saveAs).toHaveBeenCalledWith(expect.any(Blob), expect.stringMatching(/^invoice-applications-.*\.csv$/))
   })
 
   it('shows all financial details and requires an invoice number to mark issued', async () => {
+    api.detail.mockResolvedValue({ data: { ...application, document } })
     const wrapper = await setup()
     await button(wrapper, 'invoices.details').trigger('click')
     await flushPromises()
@@ -137,7 +147,7 @@ describe('administrator invoice workflow', () => {
   })
 
   it('offers only issued or rejected for an application already being processed', async () => {
-    api.detail.mockResolvedValue({ data: { ...application, status: 'processing' } })
+    api.detail.mockResolvedValue({ data: { ...application, status: 'processing', document } })
     const wrapper = await setup()
     await button(wrapper, 'invoices.details').trigger('click')
     await flushPromises()
@@ -162,7 +172,7 @@ describe('administrator invoice workflow', () => {
     expect(wrapper.findAll('#invoice-next-status option').map(option => option.attributes('value'))).toEqual(['issued', 'rejected'])
   })
 
-  it.each(['issued', 'rejected', 'cancelled'])('keeps %s records read-only', async status => {
+  it.each(['issued', 'rejected', 'cancelled'])('keeps %s status final', async status => {
     api.detail.mockResolvedValue({ data: { ...application, status } })
     const wrapper = await setup()
     await button(wrapper, 'invoices.details').trigger('click')
@@ -180,5 +190,90 @@ describe('administrator invoice workflow', () => {
     await flushPromises()
     expect(wrapper.text()).toContain('Application already cancelled')
     expect(appStore.showSuccess).not.toHaveBeenCalled()
+  })
+
+  it('requires a PDF before issuing, then accepts a validated upload', async () => {
+    const wrapper = await setup()
+    await button(wrapper, 'invoices.details').trigger('click')
+    await flushPromises()
+    await wrapper.get('#invoice-next-status').setValue('issued')
+    await wrapper.get('#invoice-number').setValue('INV-123')
+    expect(wrapper.get('[data-testid="update-invoice"]').attributes('disabled')).toBeDefined()
+    await wrapper.get('#invoice-processing').trigger('submit')
+    expect(api.update).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('invoices.pdfRequired')
+    await chooseFile(wrapper, new File(['not a pdf'], 'invoice.txt'))
+    expect(wrapper.text()).toContain('invoices.pdfInvalid')
+    expect(wrapper.get('[data-testid="upload-invoice-pdf"]').attributes('disabled')).toBeDefined()
+    const file = new File(['%PDF-1.4\ninvoice'], 'invoice.pdf', { type: 'application/pdf' })
+    await chooseFile(wrapper, file)
+    await wrapper.get('[data-testid="upload-invoice-pdf"]').trigger('click')
+    await flushPromises()
+    expect(api.uploadDocument).toHaveBeenCalledWith(5, file)
+    expect(api.update).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-testid="update-invoice"]').attributes('disabled')).toBeUndefined()
+    await wrapper.get('#invoice-processing').trigger('submit')
+    await flushPromises()
+    expect(api.update).toHaveBeenCalledWith(5, { status: 'issued', invoice_number: 'INV-123', admin_remark: '' })
+  })
+
+  it('can backfill a historical issued PDF without changing its status', async () => {
+    api.detail.mockResolvedValue({ data: { ...application, status: 'issued' } })
+    api.uploadDocument.mockResolvedValue({ data: { ...application, status: 'issued', document } })
+    const wrapper = await setup()
+    await button(wrapper, 'invoices.details').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('invoices.backfillHelp')
+    await chooseFile(wrapper, new File(['%PDF-1.4'], 'invoice.pdf', { type: 'application/pdf' }))
+    await wrapper.get('[data-testid="upload-invoice-pdf"]').trigger('click')
+    await flushPromises()
+    expect(api.update).not.toHaveBeenCalled()
+    expect(wrapper.find('[data-testid="invoice-pdf-file"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="preview-invoice-pdf"]').exists()).toBe(true)
+  })
+
+  it('keeps selections across pages and exports only chosen columns in stable order', async () => {
+    api.list.mockResolvedValue({ data: { items: [application], total: 41, page: 1, page_size: 20, pages: 3 } })
+    const wrapper = await setup()
+    await wrapper.get('[data-test="select-row"]').setValue(true)
+    expect(api.detail).not.toHaveBeenCalled()
+    api.list.mockResolvedValue({ data: { items: [{ ...application, id: 6 }], total: 41, page: 2, page_size: 20, pages: 3 } })
+    await button(wrapper, 'pagination.next').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="select-row"]').setValue(true)
+    await wrapper.get('[data-testid="export-invoices"]').trigger('click')
+    await button(wrapper, 'invoices.clearColumns').trigger('click')
+    expect(wrapper.get('[data-testid="confirm-export-invoices"]').attributes('disabled')).toBeDefined()
+    await wrapper.get('[data-testid="export-column-amount"]').setValue(true)
+    await wrapper.get('[data-testid="export-column-user_email"]').setValue(true)
+    await wrapper.get('#invoice-export').trigger('submit')
+    await flushPromises()
+    expect(api.export).toHaveBeenCalledWith({ ids: [5, 6], columns: ['user_email', 'amount'] })
+    expect(saveAs).toHaveBeenCalledTimes(1)
+  })
+
+  it('loads the applicant balance and recharge records only when requested', async () => {
+    const wrapper = await setup()
+    await button(wrapper, 'invoices.details').trigger('click')
+    await flushPromises()
+    expect(api.account).not.toHaveBeenCalled()
+    await wrapper.get('[data-testid="invoice-account-toggle"]').trigger('click')
+    await flushPromises()
+    expect(api.account).toHaveBeenCalledWith(5, { page: 1, page_size: 10 })
+    expect(wrapper.text()).toContain('42.50')
+    expect(wrapper.text()).toContain('USD')
+  })
+
+  it('pages recharge history independently from the invoice application list', async () => {
+    api.account.mockResolvedValue({ data: { user: { id: 9, email: 'user@example.test', username: 'Alice', balance: 42.5 }, orders: { items: [], total: 21, page: 1, page_size: 10, pages: 3 } } })
+    const wrapper = await setup()
+    await button(wrapper, 'invoices.details').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="invoice-account-toggle"]').trigger('click')
+    await flushPromises()
+    await wrapper.find('[id="invoice-account-records"]').findAll('button').find(item => item.text() === 'pagination.next')!.trigger('click')
+    await flushPromises()
+    expect(api.account).toHaveBeenLastCalledWith(5, { page: 2, page_size: 10 })
+    expect(api.list).toHaveBeenCalledTimes(1)
   })
 })

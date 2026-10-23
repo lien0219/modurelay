@@ -173,3 +173,70 @@ func TestRefundAmountCannotLosePrecisionBeforeInvoiceReconciliation(t *testing.T
 	require.False(t, refundAmountFitsStorage(30.004))
 	require.False(t, refundAmountFitsStorage(0.001))
 }
+
+func TestInvoiceContactAndRequestedDateValidation(t *testing.T) {
+	input := validInvoiceInput()
+	input.Contact = "  13800000000  "
+	input.RequestedIssueDate = "2026-10-23"
+	require.NoError(t, ValidateInvoiceInput(&input))
+	require.Equal(t, "13800000000", input.Contact)
+	for _, date := range []string{"2026-02-30", "2026-1-01", "2026-10-23T00:00:00Z", "tomorrow"} {
+		input.RequestedIssueDate = date
+		require.Error(t, ValidateInvoiceInput(&input), date)
+	}
+	input.RequestedIssueDate = ""
+	input.Contact = strings.Repeat("长", 201)
+	require.Error(t, ValidateInvoiceInput(&input))
+	// Existing API clients can still submit the original payload.
+	input.Contact = ""
+	require.NoError(t, ValidateInvoiceInput(&input))
+}
+
+func TestInvoiceDocumentValidatesContentTypeBoundariesAndFilename(t *testing.T) {
+	content := []byte("%PDF-1.4\n1 0 obj<</Type /Catalog>>endobj\n%%EOF\n")
+	document, err := ValidateInvoiceDocument("../../电子发票.pdf", "application/pdf", content)
+	require.NoError(t, err)
+	require.Equal(t, "电子发票.pdf", document.Filename)
+	require.Equal(t, int64(len(content)), document.SizeBytes)
+	require.Len(t, document.SHA256, 64)
+	require.Equal(t, content, document.Content)
+	_, err = ValidateInvoiceDocument(`C:\temp\invoice.pdf`, "application/octet-stream", content)
+	require.NoError(t, err)
+	for _, tc := range []struct {
+		name, filename, mime string
+		content              []byte
+	}{
+		{"extension", "invoice.jpg", "application/pdf", content},
+		{"mime", "invoice.pdf", "image/jpeg", content},
+		{"forged PDF", "invoice.pdf", "application/pdf", []byte("<html>not a PDF file</html>")},
+		{"incomplete", "invoice.pdf", "application/pdf", []byte("%PDF-1.4\ntruncated without trailer")},
+		{"oversized", "invoice.pdf", "application/pdf", bytes.Repeat([]byte("x"), int(InvoiceDocumentMaxBytes+1))},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := ValidateInvoiceDocument(tc.filename, tc.mime, tc.content)
+			require.Error(t, err)
+		})
+	}
+}
+
+func TestInvoiceCSVCustomColumnsRemainOrderedAndSafe(t *testing.T) {
+	var output bytes.Buffer
+	inv := &Invoice{UserName: "=command()", InvoiceInput: InvoiceInput{AmountCents: 30050, Contact: "0013800000000"}}
+	require.NoError(t, WriteInvoiceCSVColumns(&output, []*Invoice{inv}, []string{"contact", "amount", "user_name"}))
+	rows, err := csv.NewReader(strings.NewReader(strings.TrimPrefix(output.String(), "\ufeff"))).ReadAll()
+	require.NoError(t, err)
+	require.Equal(t, []string{"联系方式", "金额（人民币元）", "昵称"}, rows[0])
+	require.Equal(t, []string{"'0013800000000", "300.50", "'=command()"}, rows[1])
+	for _, columns := range [][]string{{"password_hash"}, {"amount", "amount"}, {"document.content"}} {
+		_, err := ValidateInvoiceExportColumns(columns)
+		require.Error(t, err)
+	}
+}
+
+func TestInvoiceExportRejectsInvalidOrDuplicateSelectionBeforeRepository(t *testing.T) {
+	svc := NewInvoiceService(nil, nil)
+	for _, ids := range [][]int64{{0}, {-1}, {1, 1}, make([]int64, 1001)} {
+		_, err := svc.Export(context.Background(), InvoiceFilter{IDs: ids})
+		require.Error(t, err)
+	}
+}

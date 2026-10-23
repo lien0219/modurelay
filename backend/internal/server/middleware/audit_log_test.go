@@ -238,3 +238,40 @@ func TestAccountUpdateAuditRedactsTopLevelNewAPIUserAccessToken(t *testing.T) {
 	require.Contains(t, logs[0].RequestBody, `"upstream_billing_new_api_user_access_token":"***"`)
 	require.Contains(t, logs[0].RequestBody, "https://new-api.example.com")
 }
+
+func TestInvoicePDFAndAccountReadsAreAuditedWithoutCapturingPDFBody(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repository := &auditCaptureRepository{}
+	auditService := service.NewAuditLogService(repository, nil)
+	auditService.Start()
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set(string(ContextKeyUser), AuthSubject{UserID: 77})
+		c.Set(string(ContextKeyUserRole), "admin")
+		c.Next()
+	})
+	router.Use(gin.HandlerFunc(NewAuditLogMiddleware(auditService)))
+	router.GET("/api/v1/admin/invoices/:id/document", func(c *gin.Context) { c.Data(http.StatusOK, "application/pdf", []byte("%PDF-example")) })
+	router.GET("/api/v1/admin/invoices/:id/account", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"balance": 123}) })
+	router.POST("/api/v1/admin/invoices/:id/document", func(c *gin.Context) { c.Status(http.StatusOK) })
+	for _, path := range []string{"/api/v1/admin/invoices/1/document", "/api/v1/admin/invoices/1/account"} {
+		router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, path, nil))
+	}
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/admin/invoices/1/document", bytes.NewBufferString("private-invoice-pdf-content"))
+	request.Header.Set("Content-Type", "multipart/form-data; boundary=example")
+	router.ServeHTTP(httptest.NewRecorder(), request)
+	auditService.Stop()
+	repository.mu.Lock()
+	defer repository.mu.Unlock()
+	require.Len(t, repository.logs, 3)
+	actions := map[string]bool{}
+	for _, entry := range repository.logs {
+		actions[entry.Action] = true
+		require.NotContains(t, entry.RequestBody, "private-invoice")
+		if entry.Method == http.MethodPost {
+			require.Equal(t, "<credential-bearing body omitted>", entry.RequestBody)
+		}
+	}
+	require.True(t, actions["admin.invoices.document.read"])
+	require.True(t, actions["admin.invoices.account.read"])
+}
